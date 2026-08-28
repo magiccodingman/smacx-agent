@@ -1,0 +1,93 @@
+
+SMACX Thinker Mod
+=================
+
+Thinker is a remake of game engine features for Alpha Centauri: Alien Crossfire.
+By patching the game to use an additional DLL, many new features can be developed in C++.
+
+* Visual changes to map rendering and random map generation
+* Additional game mechanics and more detailed config options for the game rules
+* Numerous previously fixed settings in the game engine can be adjusted from the config
+* More options for resolution settings, movie playback and other user interface features
+* Entirely rewritten production and movement AI with minor changes to diplomacy
+* Improved automation routines are also available for player factions
+* Includes [Scient's patches](Details.md)
+
+This mod is tested to work with the [GOG version](https://www.gog.com/game/sid_meiers_alpha_centauri) of Alpha Centauri.
+Note that official Alien Crossfire patch version 2.0 must be installed for the launcher to work with terranx.exe.
+Older game version 1.0 is NOT supported by Thinker. Installing Scient's patch v2 also works since this terranx.exe can be used by the launcher.
+Thinker also includes changes to remove issues on Windows 11 that prevent playing the game expansion due to crashes after ending the turn.
+
+[See more information](Details.md) about the features and recommended settings.
+It's strongly recommended to read Details.md since many features are added not provided by the original game.
+[Discuss here](https://github.com/induktio/thinker/discussions) about anything related to Thinker development.
+Remember also to star and watch the repository to receive notifications about new updates.
+
+
+Download
+--------
+These links are the only original source to download binary releases. See also the [Changelog](Changelog.md) for useful release notes.
+
+* [Release versions](https://www.dropbox.com/sh/qsps5bhz8v020o9/AAAp6ioWxdo7vnG6Ity5W3o1a?dl=0&lst=)
+* [Develop builds](https://www.dropbox.com/sh/qsps5bhz8v020o9/AADv-0D0-bPq22pgoAIcDRC3a/develop?dl=0&lst=)
+
+
+Installation
+------------
+1. Extract the files to Alpha Centauri game folder. Alphax.txt changes are optional.
+2. Check Changelog.md and Details.md for useful information.
+3. Change configuration from thinker.ini or just use the defaults.
+4. Start the game from thinker.exe.
+5. Press ALT+T to open Thinker's options menu. Other option is to check that mod version/build date is visible in the game version menu (CTRL+F4).
+6. If neither of those options display mod version, Thinker is incorrectly installed and not loaded.
+
+
+Troubleshooting
+---------------
+The launcher requires original Alien Crossfire v2.0 terranx.exe in the same folder but this file is not modified on disk.
+In case of startup problems, make sure the official v2.0 patch is applied on the game, and the mod is actually started
+from same folder with the game. Sometimes startup issues can be fixed by starting the launcher with administrator privileges.
+
+When starting the game with screen scaling set to something else than 100% some portion of the window may not be visible due to being
+clipped out of the screen. The game does not have proper support for screen scaling so as a workaround the scaling should be set to 100%.
+Sometimes opening/secret project video playback errors might be fixed by installing [DDrawCompat](https://github.com/narzoul/DDrawCompat)
+but otherwise it is not necessary.
+
+The current GOG Alpha Centauri Planetary Pack (13 November 2024) may not work on Windows XP by default. When starting the game
+there can be an error message "The application failed to start because dwmapi.dll was not found." To fix this simply remove ddraw.dll
+from the game folder. This file was added on the latest GOG version and it is not necessary to run the game on Windows XP.
+
+Alt-tabbing may sometimes not work by default in Alpha Centauri's GOG version. To re-enable alt-tab feature, follow these steps.
+First open a command prompt with administrator privileges in Alpha Centauri's installation folder. After entering the commands
+below alt-tabbing should now work when the game is restarted.
+
+    sdbinst -u game.sdb
+    sdbinst -u game_add.sdb
+
+After installing the game on Windows there might be a notification that Windows Features can't complete the requested changes.
+This might be caused by a failure to install DirectPlay. First open a command prompt with administrator privileges.
+Then after entering the command below DirectPlay should be automatically installed.
+
+    dism /online /Enable-Feature /FeatureName:DirectPlay /All
+
+
+Other mods
+----------
+* [SMAC-in-SMACX mod](Details.md#smac-in-smacx-mod) can be installed to play a game similar to original SMAC while Thinker is enabled.
+* [Scient's patch](https://github.com/DrazharLn/scient-unofficial-smacx-patch) combines many fixes for the original game.
+* [OpenSMACX](https://github.com/b-casey/OpenSMACX) has been a long-term project to recreate SMACX game engine.
+* Also see [compatibility with other mods such as PRACX](Details.md#compatibility-with-other-mods).
+
+
+Compiling
+---------
+For information on how to compile Thinker, see [Technical.md](Technical.md).
+
+
+License
+-------
+This software is licensed under the MIT License. Check [License.md](License.md) for detailed conditions.
+
+The original game assets are not covered by this license and remain property of Firaxis Games Inc and Electronic Arts Inc.
+
+Sid Meier's Alpha Centauri and Sid Meier's Alien Crossfire is Copyright © 1997, 1998 by Firaxis Games Inc and Electronic Arts Inc.

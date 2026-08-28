@@ -1,0 +1,39 @@
+# User-supplied game files, Wine/Proton prefixes, saves, logs, screenshots,
+# credentials, and generated test artifacts. Keep only the harmless template.
+/runtime/*
+!/runtime/agent-token.example
+
+# Downloaded dependencies and local source/tool mirrors.
+/toolchain/
+/vendor/
+
+# Native build output.
+/bridge/build/
+
+# Upstream packaging inputs that reproduce game text or in-game imagery. The
+# open-source repository ships code only; users supply their legal game copy.
+/bridge/docs/
+/bridge/tools/*.png
+
+# Python caches and local environments.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.venv/
+venv/
+
+# Local configuration and secrets.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor and operating-system files.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
