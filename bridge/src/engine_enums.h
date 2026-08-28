@@ -1,0 +1,996 @@
+#pragma once
+
+const int MaxNaturalNum = 16;
+const int MaxLandmarkNum = 64;
+const int MaxRegionNum = 128;
+const int MaxRegionLandNum = 64;
+const int RegionBounds = 63;
+
+const int MaxDiffNum = 6;
+const int MaxPlayerNum = 8;
+const int MaxGoalsNum = 75;
+const int MaxSitesNum = 25;
+const int MaxBaseNum = 512;
+const int MaxVehNum = 2048;
+const int MaxProtoNum = 512;
+const int MaxProtoFactionNum = 64;
+const int MaxBaseNameLen = 25;
+const int MaxProtoNameLen = 32;
+const int MaxBasePopSize = 127;
+const int MaxBaseSpecNum = 16;
+
+const int MaxTechnologyNum = 89;
+const int MaxChassisNum = 9;
+const int MaxWeaponNum = 26;
+const int MaxArmorNum = 14;
+const int MaxReactorNum = 4;
+const int MaxAbilityNum = 29;
+const int MaxMoraleNum = 7;
+const int MaxDefenseModeNum = 3;
+const int MaxOffenseModeNum = 3;
+const int MaxOrderNum = 30;
+const int MaxPlanNum = 15;
+const int MaxTriadNum = 3;
+
+const int MaxResourceInfoNum = 9;
+const int MaxTimeControlNum = 6;
+const int MaxCompassNum = 8;
+const int MaxResourceNum = 4;
+const int MaxEnergyNum = 3;
+
+const int MaxMandateNum = 4;
+const int MaxFacilityNum = 64; // 0 slot unused
+const int MaxSecretProjectNum = 64;
+const int MaxTerrainNum = 20;
+const int MaxSocialCatNum = 4;
+const int MaxSocialModelNum = 4;
+const int MaxSocialEffectNum = 11;
+const int MaxSpecialistNum = 7;
+const int MaxCitizenNum = 10;
+const int MaxMoodNum = 9;
+const int MaxReputeNum = 8;
+const int MaxMightNum = 7;
+const int MaxBonusNum = 8;
+const int MaxBonusNameNum = 41;
+const int MaxProposalNum = 11;
+
+const int GrowthPopBoom = 6;
+const int ConvoyBaseValue = 1;
+const int PulseArmorValue = 25;
+const int ResonanceArmorValue = 25;
+const int ResonanceWeaponValue = 25;
+const int AerospaceDefenseRange = 2;
+const int FlechetteDefenseValue = 50;
+const int FlechetteDefenseRange = 2;
+const int MissileDefendChance = 50;
+const int OrbitalAttackChance = 50;
+const int PlanetaryDatalinksCount = 3;
+const int PlanetaryTransitPopSize = 3;
+const int UniversalTranslatorTechs = 2;
+
+const int StrBufLen = 256;
+const int LineBufLen = 128;
+const int MaxEnemyRange = 50;
+
+const int SP_Unbuilt = -1;
+const int SP_Destroyed = -2;
+const int SP_ID_First = 70;
+const int SP_ID_Last = 133;
+const int Fac_ID_First = 1;
+const int Fac_ID_Last = 64; // facilities that can be built on the base
+const int Fac_All_ID_Last = 69; // includes satellites and stockpile energy
+const int Tech_ID_First = 0;
+const int Tech_ID_Last = 88;
+
+enum FacilityId {
+    FAC_HEADQUARTERS = 1,
+    FAC_CHILDREN_CRECHE = 2,
+    FAC_RECYCLING_TANKS = 3,
+    FAC_PERIMETER_DEFENSE = 4,
+    FAC_TACHYON_FIELD = 5,
+    FAC_RECREATION_COMMONS = 6,
+    FAC_ENERGY_BANK = 7,
+    FAC_NETWORK_NODE = 8,
+    FAC_BIOLOGY_LAB = 9,
+    FAC_SKUNKWORKS = 10,
+    FAC_HOLOGRAM_THEATRE = 11,
+    FAC_PARADISE_GARDEN = 12,
+    FAC_TREE_FARM = 13,
+    FAC_HYBRID_FOREST = 14,
+    FAC_FUSION_LAB = 15,
+    FAC_QUANTUM_LAB = 16,
+    FAC_RESEARCH_HOSPITAL = 17,
+    FAC_NANOHOSPITAL = 18,
+    FAC_ROBOTIC_ASSEMBLY_PLANT = 19,
+    FAC_NANOREPLICATOR = 20,
+    FAC_QUANTUM_CONVERTER = 21,
+    FAC_GENEJACK_FACTORY = 22,
+    FAC_PUNISHMENT_SPHERE = 23,
+    FAC_HAB_COMPLEX = 24,
+    FAC_HABITATION_DOME = 25,
+    FAC_PRESSURE_DOME = 26,
+    FAC_COMMAND_CENTER = 27,
+    FAC_NAVAL_YARD = 28,
+    FAC_AEROSPACE_COMPLEX = 29,
+    FAC_BIOENHANCEMENT_CENTER = 30,
+    FAC_CENTAURI_PRESERVE = 31,
+    FAC_TEMPLE_OF_PLANET = 32,
+    FAC_PSI_GATE = 33,
+    FAC_COVERT_OPS_CENTER = 34,
+    FAC_BROOD_PIT = 35,
+    FAC_AQUAFARM = 36,
+    FAC_SUBSEA_TRUNKLINE = 37,
+    FAC_THERMOCLINE_TRANSDUCER = 38,
+    FAC_FLECHETTE_DEFENSE_SYS = 39,
+    FAC_SUBSPACE_GENERATOR = 40,
+    FAC_GEOSYNC_SURVEY_POD = 41,
+    FAC_EMPTY_FACILITY_42 = 42,
+    FAC_EMPTY_FACILITY_43 = 43,
+    FAC_EMPTY_FACILITY_44 = 44,
+    FAC_EMPTY_FACILITY_45 = 45,
+    FAC_EMPTY_FACILITY_46 = 46,
+    FAC_EMPTY_FACILITY_47 = 47,
+    FAC_EMPTY_FACILITY_48 = 48,
+    FAC_EMPTY_FACILITY_49 = 49,
+    FAC_EMPTY_FACILITY_50 = 50,
+    FAC_EMPTY_FACILITY_51 = 51,
+    FAC_EMPTY_FACILITY_52 = 52,
+    FAC_EMPTY_FACILITY_53 = 53,
+    FAC_EMPTY_FACILITY_54 = 54,
+    FAC_EMPTY_FACILITY_55 = 55,
+    FAC_EMPTY_FACILITY_56 = 56,
+    FAC_EMPTY_FACILITY_57 = 57,
+    FAC_EMPTY_FACILITY_58 = 58,
+    FAC_EMPTY_FACILITY_59 = 59,
+    FAC_EMPTY_FACILITY_60 = 60,
+    FAC_EMPTY_FACILITY_61 = 61,
+    FAC_EMPTY_FACILITY_62 = 62,
+    FAC_EMPTY_FACILITY_63 = 63,
+    FAC_EMPTY_FACILITY_64 = 64,
+    FAC_SKY_HYDRO_LAB = 65,
+    FAC_NESSUS_MINING_STATION = 66,
+    FAC_ORBITAL_POWER_TRANS = 67,
+    FAC_ORBITAL_DEFENSE_POD = 68,
+    FAC_STOCKPILE_ENERGY = 69,
+    FAC_HUMAN_GENOME_PROJECT = 70,
+    FAC_COMMAND_NEXUS = 71,
+    FAC_WEATHER_PARADIGM = 72,
+    FAC_MERCHANT_EXCHANGE = 73,
+    FAC_EMPATH_GUILD = 74,
+    FAC_CITIZENS_DEFENSE_FORCE = 75,
+    FAC_VIRTUAL_WORLD = 76,
+    FAC_PLANETARY_TRANSIT_SYSTEM = 77,
+    FAC_XENOEMPATHY_DOME = 78,
+    FAC_NEURAL_AMPLIFIER = 79,
+    FAC_MARITIME_CONTROL_CENTER = 80,
+    FAC_PLANETARY_DATALINKS = 81,
+    FAC_SUPERCOLLIDER = 82,
+    FAC_ASCETIC_VIRTUES = 83,
+    FAC_LONGEVITY_VACCINE = 84,
+    FAC_HUNTER_SEEKER_ALGORITHM = 85,
+    FAC_PHOLUS_MUTAGEN = 86,
+    FAC_CYBORG_FACTORY = 87,
+    FAC_THEORY_OF_EVERYTHING = 88,
+    FAC_DREAM_TWISTER = 89,
+    FAC_UNIVERSAL_TRANSLATOR = 90,
+    FAC_NETWORK_BACKBONE = 91,
+    FAC_NANO_FACTORY = 92,
+    FAC_LIVING_REFINERY = 93,
+    FAC_CLONING_VATS = 94,
+    FAC_SELF_AWARE_COLONY = 95,
+    FAC_CLINICAL_IMMORTALITY = 96,
+    FAC_SPACE_ELEVATOR = 97,
+    FAC_SINGULARITY_INDUCTOR = 98,
+    FAC_BULK_MATTER_TRANSMITTER = 99,
+    FAC_TELEPATHIC_MATRIX = 100,
+    FAC_VOICE_OF_PLANET = 101,
+    FAC_ASCENT_TO_TRANSCENDENCE = 102,
+    FAC_MANIFOLD_HARMONICS = 103,
+    FAC_NETHACK_TERMINUS = 104,
+    FAC_CLOUDBASE_ACADEMY = 105,
+    FAC_PLANETARY_ENERGY_GRID = 106,
+    FAC_EMPTY_SP_38 = 107,
+    FAC_EMPTY_SP_39 = 108,
+    FAC_EMPTY_SP_40 = 109,
+    FAC_EMPTY_SP_41 = 110,
+    FAC_EMPTY_SP_42 = 111,
+    FAC_EMPTY_SP_43 = 112,
+    FAC_EMPTY_SP_44 = 113,
+    FAC_EMPTY_SP_45 = 114,
+    FAC_EMPTY_SP_46 = 115,
+    FAC_EMPTY_SP_47 = 116,
+    FAC_EMPTY_SP_48 = 117,
+    FAC_EMPTY_SP_49 = 118,
+    FAC_EMPTY_SP_50 = 119,
+    FAC_EMPTY_SP_51 = 120,
+    FAC_EMPTY_SP_52 = 121,
+    FAC_EMPTY_SP_53 = 122,
+    FAC_EMPTY_SP_54 = 123,
+    FAC_EMPTY_SP_55 = 124,
+    FAC_EMPTY_SP_56 = 125,
+    FAC_EMPTY_SP_57 = 126,
+    FAC_EMPTY_SP_58 = 127,
+    FAC_EMPTY_SP_59 = 128,
+    FAC_EMPTY_SP_60 = 129,
+    FAC_EMPTY_SP_61 = 130,
+    FAC_EMPTY_SP_62 = 131,
+    FAC_EMPTY_SP_63 = 132,
+    FAC_EMPTY_SP_64 = 133,
+};
+
+enum TechId {
+    TECH_Biogen = 0,
+    TECH_Indust = 1,
+    TECH_InfNet = 2,
+    TECH_Physic = 3,
+    TECH_Psych = 4,
+    TECH_Mobile = 5,
+    TECH_Ecology = 6,
+    TECH_Super = 7,
+    TECH_Chaos = 8,
+    TECH_E_Mc2 = 9,
+    TECH_Fusion = 10,
+    TECH_Alloys = 11,
+    TECH_Subat = 12,
+    TECH_Chemist = 13,
+    TECH_Surface = 14,
+    TECH_Metal = 15,
+    TECH_String = 16,
+    TECH_MilAlg = 17,
+    TECH_Magnets = 18,
+    TECH_MatComp = 19,
+    TECH_Unified = 20,
+    TECH_Gravity = 21,
+    TECH_Poly = 22,
+    TECH_AGrav = 23,
+    TECH_deleted_1 = 24,
+    TECH_Quantum = 25,
+    TECH_SingMec = 26,
+    TECH_ConSing = 27,
+    TECH_TempMec = 28,
+    TECH_ProbMec = 29,
+    TECH_Algor = 30,
+    TECH_Solids = 31,
+    TECH_PlaNets = 32,
+    TECH_DigSent = 33,
+    TECH_HAL9000 = 34,
+    TECH_DocInit = 35,
+    TECH_DocFlex = 36,
+    TECH_Integ = 37,
+    TECH_Fossil = 38,
+    TECH_DocAir = 39,
+    TECH_DocSec = 40,
+    TECH_MindMac = 41,
+    TECH_NanoMin = 42,
+    TECH_DocLoy = 43,
+    TECH_EthCalc = 44,
+    TECH_IndEcon = 45,
+    TECH_IndAuto = 46,
+    TECH_CentMed = 47,
+    TECH_Brain = 48,
+    TECH_Gene = 49,
+    TECH_BioEng = 50,
+    TECH_BioMac = 51,
+    TECH_Neural = 52,
+    TECH_Cyber = 53,
+    TECH_Eudaim = 54,
+    TECH_WillPow = 55,
+    TECH_Thresh = 56,
+    TECH_Matter = 57,
+    TECH_CentEmp = 58,
+    TECH_EnvEcon = 59,
+    TECH_EcoEng = 60,
+    TECH_PlaEcon = 61,
+    TECH_EcoEng2 = 62,
+    TECH_CentPsi = 63,
+    TECH_AlphCen = 64,
+    TECH_Create = 65,
+    TECH_Space = 66,
+    TECH_HomoSup = 67,
+    TECH_SupLube = 68,
+    TECH_QuanMac = 69,
+    TECH_deleted_2 = 70,
+    TECH_NanEdit = 71,
+    TECH_OptComp = 72,
+    TECH_IndRob = 73,
+    TECH_CentGen = 74,
+    TECH_SentEco = 75,
+    TECH_Viral = 76,
+    TECH_Orbital = 77,
+    TECH_PrPsych = 78,
+    TECH_FldMod = 79,
+    TECH_AdapDoc = 80,
+    TECH_AdapEco = 81,
+    TECH_Bioadap = 82,
+    TECH_SentRes = 83,
+    TECH_SecMani = 84,
+    TECH_NewMiss = 85,
+    TECH_BFG9000 = 86,
+    TECH_User = 87,
+    TECH_TranT = 88,
+    TECH_None = -1,
+    TECH_Disable = -2,
+};
+
+enum TechFlags {
+    TFLAG_SECRETS = 0x1,
+    TFLAG_IMPROVE_PROBE = 0x2,
+    TFLAG_INC_COMMERCE = 0x4,
+    TFLAG_REVEALS_MAP = 0x8,
+    TFLAG_ALLOW_GENE_WARFARE = 0x10,
+    TFLAG_INC_GENE_WARFARE_DEFENSE = 0x20,
+    TFLAG_INC_ENERGY_FUNGUS = 0x40,
+    TFLAG_INC_MINERALS_FUNGUS = 0x80,
+    TFLAG_INC_NUTRIENT_FUNGUS = 0x100,
+};
+
+enum TechCategory {
+    TCAT_GROWTH = 0,
+    TCAT_TECH = 1,
+    TCAT_WEALTH = 2,
+    TCAT_POWER = 3,
+};
+
+enum GameState {
+    STATE_GAME_DONE = 0x1,
+    STATE_UNK_2 = 0x2,
+    STATE_UNK_4 = 0x4,
+    STATE_FINAL_SCORE_DONE = 0x8, // end game score screen has been shown to player
+    STATE_IS_SCENARIO = 0x10,
+    STATE_SCENARIO_CHEATED_FLAG = 0x20,
+    STATE_SCENARIO_EDITOR = 0x40,
+    STATE_OMNISCIENT_VIEW = 0x80,
+    STATE_UNK_100 = 0x100, // Path_continents
+    STATE_UNK_200 = 0x200, // rankings
+    STATE_UNK_400 = 0x400,
+    STATE_UNK_800 = 0x800, // time expired? MP related? NOBONUSATEND
+    STATE_DEBUG_MODE = 0x1000,
+    STATE_VICTORY_CONQUER = 0x2000,
+    STATE_DISPLAYED_COUNCIL_AVAIL_MSG = 0x4000, // set when #COUNCILOPEN is displayed to show once
+    STATE_SCN_VICT_TERRITORY_COUNT_OBJ = 0x8000,
+    STATE_COUNCIL_HAS_CONVENED = 0x10000, // set 1st time Planetary Council is convened
+    STATE_VOLCANO_ERUPTED = 0x20000, // #VOLCANO, tied to Planet ecology; can only be triggered once
+    STATE_SCN_VICT_ALL_ARTIFACTS_OBJ_UNIT = 0x40000,
+    STATE_SCN_VICT_HIGHEST_AC_SCORE_WINS = 0x80000,
+    STATE_PERIHELION_ACTIVE = 0x100000,
+    STATE_VICTORY_DIPLOMATIC = 0x200000,
+    STATE_VICTORY_ECONOMIC = 0x400000,
+    STATE_RAND_FAC_LEADER_PERSONALITIES = 0x800000,
+    STATE_RAND_FAC_LEADER_SOCIAL_AGENDA = 0x1000000,
+    STATE_SCN_VICT_TERRAIN_ENH_COUNT_OBJ = 0x2000000,
+    STATE_SCN_VICT_BASE_FACIL_COUNT_OBJ = 0x4000000,
+    STATE_EDITOR_ONLY_MODE = 0x8000000,
+    STATE_UNK_10000000 = 0x10000000, // save_daemon
+    STATE_SCN_VICT_POPULATION_COUNT_OBJ = 0x20000000,
+    STATE_SCN_VICT_TECH_COUNT_OBJ = 0x40000000,
+    STATE_SCN_VICT_CREDITS_COUNT_OBJ = 0x80000000,
+};
+
+enum GameRules {
+    RULES_DO_OR_DIE = 0x1,
+    RULES_VICTORY_CONQUEST = 0x2,
+    RULES_VICTORY_ECONOMIC = 0x4,
+    RULES_VICTORY_DIPLOMATIC = 0x8,
+    RULES_LOOK_FIRST = 0x10,
+    RULES_TECH_STAGNATION = 0x20,
+    RULES_INTENSE_RIVALRY = 0x40,
+    RULES_TIME_WARP = 0x80,
+    RULES_NO_UNITY_SURVEY = 0x100,
+    RULES_BLIND_RESEARCH = 0x200,
+    RULES_IRONMAN = 0x400,
+    RULES_VICTORY_TRANSCENDENCE = 0x800,
+    RULES_VICTORY_COOPERATIVE = 0x1000,
+    RULES_NO_UNITY_SCATTERING = 0x2000,
+    RULES_SPOILS_OF_WAR = 0x4000,
+    RULES_BELL_CURVE = 0x8000,
+    RULES_SCN_UNITY_PODS_NO_RESOURCES = 0x10000,
+    RULES_SCN_UNITY_PODS_NO_MONOLITHS = 0x20000,
+    RULES_SCN_UNITY_PODS_NO_ARTIFACTS = 0x40000,
+    RULES_SCN_VICT_SOLO_MISSION = 0x80000,
+    RULES_SCN_FORCE_PLAYER_PLAY_CURRENT_FACT = 0x100000,
+    RULES_SCN_NO_NATIVE_LIFE = 0x200000,
+    RULES_SCN_NO_COLONY_PODS = 0x400000,
+    RULES_SCN_NO_TERRAFORMING = 0x800000,
+    RULES_SCN_FORCE_CURRENT_DIFF_LEVEL = 0x1000000,
+    RULES_SCN_NO_TECH_TRADING = 0x2000000,
+    RULES_SCN_NO_TECH_ADVANCES = 0x4000000,
+    RULES_SCN_VICT_OBJ_UNITS_REACH_FRIEND_OBJ_BASE = 0x8000000,
+    RULES_SCN_VICT_OBJ_UNITS_REACH_FRIEND_HQ_BASE = 0x10000000,
+    RULES_SCN_VICT_ALL_BASE_COUNT_OBJ = 0x20000000,
+    RULES_SCN_VICT_SP_COUNT_OBJ = 0x40000000,
+    RULES_SCN_NO_BUILDING_SP = 0x80000000,
+};
+
+enum GameMoreRules {
+    MRULES_SCN_UNITY_PODS_NO_VEHICLES = 0x1,
+    MRULES_SCN_UNITY_PODS_NO_TECH = 0x2,
+    MRULES_NO_PLANETARY_COUNCIL = 0x4,
+    MRULES_NO_SOCIAL_ENGINEERING = 0x8,
+    MRULES_UNK_10 = 0x10, // multiplayer simultaneous moves related
+    MRULES_UNK_20 = 0x20, // save_daemon / load_daemon
+    MRULES_UNK_40 = 0x40, // control_turn
+    MRULES_UNK_80 = 0x80,
+};
+
+enum GameWarnings {
+    WARN_STOP_NEW_FAC_BUILT = 0x1,
+    WARN_STOP_NON_COMBAT_VEH_BUILT = 0x2,
+    WARN_STOP_PROTOTYPE_COMPLETE = 0x4,
+    WARN_STOP_DRONE_RIOTS = 0x8,
+    WARN_STOP_DRONE_RIOTS_END = 0x10,
+    WARN_STOP_GOLDEN_AGE = 0x20,
+    WARN_STOP_GOLDEN_AGE_END = 0x40,
+    WARN_STOP_NUTRIENT_SHORTAGE = 0x80,
+    WARN_STOP_UNK_100 = 0x100, // no text, not visible in PrefWin; set with default warning
+    WARN_STOP_BUILD_OUT_OF_DATE = 0x200,
+    WARN_STOP_COMBAT_VEH_BUILT = 0x400,
+    WARN_STOP_POP_LIMIT_REACHED = 0x800,
+    WARN_STOP_DELAY_IN_TRANSCEND = 0x1000,
+    WARN_STOP_BUILT_VIA_GOV_QUEUE = 0x2000,
+    WARN_STOP_STARVATION = 0x4000,
+    WARN_STOP_MINERAL_SHORTAGE = 0x8000,
+    WARN_STOP_ENERGY_SHORTAGE = 0x10000,
+    WARN_STOP_RANDOM_EVENT = 0x20000,
+};
+
+enum GamePreferences {
+    PREF_BSC_PAUSE_END_TURN = 0x1,
+    PREF_BSC_AUTOSAVE_EACH_TURN = 0x2,
+    PREF_BSC_DONT_QUICK_MOVE_ENEMY_VEH = 0x4, // flag set when unchecked
+    PREF_ADV_FAST_BATTLE_RESOLUTION = 0x8,
+    PREF_UNK_10 = 0x10, // no text, not visible in PrefWin; set with default preferences
+    PREF_BSC_TUTORIAL_MSGS = 0x20,
+    //
+    PREF_AV_MAP_ANIMATIONS = 0x80,
+    PREF_MAP_SHOW_GRID = 0x100,
+    PREF_MAP_SHOW_BASE_GRID = 0x200,
+    PREF_AV_VOLUME_SFX_TOGGLE = 0x400,
+    PREF_AV_SOUND_EFFECTS = 0x400, // not displayed
+    PREF_AV_VOLUME_MUSIC_TOGGLE = 0x800,
+    PREF_AV_BACKGROUND_MUSIC = 0x800, // not displayed
+    PREF_BSC_MOUSE_EDGE_SCROLL_VIEW = 0x1000,
+    //
+    PREF_BSC_AUTO_DESIGN_VEH = 0x4000,
+    PREF_BSC_DONT_QUICK_MOVE_ALLY_VEH = 0x8000, // flag set when unchecked
+    PREF_AUTO_AIR_VEH_RET_HOME_FUEL_RNG = 0x10000,
+    PREF_AUTO_FORMER_RAISE_LWR_TERRAIN = 0x20000,
+    PREF_AV_INTERLUDES_DISABLED = 0x40000, // flag set when unchecked
+    PREF_ADV_NO_CENTER_VEH_ORDERS = 0x80000,
+    PREF_AUTO_END_MOVE_SPOT_VEH_PACT = 0x100000,
+    PREF_AUTO_END_MOVE_SPOT_VEH_TREATY = 0x200000,
+    PREF_AUTO_END_MOVE_SPOT_VEH_TRUCE = 0x400000,
+    PREF_AUTO_END_MOVE_SPOT_VEH_WAR = 0x800000,
+    PREF_AUTO_FORMER_PLANT_FORESTS = 0x1000000,
+    PREF_AUTO_FORMER_BUILD_ADV = 0x2000000, // condensers, boreholes, etc.
+    //
+    PREF_AV_SLIDING_WINDOWS = 0x8000000,
+    PREF_AV_SECRET_PROJECT_MOVIES = 0x10000000,
+    PREF_ADV_RADIO_BTN_NOT_SEL_SING_CLK = 0x20000000, // flag set when unchecked
+    PREF_AUTO_DONT_END_MOVE_DIFF_TRIAD = 0x40000000,
+    PREF_AUTO_WAKE_VEH_TRANS_REACH_LAND = 0x80000000,
+};
+
+enum GameMorePreferences {
+    MPREF_MAP_SHOW_FOG_WAR = 0x1,
+    //
+    MPREF_ADV_ZOOM_BASE_NO_RECENTER_MAP = 0x4,
+    MPREF_AUTO_FORMER_REMOVE_FUNGUS = 0x8,
+    MPREF_ADV_PAUSE_AFTER_BATTLES = 0x10,
+    MPREF_AUTO_FORMER_BUILD_SENSORS = 0x20,
+    MPREF_ADV_QUICK_MOVE_VEH_ORDERS = 0x40,
+    MPREF_ADV_QUICK_MOVE_ALL_VEH = 0x80,
+    MPREF_ADV_RIGHT_CLICK_POPS_UP_MENU = 0x100,
+    MPREF_AV_WHOLE_VEH_BLINKS = 0x200,
+    MPREF_ADV_DETAIL_RIGHT_CLICK_MENUS = 0x400,
+    MPREF_AUTO_ALWAYS_INSPECT_MONOLITH = 0x800,
+    MPREF_MAP_SHOW_PROD_WITH_BASE_NAMES = 0x1000,
+    MPREF_MAP_SHOW_BASE_NAMES = 0x2000,
+    MPREF_AV_VOLUME_VOICE_TOGGLE = 0x4000,
+    MPREF_AV_VOICEOVER_TECH_FAC = 0x4000, // not displayed
+    MPREF_ADV_CONFIRM_ODDS_BF_ATTACKING = 0x8000,
+    MPREF_MAP_SHOW_FLAT_TERRAIN = 0x10000,
+    MPREF_AV_VOICEOVER_STOP_CLOSE_POPUP = 0x20000,
+    MPREF_ADV_CLICK_VEH_CANCELS_ORDERS = 0x40000,
+    MPREF_AV_SLIDING_SCROLLBARS = 0x80000,
+    MPREF_BSC_AUTO_PRUNE_OBS_VEH = 0x100000,
+    MPREF_ADV_DETAIL_MAIN_MENUS = 0x200000,
+    MPREF_AUTO_FORMER_CANT_BUILD_ROADS = 0x400000, // or tubes; flag set when unchecked
+    MPREF_MAP_SHOW_GRID_OCEAN_SQ = 0x800000,
+    MPREF_AV_MONUMENTS_DISABLED = 0x1000000, // flag set when unchecked
+    MPREF_MAP_HIDE_ACTIVE_VEH_GOTO_PATH = 0x2000000, // flag set when unchecked
+};
+
+enum DiffLevel {
+    DIFF_CITIZEN = 0,
+    DIFF_SPECIALIST = 1,
+    DIFF_TALENT = 2,
+    DIFF_LIBRARIAN = 3,
+    DIFF_THINKER = 4,
+    DIFF_TRANSCEND = 5,
+};
+
+enum FactionGender {
+    GENDER_MALE = 0,
+    GENDER_FEMALE = 1,
+    GENDER_NEUTRAL = 2,
+};
+
+enum FactionMood {
+    MOOD_MAGNANIMOUS = 0,
+    MOOD_SOLICITOUS = 1,
+    MOOD_COOPERATIVE = 2,
+    MOOD_NONCOMMITTAL = 3,
+    MOOD_AMBIVALENT = 4,
+    MOOD_OBSTINATE = 5,
+    MOOD_QUARRELSOME = 6,
+    MOOD_BELLIGERENT = 7,
+    MOOD_SEETHING = 8,
+};
+
+enum FactionBonusName {
+    BN_TECH = 0,
+    BN_MORALE = 1,
+    BN_PSI = 2,
+    BN_FACILITY = 3,
+    BN_RESEARCH = 4,
+    BN_DRONE = 5,
+    BN_TALENT = 6,
+    BN_ENERGY = 7,
+    BN_INTEREST = 8,
+    BN_COMMERCE = 9,
+    BN_POPULATION = 10,
+    BN_HURRY = 11,
+    BN_UNIT = 12,
+    BN_TECHCOST = 13,
+    BN_SHARETECH = 14,
+    BN_TERRAFORM = 15,
+    BN_SOCIAL = 16,
+    BN_ROBUST = 17,
+    BN_IMMUNITY = 18,
+    BN_IMPUNITY = 19,
+    BN_PENALTY = 20,
+    BN_FUNGNUTRIENT = 21,
+    BN_FUNGMINERALS = 22,
+    BN_FUNGENERGY = 23,
+    BN_COMMFREQ = 24,
+    BN_MINDCONTROL = 25,
+    BN_FANATIC = 26,
+    BN_VOTES = 27,
+    BN_FREEPROTO = 28,
+    BN_AQUATIC = 29,
+    BN_ALIEN = 30,
+    BN_FREEFAC = 31,
+    BN_REVOLT = 32,
+    BN_NODRONE = 33,
+    BN_WORMPOLICE = 34,
+    BN_FREEABIL = 35,
+    BN_PROBECOST = 36,
+    BN_DEFENSE = 37,
+    BN_OFFENSE = 38,
+    BN_TECHSHARE = 39,
+    BN_TECHSTEAL = 40,
+};
+
+enum FactionRuleType {
+    RULE_TECH = 0,
+    RULE_UNIT = 1,
+    RULE_FACILITY = 2,
+    RULE_SOCIAL = 3,
+    RULE_IMMUNITY = 4,
+    RULE_IMPUNITY = 5,
+    RULE_PENALTY = 6,
+    RULE_FUNGNUTRIENT = 7,
+    RULE_FUNGMINERALS = 8,
+    RULE_FUNGENERGY = 9,
+    RULE_ROBUST = 10,
+    RULE_VOTES = 11,
+    RULE_FREEFAC = 12,
+    RULE_REVOLT = 13,
+    RULE_NODRONE = 14,
+    RULE_FREEABIL = 15,
+    RULE_PROBECOST = 16,
+    RULE_DEFENSE = 17,
+    RULE_OFFENSE = 18,
+};
+
+enum FactionRuleFlags {
+    RFLAG_TECHSTEAL = 0x10,
+    RFLAG_TECHSHARE = 0x20,
+    RFLAG_WORMPOLICE = 0x40,
+    RFLAG_ALIEN = 0x80,
+    RFLAG_AQUATIC = 0x100,
+    RFLAG_FREEPROTO = 0x200,
+    RFLAG_FANATIC = 0x400,
+    RFLAG_MINDCONTROL = 0x800,
+    RFLAG_COMMFREQ = 0x1000,
+    RFLAG_TERRAFORM = 0x2000,
+    RFLAG_INTEREST = 0x4000,
+    RFLAG_MORALE = 0x8000,
+};
+
+enum DiploStatus {
+    DIPLO_PACT = 0x1,
+    DIPLO_TREATY = 0x2,
+    DIPLO_TRUCE = 0x4,
+    DIPLO_COMMLINK = 0x8,
+    DIPLO_VENDETTA = 0x10,
+    DIPLO_WANT_REVENGE = 0x20,
+    DIPLO_UNK_40 = 0x40,
+    DIPLO_UNK_80 = 0x80,
+    DIPLO_UNK_100 = 0x100,
+    DIPLO_UNK_200 = 0x200,
+    DIPLO_SHALL_BETRAY = 0x400,
+    DIPLO_UNK_800 = 0x800,
+    DIPLO_HAVE_INFILTRATOR = 0x1000,
+    DIPLO_WANT_TO_TALK = 0x2000,
+    DIPLO_UNK_4000 = 0x4000, // introduce
+    DIPLO_UNK_8000 = 0x8000, // act_of_aggression, removed when vendetta ends
+    DIPLO_UNK_10000 = 0x10000, // "informal" truce status?
+    DIPLO_UNK_20000 = 0x20000,
+    DIPLO_ATROCITY_VICTIM = 0x40000, // atrocity / major_atrocity
+    DIPLO_MAJOR_ATROCITY_VICTIM = 0x80000, // major_atrocity
+    DIPLO_UNK_100000 = 0x100000, // treaty_off
+    DIPLO_UNK_200000 = 0x200000,
+    DIPLO_UNK_400000 = 0x400000,
+    DIPLO_UNK_800000 = 0x800000, // treaty_on
+    DIPLO_UNK_1000000 = 0x1000000, // treaty_off
+    DIPLO_HAVE_SURRENDERED = 0x2000000,
+    DIPLO_UNK_4000000 = 0x4000000, // wants_to_attack
+    DIPLO_UNK_8000000 = 0x8000000, // whose_territory
+    DIPLO_UNK_10000000 = 0x10000000, // setup_player
+    DIPLO_UNK_20000000 = 0x20000000, // enemy_diplomacy
+    DIPLO_UNK_40000000 = 0x40000000, // encounter
+    DIPLO_UNK_80000000 = 0x80000000, // treaty_on
+};
+
+enum DiploAgenda {
+    AGENDA_UNK_1 = 0x1,
+    AGENDA_UNK_2 = 0x2,
+    AGENDA_UNK_4 = 0x4,
+    AGENDA_FIGHT_TO_DEATH = 0x8,
+    AGENDA_UNK_10 = 0x10,
+    AGENDA_UNK_20 = 0x20,
+    AGENDA_UNK_40 = 0x40,
+    AGENDA_UNK_80 = 0x80,
+    AGENDA_UNK_100 = 0x100,
+    AGENDA_UNK_200 = 0x200,
+    AGENDA_UNK_400 = 0x400,
+    AGENDA_UNK_800 = 0x800,
+    AGENDA_UNK_1000 = 0x1000,
+    AGENDA_PERMANENT = 0x2000,
+    AGENDA_UNK_4000 = 0x4000,
+    AGENDA_UNK_8000 = 0x8000,
+};
+
+enum PlayerFlags {
+    PFLAG_MULTI_TECH_ACHIEVED = 0x2, // tech_achieved during network multiplayer
+    PFLAG_UNK_4 = 0x4, // study_artifact
+    PFLAG_UNK_10 = 0x10, // study_artifact
+    PFLAG_SELF_AWARE_COLONY_LOST_MAINT = 0x20, // used to even out lossy integer division
+    PFLAG_FIRST_SECRETS = 0x40, // set in tech_achieved for first faction gaining TFLAG_SECRETS
+    PFLAG_UNK_100 = 0x100, // setup_player
+    PFLAG_MAP_REVEALED = 0x200,
+    PFLAG_GENETIC_PLAGUE_INTRO = 0x400, // +1 to defense against after 1st time faction experiences
+    PFLAG_UNK_1000 = 0x1000, // setup_player
+    PFLAG_UNK_2000 = 0x2000, // turn_upkeep
+    PFLAG_UNK_4000 = 0x4000,
+    PFLAG_BEEN_ELECTED_GOVERNOR = 0x8000, // used to determine whether #GOVERNOR has been displayed
+    PFLAG_UNK_10000 = 0x10000,
+    PFLAG_UNK_20000 = 0x20000, // compute_score
+    PFLAG_UNK_40000 = 0x40000, // compute_score
+    PFLAG_UNK_80000 = 0x80000, // alt_set
+    PFLAG_UNK_100000 = 0x100000, // compute_score
+    PFLAG_STRAT_ATK_ENEMY_HQ = 0x200000,
+    PFLAG_COOP_WITH_HUMAN = 0x400000,
+    PFLAG_TEAM_UP_VS_HUMAN = 0x800000,
+    PFLAG_COMMIT_ATROCITIES_WANTONLY = 0x1000000,
+    PFLAG_OBLITERATE_CAPTURED_BASES = 0x2000000,
+    PFLAG_EMPHASIZE_LAND_POWER = 0x4000000,
+    PFLAG_EMPHASIZE_SEA_POWER = 0x8000000,
+    PFLAG_EMPHASIZE_AIR_POWER = 0x10000000,
+    PFLAG_STRAT_SEARCH_OBJECTIVES = 0x20000000,
+    PFLAG_STRAT_DEF_OBJECTIVES = 0x40000000,
+    PFLAG_STRAT_ATK_OBJECTIVES = 0x80000000,
+};
+
+enum PlayerFlagsExtended {
+    PFLAG_EXT_STRAT_LOTS_COLONY_PODS = 0x1,
+    PFLAG_EXT_STRAT_LOTS_TERRAFORMERS = 0x2,
+    PFLAG_EXT_STRAT_LOTS_SEA_BASES = 0x4,
+    PFLAG_EXT_STRAT_LOTS_PROBE_TEAMS = 0x8,
+    PFLAG_EXT_STRAT_LOTS_MISSILES = 0x10,
+    PFLAG_EXT_SHAMELESS_BETRAY_HUMANS = 0x20,
+    PFLAG_EXT_STRAT_LOTS_ARTILLERY = 0x40,
+};
+
+enum MapItem {
+    BIT_BASE_IN_TILE = 0x1,
+    BIT_VEH_IN_TILE = 0x2,
+    BIT_ROAD = 0x4,
+    BIT_MAGTUBE = 0x8,
+    BIT_MINE = 0x10,
+    BIT_FUNGUS = 0x20,
+    BIT_SOLAR = 0x40,
+    BIT_RIVER = 0x80,
+    BIT_RIVER_SRC = 0x100, // River begins here for visual effect
+    BIT_RIVER_LAKE = 0x200, // Shows more water for visual effect
+    BIT_BONUS_RES = 0x400,
+    BIT_BUNKER = 0x800,
+    BIT_BASE_RADIUS = 0x1000, // Production radius; 21 tiles per base
+    BIT_MONOLITH = 0x2000,
+    BIT_CANAL_COAST = 0x4000, // Land continent (this tile) + 1-tile canal + another continent.
+    // Both regions must also meet certain tile count threshold.
+    BIT_FARM = 0x8000,
+    BIT_ENERGY_RES = 0x10000,
+    BIT_MINERAL_RES = 0x20000,
+    BIT_AIRBASE = 0x40000,
+    BIT_SOIL_ENRICHER = 0x80000,
+    BIT_SUPPLY_REMOVE = 0x100000, // Prevent randomly generated pods from appearing here
+    BIT_FOREST = 0x200000,
+    BIT_CONDENSER = 0x400000,
+    BIT_ECH_MIRROR = 0x800000,
+    BIT_THERMAL_BORE = 0x1000000,
+    BIT_UNK_2000000 = 0x2000000, // Monolith on this tile has been used at least once
+    BIT_UNK_4000000 = 0x4000000, // This tile has supply pod when no unity scattering
+    BIT_UNK_8000000 = 0x8000000, // This tile has supply pod when no unity scattering
+    BIT_SUPPLY_POD = 0x10000000,
+    BIT_NUTRIENT_RES = 0x20000000,
+    BIT_DOUBLE_SEA = 0x40000000, // Iterate adjacent 8 sea tiles, set bit if there are
+    // more than one group of sea tiles separated by land tiles, can be same sea region.
+    BIT_SENSOR = 0x80000000,
+};
+
+const uint32_t TerraformRules[20][2] = { // terrain enhancement, incompatible on same tile
+    BIT_FARM,          BIT_FOREST, // farm
+    BIT_SOIL_ENRICHER, BIT_FOREST, // soil enricher
+    BIT_MINE,          BIT_MINE | BIT_SOLAR | BIT_FOREST | BIT_CONDENSER | BIT_ECH_MIRROR
+                       | BIT_THERMAL_BORE | BIT_SENSOR, // mine
+    BIT_SOLAR,         BIT_MINE | BIT_SOLAR | BIT_FOREST | BIT_CONDENSER | BIT_ECH_MIRROR
+                       | BIT_THERMAL_BORE | BIT_SENSOR, // solar collector / tidal harness
+    BIT_FOREST,        BIT_MINE | BIT_FUNGUS | BIT_SOLAR | BIT_FARM | BIT_SOIL_ENRICHER
+                       | BIT_FOREST | BIT_CONDENSER | BIT_ECH_MIRROR | BIT_THERMAL_BORE, // forest
+    BIT_ROAD,          0, // road
+    BIT_MAGTUBE,       0, // magtube
+    BIT_BUNKER,        BIT_AIRBASE, // bunker
+    BIT_AIRBASE,       BIT_BUNKER, // airbase
+    BIT_SENSOR,        BIT_MINE | BIT_SOLAR | BIT_CONDENSER | BIT_ECH_MIRROR
+                       | BIT_THERMAL_BORE, // sensor
+    0,                 BIT_FUNGUS, // fungus remove
+    BIT_FUNGUS,        BIT_MINE | BIT_SOLAR | BIT_FARM | BIT_SOIL_ENRICHER
+                       | BIT_FOREST, // fungus plant
+    BIT_CONDENSER,     BIT_MINE | BIT_SOLAR | BIT_FOREST | BIT_CONDENSER | BIT_ECH_MIRROR
+                       | BIT_THERMAL_BORE | BIT_SENSOR, // condenser
+    BIT_ECH_MIRROR,    BIT_MINE | BIT_SOLAR | BIT_FOREST | BIT_CONDENSER | BIT_ECH_MIRROR
+                       | BIT_THERMAL_BORE | BIT_SENSOR, // echelon mirror
+    BIT_THERMAL_BORE,  BIT_MINE | BIT_SOLAR | BIT_FARM | BIT_FOREST | BIT_CONDENSER
+                       | BIT_ECH_MIRROR | BIT_THERMAL_BORE | BIT_SENSOR, // thermal borehole
+    0,                 0, // aquifer
+    0,                 0, // raise land
+    0,                 0, // lower land
+    0,                 0, // level terrain
+    BIT_MONOLITH,      BIT_SUPPLY_POD | BIT_NUTRIENT_RES | BIT_BONUS_RES, // monolith
+};
+
+enum MapLandmark {
+    LM_CRATER = 0x1,
+    LM_VOLCANO = 0x2,
+    LM_JUNGLE = 0x4,
+    LM_URANIUM = 0x8,
+    LM_SARGASSO = 0x10,
+    LM_RUINS = 0x20,
+    LM_DUNES = 0x40,
+    LM_FRESH = 0x80,
+    LM_MESA = 0x100,
+    LM_CANYON = 0x200,
+    LM_GEOTHERMAL = 0x400,
+    LM_RIDGE = 0x800,
+    LM_BOREHOLE = 0x1000,
+    LM_NEXUS = 0x2000,
+    LM_UNITY = 0x4000,
+    LM_FOSSIL = 0x8000,
+    LM_UNK_400000 = 0x400000, // set_dirty()
+    LM_UNK_800000 = 0x800000,
+    LM_DISABLE = 0x80000000, // most landmark effects skipped
+};
+
+enum TerrainAltitude {
+    ALT_OCEAN_TRENCH = 0,
+    ALT_OCEAN = 1,
+    ALT_OCEAN_SHELF = 2,
+    ALT_SHORE_LINE = 3,
+    ALT_ONE_ABOVE_SEA = 4,
+    ALT_TWO_ABOVE_SEA = 5,
+    ALT_THREE_ABOVE_SEA = 6,
+    ALT_FOUR_ABOVE_SEA = 7,
+};
+
+enum TerrainFlags {
+    TILE_MOIST = 0x8,
+    TILE_RAINY = 0x10,
+    TILE_ROLLING = 0x40,
+    TILE_ROCKY = 0x80,
+};
+
+enum TerrainType {
+    LEVEL_FLAT = 0,
+    LEVEL_ROLLING = 1,
+    LEVEL_ROCKY = 2,
+};
+
+enum BaseResType { // base production, convoy types, cost factor
+    RSC_NUTRIENT = 0,
+    RSC_MINERAL = 1,
+    RSC_ENERGY = 2,
+    RSC_UNUSED = 3,
+};
+
+enum ResType { // bonus_at
+    RES_NONE = 0,
+    RES_NUTRIENT = 1,
+    RES_MINERAL = 2,
+    RES_ENERGY = 3,
+};
+
+enum AIGoal {
+    AI_GOAL_UNUSED = -1,
+    AI_GOAL_ATTACK = 0, // 'a', red
+    AI_GOAL_DEFEND = 2, // 'd', yellow
+    AI_GOAL_SCOUT = 3, // 's', pink
+    AI_GOAL_UNK_1 = 6, // 'n', blue ; related to tile visibility
+    AI_GOAL_UNK_2 = 7, // related to movement
+    AI_GOAL_COLONIZE = 8, // 'c', teal
+    AI_GOAL_TERRAFORM_LAND = 9, // 'f', green ' ;
+    AI_GOAL_UNK_3 = 11, // related to combat
+    AI_GOAL_ECHELON_MIRROR = 13,
+    AI_GOAL_PREV_DEFEND = 16,
+    AI_GOAL_TERRAFORM_WATER = 25,
+    AI_GOAL_UNK_4 = 41, // '^', white
+    AI_GOAL_CONDENSER = 73,
+    AI_GOAL_THERMAL_BOREHOLE = 105,
+    AI_GOAL_SENSOR_ARRAY = 121,
+    // Thinker goals start here
+    AI_GOAL_RAISE_LAND = 200,
+    AI_GOAL_NAVAL_START = 201,
+    AI_GOAL_NAVAL_END = 202,
+    AI_GOAL_NAVAL_BEACH = 203,
+    AI_GOAL_NAVAL_SCOUT = 204,
+    AI_GOAL_NAVAL_PICK = 205,
+    Thinker_Goal_ID_First = AI_GOAL_RAISE_LAND,
+};
+
+enum SocialEffect {
+    SE_ECONOMY = 0,
+    SE_EFFIC = 1,
+    SE_SUPPORT = 2,
+    SE_TALENT = 3,
+    SE_MORALE = 4,
+    SE_POLICE = 5,
+    SE_GROWTH = 6,
+    SE_PLANET = 7,
+    SE_PROBE = 8,
+    SE_INDUSTRY = 9,
+    SE_RESEARCH = 10,
+};
+
+enum SocialCategory {
+    SOCIAL_C_POLITICS = 0,
+    SOCIAL_C_ECONOMICS = 1,
+    SOCIAL_C_VALUES = 2,
+    SOCIAL_C_FUTURE = 3,
+};
+
+enum SocialModel {
+    SOCIAL_M_FRONTIER = 0,
+    SOCIAL_M_POLICE_STATE = 1,
+    SOCIAL_M_DEMOCRATIC = 2,
+    SOCIAL_M_FUNDAMENTALIST = 3,
+
+    SOCIAL_M_SIMPLE = 0,
+    SOCIAL_M_FREE_MARKET = 1,
+    SOCIAL_M_PLANNED = 2,
+    SOCIAL_M_GREEN = 3,
+
+    SOCIAL_M_SURVIVAL = 0,
+    SOCIAL_M_POWER = 1,
+    SOCIAL_M_KNOWLEDGE = 2,
+    SOCIAL_M_WEALTH = 3,
+
+    SOCIAL_M_NONE = 0,
+    SOCIAL_M_CYBERNETIC = 1,
+    SOCIAL_M_EUDAIMONIC = 2,
+    SOCIAL_M_THOUGHT_CONTROL = 3,
+};
+
+enum CouncilProposal {
+    PROP_ELECT_PLANETARY_GOVERNOR = 0,
+    PROP_UNITE_SUPREME_LEADER = 1,
+    PROP_SALVAGE_UNITY_CORE = 2,
+    PROP_GLOBAL_TRADE_PACT = 3,
+    PROP_REPEAL_GLOBAL_TRADE_PACT = 4,
+    PROP_LAUNCH_SOLAR_SHADE = 5,
+    PROP_INCREASE_SOLAR_SHADE = 6,
+    PROP_MELT_POLAR_CAPS = 7,
+    PROP_REPEAL_UN_CHARTER = 8,
+    PROP_REINSTATE_UN_CHARTER = 9,
+};
+
+enum VictoryType {
+    VIC_NONE = 0,
+    VIC_TRANSCEND_PLR = 1,
+    VIC_TRANSCEND_UNK = 2,
+    VIC_TRANSCEND_LOSS = 3,
+    VIC_UNIFY_SOLO = 4,
+    VIC_UNIFY_COOP = 5,
+    VIC_DIPLOMATIC_SOLO = 6,
+    VIC_LOST_CAPTURE = 7,
+    VIC_TIME_LIMIT = 8,
+    VIC_SUDDEN_DEATH = 9,
+    VIC_DIPLOMATIC_COOP = 10,
+    VIC_DIPLOMATIC_LOSS = 11,
+    VIC_ECONOMIC_SOLO = 12,
+    VIC_ECONOMIC_COOP = 13,
+    VIC_ECONOMIC_LOSS = 14,
+    VIC_LOST_REMOVE = 15,
+    VIC_ALIEN_SOLO = 16,
+    VIC_ALIEN_COOP = 17,
+    VIC_ALIEN_LOSS = 18,
+};
+
+enum MapwinState {
+    MAPWIN_DRAW_TRANSLUCENT = 0x1, // render translucent sprites, farm/forest/kelp excl. fungus
+    MAPWIN_UNK_2 = 0x2,
+    MAPWIN_DRAW_SITES = 0x4, // debug overlay
+    MAPWIN_UNK_10 = 0x10, // render some random yellow sprites
+    MAPWIN_DRAW_IMPROVEMENTS = 0x20, // render terrain improvements
+    MAPWIN_DRAW_UNITS = 0x40,
+    MAPWIN_DRAW_BASE_TILES = 0x80,
+    MAPWIN_DRAW_BONUS_RES = 0x200, // render supply pods, bonus resources, landmarks
+    MAPWIN_DRAW_RIVERS = 0x400,
+    MAPWIN_DRAW_BASE_NAMES = 0x800,
+    MAPWIN_HIDE_UNITS_BASES = 0x1000, // hide units/base tiles
+    MAPWIN_DRAW_GOALS = 0x2000, // debug overlay
+    MAPWIN_UNK_4000 = 0x4000, // zeros in almost every tile
+    MAPWIN_DRAW_BORDERS = 0x10000,
+    MAPWIN_DRAW_CURSOR_COMPASS = 0x20000,
+    MAPWIN_DRAW_DIPLO_STATE = 0x100000, // show faction treaty status matrix in window corner
+    MAPWIN_SUPPORT_VIEW = 0x200000,
+    MAPWIN_UNK_400000 = 0x400000, // MapWin_draw_base_dest
+    MAPWIN_UNK_800000 = 0x800000, // MapWin_draw_base_dest
+    MAPWIN_DRAW_SOLID_RADIUS = 0x1000000, // faction base radius solid color terrain view
+    MAPWIN_HIDE_OCEAN_BASE = 0x2000000, // stop rendering ocean base layer
+    MAPWIN_UNK_4000000 = 0x4000000,
+    MAPWIN_HIDE_TERRAIN = 0x10000000, // stop rendering all terrain
+    MAPWIN_UNK_20000000 = 0x20000000,
+    MAPWIN_UNK_40000000 = 0x40000000,
+    MAPWIN_DRAW_SOLID_BORDERS = 0x80000000, // faction borders solid color terrain view
+};
+
+enum TextLabel {
+    TL_MissionYear = 0,
+    TL_OK = 101,
+    TL_Cancel = 102,
+    TL_Novice = 113,
+    TL_Expert = 114,
+    TL_Name = 174,
+    TL_Formal = 175,
+    TL_Noun = 176,
+    TL_Adjective = 177,
+    TL_Alien = 244,
+    TL_Aliens = 245,
+    TL_Governor = 457,
+    TL_Title = 483,
+    TL_Description = 484,
+    TL_Gender = 485,
+    TL_Explore = 521,
+    TL_Discover = 522,
+    TL_Build = 523,
+    TL_Conquer = 524,
+    TL_Template = 609,
+    TL_Untitled = 676,
+    TL_Male = 738,
+    TL_Female = 739,
+    TL_CustomSize = 1089,
+    TL_Horizontal = 1090,
+    TL_Vertical = 1091,
+};
+

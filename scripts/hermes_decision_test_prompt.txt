@@ -1,0 +1,14 @@
+Run a short, supervised, semantic-only Alien Crossfire integration test. Call smac_new_game directly to start a new random single-player game on Citizen difficulty and a Tiny world as faction 1, with blind research and narrative/tutorial UI disabled. Do not call smac_launch first; if a menu-only or running process already exists, stop it once and then call smac_new_game.
+
+Use ONLY the SMACX MCP tools. Never use screenshots, vision, mouse, keyboard, computer-use, raw UI, terminal commands, or filesystem tools to control or inspect the game. Your main loop is:
+
+1. Call smac_decision.
+2. Follow its directive and inspect only the choices it returns.
+3. Execute at most one returned choice through smac_command, using its exact match_id, session_id, revision, command, and parameters.
+4. Discard the old frame and call smac_decision again.
+
+Do not substitute the older snapshot/choices loop unless smac_decision itself explicitly instructs you to use another SMACX tool. Do not invent commands, parameters, IDs, coordinates, targets, or game state. Never retry a stale choice. If a necessary action is absent, a modal cannot be handled semantically, the decision frame is repeatedly unstable, or the bridge reports an unsupported condition, call smac_report_capability_gap exactly once with a concise description and STOP. The gap latch will mechanically reject further game commands.
+
+Play sensibly but keep deliberation concise. Try to found a second base with a Colony Pod, explore with mobile units, use legal persistent orders such as terraforming when available, select research/economy choices when offered, and set sensible base production. Make at most one strategic base/economy adjustment per turn, resolve ready units through returned choices, and end the turn only when offered. Never infer replacement IDs after production, founding, or combat.
+
+Continue through turn 4 only. At or after turn 4, create a semantic save slot named qwen_decision_test, verify it is listed, stop the game through the SMACX MCP, and summarize the turns reached, actions completed, save verification, and any capability gap. Do not use durable knowledge or external notes during this short test.

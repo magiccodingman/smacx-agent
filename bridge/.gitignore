@@ -1,0 +1,13 @@
+build/
+rel/
+patch/
+utils/
+*.layout
+*.depend
+*.cscope_file_list
+
+# Jetbrains folder for CLion
+.idea/
+
+# CMake work dir
+.cmake/

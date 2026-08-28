@@ -1,0 +1,15 @@
+[Unit]
+Description=SMACX Agent MCP server
+After=graphical-session.target network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@PROJECT_DIR@
+Environment="PYTHONPATH=@PROJECT_DIR@/src"
+Environment=DISPLAY=:0
+ExecStart="@PYTHON@" "@PROJECT_DIR@/src/smacx_mcp.py"
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
