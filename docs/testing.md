@@ -99,6 +99,22 @@ Every container, network, volume, and temporary Hermes home in this regression
 is uniquely test-owned and removed afterward. The user's default Hermes
 profile/dashboard and legacy MCP service are not read or restarted.
 
+The managed LAN vertical slice launches two real game workers on one private
+Docker network and proves the complete native host/discover/join/configure/
+ready/start sequence, shared match identity, distinct process sessions and
+factions, one MCP sidecar per seat, and match-wide park:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+PYTHONPATH=src python3 scripts/control_lan_live_test.py
+```
+
+It passed against the legal reference installation with
+`pixels_or_ui_input_used=false`. Cleanup selects only resources carrying that
+test installation's exact ownership label.
+
 Stock Debian Wine is retained as a diagnostic fallback, but it stalled at the
 Firaxis presentation screen in the current reference environment and is not a
 certified game runtime. A Proton distribution must be a private, writable,

@@ -21,7 +21,9 @@ is delivered as vertical, independently testable milestones.
    vertical slice is implemented; scheduler/backups remain.
 6. **Managed multiplayer** — one isolated worker per seat, managed hosting,
    exact-address joining, persistent chat attention, save/park/rejoin, and
-   interactive human seats.
+   interactive human seats. Multi-agent private-network host/join/lobby/start
+   and match-wide park are implemented; stock multiplayer save/rejoin and
+   external human-seat publication remain.
 7. **Deployment validation** — Linux home lab first, then Windows Docker
    Desktop/WSL2 and remote virtual-LAN compatibility.
 

@@ -21,6 +21,16 @@ Visible/view-only SMACX process under an isolated Proton prefix
 
 The model should use MCP rather than connect to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Keeping the bridge protocol independent makes it possible to add a different harness later without changing the DLL.
 
+For managed LAN, every agent seat has a separate game/MCP pair but shares one
+durable `match_id`. Seat zero hosts the real DirectPlay session and joining
+workers use the host container's exact private IPv4 address plus the freshly
+enumerated network-session GUID. The Control Center reads each worker's bridge
+token directly from its purpose-scoped vault entry and may invoke only named
+native semantic operations; it never exposes those tokens or a generic bridge
+proxy through HTTP. Each process keeps a unique `session_id` and perspective,
+so simultaneous chat, memory, and optimistic-concurrency guards cannot cross
+seats.
+
 Native actions that must cross the Windows event loop are tracked as small transactions. The bridge assigns an `action_id`, records the intended objects, and publishes pending/completed/rejected status plus the native result and observed match-local tile IDs. The MCP waits for completion within a bound, preventing a model from confusing “message queued” with “game action applied.” Native map coordinates remain internal to the DLL.
 
 The Planetary Council is a special nested native event loop. The bridge opens the engine's own proposal list, takes one compound semantic proposal-plus-ballot decision, and schedules the native Council vote/close handlers with a Windows timer on the same UI thread. The normal Council chamber remains visible; no synthetic input or cross-thread engine access is used.

@@ -160,6 +160,27 @@
       <section class="panel operations-panel">
         <div class="section-heading">
           <div>
+            <p class="kicker">Managed multiplayer</p>
+            <h2>Create an agent LAN match</h2>
+            <p>Each selected agent receives its own isolated game worker, MCP sidecar, perspective, and Hermes profile. The Control Center performs the native lobby sequence semantically.</p>
+          </div>
+        </div>
+        <form id="lan-form" class="lan-form">
+          <label>Match name <input name="display_name" placeholder="Planetary summit" required></label>
+          <label>Native session name <input name="session_name" value="SMACX Managed LAN" maxlength="31" required></label>
+          <label>Agents <select name="agent_ids" id="lan-agents" multiple size="4" required></select></label>
+          <label>Game source <select name="game_source_id" id="lan-source" required></select></label>
+          <label>Runtime <select name="runtime_id" id="lan-runtime" required></select></label>
+          <label>Lobby profile <select name="profile"><option value="small_easy">Citizen · Small random map</option></select></label>
+          <label class="check"><input name="start_now" type="checkbox" checked> Host, join, ready, and start now</label>
+          <button type="submit">Create managed LAN</button>
+        </form>
+        <div id="matches" class="record-list"></div>
+      </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
             <p class="kicker">Game workers</p>
             <h2>Run, park, and resume</h2>
             <p>Parking removes the disposable container while retaining the game prefix, save data, memory scope, and match identity.</p>
@@ -179,6 +200,7 @@
         </div>
         <form id="harness-form" class="harness-form">
           <label>Running match <select name="match_id" id="harness-match" required></select></label>
+          <label>Agent seat <select name="agent_id" id="harness-agent" required></select></label>
           <label>Model provider <select name="provider_id" id="harness-provider" required></select></label>
           <label>Reasoning
             <select name="reasoning_effort"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>

@@ -72,10 +72,17 @@ def _token() -> str:
     return TOKEN_FILE.read_text(encoding="ascii").strip()
 
 
-def bridge_request(operation: str, timeout: float = 8.0, **arguments: Any) -> dict[str, Any]:
-    request = {"op": operation, "token": _token(), **arguments}
+def bridge_request_to(host: str, port: int, token: str, operation: str,
+                      timeout: float = 8.0, **arguments: Any) -> dict[str, Any]:
+    if not isinstance(host, str) or not host or len(host) > 255 or "\x00" in host:
+        raise BridgeUnavailable("Invalid explicit bridge host.")
+    if not 1 <= int(port) <= 65535:
+        raise BridgeUnavailable("Invalid explicit bridge port.")
+    if not isinstance(token, str) or not token or len(token) > 4096 or "\x00" in token:
+        raise BridgeUnavailable("Invalid explicit bridge token.")
+    request = {"op": operation, "token": token, **arguments}
     try:
-        with socket.create_connection((BRIDGE_HOST, BRIDGE_PORT), timeout=timeout) as connection:
+        with socket.create_connection((host, int(port)), timeout=timeout) as connection:
             connection.settimeout(timeout)
             connection.sendall(json.dumps(request, separators=(",", ":")).encode() + b"\n")
             chunks: list[bytes] = []
@@ -94,7 +101,13 @@ def bridge_request(operation: str, timeout: float = 8.0, **arguments: Any) -> di
                     raise BridgeUnavailable("The game bridge response exceeded the safety limit.")
         return json.loads(b"".join(chunks))
     except (OSError, json.JSONDecodeError) as exc:
-        raise BridgeUnavailable(f"SMACX bridge is unavailable at {BRIDGE_HOST}:{BRIDGE_PORT}: {exc}") from exc
+        raise BridgeUnavailable(f"SMACX bridge is unavailable at {host}:{port}: {exc}") from exc
+
+
+def bridge_request(operation: str, timeout: float = 8.0, **arguments: Any) -> dict[str, Any]:
+    return bridge_request_to(
+        BRIDGE_HOST, BRIDGE_PORT, _token(), operation, timeout=timeout, **arguments,
+    )
 
 
 def bridge_available() -> bool:

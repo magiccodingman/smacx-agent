@@ -13,7 +13,9 @@ match will not require taking this service down. Its current foundation owns:
 - one private MCP sidecar per running game worker;
 - exact Hermes agent/match profile descriptors and host profile setup.
 
-Managed LAN match orchestration is the next API built on these contracts.
+The initial managed LAN path supports two to seven isolated agent seats on the
+private Docker network. Human-seat publication and multiplayer save/rejoin are
+the next APIs built on these contracts.
 
 ## Start once
 
@@ -96,6 +98,36 @@ including a trusted local OpenAI-compatible endpoint. Control Center never
 returns stored provider keys. Keyed remote providers will be enabled later by
 mounting the exact secret directly into a contained harness runtime instead of
 exposing it through the browser API.
+
+## Managed agent LAN
+
+Create at least two durable agents, then use **Create an agent LAN match**.
+Every selected agent receives its own perspective, data/secret volume, game
+worker, MCP sidecar, and later Hermes profile. Seat zero is the native host;
+the other workers discover the host by its exact private IPv4 address and join
+only the freshly returned DirectPlay session GUID. The Control Center then:
+
+1. waits for every stock Multiplayer Setup lobby;
+2. applies the guarded `small_easy` profile (Citizen, Small random map);
+3. waits until every client observes the synchronized settings;
+4. readies each client using the game's named native action;
+5. starts only after the host observes every client ready; and
+6. records each resulting native faction against its durable seat perspective.
+
+The operation uses no screenshots or synthetic input. Agents may then be bound
+to the same match one seat at a time by selecting both the match and agent in
+the Hermes section. Their native process sessions and faction perspectives are
+distinct, while memory and chat remain isolated by `(match, agent,
+perspective)`.
+
+**Park all seats** stops every disposable worker and MCP sidecar. At this
+milestone, starting a parked LAN creates a fresh native lobby/game rather than
+restoring the old campaign. The bridge deliberately reports multiplayer save
+as unsupported until the stock host-save/client-rejoin effect path has a real
+two-process regression. The UI therefore must not describe LAN parking as a
+campaign resume. External human clients likewise cannot yet join the private
+Docker-only host; that will require a declared macvlan/host-network/virtual-LAN
+publication mode with its own security and compatibility tests.
 
 The default port publication is loopback-only. To listen on a trusted home LAN:
 

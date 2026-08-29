@@ -206,6 +206,7 @@ def configure_from_descriptor(descriptor: dict[str, Any], *, hermes_root: Path) 
 def descriptor_from_control(*, control_url: str, match_id: str, provider_id: str,
                             username: str, password: str | None = None,
                             bearer_token: str | None = None,
+                            agent_id: str | None = None,
                             reasoning_effort: str = "low") -> dict[str, Any]:
     parts = urlsplit(control_url)
     if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
@@ -244,6 +245,7 @@ def descriptor_from_control(*, control_url: str, match_id: str, provider_id: str
     response = request(
         "/api/v1/harness-profiles/hermes",
         {"match_id": match_id, "provider_id": provider_id,
+         "agent_id": agent_id or "",
          "reasoning_effort": reasoning_effort},
         token=bearer_token,
     )
@@ -290,6 +292,7 @@ def parser() -> argparse.ArgumentParser:
     from_control.add_argument("--username", default="admin")
     from_control.add_argument("--match-id", required=True)
     from_control.add_argument("--provider-id", required=True)
+    from_control.add_argument("--agent-id")
     from_control.add_argument("--reasoning", default="low")
     from_control.add_argument("--password-env", default="SMACX_CONTROL_PASSWORD")
     from_control.add_argument("--token-env", default="SMACX_CONTROL_TOKEN")
@@ -326,6 +329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             control_url=arguments.control_url, match_id=arguments.match_id,
             provider_id=arguments.provider_id, username=arguments.username,
             password=password, bearer_token=token,
+            agent_id=arguments.agent_id,
             reasoning_effort=arguments.reasoning,
         )
         profile = configure_from_descriptor(

@@ -202,6 +202,17 @@ def main() -> int:
         ) or control.status()["counts"]["matches"] != 0:
             raise AssertionError("unstarted match rollback failed")
 
+        second_agent = control.create_agent("Second LAN agent")
+        lan = control.create_lan_match(
+            "Managed LAN contract", [agent["agent_id"], second_agent["agent_id"]],
+        )
+        if len(lan["seats"]) != 2 \
+                or {seat["seat_index"] for seat in lan["seats"]} != {0, 1} \
+                or len({seat["perspective_id"] for seat in lan["seats"]}) != 2:
+            raise AssertionError("LAN seats did not receive distinct ordered perspectives")
+        if any(seat["match_id"] != lan["match"]["match_id"] for seat in lan["seats"]):
+            raise AssertionError("LAN seats escaped their shared durable match")
+
         with sqlite3.connect(store.path) as connection:
             audit = connection.execute("SELECT audit_id FROM control_audit LIMIT 1").fetchone()
             if not audit:
@@ -238,6 +249,7 @@ def main() -> int:
                 "unstarted_match_rollback": True,
                 "isolated_harness_profile": True,
                 "exact_hermes_descriptor": True,
+                "managed_lan_identity_contract": True,
                 "immutable_audit": True,
             },
         }, separators=(",", ":")))

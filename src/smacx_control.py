@@ -793,13 +793,16 @@ class ControlPlane:
             )]
         return [self.get_worker_spec(str(identifier)) for identifier in identifiers]
 
-    def worker_for_match(self, match_id: str) -> dict[str, Any]:
+    def worker_for_match(self, match_id: str, agent_id: str | None = None) -> dict[str, Any]:
         _require_id(match_id, "match_id")
+        if agent_id is not None:
+            _require_id(agent_id, "agent_id")
         with self.store.transaction() as connection:
             rows = connection.execute(
                 "SELECT instance_id FROM worker_specs WHERE instance_id IN "
-                "(SELECT instance_id FROM instances WHERE match_id=?) ORDER BY created_unix",
-                (match_id,),
+                "(SELECT instance_id FROM instances WHERE match_id=? "
+                "AND (? IS NULL OR agent_id=?)) ORDER BY created_unix",
+                (match_id, agent_id, agent_id),
             ).fetchall()
         if not rows:
             raise ScopeViolation("match_has_no_worker")
@@ -924,6 +927,128 @@ class ControlPlane:
             )
         return {"match": match, "perspective": perspective}
 
+    def create_lan_match(self, display_name: str, agent_ids: list[str], *,
+                         match_id: str | None = None,
+                         ruleset_id: str = "smacx-small-easy",
+                         metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        display_name = _bounded(display_name, "match_name", 160)
+        if not isinstance(agent_ids, list) or not 2 <= len(agent_ids) <= 7:
+            raise InvalidRecord("lan_requires_two_to_seven_agents")
+        if len(set(agent_ids)) != len(agent_ids):
+            raise InvalidRecord("duplicate_lan_agent")
+        for agent_id in agent_ids:
+            _require_id(agent_id, "agent_id")
+        with self.store.transaction() as connection:
+            active = {
+                str(row["agent_id"]) for row in connection.execute(
+                    "SELECT agent_id FROM agents WHERE status='active' AND agent_id IN (%s)"
+                    % ",".join("?" for _ in agent_ids),
+                    agent_ids,
+                )
+            }
+        if active != set(agent_ids):
+            raise ScopeViolation("unknown_active_lan_agent")
+        match = self.store.create_match(
+            match_id=match_id, display_name=display_name, mode="lan",
+            ruleset_id=ruleset_id, metadata=metadata,
+        )
+        seats: list[dict[str, Any]] = []
+        try:
+            for seat_index, agent_id in enumerate(agent_ids):
+                perspective = self.store.create_perspective(
+                    match["match_id"], agent_id, controller_kind="agent",
+                    metadata={"seat_index": seat_index, "native_faction_pending": True},
+                )
+                now = time.time()
+                with self.store.transaction() as connection:
+                    connection.execute(
+                        "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
+                        "agent_id, perspective_id, status, metadata_json, created_unix, updated_unix) "
+                        "VALUES (?, ?, ?, 'agent', ?, ?, 'assigned', ?, ?, ?)",
+                        (_new_id("seat"), match["match_id"], seat_index, agent_id,
+                         perspective["perspective_id"], _json({"role": "host" if seat_index == 0 else "client"}),
+                         now, now),
+                    )
+                seats.append(self.get_seat(match["match_id"], seat_index))
+        except Exception:
+            with self.store.transaction() as connection:
+                connection.execute("DELETE FROM seat_assignments WHERE match_id=?", (match["match_id"],))
+                connection.execute("DELETE FROM perspectives WHERE match_id=?", (match["match_id"],))
+                connection.execute("DELETE FROM matches WHERE match_id=? AND status='created'", (match["match_id"],))
+            raise
+        return {"match": match, "seats": seats}
+
+    def get_seat(self, match_id: str, seat_index: int) -> dict[str, Any]:
+        _require_id(match_id, "match_id")
+        if not 0 <= int(seat_index) <= 7:
+            raise InvalidRecord("invalid_seat_index")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM seat_assignments WHERE match_id=? AND seat_index=?",
+                (match_id, int(seat_index)),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_match_seat")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
+    def list_seats(self, match_id: str) -> list[dict[str, Any]]:
+        _require_id(match_id, "match_id")
+        with self.store.transaction() as connection:
+            indexes = [int(row["seat_index"]) for row in connection.execute(
+                "SELECT seat_index FROM seat_assignments WHERE match_id=? ORDER BY seat_index",
+                (match_id,),
+            )]
+        return [self.get_seat(match_id, index) for index in indexes]
+
+    def update_lan_seat(self, match_id: str, seat_index: int, *,
+                        faction_id: int | None = None, faction_name: str | None = None,
+                        metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        seat = self.get_seat(match_id, seat_index)
+        if faction_id is not None and not 1 <= int(faction_id) <= 7:
+            raise InvalidRecord("invalid_faction_id")
+        merged = dict(seat["metadata"])
+        merged.update(dict(metadata or {}))
+        now = time.time()
+        with self.store.transaction() as connection:
+            connection.execute(
+                "UPDATE seat_assignments SET faction_id=COALESCE(?, faction_id), "
+                "faction_name=COALESCE(?, faction_name), metadata_json=?, updated_unix=? "
+                "WHERE match_id=? AND seat_index=?",
+                (faction_id, faction_name, _json(merged), now, match_id, int(seat_index)),
+            )
+            if faction_id is not None:
+                connection.execute(
+                    "UPDATE perspectives SET faction_id=?, faction_name=COALESCE(?, faction_name), "
+                    "metadata_json=json_set(metadata_json, '$.native_faction_pending', json('false')) "
+                    "WHERE perspective_id=? AND match_id=?",
+                    (int(faction_id), faction_name, seat["perspective_id"], match_id),
+                )
+        return self.get_seat(match_id, seat_index)
+
+    def update_match_lifecycle(self, match_id: str, status: str, *,
+                               host_instance_id: str | None = None,
+                               metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        _require_id(match_id, "match_id")
+        if status not in ("created", "starting", "lobby", "running", "parked", "error", "completed"):
+            raise InvalidRecord("invalid_match_status")
+        with self.store.transaction() as connection:
+            row = connection.execute("SELECT metadata_json FROM matches WHERE match_id=?", (match_id,)).fetchone()
+            if not row:
+                raise ScopeViolation("unknown_match")
+            merged = json.loads(str(row["metadata_json"]))
+            merged.update(dict(metadata or {}))
+            connection.execute(
+                "UPDATE matches SET status=?, host_instance_id=COALESCE(?, host_instance_id), "
+                "metadata_json=?, updated_unix=? WHERE match_id=?",
+                (status, host_instance_id, _json(merged), time.time(), match_id),
+            )
+            updated = connection.execute("SELECT * FROM matches WHERE match_id=?", (match_id,)).fetchone()
+        result = dict(updated)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
     def discard_unstarted_match(self, match_id: str, perspective_id: str) -> bool:
         """Remove only a just-created match that never acquired runtime state."""
         _require_id(match_id, "match_id")
@@ -1040,6 +1165,7 @@ class ControlPlane:
         return self.get_harness_profile(identifier)
 
     def prepare_hermes_profile(self, match_id: str, provider_id: str, *,
+                               agent_id: str | None = None,
                                reasoning_effort: str = "low") -> dict[str, Any]:
         """Resolve one match seat to its exact provider, worker, and MCP endpoint.
 
@@ -1049,6 +1175,8 @@ class ControlPlane:
         """
         _require_id(match_id, "match_id")
         _require_id(provider_id, "provider_id")
+        if agent_id is not None:
+            _require_id(agent_id, "agent_id")
         with self.store.transaction() as connection:
             rows = connection.execute(
                 "SELECT s.agent_id, s.perspective_id, s.instance_id, a.display_name AS agent_name, "
@@ -1057,8 +1185,9 @@ class ControlPlane:
                 "JOIN agents a ON a.agent_id=s.agent_id JOIN matches m ON m.match_id=s.match_id "
                 "JOIN worker_specs w ON w.instance_id=s.instance_id "
                 "WHERE s.match_id=? AND s.controller_kind='agent' AND s.status='assigned' "
+                "AND (? IS NULL OR s.agent_id=?) "
                 "ORDER BY s.seat_index",
-                (match_id,),
+                (match_id, agent_id, agent_id),
             ).fetchall()
         if not rows:
             raise ScopeViolation("match_has_no_agent_worker")

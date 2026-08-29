@@ -22,6 +22,7 @@ This installation is isolated from the Steam game directory. The working game co
 - Assign durable installation, match, agent, perspective, instance, and process-session identities. SQLite now owns immutable events, chat, versioned facts/beliefs/relationships/commitments/goals/summaries, correction history, and scoped FTS5/BM25 recall; the former JSON ledger is a compatibility mirror/import source.
 - Run an authenticated, always-on Control Center that discovers OpenAI-compatible providers, validates a legal game source without modifying it, imports a private checksummed Proton runtime, provisions isolated solo workers, and parks/resumes the same durable match with a fresh process session.
 - Attach one dedicated semantic MCP sidecar to each running worker and one isolated Hermes profile to each durable agent. Managed MCP cannot launch, load, or stop the game; lifecycle remains operator-owned. The Control Center resolves the exact match/seat/worker/sidecar/model binding and the host adapter starts Hermes with low reasoning plus only `smacx` and optional web tools.
+- Create a managed two-to-seven-agent LAN match with one isolated worker and perspective per seat. The Control Center executes native DirectPlay host, exact-session discovery/join, guarded lobby configuration, client readiness, and start; every seat enters one shared durable match with a distinct native session and faction.
 - Bundle the mandatory next decision in `smac_decision`: one stable match/session/revision frame containing an active modal, selected ready unit, wait/gap directive, or end-turn/game-management choices. Compact detail is the default; a full snapshot is opt-in for occasional strategic analysis.
 - Treat every returned `revision` as a single-decision capability: choices from an old revision, match, session, object owner, or turn phase are rejected, even if later actions restore identical game state. `end_turn` is withheld until all ready-unit decisions are resolved.
 - Reject commands from the wrong match/session or a stale observation before mutating game state.
@@ -32,6 +33,13 @@ This installation is isolated from the Steam game directory. The working game co
 - Stop and record a structured capability request when a semantic interaction is not implemented.
 
 The MCP deliberately exposes no screenshot, mouse, keyboard, native map-coordinate, coordinate-click, or arbitrary UI fallback. Map observations and actions use opaque match-local `tile_id` references; the bridge resolves native coordinates internally. Optional external victory movies when `narrative_ui=true`, human map/joint-attack bargaining, uncommon scenario interactions, and some specialized unit abilities remain incomplete. Autonomous launches disable those external movies by default. See [Coverage and limits](docs/coverage.md).
+
+Managed LAN currently starts fresh native games. Match-wide parking preserves
+identity, memory, worker volumes, and chat history, but multiplayer semantic
+save/load is still blocked pending a validated stock-network save/rejoin path.
+External human seats also require an explicit LAN-address publication mode;
+the implemented foundation connects isolated agent seats on the private Docker
+network.
 
 `tile_id` values are identifiers, not coordinates. Agents must obtain them from fresh observations or choices and must not calculate with or invent them. Both the MCP schema and the authenticated native bridge reject x/y-driven play.
 

@@ -58,11 +58,16 @@ async function loadDashboard() {
   renderAssets(dashboardState.sources, dashboardState.runtimes, workersResult.docker);
   renderAgents(dashboardState.agents);
   renderWorkers(dashboardState.workers);
+  renderMatches(dashboardState.matches);
   renderHarnessProfiles(dashboardState.harnessProfiles);
   populateSelect("#match-agent", dashboardState.agents, "agent_id", "display_name", "Create an agent first");
   populateSelect("#match-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
   populateSelect("#match-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
+  populateSelect("#lan-agents", dashboardState.agents, "agent_id", "display_name", "Create at least two agents first");
+  populateSelect("#lan-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
+  populateSelect("#lan-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
   populateSelect("#harness-match", dashboardState.matches, "match_id", "display_name", "Create a match first");
+  populateHarnessAgents();
   populateSelect("#harness-provider", dashboardState.providers.filter((item) => item.default_model_id), "provider_id", "display_name", "Select a provider model first");
   show("dashboard");
 }
@@ -85,6 +90,17 @@ function populateSelect(selector, items, valueKey, labelKey, emptyLabel) {
     option.selected = previous === option.value;
     select.append(option);
   });
+}
+
+function populateHarnessAgents() {
+  const matchId = $("#harness-match").value;
+  const agentIds = new Set(
+    dashboardState.workers.filter((worker) => worker.match_id === matchId).map((worker) => worker.agent_id),
+  );
+  populateSelect(
+    "#harness-agent", dashboardState.agents.filter((agent) => agentIds.has(agent.agent_id)),
+    "agent_id", "display_name", "Select a provisioned match",
+  );
 }
 
 function record(title, detail, state) {
@@ -168,6 +184,60 @@ function renderWorkers(workers) {
     empty.className = "empty";
     empty.textContent = "No game worker has been provisioned.";
     root.append(empty);
+  }
+}
+
+function renderMatches(matches) {
+  const root = $("#matches");
+  root.replaceChildren();
+  matches.filter((match) => match.mode === "lan").forEach((match) => {
+    const item = record(match.display_name, `${match.match_id} · ${match.ruleset_id}`, match.status);
+    item.classList.add("worker");
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const start = document.createElement("button");
+    start.textContent = match.status === "parked" ? "Start fresh lobby" : "Start";
+    start.disabled = match.status === "running" || match.status === "starting";
+    start.addEventListener("click", () => matchAction(match.match_id, "start", start));
+    const park = document.createElement("button");
+    park.className = "quiet";
+    park.textContent = "Park all seats";
+    park.disabled = !["running", "lobby", "error"].includes(match.status);
+    park.addEventListener("click", () => matchAction(match.match_id, "park", park));
+    const inspect = document.createElement("button");
+    inspect.className = "quiet";
+    inspect.textContent = "Inspect seats";
+    inspect.addEventListener("click", () => matchAction(match.match_id, "status", inspect, false));
+    actions.append(start, park, inspect);
+    item.append(actions);
+    root.append(item);
+  });
+  if (!root.children.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No managed LAN match has been created.";
+    root.append(empty);
+  }
+}
+
+async function matchAction(matchId, action, button, reload = true) {
+  button.disabled = true;
+  notify(`${action === "start" ? "Starting native LAN" : action === "park" ? "Parking every seat" : "Inspecting LAN seats"}…`);
+  try {
+    const result = await api(`/api/v1/matches/${matchId}/${action}`, {
+      method: "POST", body: JSON.stringify({profile: "small_easy"}),
+    });
+    if (action === "status") {
+      const live = result.seats.filter((seat) => seat.native?.lifecycle === "game").length;
+      notify(`${live} of ${result.seats.length} LAN seats report native gameplay.`);
+      button.disabled = false;
+    } else {
+      notify(action === "start" ? "Native LAN started for every managed seat." : "Every LAN seat parked.");
+    }
+    if (reload) await loadDashboard();
+  } catch (error) {
+    button.disabled = false;
+    notify(error.message, true);
   }
 }
 
@@ -365,6 +435,35 @@ $("#match-form").addEventListener("submit", async (event) => {
   }
 });
 
+$("#lan-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const values = formObject(form);
+  const agentIds = [...$("#lan-agents").selectedOptions].map((option) => option.value);
+  if (agentIds.length < 2) {
+    notify("Select at least two distinct agents for managed LAN.", true);
+    return;
+  }
+  button.disabled = true;
+  try {
+    await api("/api/v1/matches/lan", {
+      method: "POST", body: JSON.stringify({
+        display_name: values.display_name, session_name: values.session_name,
+        agent_ids: agentIds, game_source_id: values.game_source_id,
+        runtime_id: values.runtime_id, profile: values.profile,
+        start_now: values.start_now === "on",
+      }),
+    });
+    notify(values.start_now === "on" ? "Managed native LAN is running." : "Managed LAN seats provisioned.");
+    await loadDashboard();
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 $("#harness-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -376,7 +475,7 @@ $("#harness-form").addEventListener("submit", async (event) => {
       method: "POST", body: JSON.stringify(values),
     });
     const descriptor = result.descriptor;
-    const command = `./scripts/smacx-hermes configure-from-control --control-url ${location.origin} --match-id ${descriptor.match_id} --provider-id ${descriptor.provider_id} --reasoning ${descriptor.reasoning_effort} --start`;
+    const command = `./scripts/smacx-hermes configure-from-control --control-url ${location.origin} --match-id ${descriptor.match_id} --agent-id ${descriptor.agent_id} --provider-id ${descriptor.provider_id} --reasoning ${descriptor.reasoning_effort} --start`;
     $("#harness-command").textContent = command;
     $("#harness-detail").textContent = `${descriptor.agent_name} · ${descriptor.model_id} · exact worker ${descriptor.instance_id}`;
     $("#harness-result").classList.remove("hidden");
@@ -388,6 +487,8 @@ $("#harness-form").addEventListener("submit", async (event) => {
     button.disabled = false;
   }
 });
+
+$("#harness-match").addEventListener("change", populateHarnessAgents);
 
 $("#refresh").addEventListener("click", async () => {
   try { await loadDashboard(); notify("Control Center refreshed."); }

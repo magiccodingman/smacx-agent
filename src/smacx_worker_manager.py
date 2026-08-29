@@ -14,6 +14,7 @@ from typing import Any, Mapping
 import uuid
 
 from smacx_control import ControlPlane
+from smacx_controller import BridgeUnavailable, bridge_request_to
 from smacx_docker import DockerClient, DockerError, DockerNotFound
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, StoreError
 
@@ -99,6 +100,44 @@ class WorkerManager:
             "managed_mcp_configured": bool(self.control_data_volume),
             "directplay_source_configured": bool(self.directx_redist_host_path),
         }
+
+    def _native_request(self, instance_id: str, operation: str, *,
+                        timeout: float = 8.0, **arguments: Any) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        container = self.docker.inspect_container(spec["container_name"])
+        self.docker.require_owned(container, self.installation_id, purpose="game-worker")
+        if not container.get("State", {}).get("Running"):
+            raise WorkerManagerError("game_worker_not_running")
+        networks = container.get("NetworkSettings", {}).get("Networks", {})
+        network = networks.get(self.network_name) if self.network_name and isinstance(networks, Mapping) else None
+        if not isinstance(network, Mapping):
+            candidates = [item for item in networks.values() if isinstance(item, Mapping)] \
+                if isinstance(networks, Mapping) else []
+            network = candidates[0] if len(candidates) == 1 else None
+        host = network.get("IPAddress") if isinstance(network, Mapping) else None
+        if not isinstance(host, str) or not host:
+            raise WorkerManagerError("game_worker_network_address_unavailable")
+        token = self.control.vault.read(
+            str(spec["bridge_secret_id"]), purpose=f"worker.{instance_id}.bridge_token",
+        )
+        try:
+            return bridge_request_to(
+                host, 47814, token, operation, timeout=timeout, **arguments,
+            )
+        except BridgeUnavailable as exc:
+            raise WorkerManagerError("game_worker_bridge_unavailable") from exc
+
+    def _wait_native(self, instance_id: str, operation: str, predicate, *,
+                     timeout: float, poll_seconds: float = 0.25,
+                     **arguments: Any) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout
+        latest: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            latest = self._native_request(instance_id, operation, **arguments)
+            if predicate(latest):
+                return latest
+            time.sleep(poll_seconds)
+        raise WorkerManagerError(f"native_{operation}_timeout")
 
     def _name(self, kind: str, identity: str | None = None) -> str:
         suffix = hashlib.sha256((identity or uuid.uuid4().hex).encode()).hexdigest()[:16]
@@ -529,6 +568,223 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 instance_status="error",
             )
             raise
+
+    @staticmethod
+    def _lan_operation_id(match_id: str, stage: str, seat_index: int = 0) -> str:
+        digest = hashlib.sha256(f"{match_id}:{stage}:{seat_index}".encode("utf-8")).hexdigest()[:32]
+        return f"managed-{stage}-{digest}"
+
+    def _container_address(self, instance_id: str) -> str:
+        spec = self.control.get_worker_spec(instance_id)
+        container = self.docker.inspect_container(spec["container_name"])
+        self.docker.require_owned(container, self.installation_id, purpose="game-worker")
+        networks = container.get("NetworkSettings", {}).get("Networks", {})
+        network = networks.get(self.network_name) if self.network_name and isinstance(networks, Mapping) else None
+        if not isinstance(network, Mapping):
+            candidates = [item for item in networks.values() if isinstance(item, Mapping)] \
+                if isinstance(networks, Mapping) else []
+            network = candidates[0] if len(candidates) == 1 else None
+        address = network.get("IPAddress") if isinstance(network, Mapping) else None
+        if not isinstance(address, str) or not address:
+            raise WorkerManagerError("game_worker_network_address_unavailable")
+        return address
+
+    def start_lan_match(self, match_id: str, *, session_name: str = "SMACX Managed LAN",
+                        profile: str = "small_easy", timeout: float = 420.0) -> dict[str, Any]:
+        if profile != "small_easy":
+            raise InvalidRecord("unsupported_lan_profile")
+        if not isinstance(session_name, str) or not 1 <= len(session_name) <= 31 \
+                or any(ord(character) < 32 or ord(character) > 126 for character in session_name):
+            raise InvalidRecord("invalid_lan_session_name")
+        seats = self.control.list_seats(match_id)
+        if not 2 <= len(seats) <= 7 or any(seat["controller_kind"] != "agent" for seat in seats):
+            raise WorkerManagerError("managed_lan_requires_two_to_seven_agent_seats")
+        if any(not seat.get("instance_id") for seat in seats):
+            raise WorkerManagerError("managed_lan_seat_not_provisioned")
+        host = seats[0]
+        host_instance = str(host["instance_id"])
+        deadline = time.monotonic() + min(max(float(timeout), 120.0), 900.0)
+        self.control.update_match_lifecycle(
+            match_id, "starting", host_instance_id=host_instance,
+            metadata={"lan_profile": profile, "lan_session_name": session_name},
+        )
+        try:
+            for seat in seats:
+                remaining = max(30.0, deadline - time.monotonic())
+                self.start_worker(str(seat["instance_id"]), timeout=min(remaining, 300.0))
+            hosted = self._native_request(
+                host_instance, "semantic_lan", timeout=min(140.0, max(30.0, deadline - time.monotonic())),
+                action="host", session_name=session_name, player_name="Semantic Host",
+                client_operation_id=self._lan_operation_id(match_id, "host"),
+            )
+            if not hosted.get("ok") or not hosted.get("lobby_launch_queued"):
+                raise WorkerManagerError("native_lan_host_failed")
+            host_lobby = self._wait_native(
+                host_instance, "semantic_lan",
+                lambda value: value.get("lifecycle") == "lobby", timeout=45,
+                action="status",
+            )
+            network_session_id = host_lobby.get("identity", {}).get("network_session_id")
+            if not isinstance(network_session_id, str) or not network_session_id:
+                raise WorkerManagerError("native_lan_network_identity_missing")
+            host_address = self._container_address(host_instance)
+            for seat in seats[1:]:
+                seat_index = int(seat["seat_index"])
+                instance_id = str(seat["instance_id"])
+                discovered = self._native_request(
+                    instance_id, "semantic_lan", timeout=140, action="discover",
+                    host_address=host_address,
+                )
+                matches = [
+                    item for item in discovered.get("sessions", [])
+                    if isinstance(item, Mapping)
+                    and item.get("network_session_id") == network_session_id
+                ]
+                if not discovered.get("ok") or len(matches) != 1 or not matches[0].get("joinable"):
+                    raise WorkerManagerError("native_lan_exact_session_not_discovered")
+                joined = self._native_request(
+                    instance_id, "semantic_lan", timeout=140, action="join",
+                    network_session_id=network_session_id,
+                    player_name=f"Semantic Agent {seat_index + 1}",
+                    host_address=host_address,
+                    client_operation_id=self._lan_operation_id(match_id, "join", seat_index),
+                )
+                if not joined.get("ok") or not joined.get("joined"):
+                    raise WorkerManagerError("native_lan_join_failed")
+                self._wait_native(
+                    instance_id, "semantic_lan",
+                    lambda value, expected=network_session_id: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("identity", {}).get("network_session_id") == expected
+                    ), timeout=45, action="status",
+                )
+            participant_count = len(seats)
+            host_lobby = self._wait_native(
+                host_instance, "semantic_lan",
+                lambda value: (
+                    value.get("lifecycle") == "lobby"
+                    and value.get("lobby", {}).get("participant_count") == participant_count
+                ), timeout=45, action="status",
+            )
+            identity = host_lobby["identity"]
+            configured = self._native_request(
+                host_instance, "semantic_lan", action="configure", profile=profile,
+                match_id=identity["match_id"], session_id=identity["session_id"],
+                expected_lobby_revision=host_lobby["lobby"]["revision"],
+                client_operation_id=self._lan_operation_id(match_id, "configure"),
+            )
+            if not configured.get("ok"):
+                raise WorkerManagerError("native_lan_configure_failed")
+            for seat in seats[1:]:
+                seat_index = int(seat["seat_index"])
+                instance_id = str(seat["instance_id"])
+                lobby = self._wait_native(
+                    instance_id, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("lobby", {}).get("settings", {}).get("profile") == profile
+                    ), timeout=45, action="status",
+                )
+                identity = lobby["identity"]
+                ready = self._native_request(
+                    instance_id, "semantic_lan", action="set_ready", ready=True,
+                    match_id=identity["match_id"], session_id=identity["session_id"],
+                    expected_lobby_revision=lobby["lobby"]["revision"],
+                    client_operation_id=self._lan_operation_id(match_id, "ready", seat_index),
+                )
+                if not ready.get("ok"):
+                    raise WorkerManagerError("native_lan_ready_failed")
+            host_lobby = self._wait_native(
+                host_instance, "semantic_lan",
+                lambda value: (
+                    value.get("lifecycle") == "lobby"
+                    and value.get("lobby", {}).get("all_clients_ready") is True
+                ), timeout=45, action="status",
+            )
+            self.control.update_match_lifecycle(
+                match_id, "lobby", host_instance_id=host_instance,
+                metadata={"network_session_id": network_session_id},
+            )
+            identity = host_lobby["identity"]
+            started = self._native_request(
+                host_instance, "semantic_lan", action="start",
+                match_id=identity["match_id"], session_id=identity["session_id"],
+                expected_lobby_revision=host_lobby["lobby"]["revision"],
+                client_operation_id=self._lan_operation_id(match_id, "start"),
+            )
+            if not started.get("ok"):
+                raise WorkerManagerError("native_lan_start_failed")
+            native: list[dict[str, Any]] = []
+            for seat in seats:
+                instance_id = str(seat["instance_id"])
+                game = self._wait_native(
+                    instance_id, "semantic_lan",
+                    lambda value: value.get("lifecycle") == "game",
+                    timeout=max(60.0, deadline - time.monotonic()), poll_seconds=0.5,
+                    action="status",
+                )
+                snapshot = self._wait_native(
+                    instance_id, "semantic_snapshot",
+                    lambda value: isinstance(value.get("snapshot", {}).get("faction"), Mapping),
+                    timeout=45,
+                )
+                faction = snapshot["snapshot"]["faction"]
+                self.control.update_lan_seat(
+                    match_id, int(seat["seat_index"]),
+                    faction_id=int(faction["id"]), faction_name=str(faction.get("name") or "") or None,
+                    metadata={"network_session_id": network_session_id, "native_role": "host" if seat is host else "client"},
+                )
+                native.append({
+                    "seat_index": int(seat["seat_index"]), "instance_id": instance_id,
+                    "faction_id": int(faction["id"]), "faction_name": faction.get("name"),
+                    "lifecycle": game["lifecycle"],
+                })
+            match = self.control.update_match_lifecycle(
+                match_id, "running", host_instance_id=host_instance,
+                metadata={"network_session_id": network_session_id, "participant_count": participant_count},
+            )
+            return {
+                "ok": True, "match": match, "network_session_id": network_session_id,
+                "profile": profile, "seats": native,
+                "pixels_or_ui_input_used": False,
+            }
+        except Exception as exc:
+            self.control.update_match_lifecycle(
+                match_id, "error", host_instance_id=host_instance,
+                metadata={"last_lan_error": str(exc)[:1000]},
+            )
+            raise
+
+    def lan_match_status(self, match_id: str) -> dict[str, Any]:
+        seats = self.control.list_seats(match_id)
+        results: list[dict[str, Any]] = []
+        for seat in seats:
+            instance_id = seat.get("instance_id")
+            if not instance_id:
+                results.append({"seat_index": seat["seat_index"], "provisioned": False})
+                continue
+            worker = self.worker_status(str(instance_id))
+            native = None
+            if worker.get("running") and worker.get("health") == "healthy":
+                try:
+                    native = self._native_request(str(instance_id), "semantic_lan", action="status")
+                except WorkerManagerError:
+                    native = {"ok": False, "error": "bridge_unavailable"}
+            results.append({
+                "seat_index": seat["seat_index"], "agent_id": seat["agent_id"],
+                "instance_id": instance_id, "faction_id": seat.get("faction_id"),
+                "worker": worker, "native": native,
+            })
+        return {"ok": True, "match_id": match_id, "seats": results}
+
+    def park_match(self, match_id: str) -> dict[str, Any]:
+        seats = self.control.list_seats(match_id)
+        parked = []
+        for seat in reversed(seats):
+            if seat.get("instance_id"):
+                parked.append(self.park_worker(str(seat["instance_id"])))
+        match = self.control.update_match_lifecycle(match_id, "parked")
+        return {"ok": True, "match": match, "workers": parked}
 
     def start_mcp_sidecar(self, instance_id: str, *, timeout: float = 90.0) -> dict[str, Any]:
         if not self.control_data_volume:

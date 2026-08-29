@@ -30,6 +30,7 @@ SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
 PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
 WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
+MATCH_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
 
 
 class RequestRateLimiter:
@@ -376,12 +377,61 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     "ok": True, **created, "worker": self._redact_worker(worker),
                 })
                 return
+            if path == "/api/v1/matches/lan":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                agent_ids = body.get("agent_ids")
+                if not isinstance(agent_ids, list) or not all(isinstance(item, str) for item in agent_ids):
+                    raise InvalidRecord("invalid_lan_agent_ids")
+                created = self.server.control.create_lan_match(
+                    str(body.get("display_name", "")), list(agent_ids),
+                    metadata={
+                        "lan_profile": str(body.get("profile", "small_easy")),
+                        "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
+                    },
+                )
+                workers = []
+                try:
+                    for seat in created["seats"]:
+                        workers.append(manager.provision_worker(
+                            MemoryScope(
+                                created["match"]["match_id"], str(seat["agent_id"]),
+                                str(seat["perspective_id"]),
+                            ),
+                            str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
+                            autostart={"enabled": False},
+                        ))
+                except Exception as exc:
+                    self.server.control.update_match_lifecycle(
+                        created["match"]["match_id"], "error",
+                        metadata={"last_lan_error": str(exc)[:1000]},
+                    )
+                    raise
+                self.server.control.audit(
+                    auth["admin_id"], "match.create_lan", "match",
+                    created["match"]["match_id"], "success",
+                    {"seat_count": len(created["seats"])}, self.client_address[0],
+                )
+                result: dict[str, Any] = {
+                    "ok": True, **created,
+                    "workers": [self._redact_worker(item) for item in workers],
+                }
+                if body.get("start_now") is True:
+                    result["started"] = manager.start_lan_match(
+                        created["match"]["match_id"],
+                        session_name=str(body.get("session_name", "SMACX Managed LAN")),
+                        profile=str(body.get("profile", "small_easy")),
+                    )
+                self._json(201, result)
+                return
             if path == "/api/v1/harness-profiles/hermes":
                 auth = self._authorize_mutation()
                 manager = self._manager()
                 body = self._body()
                 match_id = str(body.get("match_id", ""))
-                worker = self.server.control.worker_for_match(match_id)
+                agent_id = str(body.get("agent_id", "")) or None
+                worker = self.server.control.worker_for_match(match_id, agent_id=agent_id)
                 observed = manager.worker_status(worker["instance_id"])
                 mcp = observed.get("mcp") if isinstance(observed.get("mcp"), dict) else {}
                 if not observed.get("running") or observed.get("health") != "healthy":
@@ -390,6 +440,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     raise WorkerManagerError("managed_mcp_not_healthy")
                 descriptor = self.server.control.prepare_hermes_profile(
                     match_id, str(body.get("provider_id", "")),
+                    agent_id=agent_id,
                     reasoning_effort=str(body.get("reasoning_effort", "low")),
                 )
                 self.server.control.audit(
@@ -441,6 +492,28 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     auth["admin_id"], f"worker.{action}", "instance", instance_id,
                     "success", {"status": result.get("status") or result.get("health")},
                     self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            match_action = MATCH_PATH.fullmatch(path)
+            if match_action:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id, action = match_action.groups()
+                if action == "start":
+                    result = manager.start_lan_match(
+                        match_id,
+                        session_name=str(body.get("session_name", "SMACX Managed LAN")),
+                        profile=str(body.get("profile", "small_easy")),
+                    )
+                elif action == "park":
+                    result = manager.park_match(match_id)
+                else:
+                    result = manager.lan_match_status(match_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"match.{action}", "match", match_id,
+                    "success", {"managed_lan": True}, self.client_address[0],
                 )
                 self._json(200, result)
                 return

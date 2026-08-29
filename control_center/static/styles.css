@@ -72,7 +72,9 @@ button.quiet { color: var(--muted); background: transparent; border: 1px solid v
 .actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .55rem; }
 .actions button { padding: .55rem .8rem; }
 .provider-form { align-content: start; }
-.harness-form { display: grid; grid-template-columns: 1fr 1fr .65fr auto; gap: .8rem; align-items: end; }
+.harness-form { display: grid; grid-template-columns: 1fr 1fr 1fr .65fr auto; gap: .8rem; align-items: end; }
+.lan-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; align-items: end; padding: 1.1rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(5, 17, 16, .45); }
+.lan-form select[multiple] { min-height: 8.6rem; }
 .command-result { margin-top: 1rem; padding: 1rem; border: 1px solid rgba(101,229,203,.28); border-radius: 12px; background: rgba(16,69,61,.2); }
 .command-result p { margin: 0 0 .7rem; }
 .command-result p:last-child { margin: .7rem 0 0; }
@@ -87,7 +89,7 @@ code { color: var(--amber); font-family: ui-monospace, monospace; overflow-wrap:
 .empty { border-top: 1px solid var(--line); padding-top: 1rem; }
 @media (max-width: 760px) {
   .shell { padding-top: 2.5rem; }
-  #setup, #login, .provider-panel, .grid, .form-grid, .harness-form { grid-template-columns: 1fr; }
+  #setup, #login, .provider-panel, .grid, .form-grid, .harness-form, .lan-form { grid-template-columns: 1fr; }
   .provider { grid-template-columns: 1fr; }
   .record, .record.worker { grid-template-columns: 1fr; }
   .compact-fields { grid-template-columns: 1fr; }
