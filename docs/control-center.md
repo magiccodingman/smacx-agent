@@ -122,10 +122,14 @@ perspective)`.
 
 **Park all seats** stops every disposable worker and MCP sidecar. At this
 milestone, starting a parked LAN creates a fresh native lobby/game rather than
-restoring the old campaign. The bridge deliberately reports multiplayer save
-as unsupported until the stock host-save/client-rejoin effect path has a real
-two-process regression. The UI therefore must not describe LAN parking as a
-campaign resume. External human clients likewise cannot yet join the private
+restoring the old campaign. Multiplayer checkpoint creation is semantic and
+host-only: the bridge identifies the actual DirectPlay host, exposes
+`save_game` only on that seat, and writes into the match-scoped directory in
+its persistent worker volume. A real two-worker regression verifies the native
+save while clients remain non-mutating. Restoring it through the stock **Load
+Multiplayer Game** lobby and rejoining the original factions is the remaining
+resume boundary. The UI therefore must not describe LAN parking as a campaign
+resume. External human clients likewise cannot yet join the private
 Docker-only host; that will require a declared macvlan/host-network/virtual-LAN
 publication mode with its own security and compatibility tests.
 

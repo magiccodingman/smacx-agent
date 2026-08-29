@@ -112,8 +112,12 @@ PYTHONPATH=src python3 scripts/control_lan_live_test.py
 ```
 
 It passed against the legal reference installation with
-`pixels_or_ui_input_used=false`. Cleanup selects only resources carrying that
-test installation's exact ownership label.
+`pixels_or_ui_input_used=false`. The regression observes the actual DirectPlay
+host rather than assuming seat order, resolves only audited opening interactions
+through MCP, invokes the host-only guarded `save_game` choice, and verifies a
+242,567-byte native campaign file in that worker's persistent data volume.
+Cleanup selects only resources carrying that test installation's exact
+ownership label.
 
 Stock Debian Wine is retained as a diagnostic fallback, but it stalled at the
 Firaxis presentation screen in the current reference environment and is not a

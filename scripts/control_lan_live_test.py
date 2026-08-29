@@ -36,11 +36,7 @@ def api(opener, base_url: str, method: str, path: str, body: dict | None = None,
         return json.load(response)
 
 
-async def mcp_identity(url: str) -> dict:
-    async with streamable_http_client(url) as streams:
-        async with ClientSession(streams[0], streams[1]) as session:
-            await session.initialize()
-            result = await session.call_tool("smac_snapshot", {})
+def mcp_result(result) -> dict:
     structured = getattr(result, "structured_content", None)
     if isinstance(structured, dict):
         return structured
@@ -54,6 +50,68 @@ async def mcp_identity(url: str) -> dict:
             if isinstance(value, dict):
                 return value
     return {}
+
+
+async def mcp_tool(url: str, name: str, arguments: dict | None = None) -> dict:
+    async with streamable_http_client(url) as streams:
+        async with ClientSession(streams[0], streams[1]) as session:
+            await session.initialize()
+            return mcp_result(await session.call_tool(name, arguments or {}))
+
+
+async def mcp_identity(url: str) -> dict:
+    return await mcp_tool(url, "smac_snapshot")
+
+
+async def prepare_game_management(url: str) -> dict:
+    """Resolve only audited opening notices, then request the guarded management frame."""
+    allowed_parameters = {
+        "response", "option", "phase", "priority", "name", "tech_id",
+    }
+    latest: dict = {}
+    for _ in range(20):
+        latest = await mcp_tool(url, "smac_decision", {"finish_ready_units": True})
+        if not latest.get("ok"):
+            raise AssertionError(f"MCP decision failed while preparing save: {latest}")
+        phase = latest.get("phase")
+        if phase == "turn":
+            return latest
+        if phase == "wait":
+            await mcp_tool(url, "smac_wait", {"seconds": 1})
+            continue
+        if phase != "interaction":
+            raise AssertionError(f"unexpected pre-save decision phase: {latest}")
+        choices = latest.get("choices", [])
+        choice = next((item for item in choices if item.get("command") in {
+            "acknowledge_popup", "choose_research_priority",
+            "advance_technology_presentation",
+        }), None)
+        if not choice:
+            raise AssertionError(f"non-audited interaction blocked save regression: {latest}")
+        guard = latest["required_next"]["guard"]
+        arguments = {"command": choice["command"], **guard}
+        arguments.update({key: choice[key] for key in allowed_parameters if key in choice})
+        result = await mcp_tool(url, "smac_command", arguments)
+        if not result.get("ok"):
+            raise AssertionError(f"opening interaction command failed: {result}")
+    raise AssertionError(f"game did not become actionable for save: {latest}")
+
+
+async def save_multiplayer_host(url: str, slot: str) -> dict:
+    frame = await prepare_game_management(url)
+    choice = next(
+        (item for item in frame.get("choices", []) if item.get("command") == "save_game"),
+        None,
+    )
+    if not choice or choice.get("native_host_only") is not True:
+        raise AssertionError(f"native host save choice was not exposed: {frame}")
+    result = await mcp_tool(url, "smac_command", {
+        "command": "save_game", "slot": slot, **frame["required_next"]["guard"],
+    })
+    if not result.get("ok") or result.get("multiplayer") is not True \
+            or result.get("native_host") is not True:
+        raise AssertionError(f"native multiplayer save failed: {result}")
+    return result
 
 
 def main() -> int:
@@ -153,6 +211,13 @@ def main() -> int:
         if len(status["seats"]) != 2 \
                 or any(seat.get("native", {}).get("lifecycle") != "game" for seat in status["seats"]):
             raise AssertionError(f"managed LAN seat health diverged: {status}")
+        host_seat = next(
+            (seat for seat in status["seats"]
+             if seat.get("native", {}).get("network", {}).get("role") == "host"),
+            None,
+        )
+        if not host_seat:
+            raise AssertionError(f"native LAN host role was not observable: {status}")
         workers = api(opener, base_url, "GET", "/api/v1/workers")["workers"]
         lan_workers = [worker for worker in workers if worker["match_id"] == match_id]
         if len(lan_workers) != 2 or any(not worker["network"].get("mcp_url") for worker in lan_workers):
@@ -165,6 +230,18 @@ def main() -> int:
                 or len({identity.get("session_id") for identity in identities}) != 2 \
                 or len({identity.get("faction", {}).get("id") for identity in identities}) != 2:
             raise AssertionError(f"LAN MCP scopes were not shared-match/distinct-seat: {identities}")
+        host_worker = next(
+            worker for worker in lan_workers
+            if worker["instance_id"] == host_seat["instance_id"]
+        )
+        save_slot = "managed_lan_checkpoint"
+        saved = asyncio.run(save_multiplayer_host(host_worker["network"]["mcp_url"], save_slot))
+        save_path = f"/var/lib/smacx/game/saves/agent/{match_id}/{save_slot}.sav"
+        save_bytes = int(docker(
+            "exec", host_worker["container_name"], "stat", "-c", "%s", save_path,
+        ))
+        if save_bytes < 1024:
+            raise AssertionError(f"native multiplayer save was unexpectedly small: {save_bytes}")
         api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/park", {}, csrf, 180)
         print(json.dumps({
             "event": "pass",
@@ -175,6 +252,9 @@ def main() -> int:
                 "shared_match_distinct_sessions": True,
                 "distinct_faction_perspectives": True,
                 "one_mcp_sidecar_per_seat": True,
+                "native_host_role_observable": True,
+                "native_host_campaign_save": True,
+                "multiplayer_save_bytes": save_bytes,
                 "pixels_or_ui_input_used": False,
                 "match_wide_park": True,
             },

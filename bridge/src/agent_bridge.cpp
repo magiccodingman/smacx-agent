@@ -5476,7 +5476,14 @@ bool test_fixture) {
         if (*MultiplayerActive && !game_active()) {
             append_lan_lobby_state(status);
         } else if (*MultiplayerActive && game_active()) {
-            status << ",\"game_settings\":{\"difficulty\":{\"id\":"
+            const int local_index = lan_local_player_index();
+            const int host_index = lan_host_player_index();
+            status << ",\"network\":{\"role\":"
+                << json_string(local_index >= 1 && local_index == host_index
+                    ? "host" : "client")
+                << ",\"local_player_index\":" << local_index
+                << ",\"host_player_index\":" << host_index
+                << "},\"game_settings\":{\"difficulty\":{\"id\":"
                 << *DiffLevel << ",\"name\":"
                 << json_string(lan_difficulty_name(*DiffLevel))
                 << "},\"map_width\":" << *MapAreaX
@@ -8935,8 +8942,18 @@ std::string game_management_choices_response() {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"kind\":\"game_management\",\"choices\":[";
     if (*MultiplayerActive) {
-        out << "{\"id\":\"save:multiplayer_unsupported\",\"kind\":\"capability_status\","
-            "\"supported\":false,\"meaning\":\"Semantic save/load is currently limited to single-player games.\"}";
+        const int local_player_index = lan_local_player_index();
+        const int host_player_index = lan_host_player_index();
+        if (local_player_index >= 1 && local_player_index == host_player_index) {
+            out << "{\"id\":\"save:slot\",\"command\":\"save_game\","
+                "\"parameters\":{\"slot\":{\"type\":\"string\",\"pattern\":\"^[A-Za-z0-9_-]{1,32}$\"}},"
+                "\"native_host_only\":true,"
+                "\"meaning\":\"Save the active multiplayer campaign from its native DirectPlay host into a match-scoped named slot. Existing data in the same slot is replaced.\"}";
+        } else {
+            out << "{\"id\":\"save:host_only\",\"kind\":\"capability_status\","
+                "\"supported\":false,\"native_host_only\":true,"
+                "\"meaning\":\"Only the native DirectPlay host may save this multiplayer campaign.\"}";
+        }
     } else {
         out << "{\"id\":\"save:slot\",\"command\":\"save_game\","
             "\"parameters\":{\"slot\":{\"type\":\"string\",\"pattern\":\"^[A-Za-z0-9_-]{1,32}$\"}},"
@@ -10417,6 +10434,10 @@ std::string semantic_command_response(const std::string& request) {
     }
     bool validated_multiplayer_end_turn = command == "end_turn"
         && human_turn_actionable(faction_id) && multiplayer_ready_units == 0;
+    bool validated_multiplayer_save = command == "save_game"
+        && human_turn_actionable(faction_id)
+        && lan_local_player_index() >= 1
+        && lan_local_player_index() == lan_host_player_index();
     int multiplayer_production_base_id = field_int(request, "base_id", -1);
     int multiplayer_production_item_id = field_int(request, "item_id", 99999);
     bool validated_multiplayer_production = command == "set_production"
@@ -10661,6 +10682,7 @@ std::string semantic_command_response(const std::string& request) {
         || (command == "choose_research_priority"
             && active_label == "TECHRANDOM")
         || validated_multiplayer_move || validated_multiplayer_finish
+        || validated_multiplayer_save
         || validated_multiplayer_end_turn || validated_multiplayer_production
         || validated_multiplayer_allocation
         || validated_multiplayer_research_priority
@@ -10925,8 +10947,16 @@ std::string semantic_command_response(const std::string& request) {
     if (command == "save_game") {
         if (!human_turn_actionable(faction_id)) return semantic_not_actionable();
         if (*MultiplayerActive) {
-            return error_response("multiplayer_save_unsupported",
-                "Semantic save/load is not enabled for multiplayer games yet.");
+            const int local_player_index = lan_local_player_index();
+            const int host_player_index = lan_host_player_index();
+            if (local_player_index < 1 || host_player_index < 1) {
+                return error_response("multiplayer_host_identity_unavailable",
+                    "The native DirectPlay host identity is not stable. Observe again before saving.");
+            }
+            if (local_player_index != host_player_index) {
+                return error_response("multiplayer_save_host_only",
+                    "Only the native DirectPlay host may save a multiplayer campaign.");
+            }
         }
         std::string slot = field_string(request, "slot");
         if (!safe_path_component(slot, 32) || !ensure_agent_save_directory()) {
@@ -10944,6 +10974,8 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"save_game\",\"slot\":")
             + json_string(slot.c_str()) + ",\"relative_path\":" + json_string(path.c_str())
             + ",\"replaced\":" + (replaced ? "true" : "false")
+            + ",\"multiplayer\":" + (*MultiplayerActive ? "true" : "false")
+            + ",\"native_host\":" + (*MultiplayerActive ? "true" : "false")
             + ",\"match_id\":" + json_string(agent_match_id.c_str()) + '}';
     }
     if (command == "skip_all_ready_units") {
