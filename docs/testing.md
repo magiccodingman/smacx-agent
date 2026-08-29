@@ -121,10 +121,35 @@ roughly 242 KiB native campaign file in that worker's persistent data volume.
 Cleanup selects only resources carrying that test installation's exact
 ownership label.
 
-Mixed human/agent staging has a contained contract test. It proves that a human
-seat receives no agent perspective, a private bridge network cannot masquerade
-as external publication, exact names/readiness are mandatory, unexpected
-players are rejected, and a resumed human must reclaim the recorded faction:
+The mixed native LAN regression adds a third, independent game process that
+has no seat, perspective, MCP sidecar, or worker binding in the match under
+test. It automates only the actions a physical human performs: discover the
+exact session, join as the assigned name, ready, chat, disconnect, rejoin a
+loaded checkpoint, reclaim the saved faction, and chat again. Run it from a
+Docker-capable shell; the wrapper creates an isolated macvlan plus an
+in-network Control Center test runner because a Linux host cannot directly
+reach its macvlan children:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+scripts/mixed-lan-live-test.sh
+```
+
+The reference run passed with two managed agent seats and the external player
+`Alice`. It proved exact name-to-faction chat attribution, host-only native
+save on turn 1, complete external disconnect/rejoin, saved-faction restoration,
+and post-resume chat with `pixels_or_ui_input_used=false`. Randomized Alien
+Crossfire factions also exposed the stock `INTRO` label's dual use for AI
+diplomacy and information-only faction introductions; the bridge now
+distinguishes those states semantically.
+
+Mixed human/agent staging also has a fast contained contract test. It proves
+that a human seat receives no agent perspective, a private bridge network
+cannot masquerade as external publication, exact names/readiness are mandatory,
+unexpected players are rejected, and a resumed human must reclaim the recorded
+faction:
 
 ```bash
 PYTHONPATH=src python3 scripts/external_lan_contract_test.py

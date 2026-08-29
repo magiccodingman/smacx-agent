@@ -4197,6 +4197,17 @@ bool popup_information_only() {
     return !(flags & (PopDialogBtnCancel | PopDialogTextInput));
 }
 
+bool narrative_intro_popup(const std::string& label) {
+    if (label != "INTRO" || !popup_information_only()) return false;
+    int other = *diplo_second_faction;
+    // Script.txt reuses INTRO for a faction/scenario presentation and for an
+    // AI leader's greeting. Only the latter has a valid non-human diplomatic
+    // counterpart. Treating the presentation as diplomacy exposes a command
+    // that the multiplayer allowlist correctly refuses and strands the game
+    // in its opening modal.
+    return other < 1 || other >= MaxPlayerNum || is_human(other);
+}
+
 bool close_active_endgame_presentation() {
     if (endgame_presentation_phase.empty()
     || endgame_presentation_phase == "victory_movie"
@@ -9758,6 +9769,12 @@ std::string semantic_choices_response(const std::string& request) {
                     << json_string(MFactions[other].formal_name_faction)
                     << ",\"leader_name\":" << json_string(MFactions[other].name_leader) << '}';
             }
+        } else if (narrative_intro_popup(label)) {
+            out << "{\"id\":\"popup:acknowledge\","
+                "\"command\":\"acknowledge_popup\","
+                "\"meaning\":\"Acknowledge this information-only faction introduction.\"},"
+                "{\"id\":\"popup:context\",\"kind\":\"information\","
+                "\"event\":\"faction_introduction\"}";
         } else if (!strncmp(label, "INTRONEW", 8) || !strncmp(label, "INTRO", 5)) {
             int other = *diplo_second_faction;
             out << "{\"id\":\"diplomacy:continue\",\"command\":\"continue_diplomacy\","
@@ -10955,7 +10972,8 @@ std::string semantic_command_response(const std::string& request) {
     // by the engine.  Their sole native button dismisses local presentation;
     // it does not choose or mutate shared simulation state.
     bool validated_multiplayer_command = (command == "acknowledge_popup"
-            && reviewed_information_popup(active_label))
+            && (reviewed_information_popup(active_label)
+                || narrative_intro_popup(active_label)))
         || (command == "finish_human_diplomacy"
             && human_diplomacy_window_active())
         || (command == "advance_technology_presentation"
@@ -11579,7 +11597,8 @@ std::string semantic_command_response(const std::string& request) {
     }
     if (command == "acknowledge_popup") {
         std::string label = agent_popup_label();
-        if (!reviewed_information_popup(label) && !popup_information_only()) {
+        if (!reviewed_information_popup(label) && !popup_information_only()
+        && !narrative_intro_popup(label)) {
             return error_response("unsupported_popup", "This popup has no reviewed semantic choice. Report a capability gap.");
         }
         BasePop* active = active_default_popup();

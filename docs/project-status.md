@@ -55,6 +55,15 @@ distinct factions and process sessions, saved only from the actual native
 host, parked completely, reopened the stock **Load Multiplayer Game** lobby,
 rejoined, restored exact faction-to-seat bindings, and returned to gameplay.
 
+A separate three-process live regression has now exercised the AI-hosted mixed
+path with two managed agents and one independent native client. The external
+client joined by exact DirectPlay session identity, appeared under its assigned
+name and faction in chat, disconnected after a host-only native checkpoint,
+rejoined the stock loaded lobby, reclaimed the saved faction, and exchanged
+chat after resume. This was a production-equivalent local network test with no
+pixels or UI input; it is not a claim that a physical second computer has been
+certified yet.
+
 ### View-only spectators
 
 Per-worker noVNC is optional, password-protected, published to loopback by
@@ -74,8 +83,9 @@ reclamation before allowing the host to launch.
 
 The manager refuses ordinary Docker bridge publication and requires an
 operator-created, non-internal macvlan/ipvlan network. Identity, readiness,
-faction, and network-driver guards are contained-tested. A physical second
-machine has not yet certified this path.
+faction, and network-driver guards are contained-tested, and the entire native
+lifecycle is locally live-tested with an independent third process. A physical
+second machine has not yet certified this path.
 
 ### Harness-neutral contracts with Hermes as reference
 
@@ -142,8 +152,11 @@ The next platform milestone should not be called complete until it includes:
    scheduling, Control Center health, and real-backend evaluation;
 2. a legally sourced, reproducible rules knowledge layer with citations and
    no copied proprietary corpus;
-3. personality-card creation, attachment, and behavioral regression scenarios;
-4. a physical mixed human/AI LAN game across two machines, including chat,
+3. a physical mixed human/AI LAN game across two machines, including chat,
    checkpoint, disconnect/rejoin, and continue; and
-5. operator backup/restore and crash-recovery documentation validated from a
+4. operator backup/restore and crash-recovery documentation validated from a
    clean installation.
+
+Personality-card semantics are intentionally outside this milestone. The
+opaque attachment seam remains reserved, but card format, editing, prompting,
+and behavioral evaluation will be designed separately.
