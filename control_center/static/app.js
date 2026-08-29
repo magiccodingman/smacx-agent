@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = ["setup", "login", "dashboard"];
-let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: []};
+let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], harnessRuns: [], backups: [], schedules: [], graphiti: null, capabilities: null};
 
 function show(name) {
   sections.forEach((id) => $(`#${id}`).classList.toggle("hidden", id !== name));
@@ -36,10 +36,12 @@ function formObject(form) {
 }
 
 async function loadDashboard() {
-  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult] = await Promise.all([
+  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, harnessRunsResult, operationsResult, backupsResult, schedulesResult, graphitiResult, capabilitiesResult] = await Promise.all([
     api("/api/v1/status"), api("/api/v1/providers"), api("/api/v1/agents"),
     api("/api/v1/game-sources"), api("/api/v1/runtimes"), api("/api/v1/workers"),
-    api("/api/v1/matches"), api("/api/v1/harness-profiles"),
+    api("/api/v1/matches"), api("/api/v1/harness-profiles"), api("/api/v1/harness-runs"),
+    api("/api/v1/operations/status"), api("/api/v1/backups"), api("/api/v1/schedules"),
+    api("/api/v1/graphiti"), api("/api/v1/capabilities"),
   ]);
   dashboardState = {
     agents: agentsResult.agents,
@@ -49,6 +51,11 @@ async function loadDashboard() {
     providers: providerResult.providers,
     matches: matchesResult.matches,
     harnessProfiles: harnessResult.harness_profiles,
+    harnessRuns: harnessRunsResult.harness_runs,
+    backups: backupsResult.backups,
+    schedules: schedulesResult.schedules,
+    graphiti: graphitiResult,
+    capabilities: capabilitiesResult,
   };
   $("#installation").textContent = status.installation_id;
   $("#provider-count").textContent = status.counts.model_providers;
@@ -60,6 +67,10 @@ async function loadDashboard() {
   renderWorkers(dashboardState.workers);
   renderMatches(dashboardState.matches);
   renderHarnessProfiles(dashboardState.harnessProfiles);
+  renderHarnessRuns(dashboardState.harnessRuns);
+  renderOperations(operationsResult, dashboardState.backups, dashboardState.schedules);
+  renderGraphiti(graphitiResult);
+  renderCapabilities(capabilitiesResult);
   populateSelect("#match-agent", dashboardState.agents, "agent_id", "display_name", "Create an agent first");
   populateSelect("#match-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
   populateSelect("#match-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
@@ -69,7 +80,113 @@ async function loadDashboard() {
   populateSelect("#harness-match", dashboardState.matches, "match_id", "display_name", "Create a match first");
   populateHarnessAgents();
   populateSelect("#harness-provider", dashboardState.providers.filter((item) => item.default_model_id), "provider_id", "display_name", "Select a provider model first");
+  populateScheduleMatches();
   show("dashboard");
+}
+
+function renderCapabilities(capabilities) {
+  const profiles = Object.keys(capabilities.lan_profiles || {});
+  const deployment = capabilities.deployment || {};
+  const pendingExternal = Object.values(deployment).filter((item) =>
+    String(item.status || "").includes("external_certification_required")
+  ).length;
+  const scenario = capabilities.launch_modes?.solo_scenario?.status || "unknown";
+  $("#capability-summary").textContent =
+    `${profiles.length} native-tested random-map profiles · scenario launch ${scenario.replaceAll("_", " ")} · ${pendingExternal} external certification gate(s)`;
+  $("#capability-detail").textContent =
+    "Agents can query the same fail-closed ledger through smac_capabilities; current-turn choices remain authoritative.";
+}
+
+function renderGraphiti(graphiti) {
+  const runtime = graphiti.runtime || {};
+  const state = $("#graphiti-state");
+  state.textContent = `${graphiti.enabled ? "Enabled" : "Disabled"} · ${runtime.status || "stopped"}`;
+  state.className = `pill ${["ready", "disabled"].includes(runtime.status) ? "healthy" : runtime.status === "degraded" ? "error" : ""}`;
+  $("#graphiti-enabled").checked = graphiti.enabled === true;
+  const select = $("#graphiti-scope");
+  const previous = select.value;
+  select.replaceChildren();
+  (graphiti.scopes || []).forEach((scope) => {
+    const option = document.createElement("option");
+    option.value = JSON.stringify([scope.match_id, scope.agent_id, scope.perspective_id]);
+    option.textContent = `${scope.match_name} · ${scope.agent_name}`;
+    option.selected = previous === option.value;
+    select.append(option);
+  });
+  if (!select.options.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Create a match perspective first";
+    select.append(option);
+  }
+  const detail = $("#graphiti-detail");
+  detail.replaceChildren(record(
+    "Derived graph health",
+    `${runtime.projected_events || 0} projected · ${runtime.failed_events || 0} failed · ${runtime.active_scopes || 0} active scope(s) · ${graphiti.queued_rebuilds || 0} rebuild(s) queued`,
+    runtime.status || "stopped",
+  ));
+}
+
+function populateScheduleMatches() {
+  const select = $("#schedule-match");
+  const previous = select.value;
+  select.replaceChildren();
+  const whole = document.createElement("option");
+  whole.value = "";
+  whole.textContent = "Whole installation";
+  select.append(whole);
+  dashboardState.matches.forEach((match) => {
+    const option = document.createElement("option");
+    option.value = match.match_id;
+    option.textContent = match.display_name;
+    option.selected = previous === option.value;
+    select.append(option);
+  });
+}
+
+function renderOperations(status, backups, schedules) {
+  const state = $("#supervisor-state");
+  state.textContent = status.running
+    ? `Supervisor active · ${status.open_incidents} incident(s)` : "Supervisor stopped";
+  state.className = `pill ${status.running && !status.open_incidents ? "healthy" : "error"}`;
+  const backupRoot = $("#backups");
+  backupRoot.replaceChildren();
+  backups.forEach((backup) => backupRoot.append(record(
+    backup.backup_id,
+    `${backup.worker_count} worker volume(s) · ${backup.size_bytes || 0} bytes · ${backup.includes_secrets ? "secrets included" : "no secrets"}`,
+    backup.status,
+  )));
+  if (!backups.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No recovery set has been created yet.";
+    backupRoot.append(empty);
+  }
+  const scheduleRoot = $("#schedules");
+  scheduleRoot.replaceChildren();
+  schedules.forEach((schedule) => {
+    const item = record(
+      schedule.display_name,
+      `${schedule.operation_kind} · every ${Math.round(schedule.interval_seconds / 60)} minute(s) · next ${new Date(schedule.next_run_unix * 1000).toLocaleString()}`,
+      schedule.status,
+    );
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const action = document.createElement("button");
+    action.className = "quiet";
+    action.textContent = schedule.status === "active" ? "Pause" : "Activate";
+    action.addEventListener("click", async () => {
+      action.disabled = true;
+      try {
+        await api(`/api/v1/schedules/${schedule.schedule_id}/${schedule.status === "active" ? "pause" : "activate"}`, {method: "POST", body: "{}"});
+        notify("Schedule updated.");
+        await loadDashboard();
+      } catch (error) { notify(error.message, true); action.disabled = false; }
+    });
+    actions.append(action);
+    item.append(actions);
+    scheduleRoot.append(item);
+  });
 }
 
 function populateSelect(selector, items, valueKey, labelKey, emptyLabel) {
@@ -176,6 +293,22 @@ function renderWorkers(workers) {
     inspect.textContent = "Inspect";
     inspect.addEventListener("click", () => workerAction(worker.instance_id, "status", inspect, false));
     actions.append(start, park, inspect);
+    if (match.status === "running" && match.metadata?.host_controller_kind !== "human") {
+      const checkpoint = document.createElement("button");
+      checkpoint.className = "quiet";
+      checkpoint.textContent = "Recovery checkpoint";
+      checkpoint.addEventListener("click", () => matchAction(
+        match.match_id, "checkpoint", checkpoint, true, {slot: "control_recovery"},
+      ));
+      actions.append(checkpoint);
+    }
+    if (match.status === "error" && match.metadata?.recovery_checkpoint?.verified) {
+      const recover = document.createElement("button");
+      recover.className = "quiet";
+      recover.textContent = "Recover verified save";
+      recover.addEventListener("click", () => matchAction(match.match_id, "recover", recover));
+      actions.append(recover);
+    }
     if (worker.network?.view_enabled) {
       const watch = document.createElement("button");
       watch.className = "quiet";
@@ -222,8 +355,12 @@ function renderMatches(matches) {
   root.replaceChildren();
   matches.filter((match) => match.mode === "lan").forEach((match) => {
     const external = match.metadata?.external_lan;
+    const humanHosted = external?.mode === "human_hosted";
     const externalDetail = external
-      ? ` · join ${external.host_address} · ${external.session_name}` : "";
+      ? humanHosted
+        ? ` · human host ${external.host_player_name || "pending"} · ${external.phase}`
+        : ` · join ${external.host_address} · ${external.session_name}`
+      : "";
     const item = record(
       match.display_name,
       `${match.match_id} · ${match.ruleset_id}${externalDetail}`,
@@ -233,16 +370,26 @@ function renderMatches(matches) {
     const actions = document.createElement("div");
     actions.className = "actions";
     const start = document.createElement("button");
-    start.textContent = match.status === "lobby" && external
+    start.textContent = match.status === "lobby" && humanHosted
+      ? external.phase === "awaiting_human_start" ? "Check human Start" : "Find human lobby"
+      : match.status === "lobby" && external
       ? "Check humans & start"
       : match.status === "parked" ? "Start fresh lobby" : "Start";
     start.disabled = match.status === "running" || match.status === "starting";
     const sessionPayload = {
       session_name: match.metadata?.lan_session_name || "SMACX Managed LAN",
+      profile: match.metadata?.lan_profile || "small_easy",
     };
-    start.addEventListener("click", () => matchAction(
-      match.match_id, "start", start, true, sessionPayload,
-    ));
+    start.addEventListener("click", () => {
+      if (match.status === "lobby" && humanHosted
+          && external.phase !== "awaiting_human_start") {
+        connectHumanHostedLobby(match.match_id, start);
+      } else if (match.status === "lobby" && humanHosted) {
+        matchAction(match.match_id, "finalize-external-host", start, true);
+      } else {
+        matchAction(match.match_id, "start", start, true, sessionPayload);
+      }
+    });
     const park = document.createElement("button");
     park.className = "quiet";
     park.textContent = "Park all seats";
@@ -283,12 +430,23 @@ function renderMatches(matches) {
 
 async function matchAction(matchId, action, button, reload = true, payload = {}) {
   button.disabled = true;
-  notify(`${action === "start" ? "Starting native LAN" : action === "park" ? "Parking every seat" : "Inspecting LAN seats"}…`);
+  const labels = {
+    start: "Starting native LAN", park: "Parking every seat", status: "Inspecting LAN seats",
+    checkpoint: "Creating a bridge-verified checkpoint", recover: "Recovering the verified checkpoint",
+  };
+  notify(`${labels[action] || "Running managed operation"}…`);
   try {
     const result = await api(`/api/v1/matches/${matchId}/${action}`, {
-      method: "POST", body: JSON.stringify({profile: "small_easy", ...payload}),
+      method: "POST", body: JSON.stringify(payload),
     });
-    if (result.awaiting_external_humans) {
+    if (result.awaiting_external_host) {
+      notify(`Managed agents are ready. Create the native lobby as ${result.external_host?.player_name}, then choose “Find human lobby”.`);
+    } else if (result.awaiting_human_start) {
+      const blockers = (result.blockers || []).map((item) => item.player_name
+        ? `${item.player_name}: ${item.reason}` : item.reason).join(", ");
+      notify(blockers || result.external_host?.instructions
+        || "Managed agents are Ready; press Start in the human-owned native lobby.");
+    } else if (result.awaiting_external_humans) {
       const join = result.external_join || {};
       const blockers = (join.blockers || []).map((item) => item.player_name
         ? `${item.player_name}: ${item.reason}` : item.reason).join(", ");
@@ -298,12 +456,60 @@ async function matchAction(matchId, action, button, reload = true, payload = {})
       notify(`${live} of ${result.seats.length} LAN seats report native gameplay.`);
       button.disabled = false;
     } else {
-      notify(action === "start" ? "Native LAN started for every managed seat." : "Every LAN seat parked.");
+      const outcomes = {
+        start: "Native LAN started for every managed seat.",
+        "finalize-external-host": "Native LAN started for every managed seat.",
+        park: "Every LAN seat parked.",
+        checkpoint: "Recovery checkpoint created and verified by the native bridge.",
+        recover: "The match resumed from its verified recovery checkpoint.",
+      };
+      notify(outcomes[action] || "Managed operation completed.");
     }
     if (reload) await loadDashboard();
   } catch (error) {
     button.disabled = false;
     notify(error.message, true);
+  }
+}
+
+async function connectHumanHostedLobby(matchId, button) {
+  const hostAddress = window.prompt("Reachable IPv4 address of the human-hosted game");
+  if (!hostAddress) return;
+  button.disabled = true;
+  try {
+    notify("Discovering native sessions at the human host…");
+    const discovered = await api(`/api/v1/matches/${matchId}/discover-external-host`, {
+      method: "POST", body: JSON.stringify({host_address: hostAddress}),
+    });
+    if (!discovered.sessions.length) {
+      notify("No joinable native session was discovered at that address.", true);
+      return;
+    }
+    let selected = discovered.sessions[0];
+    if (discovered.sessions.length > 1) {
+      const menu = discovered.sessions.map((session) =>
+        `${session.network_session_id} — ${session.session_name || "unnamed"}`).join("\n");
+      const chosenId = window.prompt(`Choose the exact session ID:\n${menu}`);
+      selected = discovered.sessions.find((session) =>
+        session.network_session_id === chosenId);
+      if (!selected) {
+        notify("The selected session ID was not in the fresh discovery result.", true);
+        return;
+      }
+    }
+    const joined = await api(`/api/v1/matches/${matchId}/join-external-host`, {
+      method: "POST", body: JSON.stringify({
+        host_address: hostAddress,
+        network_session_id: selected.network_session_id,
+      }),
+    });
+    notify(joined.external_host?.instructions
+      || "Managed agents joined and readied. The human host may press Start.");
+    await loadDashboard();
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -319,6 +525,43 @@ function renderHarnessProfiles(profiles) {
     const empty = document.createElement("p");
     empty.className = "empty";
     empty.textContent = "No Hermes profile binding has been prepared yet.";
+    root.append(empty);
+  }
+}
+
+function renderHarnessRuns(runs) {
+  const root = $("#harness-runs");
+  root.replaceChildren();
+  runs.forEach((run) => {
+    const item = record(
+      `Run ${run.run_id}`,
+      `${run.match_id} · restart ${run.restart_count}/${run.restart_policy.restart_limit} · ${run.last_heartbeat_unix ? `heartbeat ${new Date(run.last_heartbeat_unix * 1000).toLocaleTimeString()}` : "awaiting heartbeat"}`,
+      run.status,
+    );
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const action = document.createElement("button");
+    action.className = "quiet";
+    const live = ["queued", "starting", "running", "restarting"].includes(run.status);
+    action.textContent = live ? "Stop player" : "Resume player";
+    action.addEventListener("click", async () => {
+      action.disabled = true;
+      try {
+        await api(`/api/v1/harness-runs/${run.run_id}/${live ? "stop" : "start"}`, {
+          method: "POST", body: "{}",
+        });
+        notify(live ? "Managed player stopped; its conversation remains durable." : "Managed player resumed.");
+        await loadDashboard();
+      } catch (error) { notify(error.message, true); action.disabled = false; }
+    });
+    actions.append(action);
+    item.append(actions);
+    root.append(item);
+  });
+  if (!runs.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No managed harness run has been started.";
     root.append(empty);
   }
 }
@@ -510,23 +753,34 @@ $("#lan-form").addEventListener("submit", async (event) => {
   const agentIds = [...$("#lan-agents").selectedOptions].map((option) => option.value);
   const humanNames = String(values.human_player_names || "")
     .split(/[\n,]+/).map((value) => value.trim()).filter(Boolean);
-  if (agentIds.length < 1 || agentIds.length + humanNames.length < 2) {
-    notify("Choose an agent host and at least one additional agent or human seat.", true);
+  const hostKind = values.host_controller_kind || "agent";
+  const humanHostName = String(values.human_host_name || "").trim();
+  const totalSeats = agentIds.length + humanNames.length + (hostKind === "human" ? 1 : 0);
+  if (agentIds.length < 1 || totalSeats < 2) {
+    notify("Choose at least one agent and configure two or more total seats.", true);
+    return;
+  }
+  if (hostKind === "human" && !humanHostName) {
+    notify("Enter the exact in-game player name for the human host.", true);
     return;
   }
   button.disabled = true;
   try {
-    await api("/api/v1/matches/lan", {
+    const created = await api("/api/v1/matches/lan", {
       method: "POST", body: JSON.stringify({
         display_name: values.display_name, session_name: values.session_name,
         agent_ids: agentIds, game_source_id: values.game_source_id,
+        host_controller_kind: hostKind,
+        human_host_name: hostKind === "human" ? humanHostName : null,
         human_player_names: humanNames,
         runtime_id: values.runtime_id, profile: values.profile,
         view_enabled: values.view_enabled === "on",
         start_now: values.start_now === "on",
       }),
     });
-    notify(values.start_now === "on" && humanNames.length
+    notify(created.started?.awaiting_external_host
+      ? "Managed clients are ready. Create the human lobby, then use Find human lobby."
+      : values.start_now === "on" && humanNames.length
       ? "AI-hosted lobby is open. Human players can now join and mark Ready."
       : values.start_now === "on" ? "Managed native LAN is running." : "Managed LAN seats provisioned.");
     await loadDashboard();
@@ -544,21 +798,97 @@ $("#harness-form").addEventListener("submit", async (event) => {
   const values = formObject(form);
   button.disabled = true;
   try {
-    const result = await api("/api/v1/harness-profiles/hermes", {
+    const result = await api("/api/v1/harness-runs", {
       method: "POST", body: JSON.stringify(values),
     });
-    const descriptor = result.descriptor;
-    const command = `./scripts/smacx-hermes configure-from-control --control-url ${location.origin} --match-id ${descriptor.match_id} --agent-id ${descriptor.agent_id} --provider-id ${descriptor.provider_id} --reasoning ${descriptor.reasoning_effort} --start`;
-    $("#harness-command").textContent = command;
-    $("#harness-detail").textContent = `${descriptor.agent_name} · ${descriptor.model_id} · exact worker ${descriptor.instance_id}`;
+    $("#harness-command").textContent = result.run.run_id;
+    $("#harness-detail").textContent = `Match ${result.run.match_id} · exact agent ${result.run.agent_id}`;
     $("#harness-result").classList.remove("hidden");
-    notify("Hermes binding validated; the host profile command is ready.");
+    notify("Managed Hermes player started with durable session continuation.");
     await loadDashboard();
   } catch (error) {
     notify(error.message, true);
   } finally {
     button.disabled = false;
   }
+});
+
+$("#graphiti-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  button.disabled = true;
+  try {
+    await api("/api/v1/graphiti", {method: "POST", body: JSON.stringify({
+      enabled: $("#graphiti-enabled").checked,
+    })});
+    notify("Graphiti projection policy saved. SQLite remains authoritative.");
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
+});
+
+$("#graphiti-rebuild-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  if (!$("#graphiti-scope").value) return;
+  button.disabled = true;
+  try {
+    const [match_id, agent_id, perspective_id] = JSON.parse($("#graphiti-scope").value);
+    await api("/api/v1/graphiti/rebuild", {method: "POST", body: JSON.stringify({
+      match_id, agent_id, perspective_id,
+    })});
+    notify("Exact-perspective Graphiti rebuild queued.");
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
+});
+
+$("#backup-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const values = formObject(form);
+  button.disabled = true;
+  try {
+    notify("Creating a consistent recovery set; active workers are frozen only while their volumes are copied…");
+    const created = await api("/api/v1/backups", {
+      method: "POST", body: JSON.stringify({
+        include_secrets: values.include_secrets === "on",
+        include_workers: values.include_workers === "on",
+      }),
+    });
+    await api(`/api/v1/backups/${created.backup.backup_id}/verify`, {method: "POST", body: "{}"});
+    notify(`Backup ${created.backup.backup_id} created and verified.`);
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
+});
+
+$("#schedule-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const values = formObject(form);
+  const matchOperation = values.operation_kind !== "backup";
+  if (matchOperation && !values.target_id) {
+    notify("Choose a match for checkpoint scheduling.", true);
+    return;
+  }
+  button.disabled = true;
+  try {
+    await api("/api/v1/schedules", {method: "POST", body: JSON.stringify({
+      display_name: values.display_name,
+      operation_kind: values.operation_kind,
+      target_kind: matchOperation ? "match" : "installation",
+      target_id: matchOperation ? values.target_id : null,
+      interval_seconds: Number(values.interval_minutes) * 60,
+      payload: values.operation_kind === "checkpoint"
+        ? {slot: "control_recovery"} : {include_secrets: true, include_workers: true},
+    })});
+    notify("Recurring operation scheduled.");
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
 });
 
 $("#harness-match").addEventListener("change", populateHarnessAgents);

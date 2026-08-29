@@ -17,6 +17,7 @@ services:
       SMACX_DOCKER_NETWORK: ${SMACX_DOCKER_NETWORK:-smacx-agent_default}
       SMACX_WORKER_IMAGE: smacx-agent-worker:dev
       SMACX_MCP_IMAGE: smacx-agent-control:dev
+      SMACX_HERMES_IMAGE: ${SMACX_HERMES_IMAGE:-docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843}
       SMACX_CONTROL_DATA_VOLUME: smacx-agent_smacx-control-data
       SMACX_DIRECTX_REDIST_HOST: ${SMACX_DIRECTX_REDIST:-}
       SMACX_VIEW_PUBLISH_IP: ${SMACX_VIEW_PUBLISH_IP:-127.0.0.1}
@@ -49,5 +50,99 @@ services:
     image: smacx-agent-worker:dev
     entrypoint: ["/bin/true"]
 
+  # Pull-only build profile. Managed harness runs are created dynamically and
+  # receive isolated data/secret volumes plus only their seat's MCP network.
+  harness-image:
+    profiles: ["build"]
+    image: ${SMACX_HERMES_IMAGE:-docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843}
+    entrypoint: ["/bin/true"]
+
+  # Optional temporal-graph derivative. Nothing here is agent-facing and
+  # neither service is published on the host. SQLite remains authoritative.
+  graphiti-db:
+    profiles: ["graphiti"]
+    image: ${SMACX_NEO4J_IMAGE:-neo4j:2026.07.1-community@sha256:dbc377fb9cd8fe8dabc19d3041b197d5ca0ef8bae514cea175b8df265e5b7a76}
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH_FILE: /run/secrets/neo4j_auth
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    secrets:
+      - neo4j_auth
+    volumes:
+      - smacx-graphiti-data:/data
+    networks:
+      - graphiti-internal
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -a neo4j://127.0.0.1:7687 -u neo4j -p \"$$(sed 's#^[^/]*/##' /run/secrets/neo4j_auth)\" 'RETURN 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  graphiti-projector:
+    profiles: ["graphiti"]
+    build:
+      context: .
+      dockerfile: graphiti/Dockerfile
+    image: smacx-agent-graphiti:dev
+    restart: unless-stopped
+    depends_on:
+      graphiti-db:
+        condition: service_healthy
+    environment:
+      SMACX_GRAPHITI_NEO4J_URI: bolt://graphiti-db:7687
+      SMACX_GRAPHITI_NEO4J_USER: neo4j
+      SMACX_GRAPHITI_NEO4J_PASSWORD_FILE: /run/secrets/neo4j_password
+      SMACX_GRAPHITI_LLM_BASE_URL: ${SMACX_GRAPHITI_LLM_BASE_URL:-}
+      SMACX_GRAPHITI_LLM_API_KEY_FILE: /run/secrets/graphiti_llm_api_key
+      SMACX_GRAPHITI_LLM_MODEL: ${SMACX_GRAPHITI_LLM_MODEL:-}
+      SMACX_GRAPHITI_SMALL_MODEL: ${SMACX_GRAPHITI_SMALL_MODEL:-}
+      SMACX_GRAPHITI_EMBED_BASE_URL: ${SMACX_GRAPHITI_EMBED_BASE_URL:-}
+      SMACX_GRAPHITI_EMBED_API_KEY_FILE: /run/secrets/graphiti_embed_api_key
+      SMACX_GRAPHITI_EMBED_MODEL: ${SMACX_GRAPHITI_EMBED_MODEL:-}
+      SMACX_GRAPHITI_EMBED_DIM: ${SMACX_GRAPHITI_EMBED_DIM:-}
+      SMACX_GRAPHITI_STRUCTURED_OUTPUT_MODE: ${SMACX_GRAPHITI_STRUCTURED_OUTPUT_MODE:-json_schema}
+    secrets:
+      - neo4j_password
+      - graphiti_llm_api_key
+      - graphiti_embed_api_key
+    volumes:
+      - smacx-control-data:/var/lib/smacx
+    networks:
+      - default
+      - graphiti-internal
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-m", "smacx_graphiti_worker", "--database", "/var/lib/smacx/smacx.sqlite3", "--health"]
+      interval: 30s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
 volumes:
   smacx-control-data:
+  smacx-graphiti-data:
+
+networks:
+  graphiti-internal:
+    internal: true
+
+secrets:
+  neo4j_auth:
+    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/neo4j_auth
+  neo4j_password:
+    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/neo4j_password
+  graphiti_llm_api_key:
+    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/llm_api_key
+  graphiti_embed_api_key:
+    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/embed_api_key

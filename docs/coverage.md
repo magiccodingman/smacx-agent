@@ -41,11 +41,22 @@ All development playthroughs run on nested Xephyr display `:99`; tests never sen
 
 An unknown modal is a hard stop, not permission to improvise UI input. The model must call `smac_report_capability_gap` and wait for bridge expansion. The bridge rejects its retired raw `act` operation even for authenticated direct clients, so this policy is enforced below the MCP layer.
 
+## Custom match rules
+
+Human-hosted games accept arbitrary settings chosen through the human's native
+lobby before managed clients join. DirectPlay synchronizes the complete native
+setup record, and `smac_lan` exposes difficulty, generated-map dimensions,
+ocean/erosion/native-life/cloud levels, timer ID, and raw rule masks. AI-hosted
+profiles mutate only difficulty and map size and preserve all other native
+values. Named decoding and typed mutation of every rule bit are not yet
+implemented; agents must not infer the meaning of a raw mask.
+
 ## Fair-play caveats
 
 - Fogged and unknown tiles are never filtered using hidden occupants. A move into uncertainty may be queued and then resolved by the native engine, just as for a human player.
 - Technology demands expose only the exact script-named bundle for the active native variant and revalidate player ownership before concession. Reciprocal counteroffers expose only a counterpart-owned technology the player does not own; no hidden blind-research target is read or returned.
-- Agent-only DirectPlay is live-tested between isolated workers on one Linux
-  host. Named external human seats and their fail-closed lobby validation are
-  implemented, but physical two-machine macvlan/ipvlan compatibility and
-  firewall behavior still require certification.
+- Agent-only and mixed DirectPlay are live-tested between independent native
+  processes on one Linux host. Both AI-hosted and human-hosted paths cover
+  exact identity, chat, checkpoint, disconnect/rejoin, saved factions, and
+  continuation. Physical two-machine macvlan/ipvlan compatibility and firewall
+  behavior still require certification.

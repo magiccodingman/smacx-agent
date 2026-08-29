@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict, deque
+import fcntl
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,10 +20,14 @@ import time
 from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
 
+from smacx_capabilities import capability_manifest
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
+from smacx_harness_manager import HarnessManager
+from smacx_operations import OperationsManager, restore_backup_offline
+from smacx_reference import seed_reference_corpus
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
-from smacx_worker_manager import WorkerManager, WorkerManagerError
+from smacx_worker_manager import LAN_PROFILES, WorkerManager, WorkerManagerError
 
 
 MAX_REQUEST_BODY = 1024 * 1024
@@ -30,7 +35,14 @@ SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
 PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
 WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator)$")
-MATCH_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
+MATCH_PATH = re.compile(
+    r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/"
+    r"(start|park|status|discover-external-host|join-external-host|finalize-external-host)$"
+)
+SCHEDULE_PATH = re.compile(r"^/api/v1/schedules/([A-Za-z0-9_-]{8,96})/(activate|pause|disable)$")
+BACKUP_PATH = re.compile(r"^/api/v1/backups/([A-Za-z0-9_-]{8,96})/verify$")
+RECOVERY_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(checkpoint|recover)$")
+HARNESS_RUN_PATH = re.compile(r"^/api/v1/harness-runs/([A-Za-z0-9_-]{8,96})/(start|stop|status)$")
 
 
 class RequestRateLimiter:
@@ -58,12 +70,16 @@ class ControlHTTPServer(ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int], control: ControlPlane,
                  static_root: Path, *, secure_cookies: bool = False,
-                 worker_manager: WorkerManager | None = None) -> None:
+                 worker_manager: WorkerManager | None = None,
+                 operations: OperationsManager | None = None,
+                 harness_manager: HarnessManager | None = None) -> None:
         super().__init__(address, ControlRequestHandler)
         self.control = control
         self.static_root = static_root.resolve()
         self.secure_cookies = secure_cookies
         self.worker_manager = worker_manager
+        self.operations = operations
+        self.harness_manager = harness_manager
         self.login_limiter = RequestRateLimiter()
 
 
@@ -199,6 +215,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, self.server.control.status())
                 return
+            if path == "/api/v1/capabilities":
+                self._authentication()
+                self._json(200, capability_manifest())
+                return
             if path == "/api/v1/providers":
                 self._authentication()
                 self._json(200, {"ok": True, "providers": self.server.control.list_providers()})
@@ -235,6 +255,28 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "harness_profiles": self.server.control.list_harness_profiles(),
                 })
+                return
+            if path == "/api/v1/harness-runs":
+                self._authentication()
+                self._json(200, {
+                    "ok": True, "harness_runs": self.server.control.list_harness_runs(),
+                })
+                return
+            if path == "/api/v1/graphiti":
+                self._authentication()
+                self._json(200, self.server.control.graphiti_status())
+                return
+            if path == "/api/v1/operations/status":
+                self._authentication()
+                self._json(200, self._operations().status())
+                return
+            if path == "/api/v1/schedules":
+                self._authentication()
+                self._json(200, {"ok": True, "schedules": self._operations().list_schedules()})
+                return
+            if path == "/api/v1/backups":
+                self._authentication()
+                self._json(200, {"ok": True, "backups": self._operations().list_backups()})
                 return
             if path.startswith("/api/"):
                 self._error(404, "not_found")
@@ -389,11 +431,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(human_player_names, list) \
                         or not all(isinstance(item, str) for item in human_player_names):
                     raise InvalidRecord("invalid_lan_human_player_names")
+                profile = str(body.get("profile", "small_easy"))
+                if profile not in LAN_PROFILES:
+                    raise InvalidRecord("unsupported_lan_profile")
                 created = self.server.control.create_lan_match(
                     str(body.get("display_name", "")), list(agent_ids),
                     human_player_names=list(human_player_names),
+                    host_controller_kind=str(body.get("host_controller_kind", "agent")),
+                    human_host_name=(str(body["human_host_name"])
+                                     if body.get("human_host_name") is not None else None),
                     metadata={
-                        "lan_profile": str(body.get("profile", "small_easy")),
+                        "lan_profile": profile,
                         "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
                     },
                 )
@@ -423,7 +471,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     {
                         "seat_count": len(created["seats"]),
                         "agent_seat_count": len(workers),
-                        "human_seat_count": len(human_player_names),
+                        "human_seat_count": len([
+                            seat for seat in created["seats"]
+                            if seat["controller_kind"] == "human"
+                        ]),
+                        "host_controller_kind": str(
+                            body.get("host_controller_kind", "agent")
+                        ),
                     }, self.client_address[0],
                 )
                 result: dict[str, Any] = {
@@ -435,7 +489,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         created["match"]["match_id"],
                         session_name=(str(body["session_name"])
                                       if body.get("session_name") is not None else None),
-                        profile=str(body.get("profile", "small_easy")),
+                        profile=profile,
                     )
                 self._json(201, result)
                 return
@@ -466,6 +520,166 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     }, self.client_address[0],
                 )
                 self._json(200, {"ok": True, "descriptor": descriptor})
+                return
+            if path == "/api/v1/harness-runs":
+                auth = self._authorize_mutation()
+                body = self._body()
+                match_id = str(body.get("match_id", ""))
+                agent_id = str(body.get("agent_id", "")) or None
+                manager = self._manager()
+                worker = self.server.control.worker_for_match(match_id, agent_id=agent_id)
+                observed = manager.worker_status(worker["instance_id"])
+                mcp = observed.get("mcp") if isinstance(observed.get("mcp"), dict) else {}
+                if not observed.get("running") or observed.get("health") != "healthy":
+                    raise WorkerManagerError("game_worker_not_healthy")
+                if not mcp.get("running") or mcp.get("health") != "healthy":
+                    raise WorkerManagerError("managed_mcp_not_healthy")
+                try:
+                    budget = int(body.get("run_budget_seconds", 3600))
+                    max_turns = int(body.get("max_turns", 5000))
+                    restart_limit = int(body.get("restart_limit", 1000))
+                except (TypeError, ValueError) as exc:
+                    raise InvalidRecord("invalid_harness_run_limits") from exc
+                descriptor = self.server.control.prepare_hermes_profile(
+                    match_id, str(body.get("provider_id", "")), agent_id=agent_id,
+                    reasoning_effort=str(body.get("reasoning_effort", "low")),
+                )
+                run = self._harness_manager().create_run(
+                    descriptor,
+                    initial_prompt=(str(body["initial_prompt"])
+                                    if body.get("initial_prompt") else None),
+                    run_budget_seconds=budget,
+                    max_turns=max_turns,
+                    restart_limit=restart_limit,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "harness.start", "harness_run", run["run_id"],
+                    "success", {"match_id": match_id, "agent_id": descriptor["agent_id"],
+                                "provider_secret_injected": descriptor["provider_requires_api_key"]},
+                    self.client_address[0],
+                )
+                self._json(201, {"ok": True, "run": run})
+                return
+            if path == "/api/v1/graphiti":
+                auth = self._authorize_mutation()
+                body = self._body()
+                if not isinstance(body.get("enabled"), bool):
+                    raise InvalidRecord("invalid_graphiti_enabled")
+                result = self.server.control.set_graphiti_enabled(body["enabled"])
+                self.server.control.audit(
+                    auth["admin_id"], "graphiti.configure", "installation", None,
+                    "success", {"enabled": body["enabled"]}, self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            if path == "/api/v1/graphiti/rebuild":
+                auth = self._authorize_mutation()
+                body = self._body()
+                result = self.server.control.request_graphiti_rebuild(
+                    str(body.get("match_id", "")), str(body.get("agent_id", "")),
+                    str(body.get("perspective_id", "")), admin_id=auth["admin_id"],
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "graphiti.rebuild", "perspective",
+                    result["perspective_id"], "success",
+                    {"rebuild_id": result["rebuild_id"]}, self.client_address[0],
+                )
+                self._json(202, {"ok": True, "rebuild": result})
+                return
+            harness_run_match = HARNESS_RUN_PATH.fullmatch(path)
+            if harness_run_match:
+                auth = self._authorize_mutation()
+                self._body()
+                run_id, action = harness_run_match.groups()
+                if action == "stop":
+                    result = self._harness_manager().stop_run(run_id)
+                elif action == "start":
+                    current = self.server.control.update_harness_run(
+                        run_id, desired_status="running", status="queued",
+                    )
+                    result = self._harness_manager().start_run(str(current["run_id"]))
+                else:
+                    result = self._harness_manager().status(run_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"harness.{action}", "harness_run", run_id,
+                    "success", {}, self.client_address[0],
+                )
+                self._json(200, {"ok": True, "result": result})
+                return
+            if path == "/api/v1/schedules":
+                auth = self._authorize_mutation()
+                body = self._body()
+                try:
+                    interval_seconds = int(body.get("interval_seconds", 0))
+                except (TypeError, ValueError) as exc:
+                    raise InvalidRecord("invalid_schedule_interval") from exc
+                schedule = self._operations().create_schedule(
+                    str(body.get("display_name", "")), str(body.get("operation_kind", "")),
+                    target_kind=str(body.get("target_kind", "")),
+                    target_id=(str(body["target_id"]) if body.get("target_id") is not None else None),
+                    interval_seconds=interval_seconds,
+                    next_run_unix=body.get("next_run_unix"),
+                    payload=body.get("payload") if isinstance(body.get("payload"), dict) else None,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "schedule.create", "schedule", schedule["schedule_id"],
+                    "success", {"operation_kind": schedule["operation_kind"]},
+                    self.client_address[0],
+                )
+                self._json(201, {"ok": True, "schedule": schedule})
+                return
+            schedule_match = SCHEDULE_PATH.fullmatch(path)
+            if schedule_match:
+                auth = self._authorize_mutation()
+                self._body()
+                schedule_id, action = schedule_match.groups()
+                status = {"activate": "active", "pause": "paused", "disable": "disabled"}[action]
+                schedule = self._operations().set_schedule_status(schedule_id, status)
+                self.server.control.audit(
+                    auth["admin_id"], f"schedule.{action}", "schedule", schedule_id,
+                    "success", {}, self.client_address[0],
+                )
+                self._json(200, {"ok": True, "schedule": schedule})
+                return
+            if path == "/api/v1/backups":
+                auth = self._authorize_mutation()
+                body = self._body()
+                backup = self._operations().create_backup(
+                    include_secrets=body.get("include_secrets", True) is True,
+                    include_workers=body.get("include_workers", True) is True,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "backup.create", "backup", backup["backup_id"],
+                    "success", {"worker_count": backup["worker_count"]}, self.client_address[0],
+                )
+                self._json(201, {"ok": True, "backup": backup})
+                return
+            backup_match = BACKUP_PATH.fullmatch(path)
+            if backup_match:
+                auth = self._authorize_mutation()
+                self._body()
+                backup_id = backup_match.group(1)
+                verified = self._operations().verify_backup(backup_id)
+                self.server.control.audit(
+                    auth["admin_id"], "backup.verify", "backup", backup_id,
+                    "success", {"size_bytes": verified["size_bytes"]}, self.client_address[0],
+                )
+                self._json(200, verified)
+                return
+            recovery_match = RECOVERY_PATH.fullmatch(path)
+            if recovery_match:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id, action = recovery_match.groups()
+                result = manager.checkpoint_match(
+                    match_id, slot=str(body.get("slot", "control_recovery")),
+                ) if action == "checkpoint" else manager.recover_match(match_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"match.{action}", "match", match_id,
+                    "success", {"managed_recovery": True}, self.client_address[0],
+                )
+                self._json(200, result)
                 return
             match = PROVIDER_PATH.fullmatch(path)
             if match:
@@ -527,8 +741,20 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     )
                 elif action == "park":
                     result = manager.park_match(match_id)
-                else:
+                elif action == "status":
                     result = manager.lan_match_status(match_id)
+                elif action == "discover-external-host":
+                    result = manager.discover_human_hosted_lan_match(
+                        match_id, host_address=str(body.get("host_address", "")),
+                    )
+                elif action == "join-external-host":
+                    result = manager.join_human_hosted_lan_match(
+                        match_id,
+                        host_address=str(body.get("host_address", "")),
+                        network_session_id=str(body.get("network_session_id", "")),
+                    )
+                else:
+                    result = manager.finalize_human_hosted_lan_match(match_id)
                 self.server.control.audit(
                     auth["admin_id"], f"match.{action}", "match", match_id,
                     "success", {"managed_lan": True}, self.client_address[0],
@@ -548,6 +774,16 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if self.server.worker_manager is None:
             raise WorkerManagerError("docker_manager_disabled")
         return self.server.worker_manager
+
+    def _operations(self) -> OperationsManager:
+        if self.server.operations is None:
+            raise StoreError("operations_manager_disabled")
+        return self.server.operations
+
+    def _harness_manager(self) -> HarnessManager:
+        if self.server.harness_manager is None:
+            raise StoreError("harness_manager_disabled")
+        return self.server.harness_manager
 
     @staticmethod
     def _redact_worker(worker: dict[str, Any]) -> dict[str, Any]:
@@ -604,7 +840,17 @@ def build_control(data_root: Path) -> ControlPlane:
     data_root.mkdir(parents=True, exist_ok=True)
     database = Path(os.environ.get("SMACX_DB_PATH", data_root / "smacx.sqlite3"))
     secret_root = Path(os.environ.get("SMACX_SECRET_ROOT", data_root / "secrets"))
-    return ControlPlane(SmacxStore(database), secret_root)
+    store = SmacxStore(database)
+    corpus = Path(os.environ.get(
+        "SMACX_REFERENCE_CORPUS",
+        Path(__file__).resolve().parents[1] / "knowledge" / "core.json",
+    ))
+    seed_reference_corpus(store, corpus)
+    control = ControlPlane(store, secret_root)
+    control.ensure_graphiti_setting(
+        default_enabled=os.environ.get("SMACX_GRAPHITI_DEFAULT_ENABLED", "0") == "1",
+    )
+    return control
 
 
 def parser() -> argparse.ArgumentParser:
@@ -617,6 +863,12 @@ def parser() -> argparse.ArgumentParser:
     serve.add_argument("--static-root", default=str(Path(__file__).resolve().parents[1] / "control_center/static"))
     commands.add_parser("bootstrap-token", help="print the one-time first-run token")
     commands.add_parser("status", help="print redacted service status")
+    backup = commands.add_parser("backup", help="create or verify an offline-safe backup")
+    backup.add_argument("action", choices=("create", "list", "verify"))
+    backup.add_argument("--backup-id")
+    restore = commands.add_parser("restore", help="restore control state while the server is stopped")
+    restore.add_argument("--backup-id", required=True)
+    restore.add_argument("--confirm-installation", required=True)
     return result
 
 
@@ -630,8 +882,43 @@ def main(argv: list[str] | None = None) -> int:
     if command == "status":
         print(json.dumps(control.status(), sort_keys=True))
         return 0
+    if command == "backup":
+        operations = OperationsManager(control, data_root=Path(arguments.data_root))
+        if arguments.action == "create":
+            result = operations.create_backup(include_secrets=True, include_workers=False)
+        elif arguments.action == "list":
+            result = {"ok": True, "backups": operations.list_backups()}
+        else:
+            if not arguments.backup_id:
+                raise SystemExit("--backup-id is required for verify")
+            result = operations.verify_backup(arguments.backup_id)
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if command == "restore":
+        lock_path = Path(arguments.data_root).expanduser().resolve() / ".control-server.lock"
+        lock_path.touch(mode=0o600, exist_ok=True)
+        with lock_path.open("r+") as lock:
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise SystemExit("control_server_must_be_stopped_for_restore") from exc
+            result = restore_backup_offline(
+                control, Path(arguments.data_root), arguments.backup_id,
+                confirm_installation_id=arguments.confirm_installation,
+            )
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    lock_path = Path(arguments.data_root).expanduser().resolve() / ".control-server.lock"
+    lock_path.touch(mode=0o600, exist_ok=True)
+    server_lock = lock_path.open("r+")
+    try:
+        fcntl.flock(server_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        server_lock.close()
+        raise SystemExit("control_server_already_running") from exc
     control.ensure_bootstrap_token()
     worker_manager = None
+    harness_manager = None
     if os.environ.get("SMACX_DOCKER_ENABLED", "0") == "1":
         worker_manager = WorkerManager(
             control,
@@ -643,6 +930,11 @@ def main(argv: list[str] | None = None) -> int:
             directx_redist_host_path=os.environ.get("SMACX_DIRECTX_REDIST_HOST") or None,
             view_publish_ip=os.environ.get("SMACX_VIEW_PUBLISH_IP", "127.0.0.1"),
         )
+        harness_manager = HarnessManager(
+            control, worker_manager.docker, worker_manager,
+            image_ref=os.environ.get("SMACX_HERMES_IMAGE") or None
+            or "docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843",
+        )
     host = getattr(arguments, "host", os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))
     port = getattr(arguments, "port", int(os.environ.get("SMACX_CONTROL_PORT", "8080")))
     static_root = getattr(
@@ -651,10 +943,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not 1 <= port <= 65535:
         raise SystemExit("invalid port")
+    operations = OperationsManager(
+        control, data_root=Path(arguments.data_root), worker_manager=worker_manager,
+        harness_manager=harness_manager,
+    )
+    operations.start(interval_seconds=float(os.environ.get("SMACX_SUPERVISOR_INTERVAL", "10")))
     server = ControlHTTPServer(
         (host, port), control, Path(static_root),
         secure_cookies=os.environ.get("SMACX_SECURE_COOKIES", "0") == "1",
-        worker_manager=worker_manager,
+        worker_manager=worker_manager, operations=operations,
+        harness_manager=harness_manager,
     )
     print(json.dumps({
         "event": "control_ready", "host": host, "port": server.server_port,
@@ -672,7 +970,9 @@ def main(argv: list[str] | None = None) -> int:
         while not stopping.is_set():
             server.handle_request()
     finally:
+        operations.stop()
         server.server_close()
+        server_lock.close()
         print(json.dumps({"event": "control_stopped"}, separators=(",", ":")), flush=True)
     return 0
 

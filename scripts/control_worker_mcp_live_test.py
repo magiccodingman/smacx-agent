@@ -13,13 +13,11 @@ import subprocess
 import tempfile
 import time
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.error import HTTPError
 import uuid
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
-
-from smacx_hermes import configure_from_descriptor, hermes_command
-
 
 def docker(*arguments: str, check: bool = True) -> str:
     completed = subprocess.run(
@@ -38,8 +36,15 @@ def api(opener, base_url: str, method: str, path: str, body: dict | None = None,
         headers["Content-Type"] = "application/json"
     if csrf:
         headers["X-CSRF-Token"] = csrf
-    with opener.open(Request(base_url + path, data=data, headers=headers, method=method), timeout=timeout) as response:
-        return json.load(response)
+    try:
+        with opener.open(Request(base_url + path, data=data, headers=headers, method=method), timeout=timeout) as response:
+            return json.load(response)
+    except HTTPError as exc:
+        try:
+            detail = json.load(exc)
+        except Exception:
+            detail = {"status": exc.code}
+        raise RuntimeError(f"api_{method}_{path}:{detail}") from exc
 
 
 async def inspect_mcp(url: str, expected_match: str) -> dict:
@@ -83,46 +88,52 @@ async def inspect_mcp(url: str, expected_match: str) -> dict:
     }
 
 
-def run_hermes_semantic_turn(descriptor: dict) -> dict:
-    with tempfile.TemporaryDirectory(prefix="smacx-hermes-live-") as temporary:
-        hermes_root = Path(temporary) / "hermes"
-        profile = configure_from_descriptor(descriptor, hermes_root=hermes_root)
-        prompt = (
-            "This is a bounded semantic integration test in a fresh tiny Citizen game. "
-            "Do not use the web. Call smac_status and smac_decision. Then execute exactly one "
-            "legal command returned by smac_decision that advances the current opening interaction. "
-            "Obtain one fresh semantic frame afterward and stop with a short report. Never use or "
-            "request screenshots, vision, mouse, keyboard, terminal, or desktop control."
-        )
-        command = hermes_command(
-            profile, query=prompt, max_turns=12, run_budget_seconds=180, toolsets="smacx",
-        )
-        environment = dict(os.environ)
-        environment["HERMES_HOME"] = str(hermes_root)
-        completed = subprocess.run(
-            command, capture_output=True, text=True, check=False, timeout=240,
-            env=environment,
-        )
-        profile_root = Path(profile["profile_root"])
-        session_text = "\n".join(
-            path.read_text(encoding="utf-8", errors="replace")
-            for path in profile_root.rglob("*")
-            if path.is_file() and path.stat().st_size <= 10 * 1024 * 1024
-        )
-        if completed.returncode:
-            raise AssertionError(
-                "Hermes semantic turn failed: " + (completed.stderr or completed.stdout)[-3000:]
-            )
-        if "smac_status" not in session_text or "smac_decision" not in session_text:
-            raise AssertionError("Hermes session did not record the required semantic observations")
-        if "smac_command" not in session_text:
-            raise AssertionError("Hermes session did not record a semantic game action")
-        return {
-            "profile_id": profile["profile_id"],
-            "model_id": profile["model_id"],
-            "reasoning_effort": profile["reasoning_effort"],
-            "output_tail": completed.stdout.strip()[-1000:],
-        }
+async def prepare_checkpoint(url: str) -> dict:
+    allowed_parameters = {"response", "option", "phase", "priority", "name", "tech_id"}
+    latest: dict = {}
+    for _ in range(30):
+        latest = await mcp_tool(url, "smac_decision", {"finish_ready_units": True})
+        if not latest.get("ok"):
+            raise AssertionError(f"decision failed before checkpoint: {latest}")
+        if latest.get("phase") == "turn":
+            return latest
+        if latest.get("phase") == "wait":
+            await mcp_tool(url, "smac_wait", {"seconds": 1})
+            continue
+        choice = next((item for item in latest.get("choices", []) if item.get("command") in {
+            "acknowledge_popup", "choose_research_priority", "advance_technology_presentation",
+            "set_first_base_name",
+        }), None)
+        if not choice:
+            raise AssertionError(f"unexpected interaction before checkpoint: {latest}")
+        arguments = {"command": choice["command"], **latest["required_next"]["guard"]}
+        arguments.update({key: choice[key] for key in allowed_parameters if key in choice})
+        if choice["command"] == "set_first_base_name":
+            arguments["name"] = str(choice.get("suggested_name") or "Alpha Prime")
+        result = await mcp_tool(url, "smac_command", arguments)
+        if not result.get("ok"):
+            raise AssertionError(f"opening interaction failed before checkpoint: {result}")
+    raise AssertionError(f"game never became checkpointable: {latest}")
+
+
+async def mcp_tool(url: str, name: str, arguments: dict | None = None) -> dict:
+    async with streamable_http_client(url) as streams:
+        async with ClientSession(streams[0], streams[1]) as session:
+            await session.initialize()
+            result = await session.call_tool(name, arguments or {})
+    structured = getattr(result, "structured_content", None)
+    if isinstance(structured, dict):
+        return structured
+    for item in getattr(result, "content", []):
+        value = getattr(item, "text", None)
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(decoded, dict):
+                return decoded
+    return {}
 
 
 def main() -> int:
@@ -218,8 +229,56 @@ def main() -> int:
         if endpoint.get("status") != "running" or not endpoint.get("url"):
             raise AssertionError(f"worker did not receive an MCP sidecar: {started}")
         mcp_result = asyncio.run(inspect_mcp(endpoint["url"], created["match"]["match_id"]))
+        asyncio.run(prepare_checkpoint(endpoint["url"]))
+        checkpoint = api(
+            opener, base_url, "POST",
+            f"/api/v1/matches/{created['match']['match_id']}/checkpoint",
+            {"slot": "control_recovery"}, csrf, 60,
+        )
+        checkpoint_turn = checkpoint["checkpoint"].get("turn")
         provider_url = os.environ.get("SMACX_TEST_PROVIDER_URL")
         provider_model = os.environ.get("SMACX_TEST_PROVIDER_MODEL")
+        live_backup_verified = False
+        if not (provider_url and provider_model):
+            backup = api(
+                opener, base_url, "POST", "/api/v1/backups",
+                {"include_secrets": True, "include_workers": True}, csrf, 1800,
+            )["backup"]
+            verified = api(
+                opener, base_url, "POST", f"/api/v1/backups/{backup['backup_id']}/verify",
+                {}, csrf, 120,
+            )
+            if verified.get("worker_count") != 1:
+                raise AssertionError(f"live worker backup was incomplete: {verified}")
+            live_backup_verified = True
+        docker("stop", "-t", "1", worker["container_name"])
+        recovery_deadline = time.monotonic() + 480
+        recovered_worker = None
+        while time.monotonic() < recovery_deadline:
+            workers_now = api(opener, base_url, "GET", "/api/v1/workers")["workers"]
+            current = next(item for item in workers_now if item["instance_id"] == worker["instance_id"])
+            matches_now = api(opener, base_url, "GET", "/api/v1/matches")["matches"]
+            current_match = next(
+                item for item in matches_now if item["match_id"] == created["match"]["match_id"]
+            )
+            if current["observed_status"] == "running" and current_match["status"] == "running" \
+                    and current_match.get("metadata", {}).get("last_recovered_slot") == "control_recovery":
+                recovered_worker = current
+                break
+            time.sleep(2)
+        if recovered_worker is None:
+            raise AssertionError("supervisor did not recover the crashed native worker")
+        recovered_endpoint = recovered_worker.get("network", {}).get("mcp_url")
+        if not recovered_endpoint:
+            raise AssertionError("recovered worker did not receive a fresh MCP sidecar")
+        recovered_mcp = asyncio.run(inspect_mcp(
+            recovered_endpoint, created["match"]["match_id"],
+        ))
+        recovered_turn = recovered_mcp.get("snapshot", {}).get("snapshot", {}).get("turn")
+        if checkpoint_turn is not None and recovered_turn != checkpoint_turn:
+            raise AssertionError(
+                f"supervisor recovered the wrong checkpoint turn: {checkpoint_turn} -> {recovered_turn}"
+            )
         if provider_url and provider_model:
             provider = api(opener, base_url, "POST", "/api/v1/providers", {
                 "display_name": "Hermes live provider", "base_url": provider_url,
@@ -239,11 +298,64 @@ def main() -> int:
                     "provider_id": provider["provider_id"], "reasoning_effort": "low",
                 }, csrf,
             )["descriptor"]
-            if descriptor["mcp_url"] != endpoint["url"]:
+            if descriptor["mcp_url"] != recovered_endpoint:
                 raise AssertionError("Control descriptor did not use the exact live MCP sidecar")
-            hermes_result = run_hermes_semantic_turn(descriptor)
-            after = asyncio.run(inspect_mcp(endpoint["url"], created["match"]["match_id"]))
-            before_revision = mcp_result["snapshot"].get("snapshot", {}).get("revision")
+            prompt = (
+                "This is a bounded semantic integration test in a fresh tiny Citizen game. "
+                "Do not use the web. Call smac_status and smac_decision. Then execute exactly one "
+                "legal command returned by smac_decision that advances the current opening interaction. "
+                "Obtain one fresh semantic frame afterward and stop with a short report. Never use or "
+                "request screenshots, vision, mouse, keyboard, terminal, or desktop control."
+            )
+            managed = api(opener, base_url, "POST", "/api/v1/harness-runs", {
+                "match_id": created["match"]["match_id"],
+                "agent_id": agent["agent_id"], "provider_id": provider["provider_id"],
+                "reasoning_effort": "low", "initial_prompt": prompt,
+                "run_budget_seconds": 180, "max_turns": 12, "restart_limit": 0,
+            }, csrf, 120)["run"]
+            managed_name = managed.get("container_name")
+            if not managed_name:
+                raise AssertionError("managed harness did not publish its container identity")
+            inspected = json.loads(docker("inspect", managed_name))[0]
+            inspect_text = json.dumps({
+                "Config": inspected.get("Config"), "HostConfig": inspected.get("HostConfig"),
+            })
+            if "/run/secrets" not in inspect_text \
+                    or "SMACX_PROVIDER_API_KEY=" in inspect_text:
+                raise AssertionError("managed secret mount/config contract regressed")
+            run_deadline = time.monotonic() + 300
+            final_run = managed
+            while time.monotonic() < run_deadline:
+                runs = api(opener, base_url, "GET", "/api/v1/harness-runs")["harness_runs"]
+                final_run = next(item for item in runs if item["run_id"] == managed["run_id"])
+                if final_run["status"] in {"completed", "error"}:
+                    break
+                time.sleep(2)
+            if final_run["status"] != "completed":
+                logs = docker("logs", "--tail", "200", managed_name, check=False)
+                raise AssertionError(f"managed Hermes run failed: {final_run}; {logs[-4000:]}")
+            session_backup = api(
+                opener, base_url, "POST", "/api/v1/backups",
+                {"include_secrets": True, "include_workers": True}, csrf, 1800,
+            )["backup"]
+            session_verified = api(
+                opener, base_url, "POST",
+                f"/api/v1/backups/{session_backup['backup_id']}/verify", {}, csrf, 120,
+            )
+            if session_verified.get("harness_count") != 1:
+                raise AssertionError(f"Hermes conversation backup was incomplete: {session_verified}")
+            if session_verified.get("worker_count") != 1:
+                raise AssertionError(f"live worker backup was incomplete: {session_verified}")
+            live_backup_verified = True
+            hermes_result = {
+                "profile_id": descriptor["external_profile_id"],
+                "model_id": descriptor["model_id"],
+                "reasoning_effort": descriptor["reasoning_effort"],
+                "managed_container": True,
+                "session_backup_verified": True,
+            }
+            after = asyncio.run(inspect_mcp(recovered_endpoint, created["match"]["match_id"]))
+            before_revision = recovered_mcp["snapshot"].get("snapshot", {}).get("revision")
             after_revision = after["snapshot"].get("snapshot", {}).get("revision")
             if not before_revision or before_revision == after_revision:
                 raise AssertionError(
@@ -263,6 +375,10 @@ def main() -> int:
                 "mcp_tool_count": mcp_result["tool_count"],
                 "mcp_bound_to_exact_match": True,
                 "managed_lifecycle_blocked": True,
+                "bridge_verified_checkpoint": True,
+                "live_worker_volume_backup_verified": live_backup_verified,
+                "native_crash_recovered_without_ui": True,
+                "recovered_checkpoint_turn": recovered_turn,
                 "sidecar_removed_on_park": True,
                 "hermes_semantic_turn": bool(hermes_result),
                 "hermes_low_reasoning": bool(
@@ -270,6 +386,12 @@ def main() -> int:
                 ),
                 "hermes_native_revision_advanced": bool(
                     hermes_result and hermes_result.get("native_revision_advanced")
+                ),
+                "hermes_managed_container": bool(
+                    hermes_result and hermes_result.get("managed_container")
+                ),
+                "hermes_session_backup_verified": bool(
+                    hermes_result and hermes_result.get("session_backup_verified")
                 ),
             },
         }, separators=(",", ":")))
@@ -299,6 +421,23 @@ def main() -> int:
                     docker("volume", "rm", str(volume_name), check=False)
         if runtime:
             docker("volume", "rm", str(runtime.get("storage_ref")), check=False)
+        if installation_id:
+            harness_containers = docker(
+                "ps", "-aq", "--filter", f"label=io.smacx.installation={installation_id}",
+                "--filter", "label=io.smacx.purpose=harness-run", check=False,
+            ).splitlines()
+            for container in harness_containers:
+                if container:
+                    docker("rm", "-f", container, check=False)
+            for purpose in ("harness-data", "harness-secret"):
+                volumes = docker(
+                    "volume", "ls", "-q",
+                    "--filter", f"label=io.smacx.installation={installation_id}",
+                    "--filter", f"label=io.smacx.purpose={purpose}", check=False,
+                ).splitlines()
+                for volume in volumes:
+                    if volume:
+                        docker("volume", "rm", volume, check=False)
         docker("volume", "rm", control_volume, check=False)
         docker("network", "rm", network, check=False)
     return 0

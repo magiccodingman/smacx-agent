@@ -55,6 +55,21 @@ distinct factions and process sessions, saved only from the actual native
 host, parked completely, reopened the stock **Load Multiplayer Game** lobby,
 rejoined, restored exact faction-to-seat bindings, and returned to gameplay.
 
+A separate three-process live regression has now exercised the AI-hosted mixed
+path with two managed agents and one independent native client. The external
+client joined by exact DirectPlay session identity, appeared under its assigned
+name and faction in chat, disconnected after a host-only native checkpoint,
+rejoined the stock loaded lobby, reclaimed the saved faction, and exchanged
+chat after resume. This was a production-equivalent local network test with no
+pixels or UI input; it is not a claim that a physical second computer has been
+certified yet.
+
+The inverse path is also live-tested: a named external human owns seat zero,
+the native lobby, Start, Save, and Load, while two managed agents discover the
+exact session, join, ready, exchange faction-attributed chat, park, reclaim
+their loaded factions, and continue. Control Center never sends the native
+Start command on this path.
+
 ### View-only spectators
 
 Per-worker noVNC is optional, password-protected, published to loopback by
@@ -66,84 +81,94 @@ Agents and MCP tools never receive spectator access.
 
 ### Named external human seats
 
-Mixed matches require an agent host but may assign remaining seats to exact
-human player names. Human seats receive no agent identity, perspective, worker,
-or MCP endpoint. The first Start stages the native lobby; the second Start
-validates exact names, participant count, readiness, and saved-faction
-reclamation before allowing the host to launch.
+Mixed matches support either an agent or an exact named human as native host.
+Human seats receive no agent identity, perspective, worker, or MCP endpoint.
+For an AI host, the first Start stages the lobby and the second validates exact
+names, participant count, readiness, and saved-faction reclamation. For a human
+host, managed clients discover/select one exact session, join and ready, then
+wait for the human's native Start.
 
-The manager refuses ordinary Docker bridge publication and requires an
-operator-created, non-internal macvlan/ipvlan network. Identity, readiness,
-faction, and network-driver guards are contained-tested. A physical second
-machine has not yet certified this path.
+The manager refuses an arbitrary Docker bridge. It requires either an
+operator-created non-internal macvlan/ipvlan network or the exact labeled,
+firewalled routed-player bridge. Identity, readiness,
+faction, and network-driver guards are contained-tested, and the entire native
+lifecycle is locally live-tested with an independent third process. A physical
+second machine has not yet certified this path.
 
-### Harness-neutral contracts with Hermes as reference
+### Managed Hermes harness
 
-Worker, MCP, identity, and memory contracts are not coupled to Hermes. The
-current host adapter creates one isolated Hermes profile per durable agent,
-uses the exact provider/model and MCP binding resolved by the Control Center,
-and defaults Qwen/Hermes reasoning to low. A custom in-project harness has not
-been built; Hermes remains the supported reference runtime.
+Worker, MCP, identity, and memory have explicit component boundaries inside the
+managed Hermes architecture. The host integration creates one isolated Hermes
+profile per durable agent, uses the exact provider/model and MCP binding
+resolved by the Control Center, and defaults Qwen/Hermes reasoning to low.
+Hermes is the supported permanent harness for this project. Control Center owns
+the official digest-pinned Hermes container, preserves its per-match
+conversation volume, stops/resumes it, and restarts bounded exits. Protocol
+separation keeps that integration secure and testable.
 
-## Optional Graphiti: implemented core, unfinished product integration
+## Optional Graphiti: delivered, isolated, and default-off
 
-The following Graphiti work is delivered:
+The optional Compose profile now provides a digest-pinned Neo4j service and a
+`graphiti-core` projector. It derives each namespace from the installation,
+match, agent, and perspective; advances deterministic event cursors only after
+successful projection; retries failures; and supports one exact-perspective
+rebuild through the authenticated Control Center. Graph/model/embedding
+credentials use Docker file secrets and neither service publishes a host port.
 
-- a direct `graphiti-core` adapter;
-- internally derived namespace
-  `smacx:{installation}:{match}:{agent}:{perspective}`;
-- immutable SQLite event projection with deterministic episode IDs;
-- advance-on-success cursors, retry after failure, bounded draining, and
-  scope-local rebuild;
-- untrusted-chat extraction instructions; and
-- adversarial contained tests preventing cross-perspective leakage.
+The real pinned Neo4j stack reached healthy state. A deliberate projection to
+unavailable model endpoints degraded only the projector while the authoritative
+SQLite event remained intact. The current Qwen endpoint does not implement
+`/embeddings`, so this installation correctly keeps Graphiti disabled. This is
+deployment and failure-isolation evidence, not evidence that graph recall
+improves play; SQLite FTS5/BM25 remains the production default.
 
-The following is **not** yet delivered:
+## Deployment paths implemented but awaiting external certification
 
-- a Neo4j/Graphiti service in the default Compose deployment;
-- Control Center configuration, health, enable/disable, and rebuild controls;
-- automatic projector scheduling for every active perspective;
-- secure secret injection for graph/model/embedding credentials;
-- a real end-to-end evaluation using the intended Qwen extraction model and a
-  compatible embedding model; and
-- evidence that Graphiti improves decisions enough to justify enabling it by
-  default.
+The project includes an encrypted Tailscale subnet router, persistent auth
+state, explicit-IP DirectPlay joining, and a firewall that admits only TCP
+47624 plus TCP/UDP 2300–2400 into a dedicated player network. A local live
+route test passed real TCP and UDP traffic across two isolated subnets.
 
-Until those items are complete, Graphiti is an optional manually operated
-projection. SQLite memory and BM25 recall are the production default.
+The Windows 11 path is WSL2 plus Linux Docker and the same Proton worker. Its
+preflight checks WSL2, x86-64, Docker/Compose, `/dev/net/tun`, legal game and
+DirectX paths, and an actual read-only Docker bind. The Linux reference host
+passed that preflight. No Windows host or physical second computer exists in
+the development environment, so neither physical two-machine LAN nor Windows
+11/WSL2 is labeled certified.
+
+## Profiles and capability accounting
+
+Five guarded random-map profiles—Citizen/Tiny, Citizen/Small,
+Librarian/Standard, Thinker/Large, and Transcend/Huge—passed a fresh
+two-process native DirectPlay configuration matrix with synchronized host and
+client state and no visual input. The MCP and authenticated Control Center API
+expose the reviewed capability ledger, including external-certification
+boundaries and exact fail-closed gaps.
 
 ## Not yet delivered
 
-- A curated, locally searchable Alien Crossfire rules/wiki corpus or RAG
-  service. The model may use an explicitly allowed web tool, but no bundled
-  copyrighted corpus is shipped.
 - First-class personality-card editing and behavioral evaluation. Durable
   agents have a `personality_ref`, and the Hermes system prompt preserves
   player autonomy, but the complete personality workflow remains future work.
-- Automated long-running scheduling, crash policy, backups, and unattended
-  agent supervision in the Control Center.
-- Managed secret injection for keyed remote model providers. The current
-  Hermes path intentionally rejects a keyed provider rather than exposing its
-  credential.
-- Physical two-machine human-LAN certification, remote virtual-LAN transport,
-  Internet matchmaking, and automated Windows Docker Desktop/WSL2 networking.
-- Menu/lobby automation for every game profile and scenario. Managed LAN
-  currently validates the `small_easy` profile and exact checkpoint resumes.
+- Physical two-machine human-LAN and Windows 11/WSL2 certification. The
+  implementation and runnable checklists exist, but those external environments
+  are required to produce honest evidence.
+- Typed single-player and multiplayer scenario selection/launch. The legal
+  Steam source contains scenario files, but the isolated native test import did
+  not include them and the bridge exposes no scenario-selector contract; it
+  never falls back to menu clicking.
 - Every rare scenario interaction or LAN synchronization path. See
   [Coverage and limits](coverage.md); missing mandatory interactions fail
   closed.
-- Training data, a LoRA, or gameplay-specific model fine-tuning.
 
-## Definition of the next complete platform milestone
+## Remaining release gates
 
-The next platform milestone should not be called complete until it includes:
+The implementation milestone is complete only up to the evidence boundary
+above. Release certification still requires a physical mixed game across two
+machines, the same matrix on Windows 11/WSL2, and supplied scenario content for
+typed scenario-launch development and tests. Rare consequential LAN mutations
+remain withheld until their two-client effects converge in native tests.
 
-1. one-command optional Graphiti/Neo4j deployment with per-perspective
-   scheduling, Control Center health, and real-backend evaluation;
-2. a legally sourced, reproducible rules knowledge layer with citations and
-   no copied proprietary corpus;
-3. personality-card creation, attachment, and behavioral regression scenarios;
-4. a physical mixed human/AI LAN game across two machines, including chat,
-   checkpoint, disconnect/rejoin, and continue; and
-5. operator backup/restore and crash-recovery documentation validated from a
-   clean installation.
+Personality-card semantics are intentionally outside this milestone. The
+opaque attachment seam remains reserved, but card format, editing, prompting,
+and behavioral evaluation will be designed separately.

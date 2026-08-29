@@ -166,6 +166,16 @@ class DockerClient:
             expected=(204, 304),
         )
 
+    def pause_container(self, identifier: str) -> None:
+        self._request(
+            "POST", f"/containers/{quote(identifier, safe='')}/pause", expected=(204,),
+        )
+
+    def unpause_container(self, identifier: str) -> None:
+        self._request(
+            "POST", f"/containers/{quote(identifier, safe='')}/unpause", expected=(204,),
+        )
+
     def remove_container(self, identifier: str, *, volumes: bool = False) -> None:
         query = urlencode({"v": "true" if volumes else "false", "force": "false"})
         self._request(

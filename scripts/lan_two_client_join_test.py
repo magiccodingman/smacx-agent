@@ -104,7 +104,9 @@ def launch_join_display() -> subprocess.Popen[bytes]:
 
 
 def launch_pair() -> subprocess.Popen[bytes]:
-    join_game = PROJECT / "runtime" / "game-lan-join"
+    join_game = Path(os.environ.get(
+        "SMACX_TEST_JOIN_GAME_PATH", PROJECT / "runtime" / "game-lan-join",
+    ))
     if not (join_game / "thinker.exe").is_file() \
             or not (join_game / "thinker.dll").is_file():
         raise AssertionError("runtime/game-lan-join is missing")
@@ -149,7 +151,9 @@ def launch_pair() -> subprocess.Popen[bytes]:
 
 
 def terminate_test_instances() -> None:
-    roots = {GAME.resolve(), (PROJECT / "runtime" / "game-lan-join").resolve()}
+    roots = {GAME.resolve(), Path(os.environ.get(
+        "SMACX_TEST_JOIN_GAME_PATH", PROJECT / "runtime" / "game-lan-join",
+    )).resolve()}
     pids: list[int] = []
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
@@ -1489,34 +1493,50 @@ def main() -> int:
             lambda lobby: lobby.get("participant_count") == 2
             and lobby.get("role") == "host",
         )
-        host_identity = host_lobby["identity"]
-        configured = request(
-            HOST_PORT,
-            "semantic_lan",
-            action="configure",
-            profile="small_easy",
-            match_id=host_identity["match_id"],
-            session_id=host_identity["session_id"],
-            expected_lobby_revision=host_lobby["lobby"]["revision"],
-            client_operation_id=f"configure-{uuid.uuid4().hex}",
-        )
-        if not configured.get("ok") or configured.get("profile") != "small_easy":
-            raise AssertionError(f"semantic host configuration failed: {configured}")
-        host_lobby = wait_lobby_predicate(
-            HOST_PORT,
-            lambda lobby: lobby.get("settings", {}).get("profile") == "small_easy",
-        )
-        join_lobby = wait_lobby_predicate(
-            JOIN_PORT,
-            lambda lobby: lobby.get("settings", {}).get("profile") == "small_easy",
-        )
-        for label, lobby_state in (("host", host_lobby), ("join", join_lobby)):
-            settings = lobby_state["lobby"]["settings"]
-            if settings.get("difficulty") != {"id": 0, "name": "citizen"} \
-                    or settings.get("map_size") != {"id": 1, "name": "small"}:
-                raise AssertionError(
-                    f"{label} did not receive exact small_easy settings: {lobby_state}"
-                )
+        profile_matrix = [
+            ("tiny_citizen", {"id": 0, "name": "citizen"}, {"id": 0, "name": "tiny"}),
+            ("standard_librarian", {"id": 3, "name": "librarian"}, {"id": 2, "name": "standard"}),
+            ("large_thinker", {"id": 4, "name": "thinker"}, {"id": 3, "name": "large"}),
+            ("huge_transcend", {"id": 5, "name": "transcend"}, {"id": 4, "name": "huge"}),
+            ("small_easy", {"id": 0, "name": "citizen"}, {"id": 1, "name": "small"}),
+        ]
+        for profile_id, expected_difficulty, expected_size in profile_matrix:
+            host_identity = host_lobby["identity"]
+            configured = request(
+                HOST_PORT,
+                "semantic_lan",
+                action="configure",
+                profile=profile_id,
+                match_id=host_identity["match_id"],
+                session_id=host_identity["session_id"],
+                expected_lobby_revision=host_lobby["lobby"]["revision"],
+                client_operation_id=f"configure-{uuid.uuid4().hex}",
+            )
+            if not configured.get("ok") or configured.get("profile") != profile_id:
+                raise AssertionError(f"semantic host configuration failed: {configured}")
+            host_lobby = wait_lobby_predicate(
+                HOST_PORT,
+                lambda lobby, expected=profile_id: lobby.get("settings", {}).get("profile") == expected,
+            )
+            join_lobby = wait_lobby_predicate(
+                JOIN_PORT,
+                lambda lobby, expected=profile_id: lobby.get("settings", {}).get("profile") == expected,
+            )
+            for label, lobby_state in (("host", host_lobby), ("join", join_lobby)):
+                settings = lobby_state["lobby"]["settings"]
+                if settings.get("difficulty") != expected_difficulty \
+                        or settings.get("map_size") != expected_size:
+                    raise AssertionError(
+                        f"{label} did not receive exact {profile_id} settings: {lobby_state}"
+                    )
+        if os.environ.get("SMACX_TEST_PROFILE_MATRIX_ONLY") == "1":
+            print(json.dumps({
+                "event": "pass",
+                "native_directplay_profile_matrix": [item[0] for item in profile_matrix],
+                "host_and_client_synchronized": True,
+                "pixels_or_ui_input_used": False,
+            }, separators=(",", ":")))
+            return 0
         join_identity = join_lobby["identity"]
         ready_result = request(
             JOIN_PORT,
@@ -2882,6 +2902,10 @@ def main() -> int:
             "joined_exact_session": True,
             "both_reached_stock_lobby": True,
             "small_easy_profile_synchronized": True,
+            "guarded_profile_matrix_synchronized": [
+                "tiny_citizen", "standard_librarian", "large_thinker",
+                "huge_transcend", "small_easy",
+            ],
             "client_readied_semantically": True,
             "host_started_semantically": True,
             "both_entered_native_match": True,

@@ -36,8 +36,8 @@ actually observed.
   temporal graph.
 - **It can share a real LAN game.** Isolated AI seats can host, join, chat,
   negotiate, save, park, reload, reclaim their exact factions, and continue.
-  Named human seats are staged through the native lobby and validated before
-  the AI host may start.
+  A named human may join an AI-owned lobby or own seat zero and host the lobby;
+  managed agents discover, join, ready, and resume without taking over Start.
 - **The operator stays in control.** An authenticated Control Center owns
   game/runtime registration, model selection, worker lifecycle, match seats,
   and optional password-protected view-only spectators. Agents never receive
@@ -65,7 +65,7 @@ authenticated operator
         |                                                    |
         | creates one isolated seat                          +--> optional Graphiti projection
         v
-  Hermes or another harness <---- private MCP sidecar
+  managed Hermes container <---- private MCP sidecar
         |                              |
         | typed decisions              | authenticated semantic bridge
         v                              v
@@ -87,15 +87,19 @@ know.
 | Native diplomacy, Council, production, units, bases, research, and endgame | Broadly implemented; exact remaining gaps are fail-closed |
 | Durable chat and political/strategic memory | Implemented and contained-tested |
 | Authenticated Control Center and isolated Docker workers | Implemented and live-tested on Linux |
-| OpenAI-compatible provider discovery and Hermes adapter | Implemented; unkeyed local-provider path tested with Qwen/Hermes |
+| OpenAI-compatible providers and managed Hermes runtime | Implemented; digest-pinned official Hermes image, resumable sessions, low-reasoning Qwen path, and purpose-volume key injection tested |
 | Agent-only managed DirectPlay LAN | Implemented and live-tested with two real workers |
 | Multiplayer save, park, stock reload, faction restoration, and continue | Implemented and live-tested |
-| Named external human LAN seats | Implemented and contract-tested; physical two-machine certification remains |
+| AI-hosted and human-hosted mixed LAN | Implemented and live-tested with an independent third native process; physical two-machine certification remains |
 | View-only noVNC spectators | Implemented and live-tested |
-| Optional Graphiti projector | Core adapter/isolation/replay implemented; deployment automation and real backend evaluation remain |
-| Curated Alien Crossfire wiki/RAG corpus | Not yet delivered |
-| Windows/WSL2 and Internet-LAN deployment | Not yet certified |
-| Every obscure scenario, menu profile, and LAN mutation | Not claimed; unsupported states stop and report a capability gap |
+| Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore plus verified worker and Hermes-conversation archives tested |
+| Optional Graphiti projector | One-command isolated Neo4j/Graphiti profile implemented and backend-live-tested; disabled until compatible chat and embedding endpoints are configured |
+| Focused Alien Crossfire rules/search corpus | Implemented; 19 independently written, provenance-tracked primers with compact BM25-then-get retrieval; not a complete manual/wiki |
+| Internet/virtual-LAN transport | Encrypted, firewalled Tailscale route implemented and packet-live-tested locally; an actual remote second machine still requires certification |
+| Windows/WSL2 deployment | Preflight and routed Docker design implemented; physical Windows 11/WSL2 certification remains external |
+| Random-map LAN profiles | Five guarded Citizen/Tiny through Transcend/Huge profiles passed a real two-process DirectPlay matrix |
+| Human-hosted custom rules | Native settings synchronize to agents; world levels are named, while timer/rule masks are preserved but not yet semantically decoded |
+| Scenarios and every obscure LAN mutation | Not claimed; scenario launch and exact listed mutations remain fail-closed |
 
 See [Project status](docs/project-status.md) for the exact boundary between
 delivered, validated, optional/manual, and planned work. See
@@ -116,6 +120,9 @@ The current regression suite has demonstrated:
   a second entry into gameplay;
 - a real password-protected noVNC endpoint whose server is forced into
   view-only mode and whose secret is absent from container configuration; and
+- an intentional native worker crash recovered at the exact bridge-verified
+  turn, plus a cryptographically verified live backup of SQLite, secrets, and
+  the worker volume while the supervisor remained online; and
 - adversarial scope, stale-revision, ownership, hidden-information, chat,
   memory, Graphiti cursor, authentication, CSRF, Docker-ownership, and cleanup
   tests.
@@ -131,8 +138,9 @@ Requirements:
 - a legal Alien Crossfire game directory;
 - a local Proton distribution;
 - the February 2010 DirectX redistributable for native DirectPlay; and
-- an OpenAI-compatible model endpoint. Hermes is the current reference
-  harness, but game/memory contracts are harness-neutral.
+- an OpenAI-compatible model endpoint. Hermes is the supported agent harness;
+  the game and memory protocols remain independently testable security
+  boundaries rather than a plan to replace Hermes.
 
 Start the persistent operator service:
 
@@ -173,9 +181,14 @@ game reaches an unsupported mandatory interaction, the model calls
 `smac_report_capability_gap`; the session then rejects further mutation until a
 typed handler is developed and a fresh native session is started.
 
+`smac_capabilities` returns the same reviewed boundary as structured data. An
+agent can query only `launch_modes`, `lan_profiles`, `known_fail_closed_gaps`,
+or another compact section instead of assuming that an absent tool can be
+reached through the UI.
+
 Read [Safe semantic play loop](docs/agent-loop.md) and [Tool
-reference](docs/tools.md) before authoring another harness adapter or agent
-prompt.
+reference](docs/tools.md) before changing the managed Hermes integration or
+its agent prompt.
 
 ## Legacy single-instance development flow
 
@@ -205,13 +218,17 @@ Hermes dashboard.
 - [Control-plane ADR](docs/adr/0002-control-plane-and-runtime-boundary.md) —
   container, secret, and harness boundaries.
 - [Optional Graphiti projection](docs/graphiti.md) — implemented adapter,
-  configuration, isolation, and current integration status.
+  deployment, configuration, isolation, and current integration status.
 - [Coverage and limits](docs/coverage.md) — exact gameplay coverage and gaps.
 - [Testing](docs/testing.md) — contained, native, Docker, Hermes, and LAN
   validation commands.
+- [Rules reference](docs/reference-knowledge.md) — legal corpus boundary,
+  hierarchy, provenance, and compact agent retrieval protocol.
 - [Troubleshooting](docs/troubleshooting.md) — fail-closed recovery guidance.
-- [Platform roadmap](docs/platform-roadmap.md) — remaining deployment and
-  product milestones.
+- [Windows/WSL2](docs/windows-wsl2.md) and [encrypted remote LAN](docs/virtual-lan.md)
+  — deployment paths and their honest certification boundaries.
+- [Platform roadmap](docs/platform-roadmap.md) — completed milestones and
+  remaining external/gameplay certification work.
 
 ## Repository layout
 
@@ -220,9 +237,11 @@ Hermes dashboard.
 - `control_center/` — authenticated operator service and web UI.
 - `src/smacx_store.py` — authoritative SQLite identities, events, and memory.
 - `src/smacx_worker_manager.py` — contained worker and LAN lifecycle.
+- `src/smacx_operations.py` — durable schedules, supervision, backups, and
+  verified-checkpoint recovery.
 - `src/smacx_mcp.py` — semantic MCP surface.
 - `src/smacx_graphiti.py` — optional temporal-graph projector.
-- `src/smacx_hermes.py` — current reference harness adapter.
+- `src/smacx_hermes.py` — managed Hermes harness integration.
 - `scripts/` — builds, deployment helpers, and regressions.
 - `docs/` — architecture, protocols, status, operations, and evidence.
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -429,6 +430,45 @@ CREATE TRIGGER search_documents_au AFTER UPDATE ON search_documents BEGIN
     VALUES (new.rowid, new.title, new.body, new.tags);
 END;
 
+CREATE TABLE reference_documents (
+    document_id TEXT PRIMARY KEY,
+    topic TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    body TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '',
+    source_url TEXT,
+    source_title TEXT,
+    source_license TEXT NOT NULL,
+    provenance TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    updated_unix REAL NOT NULL
+);
+CREATE INDEX reference_documents_topic ON reference_documents(topic, title);
+CREATE VIRTUAL TABLE reference_fts USING fts5(
+    title,
+    summary,
+    body,
+    tags,
+    content='reference_documents',
+    content_rowid='rowid',
+    tokenize='porter unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER reference_documents_ai AFTER INSERT ON reference_documents BEGIN
+    INSERT INTO reference_fts(rowid, title, summary, body, tags)
+    VALUES (new.rowid, new.title, new.summary, new.body, new.tags);
+END;
+CREATE TRIGGER reference_documents_ad AFTER DELETE ON reference_documents BEGIN
+    INSERT INTO reference_fts(reference_fts, rowid, title, summary, body, tags)
+    VALUES ('delete', old.rowid, old.title, old.summary, old.body, old.tags);
+END;
+CREATE TRIGGER reference_documents_au AFTER UPDATE ON reference_documents BEGIN
+    INSERT INTO reference_fts(reference_fts, rowid, title, summary, body, tags)
+    VALUES ('delete', old.rowid, old.title, old.summary, old.body, old.tags);
+    INSERT INTO reference_fts(rowid, title, summary, body, tags)
+    VALUES (new.rowid, new.title, new.summary, new.body, new.tags);
+END;
+
 CREATE TABLE projection_cursors (
     projector TEXT NOT NULL,
     namespace TEXT NOT NULL,
@@ -638,8 +678,15 @@ CREATE TABLE harness_runs (
     instance_id TEXT NOT NULL REFERENCES instances(instance_id),
     native_session_id TEXT REFERENCES sessions(session_id),
     external_session_id TEXT,
-    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'stopped', 'completed', 'error')),
+    container_name TEXT,
+    desired_status TEXT NOT NULL DEFAULT 'running' CHECK (desired_status IN ('running', 'stopped')),
+    status TEXT NOT NULL CHECK (status IN ('queued', 'starting', 'running', 'restarting', 'stopped', 'completed', 'error')),
     initial_prompt TEXT NOT NULL DEFAULT '',
+    continuation_prompt TEXT NOT NULL DEFAULT '',
+    restart_policy_json TEXT NOT NULL DEFAULT '{}',
+    restart_count INTEGER NOT NULL DEFAULT 0,
+    last_heartbeat_unix REAL,
+    exit_code INTEGER,
     last_error TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     created_unix REAL NOT NULL,
@@ -651,7 +698,126 @@ CREATE INDEX harness_runs_scope_time
     ON harness_runs(match_id, agent_id, perspective_id, created_unix DESC);
 CREATE UNIQUE INDEX harness_one_live_run_per_perspective
     ON harness_runs(match_id, agent_id, perspective_id)
-    WHERE status IN ('queued', 'running');
+    WHERE status IN ('queued', 'starting', 'running', 'restarting');
+
+CREATE TABLE harness_runtime_specs (
+    harness_profile_id TEXT PRIMARY KEY REFERENCES harness_profiles(harness_profile_id),
+    image_ref TEXT NOT NULL,
+    data_volume TEXT NOT NULL UNIQUE,
+    secret_volume TEXT NOT NULL UNIQUE,
+    container_name TEXT NOT NULL UNIQUE,
+    observed_status TEXT NOT NULL,
+    last_error TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE graphiti_runtime_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+    status TEXT NOT NULL CHECK (status IN ('stopped','starting','ready','degraded','disabled')),
+    backend TEXT NOT NULL DEFAULT 'neo4j',
+    projected_events INTEGER NOT NULL DEFAULT 0,
+    failed_events INTEGER NOT NULL DEFAULT 0,
+    active_scopes INTEGER NOT NULL DEFAULT 0,
+    last_heartbeat_unix REAL,
+    last_projection_unix REAL,
+    last_error TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE graphiti_rebuild_requests (
+    rebuild_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id),
+    perspective_id TEXT NOT NULL REFERENCES perspectives(perspective_id),
+    status TEXT NOT NULL CHECK (status IN ('queued','running','completed','failed')),
+    requested_by_admin_id TEXT REFERENCES control_admins(admin_id),
+    result_json TEXT NOT NULL DEFAULT '{}',
+    last_error TEXT,
+    created_unix REAL NOT NULL,
+    started_unix REAL,
+    completed_unix REAL
+);
+CREATE INDEX graphiti_rebuild_queue
+    ON graphiti_rebuild_requests(status, created_unix);
+
+CREATE TABLE operation_schedules (
+    schedule_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    operation_kind TEXT NOT NULL CHECK (
+        operation_kind IN ('backup', 'checkpoint', 'match_start', 'match_resume')
+    ),
+    target_kind TEXT NOT NULL CHECK (target_kind IN ('installation', 'match')),
+    target_id TEXT,
+    interval_seconds INTEGER NOT NULL CHECK (interval_seconds BETWEEN 60 AND 2592000),
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'disabled')),
+    next_run_unix REAL NOT NULL,
+    last_run_unix REAL,
+    last_outcome TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+CREATE INDEX operation_schedules_due
+    ON operation_schedules(status, next_run_unix);
+
+CREATE TABLE operation_runs (
+    operation_run_id TEXT PRIMARY KEY,
+    schedule_id TEXT REFERENCES operation_schedules(schedule_id),
+    operation_kind TEXT NOT NULL,
+    target_kind TEXT NOT NULL,
+    target_id TEXT,
+    status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'skipped')),
+    result_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    started_unix REAL NOT NULL,
+    finished_unix REAL
+);
+CREATE INDEX operation_runs_time
+    ON operation_runs(started_unix DESC);
+CREATE TRIGGER operation_runs_no_update_after_finish BEFORE UPDATE ON operation_runs
+WHEN OLD.finished_unix IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'finished operation run is immutable');
+END;
+CREATE TRIGGER operation_runs_no_delete BEFORE DELETE ON operation_runs
+BEGIN
+    SELECT RAISE(ABORT, 'operation run is immutable');
+END;
+
+CREATE TABLE backup_sets (
+    backup_id TEXT PRIMARY KEY,
+    installation_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('creating', 'complete', 'invalid', 'restored')),
+    relative_path TEXT NOT NULL UNIQUE,
+    manifest_sha256 TEXT,
+    database_sha256 TEXT,
+    includes_secrets INTEGER NOT NULL CHECK (includes_secrets IN (0, 1)),
+    worker_count INTEGER NOT NULL DEFAULT 0,
+    size_bytes INTEGER,
+    last_error TEXT,
+    created_unix REAL NOT NULL,
+    completed_unix REAL,
+    restored_unix REAL
+);
+
+CREATE TABLE supervision_incidents (
+    incident_id TEXT PRIMARY KEY,
+    match_id TEXT REFERENCES matches(match_id),
+    instance_id TEXT REFERENCES instances(instance_id),
+    incident_kind TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('open', 'recovered', 'operator_required', 'closed')),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    first_seen_unix REAL NOT NULL,
+    last_seen_unix REAL NOT NULL,
+    recovered_unix REAL
+);
+CREATE INDEX supervision_incidents_open
+    ON supervision_incidents(status, last_seen_unix DESC);
 """
 
 INITIAL_SCHEMA = "\n".join((
@@ -2282,6 +2448,93 @@ class SmacxStore:
             "token_budget": total_token_budget,
             "truncated": truncated,
         }
+
+    def upsert_reference_document(
+        self, document_id: str, *, topic: str, title: str, summary: str, body: str,
+        tags: Sequence[str] = (), source_url: str | None = None,
+        source_title: str | None = None, source_license: str,
+        provenance: str,
+    ) -> dict[str, Any]:
+        """Store one globally readable rules reference with explicit provenance."""
+        document_id = _require_key(document_id, "reference_document_id")
+        topic = _require_key(topic, "reference_topic")
+        title = _bounded_text(title, "reference_title", 240)
+        summary = _bounded_text(summary, "reference_summary", 1200)
+        body = _bounded_text(body, "reference_body", 65_536)
+        source_license = _bounded_text(source_license, "reference_license", 160)
+        provenance = _bounded_text(provenance, "reference_provenance", 500)
+        if source_url is not None and (
+                len(source_url) > 4096 or not source_url.startswith(("https://", "http://"))):
+            raise InvalidRecord("invalid_reference_source_url")
+        if source_title is not None:
+            source_title = _bounded_text(source_title, "reference_source_title", 300)
+        normalized_tags = sorted({
+            _require_key(str(value), "reference_tag") for value in tags
+        })
+        content_sha256 = hashlib.sha256(
+            json.dumps({
+                "topic": topic, "title": title, "summary": summary, "body": body,
+                "tags": normalized_tags, "source_url": source_url,
+                "source_title": source_title, "source_license": source_license,
+                "provenance": provenance,
+            }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        now = time.time()
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO reference_documents(document_id, topic, title, summary, body, tags, "
+                "source_url, source_title, source_license, provenance, content_sha256, updated_unix) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(document_id) DO UPDATE SET "
+                "topic=excluded.topic, title=excluded.title, summary=excluded.summary, "
+                "body=excluded.body, tags=excluded.tags, source_url=excluded.source_url, "
+                "source_title=excluded.source_title, source_license=excluded.source_license, "
+                "provenance=excluded.provenance, content_sha256=excluded.content_sha256, "
+                "updated_unix=excluded.updated_unix",
+                (document_id, topic, title, summary, body, " ".join(normalized_tags),
+                 source_url, source_title, source_license, provenance, content_sha256, now),
+            )
+        return self.get_reference_document(document_id)
+
+    def get_reference_document(self, document_id: str) -> dict[str, Any]:
+        document_id = _require_key(document_id, "reference_document_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM reference_documents WHERE document_id=?", (document_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_reference_document")
+        return dict(row)
+
+    def list_reference_topics(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            return [dict(row) for row in connection.execute(
+                "SELECT topic, count(*) AS document_count FROM reference_documents "
+                "GROUP BY topic ORDER BY topic"
+            ).fetchall()]
+
+    def search_reference(self, query: str, *, topic: str | None = None,
+                         limit: int = 8, include_body: bool = False) -> list[dict[str, Any]]:
+        terms = re.findall(r"[\w'-]+", query, flags=re.UNICODE)
+        if not terms:
+            raise InvalidRecord("empty_reference_query")
+        fts_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms[:16])
+        clauses = ["reference_fts MATCH ?"]
+        parameters: list[Any] = [fts_query]
+        if topic:
+            clauses.append("d.topic=?")
+            parameters.append(_require_key(topic, "reference_topic"))
+        parameters.append(min(max(int(limit), 1), 30))
+        body_column = "d.body," if include_body else ""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT d.document_id, d.topic, d.title, d.summary, " + body_column
+                + " d.tags, d.source_url, d.source_title, d.source_license, d.provenance, "
+                "d.content_sha256, bm25(reference_fts, 5.0, 3.0, 1.0, 2.0) AS rank "
+                "FROM reference_fts JOIN reference_documents d ON d.rowid=reference_fts.rowid "
+                "WHERE " + " AND ".join(clauses) + " ORDER BY rank, d.title LIMIT ?",
+                parameters,
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_projection_records(
         self,

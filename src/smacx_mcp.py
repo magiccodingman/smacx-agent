@@ -14,6 +14,7 @@ import uuid
 
 from mcp.server import MCPServer
 
+from smacx_capabilities import capability_manifest
 from smacx_controller import (
     BridgeUnavailable,
     bridge_request,
@@ -23,6 +24,7 @@ from smacx_controller import (
     load_saved_game,
     new_game,
     put_match_knowledge,
+    read_game_reference,
     read_platform_memory,
     read_match_knowledge,
     semantic_chat as controller_semantic_chat,
@@ -169,6 +171,21 @@ def smac_status() -> dict:
     return result
 
 
+@mcp.tool(
+    description=(
+        "Read the reviewed platform capability and certification ledger. This is static product coverage, "
+        "not the current turn's legal actions. Query a section to keep context compact."
+    )
+)
+def smac_capabilities(
+    section: Literal[
+        "all", "policy", "launch_modes", "lan_profiles", "semantic_surface",
+        "known_fail_closed_gaps", "deployment", "evidence",
+    ] = "all",
+) -> dict:
+    return capability_manifest(section)
+
+
 @mcp.tool(description="Launch the isolated Alien Crossfire spectator window and connect its semantic bridge. This does not click a menu.")
 def smac_launch(
     wait_seconds: int = 30,
@@ -297,8 +314,8 @@ def smac_chat(
         "before becoming ready; this lobby template choice is distinct from the runtime "
         "faction_id/player slot. Fresh games assign it during native Start; managed resume "
         "supplies it automatically. "
-        "Before clients ready, the host may apply the guarded small_easy "
-        "profile (Citizen difficulty, Small random map) with configure; its native setup packet is "
+        "Before clients ready, the host may apply one exact guarded profile returned by legal_actions "
+        "with configure; profiles span Citizen/Tiny through Transcend/Huge and their native setup packet is "
         "synchronized to every peer. A joining client then uses set_ready; once every client is ready, only "
         "the host may use start. Copy match_id, session_id, and expected_lobby_revision from the "
         "latest status and give each mutation a unique client_operation_id. These call the game's "
@@ -986,6 +1003,28 @@ def smac_memory(
         unread_only=unread_only,
         acknowledge=acknowledge,
         limit=limit,
+    )
+
+
+@mcp.tool(
+    description=(
+        "Search or read the provenance-tracked Alien Crossfire mechanics reference. "
+        "topics lists the hierarchy; search returns compact BM25-ranked titles/summaries and "
+        "citations; get returns one complete document by its returned document_id. The corpus "
+        "contains general rules only, never hidden match state, and excludes copied proprietary prose."
+    )
+)
+def smac_reference(
+    action: Literal["topics", "search", "get"],
+    query: str = "",
+    topic: str = "",
+    document_id: str = "",
+    limit: int = 8,
+    include_body: bool = False,
+) -> dict:
+    return read_game_reference(
+        action, query=query, topic=topic, document_id=document_id,
+        limit=limit, include_body=include_body,
     )
 
 

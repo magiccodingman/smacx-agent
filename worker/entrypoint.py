@@ -409,8 +409,14 @@ def main() -> int:
         "bridge_proxy_port": proxy_port,
     }
     (worker_root / "worker.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    game_command = runtime_command(environment, str(game / "thinker.exe"), "-windowed")
+    startup_save = os.environ.get("SMACX_AGENT_STARTUP_SAVE")
+    if startup_save is not None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", startup_save):
+            raise RuntimeError("invalid_startup_save")
+        game_command.append(f"saves\\agent\\{match_id}\\{startup_save}.sav")
     game_process = start(
-        runtime_command(environment, str(game / "thinker.exe"), "-windowed"),
+        game_command,
         environment,
         cwd=game,
         stdin=subprocess.DEVNULL,

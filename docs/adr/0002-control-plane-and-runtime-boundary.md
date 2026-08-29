@@ -52,10 +52,10 @@ at private tmpfs, and the complete patched runtime is then checksummed and
 mounted read-only. This avoids both cross-seat lock contention and mutation of
 the shared runtime.
 
-Hermes is the first harness adapter. An agent maps to a dedicated Hermes
+Hermes is the supported permanent harness. An agent maps to a dedicated Hermes
 profile and match perspective, while the semantic bridge, MCP contract, and
-SQLite memory remain harness-neutral. Replacing Hermes later does not require a
-new game DLL or a memory migration.
+SQLite memory retain explicit boundaries so they can be secured and tested
+independently. Hermes remains the runtime on that boundary.
 
 Each running game worker receives a dedicated MCP sidecar on the same private
 network. The sidecar mounts only that worker's bridge secret/state and the
@@ -81,7 +81,8 @@ Operators start one service and manage later matches without Compose teardown.
 No agent receives Docker, spectator, provider-secret, or bootstrap credentials.
 The web process becomes high authority only when worker orchestration is
 enabled, so its request validation, audit trail, and resource-label checks are
-part of the security boundary. Hermes remains useful but replaceable.
+part of the security boundary. Hermes is the supported permanent harness; the
+boundary exists for isolation and testability.
 
 Direct Docker-socket access means compromise of the authenticated Control
 Center is equivalent to host compromise. Running as UID 10001, dropping Linux

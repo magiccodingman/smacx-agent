@@ -13,8 +13,9 @@ from smacx_worker_manager import WorkerManager, WorkerManagerError
 
 
 class FakeDocker:
-    def __init__(self, driver: str = "macvlan") -> None:
+    def __init__(self, driver: str = "macvlan", labels: dict | None = None) -> None:
         self.driver = driver
+        self.labels = labels or {}
 
     def inspect_network(self, name: str) -> dict:
         return {
@@ -22,6 +23,7 @@ class FakeDocker:
             "Driver": self.driver,
             "Internal": False,
             "Scope": "local",
+            "Labels": self.labels,
         }
 
 
@@ -178,21 +180,28 @@ def main() -> int:
         try:
             rejected._external_lan_network()
         except WorkerManagerError as exc:
-            if str(exc) != "external_lan_requires_non_internal_macvlan_or_ipvlan":
+            if str(exc) != "external_lan_requires_player_lan_transport":
                 raise
         else:
             raise AssertionError("private bridge network was published as an external LAN")
 
+        routed = ContractManager(control, FakeDocker("bridge", {
+            "io.smacx.player-lan": "true",
+            "io.smacx.transport": "tailscale-routed",
+        }))
+        if routed._external_lan_network()["transport"] != "tailscale-routed":
+            raise AssertionError("labeled routed player LAN was rejected")
+
         print(json.dumps({
             "event": "pass",
             "payload": {
-                "agent_host_required": True,
+                "agent_hosted_external_client_path": True,
                 "human_has_no_agent_perspective": True,
                 "exact_player_names": True,
                 "unexpected_player_rejected": True,
                 "readiness_guarded": True,
                 "saved_faction_guarded": True,
-                "macvlan_or_ipvlan_required": True,
+                "physical_or_firewalled_routed_player_lan_required": True,
                 "pixels_or_ui_input_used": False,
             },
         }, separators=(",", ":")))

@@ -65,6 +65,18 @@
         </article>
       </div>
 
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">Evidence boundary</p>
+            <h2>Capability ledger</h2>
+            <p id="capability-summary">Loading reviewed platform coverage…</p>
+          </div>
+          <span class="pill healthy">Fail closed</span>
+        </div>
+        <p id="capability-detail"></p>
+      </section>
+
       <section class="panel provider-panel">
         <div>
           <p class="kicker">Inference</p>
@@ -78,6 +90,30 @@
           <button type="submit">Save and discover</button>
         </form>
         <div id="providers" class="providers"></div>
+      </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">Optional temporal memory</p>
+            <h2>Graphiti projection</h2>
+            <p>Graphiti enriches long-running recall but never replaces the scoped SQLite ledger. It requires separate compatible chat and embedding endpoints; a failure cannot stop play.</p>
+          </div>
+          <span id="graphiti-state" class="pill">Checking projector</span>
+        </div>
+        <div class="form-grid">
+          <form id="graphiti-form">
+            <h3>Projection policy</h3>
+            <label class="check"><input name="enabled" id="graphiti-enabled" type="checkbox"> Project new scoped events</label>
+            <button type="submit">Save projection policy</button>
+          </form>
+          <form id="graphiti-rebuild-form">
+            <h3>Rebuild one exact perspective</h3>
+            <label>Perspective <select name="scope" id="graphiti-scope" required></select></label>
+            <button type="submit">Queue isolated rebuild</button>
+          </form>
+        </div>
+        <div id="graphiti-detail" class="record-list"></div>
       </section>
 
       <section class="panel operations-panel">
@@ -163,21 +199,36 @@
           <div>
             <p class="kicker">Managed multiplayer</p>
             <h2>Create a managed LAN match</h2>
-            <p>Agent seats receive isolated workers and MCP sidecars. Optional human seats join the AI-hosted native lobby from the trusted LAN using their assigned names.</p>
+            <p>Agent seats receive isolated workers and MCP sidecars. Either an agent can own the native lobby, or a human can host while every managed agent discovers, joins, and readies semantically.</p>
           </div>
         </div>
         <form id="lan-form" class="lan-form">
           <label>Match name <input name="display_name" placeholder="Planetary summit" required></label>
           <label>Native session name <input name="session_name" value="SMACX Managed LAN" maxlength="31" required></label>
+          <label>Native lobby host
+            <select name="host_controller_kind">
+              <option value="agent">First selected agent</option>
+              <option value="human">External human player</option>
+            </select>
+          </label>
+          <label>Human host player name
+            <input name="human_host_name" maxlength="31" placeholder="Required only for a human-hosted lobby">
+          </label>
           <label>Agents <select name="agent_ids" id="lan-agents" multiple size="4" required></select></label>
-          <label>External human player names
-            <textarea name="human_player_names" rows="3" placeholder="One exact in-game name per line (optional)"></textarea>
+          <label>Additional external human player names
+            <textarea name="human_player_names" rows="3" placeholder="One exact client name per line (optional)"></textarea>
           </label>
           <label>Game source <select name="game_source_id" id="lan-source" required></select></label>
           <label>Runtime <select name="runtime_id" id="lan-runtime" required></select></label>
-          <label>Lobby profile <select name="profile"><option value="small_easy">Citizen · Small random map</option></select></label>
+          <label>Lobby profile <select name="profile">
+            <option value="tiny_citizen">Citizen · Tiny random map</option>
+            <option value="small_easy" selected>Citizen · Small random map</option>
+            <option value="standard_librarian">Librarian · Standard random map</option>
+            <option value="large_thinker">Thinker · Large random map</option>
+            <option value="huge_transcend">Transcend · Huge random map</option>
+          </select></label>
           <label class="check"><input name="view_enabled" type="checkbox"> Enable view-only spectators for agent seats</label>
-          <label class="check"><input name="start_now" type="checkbox" checked> Start now (mixed games open the lobby and wait for humans)</label>
+          <label class="check"><input name="start_now" type="checkbox" checked> Prepare now (agent hosts open a lobby; human hosts start managed clients)</label>
           <button type="submit">Create managed LAN</button>
         </form>
         <div id="matches" class="record-list"></div>
@@ -198,9 +249,43 @@
       <section class="panel operations-panel">
         <div class="section-heading">
           <div>
+            <p class="kicker">Durability</p>
+            <h2>Supervision, checkpoints, and backups</h2>
+            <p>The supervisor repairs MCP sidecars automatically and resumes native games only from a bridge-verified checkpoint. Backups include a consistent SQLite snapshot, secrets, and crash-consistent worker volumes.</p>
+          </div>
+          <span id="supervisor-state" class="pill">Checking supervisor</span>
+        </div>
+        <div class="form-grid">
+          <form id="backup-form">
+            <h3>Create a recovery set</h3>
+            <label class="check"><input name="include_secrets" type="checkbox" checked> Include encrypted-provider and worker secrets</label>
+            <label class="check"><input name="include_workers" type="checkbox" checked> Include every managed worker volume</label>
+            <button type="submit">Create and verify backup</button>
+          </form>
+          <form id="schedule-form">
+            <h3>Schedule recurring work</h3>
+            <label>Name <input name="display_name" value="Nightly platform backup" required></label>
+            <label>Operation
+              <select name="operation_kind">
+                <option value="backup">Platform backup</option>
+                <option value="checkpoint">Match checkpoint</option>
+              </select>
+            </label>
+            <label>Match <select name="target_id" id="schedule-match"><option value="">Whole installation</option></select></label>
+            <label>Interval (minutes) <input name="interval_minutes" type="number" min="1" max="43200" value="1440" required></label>
+            <button type="submit">Create schedule</button>
+          </form>
+        </div>
+        <div id="backups" class="record-list"></div>
+        <div id="schedules" class="record-list"></div>
+      </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
             <p class="kicker">Agent runtime</p>
-            <h2>Bind Hermes to a running match</h2>
-            <p>Validate the exact game worker and private MCP sidecar, then create the isolated host profile with the generated command.</p>
+            <h2>Run a managed Hermes player</h2>
+            <p>Start one isolated, resumable harness container for the selected agent seat. Its provider key is mounted through a private secret volume and never returned to the browser.</p>
           </div>
         </div>
         <form id="harness-form" class="harness-form">
@@ -210,14 +295,15 @@
           <label>Reasoning
             <select name="reasoning_effort"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
           </label>
-          <button type="submit">Prepare Hermes binding</button>
+          <button type="submit">Start managed player</button>
         </form>
         <div id="harness-result" class="command-result hidden">
-          <p>The binding is healthy. Run this from the repository root; it securely prompts for the Control Center password, creates or updates the isolated profile, and starts that agent's durable match conversation:</p>
+          <p>The managed run has started. It continues the same match-scoped Hermes conversation after a clean budget rollover or recoverable process exit:</p>
           <code id="harness-command"></code>
           <p id="harness-detail"></p>
         </div>
         <div id="harness-profiles" class="record-list"></div>
+        <div id="harness-runs" class="record-list"></div>
       </section>
     </section>
   </main>

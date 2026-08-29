@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sqlite3
 import ssl
 import tempfile
 import threading
@@ -25,7 +26,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 import uuid
 
-from smacx_store import InvalidRecord, ScopeViolation, SmacxStore, StoreError
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 
 
 CONTROL_ID = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -270,6 +271,62 @@ class ControlPlane:
                 "updated_unix=excluded.updated_unix",
                 (key, json.dumps(value, sort_keys=True, separators=(",", ":")), time.time()),
             )
+
+    def ensure_graphiti_setting(self, *, default_enabled: bool = False) -> dict[str, Any]:
+        current = self._setting("graphiti.enabled")
+        if current is None:
+            self._set_setting("graphiti.enabled", bool(default_enabled))
+        return self.graphiti_status()
+
+    def set_graphiti_enabled(self, enabled: bool) -> dict[str, Any]:
+        if not isinstance(enabled, bool):
+            raise InvalidRecord("invalid_graphiti_enabled")
+        self._set_setting("graphiti.enabled", enabled)
+        return self.graphiti_status()
+
+    def graphiti_status(self) -> dict[str, Any]:
+        enabled = self._setting("graphiti.enabled") is True
+        with self.store.transaction() as connection:
+            state = connection.execute(
+                "SELECT * FROM graphiti_runtime_state WHERE singleton=1"
+            ).fetchone()
+            queued = int(connection.execute(
+                "SELECT count(*) FROM graphiti_rebuild_requests "
+                "WHERE status IN ('queued','running')"
+            ).fetchone()[0])
+            scopes = [dict(row) for row in connection.execute(
+                "SELECT p.match_id, m.display_name AS match_name, p.agent_id, "
+                "a.display_name AS agent_name, p.perspective_id, p.status "
+                "FROM perspectives p JOIN matches m ON m.match_id=p.match_id "
+                "JOIN agents a ON a.agent_id=p.agent_id "
+                "ORDER BY m.created_unix DESC, a.display_name"
+            ).fetchall()]
+        runtime = dict(state) if state else {
+            "status": "stopped", "backend": "neo4j", "projected_events": 0,
+            "failed_events": 0, "active_scopes": 0, "last_heartbeat_unix": None,
+            "last_projection_unix": None, "last_error": None, "metadata_json": "{}",
+        }
+        runtime["metadata"] = json.loads(runtime.pop("metadata_json"))
+        return {"ok": True, "enabled": enabled, "runtime": runtime,
+                "queued_rebuilds": queued, "scopes": scopes,
+                "sqlite_authoritative": True}
+
+    def request_graphiti_rebuild(self, match_id: str, agent_id: str,
+                                 perspective_id: str, *,
+                                 admin_id: str | None = None) -> dict[str, Any]:
+        scope = MemoryScope(match_id, agent_id, perspective_id)
+        self.store.require_scope(scope)
+        identifier = _new_id("rebuild")
+        now = time.time()
+        with self.store.transaction() as connection:
+            connection.execute(
+                "INSERT INTO graphiti_rebuild_requests(rebuild_id, match_id, agent_id, "
+                "perspective_id, status, requested_by_admin_id, created_unix) "
+                "VALUES (?, ?, ?, ?, 'queued', ?, ?)",
+                (identifier, match_id, agent_id, perspective_id, admin_id, now),
+            )
+        return {"rebuild_id": identifier, "match_id": match_id, "agent_id": agent_id,
+                "perspective_id": perspective_id, "status": "queued", "created_unix": now}
 
     def admin_exists(self) -> bool:
         with self.store.transaction() as connection:
@@ -875,6 +932,20 @@ class ControlPlane:
             )
         return self.get_worker_spec(instance_id)
 
+    def update_worker_autostart(self, instance_id: str,
+                                autostart: Mapping[str, Any]) -> dict[str, Any]:
+        """Replace the validated worker launch policy before its next start."""
+        _require_id(instance_id, "instance_id")
+        encoded = _json(autostart)
+        with self.store.transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE worker_specs SET autostart_json=?, updated_unix=? WHERE instance_id=?",
+                (encoded, time.time(), instance_id),
+            )
+            if cursor.rowcount != 1:
+                raise ScopeViolation("unknown_worker_instance")
+        return self.get_worker_spec(instance_id)
+
     def status(self) -> dict[str, Any]:
         with self.store.transaction() as connection:
             counts = {
@@ -882,6 +953,7 @@ class ControlPlane:
                 for table in (
                     "agents", "matches", "instances", "model_providers", "game_sources",
                     "runtime_assets", "harness_profiles", "harness_runs",
+                    "operation_schedules", "backup_sets", "supervision_incidents",
                 )
             }
         return {
@@ -934,29 +1006,40 @@ class ControlPlane:
 
     def create_lan_match(self, display_name: str, agent_ids: list[str], *,
                          human_player_names: list[str] | None = None,
+                         host_controller_kind: str = "agent",
+                         human_host_name: str | None = None,
                          match_id: str | None = None,
                          ruleset_id: str = "smacx-small-easy",
                          metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
         display_name = _bounded(display_name, "match_name", 160)
         human_player_names = list(human_player_names or [])
+        if host_controller_kind not in {"agent", "human"}:
+            raise InvalidRecord("invalid_lan_host_controller_kind")
         if not isinstance(agent_ids, list) or not 1 <= len(agent_ids) <= 7:
             raise InvalidRecord("lan_requires_one_to_seven_agents")
+        all_human_names = list(human_player_names)
+        if host_controller_kind == "human":
+            if not isinstance(human_host_name, str):
+                raise InvalidRecord("human_lan_host_name_required")
+            all_human_names.insert(0, human_host_name)
+        elif human_host_name is not None:
+            raise InvalidRecord("agent_lan_host_cannot_have_human_host_name")
         if not all(isinstance(name, str) and 1 <= len(name) <= 31
                    and all(32 <= ord(character) <= 126 for character in name)
-                   for name in human_player_names):
+                   for name in all_human_names):
             raise InvalidRecord("invalid_lan_human_player_name")
-        if not 2 <= len(agent_ids) + len(human_player_names) <= 7:
+        if not 2 <= len(agent_ids) + len(all_human_names) <= 7:
             raise InvalidRecord("lan_requires_two_to_seven_total_seats")
         if len(set(agent_ids)) != len(agent_ids):
             raise InvalidRecord("duplicate_lan_agent")
-        if len(set(human_player_names)) != len(human_player_names):
+        if len(set(all_human_names)) != len(all_human_names):
             raise InvalidRecord("duplicate_lan_human_player_name")
-        reserved_names = {"Semantic Host"}
-        reserved_names.update(
-            f"Semantic Agent {seat_index + 1}"
-            for seat_index in range(1, len(agent_ids))
-        )
-        if reserved_names.intersection(human_player_names):
+        first_agent_seat = 0 if host_controller_kind == "agent" else 1
+        reserved_names = {
+            "Semantic Host" if seat_index == 0 else f"Semantic Agent {seat_index + 1}"
+            for seat_index in range(first_agent_seat, first_agent_seat + len(agent_ids))
+        }
+        if reserved_names.intersection(all_human_names):
             raise InvalidRecord("reserved_lan_human_player_name")
         for agent_id in agent_ids:
             _require_id(agent_id, "agent_id")
@@ -970,13 +1053,30 @@ class ControlPlane:
             }
         if active != set(agent_ids):
             raise ScopeViolation("unknown_active_lan_agent")
+        match_metadata = dict(metadata or {})
+        match_metadata["host_controller_kind"] = host_controller_kind
         match = self.store.create_match(
             match_id=match_id, display_name=display_name, mode="lan",
-            ruleset_id=ruleset_id, metadata=metadata,
+            ruleset_id=ruleset_id, metadata=match_metadata,
         )
         seats: list[dict[str, Any]] = []
         try:
-            for seat_index, agent_id in enumerate(agent_ids):
+            if host_controller_kind == "human":
+                now = time.time()
+                with self.store.transaction() as connection:
+                    connection.execute(
+                        "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
+                        "status, metadata_json, created_unix, updated_unix) "
+                        "VALUES (?, ?, 0, 'human', 'assigned', ?, ?, ?)",
+                        (_new_id("seat"), match["match_id"], _json({
+                            "role": "host",
+                            "external_player_name": human_host_name,
+                            "network_join_pending": False,
+                        }), now, now),
+                    )
+                seats.append(self.get_seat(match["match_id"], 0))
+            for offset, agent_id in enumerate(agent_ids):
+                seat_index = first_agent_seat + offset
                 perspective = self.store.create_perspective(
                     match["match_id"], agent_id, controller_kind="agent",
                     metadata={"seat_index": seat_index, "native_faction_pending": True},
@@ -993,7 +1093,7 @@ class ControlPlane:
                     )
                 seats.append(self.get_seat(match["match_id"], seat_index))
             for offset, player_name in enumerate(human_player_names):
-                seat_index = len(agent_ids) + offset
+                seat_index = first_agent_seat + len(agent_ids) + offset
                 now = time.time()
                 with self.store.transaction() as connection:
                     connection.execute(
@@ -1241,8 +1341,6 @@ class ControlPlane:
         if network.get("mcp_status") != "running" or not isinstance(mcp_url, str):
             raise ScopeViolation("managed_mcp_not_running")
         provider = self.get_provider(provider_id)
-        if provider["has_api_key"]:
-            raise ScopeViolation("keyed_provider_requires_managed_harness_secret_injection")
         model_id = provider.get("default_model_id")
         model = next(
             (item for item in provider["models"] if item["model_id"] == model_id), None,
@@ -1284,6 +1382,178 @@ class ControlPlane:
             "context_length": context_length,
             "reasoning_effort": reasoning_effort,
         }
+
+    def provider_api_key(self, provider_id: str) -> str | None:
+        """Internal runtime-only credential access; never expose through HTTP."""
+        _require_id(provider_id, "provider_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT api_key_secret_id FROM model_providers WHERE provider_id=? ",
+                (provider_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_provider_id")
+        secret_id = row["api_key_secret_id"]
+        if not secret_id:
+            return None
+        return self.vault.read(
+            str(secret_id), purpose=f"provider.{provider_id}.api_key",
+        )
+
+    def put_harness_runtime_spec(self, harness_profile_id: str, *, image_ref: str,
+                                 data_volume: str, secret_volume: str,
+                                 container_name: str,
+                                 metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        _require_id(harness_profile_id, "harness_profile_id")
+        for value, field, maximum in (
+            (image_ref, "harness_image_ref", 512),
+            (data_volume, "harness_data_volume", 255),
+            (secret_volume, "harness_secret_volume", 255),
+            (container_name, "harness_container_name", 255),
+        ):
+            _bounded(value, field, maximum)
+        now = time.time()
+        with self.store.transaction() as connection:
+            if not connection.execute(
+                "SELECT 1 FROM harness_profiles WHERE harness_profile_id=?",
+                (harness_profile_id,),
+            ).fetchone():
+                raise ScopeViolation("unknown_harness_profile")
+            connection.execute(
+                "INSERT INTO harness_runtime_specs(harness_profile_id, image_ref, data_volume, "
+                "secret_volume, container_name, observed_status, metadata_json, created_unix, updated_unix) "
+                "VALUES (?, ?, ?, ?, ?, 'provisioned', ?, ?, ?) "
+                "ON CONFLICT(harness_profile_id) DO UPDATE SET image_ref=excluded.image_ref, "
+                "data_volume=excluded.data_volume, secret_volume=excluded.secret_volume, "
+                "container_name=excluded.container_name, metadata_json=excluded.metadata_json, "
+                "updated_unix=excluded.updated_unix",
+                (harness_profile_id, image_ref, data_volume, secret_volume, container_name,
+                 _json(metadata), now, now),
+            )
+        return self.get_harness_runtime_spec(harness_profile_id)
+
+    def get_harness_runtime_spec(self, harness_profile_id: str) -> dict[str, Any]:
+        _require_id(harness_profile_id, "harness_profile_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM harness_runtime_specs WHERE harness_profile_id=?",
+                (harness_profile_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_harness_runtime")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
+    def create_harness_run(self, harness_profile_id: str, *, match_id: str,
+                           initial_prompt: str,
+                           continuation_prompt: str,
+                           restart_policy: Mapping[str, Any],
+                           run_id: str | None = None) -> dict[str, Any]:
+        for value, field in ((harness_profile_id, "harness_profile_id"),
+                             (match_id, "match_id")):
+            _require_id(value, field)
+        if not isinstance(initial_prompt, str) or not 1 <= len(initial_prompt) <= 65_536:
+            raise InvalidRecord("invalid_harness_initial_prompt")
+        if not isinstance(continuation_prompt, str) or not 1 <= len(continuation_prompt) <= 16_384:
+            raise InvalidRecord("invalid_harness_continuation_prompt")
+        profile = self.get_harness_profile(harness_profile_id)
+        metadata = profile.get("metadata", {})
+        if metadata.get("active_match_id") != match_id:
+            raise ScopeViolation("harness_profile_match_mismatch")
+        identifier = run_id or _new_id("run")
+        _require_id(identifier, "run_id")
+        now = time.time()
+        with self.store.transaction() as connection:
+            seat = connection.execute(
+                "SELECT agent_id, perspective_id, instance_id FROM seat_assignments "
+                "WHERE match_id=? AND agent_id=? AND controller_kind='agent'",
+                (match_id, profile["agent_id"]),
+            ).fetchone()
+            if not seat or not seat["instance_id"]:
+                raise ScopeViolation("harness_run_seat_unavailable")
+            native = connection.execute(
+                "SELECT session_id FROM sessions WHERE instance_id=? AND status='running' "
+                "ORDER BY started_unix DESC LIMIT 1", (seat["instance_id"],),
+            ).fetchone()
+            try:
+                connection.execute(
+                    "INSERT INTO harness_runs(run_id, harness_profile_id, match_id, agent_id, "
+                    "perspective_id, instance_id, native_session_id, status, initial_prompt, "
+                    "continuation_prompt, restart_policy_json, metadata_json, created_unix, updated_unix) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, '{}', ?, ?)",
+                    (identifier, harness_profile_id, match_id, seat["agent_id"],
+                     seat["perspective_id"], seat["instance_id"],
+                     native["session_id"] if native else None, initial_prompt, continuation_prompt,
+                     _json(restart_policy), now, now),
+                )
+            except sqlite3.IntegrityError as exc:
+                if "harness_runs.match_id" in str(exc):
+                    raise ScopeViolation("harness_run_already_active_for_seat") from exc
+                raise
+        return self.get_harness_run(identifier)
+
+    def update_harness_run(self, run_id: str, *, status: str | None = None,
+                           desired_status: str | None = None,
+                           container_name: str | None = None,
+                           external_session_id: str | None = None,
+                           last_error: str | None = None,
+                           exit_code: int | None = None,
+                           increment_restart: bool = False,
+                           heartbeat: bool = False) -> dict[str, Any]:
+        _require_id(run_id, "run_id")
+        if status is not None and status not in {
+                "queued", "starting", "running", "restarting", "stopped", "completed", "error"}:
+            raise InvalidRecord("invalid_harness_run_status")
+        if desired_status is not None and desired_status not in {"running", "stopped"}:
+            raise InvalidRecord("invalid_harness_desired_status")
+        now = time.time()
+        fields = ["updated_unix=?"]
+        values: list[Any] = [now]
+        for name, value in (("status", status), ("desired_status", desired_status),
+                            ("container_name", container_name),
+                            ("external_session_id", external_session_id),
+                            ("last_error", last_error), ("exit_code", exit_code)):
+            if value is not None:
+                fields.append(f"{name}=?")
+                values.append(value)
+        if heartbeat:
+            fields.append("last_heartbeat_unix=?")
+            values.append(now)
+        if increment_restart:
+            fields.append("restart_count=restart_count+1")
+        if status == "running":
+            fields.append("started_unix=COALESCE(started_unix, ?)")
+            values.append(now)
+        if status in {"stopped", "completed", "error"}:
+            fields.append("stopped_unix=?")
+            values.append(now)
+        values.append(run_id)
+        with self.store.transaction() as connection:
+            cursor = connection.execute(
+                f"UPDATE harness_runs SET {', '.join(fields)} WHERE run_id=?", values,
+            )
+            if cursor.rowcount != 1:
+                raise ScopeViolation("unknown_harness_run")
+        return self.get_harness_run(run_id)
+
+    def get_harness_run(self, run_id: str) -> dict[str, Any]:
+        _require_id(run_id, "run_id")
+        with self.store.transaction() as connection:
+            row = connection.execute("SELECT * FROM harness_runs WHERE run_id=?", (run_id,)).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_harness_run")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        result["restart_policy"] = json.loads(result.pop("restart_policy_json"))
+        return result
+
+    def list_harness_runs(self) -> list[dict[str, Any]]:
+        with self.store.transaction() as connection:
+            identifiers = [str(row[0]) for row in connection.execute(
+                "SELECT run_id FROM harness_runs ORDER BY created_unix DESC"
+            )]
+        return [self.get_harness_run(identifier) for identifier in identifiers]
 
     def get_harness_profile(self, harness_profile_id: str) -> dict[str, Any]:
         _require_id(harness_profile_id, "harness_profile_id")

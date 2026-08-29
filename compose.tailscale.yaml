@@ -1,0 +1,42 @@
+# Optional encrypted routed transport for the Linux player-LAN network.
+# Include with compose.yaml and compose.lan.yaml. The router publishes no host
+# ports; operators approve its exact subnet route in their Tailscale policy.
+services:
+  tailscale-router:
+    build:
+      context: .
+      dockerfile: transport/Dockerfile
+    image: smacx-agent-tailscale:dev
+    hostname: ${SMACX_TAILSCALE_HOSTNAME:-smacx-player-lan}
+    restart: unless-stopped
+    environment:
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_AUTH_ONCE: "true"
+      TS_HOSTNAME: ${SMACX_TAILSCALE_HOSTNAME:-smacx-player-lan}
+      TS_ROUTES: ${SMACX_PLAYER_LAN_SUBNET:?set SMACX_PLAYER_LAN_SUBNET}
+      TS_EXTRA_ARGS: --accept-routes
+      TS_ENABLE_HEALTH_CHECK: "true"
+      TS_LOCAL_ADDR_PORT: 127.0.0.1:9002
+      SMACX_PLAYER_LAN_SUBNET: ${SMACX_PLAYER_LAN_SUBNET:?set SMACX_PLAYER_LAN_SUBNET}
+    volumes:
+      - smacx-tailscale-state:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - default
+      - player-lan
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "tailscale", "--socket=/var/run/tailscale/tailscaled.sock", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  smacx-tailscale-state:

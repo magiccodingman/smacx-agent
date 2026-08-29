@@ -4,7 +4,7 @@
 Authenticated Control Center -- owns match/seat/worker/harness lifecycle
              |
              v
-Qwen 3.8 27B / isolated Hermes profile (one durable agent identity)
+Qwen 3.8 27B / managed isolated Hermes container (one durable agent identity)
              |
              | exact MCP Streamable HTTP endpoint
              v
@@ -19,12 +19,24 @@ Thinker-derived 32-bit bridge DLL
 Visible/view-only SMACX process under an isolated Proton prefix
 ```
 
-The model should use MCP rather than connect to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Keeping the bridge protocol independent makes it possible to add a different harness later without changing the DLL.
+The Control Center also owns a durable operations plane. SQLite schedules are
+claimed transactionally; immutable run records retain outcomes. Reconciliation
+may repair an MCP sidecar in place, but native recovery requires a previously
+recorded bridge-verified save. Backups use SQLite's online backup API and
+briefly pause each game or running harness container while a no-network helper
+archives its persistent volume under the source volume's private UID. Backup
+and reconciliation share an exclusive operations lock so an intentional
+consistency freeze cannot be classified as failure. Hermes provider keys are
+mounted from a separate read-only purpose volume and are never included in the
+inspect-visible process configuration.
+
+The model uses MCP rather than connecting to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Hermes remains the permanent supported harness; the independent bridge protocol keeps that integration secure and testable without coupling the DLL to the harness process.
 
 For managed LAN, every agent seat has a separate game/MCP pair but shares one
-durable `match_id`. Seat zero hosts the real DirectPlay session and joining
-workers use the host container's exact private IPv4 address plus the freshly
-enumerated network-session GUID. The Control Center reads each worker's bridge
+durable `match_id`. In an agent-hosted match, seat zero hosts the real
+DirectPlay session. In a human-hosted match, seat zero deliberately has no
+worker or MCP and the managed clients discover the human game's explicitly
+supplied IPv4 address plus a freshly enumerated network-session GUID. The Control Center reads each worker's bridge
 token directly from its purpose-scoped vault entry and may invoke only named
 native semantic operations; it never exposes those tokens or a generic bridge
 proxy through HTTP. Each process keeps a unique `session_id` and perspective,
@@ -36,8 +48,9 @@ or MCP endpoint. They are durable lobby assignments keyed by an operator-chosen
 native player name and, after first start, the observed faction. A mixed match
 uses an explicitly configured macvlan/ipvlan network so every worker has a real
 LAN address. The manager stages the lobby, then validates exact names,
-readiness, participant count, and saved-faction reclamation before it permits
-the semantic host Start action.
+readiness, participant count, and saved-faction reclamation. It invokes Start
+only for an agent host; for a human host it readies every managed client and
+observes the human's native Start.
 
 Native actions that must cross the Windows event loop are tracked as small transactions. The bridge assigns an `action_id`, records the intended objects, and publishes pending/completed/rejected status plus the native result and observed match-local tile IDs. The MCP waits for completion within a bound, preventing a model from confusing “message queued” with “game action applied.” Native map coordinates remain internal to the DLL.
 

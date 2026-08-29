@@ -12,12 +12,16 @@ match will not require taking this service down. Its current foundation owns:
 - isolated worker provisioning, health checks, parking, and resume;
 - optional password-protected view-only spectators for each worker;
 - one private MCP sidecar per running game worker;
-- exact Hermes agent/match profile descriptors and host profile setup.
+- exact Hermes agent/match profile descriptors and host profile setup; and
+- durable recurring schedules, worker/MCP supervision, native recovery
+  checkpoints, and verified platform backups.
 
-Managed LAN supports two to seven total seats. Seat zero is always an agent
-host; remaining seats may be isolated agents or explicitly named human
-players. Agent-only games stay on the private Docker network. Mixed games are
-accepted only on an operator-created non-internal macvlan/ipvlan network.
+Managed LAN supports two to seven total seats and at least one agent. Seat zero
+may be an agent or an explicitly named human host; every other seat may be an
+isolated agent or named human player. Agent-only games stay on the private
+Docker network. Mixed games are accepted only on an operator-created
+non-internal macvlan/ipvlan network or the exact labeled, firewalled
+routed-player bridge used by the Tailscale deployment.
 
 ## Start once
 
@@ -59,6 +63,63 @@ The data volume, private runtime, match ID, perspective, and memory remain.
 the intended always-on flow: the Control Center remains up while games come and
 go.
 
+## Long-running operations and recovery
+
+The **Durability** panel is part of the always-on Control Center. It can create
+recurring installation backups or per-match native checkpoints without taking
+the service down. Schedule claims and finished results are durable; a finished
+operation record is immutable, and concurrent service processes cannot claim
+the same due run twice.
+
+**Recovery checkpoint** requests the ordinary guarded `save_game` action from
+the native bridge. It is available only while the managed agent is the real
+native host and saving is currently legal. The resulting slot, turn, year, and
+host instance are recorded only after the engine confirms success. If that
+worker later disappears, the supervisor parks the broken process set and
+resumes the recorded slot into a fresh native process session and MCP sidecar.
+It never starts a new game and calls it recovery. A missing/unverified save, or
+a human-owned native host, becomes an explicit operator-required incident.
+
+An unhealthy or missing MCP sidecar is recreated without restarting its healthy
+game worker. Native startup has a short reconciliation grace period, and live
+volume backup holds the same operations lock as crash reconciliation; this
+prevents the supervisor from mistaking an intentional startup/backup transition
+for a crash.
+
+A recovery set contains:
+
+- a SQLite online-backup snapshot with an integrity check;
+- every active mode-0600 secret when selected;
+- one SHA-256-identified archive per managed worker volume when selected;
+- one SHA-256-identified archive per provisioned Hermes conversation volume;
+  and
+- a hash-bound manifest tied to the installation ID.
+
+Running workers and harnesses are paused at Docker's process boundary only
+while their volume is archived, then unpaused in a guaranteed cleanup path.
+Backup helpers have no network, mount the source read-only, run as that source
+volume's private UID, and are deleted after use. Verification checks the
+manifest, database, installation identity, and every worker/conversation
+archive before the set is accepted.
+
+Restore is deliberately offline and requires the exact installation ID. Stop
+Control Center, then run:
+
+```bash
+docker compose stop control-center
+docker compose run --rm control-center smacx-control backup list
+docker compose run --rm control-center smacx-control backup verify --backup-id BACKUP_ID
+docker compose run --rm control-center smacx-control restore \
+  --backup-id BACKUP_ID --confirm-installation INSTALLATION_ID
+docker compose up -d control-center
+```
+
+Restore first creates an emergency rollback set. It restores the authoritative
+database and vault; worker and harness-volume restore is intentionally a
+separate operator action because overwriting a volume is destructive and
+requires every referenced process to be parked. The backup itself already
+contains and verifies those archives.
+
 Enable **view-only spectator** while provisioning a solo or LAN worker when a
 human should watch that seat. **Watch** asks the authenticated Control Center
 for the password, copies it to the operator clipboard when the browser permits,
@@ -72,14 +133,21 @@ ports; use HTTPS before doing this on any network you do not fully trust.
 Starting a managed game worker also starts a dedicated MCP sidecar on the same
 private Docker network. The sidecar receives only that seat's bridge secret,
 worker state, perspective, and authoritative SQLite scope. Its HTTP port is
-published on a random loopback-only host port. It exposes all 18 semantic
+published on a random loopback-only host port. It exposes all 20 semantic
 gameplay/memory tools, but mechanically refuses agent requests to launch, load,
 stop, or create games.
 
-In **Bind Hermes to a running match**, select the running match, model
-provider, and reasoning level. The Control Center checks that both the real
-game worker and exact MCP sidecar are healthy before returning a secret-free
-descriptor. Run its generated command from the repository root:
+In **Run a managed Hermes player**, select the running match, exact agent seat,
+model provider, and reasoning level. The Control Center checks that both the
+real game worker and exact MCP sidecar are healthy, provisions the agent's
+private Hermes data and provider-secret volumes, and starts the digest-pinned
+official Hermes container. The browser receives the run identity and status,
+never a provider credential. Stop and Resume retain the same profile and
+`--continue <match-id>` conversation; the supervisor can restart bounded
+process exits until the operator-specified limit.
+
+The older host-profile adapter remains available for an unkeyed local provider
+or for development. Run its command from the repository root:
 
 ```bash
 ./scripts/smacx-hermes configure-from-control \
@@ -103,23 +171,34 @@ has been configured; no restart of the dashboard or the legacy MCP service is
 required. Parking the match removes its sidecar, so the agent receives a clear
 connection failure rather than accidentally attaching to another game.
 
-The initial host adapter supports providers that do not require an API key,
-including a trusted local OpenAI-compatible endpoint. Control Center never
-returns stored provider keys. Keyed remote providers will be enabled later by
-mounting the exact secret directly into a contained harness runtime instead of
-exposing it through the browser API.
+The host adapter intentionally supports only providers that do not require an
+API key. The managed runtime supports keyed OpenAI-compatible providers: the
+vault value is copied into a private purpose-labeled Docker volume, mounted
+read-only at `/run/secrets`, and read by a tiny launcher into the Hermes
+process environment. The profile stores only `key_env`; the credential is not
+placed in Docker `Env`, command arguments, profile files, HTTP responses, or
+browser state. Reprovisioning rotates the secret volume, including when a
+profile changes from keyed to unkeyed.
+
+The official runtime is pinned by tag and digest in `compose.yaml`. Override
+`SMACX_HERMES_IMAGE` only as an explicit operator choice. The Control Center
+container has Docker access; harness containers do not. They run as UID 10000
+with a read-only root filesystem, all Linux capabilities dropped, no Docker
+socket, and only their own data/secret volumes plus the match network.
 
 ## Managed LAN
 
-Create at least two durable agents for an agent-only game, or choose one agent
-host plus one or more exact external human names. Every selected agent receives
-its own perspective, data/secret volume, game
-worker, MCP sidecar, and later Hermes profile. Seat zero is the native host;
-the other workers discover the host by its exact private IPv4 address and join
-only the freshly returned DirectPlay session GUID. The Control Center then:
+Create at least two total seats and at least one durable agent. The native host
+may be the first selected agent or an exact named external human. Every selected
+agent receives its own perspective, data/secret volume, game worker, MCP
+sidecar, and later Hermes profile. Joining workers use the host's exact private
+IPv4 address and only a freshly returned DirectPlay session GUID.
+
+For an agent host, the Control Center:
 
 1. waits for every stock Multiplayer Setup lobby;
-2. applies the guarded `small_easy` profile (Citizen, Small random map);
+2. applies one guarded random-map profile from Citizen/Tiny through
+   Transcend/Huge (the default is `small_easy`, Citizen/Small);
 3. waits until every client observes the synchronized settings;
 4. readies each client using the game's named native action;
 5. starts only after the host observes every client ready; and
@@ -140,7 +219,7 @@ checkpoint…** and enter that exact slot. The Control Center opens the stock
 **Load Multiplayer Game** lobby, rejoins each managed client, validates the
 loaded faction binding, and starts only after every participant is ready.
 
-### Let human players join
+### Let human players join or host
 
 Legacy DirectPlay embeds peer addresses and cannot be reliably published by
 ordinary Docker port translation. Give each game worker a real LAN address:
@@ -162,7 +241,7 @@ Control Center to that external network, and tells dynamic workers/sidecars to
 use it. This is a one-time deployment choice; creating and parking games does
 not take the Control Center down.
 
-For a mixed match:
+For an AI-hosted mixed match:
 
 1. Create the match with one agent host, optional additional agents, and one
    exact in-game name for each human.
@@ -175,6 +254,42 @@ For a mixed match:
    missing readiness, participant-count changes, and wrong saved factions fail
    closed. Once valid, the AI host starts the game.
 
+For a human-hosted match:
+
+1. Choose **External human player** as Native lobby host, enter the host's exact
+   player name, and select one or more agents. Additional named human clients
+   are optional.
+2. **Prepare now** starts only the managed agent clients. On the human's legal
+   game copy, create a new TCP/IP lobby or load a multiplayer checkpoint.
+3. Choose **Find human lobby**, enter the host game's reachable IPv4 address,
+   and select the exact freshly discovered session if more than one exists.
+4. Control Center joins every managed agent under its deterministic player
+   name, restores its recorded faction in a loaded lobby, and marks it Ready.
+   It validates that the expected named human really owns the native host seat.
+5. The human reviews settings/seats and presses Start in the game. **Check human
+   Start** observes the transition and durably binds every visible player name
+   and faction; it never issues Start from an agent client.
+
+Configure every desired custom rule in the human-owned lobby before asking the
+managed agents to join. The native DirectPlay packet preserves those settings;
+each agent can inspect synchronized difficulty, map dimensions, world-generation
+levels, timer identifier, and raw game/more-rules masks through `smac_lan`.
+The masks are not yet decoded to named options, so the Control Center does not
+claim full semantic understanding of arbitrary custom rules.
+
+For an AI-hosted lobby, the selected guarded profile changes only difficulty
+and map size. Ocean coverage, erosion, native life, cloud cover, timer, victory
+conditions, and advanced rules remain exactly at the native lobby values and
+are synchronized to every client. Full typed mutation of those fields is future
+game-setup work; no agent uses the settings window as a fallback.
+
+For a human-hosted checkpoint, the human host owns the save file and reopens it
+through the game's **Load Multiplayer Game** path. Parking retains every agent's
+worker volume, match memory, and recorded faction. After the human reopens the
+save, repeat discovery/join; each managed client must reclaim its exact saved
+faction before it can Ready. This supports recovery even though the host save
+is intentionally outside the platform's storage boundary.
+
 Human menu interaction remains human input; no model screenshots, clicks, or
 keyboard tools are introduced. During play, chat and paired diplomacy identify
 the connected native player/faction, and each agent retains its own fair-play
@@ -185,6 +300,17 @@ additional MAC/IP identities. Wi-Fi, some managed switches, VPNs, and Docker
 Desktop/WSL2 may block it. Windows external-LAN deployment is therefore not yet
 certified; run the Linux host or a Linux VM with bridged networking for the
 predictable path.
+
+On Wi-Fi or Docker Desktop/WSL2, use
+`scripts/create-routed-player-lan.sh` and the encrypted subnet router instead
+of macvlan. The worker manager accepts that bridge only when its exact purpose
+and transport labels are present; an ordinary application bridge remains
+invalid for mixed play.
+
+For encrypted play between remote networks, keep those per-worker addresses
+and add the durable Tailscale subnet-router overlay. It uses explicit host-IP
+join rather than broadcast discovery, publishes no DirectPlay ports, and stays
+authenticated across games. See [Encrypted remote player LAN](virtual-lan.md).
 
 The default port publication is loopback-only. To listen on a trusted home LAN:
 

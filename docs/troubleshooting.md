@@ -36,11 +36,13 @@ The script verifies the archived Microsoft redistributable checksum, replaces on
 
 Agent-only Docker bridge networking is intentionally not externally joinable.
 For human seats, start the Control Center with `SMACX_LAN_NETWORK` naming a
-non-internal macvlan/ipvlan network and `compose.lan.yaml`; the match manager
-will reject a normal bridge before launching. Verify that the address shown on
+non-internal macvlan/ipvlan network or the exact labeled routed-player bridge,
+plus `compose.lan.yaml`; the match manager will reject an ordinary bridge before
+launching. Verify that the address shown on
 the match card is inside the intended LAN subnet and is outside DHCP's pool.
 Wi-Fi adapters and managed networks often reject extra MAC addresses; use a
-wired/bridged Linux interface or ipvlan where appropriate.
+wired/bridged Linux interface or ipvlan where appropriate, or use the packaged
+Tailscale routed-player network on Wi-Fi/WSL2.
 
 If **Check humans & start** reports a blocker, correct that exact native lobby
 state. Player names must match their assignments, every client must be Ready,

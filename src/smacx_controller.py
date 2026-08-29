@@ -16,6 +16,7 @@ import re
 import uuid
 
 from smacx_store import MemoryScope, SmacxStore, StoreError
+from smacx_reference import read_reference as read_reference_store
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -32,7 +33,7 @@ if not 1 <= BRIDGE_PORT <= 65535:
 STEAM_ROOT = Path.home() / ".local/share/Steam"
 PRESSURE_VESSEL = STEAM_ROOT / "steamapps/common/SteamLinuxRuntime_4/run"
 PROTON = STEAM_ROOT / "steamapps/common/Proton - Experimental/proton"
-COMPAT_DATA = RUNTIME / "compatdata"
+COMPAT_DATA = Path(os.environ.get("SMACX_COMPAT_DATA", RUNTIME / "compatdata"))
 LOG_FILE = RUNTIME / "game-launch.log"
 KNOWLEDGE_ROOT = Path(os.environ.get(
     "SMACX_LEGACY_KNOWLEDGE_ROOT",
@@ -894,6 +895,19 @@ def read_platform_memory(
             }
         return {"ok": False, "error": "invalid_memory_action"}
     except StoreError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def read_game_reference(action: str, *, query: str = "", topic: str = "",
+                        document_id: str = "", limit: int = 8,
+                        include_body: bool = False) -> dict[str, Any]:
+    """Read global mechanics knowledge; it contains no match-hidden state."""
+    try:
+        return read_reference_store(
+            _store(), action, query=query, topic=topic, document_id=document_id,
+            limit=limit, include_body=include_body,
+        )
+    except (StoreError, ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}
 
 

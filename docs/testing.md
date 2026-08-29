@@ -18,6 +18,10 @@ SMACX_TEST_TIMEOUT=220 scripts/nested_display_test.sh \
 Focused regressions:
 
 ```bash
+PYTHONPATH=src python3 scripts/operations_contract_test.py
+PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
+PYTHONPATH=src python3 scripts/reference_corpus_test.py
+PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/capability_manifest_test.py
 PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/mcp_command_schema_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_management_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_citizen_test.py
@@ -31,6 +35,24 @@ SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/settlement_status_test.py
 SMACX_TEST_TIMEOUT=120 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/semantic_soak.py --target-turn 1 --deadline 90
 ```
+
+`operations_contract_test.py` proves one canonical schema, exactly-once due
+schedule claims, immutable completed-run history, consistent SQLite snapshots,
+secret backup/restore, automatic pre-restore rollback, and hash tamper
+detection. The opt-in `control_worker_mcp_live_test.py` additionally creates a
+real bridge checkpoint, archives the active worker volume, kills the native
+container, and waits for the supervisor to restore turn 1 with a new MCP
+sidecar. Its certified result includes
+`live_worker_volume_backup_verified=true` and
+`native_crash_recovered_without_ui=true`.
+
+`harness_manager_contract_test.py` proves the official image digest pin,
+`key_env`-only profile configuration, absence of key material from Docker
+inspect-visible configuration, purpose-volume injection, secret rotation on
+reprovision, and the read-only/capability-dropped semantic runtime. The opt-in
+`harness_backup_live_test.py` creates a real UID-10000 private profile volume
+inside a disposable Control Center data volume and verifies its conversation
+archive and hash manifest.
 
 The real two-client LAN regression creates two isolated game processes and a nested join display, then drives only the semantic bridge. It covers exact-session discovery/join, guarded lobby configuration/readiness/start, startup decisions, paired human Treaty negotiation, focused technology/energy transfers, the post-diplomacy settlement phase, combat, turn transfer, synchronized strategy/base state, and two-way chat:
 
@@ -81,10 +103,12 @@ reported the opening `PLANETFALL` interaction. Its sole enumerated guarded
 operation was used in this validation.
 
 The full managed vertical slice additionally starts an authenticated Control
-Center, real Proton game worker, exact MCP sidecar, and temporary isolated
-Hermes profile. Qwen3.8-27B runs at low reasoning with only the `smacx` toolset,
-uses status/decision/command semantically, and must advance the bridge's native
-revision before the test passes:
+Center, real Proton game worker, exact MCP sidecar, and official digest-pinned
+Hermes container. Qwen3.8-27B runs at low reasoning with only semantic
+toolsets, uses status/decision/command semantically, and must advance the
+bridge's native revision before the test passes. The same run inspects the
+container for secret leaks and verifies a recovery set containing both worker
+state and the durable Hermes conversation:
 
 ```bash
 SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
@@ -95,7 +119,7 @@ SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
 PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
 ```
 
-Every container, network, volume, and temporary Hermes home in this regression
+Every container, network, volume, and managed Hermes home in this regression
 is uniquely test-owned and removed afterward. The user's default Hermes
 profile/dashboard and legacy MCP service are not read or restarted.
 
@@ -121,14 +145,64 @@ roughly 242 KiB native campaign file in that worker's persistent data volume.
 Cleanup selects only resources carrying that test installation's exact
 ownership label.
 
-Mixed human/agent staging has a contained contract test. It proves that a human
-seat receives no agent perspective, a private bridge network cannot masquerade
-as external publication, exact names/readiness are mandatory, unexpected
-players are rejected, and a resumed human must reclaim the recorded faction:
+The mixed native LAN regression adds a third, independent game process that
+has no seat, perspective, MCP sidecar, or worker binding in the match under
+test. It automates only the actions a physical human performs: discover the
+exact session, join as the assigned name, ready, chat, disconnect, rejoin a
+loaded checkpoint, reclaim the saved faction, and chat again. Run it from a
+Docker-capable shell; the wrapper creates an isolated macvlan plus an
+in-network Control Center test runner because a Linux host cannot directly
+reach its macvlan children:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+scripts/mixed-lan-live-test.sh
+```
+
+The reference run passed with two managed agent seats and the external player
+`Alice`. It proved exact name-to-faction chat attribution, host-only native
+save on turn 1, complete external disconnect/rejoin, saved-faction restoration,
+and post-resume chat with `pixels_or_ui_input_used=false`. Randomized Alien
+Crossfire factions also exposed the stock `INTRO` label's dual use for AI
+diplomacy and information-only faction introductions; the bridge now
+distinguishes those states semantically.
+
+Mixed human/agent staging also has a fast contained contract test. It proves
+that a human seat receives no agent perspective, a private bridge network
+cannot masquerade as external publication, exact names/readiness are mandatory,
+unexpected players are rejected, and a resumed human must reclaim the recorded
+faction:
 
 ```bash
 PYTHONPATH=src python3 scripts/external_lan_contract_test.py
 ```
+
+The complementary human-host contract proves that seat zero has no worker or
+MCP, every managed client discovers one exact session, joins and readies, no
+client can issue native Start, and all player/faction identities bind durably
+after the human-owned transition:
+
+```bash
+PYTHONPATH=src python3 scripts/human_hosted_lan_contract_test.py
+```
+
+Its full native regression uses an independent third process as the external
+human fixture and gives that process exclusive ownership of Host, Configure,
+Start, Save, and Load:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+scripts/human-hosted-lan-live-test.sh
+```
+
+The reference run passed fresh and loaded lobbies with two managed agents,
+bidirectional faction-attributed chat, external-host checkpointing, complete
+managed disconnect/rejoin, exact faction restoration, and post-resume chat.
+It reported `pixels_or_ui_input_used=false`.
 
 `scripts/worker_manager_live_test.py` provisions a real view-enabled worker,
 connects to its random noVNC port, verifies the operator-only password is not
@@ -561,7 +635,7 @@ SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh \
   env PYTHONPATH=src:scripts python3 scripts/live_match_knowledge_test.py
 ```
 
-The durable-platform regressions are fully contained and require neither a game process nor Graphiti/Neo4j. They prove concurrent atomic migration, immutable events, perspective isolation, versioned structured memory, bounded recall, chat player/faction mapping and exactly-once attention, guarded memory writes, legacy JSON history import, Graphiti failure-safe cursors, and group-local rebuild:
+The durable-platform regressions are fully contained and require neither a game process nor Graphiti/Neo4j. They prove concurrent atomic initialization of the canonical pre-release schema, immutable events, perspective isolation, versioned structured memory records, bounded recall, chat player/faction mapping and exactly-once attention, guarded memory writes, legacy JSON history import, Graphiti failure-safe cursors, and group-local rebuild:
 
 ```bash
 PYTHONPATH=src python3 scripts/platform_store_test.py
@@ -628,4 +702,50 @@ SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh \
   env PYTHONPATH=src:scripts python3 scripts/base_management_test.py
 ```
 
-The latest regression artifacts are written under `runtime/`. A successful cleanup leaves no `terranx.exe` or Xephyr `:99` process. The persistent MCP should finish `active` and `hermes mcp test smacx` should discover exactly 16 tools.
+## Platform, routed-LAN, and physical certification
+
+Run the platform and routed transport checks before involving another machine:
+
+```bash
+python3 scripts/platform_preflight.py \
+  --game-path /absolute/legal/game --directx-redist /absolute/directx-redist.exe
+PYTHONPATH=src python3 scripts/virtual_lan_contract_test.py
+./scripts/virtual_lan_route_live_test.sh
+PYTHONPATH=src python3 scripts/lan_profile_contract_test.py
+```
+
+The native profile matrix is part of `lan_two_client_join_test.py`. To stop
+after configuration synchronization for all five fresh profiles:
+
+```bash
+SMACX_TEST_PROFILE_MATRIX_ONLY=1 \
+SMACX_TEST_JOIN_GAME_PATH=/absolute/path/to/second/private/game-copy \
+PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
+```
+
+The reference run synchronized `tiny_citizen`, `small_easy`,
+`standard_librarian`, `large_thinker`, and `huge_transcend` between two real
+processes with `pixels_or_ui_input_used=false`.
+
+For WSL2 add `--require-wsl2`. A physical mixed human/AI certification is one
+complete matrix, not a successful ping:
+
+1. Put the human game and managed worker on different physical computers and
+   record OS, Docker, WSL (if any), Tailscale, Proton, and game hashes.
+2. Confirm only the intended player subnet route is approved and that TCP
+   47624 plus TCP/UDP 2300–2400 pass; verify an unrelated container port is
+   rejected.
+3. Run one AI-hosted and one human-hosted game. In each, validate exact names,
+   distinct factions, private and public faction-attributed chat, and at least
+   one paired-diplomacy offer/accept/decline path.
+4. Create the native host checkpoint, disconnect the remote participant, park
+   every managed seat, resume the checkpoint, reclaim exact saved factions,
+   exchange chat, and complete another turn.
+5. Stop and resume one managed harness and one worker; confirm match identity
+   and scoped memory remain while process-session identity rotates.
+6. Save logs and fill `docs/certification-record.example.md`; do not promote an
+   unrun row to certified.
+
+The latest regression artifacts are written under `runtime/`. A successful
+cleanup leaves no `terranx.exe` or Xephyr `:99` process. The persistent MCP
+should finish `active` and expose exactly 20 semantic tools.

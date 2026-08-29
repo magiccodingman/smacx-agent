@@ -28,6 +28,19 @@ EXTRACTION_INSTRUCTIONS = (
 )
 
 
+def _environment_secret(name: str, default: str = "") -> str:
+    file_name = os.environ.get(name + "_FILE", "")
+    if file_name:
+        path = Path(file_name)
+        if not path.is_absolute() or not path.is_file() or path.is_symlink():
+            raise RuntimeError(f"invalid_secret_file:{name}")
+        value = path.read_text(encoding="utf-8").strip()
+        if not value or "\x00" in value or len(value) > 65_536:
+            raise RuntimeError(f"invalid_secret_value:{name}")
+        return value
+    return os.environ.get(name, default)
+
+
 @dataclass(frozen=True)
 class GraphEpisode:
     episode_uuid: str
@@ -61,7 +74,9 @@ class GraphitiCoreSink:
         required = {
             "SMACX_GRAPHITI_NEO4J_URI": os.environ.get("SMACX_GRAPHITI_NEO4J_URI", ""),
             "SMACX_GRAPHITI_NEO4J_USER": os.environ.get("SMACX_GRAPHITI_NEO4J_USER", ""),
-            "SMACX_GRAPHITI_NEO4J_PASSWORD": os.environ.get("SMACX_GRAPHITI_NEO4J_PASSWORD", ""),
+            "SMACX_GRAPHITI_NEO4J_PASSWORD": _environment_secret(
+                "SMACX_GRAPHITI_NEO4J_PASSWORD",
+            ),
             "SMACX_GRAPHITI_LLM_BASE_URL": os.environ.get("SMACX_GRAPHITI_LLM_BASE_URL", ""),
             "SMACX_GRAPHITI_LLM_MODEL": os.environ.get("SMACX_GRAPHITI_LLM_MODEL", ""),
             "SMACX_GRAPHITI_EMBED_BASE_URL": os.environ.get("SMACX_GRAPHITI_EMBED_BASE_URL", ""),
@@ -82,8 +97,8 @@ class GraphitiCoreSink:
         except ImportError as exc:
             raise RuntimeError("graphiti_core_not_installed") from exc
 
-        llm_api_key = os.environ.get("SMACX_GRAPHITI_LLM_API_KEY", "local")
-        embed_api_key = os.environ.get("SMACX_GRAPHITI_EMBED_API_KEY", llm_api_key)
+        llm_api_key = _environment_secret("SMACX_GRAPHITI_LLM_API_KEY", "local")
+        embed_api_key = _environment_secret("SMACX_GRAPHITI_EMBED_API_KEY", llm_api_key)
         llm_config = LLMConfig(
             api_key=llm_api_key,
             model=required["SMACX_GRAPHITI_LLM_MODEL"],
