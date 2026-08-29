@@ -30,6 +30,9 @@ def main() -> int:
     if not docker.ping():
         raise AssertionError("Docker ping failed")
     version = docker.version()
+    default_network = docker.inspect_network("bridge")
+    if default_network.get("Driver") != "bridge" or default_network.get("Internal") is not False:
+        raise AssertionError("Docker network inspection did not return the bridge contract")
     installation = "installation-docker-test"
     suffix = str(int(time.time() * 1_000_000))
     volume = f"smacx-docker-contract-{suffix}"
@@ -72,6 +75,7 @@ def main() -> int:
             "payload": {
                 "docker_api": version.get("ApiVersion"),
                 "unix_socket": True,
+                "network_inspection": True,
                 "owned_resource_guard": True,
                 "archive_secret_transport": True,
                 "container_wait_and_logs": True,

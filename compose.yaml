@@ -14,11 +14,12 @@ services:
       SMACX_SECURE_COOKIES: ${SMACX_SECURE_COOKIES:-0}
       SMACX_DOCKER_ENABLED: "1"
       SMACX_DOCKER_SOCKET: /var/run/docker.sock
-      SMACX_DOCKER_NETWORK: smacx-agent_default
+      SMACX_DOCKER_NETWORK: ${SMACX_DOCKER_NETWORK:-smacx-agent_default}
       SMACX_WORKER_IMAGE: smacx-agent-worker:dev
       SMACX_MCP_IMAGE: smacx-agent-control:dev
       SMACX_CONTROL_DATA_VOLUME: smacx-agent_smacx-control-data
       SMACX_DIRECTX_REDIST_HOST: ${SMACX_DIRECTX_REDIST:-}
+      SMACX_VIEW_PUBLISH_IP: ${SMACX_VIEW_PUBLISH_IP:-127.0.0.1}
     ports:
       # Default is host-local. For a trusted LAN or TLS reverse proxy, set
       # SMACX_CONTROL_PUBLISH explicitly, for example 0.0.0.0:8080.

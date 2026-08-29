@@ -150,6 +150,7 @@
                 </select>
               </label>
             </div>
+            <label class="check"><input name="view_enabled" type="checkbox"> Enable a password-protected, view-only spectator</label>
             <label class="check"><input name="start_now" type="checkbox" checked> Start the game after provisioning</label>
             <button type="submit">Create match</button>
           </form>
@@ -161,18 +162,22 @@
         <div class="section-heading">
           <div>
             <p class="kicker">Managed multiplayer</p>
-            <h2>Create an agent LAN match</h2>
-            <p>Each selected agent receives its own isolated game worker, MCP sidecar, perspective, and Hermes profile. The Control Center performs the native lobby sequence semantically.</p>
+            <h2>Create a managed LAN match</h2>
+            <p>Agent seats receive isolated workers and MCP sidecars. Optional human seats join the AI-hosted native lobby from the trusted LAN using their assigned names.</p>
           </div>
         </div>
         <form id="lan-form" class="lan-form">
           <label>Match name <input name="display_name" placeholder="Planetary summit" required></label>
           <label>Native session name <input name="session_name" value="SMACX Managed LAN" maxlength="31" required></label>
           <label>Agents <select name="agent_ids" id="lan-agents" multiple size="4" required></select></label>
+          <label>External human player names
+            <textarea name="human_player_names" rows="3" placeholder="One exact in-game name per line (optional)"></textarea>
+          </label>
           <label>Game source <select name="game_source_id" id="lan-source" required></select></label>
           <label>Runtime <select name="runtime_id" id="lan-runtime" required></select></label>
           <label>Lobby profile <select name="profile"><option value="small_easy">Citizen · Small random map</option></select></label>
-          <label class="check"><input name="start_now" type="checkbox" checked> Host, join, ready, and start now</label>
+          <label class="check"><input name="view_enabled" type="checkbox"> Enable view-only spectators for agent seats</label>
+          <label class="check"><input name="start_now" type="checkbox" checked> Start now (mixed games open the lobby and wait for humans)</label>
           <button type="submit">Create managed LAN</button>
         </form>
         <div id="matches" class="record-list"></div>

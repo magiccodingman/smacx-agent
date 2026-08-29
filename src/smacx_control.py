@@ -736,7 +736,8 @@ class ControlPlane:
     def put_worker_spec(self, instance_id: str, game_source_id: str, runtime_id: str,
                         image_ref: str, container_name: str, data_volume: str,
                         bridge_secret_id: str, *, autostart: Mapping[str, Any] | None = None,
-                        network: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                        network: Mapping[str, Any] | None = None,
+                        view_secret_id: str | None = None) -> dict[str, Any]:
         for value, field in (
             (instance_id, "instance_id"), (game_source_id, "game_source_id"),
             (runtime_id, "runtime_id"), (bridge_secret_id, "bridge_secret_id"),
@@ -761,13 +762,17 @@ class ControlPlane:
                 "SELECT 1 FROM secret_refs WHERE secret_id=? AND status='active'", (bridge_secret_id,),
             ).fetchone():
                 raise ScopeViolation("bridge_secret_not_active")
+            if view_secret_id is not None and not connection.execute(
+                "SELECT 1 FROM secret_refs WHERE secret_id=? AND status='active'", (view_secret_id,),
+            ).fetchone():
+                raise ScopeViolation("view_secret_not_active")
             connection.execute(
                 "INSERT INTO worker_specs(instance_id, game_source_id, runtime_id, image_ref, "
-                "container_name, data_volume, bridge_secret_id, desired_status, observed_status, "
-                "autostart_json, network_json, created_unix, updated_unix) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'stopped', 'provisioned', ?, ?, ?, ?)",
+                "container_name, data_volume, bridge_secret_id, view_secret_id, desired_status, "
+                "observed_status, autostart_json, network_json, created_unix, updated_unix) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'stopped', 'provisioned', ?, ?, ?, ?)",
                 (instance_id, game_source_id, runtime_id, image_ref, container_name, data_volume,
-                 bridge_secret_id, _json(autostart), _json(network), now, now),
+                 bridge_secret_id, view_secret_id, _json(autostart), _json(network), now, now),
             )
         return self.get_worker_spec(instance_id)
 
@@ -928,14 +933,31 @@ class ControlPlane:
         return {"match": match, "perspective": perspective}
 
     def create_lan_match(self, display_name: str, agent_ids: list[str], *,
+                         human_player_names: list[str] | None = None,
                          match_id: str | None = None,
                          ruleset_id: str = "smacx-small-easy",
                          metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
         display_name = _bounded(display_name, "match_name", 160)
-        if not isinstance(agent_ids, list) or not 2 <= len(agent_ids) <= 7:
-            raise InvalidRecord("lan_requires_two_to_seven_agents")
+        human_player_names = list(human_player_names or [])
+        if not isinstance(agent_ids, list) or not 1 <= len(agent_ids) <= 7:
+            raise InvalidRecord("lan_requires_one_to_seven_agents")
+        if not all(isinstance(name, str) and 1 <= len(name) <= 31
+                   and all(32 <= ord(character) <= 126 for character in name)
+                   for name in human_player_names):
+            raise InvalidRecord("invalid_lan_human_player_name")
+        if not 2 <= len(agent_ids) + len(human_player_names) <= 7:
+            raise InvalidRecord("lan_requires_two_to_seven_total_seats")
         if len(set(agent_ids)) != len(agent_ids):
             raise InvalidRecord("duplicate_lan_agent")
+        if len(set(human_player_names)) != len(human_player_names):
+            raise InvalidRecord("duplicate_lan_human_player_name")
+        reserved_names = {"Semantic Host"}
+        reserved_names.update(
+            f"Semantic Agent {seat_index + 1}"
+            for seat_index in range(1, len(agent_ids))
+        )
+        if reserved_names.intersection(human_player_names):
+            raise InvalidRecord("reserved_lan_human_player_name")
         for agent_id in agent_ids:
             _require_id(agent_id, "agent_id")
         with self.store.transaction() as connection:
@@ -968,6 +990,22 @@ class ControlPlane:
                         (_new_id("seat"), match["match_id"], seat_index, agent_id,
                          perspective["perspective_id"], _json({"role": "host" if seat_index == 0 else "client"}),
                          now, now),
+                    )
+                seats.append(self.get_seat(match["match_id"], seat_index))
+            for offset, player_name in enumerate(human_player_names):
+                seat_index = len(agent_ids) + offset
+                now = time.time()
+                with self.store.transaction() as connection:
+                    connection.execute(
+                        "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
+                        "status, metadata_json, created_unix, updated_unix) "
+                        "VALUES (?, ?, ?, 'human', 'assigned', ?, ?, ?)",
+                        (_new_id("seat"), match["match_id"], seat_index,
+                         _json({
+                             "role": "client",
+                             "external_player_name": player_name,
+                             "network_join_pending": True,
+                         }), now, now),
                     )
                 seats.append(self.get_seat(match["match_id"], seat_index))
         except Exception:
@@ -1288,3 +1326,15 @@ class ControlPlane:
             item["metadata"] = json.loads(item.pop("metadata_json"))
             results.append(item)
         return results
+
+    def get_match(self, match_id: str) -> dict[str, Any]:
+        _require_id(match_id, "match_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM matches WHERE match_id=?", (match_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_match")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result

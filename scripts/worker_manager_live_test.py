@@ -65,6 +65,7 @@ def main() -> int:
             worker = manager.provision_worker(
                 scope, source["game_source_id"], runtime["runtime_id"],
                 autostart={"enabled": True, "difficulty": 0, "world_size": 0, "faction_id": 1},
+                view_enabled=True,
             )
             if "bridge-token" in json.dumps(worker) or "SMACX_AGENT_TOKEN" in json.dumps(worker):
                 raise AssertionError("worker spec exposed bridge secret material")
@@ -84,6 +85,14 @@ def main() -> int:
             )
             if not proton_mount or proton_mount.get("RW") is not False:
                 raise AssertionError("managed Proton runtime was writable in a game worker")
+            access = manager.spectator_access(worker["instance_id"])
+            if access.get("mode") != "view-only" or len(access.get("password", "")) < 12 \
+                    or not isinstance(access.get("host_port"), int):
+                raise AssertionError("view-only spectator access was not operator-scoped")
+            with socket.create_connection(("127.0.0.1", access["host_port"]), timeout=5):
+                pass
+            if access["password"] in json.dumps(container):
+                raise AssertionError("spectator password leaked into container configuration")
             token = control.vault.read(
                 worker["bridge_secret_id"], purpose=f"worker.{worker['instance_id']}.bridge_token",
             )
@@ -114,6 +123,8 @@ def main() -> int:
                     "proton_worker_mount_read_only": True,
                     "secret_transferred_without_environment": True,
                     "worker_read_only_root": True,
+                    "view_only_spectator": True,
+                    "spectator_secret_not_in_environment": True,
                     "first_session_semantic_opening": True,
                     "park_removed_container": True,
                     "resume_rotated_session": True,

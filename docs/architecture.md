@@ -31,6 +31,14 @@ proxy through HTTP. Each process keeps a unique `session_id` and perspective,
 so simultaneous chat, memory, and optimistic-concurrency guards cannot cross
 seats.
 
+External human seats deliberately have no agent identity, perspective, worker,
+or MCP endpoint. They are durable lobby assignments keyed by an operator-chosen
+native player name and, after first start, the observed faction. A mixed match
+uses an explicitly configured macvlan/ipvlan network so every worker has a real
+LAN address. The manager stages the lobby, then validates exact names,
+readiness, participant count, and saved-faction reclamation before it permits
+the semantic host Start action.
+
 Native actions that must cross the Windows event loop are tracked as small transactions. The bridge assigns an `action_id`, records the intended objects, and publishes pending/completed/rejected status plus the native result and observed match-local tile IDs. The MCP waits for completion within a bound, preventing a model from confusing “message queued” with “game action applied.” Native map coordinates remain internal to the DLL.
 
 The Planetary Council is a special nested native event loop. The bridge opens the engine's own proposal list, takes one compound semantic proposal-plus-ballot decision, and schedules the native Council vote/close handlers with a Windows timer on the same UI thread. The normal Council chamber remains visible; no synthetic input or cross-thread engine access is used.
@@ -63,4 +71,8 @@ The socket worker never reads or mutates engine memory. It accepts one bounded r
 
 ## Security boundary
 
-Both listeners bind only to loopback. The game bridge additionally requires a 256-bit token. Requests are capped at 16 KiB and responses at the controller are capped at 4 MB. The MCP service runs unprivileged as a user systemd service.
+The in-process game bridge binds only to loopback and requires a 256-bit token.
+Managed workers expose its authenticated proxy only to their selected container
+network; MCP and spectator host ports default to loopback. Requests are capped
+at 16 KiB and controller responses at 4 MB. External DirectPlay publication is
+an explicit macvlan/ipvlan operator choice, never an implicit port-forward.

@@ -176,6 +176,14 @@ function renderWorkers(workers) {
     inspect.textContent = "Inspect";
     inspect.addEventListener("click", () => workerAction(worker.instance_id, "status", inspect, false));
     actions.append(start, park, inspect);
+    if (worker.network?.view_enabled) {
+      const watch = document.createElement("button");
+      watch.className = "quiet";
+      watch.textContent = "Watch";
+      watch.disabled = worker.observed_status !== "running";
+      watch.addEventListener("click", () => openSpectator(worker.instance_id, watch));
+      actions.append(watch);
+    }
     item.append(actions);
     root.append(item);
   });
@@ -187,18 +195,54 @@ function renderWorkers(workers) {
   }
 }
 
+async function openSpectator(instanceId, button) {
+  button.disabled = true;
+  try {
+    const access = await api(`/api/v1/workers/${instanceId}/spectator`, {
+      method: "POST", body: "{}",
+    });
+    const target = new URL(access.path, `${location.protocol}//${location.hostname}:${access.host_port}`);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(access.password);
+      copied = true;
+    } catch (_) {}
+    window.open(target.toString(), "_blank", "noopener,noreferrer");
+    if (copied) notify("View-only spectator opened; its password was copied to the clipboard.");
+    else window.prompt("View-only spectator password", access.password);
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderMatches(matches) {
   const root = $("#matches");
   root.replaceChildren();
   matches.filter((match) => match.mode === "lan").forEach((match) => {
-    const item = record(match.display_name, `${match.match_id} · ${match.ruleset_id}`, match.status);
+    const external = match.metadata?.external_lan;
+    const externalDetail = external
+      ? ` · join ${external.host_address} · ${external.session_name}` : "";
+    const item = record(
+      match.display_name,
+      `${match.match_id} · ${match.ruleset_id}${externalDetail}`,
+      match.status,
+    );
     item.classList.add("worker");
     const actions = document.createElement("div");
     actions.className = "actions";
     const start = document.createElement("button");
-    start.textContent = match.status === "parked" ? "Start fresh lobby" : "Start";
+    start.textContent = match.status === "lobby" && external
+      ? "Check humans & start"
+      : match.status === "parked" ? "Start fresh lobby" : "Start";
     start.disabled = match.status === "running" || match.status === "starting";
-    start.addEventListener("click", () => matchAction(match.match_id, "start", start));
+    const sessionPayload = {
+      session_name: match.metadata?.lan_session_name || "SMACX Managed LAN",
+    };
+    start.addEventListener("click", () => matchAction(
+      match.match_id, "start", start, true, sessionPayload,
+    ));
     const park = document.createElement("button");
     park.className = "quiet";
     park.textContent = "Park all seats";
@@ -209,6 +253,23 @@ function renderMatches(matches) {
     inspect.textContent = "Inspect seats";
     inspect.addEventListener("click", () => matchAction(match.match_id, "status", inspect, false));
     actions.append(start, park, inspect);
+    if (match.status === "parked") {
+      const resume = document.createElement("button");
+      resume.className = "quiet";
+      resume.textContent = "Resume checkpoint…";
+      resume.addEventListener("click", () => {
+        const slot = window.prompt("Exact semantic save slot to resume");
+        if (!slot) return;
+        if (!/^[A-Za-z0-9_-]{1,32}$/.test(slot)) {
+          notify("Save slots use 1–32 letters, digits, underscores, or hyphens.", true);
+          return;
+        }
+        matchAction(match.match_id, "start", resume, true, {
+          ...sessionPayload, resume_slot: slot,
+        });
+      });
+      actions.append(resume);
+    }
     item.append(actions);
     root.append(item);
   });
@@ -220,14 +281,19 @@ function renderMatches(matches) {
   }
 }
 
-async function matchAction(matchId, action, button, reload = true) {
+async function matchAction(matchId, action, button, reload = true, payload = {}) {
   button.disabled = true;
   notify(`${action === "start" ? "Starting native LAN" : action === "park" ? "Parking every seat" : "Inspecting LAN seats"}…`);
   try {
     const result = await api(`/api/v1/matches/${matchId}/${action}`, {
-      method: "POST", body: JSON.stringify({profile: "small_easy"}),
+      method: "POST", body: JSON.stringify({profile: "small_easy", ...payload}),
     });
-    if (action === "status") {
+    if (result.awaiting_external_humans) {
+      const join = result.external_join || {};
+      const blockers = (join.blockers || []).map((item) => item.player_name
+        ? `${item.player_name}: ${item.reason}` : item.reason).join(", ");
+      notify(`Lobby open at ${join.host_address} (${join.session_name}). ${blockers || "Humans should join with their assigned names and mark Ready."}`);
+    } else if (action === "status") {
       const live = result.seats.filter((seat) => seat.native?.lifecycle === "game").length;
       notify(`${live} of ${result.seats.length} LAN seats report native gameplay.`);
       button.disabled = false;
@@ -419,6 +485,7 @@ $("#match-form").addEventListener("submit", async (event) => {
           narrative_ui: false,
           tutorial_ui: false,
         },
+        view_enabled: values.view_enabled === "on",
       }),
     });
     notify("Match and isolated worker provisioned.");
@@ -441,8 +508,10 @@ $("#lan-form").addEventListener("submit", async (event) => {
   const button = form.querySelector("button[type=submit]");
   const values = formObject(form);
   const agentIds = [...$("#lan-agents").selectedOptions].map((option) => option.value);
-  if (agentIds.length < 2) {
-    notify("Select at least two distinct agents for managed LAN.", true);
+  const humanNames = String(values.human_player_names || "")
+    .split(/[\n,]+/).map((value) => value.trim()).filter(Boolean);
+  if (agentIds.length < 1 || agentIds.length + humanNames.length < 2) {
+    notify("Choose an agent host and at least one additional agent or human seat.", true);
     return;
   }
   button.disabled = true;
@@ -451,11 +520,15 @@ $("#lan-form").addEventListener("submit", async (event) => {
       method: "POST", body: JSON.stringify({
         display_name: values.display_name, session_name: values.session_name,
         agent_ids: agentIds, game_source_id: values.game_source_id,
+        human_player_names: humanNames,
         runtime_id: values.runtime_id, profile: values.profile,
+        view_enabled: values.view_enabled === "on",
         start_now: values.start_now === "on",
       }),
     });
-    notify(values.start_now === "on" ? "Managed native LAN is running." : "Managed LAN seats provisioned.");
+    notify(values.start_now === "on" && humanNames.length
+      ? "AI-hosted lobby is open. Human players can now join and mark Ready."
+      : values.start_now === "on" ? "Managed native LAN is running." : "Managed LAN seats provisioned.");
     await loadDashboard();
   } catch (error) {
     notify(error.message, true);

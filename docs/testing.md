@@ -102,7 +102,9 @@ profile/dashboard and legacy MCP service are not read or restarted.
 The managed LAN vertical slice launches two real game workers on one private
 Docker network and proves the complete native host/discover/join/configure/
 ready/start sequence, shared match identity, distinct process sessions and
-factions, one MCP sidecar per seat, and match-wide park:
+factions, one MCP sidecar per seat, host-only checkpoint creation, complete
+park, stock multiplayer reload, exact faction restoration, and second entry
+into gameplay:
 
 ```bash
 SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
@@ -118,6 +120,20 @@ through MCP, invokes the host-only guarded `save_game` choice, and verifies a
 242,567-byte native campaign file in that worker's persistent data volume.
 Cleanup selects only resources carrying that test installation's exact
 ownership label.
+
+Mixed human/agent staging has a contained contract test. It proves that a human
+seat receives no agent perspective, a private bridge network cannot masquerade
+as external publication, exact names/readiness are mandatory, unexpected
+players are rejected, and a resumed human must reclaim the recorded faction:
+
+```bash
+PYTHONPATH=src python3 scripts/external_lan_contract_test.py
+```
+
+`scripts/worker_manager_live_test.py` provisions a real view-enabled worker,
+connects to its random noVNC port, verifies the operator-only password is not
+present in container environment/configuration, parks it, and starts the same
+durable worker again.
 
 Stock Debian Wine is retained as a diagnostic fallback, but it stalled at the
 Firaxis presentation screen in the current reference environment and is not a

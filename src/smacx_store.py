@@ -573,7 +573,6 @@ CREATE TABLE worker_specs (
     container_name TEXT NOT NULL UNIQUE,
     data_volume TEXT NOT NULL UNIQUE,
     bridge_secret_id TEXT NOT NULL REFERENCES secret_refs(secret_id),
-    view_secret_id TEXT REFERENCES secret_refs(secret_id),
     desired_status TEXT NOT NULL CHECK (desired_status IN ('stopped', 'running', 'parked', 'retired')),
     observed_status TEXT NOT NULL,
     autostart_json TEXT NOT NULL DEFAULT '{}',
@@ -655,10 +654,15 @@ CREATE UNIQUE INDEX harness_one_live_run_per_perspective
     WHERE status IN ('queued', 'running');
 """
 
+MIGRATION_4 = r"""
+ALTER TABLE worker_specs ADD COLUMN view_secret_id TEXT REFERENCES secret_refs(secret_id);
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "durable_identity_and_memory_foundation", MIGRATION_1),
     (2, "control_plane_foundation", MIGRATION_2),
     (3, "harness_identity_and_run_ledger", MIGRATION_3),
+    (4, "view_only_worker_spectator_secret", MIGRATION_4),
 )
 
 

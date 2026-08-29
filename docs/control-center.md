@@ -10,12 +10,14 @@ match will not require taking this service down. Its current foundation owns:
 - container-validated legal game sources and checksummed private Proton imports;
 - durable agent, solo-match, perspective, instance, and process-session IDs;
 - isolated worker provisioning, health checks, parking, and resume;
+- optional password-protected view-only spectators for each worker;
 - one private MCP sidecar per running game worker;
 - exact Hermes agent/match profile descriptors and host profile setup.
 
-The initial managed LAN path supports two to seven isolated agent seats on the
-private Docker network. Human-seat publication and multiplayer save/rejoin are
-the next APIs built on these contracts.
+Managed LAN supports two to seven total seats. Seat zero is always an agent
+host; remaining seats may be isolated agents or explicitly named human
+players. Agent-only games stay on the private Docker network. Mixed games are
+accepted only on an operator-created non-internal macvlan/ipvlan network.
 
 ## Start once
 
@@ -56,6 +58,14 @@ The data volume, private runtime, match ID, perspective, and memory remain.
 **Resume** creates a fresh native process session for that same match. This is
 the intended always-on flow: the Control Center remains up while games come and
 go.
+
+Enable **view-only spectator** while provisioning a solo or LAN worker when a
+human should watch that seat. **Watch** asks the authenticated Control Center
+for the password, copies it to the operator clipboard when the browser permits,
+and opens noVNC. `x11vnc` is started with `-viewonly`: neither the browser nor
+the agent can send game input. Spectators bind to `127.0.0.1` by default. On a
+trusted LAN, `SMACX_VIEW_PUBLISH_IP=0.0.0.0` publishes the randomly selected
+ports; use HTTPS before doing this on any network you do not fully trust.
 
 ## Start or resume the AI player
 
@@ -99,10 +109,11 @@ returns stored provider keys. Keyed remote providers will be enabled later by
 mounting the exact secret directly into a contained harness runtime instead of
 exposing it through the browser API.
 
-## Managed agent LAN
+## Managed LAN
 
-Create at least two durable agents, then use **Create an agent LAN match**.
-Every selected agent receives its own perspective, data/secret volume, game
+Create at least two durable agents for an agent-only game, or choose one agent
+host plus one or more exact external human names. Every selected agent receives
+its own perspective, data/secret volume, game
 worker, MCP sidecar, and later Hermes profile. Seat zero is the native host;
 the other workers discover the host by its exact private IPv4 address and join
 only the freshly returned DirectPlay session GUID. The Control Center then:
@@ -121,17 +132,59 @@ distinct, while memory and chat remain isolated by `(match, agent,
 perspective)`.
 
 **Park all seats** stops every disposable worker and MCP sidecar. At this
-milestone, starting a parked LAN creates a fresh native lobby/game rather than
-restoring the old campaign. Multiplayer checkpoint creation is semantic and
-host-only: the bridge identifies the actual DirectPlay host, exposes
-`save_game` only on that seat, and writes into the match-scoped directory in
-its persistent worker volume. A real two-worker regression verifies the native
-save while clients remain non-mutating. Restoring it through the stock **Load
-Multiplayer Game** lobby and rejoining the original factions is the remaining
-resume boundary. The UI therefore must not describe LAN parking as a campaign
-resume. External human clients likewise cannot yet join the private
-Docker-only host; that will require a declared macvlan/host-network/virtual-LAN
-publication mode with its own security and compatibility tests.
+point preserves identities, memory, chat, worker volumes, and host save files.
+Multiplayer checkpoint creation is semantic and host-only: the bridge identifies
+the actual DirectPlay host, exposes `save_game` only on that seat, and writes
+into the match-scoped directory in its persistent worker volume. Use **Resume
+checkpoint…** and enter that exact slot. The Control Center opens the stock
+**Load Multiplayer Game** lobby, rejoins each managed client, validates the
+loaded faction binding, and starts only after every participant is ready.
+
+### Let human players join
+
+Legacy DirectPlay embeds peer addresses and cannot be reliably published by
+ordinary Docker port translation. Give each game worker a real LAN address:
+
+```bash
+# Choose the parent interface, subnet, gateway, and an unused range that your
+# DHCP server will never allocate. These values are examples only.
+docker network create -d macvlan \
+  --subnet=192.168.1.0/24 --gateway=192.168.1.1 \
+  --ip-range=192.168.1.224/28 -o parent=enp3s0 smacx-player-lan
+
+SMACX_LAN_NETWORK=smacx-player-lan \
+SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+./scripts/control-center-up.sh
+```
+
+The helper automatically includes `compose.lan.yaml`, attaches the always-on
+Control Center to that external network, and tells dynamic workers/sidecars to
+use it. This is a one-time deployment choice; creating and parking games does
+not take the Control Center down.
+
+For a mixed match:
+
+1. Create the match with one agent host, optional additional agents, and one
+   exact in-game name for each human.
+2. The first **Start** opens and configures the native lobby and shows its LAN
+   address/session name. It does not wait inside one long HTTP request.
+3. Each human launches their own legal game, chooses Multiplayer TCP/IP, joins
+   that address, enters the assigned name exactly, chooses their recorded
+   faction when resuming, and marks Ready.
+4. **Check humans & start** reads the native lobby. Unknown or duplicate names,
+   missing readiness, participant-count changes, and wrong saved factions fail
+   closed. Once valid, the AI host starts the game.
+
+Human menu interaction remains human input; no model screenshots, clicks, or
+keyboard tools are introduced. During play, chat and paired diplomacy identify
+the connected native player/faction, and each agent retains its own fair-play
+perspective and memory scope.
+
+Macvlan/ipvlan is Linux-first and depends on the physical network accepting
+additional MAC/IP identities. Wi-Fi, some managed switches, VPNs, and Docker
+Desktop/WSL2 may block it. Windows external-LAN deployment is therefore not yet
+certified; run the Linux host or a Linux VM with bridged networking for the
+predictable path.
 
 The default port publication is loopback-only. To listen on a trusted home LAN:
 
@@ -190,6 +243,7 @@ The helper accepts normal Compose environment overrides:
 
 ```bash
 SMACX_CONTROL_PUBLISH=0.0.0.0:8080 \
+SMACX_VIEW_PUBLISH_IP=0.0.0.0 \
 SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
 ./scripts/control-center-up.sh
 ```

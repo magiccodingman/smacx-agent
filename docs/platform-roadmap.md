@@ -17,13 +17,15 @@ is delivered as vertical, independently testable milestones.
    spectator stream.
 5. **Control plane** — authenticated Control Center, provider discovery,
    agents/personalities, match builder, secrets, isolated per-worker MCP,
-   and Hermes profile/session management. The solo-worker and host-Hermes
-   vertical slice is implemented; scheduler/backups remain.
+   view-only spectators, and Hermes profile/session management. The durable
+   operator and host-Hermes vertical slices are implemented; scheduler/backups
+   remain.
 6. **Managed multiplayer** — one isolated worker per seat, managed hosting,
    exact-address joining, persistent chat attention, save/park/rejoin, and
-   interactive human seats. Multi-agent private-network host/join/lobby/start
-   and match-wide park are implemented; stock multiplayer save/rejoin and
-   external human-seat publication remain.
+   interactive human seats. Multi-agent host/join/lobby/start, native
+   checkpoint save/load with exact faction restoration, match-wide park, and
+   opt-in macvlan/ipvlan human-seat publication are implemented. Broader
+   Internet transports and automated Windows networking remain out of scope.
 7. **Deployment validation** — Linux home lab first, then Windows Docker
    Desktop/WSL2 and remote virtual-LAN compatibility.
 

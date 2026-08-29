@@ -29,11 +29,27 @@ def main() -> int:
             concurrent_results = list(executor.map(
                 lambda _: SmacxStore(concurrent_database).schema_version(), range(8),
             ))
-        if concurrent_results != [3] * 8:
+        if concurrent_results != [4] * 8:
             raise AssertionError("concurrent schema migration failed")
+        upgrade_database = Path(temporary) / "upgrade" / "smacx.sqlite3"
+        legacy_store = SmacxStore(upgrade_database)
+        legacy_installation_id = legacy_store.installation_id()
+        with sqlite3.connect(upgrade_database) as connection:
+            connection.execute("ALTER TABLE worker_specs DROP COLUMN view_secret_id")
+            connection.execute("DELETE FROM schema_migrations WHERE version=4")
+            connection.execute("PRAGMA user_version=3")
+        upgraded_store = SmacxStore(upgrade_database)
+        with sqlite3.connect(upgrade_database) as connection:
+            worker_columns = {
+                str(row[1]) for row in connection.execute("PRAGMA table_info(worker_specs)")
+            }
+        if upgraded_store.schema_version() != 4 \
+                or upgraded_store.installation_id() != legacy_installation_id \
+                or "view_secret_id" not in worker_columns:
+            raise AssertionError("version-3 database did not upgrade in place")
         database = Path(temporary) / "state" / "smacx.sqlite3"
         store = SmacxStore(database)
-        if store.schema_version() != 3:
+        if store.schema_version() != 4:
             raise AssertionError("unexpected schema version")
         installation_id = store.installation_id()
 
@@ -242,7 +258,7 @@ def main() -> int:
         )
 
         reopened = SmacxStore(database)
-        if reopened.installation_id() != installation_id or reopened.schema_version() != 3:
+        if reopened.installation_id() != installation_id or reopened.schema_version() != 4:
             raise AssertionError("database identity or migration was not durable")
         if len(reopened.get_facts(alpha, fact_key="deirdre.intent", include_history=True)) != 2:
             raise AssertionError("facts did not survive reopening")
@@ -252,6 +268,7 @@ def main() -> int:
             "payload": {
                 "schema_version": reopened.schema_version(),
                 "concurrent_migration_safe": True,
+                "version_3_upgrade_safe": True,
                 "installation_stable": True,
                 "immutable_events": True,
                 "perspective_isolation": True,

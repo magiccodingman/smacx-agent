@@ -134,6 +134,12 @@ class DockerClient:
             raise DockerError("invalid_docker_volume_response")
         return value
 
+    def inspect_network(self, name: str) -> dict[str, Any]:
+        value = self._json("GET", f"/networks/{quote(name, safe='')}", expected=(200,))
+        if not isinstance(value, dict):
+            raise DockerError("invalid_docker_network_response")
+        return value
+
     def remove_volume(self, name: str) -> None:
         self._request("DELETE", f"/volumes/{quote(name, safe='')}", expected=(204,))
 

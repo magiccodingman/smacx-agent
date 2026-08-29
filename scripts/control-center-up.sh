@@ -10,6 +10,12 @@ fi
 SMACX_DOCKER_GID=$(stat -c '%g' "$docker_socket")
 export SMACX_DOCKER_GID
 
-docker compose --profile build build control-center worker-image
-docker compose up -d control-center
-docker compose ps control-center
+if [ -n "${SMACX_LAN_NETWORK:-}" ]; then
+    set -- -f compose.yaml -f compose.lan.yaml
+else
+    set -- -f compose.yaml
+fi
+
+docker compose "$@" --profile build build control-center worker-image
+docker compose "$@" up -d control-center
+docker compose "$@" ps control-center

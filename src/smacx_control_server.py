@@ -29,7 +29,7 @@ MAX_REQUEST_BODY = 1024 * 1024
 SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
 PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
-WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
+WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator)$")
 MATCH_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
 
 
@@ -363,6 +363,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                                     perspective["perspective_id"]),
                         str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
                         autostart=body.get("autostart") if isinstance(body.get("autostart"), dict) else None,
+                        view_enabled=body.get("view_enabled") is True,
                     )
                 except Exception:
                     self.server.control.discard_unstarted_match(
@@ -384,8 +385,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 agent_ids = body.get("agent_ids")
                 if not isinstance(agent_ids, list) or not all(isinstance(item, str) for item in agent_ids):
                     raise InvalidRecord("invalid_lan_agent_ids")
+                human_player_names = body.get("human_player_names", [])
+                if not isinstance(human_player_names, list) \
+                        or not all(isinstance(item, str) for item in human_player_names):
+                    raise InvalidRecord("invalid_lan_human_player_names")
                 created = self.server.control.create_lan_match(
                     str(body.get("display_name", "")), list(agent_ids),
+                    human_player_names=list(human_player_names),
                     metadata={
                         "lan_profile": str(body.get("profile", "small_easy")),
                         "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
@@ -394,6 +400,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 workers = []
                 try:
                     for seat in created["seats"]:
+                        if seat["controller_kind"] != "agent":
+                            continue
                         workers.append(manager.provision_worker(
                             MemoryScope(
                                 created["match"]["match_id"], str(seat["agent_id"]),
@@ -401,6 +409,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                             ),
                             str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
                             autostart={"enabled": False},
+                            view_enabled=body.get("view_enabled") is True,
                         ))
                 except Exception as exc:
                     self.server.control.update_match_lifecycle(
@@ -411,7 +420,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self.server.control.audit(
                     auth["admin_id"], "match.create_lan", "match",
                     created["match"]["match_id"], "success",
-                    {"seat_count": len(created["seats"])}, self.client_address[0],
+                    {
+                        "seat_count": len(created["seats"]),
+                        "agent_seat_count": len(workers),
+                        "human_seat_count": len(human_player_names),
+                    }, self.client_address[0],
                 )
                 result: dict[str, Any] = {
                     "ok": True, **created,
@@ -420,7 +433,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 if body.get("start_now") is True:
                     result["started"] = manager.start_lan_match(
                         created["match"]["match_id"],
-                        session_name=str(body.get("session_name", "SMACX Managed LAN")),
+                        session_name=(str(body["session_name"])
+                                      if body.get("session_name") is not None else None),
                         profile=str(body.get("profile", "small_easy")),
                     )
                 self._json(201, result)
@@ -486,6 +500,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     result = manager.start_worker(instance_id)
                 elif action == "park":
                     result = manager.park_worker(instance_id)
+                elif action == "spectator":
+                    result = manager.spectator_access(instance_id)
                 else:
                     result = manager.worker_status(instance_id)
                 self.server.control.audit(
@@ -537,6 +553,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     def _redact_worker(worker: dict[str, Any]) -> dict[str, Any]:
         result = dict(worker)
         result.pop("bridge_secret_id", None)
+        result.pop("view_secret_id", None)
         return result
 
     def _static(self, path: str) -> None:
@@ -624,6 +641,7 @@ def main(argv: list[str] | None = None) -> int:
             network_name=os.environ.get("SMACX_DOCKER_NETWORK") or None,
             control_data_volume=os.environ.get("SMACX_CONTROL_DATA_VOLUME") or None,
             directx_redist_host_path=os.environ.get("SMACX_DIRECTX_REDIST_HOST") or None,
+            view_publish_ip=os.environ.get("SMACX_VIEW_PUBLISH_IP", "127.0.0.1"),
         )
     host = getattr(arguments, "host", os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))
     port = getattr(arguments, "port", int(os.environ.get("SMACX_CONTROL_PORT", "8080")))
