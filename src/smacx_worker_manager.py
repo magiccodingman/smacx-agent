@@ -1,0 +1,1619 @@
+"""Docker-backed lifecycle manager for isolated Linux SMACX game workers."""
+
+from __future__ import annotations
+
+from io import BytesIO
+import hashlib
+import json
+from pathlib import Path
+import re
+import secrets
+import tarfile
+import time
+from typing import Any, Mapping
+import uuid
+
+from smacx_control import ControlPlane
+from smacx_controller import BridgeUnavailable, bridge_request_to
+from smacx_docker import DockerClient, DockerError, DockerNotFound
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, StoreError
+
+
+RESOURCE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$")
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+UNSAFE_LOG_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+SAFE_HOST_PATH_LIMIT = 4096
+
+
+class WorkerManagerError(StoreError):
+    pass
+
+
+def _new_id(kind: str) -> str:
+    return f"{kind}-{uuid.uuid4().hex}"
+
+
+def _host_path(value: str, field: str) -> str:
+    if not isinstance(value, str) or len(value) > SAFE_HOST_PATH_LIMIT or "\x00" in value:
+        raise InvalidRecord(f"invalid_{field}")
+    path = Path(value)
+    if not path.is_absolute():
+        raise InvalidRecord(f"invalid_{field}")
+    if str(path) in ("/", "/home", "/usr", "/etc", "/var", "/tmp"):
+        raise InvalidRecord(f"unsafe_{field}")
+    return str(path)
+
+
+def _clean_log(value: str) -> str:
+    return UNSAFE_LOG_CONTROL.sub("", ANSI_ESCAPE.sub("", value))
+
+
+class WorkerManager:
+    def __init__(self, control: ControlPlane, docker: DockerClient, *,
+                 worker_image: str = "smacx-agent-worker:dev",
+                 mcp_image: str = "smacx-agent-control:dev",
+                 network_name: str | None = None,
+                 control_data_volume: str | None = None,
+                 directx_redist_host_path: str | None = None,
+                 view_publish_ip: str = "127.0.0.1") -> None:
+        self.control = control
+        self.store = control.store
+        self.docker = docker
+        if not RESOURCE_NAME.fullmatch(worker_image.replace(":", "-", 1)):
+            # Image references may contain one registry slash and colon. Keep
+            # the check intentionally conservative for the initial local build.
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,400}(?::[A-Za-z0-9_.-]{1,100})?", worker_image):
+                raise InvalidRecord("invalid_worker_image")
+        self.worker_image = worker_image
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,400}(?::[A-Za-z0-9_.-]{1,100})?", mcp_image):
+            raise InvalidRecord("invalid_mcp_image")
+        self.mcp_image = mcp_image
+        self.network_name = network_name
+        if control_data_volume is not None and not RESOURCE_NAME.fullmatch(control_data_volume):
+            raise InvalidRecord("invalid_control_data_volume")
+        self.control_data_volume = control_data_volume
+        self.directx_redist_host_path = (
+            _host_path(directx_redist_host_path, "directx_redist_path")
+            if directx_redist_host_path else None
+        )
+        if view_publish_ip not in {"127.0.0.1", "0.0.0.0"}:
+            raise InvalidRecord("invalid_view_publish_ip")
+        self.view_publish_ip = view_publish_ip
+        installation_hash = hashlib.sha256(
+            self.store.installation_id().encode("utf-8")
+        ).hexdigest()[:12]
+        self.resource_prefix = f"smacx-{installation_hash}"
+
+    @property
+    def installation_id(self) -> str:
+        return self.store.installation_id()
+
+    def health(self) -> dict[str, Any]:
+        try:
+            ok = self.docker.ping()
+            version = self.docker.version() if ok else {}
+        except DockerError:
+            return {"ok": False, "error": "docker_engine_unavailable"}
+        return {
+            "ok": ok,
+            "server_version": version.get("Version"),
+            "api_version": version.get("ApiVersion"),
+            "worker_image": self.worker_image,
+            "mcp_image": self.mcp_image,
+            "network_name": self.network_name,
+            "managed_mcp_configured": bool(self.control_data_volume),
+            "directplay_source_configured": bool(self.directx_redist_host_path),
+        }
+
+    def _native_request(self, instance_id: str, operation: str, *,
+                        timeout: float = 8.0, **arguments: Any) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        container = self.docker.inspect_container(spec["container_name"])
+        self.docker.require_owned(container, self.installation_id, purpose="game-worker")
+        if not container.get("State", {}).get("Running"):
+            raise WorkerManagerError("game_worker_not_running")
+        networks = container.get("NetworkSettings", {}).get("Networks", {})
+        network = networks.get(self.network_name) if self.network_name and isinstance(networks, Mapping) else None
+        if not isinstance(network, Mapping):
+            candidates = [item for item in networks.values() if isinstance(item, Mapping)] \
+                if isinstance(networks, Mapping) else []
+            network = candidates[0] if len(candidates) == 1 else None
+        host = network.get("IPAddress") if isinstance(network, Mapping) else None
+        if not isinstance(host, str) or not host:
+            raise WorkerManagerError("game_worker_network_address_unavailable")
+        token = self.control.vault.read(
+            str(spec["bridge_secret_id"]), purpose=f"worker.{instance_id}.bridge_token",
+        )
+        try:
+            return bridge_request_to(
+                host, 47814, token, operation, timeout=timeout, **arguments,
+            )
+        except BridgeUnavailable as exc:
+            raise WorkerManagerError("game_worker_bridge_unavailable") from exc
+
+    def _wait_native(self, instance_id: str, operation: str, predicate, *,
+                     timeout: float, poll_seconds: float = 0.25,
+                     context: str | None = None,
+                     **arguments: Any) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout
+        latest: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            try:
+                latest = self._native_request(instance_id, operation, **arguments)
+            except WorkerManagerError as exc:
+                # A stock multiplayer checkpoint is deserialized on the game
+                # thread when its setup packet arrives. During that bounded
+                # interval the authenticated bridge can time out even though
+                # the worker and DirectPlay session remain healthy. Retry only
+                # this transport condition; ownership/lifecycle errors remain
+                # immediate failures.
+                if str(exc) != "game_worker_bridge_unavailable":
+                    raise
+                latest = {"ok": False, "error": str(exc)}
+                time.sleep(poll_seconds)
+                continue
+            if predicate(latest):
+                return latest
+            time.sleep(poll_seconds)
+        detail = json.dumps(latest, separators=(",", ":"), default=str)[:1800]
+        stage = f"_{context}" if context else ""
+        raise WorkerManagerError(f"native_{operation}{stage}_timeout:{detail}")
+
+    def _name(self, kind: str, identity: str | None = None) -> str:
+        suffix = hashlib.sha256((identity or uuid.uuid4().hex).encode()).hexdigest()[:16]
+        name = f"{self.resource_prefix}-{kind}-{suffix}"
+        if not RESOURCE_NAME.fullmatch(name):
+            raise WorkerManagerError("invalid_managed_resource_name")
+        return name
+
+    def _labels(self, purpose: str, **extra: str) -> dict[str, str]:
+        return self.docker.labels(self.installation_id, purpose, **extra)
+
+    def _cleanup_container(self, identifier: str, purpose: str) -> None:
+        try:
+            inspected = self.docker.inspect_container(identifier)
+            self.docker.require_owned(inspected, self.installation_id, purpose=purpose)
+            if inspected.get("State", {}).get("Running"):
+                self.docker.stop_container(identifier, timeout=10)
+            self.docker.remove_container(identifier)
+        except DockerNotFound:
+            return
+
+    def validate_game_source(self, host_path: str, *, display_name: str = "Alien Crossfire") -> dict[str, Any]:
+        host_path = _host_path(host_path, "game_source_host_path")
+        self.docker.inspect_image(self.worker_image)
+        name = self._name("inspect")
+        labels = self._labels("game-source-inspector")
+        identifier = self.docker.create_container(name, {
+            "Image": self.worker_image,
+            "Entrypoint": ["python3", "/opt/smacx/inspect_source.py"],
+            "Cmd": [],
+            "Tty": True,
+            "Labels": labels,
+            "HostConfig": {
+                "NetworkMode": "none",
+                "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {"/tmp": "rw,nosuid,nodev,noexec,size=64m"},
+                "Mounts": [{
+                    "Type": "bind", "Source": host_path, "Target": "/game-source",
+                    "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"},
+                }],
+            },
+        })
+        try:
+            self.docker.start_container(identifier)
+            finished = self.docker.wait_container(identifier, timeout=120)
+            logs = self.docker.container_logs(identifier, tail=20)
+            payload = self._last_json(logs)
+            if finished.get("State", {}).get("ExitCode") != 0 or not payload.get("ok"):
+                raise WorkerManagerError("game_source_validation_failed")
+            source = payload.get("source")
+            if not isinstance(source, Mapping) or not re.fullmatch(
+                r"[a-f0-9]{64}", str(source.get("terranx_sha256", "")),
+            ):
+                raise WorkerManagerError("invalid_game_source_probe_response")
+            return self.control.register_game_source(
+                display_name, host_path, str(source["terranx_sha256"]),
+                metadata={"validated_by": "container", "worker_image": self.worker_image},
+            )
+        finally:
+            self._cleanup_container(identifier, "game-source-inspector")
+
+    def import_proton(self, source_host_path: str, *, display_name: str = "Managed Proton") -> dict[str, Any]:
+        source_host_path = _host_path(source_host_path, "proton_source_path")
+        self.docker.inspect_image(self.worker_image)
+        runtime_id = _new_id("runtime")
+        volume = self._name("proton", runtime_id)
+        labels = self._labels("proton-runtime", **{"io.smacx.runtime": runtime_id})
+        self.docker.create_volume(volume, labels)
+        helper = self._name("import", runtime_id)
+        identifier: str | None = None
+        script = """
+set -eu
+test -f /source/proton
+test -f /source/files/bin/wine
+test -f /source/files/bin/wineserver
+cp -a /source/. /target/
+cd /target
+# Proton takes an exclusive lock beside its immutable distribution on every
+# launch. Redirect only that lock into the worker's private tmpfs so the
+# imported, checksummed runtime can remain read-only for every seat.
+sed -i 's|self.dist_lock = FileLock(self.path("dist.lock"), timeout=-1)|self.dist_lock = FileLock(os.environ.get("SMACX_PROTON_DIST_LOCK", self.path("dist.lock")), timeout=-1)|' /target/proton
+grep -Fq 'SMACX_PROTON_DIST_LOCK' /target/proton
+find . -type f ! -name .smacx-manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > /tmp/manifest
+fingerprint=$(sha256sum /tmp/manifest | cut -d' ' -f1)
+install -m 0444 /tmp/manifest /target/.smacx-manifest.sha256
+chown -R 10001:10001 /target
+printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
+""".strip()
+        try:
+            identifier = self.docker.create_container(helper, {
+                "Image": self.worker_image,
+                "Entrypoint": ["/bin/sh", "-c"],
+                "Cmd": [script],
+                "User": "0:0",
+                "Tty": True,
+                "Labels": self._labels("proton-importer", **{"io.smacx.runtime": runtime_id}),
+                "HostConfig": {
+                    "NetworkMode": "none",
+                    "ReadonlyRootfs": True,
+                    "CapDrop": ["ALL"],
+                    "CapAdd": ["CHOWN", "FOWNER", "DAC_OVERRIDE"],
+                    "SecurityOpt": ["no-new-privileges"],
+                    "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=256m"},
+                    "Mounts": [
+                        {"Type": "bind", "Source": source_host_path, "Target": "/source",
+                         "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"}},
+                        {"Type": "volume", "Source": volume, "Target": "/target"},
+                    ],
+                },
+            })
+            self.docker.start_container(identifier)
+            finished = self.docker.wait_container(identifier, timeout=1800, interval=1)
+            payload = self._last_json(self.docker.container_logs(identifier, tail=20))
+            fingerprint = str(payload.get("fingerprint", ""))
+            if finished.get("State", {}).get("ExitCode") != 0 or not payload.get("ok") \
+                    or not re.fullmatch(r"[a-f0-9]{64}", fingerprint):
+                raise WorkerManagerError("proton_import_failed")
+            return self.control.register_runtime(
+                display_name, "docker-volume", volume, runtime_id=runtime_id,
+                runtime_kind="proton", source_path=source_host_path,
+                content_fingerprint=fingerprint, status="ready",
+                metadata={
+                    "manifest_path": "/proton/.smacx-manifest.sha256",
+                    "managed": True,
+                    "proton_dist_lock_redirected": True,
+                },
+            )
+        except Exception:
+            if identifier:
+                try:
+                    self._cleanup_container(identifier, "proton-importer")
+                finally:
+                    identifier = None
+            try:
+                owned = self.docker.inspect_volume(volume)
+                self.docker.require_owned(owned, self.installation_id, purpose="proton-runtime")
+                self.docker.remove_volume(volume)
+            except Exception:
+                pass
+            raise
+        finally:
+            if identifier:
+                self._cleanup_container(identifier, "proton-importer")
+
+    @staticmethod
+    def _last_json(logs: str) -> dict[str, Any]:
+        for line in reversed(logs.splitlines()):
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                return value
+        raise WorkerManagerError("managed_helper_returned_no_json")
+
+    @staticmethod
+    def _secret_archive(name: str, value: str) -> bytes:
+        output = BytesIO()
+        with tarfile.open(fileobj=output, mode="w") as stream:
+            data = value.encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o400
+            info.uid = 10001
+            info.gid = 10001
+            info.mtime = int(time.time())
+            stream.addfile(info, BytesIO(data))
+        return output.getvalue()
+
+    def _seed_secret_volume(self, volume: str, instance_id: str,
+                            file_name: str, value: str) -> None:
+        helper = self._name("secret", instance_id)
+        identifier = self.docker.create_container(helper, {
+            "Image": self.worker_image,
+            "Entrypoint": ["/bin/true"],
+            "Cmd": [],
+            "User": "0:0",
+            "Tty": True,
+            "Labels": self._labels("worker-secret-writer", **{"io.smacx.instance": instance_id}),
+            "HostConfig": {
+                "NetworkMode": "none", "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges"],
+                "Mounts": [{"Type": "volume", "Source": volume, "Target": "/secrets"}],
+            },
+        })
+        try:
+            self.docker.put_archive(
+                identifier, "/secrets", self._secret_archive(file_name, value),
+            )
+        finally:
+            self._cleanup_container(identifier, "worker-secret-writer")
+
+    def provision_worker(self, scope: MemoryScope, game_source_id: str, runtime_id: str, *,
+                         autostart: Mapping[str, Any] | None = None,
+                         view_enabled: bool = False) -> dict[str, Any]:
+        self.store.require_scope(scope)
+        source = self.control.get_game_source(game_source_id)
+        runtime = self.control.get_runtime(runtime_id)
+        if source["status"] != "validated" or runtime["status"] != "ready" \
+                or runtime["storage_kind"] != "docker-volume":
+            raise WorkerManagerError("worker_assets_not_ready")
+        runtime_volume = self.docker.inspect_volume(runtime["storage_ref"])
+        self.docker.require_owned(runtime_volume, self.installation_id, purpose="proton-runtime")
+        self.docker.inspect_image(self.worker_image)
+        instance_id = _new_id("instance")
+        container_name = self._name("worker", instance_id)
+        data_volume = self._name("data", instance_id)
+        secret_volume = self._name("secret", instance_id)
+        data_created = False
+        secret_created = False
+        bridge_secret_id: str | None = None
+        view_secret_id: str | None = None
+        try:
+            self.docker.create_volume(
+                data_volume, self._labels("worker-data", **{"io.smacx.instance": instance_id}),
+            )
+            data_created = True
+            self.docker.create_volume(
+                secret_volume, self._labels("worker-secret", **{"io.smacx.instance": instance_id}),
+            )
+            secret_created = True
+            token = secrets.token_urlsafe(48)
+            secret = self.control.vault.put(f"worker.{instance_id}.bridge_token", token)
+            bridge_secret_id = str(secret["secret_id"])
+            self._seed_secret_volume(secret_volume, instance_id, "bridge-token", token)
+            if view_enabled:
+                view_password = secrets.token_urlsafe(24)
+                view_secret = self.control.vault.put(
+                    f"worker.{instance_id}.view_password", view_password,
+                )
+                view_secret_id = str(view_secret["secret_id"])
+                self._seed_secret_volume(
+                    secret_volume, instance_id, "view-password", view_password,
+                )
+            self.store.register_instance(
+                instance_id=instance_id, worker_kind="container-linux", scope=scope,
+                runtime_root=data_volume,
+                metadata={"container_name": container_name, "managed": True},
+            )
+            worker = self.control.put_worker_spec(
+                instance_id, game_source_id, runtime_id, self.worker_image,
+                container_name, data_volume, bridge_secret_id,
+                autostart=self._autostart(autostart),
+                network={
+                    "name": self.network_name,
+                    "secret_volume": secret_volume,
+                    "view_enabled": bool(view_enabled),
+                    "view_mode": "view-only",
+                },
+                view_secret_id=view_secret_id,
+            )
+            self.control.assign_instance_to_seat(
+                scope.match_id, scope.agent_id, scope.perspective_id, instance_id,
+            )
+            return worker
+        except Exception:
+            with self.store.transaction() as connection:
+                connection.execute(
+                    "UPDATE seat_assignments SET instance_id=NULL, updated_unix=? WHERE instance_id=?",
+                    (time.time(), instance_id),
+                )
+                connection.execute("DELETE FROM worker_specs WHERE instance_id=?", (instance_id,))
+                connection.execute(
+                    "DELETE FROM instances WHERE instance_id=? AND status='available' "
+                    "AND NOT EXISTS (SELECT 1 FROM sessions WHERE instance_id=?)",
+                    (instance_id, instance_id),
+                )
+            if bridge_secret_id:
+                self.control.vault.revoke(bridge_secret_id)
+            if view_secret_id:
+                self.control.vault.revoke(view_secret_id)
+            for volume_name, purpose, created in (
+                (secret_volume, "worker-secret", secret_created),
+                (data_volume, "worker-data", data_created),
+            ):
+                if not created:
+                    continue
+                try:
+                    resource = self.docker.inspect_volume(volume_name)
+                    self.docker.require_owned(resource, self.installation_id, purpose=purpose)
+                    self.docker.remove_volume(volume_name)
+                except Exception:
+                    pass
+            raise
+
+    @staticmethod
+    def _autostart(value: Mapping[str, Any] | None) -> dict[str, Any]:
+        supplied = dict(value or {})
+        result = {
+            "enabled": bool(supplied.get("enabled", True)),
+            "difficulty": int(supplied.get("difficulty", 0)),
+            "world_size": int(supplied.get("world_size", 0)),
+            "faction_id": int(supplied.get("faction_id", 1)),
+            "blind_research": bool(supplied.get("blind_research", True)),
+            "initial_research_priority": int(supplied.get("initial_research_priority", 1)),
+            "narrative_ui": bool(supplied.get("narrative_ui", False)),
+            "tutorial_ui": bool(supplied.get("tutorial_ui", False)),
+        }
+        if not 0 <= result["difficulty"] <= 5 or not 0 <= result["world_size"] <= 4 \
+                or not 1 <= result["faction_id"] <= 7 \
+                or not 0 <= result["initial_research_priority"] <= 3:
+            raise InvalidRecord("invalid_worker_autostart")
+        return result
+
+    def _worker_environment(self, spec: Mapping[str, Any], session_id: str) -> list[str]:
+        autostart = spec["autostart"]
+        values = {
+            "SMACX_AGENT_TOKEN_FILE": "/run/secrets/bridge-token",
+            "SMACX_AGENT_MATCH_ID": spec["match_id"],
+            "SMACX_AGENT_SESSION_ID": session_id,
+            "SMACX_AGENT_ID": spec["agent_id"],
+            "SMACX_PERSPECTIVE_ID": spec["perspective_id"],
+            "SMACX_INSTANCE_ID": spec["instance_id"],
+            "SMACX_PROTON_BIN": "/proton/proton",
+            "SMACX_PROTON_DIST_LOCK": "/tmp/smacx-proton-dist.lock",
+            "SMACX_WINEARCH": "win64",
+            "SMACX_REQUIRE_DIRECTPLAY": "1" if self.directx_redist_host_path else "0",
+            "SMACX_VIEW_ENABLE": "1" if spec["network"].get("view_enabled") else "0",
+            "SMACX_VIEW_PASSWORD_FILE": "/run/secrets/view-password",
+            "SMACX_VIEW_MODE": "view-only",
+            "SMACX_AGENT_AUTOSTART": "1" if autostart["enabled"] else "0",
+            "SMACX_AGENT_DIFFICULTY": str(autostart["difficulty"]),
+            "SMACX_AGENT_WORLD_SIZE": str(autostart["world_size"]),
+            "SMACX_AGENT_FACTION_ID": str(autostart["faction_id"]),
+            "SMACX_AGENT_BLIND_RESEARCH": "1" if autostart["blind_research"] else "0",
+            "SMACX_AGENT_INITIAL_RESEARCH_PRIORITY": str(autostart["initial_research_priority"]),
+            "SMACX_AGENT_NARRATIVE_UI": "1" if autostart["narrative_ui"] else "0",
+            "SMACX_AGENT_TUTORIAL_UI": "1" if autostart["tutorial_ui"] else "0",
+            "SMACX_BRIDGE_START_TIMEOUT": "180",
+        }
+        return [f"{key}={value}" for key, value in values.items()]
+
+    def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        source = self.control.get_game_source(spec["game_source_id"])
+        runtime = self.control.get_runtime(spec["runtime_id"])
+        if spec["observed_status"] == "running":
+            return self.worker_status(instance_id)
+        for volume_name, purpose in (
+            (spec["data_volume"], "worker-data"),
+            (spec["network"]["secret_volume"], "worker-secret"),
+            (runtime["storage_ref"], "proton-runtime"),
+        ):
+            resource = self.docker.inspect_volume(volume_name)
+            self.docker.require_owned(resource, self.installation_id, purpose=purpose)
+        session_id = _new_id("session")
+        scope = MemoryScope(spec["match_id"], spec["agent_id"], spec["perspective_id"])
+        self.store.start_session(scope, instance_id, session_id=session_id,
+                                 metadata={"container_name": spec["container_name"]})
+        mounts = [
+            {"Type": "bind", "Source": source["host_path"], "Target": "/game-source",
+             "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"}},
+            {"Type": "volume", "Source": runtime["storage_ref"], "Target": "/proton",
+             "ReadOnly": True},
+            {"Type": "volume", "Source": spec["data_volume"], "Target": "/var/lib/smacx"},
+            {"Type": "volume", "Source": spec["network"]["secret_volume"],
+             "Target": "/run/secrets", "ReadOnly": True},
+        ]
+        if self.directx_redist_host_path:
+            mounts.append({
+                "Type": "bind", "Source": self.directx_redist_host_path,
+                "Target": "/redist/directx_feb2010_redist.exe", "ReadOnly": True,
+                "BindOptions": {"Propagation": "rprivate"},
+            })
+        labels = self._labels(
+            "game-worker", **{
+                "io.smacx.instance": instance_id,
+                "io.smacx.match": spec["match_id"],
+                "io.smacx.session": session_id,
+            },
+        )
+        exposed_ports = {"47814/tcp": {}}
+        port_bindings: dict[str, list[dict[str, str]]] = {
+            "47814/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}],
+        }
+        if spec["network"].get("view_enabled"):
+            exposed_ports["6080/tcp"] = {}
+            port_bindings["6080/tcp"] = [{
+                "HostIp": self.view_publish_ip, "HostPort": "",
+            }]
+        config = {
+            "Image": spec["image_ref"],
+            "Env": self._worker_environment(spec, session_id),
+            "Tty": True,
+            "Labels": labels,
+            "ExposedPorts": exposed_ports,
+            "HostConfig": {
+                "NetworkMode": self.network_name or "bridge",
+                "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {
+                    "/tmp": "rw,nosuid,nodev,size=512m,mode=1777",
+                    "/run": "rw,nosuid,nodev,size=32m,mode=0755",
+                },
+                "PortBindings": port_bindings,
+                "Mounts": mounts,
+            },
+        }
+        container_id: str | None = None
+        try:
+            try:
+                old = self.docker.inspect_container(spec["container_name"])
+                self.docker.require_owned(old, self.installation_id, purpose="game-worker")
+                if old.get("State", {}).get("Running"):
+                    raise WorkerManagerError("worker_container_already_running")
+                self.docker.remove_container(spec["container_name"])
+            except DockerNotFound:
+                pass
+            container_id = self.docker.create_container(spec["container_name"], config)
+            self.docker.start_container(container_id)
+            deadline = time.monotonic() + min(max(float(timeout), 30.0), 600.0)
+            inspected: dict[str, Any] = {}
+            while time.monotonic() < deadline:
+                inspected = self.docker.inspect_container(container_id)
+                state = inspected.get("State", {})
+                health = state.get("Health", {}).get("Status")
+                if health == "healthy":
+                    break
+                # Docker can report unhealthy after its image-level startup
+                # grace expires while a first-run Proton prefix is still
+                # registering DirectPlay. Health checks continue afterward
+                # and can recover, so the manager's explicit bounded deadline
+                # is authoritative as long as the worker process is alive.
+                if not state.get("Running"):
+                    raise WorkerManagerError("worker_failed_healthcheck")
+                time.sleep(1)
+            else:
+                raise WorkerManagerError("worker_health_timeout")
+            binding = inspected.get("NetworkSettings", {}).get("Ports", {}).get("47814/tcp")
+            host_port = int(binding[0]["HostPort"]) if isinstance(binding, list) and binding else None
+            view_binding = inspected.get("NetworkSettings", {}).get("Ports", {}).get("6080/tcp")
+            view_port = (
+                int(view_binding[0]["HostPort"])
+                if isinstance(view_binding, list) and view_binding else None
+            )
+            if spec["network"].get("view_enabled") and not view_port:
+                raise WorkerManagerError("spectator_port_unavailable")
+            network = dict(spec["network"])
+            network.update({
+                "view_status": "running" if view_port else "disabled",
+                "view_host_port": view_port,
+                "view_path": "/vnc.html?autoconnect=1&resize=scale",
+                "view_publish_ip": self.view_publish_ip if view_port else None,
+            })
+            self.control.update_worker_network(instance_id, network)
+            self.control.update_worker_observation(
+                instance_id, desired_status="running", observed_status="running", last_error="",
+                bridge_host="127.0.0.1" if host_port else spec["container_name"],
+                bridge_port=host_port or 47814, instance_status="running",
+            )
+            mcp_endpoint = self.start_mcp_sidecar(instance_id) if self.control_data_volume else None
+            return {
+                "ok": True, "instance_id": instance_id, "session_id": session_id,
+                "container_name": spec["container_name"], "container_id": container_id,
+                "health": "healthy", "bridge_host_port": host_port,
+                "spectator": ({
+                    "enabled": True, "host_port": view_port,
+                    "path": network["view_path"], "mode": "view-only",
+                } if view_port else {"enabled": False}),
+                "mcp": mcp_endpoint,
+            }
+        except Exception as exc:
+            failure_detail = str(exc)
+            if container_id:
+                try:
+                    logs = self.docker.container_logs(container_id, tail=80)
+                    if logs.strip():
+                        failure_detail = f"{failure_detail}\n{_clean_log(logs)[-1800:]}"
+                except Exception:
+                    pass
+                try:
+                    self._cleanup_container(container_id, "game-worker")
+                except Exception:
+                    pass
+            try:
+                self.store.close_session(session_id, status="failed")
+            except Exception:
+                pass
+            self.control.update_worker_observation(
+                instance_id, desired_status="stopped", observed_status="error",
+                last_error=failure_detail[:2000], bridge_host=None, bridge_port=None,
+                instance_status="error",
+            )
+            raise
+
+    @staticmethod
+    def _lan_operation_id(match_id: str, stage: str, seat_index: int = 0) -> str:
+        digest = hashlib.sha256(f"{match_id}:{stage}:{seat_index}".encode("utf-8")).hexdigest()[:32]
+        return f"managed-{stage}-{digest}"
+
+    def _container_address(self, instance_id: str) -> str:
+        spec = self.control.get_worker_spec(instance_id)
+        container = self.docker.inspect_container(spec["container_name"])
+        self.docker.require_owned(container, self.installation_id, purpose="game-worker")
+        networks = container.get("NetworkSettings", {}).get("Networks", {})
+        network = networks.get(self.network_name) if self.network_name and isinstance(networks, Mapping) else None
+        if not isinstance(network, Mapping):
+            candidates = [item for item in networks.values() if isinstance(item, Mapping)] \
+                if isinstance(networks, Mapping) else []
+            network = candidates[0] if len(candidates) == 1 else None
+        address = network.get("IPAddress") if isinstance(network, Mapping) else None
+        if not isinstance(address, str) or not address:
+            raise WorkerManagerError("game_worker_network_address_unavailable")
+        return address
+
+    def _external_lan_network(self) -> dict[str, Any]:
+        if not self.network_name:
+            raise WorkerManagerError("external_lan_network_not_configured")
+        network = self.docker.inspect_network(self.network_name)
+        driver = str(network.get("Driver") or "")
+        if driver not in {"macvlan", "ipvlan"} or network.get("Internal") is True:
+            raise WorkerManagerError(
+                "external_lan_requires_non_internal_macvlan_or_ipvlan"
+            )
+        return {
+            "name": self.network_name,
+            "driver": driver,
+            "scope": str(network.get("Scope") or "local"),
+        }
+
+    def start_lan_match(self, match_id: str, *, session_name: str | None = None,
+                        profile: str = "small_easy", resume_slot: str | None = None,
+                        timeout: float = 420.0) -> dict[str, Any]:
+        if profile != "small_easy":
+            raise InvalidRecord("unsupported_lan_profile")
+        match = self.control.get_match(match_id)
+        if session_name is None:
+            session_name = str(
+                match.get("metadata", {}).get("lan_session_name") or "SMACX Managed LAN"
+            )
+        if not isinstance(session_name, str) or not 1 <= len(session_name) <= 31 \
+                or any(ord(character) < 32 or ord(character) > 126 for character in session_name):
+            raise InvalidRecord("invalid_lan_session_name")
+        if resume_slot is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", resume_slot):
+            raise InvalidRecord("invalid_save_slot")
+        seats = self.control.list_seats(match_id)
+        agent_seats = [seat for seat in seats if seat["controller_kind"] == "agent"]
+        human_seats = [seat for seat in seats if seat["controller_kind"] == "human"]
+        if not 2 <= len(seats) <= 7 or not agent_seats \
+                or len(agent_seats) + len(human_seats) != len(seats) \
+                or agent_seats[0].get("seat_index") != 0:
+            raise WorkerManagerError("managed_lan_requires_agent_host_and_valid_seats")
+        if any(not seat.get("instance_id") for seat in agent_seats):
+            raise WorkerManagerError("managed_lan_seat_not_provisioned")
+        if any(seat.get("instance_id") for seat in human_seats):
+            raise WorkerManagerError("external_human_seat_must_not_have_worker")
+        external_network = self._external_lan_network() if human_seats else None
+        if human_seats and match["status"] == "lobby":
+            return self.finalize_external_lan_match(match_id, timeout=timeout)
+        host = seats[0]
+        host_instance = str(host["instance_id"])
+        deadline = time.monotonic() + min(max(float(timeout), 120.0), 900.0)
+        self.control.update_match_lifecycle(
+            match_id, "starting", host_instance_id=host_instance,
+            metadata={
+                "lan_profile": profile, "lan_session_name": session_name,
+                "resume_slot": resume_slot,
+            },
+        )
+        try:
+            for seat in agent_seats:
+                remaining = max(30.0, deadline - time.monotonic())
+                self.start_worker(str(seat["instance_id"]), timeout=min(remaining, 300.0))
+            hosted = self._native_request(
+                host_instance, "semantic_lan", timeout=min(140.0, max(30.0, deadline - time.monotonic())),
+                action="host", session_name=session_name, player_name="Semantic Host",
+                client_operation_id=self._lan_operation_id(match_id, "host"),
+            )
+            if not hosted.get("ok") or not hosted.get("lobby_launch_queued"):
+                raise WorkerManagerError("native_lan_host_failed")
+            host_lobby = self._wait_native(
+                host_instance, "semantic_lan",
+                lambda value: value.get("lifecycle") == "lobby", timeout=45,
+                context="host_lobby", action="status",
+            )
+            network_session_id = host_lobby.get("identity", {}).get("network_session_id")
+            if not isinstance(network_session_id, str) or not network_session_id:
+                raise WorkerManagerError("native_lan_network_identity_missing")
+            loaded_checkpoint = None
+            if resume_slot is not None:
+                identity = host_lobby["identity"]
+                loaded_checkpoint = self._native_request(
+                    host_instance, "semantic_lan", action="load_save", slot=resume_slot,
+                    match_id=identity["match_id"], session_id=identity["session_id"],
+                    expected_lobby_revision=host_lobby["lobby"]["revision"],
+                    client_operation_id=self._lan_operation_id(match_id, "load"),
+                )
+                if not loaded_checkpoint.get("ok"):
+                    detail = json.dumps(loaded_checkpoint, separators=(",", ":"))[:1200]
+                    raise WorkerManagerError(f"native_lan_load_failed:{detail}")
+                host_lobby = self._wait_native(
+                    host_instance, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("lobby", {}).get("game_type") == "load"
+                    ), timeout=45, context="host_loaded_lobby", action="status",
+                )
+            host_address = self._container_address(host_instance)
+            for seat in agent_seats[1:]:
+                seat_index = int(seat["seat_index"])
+                instance_id = str(seat["instance_id"])
+                discovered = self._native_request(
+                    instance_id, "semantic_lan", timeout=140, action="discover",
+                    host_address=host_address,
+                )
+                matches = [
+                    item for item in discovered.get("sessions", [])
+                    if isinstance(item, Mapping)
+                    and item.get("network_session_id") == network_session_id
+                ]
+                if not discovered.get("ok") or len(matches) != 1 or not matches[0].get("joinable"):
+                    raise WorkerManagerError("native_lan_exact_session_not_discovered")
+                joined = self._native_request(
+                    instance_id, "semantic_lan", timeout=140, action="join",
+                    network_session_id=network_session_id,
+                    player_name=f"Semantic Agent {seat_index + 1}",
+                    host_address=host_address,
+                    client_operation_id=self._lan_operation_id(match_id, "join", seat_index),
+                )
+                if not joined.get("ok") or not joined.get("joined"):
+                    raise WorkerManagerError("native_lan_join_failed")
+                self._wait_native(
+                    instance_id, "semantic_lan",
+                    lambda value, expected=network_session_id: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("identity", {}).get("network_session_id") == expected
+                    ), timeout=45, context=f"client_{seat_index}_joined_lobby", action="status",
+                )
+            participant_count = len(agent_seats)
+            host_lobby = self._wait_native(
+                host_instance, "semantic_lan",
+                lambda value: (
+                    value.get("lifecycle") == "lobby"
+                    and value.get("lobby", {}).get("participant_count") == participant_count
+                ), timeout=45, context="host_participant_count", action="status",
+            )
+            resume_choices_by_seat: dict[int, int] = {}
+            if resume_slot is None:
+                identity = host_lobby["identity"]
+                configured = self._native_request(
+                    host_instance, "semantic_lan", action="configure", profile=profile,
+                    match_id=identity["match_id"], session_id=identity["session_id"],
+                    expected_lobby_revision=host_lobby["lobby"]["revision"],
+                    client_operation_id=self._lan_operation_id(match_id, "configure"),
+                )
+                if not configured.get("ok"):
+                    raise WorkerManagerError("native_lan_configure_failed")
+                host_lobby = self._wait_native(
+                    host_instance, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("lobby", {}).get("settings", {}).get("profile") == profile
+                    ), timeout=45, context="host_configured_lobby",
+                    action="status",
+                )
+            else:
+                restored_by_player: dict[int, int] = {}
+                for seat in agent_seats:
+                    seat_index = int(seat["seat_index"])
+                    instance_id = str(seat["instance_id"])
+                    expected_faction = seat.get("faction_id")
+                    if not isinstance(expected_faction, int):
+                        raise WorkerManagerError("native_lan_saved_faction_missing")
+                    lobby = self._wait_native(
+                        instance_id, "semantic_lan",
+                        lambda value, expected=network_session_id: (
+                            value.get("lifecycle") == "lobby"
+                            and value.get("identity", {}).get("network_session_id") == expected
+                            and value.get("lobby", {}).get("game_type") == "load"
+                            and value.get("lobby", {}).get("participant_count") == participant_count
+                        ), timeout=75, context=f"seat_{seat_index}_loaded_faction_lobby",
+                        action="status",
+                    )
+                    if restored_by_player:
+                        lobby = self._wait_native(
+                            instance_id, "semantic_lan",
+                            lambda value, prior=dict(restored_by_player): (
+                                value.get("lifecycle") == "lobby"
+                                and all(
+                                    next(
+                                        (item for item in value.get("lobby", {}).get(
+                                            "participants", []
+                                        ) if isinstance(item, Mapping)
+                                         and item.get("player_index") == player_index),
+                                        {},
+                                    ).get("faction_choice_id") == faction_choice_id
+                                    for player_index, faction_choice_id in prior.items()
+                                )
+                            ), timeout=75,
+                            context=f"seat_{seat_index}_prior_faction_choices",
+                            action="status",
+                        )
+                    local = next(
+                        (item for item in lobby["lobby"].get("participants", [])
+                         if isinstance(item, Mapping) and item.get("local") is True),
+                        {},
+                    )
+                    if local.get("faction_id") != expected_faction:
+                        detail = json.dumps(local, separators=(",", ":"))[:1000]
+                        raise WorkerManagerError(
+                            f"native_lan_restored_faction_binding_mismatch:{detail}"
+                        )
+                    expected_choice = local.get("required_faction_choice_id")
+                    if not isinstance(expected_choice, int):
+                        detail = json.dumps(local, separators=(",", ":"))[:1000]
+                        raise WorkerManagerError(
+                            f"native_lan_loaded_faction_choice_unavailable:{detail}"
+                        )
+                    if local.get("faction_choice_id") != expected_choice:
+                        selected = self._native_request(
+                            instance_id, "semantic_lan", action="select_faction",
+                            faction_choice_id=expected_choice,
+                            match_id=lobby["identity"]["match_id"],
+                            session_id=lobby["identity"]["session_id"],
+                            expected_lobby_revision=lobby["lobby"]["revision"],
+                            client_operation_id=self._lan_operation_id(
+                                match_id, "faction", seat_index,
+                            ),
+                        )
+                        if not selected.get("ok"):
+                            detail = json.dumps({
+                                "seat_index": seat_index,
+                                "expected_faction_choice_id": expected_choice,
+                                "native_selector_record_ids": lobby.get(
+                                    "lobby", {}
+                                ).get("native_selector_record_ids", []),
+                                "participants": lobby.get("lobby", {}).get(
+                                    "participants", []
+                                ),
+                                "result": selected,
+                            }, separators=(",", ":"))[:1800]
+                            raise WorkerManagerError(
+                                f"native_lan_faction_selection_failed:{detail}"
+                            )
+                    resume_choices_by_seat[seat_index] = expected_choice
+                    restored_by_player[seat_index + 1] = expected_choice
+                    host_lobby = self._wait_native(
+                        host_instance, "semantic_lan",
+                        lambda value, player_index=seat_index + 1,
+                        faction_choice_id=expected_choice: (
+                            value.get("lifecycle") == "lobby"
+                            and next(
+                                (item for item in value.get("lobby", {}).get(
+                                    "participants", []
+                                ) if isinstance(item, Mapping)
+                                 and item.get("player_index") == player_index),
+                                {},
+                            ).get("faction_choice_id") == faction_choice_id
+                        ), timeout=75,
+                        context=f"host_observed_seat_{seat_index}_faction_choice",
+                        action="status",
+                    )
+                expected_by_player = dict(restored_by_player)
+                host_lobby = self._wait_native(
+                    host_instance, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and all(
+                            next(
+                                (item for item in value.get("lobby", {}).get("participants", [])
+                                 if isinstance(item, Mapping)
+                                 and item.get("player_index") == player_index),
+                                {},
+                            ).get("faction_choice_id") == faction_id
+                            for player_index, faction_id in expected_by_player.items()
+                        )
+                    ), timeout=75, context="host_faction_choices_converged",
+                    action="status",
+                )
+                participants = {
+                    int(item["player_index"]): item
+                    for item in host_lobby.get("lobby", {}).get("participants", [])
+                    if isinstance(item, Mapping) and isinstance(item.get("player_index"), int)
+                }
+                mismatches: list[dict[str, Any]] = []
+                for seat in agent_seats:
+                    expected_faction = seat.get("faction_id")
+                    expected_choice = resume_choices_by_seat.get(
+                        int(seat["seat_index"])
+                    )
+                    participant = participants.get(int(seat["seat_index"]) + 1, {})
+                    if not isinstance(expected_faction, int) \
+                            or not isinstance(expected_choice, int) \
+                            or participant.get("faction_choice_id") != expected_choice \
+                            or participant.get("faction_id") != expected_faction:
+                        mismatches.append({
+                            "seat_index": seat["seat_index"],
+                            "expected_faction_id": expected_faction,
+                            "expected_faction_choice_id": expected_choice,
+                            "participant": participant,
+                        })
+                if mismatches:
+                    detail = json.dumps(mismatches, separators=(",", ":"))[:1600]
+                    raise WorkerManagerError(
+                        f"native_lan_loaded_faction_binding_mismatch:{detail}"
+                    )
+            for seat in agent_seats[1:]:
+                seat_index = int(seat["seat_index"])
+                instance_id = str(seat["instance_id"])
+                lobby = self._wait_native(
+                    instance_id, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and (
+                            value.get("lobby", {}).get("game_type") == "load"
+                            if resume_slot is not None else
+                            value.get("lobby", {}).get("settings", {}).get("profile") == profile
+                        )
+                    ), timeout=45, context=f"client_{seat_index}_configured_lobby", action="status",
+                )
+                identity = lobby["identity"]
+                ready = self._native_request(
+                    instance_id, "semantic_lan", action="set_ready", ready=True,
+                    match_id=identity["match_id"], session_id=identity["session_id"],
+                    expected_lobby_revision=lobby["lobby"]["revision"],
+                    client_operation_id=self._lan_operation_id(match_id, "ready", seat_index),
+                )
+                if not ready.get("ok"):
+                    raise WorkerManagerError("native_lan_ready_failed")
+            if human_seats:
+                human_players = [
+                    {
+                        "seat_index": int(seat["seat_index"]),
+                        "player_name": str(seat["metadata"]["external_player_name"]),
+                        "expected_faction_id": seat.get("faction_id"),
+                    }
+                    for seat in human_seats
+                ]
+                match = self.control.update_match_lifecycle(
+                    match_id, "lobby", host_instance_id=host_instance,
+                    metadata={
+                        "network_session_id": network_session_id,
+                        "external_lan": {
+                            "network": external_network,
+                            "host_address": host_address,
+                            "session_name": session_name,
+                            "human_players": human_players,
+                            "resume_slot": resume_slot,
+                        },
+                    },
+                )
+                return {
+                    "ok": True,
+                    "match": match,
+                    "network_session_id": network_session_id,
+                    "profile": profile,
+                    "resume_slot": resume_slot,
+                    "loaded_checkpoint": loaded_checkpoint,
+                    "lobby_open": True,
+                    "awaiting_external_humans": True,
+                    "external_join": {
+                        "host_address": host_address,
+                        "session_name": session_name,
+                        "network": external_network,
+                        "human_players": human_players,
+                        "instructions": (
+                            "Join Multiplayer > TCP/IP using host_address, enter the exact "
+                            "assigned player_name, select the saved faction when resuming, "
+                            "and mark Ready. Then ask the Control Center to start again."
+                        ),
+                    },
+                    "pixels_or_ui_input_used": False,
+                }
+            host_lobby = self._wait_native(
+                host_instance, "semantic_lan",
+                lambda value: (
+                    value.get("lifecycle") == "lobby"
+                    and value.get("lobby", {}).get("all_clients_ready") is True
+                ), timeout=45, context="host_all_clients_ready", action="status",
+            )
+            self.control.update_match_lifecycle(
+                match_id, "lobby", host_instance_id=host_instance,
+                metadata={"network_session_id": network_session_id},
+            )
+            identity = host_lobby["identity"]
+            started = self._native_request(
+                host_instance, "semantic_lan", action="start",
+                match_id=identity["match_id"], session_id=identity["session_id"],
+                expected_lobby_revision=host_lobby["lobby"]["revision"],
+                client_operation_id=self._lan_operation_id(match_id, "start"),
+            )
+            if not started.get("ok"):
+                raise WorkerManagerError("native_lan_start_failed")
+            native: list[dict[str, Any]] = []
+            for seat in agent_seats:
+                instance_id = str(seat["instance_id"])
+                game = self._wait_native(
+                    instance_id, "semantic_lan",
+                    lambda value: value.get("lifecycle") == "game",
+                    timeout=max(60.0, deadline - time.monotonic()), poll_seconds=0.5,
+                    context=f"seat_{seat['seat_index']}_game", action="status",
+                )
+                snapshot = self._wait_native(
+                    instance_id, "semantic_snapshot",
+                    lambda value: isinstance(value.get("snapshot", {}).get("faction"), Mapping),
+                    timeout=45, context=f"seat_{seat['seat_index']}_snapshot",
+                )
+                faction = snapshot["snapshot"]["faction"]
+                faction_choice_id = resume_choices_by_seat.get(
+                    int(seat["seat_index"])
+                )
+                seat_metadata = {
+                    "network_session_id": network_session_id,
+                    "native_role": "host" if seat is host else "client",
+                }
+                if isinstance(faction_choice_id, int):
+                    seat_metadata["native_loaded_faction_choice_id"] = faction_choice_id
+                self.control.update_lan_seat(
+                    match_id, int(seat["seat_index"]),
+                    faction_id=int(faction["id"]), faction_name=str(faction.get("name") or "") or None,
+                    metadata=seat_metadata,
+                )
+                native.append({
+                    "seat_index": int(seat["seat_index"]), "instance_id": instance_id,
+                    "faction_id": int(faction["id"]), "faction_name": faction.get("name"),
+                    "faction_choice_id": faction_choice_id,
+                    "lifecycle": game["lifecycle"],
+                })
+            match = self.control.update_match_lifecycle(
+                match_id, "running", host_instance_id=host_instance,
+                metadata={"network_session_id": network_session_id, "participant_count": len(seats)},
+            )
+            return {
+                "ok": True, "match": match, "network_session_id": network_session_id,
+                "profile": profile, "resume_slot": resume_slot,
+                "loaded_checkpoint": loaded_checkpoint, "seats": native,
+                "pixels_or_ui_input_used": False,
+            }
+        except Exception as exc:
+            self.control.update_match_lifecycle(
+                match_id, "error", host_instance_id=host_instance,
+                metadata={"last_lan_error": str(exc)[:1000]},
+            )
+            raise
+
+    def finalize_external_lan_match(self, match_id: str, *,
+                                    timeout: float = 420.0) -> dict[str, Any]:
+        """Start an already-open mixed human/agent lobby after exact validation."""
+        match = self.control.get_match(match_id)
+        seats = self.control.list_seats(match_id)
+        agent_seats = [seat for seat in seats if seat["controller_kind"] == "agent"]
+        human_seats = [seat for seat in seats if seat["controller_kind"] == "human"]
+        external = match.get("metadata", {}).get("external_lan")
+        if match["status"] != "lobby" or not agent_seats or not human_seats \
+                or not isinstance(external, Mapping):
+            raise WorkerManagerError("external_lan_lobby_not_open")
+        self._external_lan_network()
+        host_instance = str(agent_seats[0]["instance_id"])
+        host_lobby = self._native_request(
+            host_instance, "semantic_lan", action="status",
+        )
+        if host_lobby.get("lifecycle") != "lobby":
+            raise WorkerManagerError("external_lan_native_lobby_not_active")
+        expected_session = match["metadata"].get("network_session_id")
+        if host_lobby.get("identity", {}).get("network_session_id") != expected_session:
+            raise WorkerManagerError("external_lan_network_session_changed")
+        raw_participants = host_lobby.get("lobby", {}).get("participants", [])
+        participants = [
+            dict(item) for item in raw_participants
+            if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+        ]
+        by_name: dict[str, dict[str, Any]] = {}
+        duplicate_names: set[str] = set()
+        for participant in participants:
+            name = str(participant["name"])
+            if name in by_name:
+                duplicate_names.add(name)
+            by_name[name] = participant
+        expected_agent_names = {
+            "Semantic Host" if int(seat["seat_index"]) == 0
+            else f"Semantic Agent {int(seat['seat_index']) + 1}"
+            for seat in agent_seats
+        }
+        expected_human_names = {
+            str(seat["metadata"].get("external_player_name") or "")
+            for seat in human_seats
+        }
+        expected_names = expected_agent_names | expected_human_names
+        unexpected = sorted(set(by_name) - expected_names)
+        if duplicate_names or unexpected:
+            detail = json.dumps({
+                "duplicate_names": sorted(duplicate_names),
+                "unexpected_players": unexpected,
+            }, separators=(",", ":"))[:1200]
+            raise WorkerManagerError(f"external_lan_participant_identity_mismatch:{detail}")
+
+        resume_slot = external.get("resume_slot")
+        human_state: list[dict[str, Any]] = []
+        blockers: list[dict[str, Any]] = []
+        for seat in human_seats:
+            player_name = str(seat["metadata"].get("external_player_name") or "")
+            participant = by_name.get(player_name)
+            state = {
+                "seat_index": int(seat["seat_index"]),
+                "player_name": player_name,
+                "joined": participant is not None,
+                "ready": bool(participant and participant.get("ready") is True),
+                "faction_id": participant.get("faction_id") if participant else None,
+                "faction_choice_id": (
+                    participant.get("faction_choice_id") if participant else None
+                ),
+            }
+            human_state.append(state)
+            if participant is None:
+                blockers.append({"player_name": player_name, "reason": "not_joined"})
+                continue
+            faction_id = participant.get("faction_id")
+            if not isinstance(faction_id, int):
+                blockers.append({"player_name": player_name, "reason": "faction_not_selected"})
+                continue
+            if resume_slot is not None:
+                expected_faction = seat.get("faction_id")
+                required_choice = participant.get("required_faction_choice_id")
+                if faction_id != expected_faction \
+                        or not isinstance(required_choice, int) \
+                        or participant.get("faction_choice_id") != required_choice:
+                    blockers.append({
+                        "player_name": player_name,
+                        "reason": "saved_faction_not_restored",
+                        "expected_faction_id": expected_faction,
+                        "observed_faction_id": faction_id,
+                        "required_faction_choice_id": required_choice,
+                    })
+                    continue
+            if participant.get("ready") is not True:
+                blockers.append({"player_name": player_name, "reason": "not_ready"})
+
+        if len(participants) != len(seats):
+            blockers.append({
+                "reason": "participant_count",
+                "expected": len(seats),
+                "observed": len(participants),
+            })
+        if blockers or host_lobby.get("lobby", {}).get("all_clients_ready") is not True:
+            return {
+                "ok": True,
+                "match": match,
+                "lobby_open": True,
+                "awaiting_external_humans": True,
+                "external_join": {
+                    "host_address": external.get("host_address"),
+                    "session_name": external.get("session_name"),
+                    "human_players": human_state,
+                    "blockers": blockers,
+                },
+                "pixels_or_ui_input_used": False,
+            }
+
+        participants_by_name = by_name
+        for seat in human_seats:
+            player_name = str(seat["metadata"]["external_player_name"])
+            participant = participants_by_name[player_name]
+            self.control.update_lan_seat(
+                match_id, int(seat["seat_index"]),
+                faction_id=int(participant["faction_id"]),
+                metadata={
+                    "network_join_pending": False,
+                    "network_player_index": participant.get("player_index"),
+                    "network_session_id": expected_session,
+                    "native_role": "external_client",
+                },
+            )
+        identity = host_lobby["identity"]
+        started = self._native_request(
+            host_instance, "semantic_lan", action="start",
+            match_id=identity["match_id"], session_id=identity["session_id"],
+            expected_lobby_revision=host_lobby["lobby"]["revision"],
+            client_operation_id=self._lan_operation_id(match_id, "start"),
+        )
+        if not started.get("ok"):
+            raise WorkerManagerError("native_lan_start_failed")
+
+        deadline = time.monotonic() + min(max(float(timeout), 60.0), 900.0)
+        native: list[dict[str, Any]] = []
+        for seat in agent_seats:
+            instance_id = str(seat["instance_id"])
+            game = self._wait_native(
+                instance_id, "semantic_lan",
+                lambda value: value.get("lifecycle") == "game",
+                timeout=max(30.0, deadline - time.monotonic()), poll_seconds=0.5,
+                context=f"seat_{seat['seat_index']}_external_game", action="status",
+            )
+            snapshot = self._wait_native(
+                instance_id, "semantic_snapshot",
+                lambda value: isinstance(value.get("snapshot", {}).get("faction"), Mapping),
+                timeout=45, context=f"seat_{seat['seat_index']}_external_snapshot",
+            )
+            faction = snapshot["snapshot"]["faction"]
+            self.control.update_lan_seat(
+                match_id, int(seat["seat_index"]),
+                faction_id=int(faction["id"]),
+                faction_name=str(faction.get("name") or "") or None,
+                metadata={
+                    "network_session_id": expected_session,
+                    "native_role": "host" if int(seat["seat_index"]) == 0 else "client",
+                },
+            )
+            native.append({
+                "seat_index": int(seat["seat_index"]),
+                "controller_kind": "agent",
+                "instance_id": instance_id,
+                "faction_id": int(faction["id"]),
+                "faction_name": faction.get("name"),
+                "lifecycle": game["lifecycle"],
+            })
+        for seat in self.control.list_seats(match_id):
+            if seat["controller_kind"] != "human":
+                continue
+            native.append({
+                "seat_index": int(seat["seat_index"]),
+                "controller_kind": "human",
+                "player_name": seat["metadata"].get("external_player_name"),
+                "faction_id": seat.get("faction_id"),
+                "faction_name": seat.get("faction_name"),
+                "lifecycle": "external_game",
+            })
+        running = self.control.update_match_lifecycle(
+            match_id, "running", host_instance_id=host_instance,
+            metadata={
+                "network_session_id": expected_session,
+                "participant_count": len(seats),
+            },
+        )
+        return {
+            "ok": True,
+            "match": running,
+            "network_session_id": expected_session,
+            "resume_slot": resume_slot,
+            "seats": sorted(native, key=lambda item: int(item["seat_index"])),
+            "external_humans_connected": True,
+            "pixels_or_ui_input_used": False,
+        }
+
+    def lan_match_status(self, match_id: str) -> dict[str, Any]:
+        seats = self.control.list_seats(match_id)
+        results: list[dict[str, Any]] = []
+        host_native: dict[str, Any] | None = None
+        for seat in seats:
+            instance_id = seat.get("instance_id")
+            if not instance_id:
+                participant = None
+                player_name = seat.get("metadata", {}).get("external_player_name")
+                if host_native and host_native.get("lifecycle") == "lobby":
+                    participant = next(
+                        (dict(item) for item in host_native.get("lobby", {}).get(
+                            "participants", []
+                        ) if isinstance(item, Mapping)
+                         and item.get("name") == player_name),
+                        None,
+                    )
+                results.append({
+                    "seat_index": seat["seat_index"],
+                    "controller_kind": seat["controller_kind"],
+                    "provisioned": False,
+                    "player_name": player_name,
+                    "faction_id": seat.get("faction_id"),
+                    "external_participant": participant,
+                })
+                continue
+            worker = self.worker_status(str(instance_id))
+            native = None
+            if worker.get("running") and worker.get("health") == "healthy":
+                try:
+                    native = self._native_request(str(instance_id), "semantic_lan", action="status")
+                except WorkerManagerError:
+                    native = {"ok": False, "error": "bridge_unavailable"}
+            if int(seat["seat_index"]) == 0 and isinstance(native, dict):
+                host_native = native
+            results.append({
+                "seat_index": seat["seat_index"], "controller_kind": seat["controller_kind"],
+                "agent_id": seat["agent_id"],
+                "instance_id": instance_id, "faction_id": seat.get("faction_id"),
+                "worker": worker, "native": native,
+            })
+        return {"ok": True, "match_id": match_id, "seats": results}
+
+    def park_match(self, match_id: str) -> dict[str, Any]:
+        seats = self.control.list_seats(match_id)
+        parked = []
+        for seat in reversed(seats):
+            if seat.get("instance_id"):
+                parked.append(self.park_worker(str(seat["instance_id"])))
+        match = self.control.update_match_lifecycle(match_id, "parked")
+        return {"ok": True, "match": match, "workers": parked}
+
+    def start_mcp_sidecar(self, instance_id: str, *, timeout: float = 90.0) -> dict[str, Any]:
+        if not self.control_data_volume:
+            raise WorkerManagerError("managed_mcp_not_configured")
+        spec = self.control.get_worker_spec(instance_id)
+        if spec["observed_status"] != "running":
+            raise WorkerManagerError("game_worker_not_running")
+        game = self.docker.inspect_container(spec["container_name"])
+        self.docker.require_owned(game, self.installation_id, purpose="game-worker")
+        if not game.get("State", {}).get("Running"):
+            raise WorkerManagerError("game_worker_not_running")
+        self.docker.inspect_image(self.mcp_image)
+        self.docker.inspect_volume(self.control_data_volume)
+        for volume_name, purpose in (
+            (spec["data_volume"], "worker-data"),
+            (spec["network"]["secret_volume"], "worker-secret"),
+        ):
+            resource = self.docker.inspect_volume(volume_name)
+            self.docker.require_owned(resource, self.installation_id, purpose=purpose)
+
+        container_name = self._name("mcp", instance_id)
+        try:
+            old = self.docker.inspect_container(container_name)
+            self.docker.require_owned(old, self.installation_id, purpose="mcp-sidecar")
+            if old.get("State", {}).get("Running"):
+                binding = old.get("NetworkSettings", {}).get("Ports", {}).get("47815/tcp")
+                host_port = int(binding[0]["HostPort"]) if isinstance(binding, list) and binding else None
+                health = old.get("State", {}).get("Health", {}).get("Status")
+                if host_port and health == "healthy":
+                    network = dict(spec["network"])
+                    network.update({
+                        "mcp_container_name": container_name,
+                        "mcp_status": "running",
+                        "mcp_host_port": host_port,
+                        "mcp_url": f"http://127.0.0.1:{host_port}/mcp",
+                    })
+                    self.control.update_worker_network(instance_id, network)
+                    return {
+                        "ok": True, "status": "running", "container_name": container_name,
+                        "host_port": host_port, "url": network["mcp_url"],
+                    }
+                self.docker.stop_container(container_name, timeout=10)
+            self.docker.remove_container(container_name)
+        except DockerNotFound:
+            pass
+
+        bridge_host = spec["container_name"]
+        if not self.network_name:
+            networks = game.get("NetworkSettings", {}).get("Networks", {})
+            addresses = [
+                value.get("IPAddress") for value in networks.values()
+                if isinstance(value, Mapping) and value.get("IPAddress")
+            ] if isinstance(networks, Mapping) else []
+            if not addresses:
+                raise WorkerManagerError("game_worker_network_address_unavailable")
+            bridge_host = str(addresses[0])
+        labels = self._labels(
+            "mcp-sidecar", **{
+                "io.smacx.instance": instance_id,
+                "io.smacx.match": spec["match_id"],
+            },
+        )
+        config = {
+            "Image": self.mcp_image,
+            "Entrypoint": ["/usr/bin/tini", "--", "/usr/local/bin/smacx-mcp"],
+            "Cmd": [],
+            "Env": [
+                "HOME=/tmp",
+                "SMACX_MANAGED_ATTACHED=1",
+                f"SMACX_BRIDGE_HOST={bridge_host}",
+                "SMACX_BRIDGE_PORT=47814",
+                "SMACX_AGENT_TOKEN_FILE=/run/secrets/bridge-token",
+                "SMACX_MCP_HOST=0.0.0.0",
+                "SMACX_MCP_PORT=47815",
+                "SMACX_DB_PATH=/var/lib/smacx/smacx.sqlite3",
+                "SMACX_RUNTIME_ROOT=/worker-state",
+                "SMACX_GAME_PATH=/worker-state/game",
+                "SMACX_LEGACY_KNOWLEDGE_ROOT=/worker-state/legacy-knowledge",
+                "SMACX_CAPABILITY_GAP_LOG=/var/lib/smacx/capability-gaps.jsonl",
+                f"SMACX_AGENT_ID={spec['agent_id']}",
+            ],
+            "Tty": True,
+            "Labels": labels,
+            "ExposedPorts": {"47815/tcp": {}},
+            "Healthcheck": {
+                "Test": [
+                    "CMD", "python3", "-c",
+                    "import socket;s=socket.create_connection(('127.0.0.1',47815),2);s.close()",
+                ],
+                "Interval": 2_000_000_000,
+                "Timeout": 3_000_000_000,
+                "StartPeriod": 5_000_000_000,
+                "Retries": 10,
+            },
+            "HostConfig": {
+                "NetworkMode": self.network_name or "bridge",
+                "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {
+                    "/tmp": "rw,nosuid,nodev,size=128m,mode=1777",
+                    "/run": "rw,nosuid,nodev,size=16m,mode=0755",
+                },
+                "PortBindings": {"47815/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}]},
+                "Mounts": [
+                    {"Type": "volume", "Source": self.control_data_volume,
+                     "Target": "/var/lib/smacx"},
+                    {"Type": "volume", "Source": spec["data_volume"],
+                     "Target": "/worker-state"},
+                    {"Type": "volume", "Source": spec["network"]["secret_volume"],
+                     "Target": "/run/secrets", "ReadOnly": True},
+                ],
+            },
+        }
+        identifier: str | None = None
+        try:
+            identifier = self.docker.create_container(container_name, config)
+            self.docker.start_container(identifier)
+            deadline = time.monotonic() + min(max(float(timeout), 15.0), 180.0)
+            inspected: dict[str, Any] = {}
+            while time.monotonic() < deadline:
+                inspected = self.docker.inspect_container(identifier)
+                state = inspected.get("State", {})
+                health = state.get("Health", {}).get("Status")
+                if health == "healthy":
+                    break
+                if not state.get("Running") or health == "unhealthy":
+                    raise WorkerManagerError("mcp_sidecar_failed_healthcheck")
+                time.sleep(0.5)
+            else:
+                raise WorkerManagerError("mcp_sidecar_health_timeout")
+            binding = inspected.get("NetworkSettings", {}).get("Ports", {}).get("47815/tcp")
+            host_port = int(binding[0]["HostPort"]) if isinstance(binding, list) and binding else None
+            if not host_port:
+                raise WorkerManagerError("mcp_sidecar_port_unavailable")
+            network = dict(spec["network"])
+            network.update({
+                "mcp_container_name": container_name,
+                "mcp_status": "running",
+                "mcp_host_port": host_port,
+                "mcp_url": f"http://127.0.0.1:{host_port}/mcp",
+            })
+            self.control.update_worker_network(instance_id, network)
+            return {
+                "ok": True, "status": "running", "container_name": container_name,
+                "host_port": host_port, "url": network["mcp_url"],
+            }
+        except Exception:
+            if identifier:
+                try:
+                    self._cleanup_container(identifier, "mcp-sidecar")
+                except Exception:
+                    pass
+            network = dict(spec["network"])
+            network.update({
+                "mcp_container_name": container_name,
+                "mcp_status": "error",
+                "mcp_host_port": None,
+                "mcp_url": None,
+            })
+            self.control.update_worker_network(instance_id, network)
+            raise
+
+    def stop_mcp_sidecar(self, instance_id: str) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        container_name = str(spec["network"].get("mcp_container_name") or self._name("mcp", instance_id))
+        try:
+            self._cleanup_container(container_name, "mcp-sidecar")
+        except DockerNotFound:
+            pass
+        network = dict(spec["network"])
+        network.update({
+            "mcp_container_name": container_name,
+            "mcp_status": "stopped",
+            "mcp_host_port": None,
+            "mcp_url": None,
+        })
+        self.control.update_worker_network(instance_id, network)
+        return {"ok": True, "instance_id": instance_id, "status": "stopped"}
+
+    def worker_status(self, instance_id: str) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        try:
+            container = self.docker.inspect_container(spec["container_name"])
+            self.docker.require_owned(container, self.installation_id, purpose="game-worker")
+        except DockerNotFound:
+            return {"ok": True, "instance_id": instance_id, "container_present": False,
+                    "observed_status": spec["observed_status"]}
+        state = container.get("State", {})
+        result = {
+            "ok": True, "instance_id": instance_id, "container_present": True,
+            "running": bool(state.get("Running")),
+            "health": state.get("Health", {}).get("Status"),
+            "exit_code": state.get("ExitCode"),
+            "session_id": container.get("Config", {}).get("Labels", {}).get("io.smacx.session"),
+            "spectator": {
+                "enabled": bool(spec["network"].get("view_enabled")),
+                "status": spec["network"].get("view_status") or "disabled",
+                "host_port": spec["network"].get("view_host_port"),
+                "path": spec["network"].get("view_path"),
+                "mode": spec["network"].get("view_mode") or "view-only",
+            },
+        }
+        mcp_name = spec["network"].get("mcp_container_name")
+        if mcp_name:
+            try:
+                sidecar = self.docker.inspect_container(str(mcp_name))
+                self.docker.require_owned(sidecar, self.installation_id, purpose="mcp-sidecar")
+                result["mcp"] = {
+                    "container_present": True,
+                    "running": bool(sidecar.get("State", {}).get("Running")),
+                    "health": sidecar.get("State", {}).get("Health", {}).get("Status"),
+                    "url": spec["network"].get("mcp_url"),
+                }
+            except DockerNotFound:
+                result["mcp"] = {"container_present": False, "running": False}
+        return result
+
+    def spectator_access(self, instance_id: str) -> dict[str, Any]:
+        """Return view-only access only to the authenticated operator API."""
+        spec = self.control.get_worker_spec(instance_id)
+        if not spec["network"].get("view_enabled") or not spec.get("view_secret_id"):
+            raise WorkerManagerError("spectator_not_enabled")
+        status = self.worker_status(instance_id)
+        port = spec["network"].get("view_host_port")
+        if not status.get("running") or status.get("health") != "healthy" \
+                or not isinstance(port, int):
+            raise WorkerManagerError("spectator_not_running")
+        password = self.control.vault.read(
+            str(spec["view_secret_id"]),
+            purpose=f"worker.{instance_id}.view_password",
+        )
+        return {
+            "ok": True,
+            "instance_id": instance_id,
+            "mode": "view-only",
+            "host_port": port,
+            "path": str(spec["network"].get("view_path") or "/vnc.html"),
+            "password": password,
+        }
+
+    def park_worker(self, instance_id: str) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        self.stop_mcp_sidecar(instance_id)
+        spec = self.control.get_worker_spec(instance_id)
+        try:
+            container = self.docker.inspect_container(spec["container_name"])
+            self.docker.require_owned(container, self.installation_id, purpose="game-worker")
+            if container.get("State", {}).get("Running"):
+                self.docker.stop_container(spec["container_name"], timeout=20)
+            self.docker.remove_container(spec["container_name"])
+        except DockerNotFound:
+            pass
+        with self.store.transaction() as connection:
+            session = connection.execute(
+                "SELECT session_id FROM sessions WHERE instance_id=? AND status='running' "
+                "ORDER BY started_unix DESC LIMIT 1", (instance_id,),
+            ).fetchone()
+        if session:
+            self.store.close_session(str(session["session_id"]), status="parked")
+        network = dict(spec["network"])
+        if network.get("view_enabled"):
+            network.update({
+                "view_status": "parked",
+                "view_host_port": None,
+            })
+            self.control.update_worker_network(instance_id, network)
+        updated = self.control.update_worker_observation(
+            instance_id, desired_status="parked", observed_status="parked", last_error="",
+            bridge_host=None, bridge_port=None, instance_status="available",
+        )
+        return {"ok": True, "instance_id": instance_id, "status": updated["observed_status"]}

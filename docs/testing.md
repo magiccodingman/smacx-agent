@@ -55,6 +55,92 @@ The ready-unit reference regression cross-checks the snapshot's compact IDs/name
 
 The one-turn semantic soak adversarially submits a wrong `session_id` and stale `revision`, requires `wrong_game_identity` and `stale_state` without mutation, and follows transient `waiting_for_engine`/`waiting_for_turn` states by waiting and re-observing.
 
+## Container worker contracts
+
+The worker bootstrap has a fast host-side contract suite. It validates legal
+game import and source immutability, rejects symlinks and non-PE executables,
+enforces identity and file-secret precedence, checks Proton `runinprefix`
+selection and immutable prefix architecture, exercises an authenticated fake
+bridge health check, and verifies that no proprietary runtime directories can
+enter the image build context:
+
+```bash
+PYTHONPATH=src python3 scripts/worker_contract_test.py
+python3 -m compileall -q worker
+```
+
+The Linux reference image was also validated against a legal Steam installation
+and a private copy of Proton Experimental. The real container reached Docker's
+healthy state as UID 10001, launched `terranx.exe -windowed` on its private
+Xvfb display, served an authenticated bridge through the container proxy, and
+reported the exact assigned match, session, agent, perspective, and instance
+identities. With native autostart enabled, a fair-play `semantic_snapshot`
+reported the opening `PLANETFALL` interaction. Its sole enumerated guarded
+`acknowledge_popup` command succeeded and the next snapshot reported
+`FIRSTBASE`. No screen capture, mouse, keyboard, text entry, or coordinate UI
+operation was used in this validation.
+
+The full managed vertical slice additionally starts an authenticated Control
+Center, real Proton game worker, exact MCP sidecar, and temporary isolated
+Hermes profile. Qwen3.8-27B runs at low reasoning with only the `smacx` toolset,
+uses status/decision/command semantically, and must advance the bridge's native
+revision before the test passes:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_TEST_PROVIDER_URL=http://model-host:8000/v1 \
+SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
+PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
+```
+
+Every container, network, volume, and temporary Hermes home in this regression
+is uniquely test-owned and removed afterward. The user's default Hermes
+profile/dashboard and legacy MCP service are not read or restarted.
+
+The managed LAN vertical slice launches two real game workers on one private
+Docker network and proves the complete native host/discover/join/configure/
+ready/start sequence, shared match identity, distinct process sessions and
+factions, one MCP sidecar per seat, host-only checkpoint creation, complete
+park, stock multiplayer reload, exact faction restoration, and second entry
+into gameplay:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+PYTHONPATH=src python3 scripts/control_lan_live_test.py
+```
+
+It passed against the legal reference installation with
+`pixels_or_ui_input_used=false`. The regression observes the actual DirectPlay
+host rather than assuming seat order, resolves only audited opening interactions
+through MCP, invokes the host-only guarded `save_game` choice, and verifies a
+242,567-byte native campaign file in that worker's persistent data volume.
+Cleanup selects only resources carrying that test installation's exact
+ownership label.
+
+Mixed human/agent staging has a contained contract test. It proves that a human
+seat receives no agent perspective, a private bridge network cannot masquerade
+as external publication, exact names/readiness are mandatory, unexpected
+players are rejected, and a resumed human must reclaim the recorded faction:
+
+```bash
+PYTHONPATH=src python3 scripts/external_lan_contract_test.py
+```
+
+`scripts/worker_manager_live_test.py` provisions a real view-enabled worker,
+connects to its random noVNC port, verifies the operator-only password is not
+present in container environment/configuration, parks it, and starts the same
+durable worker again.
+
+Stock Debian Wine is retained as a diagnostic fallback, but it stalled at the
+Firaxis presentation screen in the current reference environment and is not a
+certified game runtime. A Proton distribution must be a private, writable,
+checksummed copy because Proton maintains `dist.lock`; never mount Steam's live
+runtime read-write into a worker.
+
 The skip-all-ready regression cross-checks the exact game-management unit list against `ready_unit_refs`, proves that missing confirmation and a changed count preserve the original revision and set, applies native skip to every reviewed unit, accepts either an exposed `end_turn` or the stock engine's immediate auto-end transition, and rejects replay of the consumed guard.
 
 The native phase-mutation regression fabricates a confirmed `disband_unit` command while `PLANETFALL` is active. The bridge must return `not_actionable` while preserving the unit, popup, and revision:
@@ -473,6 +559,38 @@ PYTHONPATH=src python3 scripts/match_knowledge_test.py
 
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh \
   env PYTHONPATH=src:scripts python3 scripts/live_match_knowledge_test.py
+```
+
+The durable-platform regressions are fully contained and require neither a game process nor Graphiti/Neo4j. They prove concurrent atomic migration, immutable events, perspective isolation, versioned structured memory, bounded recall, chat player/faction mapping and exactly-once attention, guarded memory writes, legacy JSON history import, Graphiti failure-safe cursors, and group-local rebuild:
+
+```bash
+PYTHONPATH=src python3 scripts/platform_store_test.py
+PYTHONPATH=src python3 scripts/platform_controller_test.py
+PYTHONPATH=src python3 scripts/graphiti_projection_test.py
+PYTHONPATH=src python3 scripts/control_plane_test.py
+PYTHONPATH=src python3 scripts/control_http_test.py
+PYTHONPATH=src python3 scripts/worker_contract_test.py
+```
+
+The Docker client contract requires access to a local Docker socket. It creates
+only uniquely named, installation-labeled scratch resources and removes them:
+
+```bash
+PYTHONPATH=src python3 scripts/docker_client_test.py
+```
+
+The opt-in worker-manager regression validates the legal source in a read-only
+container, imports Proton into a private checksummed volume, transfers the
+bridge token without an environment variable, boots the real game twice,
+observes a healthy authenticated semantic opening both times, and proves the
+match identity survives while the process session rotates. It removes its
+containers and volumes on success or failure:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+PYTHONPATH=src python3 scripts/worker_manager_live_test.py
 ```
 
 The capability-gap safety regression proves one audit record per match/session, zero native command calls after the latch, blocked launch/new/load escape paths, visibility through status, absence of an agent clear tool, and restoration only after a developer-controlled MCP restart:

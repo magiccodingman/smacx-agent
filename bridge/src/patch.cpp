@@ -632,6 +632,51 @@ bool patch_setup(Config* cf) {
     write_call(0x52AC4A, (int)top_menu); // control_game
     write_call(0x58DBA5, (int)top_menu); // multiplayer_init
     write_call(0x58DB89, (int)agent_network_initialize); // multiplayer_init
+    write_call(0x47D45A, (int)agent_multiplayer_game_type_choice); // NetWindow::game_type
+    write_call(0x47D5CE, (int)agent_multiplayer_load_game); // NetWindow::load multiplayer save
+    // Resolve the stock faction source-list row before it opens a private
+    // modal. The surrounding handler still maps, validates, mutates, and
+    // publishes that choice through its native code.
+    write_call(0x47C6B8, (int)agent_multiplayer_faction_choice_result);
+    // Preserve the normal private table lookup for human UI use, but supply
+    // the guarded record directly when the presentation-free call above is
+    // active. The replacement pushes choose_faction's EBP and selector EAX,
+    // calls the mapper, moves its result to EBX, and leaves the native DEC EBX
+    // and all subsequent validation/publication code untouched.
+    const byte old_faction_mapping[] = {
+        0x83, 0xF8, 0x40, 0x7D, 0x0C, 0x8D, 0x04, 0x80,
+        0x8B, 0x9C, 0x85, 0xB8, 0xF7, 0xFF, 0xFF, 0xEB,
+        0x03, 0x83, 0xCB, 0xFF,
+    };
+    const byte new_faction_mapping[] = {
+        0x55, 0x50, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x83,
+        0xC4, 0x08, 0x8B, 0xD8, 0x90, 0x90, 0x90, 0x90,
+        0x90, 0x90, 0x90, 0x90,
+    };
+    write_bytes(0x47C719, old_faction_mapping, new_faction_mapping,
+        sizeof(old_faction_mapping));
+    write_call(0x47C71B, (int)agent_multiplayer_faction_map_result);
+    write_call(0x47C751, (int)agent_multiplayer_faction_validation); // validate mapped faction
+    // NetDaemon_send_files allocates 256 0x11c-byte manifest records and
+    // serializes their indices in one byte, yet its stock FindNextFile loop
+    // has no matching bound. Modern Steam installs exceed 256 root files.
+    // Pass the native frame to a bounded FindNextFile wrapper so the original
+    // completion packet, transfer negotiation, and cleanup remain intact.
+    const byte old_manifest_find_next[] = {
+        0x8B, 0x45, 0xE0, 0x8D, 0x95, 0x54, 0xFE, 0xFF,
+        0xFF, 0x52, 0x50, 0xFF, 0x15, 0x18, 0x91, 0x66,
+        0x00, 0x85, 0xC0, 0x0F, 0x85, 0x24, 0xFF, 0xFF,
+        0xFF,
+    };
+    const byte new_manifest_find_next[] = {
+        0x55, 0x8D, 0x95, 0x54, 0xFE, 0xFF, 0xFF, 0x52,
+        0xFF, 0x75, 0xE0, 0xE8, 0x00, 0x00, 0x00, 0x00,
+        0x85, 0xC0, 0x0F, 0x85, 0x25, 0xFF, 0xFF, 0xFF,
+        0x90,
+    };
+    write_bytes(0x52F0C2, old_manifest_find_next,
+        new_manifest_find_next, sizeof(old_manifest_find_next));
+    write_call(0x52F0CD, (int)agent_multiplayer_manifest_find_next);
     // Stock DirectPlay await families all use wait_task followed by their own
     // authoritative packet processor. Service bridge requests at those exact
     // game-thread boundaries so no network wait can starve semantic control.

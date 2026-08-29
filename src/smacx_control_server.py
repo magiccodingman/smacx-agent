@@ -1,0 +1,681 @@
+"""Dependency-free authenticated HTTP service for the SMACX Control Center."""
+
+from __future__ import annotations
+
+import argparse
+from collections import defaultdict, deque
+from http import HTTPStatus
+from http.cookies import SimpleCookie
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import mimetypes
+import os
+from pathlib import Path
+import re
+import signal
+import sys
+import threading
+import time
+from typing import Any, Callable
+from urllib.parse import unquote, urlsplit
+
+from smacx_control import AuthenticationError, ControlPlane, ProviderError
+from smacx_docker import DockerClient, DockerError, DockerUnavailable
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
+from smacx_worker_manager import WorkerManager, WorkerManagerError
+
+
+MAX_REQUEST_BODY = 1024 * 1024
+SESSION_COOKIE = "smacx_session"
+CSRF_COOKIE = "smacx_csrf"
+PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
+WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator)$")
+MATCH_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
+
+
+class RequestRateLimiter:
+    def __init__(self, attempts: int = 8, window_seconds: float = 60.0) -> None:
+        self.attempts = attempts
+        self.window_seconds = window_seconds
+        self._attempts: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            bucket = self._attempts[key]
+            while bucket and bucket[0] <= now - self.window_seconds:
+                bucket.popleft()
+            if len(bucket) >= self.attempts:
+                return False
+            bucket.append(now)
+            return True
+
+
+class ControlHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(self, address: tuple[str, int], control: ControlPlane,
+                 static_root: Path, *, secure_cookies: bool = False,
+                 worker_manager: WorkerManager | None = None) -> None:
+        super().__init__(address, ControlRequestHandler)
+        self.control = control
+        self.static_root = static_root.resolve()
+        self.secure_cookies = secure_cookies
+        self.worker_manager = worker_manager
+        self.login_limiter = RequestRateLimiter()
+
+
+class ControlRequestHandler(BaseHTTPRequestHandler):
+    server: ControlHTTPServer
+    server_version = "SMACX-Control"
+    sys_version = ""
+
+    def log_message(self, format_string: str, *args: Any) -> None:
+        # Structured, deliberately sparse logs: no request bodies, cookies,
+        # authorization headers, provider keys, or bootstrap tokens.
+        print(json.dumps({
+            "event": "control_http",
+            "remote": self.client_address[0],
+            "method": self.command,
+            "path": urlsplit(self.path).path,
+            "message": format_string % args,
+        }, separators=(",", ":")), flush=True)
+
+    def _security_headers(self, *, api: bool = True) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+        )
+        if api:
+            self.send_header("Cache-Control", "no-store")
+
+    def _json(self, status: int, payload: Any, *, cookies: list[str] | None = None) -> None:
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._security_headers()
+        for cookie in cookies or []:
+            self.send_header("Set-Cookie", cookie)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _error(self, status: int, code: str, message: str | None = None) -> None:
+        self._json(status, {
+            "ok": False,
+            "error": {"code": code, "message": message or code.replace("_", " ")},
+        })
+
+    def _body(self) -> dict[str, Any]:
+        length_text = self.headers.get("Content-Length", "")
+        try:
+            length = int(length_text)
+        except ValueError as exc:
+            raise InvalidRecord("invalid_content_length") from exc
+        if length < 0 or length > MAX_REQUEST_BODY:
+            raise InvalidRecord("request_body_too_large")
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            raise InvalidRecord("json_content_type_required")
+        try:
+            value = json.loads(self.rfile.read(length))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise InvalidRecord("invalid_json_body") from exc
+        if not isinstance(value, dict):
+            raise InvalidRecord("json_object_required")
+        return value
+
+    def _cookies(self) -> SimpleCookie[str]:
+        cookies: SimpleCookie[str] = SimpleCookie()
+        try:
+            cookies.load(self.headers.get("Cookie", ""))
+        except Exception:
+            pass
+        return cookies
+
+    def _authentication(self) -> tuple[dict[str, Any], str]:
+        authorization = self.headers.get("Authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization[7:].strip()
+            return self.server.control.authenticate(token), "bearer"
+        morsel = self._cookies().get(SESSION_COOKIE)
+        if not morsel:
+            raise AuthenticationError("authentication_required")
+        return self.server.control.authenticate(morsel.value), "cookie"
+
+    def _authorize_mutation(self) -> dict[str, Any]:
+        auth, mode = self._authentication()
+        if mode == "cookie":
+            csrf = self.headers.get("X-CSRF-Token", "")
+            cookie = self._cookies().get(CSRF_COOKIE)
+            if not cookie or not csrf or cookie.value != csrf:
+                raise AuthenticationError("invalid_csrf_token")
+            self.server.control.require_csrf(auth["auth_session_id"], csrf)
+        return auth
+
+    def _session_cookies(self, token: str, csrf_token: str, expires_unix: float) -> list[str]:
+        max_age = max(0, int(expires_unix - time.time()))
+        secure = "; Secure" if self.server.secure_cookies else ""
+        common = f"Path=/; SameSite=Strict; Max-Age={max_age}{secure}"
+        return [
+            f"{SESSION_COOKIE}={token}; {common}; HttpOnly",
+            f"{CSRF_COOKIE}={csrf_token}; {common}",
+        ]
+
+    def _clear_cookies(self) -> list[str]:
+        secure = "; Secure" if self.server.secure_cookies else ""
+        return [
+            f"{SESSION_COOKIE}=; Path=/; SameSite=Strict; Max-Age=0; HttpOnly{secure}",
+            f"{CSRF_COOKIE}=; Path=/; SameSite=Strict; Max-Age=0{secure}",
+        ]
+
+    def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+        path = urlsplit(self.path).path
+        try:
+            if path == "/healthz":
+                self._json(200, {"ok": True, "service": "smacx-control"})
+                return
+            if path == "/api/v1/setup":
+                state = self.server.control.ensure_bootstrap_token()
+                self._json(200, {
+                    "ok": True,
+                    "setup_required": state["setup_required"],
+                    "username": "admin",
+                    "bootstrap_command": "smacx-control bootstrap-token" if state["setup_required"] else None,
+                })
+                return
+            if path == "/api/v1/auth/session":
+                auth, _ = self._authentication()
+                self._json(200, {"ok": True, "session": auth})
+                return
+            if path == "/api/v1/status":
+                self._authentication()
+                self._json(200, self.server.control.status())
+                return
+            if path == "/api/v1/providers":
+                self._authentication()
+                self._json(200, {"ok": True, "providers": self.server.control.list_providers()})
+                return
+            if path == "/api/v1/agents":
+                self._authentication()
+                self._json(200, {"ok": True, "agents": self.server.control.list_agents()})
+                return
+            if path == "/api/v1/matches":
+                self._authentication()
+                self._json(200, {"ok": True, "matches": self.server.control.list_matches()})
+                return
+            if path == "/api/v1/workers":
+                self._authentication()
+                self._json(200, {
+                    "ok": True,
+                    "docker": self.server.worker_manager.health() if self.server.worker_manager else {
+                        "ok": False, "error": "docker_manager_disabled",
+                    },
+                    "workers": [self._redact_worker(item) for item in self.server.control.list_worker_specs()],
+                })
+                return
+            if path == "/api/v1/game-sources":
+                self._authentication()
+                self._json(200, {"ok": True, "game_sources": self.server.control.list_game_sources()})
+                return
+            if path == "/api/v1/runtimes":
+                self._authentication()
+                self._json(200, {"ok": True, "runtimes": self.server.control.list_runtimes()})
+                return
+            if path == "/api/v1/harness-profiles":
+                self._authentication()
+                self._json(200, {
+                    "ok": True,
+                    "harness_profiles": self.server.control.list_harness_profiles(),
+                })
+                return
+            if path.startswith("/api/"):
+                self._error(404, "not_found")
+                return
+            self._static(path)
+        except Exception as exc:
+            self._handle_exception(exc)
+
+    def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+        path = urlsplit(self.path).path
+        try:
+            if path == "/api/v1/setup/bootstrap":
+                self._rate_limit("bootstrap")
+                body = self._body()
+                self.server.control.bootstrap_admin(
+                    str(body.get("bootstrap_token", "")), str(body.get("password", "")),
+                    username=str(body.get("username", "admin")),
+                )
+                session = self.server.control.login(
+                    str(body.get("username", "admin")), str(body.get("password", "")),
+                    remote_address=self.client_address[0],
+                )
+                self._json(201, {
+                    "ok": True,
+                    "session": {"admin_id": session.admin_id, "username": session.username,
+                                "expires_unix": session.expires_unix},
+                }, cookies=self._session_cookies(session.token, session.csrf_token, session.expires_unix))
+                return
+            if path == "/api/v1/auth/login":
+                self._rate_limit("login")
+                body = self._body()
+                session = self.server.control.login(
+                    str(body.get("username", "")), str(body.get("password", "")),
+                    remote_address=self.client_address[0],
+                )
+                self._json(200, {
+                    "ok": True,
+                    "session": {"admin_id": session.admin_id, "username": session.username,
+                                "expires_unix": session.expires_unix},
+                }, cookies=self._session_cookies(session.token, session.csrf_token, session.expires_unix))
+                return
+            if path == "/api/v1/auth/logout":
+                auth = self._authorize_mutation()
+                self.server.control.logout(auth["auth_session_id"])
+                self._json(200, {"ok": True}, cookies=self._clear_cookies())
+                return
+            if path == "/api/v1/providers":
+                auth = self._authorize_mutation()
+                body = self._body()
+                provider = self.server.control.configure_provider(
+                    str(body.get("display_name", "")), str(body.get("base_url", "")),
+                    api_key=body.get("api_key"), provider_id=body.get("provider_id"),
+                    default_model_id=body.get("default_model_id"),
+                    context_length_override=body.get("context_length_override"),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "provider.configure", "provider", provider["provider_id"],
+                    "success", {"base_url": provider["base_url"], "has_api_key": provider["has_api_key"]},
+                    self.client_address[0],
+                )
+                self._json(200, {"ok": True, "provider": provider})
+                return
+            if path == "/api/v1/agents":
+                auth = self._authorize_mutation()
+                body = self._body()
+                agent = self.server.control.create_agent(
+                    str(body.get("display_name", "")), agent_id=body.get("agent_id"),
+                    personality_ref=body.get("personality_ref"),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "agent.create", "agent", agent["agent_id"],
+                    "success", {"display_name": agent["display_name"]}, self.client_address[0],
+                )
+                self._json(201, {"ok": True, "agent": agent})
+                return
+            if path == "/api/v1/game-sources/validate":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                source = manager.validate_game_source(
+                    str(body.get("host_path", "")),
+                    display_name=str(body.get("display_name", "Alien Crossfire")),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "game_source.validate", "game_source",
+                    source["game_source_id"], "success",
+                    {"executable_sha256": source["executable_sha256"]}, self.client_address[0],
+                )
+                self._json(201, {"ok": True, "game_source": source})
+                return
+            if path == "/api/v1/runtimes/import-proton":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                runtime = manager.import_proton(
+                    str(body.get("source_host_path", "")),
+                    display_name=str(body.get("display_name", "Managed Proton")),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "runtime.import", "runtime", runtime["runtime_id"],
+                    "success", {"content_fingerprint": runtime["content_fingerprint"]},
+                    self.client_address[0],
+                )
+                self._json(201, {"ok": True, "runtime": runtime})
+                return
+            if path == "/api/v1/matches/solo":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                faction_id = body.get("faction_id", 1)
+                if isinstance(faction_id, bool):
+                    raise InvalidRecord("invalid_faction_id")
+                try:
+                    faction_id = int(faction_id)
+                except (TypeError, ValueError) as exc:
+                    raise InvalidRecord("invalid_faction_id") from exc
+                created = self.server.control.create_solo_match(
+                    str(body.get("display_name", "")), str(body.get("agent_id", "")),
+                    faction_id=faction_id,
+                    faction_name=body.get("faction_name"),
+                )
+                perspective = created["perspective"]
+                try:
+                    worker = manager.provision_worker(
+                        MemoryScope(created["match"]["match_id"], perspective["agent_id"],
+                                    perspective["perspective_id"]),
+                        str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
+                        autostart=body.get("autostart") if isinstance(body.get("autostart"), dict) else None,
+                        view_enabled=body.get("view_enabled") is True,
+                    )
+                except Exception:
+                    self.server.control.discard_unstarted_match(
+                        created["match"]["match_id"], perspective["perspective_id"],
+                    )
+                    raise
+                self.server.control.audit(
+                    auth["admin_id"], "match.create_solo", "match", created["match"]["match_id"],
+                    "success", {"instance_id": worker["instance_id"]}, self.client_address[0],
+                )
+                self._json(201, {
+                    "ok": True, **created, "worker": self._redact_worker(worker),
+                })
+                return
+            if path == "/api/v1/matches/lan":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                agent_ids = body.get("agent_ids")
+                if not isinstance(agent_ids, list) or not all(isinstance(item, str) for item in agent_ids):
+                    raise InvalidRecord("invalid_lan_agent_ids")
+                human_player_names = body.get("human_player_names", [])
+                if not isinstance(human_player_names, list) \
+                        or not all(isinstance(item, str) for item in human_player_names):
+                    raise InvalidRecord("invalid_lan_human_player_names")
+                created = self.server.control.create_lan_match(
+                    str(body.get("display_name", "")), list(agent_ids),
+                    human_player_names=list(human_player_names),
+                    metadata={
+                        "lan_profile": str(body.get("profile", "small_easy")),
+                        "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
+                    },
+                )
+                workers = []
+                try:
+                    for seat in created["seats"]:
+                        if seat["controller_kind"] != "agent":
+                            continue
+                        workers.append(manager.provision_worker(
+                            MemoryScope(
+                                created["match"]["match_id"], str(seat["agent_id"]),
+                                str(seat["perspective_id"]),
+                            ),
+                            str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
+                            autostart={"enabled": False},
+                            view_enabled=body.get("view_enabled") is True,
+                        ))
+                except Exception as exc:
+                    self.server.control.update_match_lifecycle(
+                        created["match"]["match_id"], "error",
+                        metadata={"last_lan_error": str(exc)[:1000]},
+                    )
+                    raise
+                self.server.control.audit(
+                    auth["admin_id"], "match.create_lan", "match",
+                    created["match"]["match_id"], "success",
+                    {
+                        "seat_count": len(created["seats"]),
+                        "agent_seat_count": len(workers),
+                        "human_seat_count": len(human_player_names),
+                    }, self.client_address[0],
+                )
+                result: dict[str, Any] = {
+                    "ok": True, **created,
+                    "workers": [self._redact_worker(item) for item in workers],
+                }
+                if body.get("start_now") is True:
+                    result["started"] = manager.start_lan_match(
+                        created["match"]["match_id"],
+                        session_name=(str(body["session_name"])
+                                      if body.get("session_name") is not None else None),
+                        profile=str(body.get("profile", "small_easy")),
+                    )
+                self._json(201, result)
+                return
+            if path == "/api/v1/harness-profiles/hermes":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id = str(body.get("match_id", ""))
+                agent_id = str(body.get("agent_id", "")) or None
+                worker = self.server.control.worker_for_match(match_id, agent_id=agent_id)
+                observed = manager.worker_status(worker["instance_id"])
+                mcp = observed.get("mcp") if isinstance(observed.get("mcp"), dict) else {}
+                if not observed.get("running") or observed.get("health") != "healthy":
+                    raise WorkerManagerError("game_worker_not_healthy")
+                if not mcp.get("running") or mcp.get("health") != "healthy":
+                    raise WorkerManagerError("managed_mcp_not_healthy")
+                descriptor = self.server.control.prepare_hermes_profile(
+                    match_id, str(body.get("provider_id", "")),
+                    agent_id=agent_id,
+                    reasoning_effort=str(body.get("reasoning_effort", "low")),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "harness.prepare_hermes", "match", match_id,
+                    "success", {
+                        "agent_id": descriptor["agent_id"],
+                        "instance_id": descriptor["instance_id"],
+                        "external_profile_id": descriptor["external_profile_id"],
+                    }, self.client_address[0],
+                )
+                self._json(200, {"ok": True, "descriptor": descriptor})
+                return
+            match = PROVIDER_PATH.fullmatch(path)
+            if match:
+                auth = self._authorize_mutation()
+                provider_id, action = match.groups()
+                if action == "discover":
+                    self._body()
+                    provider = self.server.control.discover_provider(provider_id)
+                    self.server.control.audit(
+                        auth["admin_id"], "provider.discover", "provider", provider_id,
+                        "success", {"model_count": len(provider["models"])}, self.client_address[0],
+                    )
+                else:
+                    body = self._body()
+                    provider = self.server.control.select_provider_model(
+                        provider_id, str(body.get("model_id", "")),
+                        context_length_override=body.get("context_length_override"),
+                    )
+                    self.server.control.audit(
+                        auth["admin_id"], "provider.select_model", "provider", provider_id,
+                        "success", {"model_id": provider["default_model_id"]}, self.client_address[0],
+                    )
+                self._json(200, {"ok": True, "provider": provider})
+                return
+            worker_match = WORKER_PATH.fullmatch(path)
+            if worker_match:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                self._body()
+                instance_id, action = worker_match.groups()
+                if action == "start":
+                    result = manager.start_worker(instance_id)
+                elif action == "park":
+                    result = manager.park_worker(instance_id)
+                elif action == "spectator":
+                    result = manager.spectator_access(instance_id)
+                else:
+                    result = manager.worker_status(instance_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"worker.{action}", "instance", instance_id,
+                    "success", {"status": result.get("status") or result.get("health")},
+                    self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            match_action = MATCH_PATH.fullmatch(path)
+            if match_action:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id, action = match_action.groups()
+                if action == "start":
+                    result = manager.start_lan_match(
+                        match_id,
+                        session_name=str(body.get("session_name", "SMACX Managed LAN")),
+                        profile=str(body.get("profile", "small_easy")),
+                        resume_slot=(str(body["resume_slot"])
+                                     if body.get("resume_slot") is not None else None),
+                    )
+                elif action == "park":
+                    result = manager.park_match(match_id)
+                else:
+                    result = manager.lan_match_status(match_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"match.{action}", "match", match_id,
+                    "success", {"managed_lan": True}, self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            self._error(404, "not_found")
+        except Exception as exc:
+            self._handle_exception(exc)
+
+    def _rate_limit(self, operation: str) -> None:
+        key = f"{operation}:{self.client_address[0]}"
+        if not self.server.login_limiter.allow(key):
+            raise AuthenticationError("too_many_attempts")
+
+    def _manager(self) -> WorkerManager:
+        if self.server.worker_manager is None:
+            raise WorkerManagerError("docker_manager_disabled")
+        return self.server.worker_manager
+
+    @staticmethod
+    def _redact_worker(worker: dict[str, Any]) -> dict[str, Any]:
+        result = dict(worker)
+        result.pop("bridge_secret_id", None)
+        result.pop("view_secret_id", None)
+        return result
+
+    def _static(self, path: str) -> None:
+        if path in ("", "/"):
+            relative = "index.html"
+        else:
+            relative = unquote(path.lstrip("/"))
+        candidate = (self.server.static_root / relative).resolve()
+        if candidate.parent != self.server.static_root or not candidate.is_file():
+            self._error(404, "not_found")
+            return
+        body = candidate.read_bytes()
+        media_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", media_type)
+        self.send_header("Content-Length", str(len(body)))
+        self._security_headers(api=False)
+        self.send_header("Cache-Control", "no-cache" if candidate.name == "index.html" else "public, max-age=3600")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_exception(self, exc: Exception) -> None:
+        if isinstance(exc, AuthenticationError):
+            status = 429 if str(exc) == "too_many_attempts" else 401
+            self._error(status, str(exc))
+        elif isinstance(exc, (InvalidRecord, ScopeViolation)):
+            self._error(400, str(exc))
+        elif isinstance(exc, ProviderError):
+            self._error(502, str(exc))
+        elif isinstance(exc, DockerUnavailable):
+            self._error(503, "docker_engine_unavailable")
+        elif isinstance(exc, DockerError):
+            self._error(502, "docker_operation_failed")
+        elif isinstance(exc, WorkerManagerError):
+            self._error(409, str(exc))
+        elif isinstance(exc, StoreError):
+            self._error(409, str(exc))
+        else:
+            print(json.dumps({
+                "event": "control_error", "error_type": type(exc).__name__,
+                "path": urlsplit(self.path).path,
+            }, separators=(",", ":")), file=sys.stderr, flush=True)
+            self._error(500, "internal_error")
+
+
+def build_control(data_root: Path) -> ControlPlane:
+    data_root = data_root.expanduser().resolve()
+    data_root.mkdir(parents=True, exist_ok=True)
+    database = Path(os.environ.get("SMACX_DB_PATH", data_root / "smacx.sqlite3"))
+    secret_root = Path(os.environ.get("SMACX_SECRET_ROOT", data_root / "secrets"))
+    return ControlPlane(SmacxStore(database), secret_root)
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(prog="smacx-control")
+    result.add_argument("--data-root", default=os.environ.get("SMACX_CONTROL_DATA", "/var/lib/smacx"))
+    commands = result.add_subparsers(dest="command")
+    serve = commands.add_parser("serve", help="run the authenticated Control Center")
+    serve.add_argument("--host", default=os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))
+    serve.add_argument("--port", type=int, default=int(os.environ.get("SMACX_CONTROL_PORT", "8080")))
+    serve.add_argument("--static-root", default=str(Path(__file__).resolve().parents[1] / "control_center/static"))
+    commands.add_parser("bootstrap-token", help="print the one-time first-run token")
+    commands.add_parser("status", help="print redacted service status")
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    arguments = parser().parse_args(argv)
+    command = arguments.command or "serve"
+    control = build_control(Path(arguments.data_root))
+    if command == "bootstrap-token":
+        print(control.reveal_bootstrap_token())
+        return 0
+    if command == "status":
+        print(json.dumps(control.status(), sort_keys=True))
+        return 0
+    control.ensure_bootstrap_token()
+    worker_manager = None
+    if os.environ.get("SMACX_DOCKER_ENABLED", "0") == "1":
+        worker_manager = WorkerManager(
+            control,
+            DockerClient(os.environ.get("SMACX_DOCKER_SOCKET", "/var/run/docker.sock")),
+            worker_image=os.environ.get("SMACX_WORKER_IMAGE", "smacx-agent-worker:dev"),
+            mcp_image=os.environ.get("SMACX_MCP_IMAGE", "smacx-agent-control:dev"),
+            network_name=os.environ.get("SMACX_DOCKER_NETWORK") or None,
+            control_data_volume=os.environ.get("SMACX_CONTROL_DATA_VOLUME") or None,
+            directx_redist_host_path=os.environ.get("SMACX_DIRECTX_REDIST_HOST") or None,
+            view_publish_ip=os.environ.get("SMACX_VIEW_PUBLISH_IP", "127.0.0.1"),
+        )
+    host = getattr(arguments, "host", os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))
+    port = getattr(arguments, "port", int(os.environ.get("SMACX_CONTROL_PORT", "8080")))
+    static_root = getattr(
+        arguments, "static_root",
+        str(Path(__file__).resolve().parents[1] / "control_center/static"),
+    )
+    if not 1 <= port <= 65535:
+        raise SystemExit("invalid port")
+    server = ControlHTTPServer(
+        (host, port), control, Path(static_root),
+        secure_cookies=os.environ.get("SMACX_SECURE_COOKIES", "0") == "1",
+        worker_manager=worker_manager,
+    )
+    print(json.dumps({
+        "event": "control_ready", "host": host, "port": server.server_port,
+        "setup_required": not control.admin_exists(),
+    }, separators=(",", ":")), flush=True)
+    stopping = threading.Event()
+
+    def request_stop(*_unused: Any) -> None:
+        stopping.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    server.timeout = 0.25
+    try:
+        while not stopping.is_set():
+            server.handle_request()
+    finally:
+        server.server_close()
+        print(json.dumps({"event": "control_stopped"}, separators=(",", ":")), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

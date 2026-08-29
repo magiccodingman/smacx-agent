@@ -1,0 +1,14 @@
+.git
+.gitignore
+__pycache__
+*.py[cod]
+*.log
+*.sqlite*
+runtime
+toolchain
+vendor
+bridge/build
+bridge/cmake-build-*
+work
+.venv
+dist

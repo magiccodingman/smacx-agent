@@ -1,0 +1,16 @@
+# Optional trusted-LAN overlay. Create the named macvlan or ipvlan network on
+# the host first, then include this file with compose.yaml. The Control Center
+# and dynamically created game/MCP containers share that external network;
+# each game worker therefore receives its own LAN-reachable address.
+services:
+  control-center:
+    environment:
+      SMACX_DOCKER_NETWORK: ${SMACX_LAN_NETWORK:?set SMACX_LAN_NETWORK}
+    networks:
+      - default
+      - player-lan
+
+networks:
+  player-lan:
+    external: true
+    name: ${SMACX_LAN_NETWORK:?set SMACX_LAN_NETWORK}

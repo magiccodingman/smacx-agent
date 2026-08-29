@@ -1,0 +1,53 @@
+name: smacx-agent
+
+services:
+  control-center:
+    build:
+      context: .
+      dockerfile: control_center/Dockerfile
+    image: smacx-agent-control:dev
+    restart: unless-stopped
+    environment:
+      SMACX_CONTROL_DATA: /var/lib/smacx
+      SMACX_CONTROL_HOST: 0.0.0.0
+      SMACX_CONTROL_PORT: 8080
+      SMACX_SECURE_COOKIES: ${SMACX_SECURE_COOKIES:-0}
+      SMACX_DOCKER_ENABLED: "1"
+      SMACX_DOCKER_SOCKET: /var/run/docker.sock
+      SMACX_DOCKER_NETWORK: ${SMACX_DOCKER_NETWORK:-smacx-agent_default}
+      SMACX_WORKER_IMAGE: smacx-agent-worker:dev
+      SMACX_MCP_IMAGE: smacx-agent-control:dev
+      SMACX_CONTROL_DATA_VOLUME: smacx-agent_smacx-control-data
+      SMACX_DIRECTX_REDIST_HOST: ${SMACX_DIRECTX_REDIST:-}
+      SMACX_VIEW_PUBLISH_IP: ${SMACX_VIEW_PUBLISH_IP:-127.0.0.1}
+    ports:
+      # Default is host-local. For a trusted LAN or TLS reverse proxy, set
+      # SMACX_CONTROL_PUBLISH explicitly, for example 0.0.0.0:8080.
+      - "${SMACX_CONTROL_PUBLISH:-127.0.0.1:8080}:8080"
+    volumes:
+      - smacx-control-data:/var/lib/smacx
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${SMACX_DOCKER_GID:-0}"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /run:size=16m,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 15s
+
+  # Build target only. Game workers are created dynamically by the Control
+  # Center so each seat receives unique volumes, identity, secrets, and ports.
+  worker-image:
+    profiles: ["build"]
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    image: smacx-agent-worker:dev
+    entrypoint: ["/bin/true"]
+
+volumes:
+  smacx-control-data:

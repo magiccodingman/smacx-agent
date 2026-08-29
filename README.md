@@ -6,7 +6,7 @@ This installation is isolated from the Steam game directory. The working game co
 
 ## What works now
 
-- Launch and stop the isolated visible spectator game.
+- Launch and stop isolated games, with an optional password-protected noVNC stream that is mechanically view-only.
 - Start a configured random single-player match through the game's native setup path, without menu input.
 - Host a native DirectPlay LAN session, discover and join one exact session by opaque ID, synchronize the guarded `small_easy` lobby profile, ready the client, and start the match semantically.
 - Read fair-play own-faction economy, per-counterpart loan balances/payments, detailed base yields/citizens/facilities/queues, units, visible enemy units, and known/visible tiles through object IDs and opaque match-local `tile_id` references.
@@ -19,7 +19,11 @@ This installation is isolated from the Steam game directory. The working game co
 - Handle opening setup, first-base naming, structured base-status and production-completion notices, support warnings, monolith choices, semantic Unit Workshop handoff/deferral, probe incidents, and incoming-contact prompts semantically.
 - Traverse the production victory presentation stack semantically—native victory interludes, credits, score report, Quayle rating, Hall of Fame, and replay—then explicitly finish or continue from the final-score decision and expose the native process-exit state.
 - Resolve the native Alien Artifact menu semantically: keep the Artifact, confirmation-gated linking for a technology, or confirmation-gated contribution to the exact active Secret Project/unprototyped unit.
-- Assign a durable `match_id`, a per-process `session_id`, a match-scoped knowledge directory, an observation-guarded knowledge ledger with correction history, and a session ledger recording starts, loads, and clean stops.
+- Assign durable installation, match, agent, perspective, instance, and process-session identities. SQLite now owns immutable events, chat, versioned facts/beliefs/relationships/commitments/goals/summaries, correction history, and scoped FTS5/BM25 recall; the former JSON ledger is a compatibility mirror/import source.
+- Run an authenticated, always-on Control Center that discovers OpenAI-compatible providers, validates a legal game source without modifying it, imports a private checksummed Proton runtime, provisions isolated solo workers, and parks/resumes the same durable match with a fresh process session.
+- Attach one dedicated semantic MCP sidecar to each running worker and one isolated Hermes profile to each durable agent. Managed MCP cannot launch, load, or stop the game; lifecycle remains operator-owned. The Control Center resolves the exact match/seat/worker/sidecar/model binding and the host adapter starts Hermes with low reasoning plus only `smacx` and optional web tools.
+- Create a managed two-to-seven-seat LAN match with an agent host, isolated agent workers/perspectives, and optional named external human seats. The Control Center executes native DirectPlay host, exact-session agent discovery/join, guarded lobby configuration, readiness checks, and start. Mixed games publish only through an explicitly configured macvlan/ipvlan network and reject unexpected player names, unready humans, or the wrong saved faction.
+- Save a running multiplayer campaign from its actual native host, park every disposable worker, reopen the stock **Load Multiplayer Game** lobby, rejoin isolated agents, restore exact faction-to-seat bindings, and continue with the same durable match identity. Human resumes pause in the lobby until every named player has reclaimed the recorded faction and marked Ready.
 - Bundle the mandatory next decision in `smac_decision`: one stable match/session/revision frame containing an active modal, selected ready unit, wait/gap directive, or end-turn/game-management choices. Compact detail is the default; a full snapshot is opt-in for occasional strategic analysis.
 - Treat every returned `revision` as a single-decision capability: choices from an old revision, match, session, object owner, or turn phase are rejected, even if later actions restore identical game state. `end_turn` is withheld until all ready-unit decisions are resolved.
 - Reject commands from the wrong match/session or a stale observation before mutating game state.
@@ -31,9 +35,32 @@ This installation is isolated from the Steam game directory. The working game co
 
 The MCP deliberately exposes no screenshot, mouse, keyboard, native map-coordinate, coordinate-click, or arbitrary UI fallback. Map observations and actions use opaque match-local `tile_id` references; the bridge resolves native coordinates internally. Optional external victory movies when `narrative_ui=true`, human map/joint-attack bargaining, uncommon scenario interactions, and some specialized unit abilities remain incomplete. Autonomous launches disable those external movies by default. See [Coverage and limits](docs/coverage.md).
 
+Managed LAN supports both fresh games and named checkpoint resume. The default
+private Docker network is appropriate for agent-only matches. External human
+seats require the opt-in macvlan/ipvlan deployment described in
+[Control Center](docs/control-center.md); the project never silently publishes
+legacy DirectPlay onto the host LAN.
+
 `tile_id` values are identifiers, not coordinates. Agents must obtain them from fresh observations or choices and must not calculate with or invent them. Both the MCP schema and the authenticated native bridge reject x/y-driven play.
 
 ## Start using it
+
+For the new containerized operator flow, run:
+
+```bash
+./scripts/control-center-up.sh
+docker compose exec control-center smacx-control bootstrap-token
+```
+
+Then open `http://127.0.0.1:8080`. See [Control Center](docs/control-center.md)
+for legal game/Proton registration, security, LAN publication, and worker
+lifecycle details. After starting a worker, use **Bind Hermes to a running
+match**. It validates the complete binding and generates one command that
+prompts for the administrator password, creates the agent's isolated Hermes
+profile, and starts or resumes a conversation named for that match. Your
+existing Hermes dashboard does not need to be restarted. The legacy
+single-instance MCP service below remains available and is not modified by the
+managed flow.
 
 The MCP service is enabled as a user service and normally starts automatically:
 
@@ -97,6 +124,8 @@ The MCP service listens only on `127.0.0.1:47814`. The in-game bridge listens on
 ## Layout
 
 - `bridge/` — Thinker-derived 32-bit Windows DLL and the fair-play socket bridge.
+- `worker/` — isolated non-root Linux game-worker image and runtime contract.
+- `control_center/` — authenticated always-on operator service and web UI.
 - `src/smacx_controller.py` — Proton launcher, bridge client, match identity, and save/load lifecycle.
 - `src/smacx_mcp.py` — persistent Streamable-HTTP MCP server.
 - `scripts/` — build, DirectPlay setup, and service helpers.
@@ -104,8 +133,8 @@ The MCP service listens only on `127.0.0.1:47814`. The in-game bridge listens on
 - `docs/` — architecture, tool protocol, coverage, and troubleshooting.
 - `runtime/` — ignored local game copy, Proton prefix, token, logs, and screenshots.
 
-See [Architecture](docs/architecture.md), [Tool reference](docs/tools.md), [Testing](docs/testing.md), and [Troubleshooting](docs/troubleshooting.md).
+See [Architecture](docs/architecture.md), [Platform roadmap](docs/platform-roadmap.md), [Control Center](docs/control-center.md), [identity and memory ADR](docs/adr/0001-identities-and-authoritative-memory.md), [control-plane ADR](docs/adr/0002-control-plane-and-runtime-boundary.md), [optional Graphiti projection](docs/graphiti.md), [Tool reference](docs/tools.md), [Testing](docs/testing.md), and [Troubleshooting](docs/troubleshooting.md).
 
 ## Provenance
 
-The bridge is a modified build of [Thinker](https://github.com/induktio/thinker) at commit `4aef5be73bda4eb22ffa8db424eb91780c4a51fa`, under the MIT license. The game assets and Microsoft DirectPlay redistributable are local runtime dependencies and are not part of this project's source distribution. See `NOTICE.md` and `LICENSE.md`.
+SMACX Agent is licensed under Apache License 2.0; see [LICENSE](LICENSE). The bridge is a modified build of [Thinker](https://github.com/induktio/thinker) at commit `4aef5be73bda4eb22ffa8db424eb91780c4a51fa`, whose upstream code is MIT-licensed. The game assets and Microsoft DirectPlay redistributable are local runtime dependencies and are not part of this project's source distribution. See [NOTICE.md](NOTICE.md) for provenance and attribution.
