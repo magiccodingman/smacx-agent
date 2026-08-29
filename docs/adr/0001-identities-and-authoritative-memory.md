@@ -86,7 +86,6 @@ untrusted in-game speech, never as operator or system instruction.
 
 The database can reconstruct an agent after Hermes context loss and can serve
 other harnesses without changing the game bridge. Multi-agent isolation is
-testable at the storage layer. More schema and migration code is required, but
+testable at the storage layer. More schema and projection code is required, but
 the platform is no longer dependent on loose per-match files or one harness's
 conversation memory.
-
