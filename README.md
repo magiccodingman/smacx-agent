@@ -19,7 +19,7 @@ This installation is isolated from the Steam game directory. The working game co
 - Handle opening setup, first-base naming, structured base-status and production-completion notices, support warnings, monolith choices, semantic Unit Workshop handoff/deferral, probe incidents, and incoming-contact prompts semantically.
 - Traverse the production victory presentation stack semantically—native victory interludes, credits, score report, Quayle rating, Hall of Fame, and replay—then explicitly finish or continue from the final-score decision and expose the native process-exit state.
 - Resolve the native Alien Artifact menu semantically: keep the Artifact, confirmation-gated linking for a technology, or confirmation-gated contribution to the exact active Secret Project/unprototyped unit.
-- Assign a durable `match_id`, a per-process `session_id`, a match-scoped knowledge directory, an observation-guarded knowledge ledger with correction history, and a session ledger recording starts, loads, and clean stops.
+- Assign durable installation, match, agent, perspective, instance, and process-session identities. SQLite now owns immutable events, chat, versioned facts/beliefs/relationships/commitments/goals/summaries, correction history, and scoped FTS5/BM25 recall; the former JSON ledger is a compatibility mirror/import source.
 - Bundle the mandatory next decision in `smac_decision`: one stable match/session/revision frame containing an active modal, selected ready unit, wait/gap directive, or end-turn/game-management choices. Compact detail is the default; a full snapshot is opt-in for occasional strategic analysis.
 - Treat every returned `revision` as a single-decision capability: choices from an old revision, match, session, object owner, or turn phase are rejected, even if later actions restore identical game state. `end_turn` is withheld until all ready-unit decisions are resolved.
 - Reject commands from the wrong match/session or a stale observation before mutating game state.
@@ -104,7 +104,7 @@ The MCP service listens only on `127.0.0.1:47814`. The in-game bridge listens on
 - `docs/` — architecture, tool protocol, coverage, and troubleshooting.
 - `runtime/` — ignored local game copy, Proton prefix, token, logs, and screenshots.
 
-See [Architecture](docs/architecture.md), [Tool reference](docs/tools.md), [Testing](docs/testing.md), and [Troubleshooting](docs/troubleshooting.md).
+See [Architecture](docs/architecture.md), [Platform roadmap](docs/platform-roadmap.md), [identity and memory ADR](docs/adr/0001-identities-and-authoritative-memory.md), [optional Graphiti projection](docs/graphiti.md), [Tool reference](docs/tools.md), [Testing](docs/testing.md), and [Troubleshooting](docs/troubleshooting.md).
 
 ## Provenance
 

@@ -475,6 +475,14 @@ SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh \
   env PYTHONPATH=src:scripts python3 scripts/live_match_knowledge_test.py
 ```
 
+The durable-platform regressions are fully contained and require neither a game process nor Graphiti/Neo4j. They prove concurrent atomic migration, immutable events, perspective isolation, versioned structured memory, bounded recall, chat player/faction mapping and exactly-once attention, guarded memory writes, legacy JSON history import, Graphiti failure-safe cursors, and group-local rebuild:
+
+```bash
+PYTHONPATH=src python3 scripts/platform_store_test.py
+PYTHONPATH=src python3 scripts/platform_controller_test.py
+PYTHONPATH=src python3 scripts/graphiti_projection_test.py
+```
+
 The capability-gap safety regression proves one audit record per match/session, zero native command calls after the latch, blocked launch/new/load escape paths, visibility through status, absence of an agent clear tool, and restoration only after a developer-controlled MCP restart:
 
 ```bash

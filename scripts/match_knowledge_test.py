@@ -12,6 +12,9 @@ import smacx_controller as controller
 
 def main() -> int:
     original_root = controller.KNOWLEDGE_ROOT
+    original_database = controller.PLATFORM_DB_PATH
+    original_store = controller._store_instance
+    original_store_path = controller._store_instance_path
     original_bridge_request = controller.bridge_request
     match_id = "match-knowledge-test"
     other_match_id = "match-knowledge-other"
@@ -39,6 +42,9 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="smacx-knowledge-") as directory:
             controller.KNOWLEDGE_ROOT = Path(directory)
+            controller.PLATFORM_DB_PATH = Path(directory) / "state" / "smacx.sqlite3"
+            controller._store_instance = None
+            controller._store_instance_path = None
             controller.bridge_request = fake_bridge_request
             controller._write_match_manifest(match_id, {"match_id": match_id, "sessions": []})
             controller._write_match_manifest(other_match_id, {"match_id": other_match_id, "sessions": []})
@@ -101,6 +107,9 @@ def main() -> int:
             return 0
     finally:
         controller.KNOWLEDGE_ROOT = original_root
+        controller.PLATFORM_DB_PATH = original_database
+        controller._store_instance = original_store
+        controller._store_instance_path = original_store_path
         controller.bridge_request = original_bridge_request
 
 
