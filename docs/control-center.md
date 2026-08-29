@@ -45,9 +45,12 @@ before running it so the Docker group applies to that shell.
 In **Runtime assets**, provide the directory containing the legally installed
 `terranx.exe`, then provide a Proton installation directory. Validation runs
 in a disposable, no-network container against a read-only bind. Proton is
-copied into a checksummed named volume; its source is read-only. Create a
-durable agent, select the two validated assets, choose the native faction slot,
-difficulty, and map size, and provision a solo match. Starting the worker runs
+copied into a checksummed named volume; its source is read-only. Legal-source
+validation also discovers the exact scenario catalog and builds a private,
+mechanics-only reference index; neither source text nor game assets enter an
+image or the repository. Create a durable agent, select the two validated
+assets, then choose a random/custom world or one exact scenario and provision a
+solo match. Starting the worker runs
 the real game in its isolated virtual display and waits for the authenticated
 semantic bridge to become healthy. No screenshot, mouse, or keyboard input is
 part of this lifecycle.
@@ -197,8 +200,8 @@ IPv4 address and only a freshly returned DirectPlay session GUID.
 For an agent host, the Control Center:
 
 1. waits for every stock Multiplayer Setup lobby;
-2. applies one guarded random-map profile from Citizen/Tiny through
-   Transcend/Huge (the default is `small_easy`, Citizen/Small);
+2. applies a guarded profile, a fully typed custom setup, or an exact
+   legal-copy multiplayer scenario;
 3. waits until every client observes the synchronized settings;
 4. readies each client using the game's named native action;
 5. starts only after the host observes every client ready; and
@@ -272,16 +275,22 @@ For a human-hosted match:
 
 Configure every desired custom rule in the human-owned lobby before asking the
 managed agents to join. The native DirectPlay packet preserves those settings;
-each agent can inspect synchronized difficulty, map dimensions, world-generation
-levels, timer identifier, and raw game/more-rules masks through `smac_lan`.
-The masks are not yet decoded to named options, so the Control Center does not
-claim full semantic understanding of arbitrary custom rules.
+each agent can inspect synchronized difficulty, map size, world-generation
+levels, timer, victory conditions, and ordinary game rules by name through
+`smac_lan`. Raw masks are retained only for diagnostics.
 
-For an AI-hosted lobby, the selected guarded profile changes only difficulty
-and map size. Ocean coverage, erosion, native life, cloud cover, timer, victory
-conditions, and advanced rules remain exactly at the native lobby values and
-are synchronized to every client. Full typed mutation of those fields is future
-game-setup work; no agent uses the settings window as a fallback.
+For an AI-hosted lobby, choose a guarded profile or **Custom**. Custom setup
+validates difficulty, one of five native timer modes, map size, ocean coverage,
+erosion, native life, cloud cover, victory conditions, and ordinary rules before
+opening the lobby. The sixth visual custom-clock editor and random-leader flags
+that are not synchronized in the LAN `GameRules` record are intentionally not
+offered. Every accepted field is verified on host and clients before readiness.
+
+Choose **Scenario** to load one exact multiplayer scenario from the selected
+legal-copy catalog. The host loads it before clients join; each managed seat
+selects a distinct currently offered native scenario faction and the manager
+verifies that choice on the host. Scenario-authored rules and restrictions are
+authoritative. An arbitrary filesystem path is never accepted.
 
 For a human-hosted checkpoint, the human host owns the save file and reopens it
 through the game's **Load Multiplayer Game** path. Parking retains every agent's

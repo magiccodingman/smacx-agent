@@ -4,16 +4,32 @@ SMACX Agent ships a small, project-authored Alien Crossfire mechanics corpus.
 It is general game knowledge, not match memory: it cannot contain a current
 map, unseen factions, private chat, save data, or another player's state.
 
-This is a focused 19-document primer, not a claim to contain every official
-manual, Datalinks entry, scenario rule, numeric table, or strategy guide. Exact
-match settings and live semantic choices remain authoritative.
+The distributable baseline is a focused 18-document primer, not a claim to
+contain every official manual, Datalinks entry, scenario rule, or numeric
+table. Exact match settings and live semantic choices remain authoritative.
 
 The corpus is deliberately a reference rather than a walkthrough. It covers
 the turn loop, economy, bases and citizens, expansion, terraforming, ecology,
 research, unit design, combat, Social Engineering, diplomacy, Council votes,
 probe operations, victory paths, all original and Alien Crossfire faction
-families, multiplayer continuity, and uncertainty-aware planning. It explains
-concepts without prescribing a fixed exploit or revealing a scenario solution.
+families, and multiplayer continuity. It explains mechanics without a build
+order, walkthrough, exploit, scenario solution, or advice about how to cheese
+the game.
+
+When an operator validates a legal installation, Control Center also builds a
+private local index from an explicit allowlist: the manual's rules chapters and
+rules/options appendices, Datalinks/concept data, core numeric rules, technology
+summaries, and the mechanical headers of the fourteen faction records. The
+current legal-copy tests produce roughly 300 bounded chunks from 22 allowlisted
+files. The exact count is derived from that installation and is not a stable
+protocol guarantee.
+
+The extractor excludes `Script.txt`, scenario directories, tutorial and tips
+sections, advanced customization/editor material, narrative faction content,
+walkthroughs, and guides. It runs against the legal source read-only. Extracted
+text is stored only in the operator's private SQLite volume and is never copied
+into an image, repository, backup intended for distribution, or API response
+outside authenticated reference retrieval.
 
 ## Agent protocol
 
@@ -47,10 +63,16 @@ or facts. Consequently, reference documents explain rules independently in
 project-authored language rather than translating source paragraphs. This is a
 conservative engineering boundary, not legal advice.
 
-The game still comes from the operator's legal installation. A future optional
-local-only verifier may consult that user's manual or modified rule files, but
-source text and generated excerpts must never be committed or shipped by this
-project.
+The game still comes from the operator's legal installation. The implemented
+local-only extractor may index the approved mechanics subset for that operator.
+The resulting private documents retain source names and SHA-256 hashes so a
+changed legal copy is replaced cleanly. Each managed MCP seat can retrieve only
+the shared project-authored baseline plus the private namespace belonging to
+that seat's exact `game_source_id`; rules from another registered installation
+or mod cannot leak into its search or `get` calls. Source text and generated
+chunks must never be committed or shipped by this project. No web wiki is downloaded:
+the private legal copy and independently authored baseline are sufficient for
+the current mechanics-only milestone.
 
 ## Rebuild and test
 
@@ -62,6 +84,8 @@ one canonical schema revision.
 PYTHONPATH=src python3 -m smacx_reference \
   --database /path/to/smacx.sqlite3 --query "Treaty Pact trust"
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
+PYTHONPATH=src python3 scripts/private_reference_test.py \
+  --game-source /path/to/legal/game
 python3 scripts/reference_copyright_audit.py \
   --source /path/to/legal/game/Manual.pdf \
   --source /path/to/legal/game/Script.txt \

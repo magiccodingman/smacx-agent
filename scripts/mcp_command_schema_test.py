@@ -36,6 +36,7 @@ def main() -> int:
             "self_destruct_unit",
             "advance_endgame_presentation",
             "set_governor_permission",
+            "propose_human_joint_attack",
         }:
             if command_name not in command_values:
                 raise AssertionError(f"smac_command does not expose {command_name}")
@@ -47,6 +48,8 @@ def main() -> int:
             raise AssertionError("smac_command does not expose confirm_corner_market")
         if "target_kind" not in signature.parameters:
             raise AssertionError("smac_command does not expose target_kind")
+        if "target_faction_id" not in signature.parameters:
+            raise AssertionError("smac_command does not expose target_faction_id")
         if "payment" not in signature.parameters:
             raise AssertionError("smac_command does not expose payment")
         if "amount" not in signature.parameters:
@@ -101,6 +104,7 @@ def main() -> int:
             confirm_defiance=1,
             confirm_corner_market=1,
             target_kind="commlink",
+            target_faction_id=6,
             payment="energy",
             amount=75,
             confirm_transfer=1,
@@ -134,6 +138,8 @@ def main() -> int:
         raise AssertionError(f"ready_unit_count was not forwarded: {captured}")
     if payload.get("target_kind") != "commlink":
         raise AssertionError(f"target_kind was not forwarded: {captured}")
+    if payload.get("target_faction_id") != 6:
+        raise AssertionError(f"target_faction_id was not forwarded: {captured}")
     if payload.get("payment") != "energy":
         raise AssertionError(f"payment was not forwarded: {captured}")
     if payload.get("amount") != 75:
@@ -169,6 +175,7 @@ def main() -> int:
             "confirm_defiance_forwarded": payload["confirm_defiance"],
             "confirm_corner_market_forwarded": payload["confirm_corner_market"],
             "target_kind_forwarded": payload["target_kind"],
+            "target_faction_id_forwarded": payload["target_faction_id"],
             "payment_forwarded": payload["payment"],
             "amount_forwarded": payload["amount"],
             "confirm_transfer_forwarded": payload["confirm_transfer"],

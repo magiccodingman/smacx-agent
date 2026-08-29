@@ -43,6 +43,7 @@ SCHEDULE_PATH = re.compile(r"^/api/v1/schedules/([A-Za-z0-9_-]{8,96})/(activate|
 BACKUP_PATH = re.compile(r"^/api/v1/backups/([A-Za-z0-9_-]{8,96})/verify$")
 RECOVERY_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(checkpoint|recover)$")
 HARNESS_RUN_PATH = re.compile(r"^/api/v1/harness-runs/([A-Za-z0-9_-]{8,96})/(start|stop|status)$")
+SCENARIO_CATALOG_PATH = re.compile(r"^/api/v1/game-sources/([A-Za-z0-9_-]{8,96})/scenarios$")
 
 
 class RequestRateLimiter:
@@ -245,6 +246,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, {"ok": True, "game_sources": self.server.control.list_game_sources()})
                 return
+            scenario_catalog = SCENARIO_CATALOG_PATH.fullmatch(path)
+            if scenario_catalog:
+                self._authentication()
+                if not self.server.worker_manager:
+                    raise WorkerManagerError("docker_manager_disabled")
+                self._json(200, self.server.worker_manager.list_scenarios(
+                    scenario_catalog.group(1),
+                ))
+                return
             if path == "/api/v1/runtimes":
                 self._authentication()
                 self._json(200, {"ok": True, "runtimes": self.server.control.list_runtimes()})
@@ -424,6 +434,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 auth = self._authorize_mutation()
                 manager = self._manager()
                 body = self._body()
+                if body.get("game_settings") is not None \
+                        and not isinstance(body.get("game_settings"), dict):
+                    raise InvalidRecord("invalid_lan_game_settings")
                 agent_ids = body.get("agent_ids")
                 if not isinstance(agent_ids, list) or not all(isinstance(item, str) for item in agent_ids):
                     raise InvalidRecord("invalid_lan_agent_ids")
@@ -490,6 +503,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         session_name=(str(body["session_name"])
                                       if body.get("session_name") is not None else None),
                         profile=profile,
+                        scenario_id=(str(body["scenario_id"])
+                                     if body.get("scenario_id") is not None else None),
+                        game_settings=(body.get("game_settings")
+                                       if isinstance(body.get("game_settings"), dict) else None),
                     )
                 self._json(201, result)
                 return
@@ -730,6 +747,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 auth = self._authorize_mutation()
                 manager = self._manager()
                 body = self._body()
+                if body.get("game_settings") is not None \
+                        and not isinstance(body.get("game_settings"), dict):
+                    raise InvalidRecord("invalid_lan_game_settings")
                 match_id, action = match_action.groups()
                 if action == "start":
                     result = manager.start_lan_match(
@@ -738,6 +758,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         profile=str(body.get("profile", "small_easy")),
                         resume_slot=(str(body["resume_slot"])
                                      if body.get("resume_slot") is not None else None),
+                        scenario_id=(str(body["scenario_id"])
+                                     if body.get("scenario_id") is not None else None),
+                        game_settings=(body.get("game_settings")
+                                       if isinstance(body.get("game_settings"), dict) else None),
                     )
                 elif action == "park":
                     result = manager.park_match(match_id)

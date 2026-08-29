@@ -163,6 +163,15 @@
             <label>Agent <select name="agent_id" id="match-agent" required></select></label>
             <label>Game source <select name="game_source_id" id="match-source" required></select></label>
             <label>Runtime <select name="runtime_id" id="match-runtime" required></select></label>
+            <label>Launch mode
+              <select name="launch_mode" id="match-launch-mode">
+                <option value="new_game">New generated game</option>
+                <option value="scenario">Scenario from the legal game copy</option>
+              </select>
+            </label>
+            <label id="match-scenario-label" hidden>Scenario
+              <select name="scenario_id" id="match-scenario"></select>
+            </label>
             <div class="compact-fields">
               <label>Faction slot
                 <select name="faction_id">
@@ -186,6 +195,23 @@
                 </select>
               </label>
             </div>
+            <details id="solo-custom-settings">
+              <summary>Custom map and game rules</summary>
+              <div class="compact-fields">
+                <label>Map generation <select name="map_generation">
+                  <option value="random">Random map</option>
+                  <option value="custom">Custom planet</option>
+                </select></label>
+                <label>Custom width <input name="custom_width" type="number" min="16" max="512" value="64"></label>
+                <label>Custom height <input name="custom_height" type="number" min="16" max="512" value="48"></label>
+                <label>Ocean <select name="ocean_coverage"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+                <label>Erosion <select name="erosive_forces"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+                <label>Native life <select name="native_life"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+                <label>Clouds <select name="cloud_cover"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+              </div>
+              <p class="muted">Each rule below can inherit the game's normal default or be explicitly enabled/disabled.</p>
+              <div id="solo-rule-fields" class="compact-fields"></div>
+            </details>
             <label class="check"><input name="view_enabled" type="checkbox"> Enable a password-protected, view-only spectator</label>
             <label class="check"><input name="start_now" type="checkbox" checked> Start the game after provisioning</label>
             <button type="submit">Create match</button>
@@ -220,13 +246,33 @@
           </label>
           <label>Game source <select name="game_source_id" id="lan-source" required></select></label>
           <label>Runtime <select name="runtime_id" id="lan-runtime" required></select></label>
-          <label>Lobby profile <select name="profile">
+          <label>Fresh-game setup <select name="lan_setup_mode" id="lan-setup-mode">
+            <option value="profile">Convenience profile</option>
+            <option value="custom">Fully custom lobby settings</option>
+          </select></label>
+          <label id="lan-profile-label">Lobby profile <select name="profile">
             <option value="tiny_citizen">Citizen · Tiny random map</option>
             <option value="small_easy" selected>Citizen · Small random map</option>
             <option value="standard_librarian">Librarian · Standard random map</option>
             <option value="large_thinker">Thinker · Large random map</option>
             <option value="huge_transcend">Transcend · Huge random map</option>
           </select></label>
+          <label>Multiplayer scenario (optional)
+            <select name="scenario_id" id="lan-scenario"><option value="">Fresh random-map game</option></select>
+          </label>
+          <details id="lan-custom-settings" hidden>
+            <summary>Custom LAN world, clock, and rules</summary>
+            <div class="compact-fields">
+              <label>Difficulty <select name="lan_difficulty"><option value="0">Citizen</option><option value="1">Specialist</option><option value="2">Talent</option><option value="3">Librarian</option><option value="4">Thinker</option><option value="5">Transcend</option></select></label>
+              <label>Time control <select name="time_control"><option value="0">None</option><option value="1">Tight</option><option value="2" selected>Standard</option><option value="3">Moderate</option><option value="4">Loose</option></select></label>
+              <label>World size <select name="lan_world_size"><option value="0">Tiny</option><option value="1" selected>Small</option><option value="2">Standard</option><option value="3">Large</option><option value="4">Huge</option></select></label>
+              <label>Ocean <select name="lan_ocean_coverage"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+              <label>Erosion <select name="lan_erosive_forces"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+              <label>Native life <select name="lan_native_life"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+              <label>Clouds <select name="lan_cloud_cover"><option value="0">Low</option><option value="1" selected>Average</option><option value="2">High</option></select></label>
+            </div>
+            <div id="lan-rule-fields" class="compact-fields"></div>
+          </details>
           <label class="check"><input name="view_enabled" type="checkbox"> Enable view-only spectators for agent seats</label>
           <label class="check"><input name="start_now" type="checkbox" checked> Prepare now (agent hosts open a lobby; human hosts start managed clients)</label>
           <button type="submit">Create managed LAN</button>

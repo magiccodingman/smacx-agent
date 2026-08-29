@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 
 from smacx_reference import read_reference, seed_reference_corpus
-from smacx_store import SmacxStore
+from smacx_store import ScopeViolation, SmacxStore
 
 
 def main() -> int:
@@ -38,6 +38,36 @@ def main() -> int:
         )
         if not focused["results"] or any(item["topic"] != "expansion" for item in focused["results"]):
             raise AssertionError("topic-scoped BM25 search escaped its hierarchy")
+        common_private = {
+            "topic": "rules", "title": "Private test mechanics",
+            "summary": "A private source-isolation regression.",
+            "body": "A unique private mechanic named moonbeam belongs to exactly one legal game source.",
+            "tags": ("private",), "source_license": "Private test source",
+            "provenance": "Contained source-isolation test.",
+        }
+        store.upsert_reference_document("private.game-source-one.0001", **common_private)
+        store.upsert_reference_document(
+            "private.game-source-two.0001", **{
+                **common_private,
+                "body": "A unique private mechanic named starfall belongs to another legal game source.",
+            },
+        )
+        first = read_reference(
+            store, "search", query="moonbeam starfall",
+            private_prefix="private.game-source-one.", include_body=True,
+        )
+        if {item["document_id"] for item in first["results"]} != {
+                "private.game-source-one.0001"}:
+            raise AssertionError("private reference search crossed game-source scope")
+        try:
+            read_reference(
+                store, "get", document_id="private.game-source-two.0001",
+                private_prefix="private.game-source-one.",
+            )
+        except ScopeViolation:
+            pass
+        else:
+            raise AssertionError("private reference get crossed game-source scope")
         raw = corpus.read_text(encoding="utf-8")
         payload = json.loads(raw)
         if "every official" in payload.get("description", "").casefold():
@@ -54,6 +84,16 @@ def main() -> int:
                 raise AssertionError(
                     f"reference document lacks provenance: {document.get('document_id')}"
                 )
+            if document.get("topic") == "strategy" \
+                    or "walkthrough" in str(document.get("source_title", "")).casefold():
+                raise AssertionError("guide or strategy material entered the core mechanics corpus")
+            authored = " ".join(str(document.get(field, "")) for field in (
+                "title", "summary", "body", "tags",
+            )).casefold()
+            if any(phrase in authored for phrase in (
+                    "walkthrough", "strategy guide", "build order", "optimal opening",
+                    "cheat mode", "scenario solution")):
+                raise AssertionError("prescriptive guide material entered the mechanics corpus")
         for forbidden in ("Manual.pdf", "Script.txt", "helpx.txt", "alpha.txt"):
             if f'"copied_asset": "{forbidden}"' in raw:
                 raise AssertionError("proprietary asset was embedded in the distributable corpus")
@@ -67,6 +107,7 @@ def main() -> int:
                 "independent_expression_boundary": True,
                 "no_proprietary_assets_bundled": True,
                 "match_hidden_state_absent": True,
+                "private_game_source_isolation": True,
             },
         }, separators=(",", ":")))
     return 0

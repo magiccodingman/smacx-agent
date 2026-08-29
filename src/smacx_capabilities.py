@@ -28,13 +28,15 @@ _CAPABILITIES: dict[str, Any] = {
         "resume_solo_checkpoint": {"status": "native_live_tested"},
         "resume_lan_checkpoint": {"status": "native_live_tested_local"},
         "solo_scenario": {
-            "status": "not_implemented",
-            "blocker": "No typed native scenario-selection and launch contract exists.",
+            "status": "native_live_tested",
+            "operator": "control_center_or_mcp",
         },
         "lan_scenario": {
-            "status": "not_implemented",
-            "blocker": "No typed native multiplayer-scenario selection and synchronization contract exists.",
+            "status": "native_live_tested_local",
+            "operator": "control_center_or_mcp",
         },
+        "solo_custom_rules": {"status": "native_live_tested"},
+        "lan_custom_rules": {"status": "native_live_tested_local"},
     },
     "lan_profiles": {
         "tiny_citizen": {"difficulty": "citizen", "map_size": "tiny", "status": "native_live_tested"},
@@ -58,16 +60,14 @@ _CAPABILITIES: dict[str, Any] = {
         },
     },
     "known_fail_closed_gaps": {
-        "scenario_launch": "Typed native scenario selection is not implemented.",
-        "human_diplomacy_map_clause": "Native LAN effect has not been synchronized and certified.",
-        "human_diplomacy_joint_attack_clause": "Native LAN effect has not been synchronized and certified.",
         "accepted_ai_concessions": "Consequential LAN settlement effects remain rejection-only where unverified.",
         "lan_destructive_or_persistent_unit_mutations": (
             "Carrier recovery, bombing runs, terrain destruction, single-unit upgrades, and selected persistent policies "
             "remain unavailable in LAN until two-client packet/effect tests pass."
         ),
         "lan_base_mutations": (
-            "Governor, obliteration, and selected base mutations remain unavailable until synchronized effect tests pass."
+            "Governor, queue, production, citizen, allocation, research, and Social Engineering changes are synchronized; "
+            "hurry, rename, recycling, nerve stapling, and obliteration remain unavailable until exact two-client effect tests pass."
         ),
         "unrecognized_modal": "The bridge returns capability_gap; no visual fallback exists.",
     },

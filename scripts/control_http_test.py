@@ -93,7 +93,7 @@ def main() -> int:
                 server.server_port, "GET", "/api/v1/capabilities", cookies=cookies,
             )
             if status != 200 \
-                    or capabilities.get("launch_modes", {}).get("solo_scenario", {}).get("status") != "not_implemented" \
+                    or capabilities.get("launch_modes", {}).get("solo_scenario", {}).get("status") != "native_live_tested" \
                     or capabilities.get("deployment", {}).get("physical_two_machine_lan", {}).get("status") != "external_certification_required":
                 raise AssertionError("authenticated capability ledger is missing or overclaims coverage")
 

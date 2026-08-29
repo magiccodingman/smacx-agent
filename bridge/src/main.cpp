@@ -456,6 +456,16 @@ int cmd_parse(Config* cf) {
         }
     }
     LocalFree(argv);
+    char scenario_id[520] = {};
+    if (GetEnvironmentVariableA("SMACX_AGENT_STARTUP_SCENARIO",
+        scenario_id, sizeof(scenario_id)) && !strstr(scenario_id, "..")
+    && strlen(scenario_id) > 3
+    && !_stricmp(scenario_id + strlen(scenario_id) - 3, ".SC")) {
+        startup_load_path = "scenarios\\";
+        for (const char* cursor = scenario_id; *cursor; ++cursor) {
+            startup_load_path += *cursor == '/' ? '\\' : *cursor;
+        }
+    }
     return 1;
 }
 
@@ -525,6 +535,5 @@ DLL_EXPORT BOOL APIENTRY DllMain(HINSTANCE UNUSED(hinstDLL), DWORD fdwReason, LP
     }
     return TRUE;
 }
-
 
 
