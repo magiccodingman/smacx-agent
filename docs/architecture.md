@@ -1,22 +1,25 @@
 # Architecture
 
 ```text
-Qwen 3.8 27B / Hermes
-        |
-        | MCP Streamable HTTP (127.0.0.1:47814)
-        v
-Python MCP service + controller
-        |
-        | authenticated JSON lines (127.0.0.1:47813)
-        v
+Authenticated Control Center -- owns match/seat/worker/harness lifecycle
+             |
+             v
+Qwen 3.8 27B / isolated Hermes profile (one durable agent identity)
+             |
+             | exact MCP Streamable HTTP endpoint
+             v
+Dedicated MCP sidecar (one running worker/perspective; lifecycle blocked)
+             |
+             | authenticated JSON lines on a private Docker network
+             v
 Thinker-derived 32-bit bridge DLL
-        |
-        | UI-thread message marshalling
-        v
-Visible SMACX process under isolated Proton prefix
+             |
+             | UI-thread message marshalling
+             v
+Visible/view-only SMACX process under an isolated Proton prefix
 ```
 
-The model should use MCP rather than connect to the game bridge directly. MCP gives Qwen compact schemas, launch/lifecycle management, bounded waits, stable match identity, and a deliberately semantic-only capability boundary. Keeping the bridge protocol independent makes it possible to add a different harness later without changing the DLL.
+The model should use MCP rather than connect to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Keeping the bridge protocol independent makes it possible to add a different harness later without changing the DLL.
 
 Native actions that must cross the Windows event loop are tracked as small transactions. The bridge assigns an `action_id`, records the intended objects, and publishes pending/completed/rejected status plus the native result and observed match-local tile IDs. The MCP waits for completion within a bound, preventing a model from confusing “message queued” with “game action applied.” Native map coordinates remain internal to the DLL.
 

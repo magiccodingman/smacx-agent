@@ -57,6 +57,17 @@ profile and match perspective, while the semantic bridge, MCP contract, and
 SQLite memory remain harness-neutral. Replacing Hermes later does not require a
 new game DLL or a memory migration.
 
+Each running game worker receives a dedicated MCP sidecar on the same private
+network. The sidecar mounts only that worker's bridge secret/state and the
+authoritative Control volume, publishes a random loopback-only port, and is
+removed when the worker parks. Managed mode mechanically rejects all
+agent-requested launch/load/stop operations. The Control Center issues a
+secret-free descriptor only after checking the exact worker and sidecar health.
+The host adapter converts that descriptor into one Hermes profile per durable
+agent and one workspace/session name per match; it disables general Hermes
+memory and every terminal, filesystem, computer-use, and visual tool during
+gameplay.
+
 ## Network posture
 
 The default Compose publication is `127.0.0.1`. A home-lab operator may bind a

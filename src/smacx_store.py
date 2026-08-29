@@ -623,9 +623,42 @@ BEGIN
 END;
 """
 
+MIGRATION_3 = r"""
+ALTER TABLE harness_profiles ADD COLUMN agent_id TEXT REFERENCES agents(agent_id);
+ALTER TABLE harness_profiles ADD COLUMN external_profile_id TEXT;
+CREATE UNIQUE INDEX harness_profile_agent_adapter
+    ON harness_profiles(agent_id, adapter_kind)
+    WHERE agent_id IS NOT NULL;
+
+CREATE TABLE harness_runs (
+    run_id TEXT PRIMARY KEY,
+    harness_profile_id TEXT NOT NULL REFERENCES harness_profiles(harness_profile_id),
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id),
+    perspective_id TEXT NOT NULL REFERENCES perspectives(perspective_id),
+    instance_id TEXT NOT NULL REFERENCES instances(instance_id),
+    native_session_id TEXT REFERENCES sessions(session_id),
+    external_session_id TEXT,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'stopped', 'completed', 'error')),
+    initial_prompt TEXT NOT NULL DEFAULT '',
+    last_error TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_unix REAL NOT NULL,
+    started_unix REAL,
+    stopped_unix REAL,
+    updated_unix REAL NOT NULL
+);
+CREATE INDEX harness_runs_scope_time
+    ON harness_runs(match_id, agent_id, perspective_id, created_unix DESC);
+CREATE UNIQUE INDEX harness_one_live_run_per_perspective
+    ON harness_runs(match_id, agent_id, perspective_id)
+    WHERE status IN ('queued', 'running');
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "durable_identity_and_memory_foundation", MIGRATION_1),
     (2, "control_plane_foundation", MIGRATION_2),
+    (3, "harness_identity_and_run_ledger", MIGRATION_3),
 )
 
 

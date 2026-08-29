@@ -16,8 +16,9 @@ is delivered as vertical, independently testable milestones.
    prefix, semantic bridge, virtual display, health protocol, and view-only
    spectator stream.
 5. **Control plane** — authenticated Control Center, provider discovery,
-   agents/personalities, match builder, scheduler, secrets, backups, and
-   Hermes profile/session management.
+   agents/personalities, match builder, secrets, isolated per-worker MCP,
+   and Hermes profile/session management. The solo-worker and host-Hermes
+   vertical slice is implemented; scheduler/backups remain.
 6. **Managed multiplayer** — one isolated worker per seat, managed hosting,
    exact-address joining, persistent chat attention, save/park/rejoin, and
    interactive human seats.
@@ -33,4 +34,3 @@ open Control Center -> create or resume match -> assign seats -> launch -> play
 Docker Compose starts the control plane once and leaves it running. Per-match
 workers are created, parked, resumed, and retired by the match manager rather
 than by manual `docker compose down/up` cycles.
-

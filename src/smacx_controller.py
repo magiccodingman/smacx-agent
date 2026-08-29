@@ -19,11 +19,16 @@ from smacx_store import MemoryScope, SmacxStore, StoreError
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-RUNTIME = PROJECT / "runtime"
-GAME = RUNTIME / "game"
-TOKEN_FILE = RUNTIME / "agent-token"
-BRIDGE_HOST = "127.0.0.1"
-BRIDGE_PORT = 47813
+RUNTIME = Path(os.environ.get("SMACX_RUNTIME_ROOT", PROJECT / "runtime"))
+GAME = Path(os.environ.get("SMACX_GAME_PATH", RUNTIME / "game"))
+TOKEN_FILE = Path(os.environ.get("SMACX_AGENT_TOKEN_FILE", RUNTIME / "agent-token"))
+BRIDGE_HOST = os.environ.get("SMACX_BRIDGE_HOST", "127.0.0.1")
+try:
+    BRIDGE_PORT = int(os.environ.get("SMACX_BRIDGE_PORT", "47813"))
+except ValueError as exc:
+    raise RuntimeError("invalid_smacx_bridge_port") from exc
+if not 1 <= BRIDGE_PORT <= 65535:
+    raise RuntimeError("invalid_smacx_bridge_port")
 STEAM_ROOT = Path.home() / ".local/share/Steam"
 PRESSURE_VESSEL = STEAM_ROOT / "steamapps/common/SteamLinuxRuntime_4/run"
 PROTON = STEAM_ROOT / "steamapps/common/Proton - Experimental/proton"

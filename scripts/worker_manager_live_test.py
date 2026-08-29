@@ -53,14 +53,12 @@ def main() -> int:
             source = manager.validate_game_source(required["game"], display_name="Live legal source")
             runtime = manager.import_proton(required["proton"], display_name="Live managed Proton")
             control.store.ensure_agent("agent-manager-live", "Manager Live Agent")
-            control.store.create_match(
-                match_id="match-manager-live", display_name="Manager live match", mode="singleplayer",
+            created = control.create_solo_match(
+                "Manager live match", "agent-manager-live",
+                match_id="match-manager-live",
+                faction_id=1, faction_name="Gaia's Stepdaughters",
             )
-            perspective = control.store.create_perspective(
-                "match-manager-live", "agent-manager-live",
-                perspective_id="perspective-manager-live", faction_id=1,
-                faction_name="Gaia's Stepdaughters",
-            )
+            perspective = created["perspective"]
             scope = MemoryScope(
                 "match-manager-live", "agent-manager-live", perspective["perspective_id"],
             )

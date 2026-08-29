@@ -21,6 +21,7 @@ This installation is isolated from the Steam game directory. The working game co
 - Resolve the native Alien Artifact menu semantically: keep the Artifact, confirmation-gated linking for a technology, or confirmation-gated contribution to the exact active Secret Project/unprototyped unit.
 - Assign durable installation, match, agent, perspective, instance, and process-session identities. SQLite now owns immutable events, chat, versioned facts/beliefs/relationships/commitments/goals/summaries, correction history, and scoped FTS5/BM25 recall; the former JSON ledger is a compatibility mirror/import source.
 - Run an authenticated, always-on Control Center that discovers OpenAI-compatible providers, validates a legal game source without modifying it, imports a private checksummed Proton runtime, provisions isolated solo workers, and parks/resumes the same durable match with a fresh process session.
+- Attach one dedicated semantic MCP sidecar to each running worker and one isolated Hermes profile to each durable agent. Managed MCP cannot launch, load, or stop the game; lifecycle remains operator-owned. The Control Center resolves the exact match/seat/worker/sidecar/model binding and the host adapter starts Hermes with low reasoning plus only `smacx` and optional web tools.
 - Bundle the mandatory next decision in `smac_decision`: one stable match/session/revision frame containing an active modal, selected ready unit, wait/gap directive, or end-turn/game-management choices. Compact detail is the default; a full snapshot is opt-in for occasional strategic analysis.
 - Treat every returned `revision` as a single-decision capability: choices from an old revision, match, session, object owner, or turn phase are rejected, even if later actions restore identical game state. `end_turn` is withheld until all ready-unit decisions are resolved.
 - Reject commands from the wrong match/session or a stale observation before mutating game state.
@@ -45,9 +46,13 @@ docker compose exec control-center smacx-control bootstrap-token
 
 Then open `http://127.0.0.1:8080`. See [Control Center](docs/control-center.md)
 for legal game/Proton registration, security, LAN publication, and worker
-lifecycle details. The Hermes adapter for these managed workers is under active
-development; the existing single-instance MCP service below remains available
-without restarting it.
+lifecycle details. After starting a worker, use **Bind Hermes to a running
+match**. It validates the complete binding and generates one command that
+prompts for the administrator password, creates the agent's isolated Hermes
+profile, and starts or resumes a conversation named for that match. Your
+existing Hermes dashboard does not need to be restarted. The legacy
+single-instance MCP service below remains available and is not modified by the
+managed flow.
 
 The MCP service is enabled as a user service and normally starts automatically:
 

@@ -33,7 +33,7 @@ RUN apt-get -o Acquire::Retries=3 update \
 FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates python3 tini \
+    && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv tini \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin smacx \
     && install -d -o smacx -g smacx /var/lib/smacx /opt/smacx/src /opt/smacx/control_center/static
@@ -45,10 +45,15 @@ RUN ln -sf libsqlite3.so.3.53.4 /usr/local/lib/libsqlite3.so.0 \
     && ldconfig \
     && python3 -c "import sqlite3,sys; v=sqlite3.sqlite_version_info; sys.exit(1) if v < (3,51,3) else None; db=sqlite3.connect(':memory:'); db.execute('CREATE VIRTUAL TABLE docs USING fts5(content)'); db.close()"
 
+RUN python3 -m venv /opt/smacx/mcp-venv \
+    && /opt/smacx/mcp-venv/bin/pip install --no-cache-dir "mcp==2.0.0"
+
 COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
-    src/smacx_docker.py src/smacx_worker_manager.py /opt/smacx/src/
+    src/smacx_docker.py src/smacx_worker_manager.py src/smacx_controller.py \
+    src/smacx_mcp.py /opt/smacx/src/
 COPY control_center/static/ /opt/smacx/control_center/static/
 COPY --chmod=0755 control_center/smacx-control /usr/local/bin/smacx-control
+COPY --chmod=0755 control_center/smacx-mcp /usr/local/bin/smacx-mcp
 
 ENV PYTHONPATH=/opt/smacx/src \
     PYTHONDONTWRITEBYTECODE=1 \

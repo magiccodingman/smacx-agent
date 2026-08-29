@@ -228,6 +228,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, {"ok": True, "runtimes": self.server.control.list_runtimes()})
                 return
+            if path == "/api/v1/harness-profiles":
+                self._authentication()
+                self._json(200, {
+                    "ok": True,
+                    "harness_profiles": self.server.control.list_harness_profiles(),
+                })
+                return
             if path.startswith("/api/"):
                 self._error(404, "not_found")
                 return
@@ -368,6 +375,32 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._json(201, {
                     "ok": True, **created, "worker": self._redact_worker(worker),
                 })
+                return
+            if path == "/api/v1/harness-profiles/hermes":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id = str(body.get("match_id", ""))
+                worker = self.server.control.worker_for_match(match_id)
+                observed = manager.worker_status(worker["instance_id"])
+                mcp = observed.get("mcp") if isinstance(observed.get("mcp"), dict) else {}
+                if not observed.get("running") or observed.get("health") != "healthy":
+                    raise WorkerManagerError("game_worker_not_healthy")
+                if not mcp.get("running") or mcp.get("health") != "healthy":
+                    raise WorkerManagerError("managed_mcp_not_healthy")
+                descriptor = self.server.control.prepare_hermes_profile(
+                    match_id, str(body.get("provider_id", "")),
+                    reasoning_effort=str(body.get("reasoning_effort", "low")),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "harness.prepare_hermes", "match", match_id,
+                    "success", {
+                        "agent_id": descriptor["agent_id"],
+                        "instance_id": descriptor["instance_id"],
+                        "external_profile_id": descriptor["external_profile_id"],
+                    }, self.client_address[0],
+                )
+                self._json(200, {"ok": True, "descriptor": descriptor})
                 return
             match = PROVIDER_PATH.fullmatch(path)
             if match:
@@ -512,7 +545,9 @@ def main(argv: list[str] | None = None) -> int:
             control,
             DockerClient(os.environ.get("SMACX_DOCKER_SOCKET", "/var/run/docker.sock")),
             worker_image=os.environ.get("SMACX_WORKER_IMAGE", "smacx-agent-worker:dev"),
+            mcp_image=os.environ.get("SMACX_MCP_IMAGE", "smacx-agent-control:dev"),
             network_name=os.environ.get("SMACX_DOCKER_NETWORK") or None,
+            control_data_volume=os.environ.get("SMACX_CONTROL_DATA_VOLUME") or None,
             directx_redist_host_path=os.environ.get("SMACX_DIRECTX_REDIST_HOST") or None,
         )
     host = getattr(arguments, "host", os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))

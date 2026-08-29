@@ -12,7 +12,7 @@ import tempfile
 import threading
 
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
-from smacx_store import ScopeViolation, SmacxStore
+from smacx_store import MemoryScope, ScopeViolation, SmacxStore
 
 
 def expect(error_type, function, message: str) -> None:
@@ -143,9 +143,60 @@ def main() -> int:
         if control.status()["counts"]["matches"] != 0:
             raise AssertionError("invalid solo match left an orphaned match")
         agent = control.create_agent("Test agent")
+        harness = control.configure_harness_profile(
+            agent["agent_id"], provider["provider_id"], display_name="Test Hermes profile",
+            external_profile_id="smacx-test-agent", reasoning_effort="low",
+            workspace_path=str(root / "workspace"),
+        )
+        if harness["agent_id"] != agent["agent_id"] or harness["model_id"] != "only-model":
+            raise AssertionError("Hermes harness profile was not scoped to its agent/provider")
+        provider = control.configure_provider(
+            "Local Qwen", provider["base_url"], provider_id=provider["provider_id"],
+            api_key="", default_model_id="only-model",
+        )
         solo = control.create_solo_match("Valid solo match", agent["agent_id"])
         if solo["perspective"]["match_id"] != solo["match"]["match_id"]:
             raise AssertionError("solo match perspective was scoped incorrectly")
+        scope = MemoryScope(
+            solo["match"]["match_id"], agent["agent_id"],
+            solo["perspective"]["perspective_id"],
+        )
+        instance = store.register_instance(
+            instance_id="instance-hermes-contract", worker_kind="container-linux",
+            scope=scope, runtime_root="/worker-state",
+        )
+        bridge_secret = control.vault.put(
+            "worker.instance-hermes-contract.bridge_token", "bridge-secret",
+        )
+        control.put_worker_spec(
+            instance["instance_id"], game["game_source_id"], runtime["runtime_id"],
+            "smacx-agent-worker:dev", "worker-hermes-contract", "worker-data-contract",
+            bridge_secret["secret_id"], network={
+                "secret_volume": "worker-secret-contract",
+                "mcp_status": "running", "mcp_url": "http://127.0.0.1:48125/mcp",
+            },
+        )
+        control.assign_instance_to_seat(
+            scope.match_id, scope.agent_id, scope.perspective_id, instance["instance_id"],
+        )
+        control.update_worker_observation(
+            instance["instance_id"], desired_status="running", observed_status="running",
+            instance_status="running",
+        )
+        descriptor = control.prepare_hermes_profile(
+            scope.match_id, provider["provider_id"], reasoning_effort="low",
+        )
+        if descriptor["instance_id"] != instance["instance_id"] \
+                or descriptor["mcp_url"] != "http://127.0.0.1:48125/mcp" \
+                or descriptor["provider_requires_api_key"] is not False:
+            raise AssertionError("Hermes descriptor was not scoped to the exact seat and worker")
+        with store.transaction() as connection:
+            connection.execute("DELETE FROM worker_specs WHERE instance_id=?", (instance["instance_id"],))
+            connection.execute(
+                "UPDATE seat_assignments SET instance_id=NULL WHERE instance_id=?",
+                (instance["instance_id"],),
+            )
+            connection.execute("DELETE FROM instances WHERE instance_id=?", (instance["instance_id"],))
         if not control.discard_unstarted_match(
             solo["match"]["match_id"], solo["perspective"]["perspective_id"],
         ) or control.status()["counts"]["matches"] != 0:
@@ -170,7 +221,7 @@ def main() -> int:
             lambda: control.authenticate(session.token),
             "invalid_session",
         )
-        if control.status()["schema_version"] != 2:
+        if control.status()["schema_version"] != 3:
             raise AssertionError("Control Center schema version is incorrect")
 
         print(json.dumps({
@@ -185,6 +236,8 @@ def main() -> int:
                 "runtime_inventory": True,
                 "solo_match_orphan_guard": True,
                 "unstarted_match_rollback": True,
+                "isolated_harness_profile": True,
+                "exact_hermes_descriptor": True,
                 "immutable_audit": True,
             },
         }, separators=(",", ":")))

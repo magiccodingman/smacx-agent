@@ -168,6 +168,30 @@
         </div>
         <div id="workers" class="record-list"></div>
       </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">Agent runtime</p>
+            <h2>Bind Hermes to a running match</h2>
+            <p>Validate the exact game worker and private MCP sidecar, then create the isolated host profile with the generated command.</p>
+          </div>
+        </div>
+        <form id="harness-form" class="harness-form">
+          <label>Running match <select name="match_id" id="harness-match" required></select></label>
+          <label>Model provider <select name="provider_id" id="harness-provider" required></select></label>
+          <label>Reasoning
+            <select name="reasoning_effort"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+          </label>
+          <button type="submit">Prepare Hermes binding</button>
+        </form>
+        <div id="harness-result" class="command-result hidden">
+          <p>The binding is healthy. Run this from the repository root; it securely prompts for the Control Center password, creates or updates the isolated profile, and starts that agent's durable match conversation:</p>
+          <code id="harness-command"></code>
+          <p id="harness-detail"></p>
+        </div>
+        <div id="harness-profiles" class="record-list"></div>
+      </section>
     </section>
   </main>
   <script src="/app.js" defer></script>

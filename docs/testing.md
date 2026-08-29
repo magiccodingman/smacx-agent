@@ -80,6 +80,25 @@ reported the opening `PLANETFALL` interaction. Its sole enumerated guarded
 `FIRSTBASE`. No screen capture, mouse, keyboard, text entry, or coordinate UI
 operation was used in this validation.
 
+The full managed vertical slice additionally starts an authenticated Control
+Center, real Proton game worker, exact MCP sidecar, and temporary isolated
+Hermes profile. Qwen3.8-27B runs at low reasoning with only the `smacx` toolset,
+uses status/decision/command semantically, and must advance the bridge's native
+revision before the test passes:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_TEST_PROVIDER_URL=http://model-host:8000/v1 \
+SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
+PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
+```
+
+Every container, network, volume, and temporary Hermes home in this regression
+is uniquely test-owned and removed afterward. The user's default Hermes
+profile/dashboard and legacy MCP service are not read or restarted.
+
 Stock Debian Wine is retained as a diagnostic fallback, but it stalled at the
 Firaxis presentation screen in the current reference environment and is not a
 certified game runtime. A Proton distribution must be a private, writable,

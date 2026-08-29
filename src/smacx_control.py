@@ -793,6 +793,20 @@ class ControlPlane:
             )]
         return [self.get_worker_spec(str(identifier)) for identifier in identifiers]
 
+    def worker_for_match(self, match_id: str) -> dict[str, Any]:
+        _require_id(match_id, "match_id")
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT instance_id FROM worker_specs WHERE instance_id IN "
+                "(SELECT instance_id FROM instances WHERE match_id=?) ORDER BY created_unix",
+                (match_id,),
+            ).fetchall()
+        if not rows:
+            raise ScopeViolation("match_has_no_worker")
+        if len(rows) != 1:
+            raise ScopeViolation("match_worker_must_be_selected")
+        return self.get_worker_spec(str(rows[0]["instance_id"]))
+
     def update_worker_observation(self, instance_id: str, *, desired_status: str | None = None,
                                   observed_status: str | None = None,
                                   last_error: str | None = None,
@@ -839,11 +853,28 @@ class ControlPlane:
             )
         return self.get_worker_spec(instance_id)
 
+    def update_worker_network(self, instance_id: str, network: Mapping[str, Any]) -> dict[str, Any]:
+        _require_id(instance_id, "instance_id")
+        encoded = _json(network)
+        with self.store.transaction() as connection:
+            if not connection.execute(
+                "SELECT 1 FROM worker_specs WHERE instance_id=?", (instance_id,),
+            ).fetchone():
+                raise ScopeViolation("unknown_worker_instance")
+            connection.execute(
+                "UPDATE worker_specs SET network_json=?, updated_unix=? WHERE instance_id=?",
+                (encoded, time.time(), instance_id),
+            )
+        return self.get_worker_spec(instance_id)
+
     def status(self) -> dict[str, Any]:
         with self.store.transaction() as connection:
             counts = {
                 table: int(connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0])
-                for table in ("agents", "matches", "instances", "model_providers", "game_sources", "runtime_assets")
+                for table in (
+                    "agents", "matches", "instances", "model_providers", "game_sources",
+                    "runtime_assets", "harness_profiles", "harness_runs",
+                )
             }
         return {
             "ok": True,
@@ -882,6 +913,15 @@ class ControlPlane:
             match["match_id"], agent_id, faction_id=int(faction_id),
             faction_name=faction_name, controller_kind="agent",
         )
+        now = time.time()
+        with self.store.transaction() as connection:
+            connection.execute(
+                "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
+                "agent_id, perspective_id, faction_id, faction_name, status, metadata_json, "
+                "created_unix, updated_unix) VALUES (?, ?, 0, 'agent', ?, ?, ?, ?, 'assigned', '{}', ?, ?)",
+                (_new_id("seat"), match["match_id"], agent_id, perspective["perspective_id"],
+                 int(faction_id), faction_name, now, now),
+            )
         return {"match": match, "perspective": perspective}
 
     def discard_unstarted_match(self, match_id: str, perspective_id: str) -> bool:
@@ -903,6 +943,7 @@ class ControlPlane:
                 "SELECT 1 FROM instances WHERE match_id=? LIMIT 1", (match_id,),
             ).fetchone():
                 raise StoreError("match_has_runtime_state")
+            connection.execute("DELETE FROM seat_assignments WHERE match_id=?", (match_id,))
             connection.execute(
                 "DELETE FROM perspectives WHERE perspective_id=? AND match_id=?",
                 (perspective_id, match_id),
@@ -911,6 +952,190 @@ class ControlPlane:
                 "DELETE FROM matches WHERE match_id=? AND status='created'", (match_id,),
             )
         return True
+
+    def assign_instance_to_seat(self, match_id: str, agent_id: str,
+                                perspective_id: str, instance_id: str) -> dict[str, Any]:
+        for value, field in (
+            (match_id, "match_id"), (agent_id, "agent_id"),
+            (perspective_id, "perspective_id"), (instance_id, "instance_id"),
+        ):
+            _require_id(value, field)
+        with self.store.transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE seat_assignments SET instance_id=?, updated_unix=? "
+                "WHERE match_id=? AND agent_id=? AND perspective_id=? AND status='assigned'",
+                (instance_id, time.time(), match_id, agent_id, perspective_id),
+            )
+            if cursor.rowcount != 1:
+                raise ScopeViolation("unknown_seat_assignment")
+            row = connection.execute(
+                "SELECT * FROM seat_assignments WHERE match_id=? AND agent_id=? AND perspective_id=?",
+                (match_id, agent_id, perspective_id),
+            ).fetchone()
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
+    def configure_harness_profile(self, agent_id: str, provider_id: str, *,
+                                  display_name: str, external_profile_id: str,
+                                  model_id: str | None = None,
+                                  reasoning_effort: str = "low",
+                                  context_length: int | None = None,
+                                  workspace_path: str | None = None,
+                                  system_prompt: str = "",
+                                  harness_profile_id: str | None = None,
+                                  metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        _require_id(agent_id, "agent_id")
+        _require_id(provider_id, "provider_id")
+        display_name = _bounded(display_name, "harness_profile_name", 160)
+        external_profile_id = _bounded(external_profile_id, "external_profile_id", 80)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", external_profile_id):
+            raise InvalidRecord("invalid_external_profile_id")
+        if reasoning_effort not in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
+            raise InvalidRecord("invalid_reasoning_effort")
+        if context_length is not None and not 1024 <= int(context_length) <= 16_777_216:
+            raise InvalidRecord("invalid_context_length")
+        if workspace_path is not None and (not Path(workspace_path).is_absolute() or len(workspace_path) > 4096):
+            raise InvalidRecord("invalid_workspace_path")
+        if not isinstance(system_prompt, str) or len(system_prompt) > 65_536:
+            raise InvalidRecord("invalid_system_prompt")
+        provider = self.get_provider(provider_id)
+        selected_model = model_id or provider.get("default_model_id")
+        selected_metadata = next(
+            (item for item in provider["models"] if item["model_id"] == selected_model), None,
+        )
+        if not selected_model or not selected_metadata:
+            raise ScopeViolation("harness_model_not_selected")
+        effective_context = context_length or provider.get("context_length_override") \
+            or selected_metadata.get("context_length")
+        with self.store.transaction() as connection:
+            if not connection.execute(
+                "SELECT 1 FROM agents WHERE agent_id=? AND status='active'", (agent_id,),
+            ).fetchone():
+                raise ScopeViolation("unknown_active_agent")
+            existing = connection.execute(
+                "SELECT harness_profile_id FROM harness_profiles WHERE agent_id=? AND adapter_kind='hermes'",
+                (agent_id,),
+            ).fetchone()
+            identifier = str(existing["harness_profile_id"]) if existing else (
+                harness_profile_id or _new_id("harness")
+            )
+            _require_id(identifier, "harness_profile_id")
+            now = time.time()
+            connection.execute(
+                "INSERT INTO harness_profiles(harness_profile_id, display_name, adapter_kind, provider_id, "
+                "model_id, reasoning_effort, context_length, workspace_path, system_prompt, status, "
+                "metadata_json, created_unix, updated_unix, agent_id, external_profile_id) "
+                "VALUES (?, ?, 'hermes', ?, ?, ?, ?, ?, ?, 'configured', ?, ?, ?, ?, ?) "
+                "ON CONFLICT(harness_profile_id) DO UPDATE SET display_name=excluded.display_name, "
+                "provider_id=excluded.provider_id, model_id=excluded.model_id, "
+                "reasoning_effort=excluded.reasoning_effort, context_length=excluded.context_length, "
+                "workspace_path=excluded.workspace_path, system_prompt=excluded.system_prompt, "
+                "status='configured', metadata_json=excluded.metadata_json, "
+                "external_profile_id=excluded.external_profile_id, updated_unix=excluded.updated_unix",
+                (identifier, display_name, provider_id, selected_model, reasoning_effort,
+                 effective_context, workspace_path, system_prompt, _json(metadata), now, now,
+                 agent_id, external_profile_id),
+            )
+        return self.get_harness_profile(identifier)
+
+    def prepare_hermes_profile(self, match_id: str, provider_id: str, *,
+                               reasoning_effort: str = "low") -> dict[str, Any]:
+        """Resolve one match seat to its exact provider, worker, and MCP endpoint.
+
+        The returned descriptor is intentionally secret-free.  A host adapter
+        may use it to materialize an isolated Hermes profile without learning
+        Docker secrets or provider credentials.
+        """
+        _require_id(match_id, "match_id")
+        _require_id(provider_id, "provider_id")
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT s.agent_id, s.perspective_id, s.instance_id, a.display_name AS agent_name, "
+                "a.status AS agent_status, m.display_name AS match_name, m.status AS match_status, "
+                "w.observed_status, w.network_json FROM seat_assignments s "
+                "JOIN agents a ON a.agent_id=s.agent_id JOIN matches m ON m.match_id=s.match_id "
+                "JOIN worker_specs w ON w.instance_id=s.instance_id "
+                "WHERE s.match_id=? AND s.controller_kind='agent' AND s.status='assigned' "
+                "ORDER BY s.seat_index",
+                (match_id,),
+            ).fetchall()
+        if not rows:
+            raise ScopeViolation("match_has_no_agent_worker")
+        if len(rows) != 1:
+            raise ScopeViolation("match_agent_seat_must_be_selected")
+        seat = dict(rows[0])
+        if seat["agent_status"] != "active":
+            raise ScopeViolation("agent_not_active")
+        if seat["observed_status"] != "running":
+            raise ScopeViolation("game_worker_not_running")
+        network = json.loads(str(seat.pop("network_json")))
+        mcp_url = network.get("mcp_url")
+        if network.get("mcp_status") != "running" or not isinstance(mcp_url, str):
+            raise ScopeViolation("managed_mcp_not_running")
+        provider = self.get_provider(provider_id)
+        if provider["has_api_key"]:
+            raise ScopeViolation("keyed_provider_requires_managed_harness_secret_injection")
+        model_id = provider.get("default_model_id")
+        model = next(
+            (item for item in provider["models"] if item["model_id"] == model_id), None,
+        )
+        if not model_id or not model:
+            raise ScopeViolation("harness_model_not_selected")
+        context_length = provider.get("context_length_override") or model.get("context_length")
+        external_profile_id = "smacx-" + hashlib.sha256(
+            str(seat["agent_id"]).encode("utf-8")
+        ).hexdigest()[:20]
+        profile = self.configure_harness_profile(
+            str(seat["agent_id"]), provider_id,
+            display_name=f"{seat['agent_name']} · Hermes",
+            external_profile_id=external_profile_id,
+            model_id=str(model_id), reasoning_effort=reasoning_effort,
+            context_length=context_length,
+            metadata={
+                "active_match_id": match_id,
+                "perspective_id": seat["perspective_id"],
+                "instance_id": seat["instance_id"],
+                "mcp_url": mcp_url,
+            },
+        )
+        return {
+            "schema": "smacx.hermes-descriptor.v1",
+            "harness_profile_id": profile["harness_profile_id"],
+            "external_profile_id": external_profile_id,
+            "agent_id": seat["agent_id"],
+            "agent_name": seat["agent_name"],
+            "match_id": match_id,
+            "match_name": seat["match_name"],
+            "perspective_id": seat["perspective_id"],
+            "instance_id": seat["instance_id"],
+            "mcp_url": mcp_url,
+            "provider_id": provider_id,
+            "provider_base_url": provider["base_url"],
+            "provider_requires_api_key": provider["has_api_key"],
+            "model_id": model_id,
+            "context_length": context_length,
+            "reasoning_effort": reasoning_effort,
+        }
+
+    def get_harness_profile(self, harness_profile_id: str) -> dict[str, Any]:
+        _require_id(harness_profile_id, "harness_profile_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM harness_profiles WHERE harness_profile_id=?", (harness_profile_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_harness_profile")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
+    def list_harness_profiles(self) -> list[dict[str, Any]]:
+        with self.store.transaction() as connection:
+            identifiers = [row["harness_profile_id"] for row in connection.execute(
+                "SELECT harness_profile_id FROM harness_profiles ORDER BY display_name, harness_profile_id"
+            )]
+        return [self.get_harness_profile(str(identifier)) for identifier in identifiers]
 
     def list_agents(self) -> list[dict[str, Any]]:
         with self.store.transaction() as connection:

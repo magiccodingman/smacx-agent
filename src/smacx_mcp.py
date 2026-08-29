@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 import threading
@@ -43,7 +44,11 @@ mcp = MCPServer(
     version="0.45.0",
 )
 
-GAP_LOG = Path(__file__).resolve().parents[1] / "runtime" / "capability-gaps.jsonl"
+GAP_LOG = Path(os.environ.get(
+    "SMACX_CAPABILITY_GAP_LOG",
+    Path(__file__).resolve().parents[1] / "runtime" / "capability-gaps.jsonl",
+))
+MANAGED_ATTACHED = os.environ.get("SMACX_MANAGED_ATTACHED", "0") == "1"
 CAPABILITY_GAPS: dict[tuple[str, str], dict] = {}
 CAPABILITY_GAP_LOCK = threading.Lock()
 SESSION_LOCAL_KNOWLEDGE_REFERENCE = re.compile(
@@ -96,7 +101,24 @@ def _call(operation: str, **arguments: object) -> dict:
     try:
         return bridge_request(operation, **arguments)
     except BridgeUnavailable as exc:
-        return {"ok": False, "error": "game_not_connected", "message": str(exc), "next": "Call smac_launch."}
+        next_step = (
+            "Ask the operator to start or recover this match's managed game worker."
+            if MANAGED_ATTACHED else "Call smac_launch."
+        )
+        return {"ok": False, "error": "game_not_connected", "message": str(exc), "next": next_step}
+
+
+def _managed_lifecycle_block(operation: str) -> dict | None:
+    if not MANAGED_ATTACHED:
+        return None
+    return {
+        "ok": False,
+        "error": {
+            "code": "managed_lifecycle_operator_only",
+            "message": f"{operation} is controlled by the authenticated SMACX Control Center.",
+        },
+        "next": "Continue only with semantic in-game actions, or ask the operator to manage this worker.",
+    }
 
 
 def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
@@ -154,6 +176,9 @@ def smac_launch(
     perspective_id: str = "",
     instance_id: str = "",
 ) -> dict:
+    managed = _managed_lifecycle_block("Game launch")
+    if managed:
+        return managed
     blocked = _capability_gap_blocked("Game launch")
     if blocked:
         return blocked
@@ -181,6 +206,9 @@ def smac_new_game(
     instance_id: str = "",
     wait_seconds: int = 90,
 ) -> dict:
+    managed = _managed_lifecycle_block("New-game setup")
+    if managed:
+        return managed
     blocked = _capability_gap_blocked("New game")
     if blocked:
         return blocked
@@ -293,6 +321,9 @@ def smac_lan(
     if action in {"host", "discover", "join"}:
         status = _call("status")
         if status.get("error") == "game_not_connected":
+            managed = _managed_lifecycle_block("LAN game launch")
+            if managed:
+                return managed
             launched = launch_game(
                 wait_seconds=30,
                 agent_id=agent_id or None,
@@ -815,6 +846,9 @@ def smac_saves(
         return list_saved_games(match_id)
     if not slot:
         return {"ok": False, "error": "slot_required"}
+    managed = _managed_lifecycle_block("Saved-game load")
+    if managed:
+        return managed
     blocked = _capability_gap_blocked("Saved-game load")
     if blocked:
         return blocked
@@ -1056,14 +1090,23 @@ def smac_report_capability_gap(
 
 @mcp.tool(description="Stop only the isolated SMACX/Proton game processes. This never sends desktop keyboard or mouse input and does not stop the MCP server.")
 def smac_stop() -> dict:
+    managed = _managed_lifecycle_block("Game stop")
+    if managed:
+        return managed
     return stop_game()
 
 
 if __name__ == "__main__":
+    try:
+        mcp_port = int(os.environ.get("SMACX_MCP_PORT", "47814"))
+    except ValueError as exc:
+        raise SystemExit("invalid_smacx_mcp_port") from exc
+    if not 1 <= mcp_port <= 65535:
+        raise SystemExit("invalid_smacx_mcp_port")
     mcp.run(
         "streamable-http",
-        host="127.0.0.1",
-        port=47814,
+        host=os.environ.get("SMACX_MCP_HOST", "127.0.0.1"),
+        port=mcp_port,
         streamable_http_path="/mcp",
         json_response=True,
         stateless_http=True,

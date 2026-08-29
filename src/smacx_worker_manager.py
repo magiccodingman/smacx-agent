@@ -50,7 +50,9 @@ def _clean_log(value: str) -> str:
 class WorkerManager:
     def __init__(self, control: ControlPlane, docker: DockerClient, *,
                  worker_image: str = "smacx-agent-worker:dev",
+                 mcp_image: str = "smacx-agent-control:dev",
                  network_name: str | None = None,
+                 control_data_volume: str | None = None,
                  directx_redist_host_path: str | None = None) -> None:
         self.control = control
         self.store = control.store
@@ -61,7 +63,13 @@ class WorkerManager:
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,400}(?::[A-Za-z0-9_.-]{1,100})?", worker_image):
                 raise InvalidRecord("invalid_worker_image")
         self.worker_image = worker_image
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,400}(?::[A-Za-z0-9_.-]{1,100})?", mcp_image):
+            raise InvalidRecord("invalid_mcp_image")
+        self.mcp_image = mcp_image
         self.network_name = network_name
+        if control_data_volume is not None and not RESOURCE_NAME.fullmatch(control_data_volume):
+            raise InvalidRecord("invalid_control_data_volume")
+        self.control_data_volume = control_data_volume
         self.directx_redist_host_path = (
             _host_path(directx_redist_host_path, "directx_redist_path")
             if directx_redist_host_path else None
@@ -86,7 +94,9 @@ class WorkerManager:
             "server_version": version.get("Version"),
             "api_version": version.get("ApiVersion"),
             "worker_image": self.worker_image,
+            "mcp_image": self.mcp_image,
             "network_name": self.network_name,
+            "managed_mcp_configured": bool(self.control_data_volume),
             "directplay_source_configured": bool(self.directx_redist_host_path),
         }
 
@@ -316,14 +326,23 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 runtime_root=data_volume,
                 metadata={"container_name": container_name, "managed": True},
             )
-            return self.control.put_worker_spec(
+            worker = self.control.put_worker_spec(
                 instance_id, game_source_id, runtime_id, self.worker_image,
                 container_name, data_volume, bridge_secret_id,
                 autostart=self._autostart(autostart),
                 network={"name": self.network_name, "secret_volume": secret_volume},
             )
+            self.control.assign_instance_to_seat(
+                scope.match_id, scope.agent_id, scope.perspective_id, instance_id,
+            )
+            return worker
         except Exception:
             with self.store.transaction() as connection:
+                connection.execute(
+                    "UPDATE seat_assignments SET instance_id=NULL, updated_unix=? WHERE instance_id=?",
+                    (time.time(), instance_id),
+                )
+                connection.execute("DELETE FROM worker_specs WHERE instance_id=?", (instance_id,))
                 connection.execute(
                     "DELETE FROM instances WHERE instance_id=? AND status='available' "
                     "AND NOT EXISTS (SELECT 1 FROM sessions WHERE instance_id=?)",
@@ -480,10 +499,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 bridge_host="127.0.0.1" if host_port else spec["container_name"],
                 bridge_port=host_port or 47814, instance_status="running",
             )
+            mcp_endpoint = self.start_mcp_sidecar(instance_id) if self.control_data_volume else None
             return {
                 "ok": True, "instance_id": instance_id, "session_id": session_id,
                 "container_name": spec["container_name"], "container_id": container_id,
                 "health": "healthy", "bridge_host_port": host_port,
+                "mcp": mcp_endpoint,
             }
         except Exception as exc:
             failure_detail = str(exc)
@@ -509,6 +530,185 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
             raise
 
+    def start_mcp_sidecar(self, instance_id: str, *, timeout: float = 90.0) -> dict[str, Any]:
+        if not self.control_data_volume:
+            raise WorkerManagerError("managed_mcp_not_configured")
+        spec = self.control.get_worker_spec(instance_id)
+        if spec["observed_status"] != "running":
+            raise WorkerManagerError("game_worker_not_running")
+        game = self.docker.inspect_container(spec["container_name"])
+        self.docker.require_owned(game, self.installation_id, purpose="game-worker")
+        if not game.get("State", {}).get("Running"):
+            raise WorkerManagerError("game_worker_not_running")
+        self.docker.inspect_image(self.mcp_image)
+        self.docker.inspect_volume(self.control_data_volume)
+        for volume_name, purpose in (
+            (spec["data_volume"], "worker-data"),
+            (spec["network"]["secret_volume"], "worker-secret"),
+        ):
+            resource = self.docker.inspect_volume(volume_name)
+            self.docker.require_owned(resource, self.installation_id, purpose=purpose)
+
+        container_name = self._name("mcp", instance_id)
+        try:
+            old = self.docker.inspect_container(container_name)
+            self.docker.require_owned(old, self.installation_id, purpose="mcp-sidecar")
+            if old.get("State", {}).get("Running"):
+                binding = old.get("NetworkSettings", {}).get("Ports", {}).get("47815/tcp")
+                host_port = int(binding[0]["HostPort"]) if isinstance(binding, list) and binding else None
+                health = old.get("State", {}).get("Health", {}).get("Status")
+                if host_port and health == "healthy":
+                    network = dict(spec["network"])
+                    network.update({
+                        "mcp_container_name": container_name,
+                        "mcp_status": "running",
+                        "mcp_host_port": host_port,
+                        "mcp_url": f"http://127.0.0.1:{host_port}/mcp",
+                    })
+                    self.control.update_worker_network(instance_id, network)
+                    return {
+                        "ok": True, "status": "running", "container_name": container_name,
+                        "host_port": host_port, "url": network["mcp_url"],
+                    }
+                self.docker.stop_container(container_name, timeout=10)
+            self.docker.remove_container(container_name)
+        except DockerNotFound:
+            pass
+
+        bridge_host = spec["container_name"]
+        if not self.network_name:
+            networks = game.get("NetworkSettings", {}).get("Networks", {})
+            addresses = [
+                value.get("IPAddress") for value in networks.values()
+                if isinstance(value, Mapping) and value.get("IPAddress")
+            ] if isinstance(networks, Mapping) else []
+            if not addresses:
+                raise WorkerManagerError("game_worker_network_address_unavailable")
+            bridge_host = str(addresses[0])
+        labels = self._labels(
+            "mcp-sidecar", **{
+                "io.smacx.instance": instance_id,
+                "io.smacx.match": spec["match_id"],
+            },
+        )
+        config = {
+            "Image": self.mcp_image,
+            "Entrypoint": ["/usr/bin/tini", "--", "/usr/local/bin/smacx-mcp"],
+            "Cmd": [],
+            "Env": [
+                "HOME=/tmp",
+                "SMACX_MANAGED_ATTACHED=1",
+                f"SMACX_BRIDGE_HOST={bridge_host}",
+                "SMACX_BRIDGE_PORT=47814",
+                "SMACX_AGENT_TOKEN_FILE=/run/secrets/bridge-token",
+                "SMACX_MCP_HOST=0.0.0.0",
+                "SMACX_MCP_PORT=47815",
+                "SMACX_DB_PATH=/var/lib/smacx/smacx.sqlite3",
+                "SMACX_RUNTIME_ROOT=/worker-state",
+                "SMACX_GAME_PATH=/worker-state/game",
+                "SMACX_LEGACY_KNOWLEDGE_ROOT=/worker-state/legacy-knowledge",
+                "SMACX_CAPABILITY_GAP_LOG=/var/lib/smacx/capability-gaps.jsonl",
+                f"SMACX_AGENT_ID={spec['agent_id']}",
+            ],
+            "Tty": True,
+            "Labels": labels,
+            "ExposedPorts": {"47815/tcp": {}},
+            "Healthcheck": {
+                "Test": [
+                    "CMD", "python3", "-c",
+                    "import socket;s=socket.create_connection(('127.0.0.1',47815),2);s.close()",
+                ],
+                "Interval": 2_000_000_000,
+                "Timeout": 3_000_000_000,
+                "StartPeriod": 5_000_000_000,
+                "Retries": 10,
+            },
+            "HostConfig": {
+                "NetworkMode": self.network_name or "bridge",
+                "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {
+                    "/tmp": "rw,nosuid,nodev,size=128m,mode=1777",
+                    "/run": "rw,nosuid,nodev,size=16m,mode=0755",
+                },
+                "PortBindings": {"47815/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}]},
+                "Mounts": [
+                    {"Type": "volume", "Source": self.control_data_volume,
+                     "Target": "/var/lib/smacx"},
+                    {"Type": "volume", "Source": spec["data_volume"],
+                     "Target": "/worker-state"},
+                    {"Type": "volume", "Source": spec["network"]["secret_volume"],
+                     "Target": "/run/secrets", "ReadOnly": True},
+                ],
+            },
+        }
+        identifier: str | None = None
+        try:
+            identifier = self.docker.create_container(container_name, config)
+            self.docker.start_container(identifier)
+            deadline = time.monotonic() + min(max(float(timeout), 15.0), 180.0)
+            inspected: dict[str, Any] = {}
+            while time.monotonic() < deadline:
+                inspected = self.docker.inspect_container(identifier)
+                state = inspected.get("State", {})
+                health = state.get("Health", {}).get("Status")
+                if health == "healthy":
+                    break
+                if not state.get("Running") or health == "unhealthy":
+                    raise WorkerManagerError("mcp_sidecar_failed_healthcheck")
+                time.sleep(0.5)
+            else:
+                raise WorkerManagerError("mcp_sidecar_health_timeout")
+            binding = inspected.get("NetworkSettings", {}).get("Ports", {}).get("47815/tcp")
+            host_port = int(binding[0]["HostPort"]) if isinstance(binding, list) and binding else None
+            if not host_port:
+                raise WorkerManagerError("mcp_sidecar_port_unavailable")
+            network = dict(spec["network"])
+            network.update({
+                "mcp_container_name": container_name,
+                "mcp_status": "running",
+                "mcp_host_port": host_port,
+                "mcp_url": f"http://127.0.0.1:{host_port}/mcp",
+            })
+            self.control.update_worker_network(instance_id, network)
+            return {
+                "ok": True, "status": "running", "container_name": container_name,
+                "host_port": host_port, "url": network["mcp_url"],
+            }
+        except Exception:
+            if identifier:
+                try:
+                    self._cleanup_container(identifier, "mcp-sidecar")
+                except Exception:
+                    pass
+            network = dict(spec["network"])
+            network.update({
+                "mcp_container_name": container_name,
+                "mcp_status": "error",
+                "mcp_host_port": None,
+                "mcp_url": None,
+            })
+            self.control.update_worker_network(instance_id, network)
+            raise
+
+    def stop_mcp_sidecar(self, instance_id: str) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        container_name = str(spec["network"].get("mcp_container_name") or self._name("mcp", instance_id))
+        try:
+            self._cleanup_container(container_name, "mcp-sidecar")
+        except DockerNotFound:
+            pass
+        network = dict(spec["network"])
+        network.update({
+            "mcp_container_name": container_name,
+            "mcp_status": "stopped",
+            "mcp_host_port": None,
+            "mcp_url": None,
+        })
+        self.control.update_worker_network(instance_id, network)
+        return {"ok": True, "instance_id": instance_id, "status": "stopped"}
+
     def worker_status(self, instance_id: str) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         try:
@@ -518,15 +718,31 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             return {"ok": True, "instance_id": instance_id, "container_present": False,
                     "observed_status": spec["observed_status"]}
         state = container.get("State", {})
-        return {
+        result = {
             "ok": True, "instance_id": instance_id, "container_present": True,
             "running": bool(state.get("Running")),
             "health": state.get("Health", {}).get("Status"),
             "exit_code": state.get("ExitCode"),
             "session_id": container.get("Config", {}).get("Labels", {}).get("io.smacx.session"),
         }
+        mcp_name = spec["network"].get("mcp_container_name")
+        if mcp_name:
+            try:
+                sidecar = self.docker.inspect_container(str(mcp_name))
+                self.docker.require_owned(sidecar, self.installation_id, purpose="mcp-sidecar")
+                result["mcp"] = {
+                    "container_present": True,
+                    "running": bool(sidecar.get("State", {}).get("Running")),
+                    "health": sidecar.get("State", {}).get("Health", {}).get("Status"),
+                    "url": spec["network"].get("mcp_url"),
+                }
+            except DockerNotFound:
+                result["mcp"] = {"container_present": False, "running": False}
+        return result
 
     def park_worker(self, instance_id: str) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        self.stop_mcp_sidecar(instance_id)
         spec = self.control.get_worker_spec(instance_id)
         try:
             container = self.docker.inspect_container(spec["container_name"])

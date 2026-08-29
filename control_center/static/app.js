@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = ["setup", "login", "dashboard"];
-let dashboardState = {agents: [], sources: [], runtimes: [], workers: []};
+let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: []};
 
 function show(name) {
   sections.forEach((id) => $(`#${id}`).classList.toggle("hidden", id !== name));
@@ -36,15 +36,19 @@ function formObject(form) {
 }
 
 async function loadDashboard() {
-  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult] = await Promise.all([
+  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult] = await Promise.all([
     api("/api/v1/status"), api("/api/v1/providers"), api("/api/v1/agents"),
     api("/api/v1/game-sources"), api("/api/v1/runtimes"), api("/api/v1/workers"),
+    api("/api/v1/matches"), api("/api/v1/harness-profiles"),
   ]);
   dashboardState = {
     agents: agentsResult.agents,
     sources: sourcesResult.game_sources,
     runtimes: runtimesResult.runtimes,
     workers: workersResult.workers,
+    providers: providerResult.providers,
+    matches: matchesResult.matches,
+    harnessProfiles: harnessResult.harness_profiles,
   };
   $("#installation").textContent = status.installation_id;
   $("#provider-count").textContent = status.counts.model_providers;
@@ -54,9 +58,12 @@ async function loadDashboard() {
   renderAssets(dashboardState.sources, dashboardState.runtimes, workersResult.docker);
   renderAgents(dashboardState.agents);
   renderWorkers(dashboardState.workers);
+  renderHarnessProfiles(dashboardState.harnessProfiles);
   populateSelect("#match-agent", dashboardState.agents, "agent_id", "display_name", "Create an agent first");
   populateSelect("#match-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
   populateSelect("#match-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
+  populateSelect("#harness-match", dashboardState.matches, "match_id", "display_name", "Create a match first");
+  populateSelect("#harness-provider", dashboardState.providers.filter((item) => item.default_model_id), "provider_id", "display_name", "Select a provider model first");
   show("dashboard");
 }
 
@@ -160,6 +167,22 @@ function renderWorkers(workers) {
     const empty = document.createElement("p");
     empty.className = "empty";
     empty.textContent = "No game worker has been provisioned.";
+    root.append(empty);
+  }
+}
+
+function renderHarnessProfiles(profiles) {
+  const root = $("#harness-profiles");
+  root.replaceChildren();
+  profiles.forEach((profile) => root.append(record(
+    profile.display_name,
+    `${profile.external_profile_id} · ${profile.model_id} · ${profile.reasoning_effort} reasoning`,
+    profile.status,
+  )));
+  if (!profiles.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No Hermes profile binding has been prepared yet.";
     root.append(empty);
   }
 }
@@ -334,6 +357,30 @@ $("#match-form").addEventListener("submit", async (event) => {
       await api(`/api/v1/workers/${created.worker.instance_id}/start`, {method: "POST", body: "{}"});
       notify("Game worker is healthy and ready for an agent runtime.");
     }
+    await loadDashboard();
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#harness-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const values = formObject(form);
+  button.disabled = true;
+  try {
+    const result = await api("/api/v1/harness-profiles/hermes", {
+      method: "POST", body: JSON.stringify(values),
+    });
+    const descriptor = result.descriptor;
+    const command = `./scripts/smacx-hermes configure-from-control --control-url ${location.origin} --match-id ${descriptor.match_id} --provider-id ${descriptor.provider_id} --reasoning ${descriptor.reasoning_effort} --start`;
+    $("#harness-command").textContent = command;
+    $("#harness-detail").textContent = `${descriptor.agent_name} · ${descriptor.model_id} · exact worker ${descriptor.instance_id}`;
+    $("#harness-result").classList.remove("hidden");
+    notify("Hermes binding validated; the host profile command is ready.");
     await loadDashboard();
   } catch (error) {
     notify(error.message, true);

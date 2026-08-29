@@ -9,10 +9,11 @@ match will not require taking this service down. Its current foundation owns:
 - OpenAI-compatible provider discovery and explicit model/context selection;
 - container-validated legal game sources and checksummed private Proton imports;
 - durable agent, solo-match, perspective, instance, and process-session IDs;
-- isolated worker provisioning, health checks, parking, and resume.
+- isolated worker provisioning, health checks, parking, and resume;
+- one private MCP sidecar per running game worker;
+- exact Hermes agent/match profile descriptors and host profile setup.
 
-Hermes profile control and managed LAN match orchestration are the next APIs
-built on these contracts.
+Managed LAN match orchestration is the next API built on these contracts.
 
 ## Start once
 
@@ -53,6 +54,48 @@ The data volume, private runtime, match ID, perspective, and memory remain.
 **Resume** creates a fresh native process session for that same match. This is
 the intended always-on flow: the Control Center remains up while games come and
 go.
+
+## Start or resume the AI player
+
+Starting a managed game worker also starts a dedicated MCP sidecar on the same
+private Docker network. The sidecar receives only that seat's bridge secret,
+worker state, perspective, and authoritative SQLite scope. Its HTTP port is
+published on a random loopback-only host port. It exposes all 18 semantic
+gameplay/memory tools, but mechanically refuses agent requests to launch, load,
+stop, or create games.
+
+In **Bind Hermes to a running match**, select the running match, model
+provider, and reasoning level. The Control Center checks that both the real
+game worker and exact MCP sidecar are healthy before returning a secret-free
+descriptor. Run its generated command from the repository root:
+
+```bash
+./scripts/smacx-hermes configure-from-control \
+  --control-url http://127.0.0.1:8080 \
+  --match-id MATCH_ID --provider-id PROVIDER_ID \
+  --reasoning low --start
+```
+
+The helper prompts for the Control Center password without putting it in shell
+history. It creates `~/.hermes/profiles/smacx-<agent-hash>` and a separate
+`workspace/matches/<match-id>` directory. The Hermes profile belongs to the
+durable agent, while `--continue <match-id>` preserves a separate conversation
+for every match. Its normal filesystem/terminal/computer-use tools and general
+Hermes memory are disabled; match knowledge goes through scoped MCP memory.
+Web lookup remains available, but in-game speech is explicitly treated as
+untrusted player communication rather than operator instruction.
+
+The existing Hermes dashboard can continue running. The new named profile is
+stored under the normal Hermes profile root and can be selected there after it
+has been configured; no restart of the dashboard or the legacy MCP service is
+required. Parking the match removes its sidecar, so the agent receives a clear
+connection failure rather than accidentally attaching to another game.
+
+The initial host adapter supports providers that do not require an API key,
+including a trusted local OpenAI-compatible endpoint. Control Center never
+returns stored provider keys. Keyed remote providers will be enabled later by
+mounting the exact secret directly into a contained harness runtime instead of
+exposing it through the browser API.
 
 The default port publication is loopback-only. To listen on a trusted home LAN:
 
