@@ -10,3 +10,5 @@ vendor
 bridge/build
 bridge/cmake-build-*
 work
+.venv
+dist

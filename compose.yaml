@@ -1,0 +1,32 @@
+name: smacx-agent
+
+services:
+  control-center:
+    build:
+      context: .
+      dockerfile: control_center/Dockerfile
+    image: smacx-agent-control:dev
+    restart: unless-stopped
+    environment:
+      SMACX_CONTROL_DATA: /var/lib/smacx
+      SMACX_CONTROL_HOST: 0.0.0.0
+      SMACX_CONTROL_PORT: 8080
+      SMACX_SECURE_COOKIES: ${SMACX_SECURE_COOKIES:-0}
+    ports:
+      # Default is host-local. For a trusted LAN or TLS reverse proxy, set
+      # SMACX_CONTROL_PUBLISH explicitly, for example 0.0.0.0:8080.
+      - "${SMACX_CONTROL_PUBLISH:-127.0.0.1:8080}:8080"
+    volumes:
+      - smacx-control-data:/var/lib/smacx
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /run:size=16m,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 15s
+
+volumes:
+  smacx-control-data:

@@ -98,6 +98,7 @@ The MCP service listens only on `127.0.0.1:47814`. The in-game bridge listens on
 
 - `bridge/` — Thinker-derived 32-bit Windows DLL and the fair-play socket bridge.
 - `worker/` — isolated non-root Linux game-worker image and runtime contract.
+- `control_center/` — authenticated always-on operator service and web UI.
 - `src/smacx_controller.py` — Proton launcher, bridge client, match identity, and save/load lifecycle.
 - `src/smacx_mcp.py` — persistent Streamable-HTTP MCP server.
 - `scripts/` — build, DirectPlay setup, and service helpers.
@@ -105,7 +106,7 @@ The MCP service listens only on `127.0.0.1:47814`. The in-game bridge listens on
 - `docs/` — architecture, tool protocol, coverage, and troubleshooting.
 - `runtime/` — ignored local game copy, Proton prefix, token, logs, and screenshots.
 
-See [Architecture](docs/architecture.md), [Platform roadmap](docs/platform-roadmap.md), [identity and memory ADR](docs/adr/0001-identities-and-authoritative-memory.md), [optional Graphiti projection](docs/graphiti.md), [Tool reference](docs/tools.md), [Testing](docs/testing.md), and [Troubleshooting](docs/troubleshooting.md).
+See [Architecture](docs/architecture.md), [Platform roadmap](docs/platform-roadmap.md), [Control Center](docs/control-center.md), [identity and memory ADR](docs/adr/0001-identities-and-authoritative-memory.md), [control-plane ADR](docs/adr/0002-control-plane-and-runtime-boundary.md), [optional Graphiti projection](docs/graphiti.md), [Tool reference](docs/tools.md), [Testing](docs/testing.md), and [Troubleshooting](docs/troubleshooting.md).
 
 ## Provenance
 

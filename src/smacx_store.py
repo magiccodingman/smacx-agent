@@ -452,8 +452,180 @@ CREATE TABLE legacy_imports (
 );
 """
 
+MIGRATION_2 = r"""
+CREATE TABLE control_settings (
+    setting_key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE control_admins (
+    admin_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    password_salt BLOB NOT NULL,
+    password_hash BLOB NOT NULL,
+    password_parameters_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE control_sessions (
+    auth_session_id TEXT PRIMARY KEY,
+    admin_id TEXT NOT NULL REFERENCES control_admins(admin_id),
+    token_hash BLOB NOT NULL UNIQUE,
+    csrf_hash BLOB NOT NULL,
+    created_unix REAL NOT NULL,
+    last_seen_unix REAL NOT NULL,
+    expires_unix REAL NOT NULL,
+    revoked_unix REAL
+);
+CREATE INDEX control_sessions_active
+    ON control_sessions(token_hash, expires_unix, revoked_unix);
+
+CREATE TABLE secret_refs (
+    secret_id TEXT PRIMARY KEY,
+    purpose TEXT NOT NULL,
+    relative_path TEXT NOT NULL UNIQUE,
+    fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE model_providers (
+    provider_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL UNIQUE,
+    provider_kind TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    api_key_secret_id TEXT REFERENCES secret_refs(secret_id),
+    default_model_id TEXT,
+    context_length_override INTEGER CHECK (
+        context_length_override IS NULL OR context_length_override BETWEEN 1024 AND 16777216
+    ),
+    status TEXT NOT NULL CHECK (status IN ('configured', 'healthy', 'unreachable', 'disabled')),
+    last_error TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    discovered_unix REAL,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE provider_models (
+    provider_id TEXT NOT NULL REFERENCES model_providers(provider_id),
+    model_id TEXT NOT NULL,
+    display_name TEXT,
+    context_length INTEGER,
+    capabilities_json TEXT NOT NULL DEFAULT '{}',
+    raw_metadata_json TEXT NOT NULL DEFAULT '{}',
+    discovered_unix REAL NOT NULL,
+    PRIMARY KEY (provider_id, model_id)
+);
+
+CREATE TABLE game_sources (
+    game_source_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    host_path TEXT NOT NULL UNIQUE,
+    executable_sha256 TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('validated', 'unavailable', 'disabled')),
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    validated_unix REAL,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE runtime_assets (
+    runtime_id TEXT PRIMARY KEY,
+    runtime_kind TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    source_path TEXT,
+    storage_kind TEXT NOT NULL,
+    storage_ref TEXT NOT NULL,
+    content_fingerprint TEXT,
+    status TEXT NOT NULL CHECK (status IN ('importing', 'ready', 'invalid', 'disabled')),
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL,
+    UNIQUE (runtime_kind, storage_kind, storage_ref)
+);
+
+CREATE TABLE harness_profiles (
+    harness_profile_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    adapter_kind TEXT NOT NULL,
+    provider_id TEXT REFERENCES model_providers(provider_id),
+    model_id TEXT,
+    reasoning_effort TEXT NOT NULL DEFAULT 'low',
+    context_length INTEGER,
+    workspace_path TEXT,
+    system_prompt TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK (status IN ('configured', 'ready', 'running', 'stopped', 'error', 'disabled')),
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE worker_specs (
+    instance_id TEXT PRIMARY KEY REFERENCES instances(instance_id),
+    game_source_id TEXT NOT NULL REFERENCES game_sources(game_source_id),
+    runtime_id TEXT NOT NULL REFERENCES runtime_assets(runtime_id),
+    image_ref TEXT NOT NULL,
+    container_name TEXT NOT NULL UNIQUE,
+    data_volume TEXT NOT NULL UNIQUE,
+    bridge_secret_id TEXT NOT NULL REFERENCES secret_refs(secret_id),
+    view_secret_id TEXT REFERENCES secret_refs(secret_id),
+    desired_status TEXT NOT NULL CHECK (desired_status IN ('stopped', 'running', 'parked', 'retired')),
+    observed_status TEXT NOT NULL,
+    autostart_json TEXT NOT NULL DEFAULT '{}',
+    network_json TEXT NOT NULL DEFAULT '{}',
+    last_error TEXT,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE seat_assignments (
+    seat_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    seat_index INTEGER NOT NULL CHECK (seat_index BETWEEN 0 AND 7),
+    controller_kind TEXT NOT NULL,
+    agent_id TEXT REFERENCES agents(agent_id),
+    perspective_id TEXT REFERENCES perspectives(perspective_id),
+    instance_id TEXT REFERENCES instances(instance_id),
+    harness_profile_id TEXT REFERENCES harness_profiles(harness_profile_id),
+    faction_id INTEGER,
+    faction_name TEXT,
+    status TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL,
+    UNIQUE (match_id, seat_index)
+);
+
+CREATE TABLE control_audit (
+    audit_id TEXT PRIMARY KEY,
+    admin_id TEXT REFERENCES control_admins(admin_id),
+    action TEXT NOT NULL,
+    object_kind TEXT NOT NULL,
+    object_id TEXT,
+    remote_address TEXT,
+    outcome TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_unix REAL NOT NULL
+);
+CREATE INDEX control_audit_time ON control_audit(created_unix DESC);
+CREATE TRIGGER control_audit_no_update BEFORE UPDATE ON control_audit
+BEGIN
+    SELECT RAISE(ABORT, 'control audit is immutable');
+END;
+CREATE TRIGGER control_audit_no_delete BEFORE DELETE ON control_audit
+BEGIN
+    SELECT RAISE(ABORT, 'control audit is immutable');
+END;
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "durable_identity_and_memory_foundation", MIGRATION_1),
+    (2, "control_plane_foundation", MIGRATION_2),
 )
 
 
@@ -502,9 +674,22 @@ class SmacxStore:
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10.0)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 10000")
-        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA foreign_keys = ON")
+        # journal_mode is itself a write-like schema operation.  Multiple
+        # fresh control/MCP processes can open a brand-new database together,
+        # so honor the busy window explicitly instead of assuming the sqlite3
+        # connection timeout also retries this PRAGMA on every build.
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                connection.execute("PRAGMA journal_mode = WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                    connection.close()
+                    raise
+                time.sleep(0.025)
         connection.execute("PRAGMA synchronous = NORMAL")
         return connection
 

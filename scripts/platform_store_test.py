@@ -29,11 +29,11 @@ def main() -> int:
             concurrent_results = list(executor.map(
                 lambda _: SmacxStore(concurrent_database).schema_version(), range(8),
             ))
-        if concurrent_results != [1] * 8:
+        if concurrent_results != [2] * 8:
             raise AssertionError("concurrent schema migration failed")
         database = Path(temporary) / "state" / "smacx.sqlite3"
         store = SmacxStore(database)
-        if store.schema_version() != 1:
+        if store.schema_version() != 2:
             raise AssertionError("unexpected schema version")
         installation_id = store.installation_id()
 
@@ -242,7 +242,7 @@ def main() -> int:
         )
 
         reopened = SmacxStore(database)
-        if reopened.installation_id() != installation_id or reopened.schema_version() != 1:
+        if reopened.installation_id() != installation_id or reopened.schema_version() != 2:
             raise AssertionError("database identity or migration was not durable")
         if len(reopened.get_facts(alpha, fact_key="deirdre.intent", include_history=True)) != 2:
             raise AssertionError("facts did not survive reopening")

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SMACX Control Center</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">ALPHA CENTAURI · AGENT OPERATIONS</p>
+      <h1>SMACX Control Center</h1>
+      <p class="lede">Launch, observe, and recover fair-play semantic agents without handing them a desktop.</p>
+    </header>
+
+    <section id="message" class="message hidden" aria-live="polite"></section>
+
+    <section id="setup" class="panel hidden">
+      <div>
+        <p class="kicker">First-run setup</p>
+        <h2>Secure this installation</h2>
+        <p>Run <code>smacx-control bootstrap-token</code> in the service container, then set the administrator password.</p>
+      </div>
+      <form id="setup-form">
+        <label>Username <input name="username" value="admin" autocomplete="username" required></label>
+        <label>Bootstrap token <input name="bootstrap_token" type="password" autocomplete="one-time-code" required></label>
+        <label>Password <input name="password" type="password" minlength="12" autocomplete="new-password" required></label>
+        <button type="submit">Create administrator</button>
+      </form>
+    </section>
+
+    <section id="login" class="panel hidden">
+      <div>
+        <p class="kicker">Operator access</p>
+        <h2>Sign in</h2>
+        <p>No agent, game worker, or provider secret is available before authentication.</p>
+      </div>
+      <form id="login-form">
+        <label>Username <input name="username" value="admin" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Enter Control Center</button>
+      </form>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="statusbar">
+        <span><i id="status-dot"></i> Control plane online</span>
+        <span id="installation"></span>
+        <button id="logout" class="quiet">Sign out</button>
+      </div>
+
+      <div class="grid">
+        <article class="panel metric">
+          <p class="kicker">Providers</p><strong id="provider-count">0</strong>
+          <span>OpenAI-compatible endpoints</span>
+        </article>
+        <article class="panel metric">
+          <p class="kicker">Matches</p><strong id="match-count">0</strong>
+          <span>Durable playthroughs</span>
+        </article>
+        <article class="panel metric">
+          <p class="kicker">Workers</p><strong id="worker-count">0</strong>
+          <span>Isolated game instances</span>
+        </article>
+      </div>
+
+      <section class="panel provider-panel">
+        <div>
+          <p class="kicker">Inference</p>
+          <h2>Model providers</h2>
+          <p>Add an OpenAI-compatible <code>/v1</code> endpoint. Keys are written to the local secret vault and never returned by this API.</p>
+        </div>
+        <form id="provider-form" class="provider-form">
+          <label>Name <input name="display_name" placeholder="Local Qwen" required></label>
+          <label>Base URL <input name="base_url" type="url" placeholder="http://10.26.26.20:8000/v1" required></label>
+          <label>API key <input name="api_key" type="password" placeholder="Optional" autocomplete="off"></label>
+          <button type="submit">Save and discover</button>
+        </form>
+        <div id="providers" class="providers"></div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
