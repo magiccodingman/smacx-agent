@@ -2,6 +2,17 @@
 
 Graphiti is a derived temporal graph, never the SMACX Agent source of truth. The authoritative event stream, chat ledger, facts, beliefs, relationships, commitments, goals, and summaries remain in SQLite. If Graphiti, Neo4j, an embedding endpoint, or an extraction model fails, game control and SQLite recall continue normally.
 
+## Integration status
+
+The projector core, namespace derivation, deterministic episodes, failure-safe
+cursors, scoped rebuild, and adversarial isolation tests are implemented.
+Graphiti is **not yet part of the default Compose deployment** and is not
+automatically scheduled or configurable from the Control Center. The commands
+below are a manual integration path for developers, not a claim that Graphiti
+is currently enabled by default. SQLite plus scoped FTS5/BM25 remains the
+production memory path. See [Project status](project-status.md) for the exact
+remaining integration and evaluation work.
+
 ## Isolation contract
 
 Every episode group is derived internally as:
