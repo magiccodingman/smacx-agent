@@ -9,9 +9,11 @@ is delivered as vertical, independently testable milestones.
 2. **Runtime integration** — migrate the controller's manifests and knowledge
    ledger into SQLite while retaining guarded legacy import and the existing
    MCP contract.
-3. **Memory projection** — default-on but optional Graphiti projection with
-   derived namespaces, replay cursors, health reporting, and adversarial
-   cross-scope leakage tests.
+3. **Memory projection** — the optional Graphiti adapter, derived namespaces,
+   replay cursors, failure isolation, and adversarial cross-scope leakage tests
+   are implemented. Default Compose packaging, Control Center health/config,
+   automatic scheduling, secure secret injection, and real-backend evaluation
+   remain before it can be considered default-on.
 4. **Linux game worker** — user-supplied game import, private Wine/Proton
    prefix, semantic bridge, virtual display, health protocol, and view-only
    spectator stream.
@@ -38,3 +40,5 @@ open Control Center -> create or resume match -> assign seats -> launch -> play
 Docker Compose starts the control plane once and leaves it running. Per-match
 workers are created, parked, resumed, and retired by the match manager rather
 than by manual `docker compose down/up` cycles.
+
+For a claim-by-claim accounting, see [Project status](project-status.md).
