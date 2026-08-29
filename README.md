@@ -97,6 +97,7 @@ The MCP service listens only on `127.0.0.1:47814`. The in-game bridge listens on
 ## Layout
 
 - `bridge/` — Thinker-derived 32-bit Windows DLL and the fair-play socket bridge.
+- `worker/` — isolated non-root Linux game-worker image and runtime contract.
 - `src/smacx_controller.py` — Proton launcher, bridge client, match identity, and save/load lifecycle.
 - `src/smacx_mcp.py` — persistent Streamable-HTTP MCP server.
 - `scripts/` — build, DirectPlay setup, and service helpers.
@@ -108,4 +109,4 @@ See [Architecture](docs/architecture.md), [Platform roadmap](docs/platform-roadm
 
 ## Provenance
 
-The bridge is a modified build of [Thinker](https://github.com/induktio/thinker) at commit `4aef5be73bda4eb22ffa8db424eb91780c4a51fa`, under the MIT license. The game assets and Microsoft DirectPlay redistributable are local runtime dependencies and are not part of this project's source distribution. See `NOTICE.md` and `LICENSE.md`.
+SMACX Agent is licensed under Apache License 2.0; see [LICENSE](LICENSE). The bridge is a modified build of [Thinker](https://github.com/induktio/thinker) at commit `4aef5be73bda4eb22ffa8db424eb91780c4a51fa`, whose upstream code is MIT-licensed. The game assets and Microsoft DirectPlay redistributable are local runtime dependencies and are not part of this project's source distribution. See [NOTICE.md](NOTICE.md) for provenance and attribution.

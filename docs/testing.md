@@ -55,6 +55,37 @@ The ready-unit reference regression cross-checks the snapshot's compact IDs/name
 
 The one-turn semantic soak adversarially submits a wrong `session_id` and stale `revision`, requires `wrong_game_identity` and `stale_state` without mutation, and follows transient `waiting_for_engine`/`waiting_for_turn` states by waiting and re-observing.
 
+## Container worker contracts
+
+The worker bootstrap has a fast host-side contract suite. It validates legal
+game import and source immutability, rejects symlinks and non-PE executables,
+enforces identity and file-secret precedence, checks Proton `runinprefix`
+selection and immutable prefix architecture, exercises an authenticated fake
+bridge health check, and verifies that no proprietary runtime directories can
+enter the image build context:
+
+```bash
+PYTHONPATH=src python3 scripts/worker_contract_test.py
+python3 -m compileall -q worker
+```
+
+The Linux reference image was also validated against a legal Steam installation
+and a private copy of Proton Experimental. The real container reached Docker's
+healthy state as UID 10001, launched `terranx.exe -windowed` on its private
+Xvfb display, served an authenticated bridge through the container proxy, and
+reported the exact assigned match, session, agent, perspective, and instance
+identities. With native autostart enabled, a fair-play `semantic_snapshot`
+reported the opening `PLANETFALL` interaction. Its sole enumerated guarded
+`acknowledge_popup` command succeeded and the next snapshot reported
+`FIRSTBASE`. No screen capture, mouse, keyboard, text entry, or coordinate UI
+operation was used in this validation.
+
+Stock Debian Wine is retained as a diagnostic fallback, but it stalled at the
+Firaxis presentation screen in the current reference environment and is not a
+certified game runtime. A Proton distribution must be a private, writable,
+checksummed copy because Proton maintains `dist.lock`; never mount Steam's live
+runtime read-write into a worker.
+
 The skip-all-ready regression cross-checks the exact game-management unit list against `ready_unit_refs`, proves that missing confirmation and a changed count preserve the original revision and set, applies native skip to every reviewed unit, accepts either an exposed `end_turn` or the stock engine's immediate auto-end transition, and rejects replay of the consumed guard.
 
 The native phase-mutation regression fabricates a confirmed `disband_unit` command while `PLANETFALL` is active. The bridge must return `not_actionable` while preserving the unit, popup, and revision:

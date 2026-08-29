@@ -1,0 +1,6 @@
+session.configVersion: 13
+session.styleFile: /usr/share/fluxbox/styles/Makro
+session.styleOverlay: /opt/smacx/fluxbox-overlay
+session.screen0.toolbar.visible: false
+session.screen0.toolbar.tools:
+session.screen0.rootCommand:

@@ -1,0 +1,48 @@
+services:
+  smacx-worker:
+    build:
+      context: ..
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      SMACX_AGENT_TOKEN_FILE: /run/secrets/bridge-token
+      SMACX_AGENT_MATCH_ID: ${SMACX_AGENT_MATCH_ID:?set match identity}
+      SMACX_AGENT_SESSION_ID: ${SMACX_AGENT_SESSION_ID:?set session identity}
+      SMACX_AGENT_ID: ${SMACX_AGENT_ID:?set agent identity}
+      SMACX_PERSPECTIVE_ID: ${SMACX_PERSPECTIVE_ID:?set perspective identity}
+      SMACX_INSTANCE_ID: ${SMACX_INSTANCE_ID:?set instance identity}
+      SMACX_REQUIRE_DIRECTPLAY: ${SMACX_REQUIRE_DIRECTPLAY:-0}
+      SMACX_WINE_BIN: ${SMACX_WINE_BIN:-wine}
+      SMACX_PROTON_BIN: ${SMACX_PROTON_BIN:-}
+      SMACX_WINEARCH: ${SMACX_WINEARCH:-win64}
+      SMACX_VIEW_ENABLE: ${SMACX_VIEW_ENABLE:-0}
+      SMACX_VIEW_MODE: ${SMACX_VIEW_MODE:-view-only}
+      SMACX_VIEW_PASSWORD_FILE: /run/secrets/view-password
+    volumes:
+      - ${SMACX_GAME_SOURCE:?point at a legal game directory}:/game-source:ro
+      - smacx-worker-data:/var/lib/smacx
+      - ${SMACX_DIRECTX_REDIST:-/dev/null}:/redist/directx_feb2010_redist.exe:ro
+      # This must be a private managed copy, never Steam's live Proton folder.
+      - ${SMACX_PROTON_RUNTIME:-/dev/null}:/proton
+    secrets:
+      - bridge-token
+      - view-password
+    expose:
+      - "47814"
+      - "6080"
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /run:size=32m,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  smacx-worker-data:
+
+secrets:
+  bridge-token:
+    file: ${SMACX_AGENT_TOKEN_FILE:?point at a file containing a unique bridge token}
+  view-password:
+    file: ${SMACX_VIEW_PASSWORD_FILE:-/dev/null}
