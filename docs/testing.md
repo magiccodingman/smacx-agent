@@ -21,6 +21,9 @@ Focused regressions:
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
+PYTHONPATH=src python3 scripts/private_reference_test.py \
+  --game-source /absolute/path/to/legal/game
+PYTHONPATH=src python3 scripts/lan_profile_contract_test.py
 PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/capability_manifest_test.py
 PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/mcp_command_schema_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_management_test.py
@@ -62,6 +65,7 @@ SMACX_TEST_HUMAN_RELATIONSHIP=pact PYTHONPATH=src python3 scripts/lan_two_client
 SMACX_TEST_HUMAN_RELATIONSHIP=truce PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
 SMACX_TEST_HUMAN_TRADE=technology PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
 SMACX_TEST_HUMAN_TRADE=energy PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
+SMACX_TEST_HUMAN_TRADE=joint_attack PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
 SMACX_TEST_MULTIPLAYER_AI_CONTACT=1 PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
 ```
 
@@ -69,7 +73,7 @@ After the human-diplomacy packet ordering was implemented, fresh-process runs pa
 
 The focused Pact and Truce modes begin fresh matches with symmetric contained Treaty or Vendetta prerequisites, respectively. They prove native clause types 2 and 4, peer-visible structured clauses, acceptance in both paired windows, symmetric final relationship bits, and the post-transmission phase boundary. The combat fixture now clears both movement counters and native `VSTATE_HAS_MOVED`/automation readiness flags and selects a living AI that actually owns a vehicle, eliminating its former randomized no-op/empty-owner cases.
 
-The focused technology mode gives only the host one exact named technology, atomically commits native clause type 0, proves the recipient sees the identical structured clause before its acceptance, advances the resulting LAN semantic presentation queue, and verifies converged recipient ownership while the donor retains its research. Three consecutive fresh two-client runs passed after the atomic proposal and game-thread dispatch fixes. The energy mode begins both process copies at 500/100 credits, advertises a single bounded amount descriptor, proves an attempted 501-credit overdraw fails before mutation, atomically commits native clause type 1 for exactly 75 credits, and verifies both clients converge to 425/175. Both report `pixels_or_ui_input_used=false`. The same opening-interaction resolver now acknowledges text-only first-discovery notices `THESECRET0/1` after their research burst has already been applied.
+The focused technology mode gives only the host one exact named technology, atomically commits native clause type 0, proves the recipient sees the identical structured clause before its acceptance, advances the resulting LAN semantic presentation queue, and verifies converged recipient ownership while the donor retains its research. Three consecutive fresh two-client runs passed after the atomic proposal and game-thread dispatch fixes. The energy mode begins both process copies at 500/100 credits, advertises a single bounded amount descriptor, proves an attempted 501-credit overdraw fails before mutation, atomically commits native clause type 1 for exactly 75 credits, and verifies both clients converge to 425/175. The joint-attack mode establishes fair commlink knowledge of one live third faction, enumerates only that target, atomically commits native clause type 5, and proves that the peer sees and accepts the identical faction ID/name. All report `pixels_or_ui_input_used=false`. The same opening-interaction resolver now acknowledges text-only first-discovery notices `THESECRET0/1` after their research burst has already been applied.
 
 The focused AI-contact mode creates the same two-process LAN game, establishes a symmetric contained Pact/commlink with one living non-alien AI, and opens the real native channel. It proves the exact `COMM -> INTRONEW* -> HELLOPACT -> DIPLO -> finish` chain, guarded accept/continue/finish semantics, a nonmodal peer, and zero visual or raw-UI input. Discovery runs also reached fully structured `TRADETECH*`, `DEMANDTECH*`, `PROTORIVAL`, `MILDTREATY`, and `SWEARAPACT` continuations; their no-transfer rejection or passive acknowledgment paths are allowlisted, while consequential acceptance remains blocked.
 
@@ -726,6 +730,26 @@ PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
 The reference run synchronized `tiny_citizen`, `small_easy`,
 `standard_librarian`, `large_thinker`, and `huge_transcend` between two real
 processes with `pixels_or_ui_input_used=false`.
+
+Typed setup and scenario regressions run through the contained Control Center
+volume and two independent native workers:
+
+```bash
+PYTHONPATH=src python3 scripts/custom_scenario_live_test.py \
+  --data-root /path/to/control-data \
+  --directx-redist /absolute/path/to/directx_feb2010_redist.exe
+PYTHONPATH=src python3 scripts/custom_lan_live_test.py \
+  --data-root /path/to/control-data \
+  --directx-redist /absolute/path/to/directx_feb2010_redist.exe
+PYTHONPATH=src python3 scripts/lan_scenario_live_test.py \
+  --data-root /path/to/control-data \
+  --directx-redist /absolute/path/to/directx_feb2010_redist.exe
+```
+
+The reference runs proved a custom 64-by-48 solo world (reported as native
+staggered width 128), an intentionally asymmetric complete LAN rule record on
+both peers, a solo scenario, and a stock multiplayer scenario with distinct
+native faction selections. All reported `pixels_or_ui_input_used=false`.
 
 For WSL2 add `--require-wsl2`. A physical mixed human/AI certification is one
 complete matrix, not a successful ping:

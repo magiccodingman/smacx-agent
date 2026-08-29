@@ -20,9 +20,11 @@ from smacx_controller import (
     bridge_request,
     chat_attention as controller_chat_attention,
     launch_game,
+    list_scenarios,
     list_saved_games,
     load_saved_game,
     new_game,
+    scenario_game,
     put_match_knowledge,
     read_game_reference,
     read_platform_memory,
@@ -207,12 +209,36 @@ def smac_launch(
     )
 
 
-@mcp.tool(description="Start a new random single-player game through the native noninteractive setup path. Difficulty 0 is Citizen; world_size 0 is Tiny.")
+@mcp.tool(description="Start a fully typed random or customized single-player game through the native noninteractive setup path. No menu input is used. Difficulty 0 is Citizen; world_size 0 is Tiny. World levels are 0 low, 1 average, 2 high. Custom dimensions require map_generation=custom and both dimensions. Nullable rule fields preserve the installation default when omitted; blind_research remains explicit for research setup.")
 def smac_new_game(
     difficulty: int = 0,
     world_size: int = 0,
+    map_generation: Literal["random", "custom"] = "random",
+    custom_width: int = 0,
+    custom_height: int = 0,
+    ocean_coverage: int = -1,
+    erosive_forces: int = -1,
+    native_life: int = -1,
+    cloud_cover: int = -1,
     faction_id: int = 1,
     blind_research: bool = True,
+    victory_transcendence: bool | None = None,
+    victory_conquest: bool | None = None,
+    victory_diplomatic: bool | None = None,
+    victory_economic: bool | None = None,
+    victory_cooperative: bool | None = None,
+    do_or_die: bool | None = None,
+    look_first: bool | None = None,
+    tech_stagnation: bool | None = None,
+    spoils_of_war: bool | None = None,
+    intense_rivalry: bool | None = None,
+    unity_survey: bool | None = None,
+    unity_scattering: bool | None = None,
+    random_events: bool | None = None,
+    time_warp: bool | None = None,
+    ironman: bool | None = None,
+    random_leader_personalities: bool | None = None,
+    random_leader_agendas: bool | None = None,
     initial_research_priority: int = 1,
     initial_tech_id: int = -1,
     narrative_ui: bool = False,
@@ -229,6 +255,42 @@ def smac_new_game(
     blocked = _capability_gap_blocked("New game")
     if blocked:
         return blocked
+    game_settings = {
+        "map_generation": map_generation,
+        "world_size": world_size,
+        "blind_research": blind_research,
+    }
+    if custom_width or custom_height:
+        game_settings.update({"custom_width": custom_width, "custom_height": custom_height})
+    for key, value in {
+        "ocean_coverage": ocean_coverage,
+        "erosive_forces": erosive_forces,
+        "native_life": native_life,
+        "cloud_cover": cloud_cover,
+    }.items():
+        if value >= 0:
+            game_settings[key] = value
+    for key, value in {
+        "victory_transcendence": victory_transcendence,
+        "victory_conquest": victory_conquest,
+        "victory_diplomatic": victory_diplomatic,
+        "victory_economic": victory_economic,
+        "victory_cooperative": victory_cooperative,
+        "do_or_die": do_or_die,
+        "look_first": look_first,
+        "tech_stagnation": tech_stagnation,
+        "spoils_of_war": spoils_of_war,
+        "intense_rivalry": intense_rivalry,
+        "unity_survey": unity_survey,
+        "unity_scattering": unity_scattering,
+        "random_events": random_events,
+        "time_warp": time_warp,
+        "ironman": ironman,
+        "random_leader_personalities": random_leader_personalities,
+        "random_leader_agendas": random_leader_agendas,
+    }.items():
+        if value is not None:
+            game_settings[key] = value
     return new_game(
         wait_seconds=wait_seconds,
         difficulty=difficulty,
@@ -243,6 +305,39 @@ def smac_new_game(
         agent_id=agent_id or None,
         perspective_id=perspective_id or None,
         instance_id=instance_id or None,
+        game_settings=game_settings,
+    )
+
+
+@mcp.tool(description="List safe scenario identifiers present in this worker's operator-supplied legal game copy. Scenario assets are never returned or distributed.")
+def smac_scenarios() -> dict:
+    return list_scenarios()
+
+
+@mcp.tool(description="Start one exact catalogued single-player scenario without screenshots, clicks, or menu input. Scenario-defined rules are preserved; difficulty and faction apply only when the scenario does not force them.")
+def smac_new_scenario(
+    scenario_id: str,
+    difficulty: int = 0,
+    faction_id: int = 1,
+    narrative_ui: bool = False,
+    tutorial_ui: bool = False,
+    match_id: str = "",
+    agent_id: str = "",
+    perspective_id: str = "",
+    instance_id: str = "",
+    wait_seconds: int = 90,
+) -> dict:
+    managed = _managed_lifecycle_block("Scenario setup")
+    if managed:
+        return managed
+    blocked = _capability_gap_blocked("New scenario")
+    if blocked:
+        return blocked
+    return scenario_game(
+        scenario_id, wait_seconds=wait_seconds, difficulty=difficulty,
+        faction_id=faction_id, narrative_ui=narrative_ui, tutorial_ui=tutorial_ui,
+        match_id=match_id or None, agent_id=agent_id or None,
+        perspective_id=perspective_id or None, instance_id=instance_id or None,
     )
 
 
@@ -314,16 +409,18 @@ def smac_chat(
         "before becoming ready; this lobby template choice is distinct from the runtime "
         "faction_id/player slot. Fresh games assign it during native Start; managed resume "
         "supplies it automatically. "
-        "Before clients ready, the host may apply one exact guarded profile returned by legal_actions "
-        "with configure; profiles span Citizen/Tiny through Transcend/Huge and their native setup packet is "
-        "synchronized to every peer. A joining client then uses set_ready; once every client is ready, only "
+        "Before clients ready, the host may apply one exact guarded profile or a fully typed custom "
+        "difficulty/timer/world/rules record with configure; every accepted native setup field is "
+        "synchronized to every peer. The host may instead load one exact scenario_id returned by "
+        "smac_scenarios, after which seats use only the offered native faction_choice_id values. "
+        "A joining client then uses set_ready; once every client is ready, only "
         "the host may use start. Copy match_id, session_id, and expected_lobby_revision from the "
         "latest status and give each mutation a unique client_operation_id. These call the game's "
         "native Ready/Start protocol and do not synthesize UI input."
     )
 )
 def smac_lan(
-    action: Literal["status", "host", "discover", "join", "load_save", "select_faction", "configure", "set_ready", "start"],
+    action: Literal["status", "host", "discover", "join", "load_save", "load_scenario", "select_faction", "configure", "set_ready", "start"],
     session_name: str = "SMACX Agent Game",
     player_name: str = "Semantic Host",
     client_operation_id: str = "",
@@ -334,13 +431,37 @@ def smac_lan(
     expected_lobby_revision: str = "",
     profile: str = "small_easy",
     slot: str = "",
+    scenario_id: str = "",
+    difficulty: int = -1,
+    time_control: int = -1,
+    world_size: int = -1,
+    ocean_coverage: int = -1,
+    erosive_forces: int = -1,
+    native_life: int = -1,
+    cloud_cover: int = -1,
+    victory_transcendence: bool | None = None,
+    victory_conquest: bool | None = None,
+    victory_diplomatic: bool | None = None,
+    victory_economic: bool | None = None,
+    victory_cooperative: bool | None = None,
+    do_or_die: bool | None = None,
+    look_first: bool | None = None,
+    tech_stagnation: bool | None = None,
+    spoils_of_war: bool | None = None,
+    blind_research: bool | None = None,
+    intense_rivalry: bool | None = None,
+    unity_survey: bool | None = None,
+    unity_scattering: bool | None = None,
+    random_events: bool | None = None,
+    time_warp: bool | None = None,
+    ironman: bool | None = None,
     faction_choice_id: int = -1,
     ready: bool = False,
     agent_id: str = "",
     perspective_id: str = "",
     instance_id: str = "",
 ) -> dict:
-    if action in {"host", "join", "load_save", "select_faction", "configure", "set_ready", "start"}:
+    if action in {"host", "join", "load_save", "load_scenario", "select_faction", "configure", "set_ready", "start"}:
         blocked = _capability_gap_blocked(f"LAN {action}")
         if blocked:
             return blocked
@@ -358,23 +479,35 @@ def smac_lan(
             )
             if not launched.get("ok"):
                 return launched
-    return _call(
-        "semantic_lan",
-        timeout=60,
-        action=action,
-        session_name=session_name,
-        player_name=player_name,
-        client_operation_id=client_operation_id,
-        host_address=host_address,
-        network_session_id=network_session_id,
-        match_id=match_id,
-        session_id=session_id,
-        expected_lobby_revision=expected_lobby_revision,
-        profile=profile,
-        slot=slot,
-        faction_choice_id=faction_choice_id,
-        ready=ready,
-    )
+    payload = {
+        "action": action,
+        "session_name": session_name, "player_name": player_name,
+        "client_operation_id": client_operation_id,
+        "host_address": host_address, "network_session_id": network_session_id,
+        "match_id": match_id, "session_id": session_id,
+        "expected_lobby_revision": expected_lobby_revision,
+        "profile": profile, "slot": slot, "scenario_id": scenario_id,
+        "difficulty": difficulty, "time_control": time_control,
+        "world_size": world_size, "ocean_coverage": ocean_coverage,
+        "erosive_forces": erosive_forces, "native_life": native_life,
+        "cloud_cover": cloud_cover, "faction_choice_id": faction_choice_id,
+        "ready": ready,
+    }
+    optional_rules = {
+        "victory_transcendence": victory_transcendence,
+        "victory_conquest": victory_conquest,
+        "victory_diplomatic": victory_diplomatic,
+        "victory_economic": victory_economic,
+        "victory_cooperative": victory_cooperative,
+        "do_or_die": do_or_die, "look_first": look_first,
+        "tech_stagnation": tech_stagnation, "spoils_of_war": spoils_of_war,
+        "blind_research": blind_research, "intense_rivalry": intense_rivalry,
+        "unity_survey": unity_survey, "unity_scattering": unity_scattering,
+        "random_events": random_events, "time_warp": time_warp,
+        "ironman": ironman,
+    }
+    payload.update({key: value for key, value in optional_rules.items() if value is not None})
+    return _call("semantic_lan", timeout=60, **payload)
 
 
 def _compact_decision_state(snapshot: dict) -> dict:
@@ -647,7 +780,7 @@ def smac_choices(
     )
 )
 def smac_command(
-    command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
+    command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
     session_id: str,
     expected_revision: str,
@@ -660,6 +793,7 @@ def smac_command(
     payment: Literal["", "none", "energy", "technologies"] = "",
     governor_permission: Literal["", "multiple_priorities", "exploration_units", "land_combat_units", "naval_combat_units", "air_combat_units", "native_life_units", "land_defense_units", "air_defense_units", "prototype_units", "transport_units", "probe_units", "terraformer_units", "colony_pods", "facilities", "force_psych", "secret_projects", "hurry_production"] = "",
     faction_id: int = -1,
+    target_faction_id: int = -1,
     proposal_id: int = -1,
     candidate_faction_id: int = -1,
     priority: int = -1,
@@ -758,6 +892,7 @@ def smac_command(
         payment=payment,
         governor_permission=governor_permission,
         faction_id=faction_id,
+        target_faction_id=target_faction_id,
         proposal_id=proposal_id,
         candidate_faction_id=candidate_faction_id,
         priority=priority,

@@ -112,6 +112,7 @@ std::string lan_client_operation_id;
 std::string lan_lobby_operation_id;
 std::string lan_lobby_operation_action;
 std::string lan_pending_load_path;
+int lan_pending_load_game_type = 3;
 volatile LONG lan_pending_load_active = 0;
 volatile LONG lan_pending_load_choice_seen = 0;
 volatile LONG lan_pending_load_native_status = -1;
@@ -2990,6 +2991,38 @@ bool safe_path_component(const std::string& value, size_t max_length) {
     return true;
 }
 
+bool safe_scenario_id(const std::string& value) {
+    if (value.empty() || value.size() > 512) return false;
+    if (value.size() < 3 || _stricmp(value.c_str() + value.size() - 3, ".SC")) {
+        return false;
+    }
+    bool component_start = true;
+    size_t component_length = 0;
+    for (unsigned char c : value) {
+        if (c == '/' || c == '\\') {
+            if (component_start || component_length > 96) return false;
+            component_start = true;
+            component_length = 0;
+            continue;
+        }
+        if (component_start && (c == '.' || c == ' ')) return false;
+        if (!(isalnum(c) || c == ' ' || c == '_' || c == '-' || c == '.'
+            || c == '\'' || c == '(' || c == ')')) {
+            return false;
+        }
+        component_start = false;
+        ++component_length;
+    }
+    return !component_start && component_length <= 96
+        && value.find("..") == std::string::npos;
+}
+
+std::string agent_scenario_path(const std::string& scenario_id) {
+    std::string path = "scenarios\\";
+    for (char c : scenario_id) path += c == '/' ? '\\' : c;
+    return path;
+}
+
 std::string agent_save_path(const std::string& slot) {
     return std::string("saves\\agent\\") + agent_match_id + "\\" + slot + ".sav";
 }
@@ -3728,6 +3761,20 @@ bool human_energy_proposal_legal(int faction_id, int amount) {
         && amount >= 1 && amount <= Factions[faction_id].energy_credits;
 }
 
+bool human_joint_attack_proposal_legal(int faction_id, int target_faction_id) {
+    int side = human_diplomacy_local_side(faction_id);
+    int other = side < 0 ? -1 : human_diplomacy_participant(1 - side);
+    return side >= 0 && other >= 1 && other < MaxPlayerNum
+        && is_human(other) && is_alive(other)
+        && human_diplomacy_acceptance(side) == 0
+        && human_diplomacy_clause_count(side) < 8
+        && target_faction_id >= 1 && target_faction_id < MaxPlayerNum
+        && target_faction_id != faction_id && target_faction_id != other
+        && is_alive(target_faction_id)
+        && has_treaty(faction_id, target_faction_id, DIPLO_COMMLINK)
+        && !human_diplomacy_has_clause_value(side, 5, target_faction_id);
+}
+
 bool human_treaty_proposal_legal(int faction_id) {
     int side = human_diplomacy_local_side(faction_id);
     int other_side = side < 0 ? -1 : 1 - side;
@@ -3860,7 +3907,7 @@ bool semantic_interaction_command(const std::string& command) {
     static const char* commands[] = {
         "acknowledge_popup", "respond_to_contact", "continue_diplomacy",
         "propose_human_relationship", "propose_human_technology",
-        "propose_human_energy",
+        "propose_human_energy", "propose_human_joint_attack",
         "respond_human_diplomacy",
         "finish_human_diplomacy",
         "choose_diplomacy_option", "give_energy_gift",
@@ -5006,11 +5053,76 @@ const char* lan_world_level_name(int id) {
     return id >= 0 && id < 3 ? names[id] : "unknown";
 }
 
+const char* lan_time_control_name(int id) {
+    const char* names[] = {"none", "tight", "standard", "moderate", "loose", "custom"};
+    return id >= 0 && id < 6 ? names[id] : "unknown";
+}
+
+struct LanRuleChoice {
+    const char* name;
+    uint32_t bit;
+    bool inverted;
+};
+
+const LanRuleChoice lan_rule_choices[] = {
+    {"victory_transcendence", RULES_VICTORY_TRANSCENDENCE, false},
+    {"victory_conquest", RULES_VICTORY_CONQUEST, false},
+    {"victory_diplomatic", RULES_VICTORY_DIPLOMATIC, false},
+    {"victory_economic", RULES_VICTORY_ECONOMIC, false},
+    {"victory_cooperative", RULES_VICTORY_COOPERATIVE, false},
+    {"do_or_die", RULES_DO_OR_DIE, false}, {"look_first", RULES_LOOK_FIRST, false},
+    {"tech_stagnation", RULES_TECH_STAGNATION, false},
+    {"spoils_of_war", RULES_SPOILS_OF_WAR, false},
+    {"blind_research", RULES_BLIND_RESEARCH, false},
+    {"intense_rivalry", RULES_INTENSE_RIVALRY, false},
+    {"unity_survey", RULES_NO_UNITY_SURVEY, true},
+    {"unity_scattering", RULES_NO_UNITY_SCATTERING, true},
+    {"random_events", RULES_BELL_CURVE, true},
+    {"time_warp", RULES_TIME_WARP, false}, {"ironman", RULES_IRONMAN, false},
+};
+
+void append_lan_named_rules(std::ostringstream& out, uint32_t choices) {
+    out << '{';
+    bool comma = false;
+    for (const LanRuleChoice& rule : lan_rule_choices) {
+        if (comma) out << ',';
+        bool enabled = (choices & rule.bit) != 0;
+        if (rule.inverted) enabled = !enabled;
+        out << json_string(rule.name) << ':' << (enabled ? "true" : "false");
+        comma = true;
+    }
+    out << '}';
+}
+
 const char* lan_game_type_name(int id) {
     const char* names[] = {
         "new_game", "scenario", "multiplayer_scenario", "load"
     };
     return id >= 0 && id < 4 ? names[id] : "unknown";
+}
+
+void append_named_game_rules(std::ostringstream& out, uint32_t rules, uint32_t state) {
+    out << "{\"victory_transcendence\":"
+        << ((rules & RULES_VICTORY_TRANSCENDENCE) ? "true" : "false")
+        << ",\"victory_conquest\":" << ((rules & RULES_VICTORY_CONQUEST) ? "true" : "false")
+        << ",\"victory_diplomatic\":" << ((rules & RULES_VICTORY_DIPLOMATIC) ? "true" : "false")
+        << ",\"victory_economic\":" << ((rules & RULES_VICTORY_ECONOMIC) ? "true" : "false")
+        << ",\"victory_cooperative\":" << ((rules & RULES_VICTORY_COOPERATIVE) ? "true" : "false")
+        << ",\"do_or_die\":" << ((rules & RULES_DO_OR_DIE) ? "true" : "false")
+        << ",\"look_first\":" << ((rules & RULES_LOOK_FIRST) ? "true" : "false")
+        << ",\"tech_stagnation\":" << ((rules & RULES_TECH_STAGNATION) ? "true" : "false")
+        << ",\"spoils_of_war\":" << ((rules & RULES_SPOILS_OF_WAR) ? "true" : "false")
+        << ",\"blind_research\":" << ((rules & RULES_BLIND_RESEARCH) ? "true" : "false")
+        << ",\"intense_rivalry\":" << ((rules & RULES_INTENSE_RIVALRY) ? "true" : "false")
+        << ",\"unity_survey\":" << ((rules & RULES_NO_UNITY_SURVEY) ? "false" : "true")
+        << ",\"unity_scattering\":" << ((rules & RULES_NO_UNITY_SCATTERING) ? "false" : "true")
+        << ",\"random_events\":" << ((rules & RULES_BELL_CURVE) ? "false" : "true")
+        << ",\"time_warp\":" << ((rules & RULES_TIME_WARP) ? "true" : "false")
+        << ",\"ironman\":" << ((rules & RULES_IRONMAN) ? "true" : "false")
+        << ",\"random_leader_personalities\":"
+        << ((state & STATE_RAND_FAC_LEADER_PERSONALITIES) ? "true" : "false")
+        << ",\"random_leader_agendas\":"
+        << ((state & STATE_RAND_FAC_LEADER_SOCIAL_AGENDA) ? "true" : "false") << '}';
 }
 
 bool native_lan_lobby_active() {
@@ -5071,11 +5183,15 @@ void append_lan_settings(std::ostringstream& out) {
         << ",\"level\":" << json_string(lan_world_level_name(settings[9]))
         << "},\"cloud_cover\":{\"id\":" << static_cast<int>(settings[10])
         << ",\"level\":" << json_string(lan_world_level_name(settings[10]))
-        << "}},\"time_control_id\":" << static_cast<int>(settings[3])
+        << "}},\"time_control\":{\"id\":" << static_cast<int>(settings[3])
+        << ",\"name\":" << json_string(lan_time_control_name(settings[3])) << '}'
         << ",\"game_rules_mask\":"
         << *reinterpret_cast<const uint32_t*>(settings + 12)
         << ",\"more_rules_mask\":"
-        << *reinterpret_cast<const uint32_t*>(settings + 16) << '}';
+        << *reinterpret_cast<const uint32_t*>(settings + 16)
+        << ",\"rules\":";
+    append_lan_named_rules(out, *reinterpret_cast<const uint32_t*>(settings + 12));
+    out << '}';
 }
 
 void append_lan_lobby_state(std::ostringstream& out) {
@@ -5148,13 +5264,26 @@ void append_lan_lobby_state(std::ostringstream& out) {
         int local_choice = static_cast<signed char>(lan_setup_record(local_index)[3]);
         int local_faction = lan_player_faction(local_index);
         int required_choice = lan_required_faction_choice(local_index);
-        if (*reinterpret_cast<int*>(0x90E778) == 3
-        && !lan_player_ready(local_index) && local_faction >= 1
-        && local_choice < 0 && required_choice >= 0) {
+        if ((*reinterpret_cast<int*>(0x90E778) == 2
+            || *reinterpret_cast<int*>(0x90E778) == 3)
+        && !lan_player_ready(local_index)
+        && (*reinterpret_cast<int*>(0x90E778) == 2 || local_faction >= 1)
+        && local_choice < 0
+        && (*reinterpret_cast<int*>(0x90E778) == 2 || required_choice >= 0)) {
             out << "{\"action\":\"select_faction\",\"parameters\":{"
-                   "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":["
-                << required_choice
-                << "]}},\"requires\":[\"match_id\",\"session_id\","
+                   "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":[";
+            if (*reinterpret_cast<int*>(0x90E778) == 3) {
+                out << required_choice;
+            } else {
+                bool comma = false;
+                for (int choice_id = 0; choice_id < lan_faction_choice_count(); ++choice_id) {
+                    if (!lan_faction_choice_selectable(choice_id)) continue;
+                    if (comma) out << ',';
+                    out << choice_id;
+                    comma = true;
+                }
+            }
+            out << "]}},\"requires\":[\"match_id\",\"session_id\","
                    "\"expected_lobby_revision\",\"client_operation_id\"]}";
             action_comma = true;
         }
@@ -5174,22 +5303,46 @@ void append_lan_lobby_state(std::ostringstream& out) {
                    "\"expected_lobby_revision\",\"client_operation_id\"]}";
             action_comma = true;
         }
+        if (count == 1
+        && *reinterpret_cast<int*>(0x90E778) != 2
+        && *reinterpret_cast<int*>(0x90E778) != 3) {
+            if (action_comma) out << ',';
+            out << "{\"action\":\"load_scenario\","
+                   "\"parameters\":{\"scenario_id\":{\"type\":\"string\","
+                   "\"maxLength\":512}},"
+                   "\"requires\":[\"match_id\",\"session_id\","
+                   "\"expected_lobby_revision\",\"client_operation_id\"]}";
+            action_comma = true;
+        }
         int local_choice = local_index >= 1
             ? static_cast<signed char>(lan_setup_record(local_index)[3]) : -1;
         int local_faction = lan_player_faction(local_index);
         int required_choice = lan_required_faction_choice(local_index);
-        if (*reinterpret_cast<int*>(0x90E778) == 3
-        && !lan_player_ready(local_index) && local_faction >= 1
-        && local_choice < 0 && required_choice >= 0) {
+        if ((*reinterpret_cast<int*>(0x90E778) == 2
+            || *reinterpret_cast<int*>(0x90E778) == 3)
+        && !lan_player_ready(local_index)
+        && (*reinterpret_cast<int*>(0x90E778) == 2 || local_faction >= 1)
+        && local_choice < 0
+        && (*reinterpret_cast<int*>(0x90E778) == 2 || required_choice >= 0)) {
             if (action_comma) out << ',';
             out << "{\"action\":\"select_faction\",\"parameters\":{"
-                   "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":["
-                << required_choice
-                << "]}},\"requires\":[\"match_id\",\"session_id\","
+                   "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":[";
+            if (*reinterpret_cast<int*>(0x90E778) == 3) {
+                out << required_choice;
+            } else {
+                bool comma = false;
+                for (int choice_id = 0; choice_id < lan_faction_choice_count(); ++choice_id) {
+                    if (!lan_faction_choice_selectable(choice_id)) continue;
+                    if (comma) out << ',';
+                    out << choice_id;
+                    comma = true;
+                }
+            }
+            out << "]}},\"requires\":[\"match_id\",\"session_id\","
                    "\"expected_lobby_revision\",\"client_operation_id\"]}";
             action_comma = true;
         }
-        if (!any_client_ready) {
+        if (!any_client_ready && *reinterpret_cast<int*>(0x90E778) == 0) {
             if (action_comma) out << ',';
             out << "{\"action\":\"configure\",\"parameters\":{\"profile\":{"
                    "\"type\":\"string\",\"enum\":[";
@@ -5200,6 +5353,8 @@ void append_lan_lobby_state(std::ostringstream& out) {
                 out << json_string(profile.id);
                 profile_comma = true;
             }
+            if (profile_comma) out << ',';
+            out << "\"custom\"";
             out << "]}},"
                    "\"requires\":[\"match_id\",\"session_id\","
                    "\"expected_lobby_revision\",\"client_operation_id\"]}";
@@ -5699,7 +5854,8 @@ bool test_fixture) {
     if (action == "discover" || action == "join") {
         return semantic_lan_join_response(request, test_fixture);
     }
-    if (action == "load_save" || action == "select_faction" || action == "configure"
+    if (action == "load_save" || action == "load_scenario"
+    || action == "select_faction" || action == "configure"
     || action == "set_ready" || action == "start") {
         if (!native_lan_lobby_active() || lan_test_lobby_pending) {
             return error_response("lan_lobby_action_unavailable",
@@ -5748,34 +5904,48 @@ bool test_fixture) {
             return error_response("lan_lobby_identity_unavailable",
                 "The native lobby has not assigned stable local and host participants yet.");
         }
-        if (action == "load_save") {
+        if (action == "load_save" || action == "load_scenario") {
             if (!local_host) {
                 return error_response("lan_load_host_only",
-                    "Only the native session host can load a multiplayer campaign.");
+                    "Only the native session host can load a multiplayer campaign or scenario.");
             }
             if (count != 1) {
                 return error_response("lan_load_requires_host_only_lobby",
                     "Load the multiplayer campaign before any clients join its lobby.");
             }
-            if (*reinterpret_cast<int*>(0x90E778) == 3) {
+            if (*reinterpret_cast<int*>(0x90E778) == 2
+            || *reinterpret_cast<int*>(0x90E778) == 3) {
                 return error_response("lan_save_already_loaded",
-                    "This native lobby has already loaded a multiplayer campaign.");
+                    "This native lobby has already loaded a multiplayer campaign or scenario.");
             }
-            std::string slot = field_string(request, "slot");
-            if (!safe_path_component(slot, 32)
-            || !safe_path_component(agent_match_id, 80)) {
-                return error_response("invalid_save_slot",
-                    "Load slots must contain 1 through 32 ASCII letters, digits, hyphens, or underscores.");
+            std::string path;
+            if (action == "load_save") {
+                std::string slot = field_string(request, "slot");
+                if (!safe_path_component(slot, 32)
+                || !safe_path_component(agent_match_id, 80)) {
+                    return error_response("invalid_save_slot",
+                        "Load slots must contain 1 through 32 ASCII letters, digits, hyphens, or underscores.");
+                }
+                path = agent_save_path(slot);
+            } else {
+                std::string scenario_id = field_string(request, "scenario_id");
+                if (!safe_scenario_id(scenario_id)) {
+                    return error_response("invalid_scenario_id",
+                        "scenario_id must be one safe relative .SC path returned by the legal-copy scenario catalog.");
+                }
+                path = agent_scenario_path(scenario_id);
             }
-            std::string path = agent_save_path(slot);
             if (GetFileAttributesA(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
-                return error_response("save_not_found",
-                    "The named multiplayer checkpoint does not exist in this host worker's match-scoped storage.");
+                return error_response(action == "load_save" ? "save_not_found" : "scenario_not_found",
+                    action == "load_save"
+                        ? "The named multiplayer checkpoint does not exist in this host worker's match-scoped storage."
+                        : "The named scenario does not exist in this worker's validated legal game copy.");
             }
         } else if (action == "select_faction") {
-            if (*reinterpret_cast<int*>(0x90E778) != 3) {
+            int game_type = *reinterpret_cast<int*>(0x90E778);
+            if (game_type != 2 && game_type != 3) {
                 return error_response("lan_faction_selection_requires_load",
-                    "Guarded faction restoration is available only in a loaded multiplayer lobby.");
+                    "Guarded faction selection is available only in a loaded multiplayer campaign or scenario lobby.");
             }
             if (lan_player_ready(local_index)) {
                 return error_response("lan_faction_selection_requires_unready",
@@ -5789,7 +5959,8 @@ bool test_fixture) {
                 return error_response("invalid_lan_faction_choice",
                     "faction_choice_id must identify a currently selectable native lobby record.");
             }
-            if (required_choice_id < 0 || faction_choice_id != required_choice_id) {
+            if (game_type == 3
+            && (required_choice_id < 0 || faction_choice_id != required_choice_id)) {
                 return error_response("wrong_loaded_faction_choice",
                     "faction_choice_id must match this player's restored native network faction binding.");
             }
@@ -5811,14 +5982,49 @@ bool test_fixture) {
                         "Every joined client must be unready before the host changes match settings.");
                 }
             }
+            if (*reinterpret_cast<int*>(0x90E778) != 0) {
+                return error_response("lan_configure_new_game_only",
+                    "Scenario and loaded-campaign settings are authoritative and cannot be overwritten in the lobby.");
+            }
             std::string profile = field_string(request, "profile");
             const LanProfile* requested_profile = lan_profile_named(profile);
-            if (!requested_profile) {
+            if (!requested_profile && profile != "custom") {
                 return error_response("unsupported_lan_profile",
-                    "Choose one of the exact guarded profiles returned by the fresh lobby legal_actions.");
+                    "Choose one guarded profile or custom as returned by the fresh lobby legal_actions.");
+            }
+            if (profile == "custom") {
+                if (request.find("\"random_leader_personalities\"") != std::string::npos
+                || request.find("\"random_leader_agendas\"") != std::string::npos) {
+                    return error_response("unsupported_custom_lan_rule",
+                        "Random leader personality and agenda flags are not part of the synchronized native LAN rules record.");
+                }
+                const int difficulty = field_int(request, "difficulty", -1);
+                const int time_control = field_int(request, "time_control", -1);
+                const int world_size = field_int(request, "world_size", -1);
+                const int ocean = field_int(request, "ocean_coverage", -1);
+                const int erosion = field_int(request, "erosive_forces", -1);
+                const int native_life = field_int(request, "native_life", -1);
+                const int clouds = field_int(request, "cloud_cover", -1);
+                if (difficulty < 0 || difficulty > 5
+                || time_control < 0 || time_control > 4
+                || world_size < 0 || world_size > 4
+                || ocean < 0 || ocean > 2 || erosion < 0 || erosion > 2
+                || native_life < 0 || native_life > 2 || clouds < 0 || clouds > 2) {
+                    return error_response("invalid_custom_lan_settings",
+                        "Custom LAN settings require difficulty 0..5, time_control 0..4, world_size 0..4, and four world levels 0..2.");
+                }
+                for (const LanRuleChoice& rule : lan_rule_choices) {
+                    bool valid = false;
+                    field_bool(request, rule.name, false, &valid);
+                    if (request.find(std::string("\"") + rule.name + "\"")
+                        != std::string::npos && !valid) {
+                        return error_response("invalid_custom_lan_rule",
+                            "Every supplied named LAN rule must be a boolean.");
+                    }
+                }
             }
             const LanProfile* current_profile = lan_active_profile();
-            if (current_profile && profile == current_profile->id) {
+            if (requested_profile && current_profile && profile == current_profile->id) {
                 return error_response("lan_profile_already_active",
                     "The requested guarded profile is already active. Follow the fresh lobby legal_actions.");
             }
@@ -5850,9 +6056,12 @@ bool test_fixture) {
             }
         }
 
-        if (action == "load_save") {
-            std::string slot = field_string(request, "slot");
-            lan_pending_load_path = agent_save_path(slot);
+        if (action == "load_save" || action == "load_scenario") {
+            std::string source_id = field_string(
+                request, action == "load_save" ? "slot" : "scenario_id");
+            lan_pending_load_path = action == "load_save"
+                ? agent_save_path(source_id) : agent_scenario_path(source_id);
+            lan_pending_load_game_type = action == "load_save" ? 3 : 2;
             InterlockedExchange(&lan_pending_load_choice_seen, 0);
             InterlockedExchange(&lan_pending_load_native_status, -1);
             InterlockedExchange(&lan_pending_load_active, 1);
@@ -5868,7 +6077,7 @@ bool test_fixture) {
             int native_status = lan_pending_load_native_status;
             lan_pending_load_path.clear();
             if (!choice_seen || native_status != SAVE_LOAD_VALID
-            || *reinterpret_cast<int*>(0x90E778) != 3) {
+            || *reinterpret_cast<int*>(0x90E778) != lan_pending_load_game_type) {
                 return std::string("{\"ok\":false,\"error\":{\"code\":\"native_lan_load_failed\","
                     "\"message\":\"The stock multiplayer lobby did not accept the named checkpoint.\"},"
                     "\"choice_seen\":") + (choice_seen ? "true" : "false")
@@ -5881,10 +6090,13 @@ bool test_fixture) {
             lan_lobby_operation_action = action;
             std::ostringstream loaded;
             loaded << "{\"ok\":true,\"duplicate\":false,"
-                << "\"action\":\"load_save\",\"slot\":"
-                << json_string(slot.c_str())
+                << "\"action\":" << json_string(action.c_str()) << ','
+                << (action == "load_save" ? "\"slot\":" : "\"scenario_id\":")
+                << json_string(source_id.c_str())
                 << ",\"native_status\":" << native_status
-                << ",\"game_type\":\"load\",\"turn\":" << *CurrentTurn
+                << ",\"game_type\":"
+                << json_string(lan_game_type_name(lan_pending_load_game_type))
+                << ",\"turn\":" << *CurrentTurn
                 << ",\"year\":" << game_year(*CurrentTurn)
                 << ",\"pixels_or_ui_input_used\":false,\"identity\":{\"match_id\":"
                 << json_string(agent_match_id.c_str()) << ",\"session_id\":"
@@ -5938,7 +6150,7 @@ bool test_fixture) {
         if (action == "configure") {
             std::string profile_id = field_string(request, "profile");
             const LanProfile* profile = lan_profile_named(profile_id);
-            if (!profile) {
+            if (!profile && profile_id != "custom") {
                 return error_response("unsupported_lan_profile",
                     "The requested guarded profile disappeared before native execution.");
             }
@@ -5946,11 +6158,35 @@ bool test_fixture) {
             unsigned char* native_settings =
                 reinterpret_cast<unsigned char*>(0x90E8E0);
             memcpy(previous_settings, native_settings, sizeof(previous_settings));
-            // Change only the two named fields.  World-generation levels,
-            // timer policy, victory conditions, and advanced rules remain
-            // exactly as selected by the host's stock lobby state.
-            native_settings[2] = static_cast<unsigned char>(profile->difficulty);
-            native_settings[6] = static_cast<unsigned char>(profile->map_size);
+            if (profile) {
+                // A named convenience profile changes only difficulty and map size.
+                native_settings[2] = static_cast<unsigned char>(profile->difficulty);
+                native_settings[6] = static_cast<unsigned char>(profile->map_size);
+            } else {
+                native_settings[2] = static_cast<unsigned char>(
+                    field_int(request, "difficulty", 0));
+                native_settings[3] = static_cast<unsigned char>(
+                    field_int(request, "time_control", 0));
+                native_settings[6] = static_cast<unsigned char>(
+                    field_int(request, "world_size", 0));
+                native_settings[7] = static_cast<unsigned char>(
+                    field_int(request, "ocean_coverage", 1));
+                native_settings[8] = static_cast<unsigned char>(
+                    field_int(request, "erosive_forces", 1));
+                native_settings[9] = static_cast<unsigned char>(
+                    field_int(request, "native_life", 1));
+                native_settings[10] = static_cast<unsigned char>(
+                    field_int(request, "cloud_cover", 1));
+                uint32_t& rule_choices = *reinterpret_cast<uint32_t*>(native_settings + 12);
+                for (const LanRuleChoice& rule : lan_rule_choices) {
+                    bool valid = false;
+                    bool enabled = field_bool(request, rule.name, false, &valid);
+                    if (!valid) continue;
+                    bool set_bit = rule.inverted ? !enabled : enabled;
+                    if (set_bit) rule_choices |= rule.bit;
+                    else rule_choices &= ~rule.bit;
+                }
+            }
             struct LanConfigurationPacket {
                 uint16_t type;
                 uint16_t reserved;
@@ -5976,7 +6212,7 @@ bool test_fixture) {
             std::ostringstream configured;
             configured << "{\"ok\":true,\"duplicate\":false,"
                 << "\"action\":\"configure\",\"profile\":"
-                << json_string(profile->id) << ','
+                << json_string(profile ? profile->id : "custom") << ','
                 << "\"native_packet_type\":12034,\"native_send_result\":"
                 << native_send_result
                 << ",\"pixels_or_ui_input_used\":false,\"settings\":";
@@ -6938,6 +7174,7 @@ std::string test_lan_diplomacy_fixture_response(const std::string& request) {
     }
     std::string trade_fixture = field_string(request, "trade_fixture");
     int technology_id = -1;
+    int joint_attack_target = -1;
     if (trade_fixture == "technology") {
         for (int candidate = 0; candidate < MaxTechnologyNum; ++candidate) {
             if (Tech[candidate].name[0]) {
@@ -6954,6 +7191,20 @@ std::string test_lan_diplomacy_fixture_response(const std::string& request) {
     } else if (trade_fixture == "energy") {
         Factions[faction_id].energy_credits = 500;
         Factions[other].energy_credits = 100;
+    } else if (trade_fixture == "joint_attack") {
+        for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+            if (candidate != faction_id && candidate != other
+            && is_alive(candidate)) {
+                joint_attack_target = candidate;
+                break;
+            }
+        }
+        if (joint_attack_target < 0) {
+            return error_response("missing_diplomacy_trade_fixture",
+                "No live third faction exists for the contained joint-attack fixture.");
+        }
+        Factions[faction_id].diplo_status[joint_attack_target] |= DIPLO_COMMLINK;
+        Factions[joint_attack_target].diplo_status[faction_id] |= DIPLO_COMMLINK;
     }
     std::ostringstream out;
     out << "{\"ok\":true,\"faction_id\":" << faction_id
@@ -6969,6 +7220,10 @@ std::string test_lan_diplomacy_fixture_response(const std::string& request) {
             << Factions[faction_id].energy_credits
             << ",\"recipient_energy_credits\":"
             << Factions[other].energy_credits;
+    } else if (joint_attack_target >= 0) {
+        out << ",\"target_faction_id\":" << joint_attack_target
+            << ",\"target_faction_name\":"
+            << json_string(MFactions[joint_attack_target].formal_name_faction);
     }
     out << '}';
     return out.str();
@@ -7161,6 +7416,51 @@ std::string semantic_snapshot_response() {
         << ",\"energy_credits\":" << faction.energy_credits
         << ",\"bases\":" << own_bases << ",\"units\":" << own_units
         << ",\"ready_units\":" << ready_units << '}'
+        << ",\"game_settings\":{\"difficulty\":{\"id\":" << *DiffLevel
+        << ",\"name\":" << json_string(lan_difficulty_name(*DiffLevel))
+        << "},\"map\":{\"size_id\":" << *MapSizePlanet
+        << ",\"size_name\":" << json_string(lan_map_size_name(*MapSizePlanet))
+        << ",\"width\":" << *MapAreaX << ",\"height\":" << *MapAreaY
+        << ",\"ocean_coverage\":" << *MapOceanCoverage
+        << ",\"erosive_forces\":" << *MapErosiveForces
+        << ",\"native_life\":" << *MapNativeLifeForms
+        << ",\"cloud_cover\":" << *MapCloudCover << "},\"rules\":";
+    append_named_game_rules(out, *GameRules, *GameState);
+    char scenario_id[520] = {};
+    bool scenario_launch = GetEnvironmentVariableA(
+        "SMACX_AGENT_STARTUP_SCENARIO", scenario_id, sizeof(scenario_id));
+    if (!scenario_launch) {
+        scenario_launch = GetEnvironmentVariableA(
+            "SMACX_AGENT_LAN_SCENARIO", scenario_id, sizeof(scenario_id));
+    }
+    scenario_launch = scenario_launch || ((*GameState & STATE_IS_SCENARIO) != 0);
+    out << "},\"scenario\":{\"active\":" << (scenario_launch ? "true" : "false")
+        << ",\"scenario_id\":";
+    if (scenario_launch) out << json_string(scenario_id);
+    else out << "null";
+    out << ",\"forced_current_difficulty\":"
+        << ((*GameRules & RULES_SCN_FORCE_CURRENT_DIFF_LEVEL) ? "true" : "false")
+        << ",\"forced_current_faction\":"
+        << ((*GameRules & RULES_SCN_FORCE_PLAYER_PLAY_CURRENT_FACT) ? "true" : "false")
+        << ",\"technology_trading\":"
+        << ((*GameRules & RULES_SCN_NO_TECH_TRADING) ? "false" : "true")
+        << ",\"technology_advances\":"
+        << ((*GameRules & RULES_SCN_NO_TECH_ADVANCES) ? "false" : "true")
+        << ",\"colony_pods\":"
+        << ((*GameRules & RULES_SCN_NO_COLONY_PODS) ? "false" : "true")
+        << ",\"terraforming\":"
+        << ((*GameRules & RULES_SCN_NO_TERRAFORMING) ? "false" : "true")
+        << ",\"native_life\":"
+        << ((*GameRules & RULES_SCN_NO_NATIVE_LIFE) ? "false" : "true")
+        << ",\"secret_project_building\":"
+        << ((*GameRules & RULES_SCN_NO_BUILDING_SP) ? "false" : "true")
+        << ",\"planetary_council\":"
+        << ((*GameMoreRules & MRULES_NO_PLANETARY_COUNCIL) ? "false" : "true")
+        << ",\"social_engineering\":"
+        << ((*GameMoreRules & MRULES_NO_SOCIAL_ENGINEERING) ? "false" : "true")
+        << ",\"objective_required\":" << *ObjectiveReqVictory
+        << ",\"objective_sudden_death\":" << *ObjectivesSuddenDeathVictory
+        << ",\"ending_mission_year\":" << *EndingMissionYear << '}'
         << ",\"ready_unit_refs\":[";
     bool ready_comma = false;
     for (int veh_id = 0; veh_id < *VehCount; ++veh_id) {
@@ -7327,6 +7627,7 @@ std::string semantic_snapshot_response() {
         << "\"propose_human_relationship:treaty_pact_or_truce\","
         << "\"propose_human_technology:exact_owned_technology\","
         << "\"propose_human_energy:bounded_owned_credits\","
+        << "\"propose_human_joint_attack:exact_contacted_third_faction\","
         << "\"respond_human_diplomacy:accept_or_decline_complete_offer\","
         << "\"finish_human_diplomacy:native_end_transmission\","
         << "\"respond_to_contact:accept_or_decline_ai_channel\","
@@ -9439,6 +9740,17 @@ std::string semantic_choices_response(const std::string& request) {
                     "\"meaning\":\"Send and commit one exact caller-selected amount of player-owned energy credits through the native human-diplomacy transmission.\"}";
                 first = false;
             }
+            for (int target = 1; target < MaxPlayerNum; ++target) {
+                if (!human_joint_attack_proposal_legal(faction_id, target)) continue;
+                if (!first) out << ',';
+                out << "{\"id\":\"human_diplomacy:propose_joint_attack:"
+                    << target << "\",\"command\":\"propose_human_joint_attack\","
+                    "\"target_faction_id\":" << target
+                    << ",\"target_faction_name\":"
+                    << json_string(MFactions[target].formal_name_faction)
+                    << ",\"meaning\":\"Send and commit an exact joint-attack proposal naming this contacted, live third faction through the native human-diplomacy transmission.\"}";
+                first = false;
+            }
             int local_side = human_diplomacy_local_side(faction_id);
             int incoming_side = local_side < 0 ? -1 : 1 - local_side;
             if (incoming_side >= 0
@@ -10836,6 +11148,12 @@ std::string semantic_command_response(const std::string& request) {
     bool validated_multiplayer_human_energy =
         command == "propose_human_energy"
         && human_energy_proposal_legal(faction_id, multiplayer_human_energy);
+    int multiplayer_human_joint_attack = field_int(
+        request, "target_faction_id", -1);
+    bool validated_multiplayer_human_joint_attack =
+        command == "propose_human_joint_attack"
+        && human_joint_attack_proposal_legal(
+            faction_id, multiplayer_human_joint_attack);
     int multiplayer_human_diplomacy_side =
         human_diplomacy_local_side(faction_id);
     std::string multiplayer_human_diplomacy_response =
@@ -11034,6 +11352,7 @@ std::string semantic_command_response(const std::string& request) {
         || validated_multiplayer_human_relationship
         || validated_multiplayer_human_technology
         || validated_multiplayer_human_energy
+        || validated_multiplayer_human_joint_attack
         || validated_multiplayer_human_diplomacy_response
         || validated_multiplayer_contact_response
         || validated_multiplayer_ai_greeting
@@ -11191,6 +11510,50 @@ std::string semantic_command_response(const std::string& request) {
             "\"offering_faction_id\":") + std::to_string(faction_id)
             + ",\"energy_credits\":" + std::to_string(amount)
             + ",\"native_clause_type\":1,\"clause_count\":"
+            + std::to_string(current_count)
+            + ",\"proposer_committed\":true}";
+    }
+    if (command == "propose_human_joint_attack") {
+        int target = field_int(request, "target_faction_id", -1);
+        if (!human_joint_attack_proposal_legal(faction_id, target)) {
+            return error_response("human_diplomacy_joint_attack_changed",
+                "The reviewed contacted target is no longer a legal joint-attack proposal in this human conversation.");
+        }
+        int local_side = human_diplomacy_local_side(faction_id);
+        int previous_count = human_diplomacy_clause_count(local_side);
+        typedef void(__thiscall *DiploWindowAddClause)(void*, int, int, int);
+        DiploWindowAddClause add_clause =
+            reinterpret_cast<DiploWindowAddClause>(0x441490);
+        // Native action 7 opens the faction selector and adds clause type 5.
+        // The semantic choice supplies only a live, contacted third faction
+        // already visible to the local player, without opening that selector.
+        add_clause(DiploWin, 0, 5, target);
+        if (*MultiplayerActive) NetDaemon_await_exec(NetState, 1);
+        int current_count = human_diplomacy_clause_count(local_side);
+        if (current_count <= previous_count
+        || !human_diplomacy_has_clause_value(local_side, 5, target)) {
+            return error_response("native_human_diplomacy_rejected",
+                "The native diplomacy window did not add the reviewed joint-attack clause.");
+        }
+        if (!human_diplomacy_window_active()) {
+            return error_response("native_human_diplomacy_closed_before_commit",
+                "The native diplomacy window closed before the reviewed joint-attack offer could be committed. Observe and open a fresh channel.");
+        }
+        typedef void(__thiscall *DiploWindowAction)(void*, int);
+        DiploWindowAction commit = reinterpret_cast<DiploWindowAction>(0x4415C0);
+        commit(DiploWin, 2);
+        if (*MultiplayerActive) NetDaemon_await_exec(NetState, 1);
+        bool active = human_diplomacy_window_active();
+        if (active && human_diplomacy_acceptance(local_side) != 1) {
+            return error_response("native_human_diplomacy_rejected",
+                "The native diplomacy window did not commit the reviewed joint-attack offer.");
+        }
+        return std::string("{\"ok\":true,\"command\":\"propose_human_joint_attack\","
+            "\"offering_faction_id\":") + std::to_string(faction_id)
+            + ",\"target_faction_id\":" + std::to_string(target)
+            + ",\"target_faction_name\":"
+            + json_string(MFactions[target].formal_name_faction)
+            + ",\"native_clause_type\":5,\"clause_count\":"
             + std::to_string(current_count)
             + ",\"proposer_committed\":true}";
     }
@@ -14984,9 +15347,9 @@ void* This, int left, int top, void* callback) {
     if (InterlockedCompareExchange(&lan_pending_load_active, 1, 1) == 1) {
         InterlockedExchange(&lan_pending_load_choice_seen, 1);
         // The stock list is New Game, Scenario, Multiplayer Scenario, Load.
-        // Returning its semantic Load index preserves the surrounding native
+        // Returning the requested semantic index preserves the surrounding native
         // NetWindow logic while bypassing only the modal selector.
-        return 3;
+        return lan_pending_load_game_type;
     }
     typedef int(__thiscall *FNativeGameTypeChoice)(
         void*, int, int, void*);
@@ -15005,8 +15368,9 @@ int __cdecl agent_multiplayer_load_game(int save_mode, int flags) {
             // selection bypasses that presentation, so preserve precisely the
             // same bookkeeping before the stock handler publishes packet
             // 0x2F03 and rebuilds the loaded-faction lobby.
-            *reinterpret_cast<int*>(reinterpret_cast<char*>(NetWin) + 0x7728) = 3;
-            *reinterpret_cast<int*>(0x90E778) = 3;
+            *reinterpret_cast<int*>(reinterpret_cast<char*>(NetWin) + 0x7728)
+                = lan_pending_load_game_type;
+            *reinterpret_cast<int*>(0x90E778) = lan_pending_load_game_type;
         }
         InterlockedExchange(&lan_pending_load_native_status, status);
         return status;

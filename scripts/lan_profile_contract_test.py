@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import re
 
+from smacx_game_settings import LAN_RULE_FIELDS, normalize_lan_game_settings
+from smacx_store import InvalidRecord
 from smacx_worker_manager import LAN_PROFILES
 
 
@@ -36,9 +38,38 @@ def main() -> int:
             "native": native_profiles, "manager": sorted(LAN_PROFILES),
             "ui": sorted(ui_profiles),
         })
+    custom = normalize_lan_game_settings({
+        "difficulty": 5, "time_control": 4, "world_size": 4,
+        "ocean_coverage": 2, "erosive_forces": 0,
+        "native_life": 2, "cloud_cover": 0,
+        **{field: index % 2 == 0 for index, field in enumerate(LAN_RULE_FIELDS)},
+    })
+    if set(custom) != {
+            "difficulty", "time_control", "world_size", "ocean_coverage",
+            "erosive_forces", "native_life", "cloud_cover", *LAN_RULE_FIELDS,
+    }:
+        raise AssertionError("typed LAN setting family was not preserved")
+    for invalid in (
+        {"difficulty": 6, "time_control": 0, "world_size": 0,
+         "ocean_coverage": 0, "erosive_forces": 0, "native_life": 0,
+         "cloud_cover": 0},
+        {"difficulty": 0, "time_control": 5, "world_size": 0,
+         "ocean_coverage": 0, "erosive_forces": 0, "native_life": 0,
+         "cloud_cover": 0},
+        {"difficulty": 0, "time_control": 0, "world_size": 0,
+         "ocean_coverage": 0, "erosive_forces": 0, "native_life": 0,
+         "cloud_cover": 0, "random_leader_agendas": True},
+    ):
+        try:
+            normalize_lan_game_settings(invalid)
+        except InvalidRecord:
+            pass
+        else:
+            raise AssertionError(f"invalid custom LAN settings accepted: {invalid}")
     print(json.dumps({"event": "pass", "payload": {
         "profiles": EXPECTED,
         "native_manager_ui_consistent": True,
+        "typed_custom_settings": True,
         "arbitrary_settings_rejected": True,
     }}, separators=(",", ":")))
     return 0

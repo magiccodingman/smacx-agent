@@ -28,7 +28,9 @@ actually observed.
 - **Fair play is enforced below the prompt.** Fog of war, perspective,
   ownership, match/session identity, stale observations, and destructive
   confirmations are checked by the bridge and MCP—not merely requested in a
-  system prompt.
+  system prompt. Private mechanics retrieval is additionally bound to the
+  seat's exact legal game source, so different installations or mods cannot
+  contaminate one another.
 - **Political memory survives context windows.** SQLite stores immutable
   events, chat, facts, beliefs, relationships, commitments, goals, and
   summaries per match, agent, and perspective. Scoped FTS5/BM25 recall is
@@ -94,12 +96,13 @@ know.
 | View-only noVNC spectators | Implemented and live-tested |
 | Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore plus verified worker and Hermes-conversation archives tested |
 | Optional Graphiti projector | One-command isolated Neo4j/Graphiti profile implemented and backend-live-tested; disabled until compatible chat and embedding endpoints are configured |
-| Focused Alien Crossfire rules/search corpus | Implemented; 19 independently written, provenance-tracked primers with compact BM25-then-get retrieval; not a complete manual/wiki |
+| Focused Alien Crossfire rules/search corpus | Implemented; 18 independently written, provenance-tracked primers plus an optional private mechanics index built from the operator's legal copy; no guides or scenario solutions |
 | Internet/virtual-LAN transport | Encrypted, firewalled Tailscale route implemented and packet-live-tested locally; an actual remote second machine still requires certification |
 | Windows/WSL2 deployment | Preflight and routed Docker design implemented; physical Windows 11/WSL2 certification remains external |
 | Random-map LAN profiles | Five guarded Citizen/Tiny through Transcend/Huge profiles passed a real two-process DirectPlay matrix |
-| Human-hosted custom rules | Native settings synchronize to agents; world levels are named, while timer/rule masks are preserved but not yet semantically decoded |
-| Scenarios and every obscure LAN mutation | Not claimed; scenario launch and exact listed mutations remain fail-closed |
+| Typed custom setup | Solo and AI-hosted LAN difficulty, world generation, timer, victory conditions, and game rules are named, validated, and native-live-tested |
+| Solo and multiplayer scenarios | Legal-copy catalogs, exact typed selection, native scenario loading, faction selection, and scenario restrictions are live-tested without UI input |
+| Obscure interactions and unverified LAN mutations | Exact listed mutations remain fail-closed; unknown mandatory states latch a capability gap instead of falling back to pixels |
 
 See [Project status](docs/project-status.md) for the exact boundary between
 delivered, validated, optional/manual, and planned work. See

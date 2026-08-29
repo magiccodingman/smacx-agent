@@ -44,19 +44,25 @@ def seed_reference_corpus(store: SmacxStore, path: Path | str = DEFAULT_CORPUS) 
 
 def read_reference(store: SmacxStore, action: str, *, query: str = "",
                    topic: str = "", document_id: str = "", limit: int = 8,
-                   include_body: bool = False) -> dict[str, Any]:
+                   include_body: bool = False,
+                   private_prefix: str | None = None) -> dict[str, Any]:
     if action == "topics":
-        return {"ok": True, "topics": store.list_reference_topics()}
+        return {"ok": True, "topics": store.list_reference_topics(
+            private_prefix=private_prefix,
+        )}
     if action == "get":
         if not document_id:
             return {"ok": False, "error": "reference_document_id_required"}
-        return {"ok": True, "document": store.get_reference_document(document_id)}
+        return {"ok": True, "document": store.get_reference_document(
+            document_id, private_prefix=private_prefix,
+        )}
     if action == "search":
         if not query.strip():
             return {"ok": False, "error": "reference_query_required"}
         return {"ok": True, "query": query, "topic": topic or None,
                 "results": store.search_reference(
                     query, topic=topic or None, limit=limit, include_body=include_body,
+                    private_prefix=private_prefix,
                 )}
     return {"ok": False, "error": "invalid_reference_action"}
 

@@ -2493,10 +2493,17 @@ class SmacxStore:
                 (document_id, topic, title, summary, body, " ".join(normalized_tags),
                  source_url, source_title, source_license, provenance, content_sha256, now),
             )
-        return self.get_reference_document(document_id)
+        return self.get_reference_document(
+            document_id,
+            private_prefix=(document_id if document_id.startswith("private.") else None),
+        )
 
-    def get_reference_document(self, document_id: str) -> dict[str, Any]:
+    def get_reference_document(self, document_id: str, *,
+                               private_prefix: str | None = None) -> dict[str, Any]:
         document_id = _require_key(document_id, "reference_document_id")
+        if document_id.startswith("private.") \
+                and (private_prefix is None or not document_id.startswith(private_prefix)):
+            raise ScopeViolation("unknown_reference_document")
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT * FROM reference_documents WHERE document_id=?", (document_id,),
@@ -2505,21 +2512,49 @@ class SmacxStore:
             raise ScopeViolation("unknown_reference_document")
         return dict(row)
 
-    def list_reference_topics(self) -> list[dict[str, Any]]:
+    def delete_reference_documents(self, document_id_prefix: str) -> int:
+        """Replace one generated private-source namespace without a migration."""
+        prefix = _require_key(document_id_prefix, "reference_document_prefix")
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM reference_documents WHERE document_id LIKE ? ESCAPE '\\'",
+                (escaped + "%",),
+            )
+        return int(cursor.rowcount)
+
+    def list_reference_topics(self, *,
+                              private_prefix: str | None = None) -> list[dict[str, Any]]:
+        clauses = ["document_id NOT LIKE 'private.%'"]
+        parameters: list[Any] = []
+        if private_prefix is not None:
+            prefix = _require_key(private_prefix, "reference_document_prefix")
+            escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append("document_id LIKE ? ESCAPE '\\'")
+            parameters.append(escaped + "%")
         with self._connect() as connection:
             return [dict(row) for row in connection.execute(
                 "SELECT topic, count(*) AS document_count FROM reference_documents "
-                "GROUP BY topic ORDER BY topic"
+                "WHERE (" + " OR ".join(clauses) + ") GROUP BY topic ORDER BY topic",
+                parameters,
             ).fetchall()]
 
     def search_reference(self, query: str, *, topic: str | None = None,
-                         limit: int = 8, include_body: bool = False) -> list[dict[str, Any]]:
+                         limit: int = 8, include_body: bool = False,
+                         private_prefix: str | None = None) -> list[dict[str, Any]]:
         terms = re.findall(r"[\w'-]+", query, flags=re.UNICODE)
         if not terms:
             raise InvalidRecord("empty_reference_query")
         fts_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms[:16])
         clauses = ["reference_fts MATCH ?"]
         parameters: list[Any] = [fts_query]
+        visibility = ["d.document_id NOT LIKE 'private.%'"]
+        if private_prefix is not None:
+            prefix = _require_key(private_prefix, "reference_document_prefix")
+            escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            visibility.append("d.document_id LIKE ? ESCAPE '\\'")
+            parameters.append(escaped + "%")
+        clauses.append("(" + " OR ".join(visibility) + ")")
         if topic:
             clauses.append("d.topic=?")
             parameters.append(_require_key(topic, "reference_topic"))

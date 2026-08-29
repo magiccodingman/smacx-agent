@@ -1426,6 +1426,89 @@ def negotiate_human_energy(
     }, separators=(",", ":")))
 
 
+def negotiate_human_joint_attack(
+    host_faction_id: int, join_faction_id: int, target_faction_id: int,
+) -> None:
+    """Synchronize and accept one exact native joint-attack clause."""
+    resolve_opening_interactions_pair()
+    opened = open_paired_human_diplomacy(join_faction_id, "joint attack")
+    host_choices = request(HOST_PORT, "semantic_choices", kind="interaction")
+    exact_choice = next(
+        (
+            choice for choice in host_choices.get("choices", [])
+            if choice.get("command") == "propose_human_joint_attack"
+            and choice.get("target_faction_id") == target_faction_id
+        ),
+        None,
+    )
+    if exact_choice is None:
+        raise AssertionError(
+            f"exact contacted joint-attack target was absent: {host_choices}"
+        )
+    proposed, host_choices = interaction_command_fresh(
+        HOST_PORT, "propose_human_joint_attack", "human joint attack offer",
+        initial_choices=host_choices, target_faction_id=target_faction_id,
+    )
+    if not proposed.get("ok") or proposed.get("native_clause_type") != 5 \
+            or proposed.get("target_faction_id") != target_faction_id \
+            or proposed.get("proposer_committed") is not True:
+        raise AssertionError(
+            f"human joint-attack offer was not atomically committed: {proposed}"
+        )
+    wait_snapshot_predicate(
+        JOIN_PORT,
+        lambda state: state.get("interaction", {}).get("kind")
+        == "human_diplomacy",
+        seconds=20,
+    )
+    join_choices = request(JOIN_PORT, "semantic_choices", kind="interaction")
+    join_context = next(
+        (choice for choice in join_choices.get("choices", [])
+         if choice.get("id") == "human_diplomacy:context"),
+        {},
+    )
+    if not any(
+        clause.get("offering_faction_id") == host_faction_id
+        and clause.get("clause") == "joint_attack"
+        and clause.get("target_faction_id") == target_faction_id
+        for clause in join_context.get("clauses", [])
+    ):
+        raise AssertionError(
+            f"peer did not observe exact joint-attack clause: {join_choices}"
+        )
+    accepted, join_choices = respond_human_diplomacy_fresh(
+        JOIN_PORT, "accept", "human joint attack recipient",
+    )
+    if not accepted.get("ok"):
+        raise AssertionError(f"joint-attack acceptance failed: {accepted}")
+    for port in (HOST_PORT, JOIN_PORT):
+        snapshot = required_snapshot(port, "joint-attack agreement close")
+        if snapshot.get("interaction", {}).get("kind") != "human_diplomacy":
+            continue
+        finished, choices = finish_human_diplomacy_fresh(
+            port, "human joint attack close",
+        )
+        if not finished.get("ok"):
+            raise AssertionError(
+                f"joint-attack transmission did not close: {finished}"
+            )
+    completed = wait_action_complete(HOST_PORT, opened["action_id"], seconds=20)
+    if completed.get("status") != "completed":
+        raise AssertionError(
+            f"joint-attack opening did not complete: {completed}"
+        )
+    resolve_opening_interactions_pair()
+    print(json.dumps({
+        "event": "pass",
+        "human_joint_attack_clause_synchronized": True,
+        "human_joint_attack_accepted_both_windows": True,
+        "target_faction_id": target_faction_id,
+        "target_faction_name": exact_choice.get("target_faction_name"),
+        "native_clause_type": 5,
+        "pixels_or_ui_input_used": False,
+    }, separators=(",", ":")))
+
+
 def main() -> int:
     join_display_process = launch_join_display()
     pair_process = launch_pair()
@@ -1630,7 +1713,7 @@ def main() -> int:
             "truce": "vendetta",
         }[human_relationship_mode]
         human_trade_mode = os.environ.get("SMACX_TEST_HUMAN_TRADE", "")
-        if human_trade_mode not in {"", "technology", "energy"}:
+        if human_trade_mode not in {"", "technology", "energy", "joint_attack"}:
             raise AssertionError(
                 f"unsupported human trade test mode: {human_trade_mode}"
             )
@@ -1668,6 +1751,13 @@ def main() -> int:
                 host_faction_id,
                 join_faction_id,
                 amount=75,
+            )
+            return 0
+        if human_trade_mode == "joint_attack":
+            negotiate_human_joint_attack(
+                host_faction_id,
+                join_faction_id,
+                int(diplomacy_fixture_host["target_faction_id"]),
             )
             return 0
         if human_relationship_mode != "treaty":

@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence
 import re
 import uuid
 
+from smacx_game_settings import game_settings_environment, normalize_game_settings
 from smacx_store import MemoryScope, SmacxStore, StoreError
 from smacx_reference import read_reference as read_reference_store
 
@@ -45,6 +46,7 @@ PLATFORM_DB_PATH = Path(os.environ.get(
     / "smacx-agent" / "smacx.sqlite3",
 ))
 DEFAULT_AGENT_ID = os.environ.get("SMACX_AGENT_ID", "agent-default")
+GAME_SOURCE_ID = os.environ.get("SMACX_GAME_SOURCE_ID", "")
 IDENTITY_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,80}$")
 SLOT_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 KNOWLEDGE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
@@ -906,6 +908,7 @@ def read_game_reference(action: str, *, query: str = "", topic: str = "",
         return read_reference_store(
             _store(), action, query=query, topic=topic, document_id=document_id,
             limit=limit, include_body=include_body,
+            private_prefix=(f"private.{GAME_SOURCE_ID}." if GAME_SOURCE_ID else None),
         )
     except (StoreError, ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}
@@ -1128,6 +1131,8 @@ def launch_game(
     perspective_id: str | None = None,
     instance_id: str | None = None,
     startup_save: str | None = None,
+    startup_scenario: str | None = None,
+    game_settings: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if bridge_available():
         result: dict[str, Any] = {"ok": True, "launched": False, "reason": "already_running"}
@@ -1136,8 +1141,37 @@ def launch_game(
         session_id = session_id or f"session-{uuid.uuid4().hex}"
         if not IDENTITY_PATTERN.fullmatch(match_id) or not IDENTITY_PATTERN.fullmatch(session_id):
             return {"ok": False, "error": "invalid_game_identity"}
-        if autostart and startup_save:
+        if autostart and (startup_save or startup_scenario):
             return {"ok": False, "error": "conflicting_startup_modes"}
+        if startup_save and startup_scenario:
+            return {"ok": False, "error": "conflicting_startup_modes"}
+        scenario_argument: str | None = None
+        if startup_scenario:
+            parts = startup_scenario.split("/")
+            if not parts or len(startup_scenario) > 512 \
+                    or not startup_scenario.upper().endswith(".SC") \
+                    or any(part in ("", ".", "..") or not re.fullmatch(
+                        r"[A-Za-z0-9][A-Za-z0-9 _.'()-]{0,95}", part,
+                    ) for part in parts):
+                return {"ok": False, "error": "invalid_scenario_id"}
+            path = GAME / "scenarios"
+            for part in parts:
+                path /= part
+            resolved = path.resolve()
+            if not resolved.is_file() or GAME.resolve() not in resolved.parents:
+                return {"ok": False, "error": "scenario_unavailable"}
+            scenario_argument = "scenarios\\" + "\\".join(parts)
+        normalized_settings: dict[str, Any] = {}
+        if autostart:
+            settings_input = dict(game_settings or {})
+            settings_input.setdefault("world_size", world_size)
+            settings_input.setdefault("blind_research", blind_research)
+            try:
+                normalized_settings = normalize_game_settings(
+                    settings_input, default_blind_research=blind_research,
+                )
+            except StoreError as exc:
+                return {"ok": False, "error": "invalid_game_settings", "message": str(exc)}
         missing = [str(path) for path in (PRESSURE_VESSEL, PROTON, GAME / "thinker.exe", GAME / "thinker.dll") if not path.exists()]
         if missing:
             return {"ok": False, "error": "missing_runtime", "paths": missing}
@@ -1149,7 +1183,8 @@ def launch_game(
                 perspective_id=perspective_id,
                 instance_id=instance_id,
                 faction_id=faction_id if autostart else None,
-                mode="singleplayer" if autostart else ("load" if startup_save else "interactive"),
+                mode=("singleplayer" if autostart else "scenario" if startup_scenario
+                      else "load" if startup_save else "interactive"),
                 loaded_save=startup_save,
                 start_session=True,
             )
@@ -1183,9 +1218,20 @@ def launch_game(
             )
             if not blind_research and initial_tech_id >= 0:
                 environment["SMACX_AGENT_INITIAL_TECH_ID"] = str(initial_tech_id)
+            environment.update(game_settings_environment(normalized_settings))
+        if startup_scenario:
+            environment.update({
+                "SMACX_AGENT_STARTUP_SCENARIO": startup_scenario,
+                "SMACX_AGENT_DIFFICULTY": str(min(max(difficulty, 0), 5)),
+                "SMACX_AGENT_FACTION_ID": str(min(max(faction_id, 1), 7)),
+                "SMACX_AGENT_NARRATIVE_UI": "1" if narrative_ui else "0",
+                "SMACX_AGENT_TUTORIAL_UI": "1" if tutorial_ui else "0",
+            })
         command = [str(PRESSURE_VESSEL), "--", str(PROTON), "run", str(GAME / "thinker.exe"), "-windowed"]
         if startup_save:
             command.append(startup_save)
+        if startup_scenario:
+            command.append(str(scenario_argument))
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with LOG_FILE.open("ab", buffering=0) as log:
             subprocess.Popen(
@@ -1218,6 +1264,8 @@ def launch_game(
         }
         if startup_save:
             session_record["loaded_save"] = startup_save
+        if startup_scenario:
+            session_record["scenario_id"] = startup_scenario
         sessions.append(session_record)
         manifest.update({
             "match_id": match_id,
@@ -1234,6 +1282,8 @@ def launch_game(
         })
         if startup_save:
             manifest["last_loaded_save"] = startup_save
+        if startup_scenario:
+            manifest["scenario_id"] = startup_scenario
         match_dir = _write_match_manifest(match_id, manifest)
         result = {
             "ok": True,
@@ -1261,6 +1311,7 @@ def new_game(
     agent_id: str | None = None,
     perspective_id: str | None = None,
     instance_id: str | None = None,
+    game_settings: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if bridge_available():
         state = bridge_request("status")
@@ -1288,6 +1339,7 @@ def new_game(
         agent_id=agent_id,
         perspective_id=perspective_id,
         instance_id=instance_id,
+        game_settings=game_settings,
     )
     if not launched.get("ok"):
         return launched
@@ -1314,6 +1366,16 @@ def new_game(
                     "narrative_ui": narrative_ui,
                     "tutorial_ui": tutorial_ui,
                     "input_method": "native_noninteractive_setup",
+                    "game_settings": normalize_game_settings(
+                        {
+                            **dict(game_settings or {}),
+                            "world_size": dict(game_settings or {}).get("world_size", world_size),
+                            "blind_research": dict(game_settings or {}).get(
+                                "blind_research", blind_research,
+                            ),
+                        },
+                        default_blind_research=blind_research,
+                    ),
                 },
                 "identity": launched["identity"],
                 "knowledge_directory": str(KNOWLEDGE_ROOT / match_id),
@@ -1322,6 +1384,68 @@ def new_game(
             }
         time.sleep(0.5)
     return {"ok": False, "error": "semantic_setup_timeout", "last_state": last, "log": str(LOG_FILE)}
+
+
+def scenario_game(
+    scenario_id: str,
+    wait_seconds: int = 90,
+    difficulty: int = 0,
+    faction_id: int = 1,
+    narrative_ui: bool = False,
+    tutorial_ui: bool = False,
+    match_id: str | None = None,
+    agent_id: str | None = None,
+    perspective_id: str | None = None,
+    instance_id: str | None = None,
+) -> dict[str, Any]:
+    if bridge_available():
+        return {"ok": False, "error": "game_already_running"}
+    match_id = match_id or f"match-{uuid.uuid4().hex}"
+    launched = launch_game(
+        wait_seconds=min(max(wait_seconds, 5), 120),
+        difficulty=difficulty, faction_id=faction_id,
+        narrative_ui=narrative_ui, tutorial_ui=tutorial_ui,
+        match_id=match_id, session_id=f"session-{uuid.uuid4().hex}",
+        agent_id=agent_id, perspective_id=perspective_id, instance_id=instance_id,
+        startup_scenario=scenario_id,
+    )
+    if not launched.get("ok"):
+        return launched
+    deadline = time.monotonic() + min(max(wait_seconds, 5), 120)
+    last: dict[str, Any] = launched.get("state", {})
+    while time.monotonic() < deadline:
+        try:
+            last = bridge_request("semantic_snapshot")
+        except BridgeUnavailable:
+            time.sleep(0.5)
+            continue
+        snapshot = last.get("snapshot", {})
+        if snapshot.get("scenario", {}).get("active") is True:
+            return {"ok": True, "launched": True, "scenario_id": scenario_id,
+                    "identity": launched["identity"], "snapshot": last}
+        time.sleep(0.5)
+    return {"ok": False, "error": "semantic_scenario_timeout", "last_state": last}
+
+
+def list_scenarios() -> dict[str, Any]:
+    root = GAME / "scenarios"
+    scenarios: list[dict[str, Any]] = []
+    if not root.is_dir() or root.is_symlink():
+        return {"ok": True, "scenarios": scenarios}
+    for path in sorted(root.rglob("*.SC"), key=lambda item: item.as_posix().casefold()):
+        relative = path.relative_to(root)
+        if path.is_symlink() or not path.is_file() or len(relative.parts) > 6 \
+                or not all(re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9 _.'()-]{0,95}", part,
+                ) for part in relative.parts):
+            continue
+        scenarios.append({
+            "scenario_id": relative.as_posix(), "display_name": path.stem,
+            "size_bytes": path.stat().st_size,
+        })
+        if len(scenarios) >= 256:
+            break
+    return {"ok": True, "scenarios": scenarios, "assets_distributed": False}
 
 
 def stop_game(wait_seconds: int = 10) -> dict[str, Any]:

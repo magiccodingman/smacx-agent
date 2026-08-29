@@ -145,6 +145,19 @@ client state and no visual input. The MCP and authenticated Control Center API
 expose the reviewed capability ledger, including external-certification
 boundaries and exact fail-closed gaps.
 
+Typed custom setup now covers solo and AI-hosted LAN difficulty, map size,
+ocean coverage, erosive forces, native life, cloud cover, victory conditions,
+and all ordinary game-rule toggles. LAN additionally exposes the five bounded
+native timer choices. A deliberately asymmetric two-process matrix proved that
+every named field converged on both native copies; raw masks remain diagnostic,
+not an agent-facing guessing interface.
+
+The legal-copy scenario catalog is discovered through a read-only worker. Solo
+and multiplayer scenario launches use an exact catalog ID, never a path or menu
+click. Multiplayer scenarios load before peers join, expose only the native
+scenario faction records, preserve scenario-authored restrictions, and passed
+a two-worker DirectPlay launch into gameplay.
+
 ## Not yet delivered
 
 - First-class personality-card editing and behavioral evaluation. Durable
@@ -153,10 +166,6 @@ boundaries and exact fail-closed gaps.
 - Physical two-machine human-LAN and Windows 11/WSL2 certification. The
   implementation and runnable checklists exist, but those external environments
   are required to produce honest evidence.
-- Typed single-player and multiplayer scenario selection/launch. The legal
-  Steam source contains scenario files, but the isolated native test import did
-  not include them and the bridge exposes no scenario-selector contract; it
-  never falls back to menu clicking.
 - Every rare scenario interaction or LAN synchronization path. See
   [Coverage and limits](coverage.md); missing mandatory interactions fail
   closed.
@@ -165,9 +174,9 @@ boundaries and exact fail-closed gaps.
 
 The implementation milestone is complete only up to the evidence boundary
 above. Release certification still requires a physical mixed game across two
-machines, the same matrix on Windows 11/WSL2, and supplied scenario content for
-typed scenario-launch development and tests. Rare consequential LAN mutations
-remain withheld until their two-client effects converge in native tests.
+machines and the same matrix on Windows 11/WSL2. Rare consequential LAN
+mutations remain withheld until their two-client effects converge in native
+tests.
 
 Personality-card semantics are intentionally outside this milestone. The
 opaque attachment seam remains reserved, but card format, editing, prompting,

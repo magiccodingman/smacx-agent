@@ -96,6 +96,42 @@ def overlay_bridge(game: Path) -> None:
     bridge = Path("/opt/smacx/bridge")
     for name in ("thinker.exe", "thinker.dll"):
         shutil.copy2(bridge / name, game / name)
+    shutil.copy2("/opt/smacx/thinker.ini", game / "thinker.ini")
+    shutil.copy2("/opt/smacx/modmenu.txt", game / "modmenu.txt")
+
+
+def configure_worker_game(game: Path) -> None:
+    """Set worker-local presentation defaults without editing the legal source."""
+    path = game / "Alpha Centauri.Ini"
+    lines = path.read_text(encoding="latin-1").splitlines()
+    wanted = {
+        "movieplayerpath": "MoviePlayerPath=",
+        "movieplayerargs": "MoviePlayerArgs=",
+        "disableopeningmovie": "DisableOpeningMovie=1",
+    }
+    output: list[str] = []
+    in_section = False
+    seen: set[str] = set()
+    inserted = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if in_section and not inserted:
+                output.extend(value for key, value in wanted.items() if key not in seen)
+                inserted = True
+            in_section = stripped.casefold() == "[alpha centauri]"
+            output.append(line)
+            continue
+        if in_section and "=" in line:
+            key = line.split("=", 1)[0].strip().casefold()
+            if key in wanted:
+                output.append(wanted[key])
+                seen.add(key)
+                continue
+        output.append(line)
+    if in_section and not inserted:
+        output.extend(value for key, value in wanted.items() if key not in seen)
+    path.write_text("\n".join(output) + "\n", encoding="latin-1")
 
 
 def run_checked(command: list[str], environment: dict[str, str]) -> None:
@@ -322,6 +358,7 @@ def main() -> int:
     source_identity = validate_source(source)
     import_game(source, game, source_identity)
     overlay_bridge(game)
+    configure_worker_game(game)
 
     environment = os.environ.copy()
     winearch = os.environ.get("SMACX_WINEARCH", "win64")
@@ -411,10 +448,28 @@ def main() -> int:
     (worker_root / "worker.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     game_command = runtime_command(environment, str(game / "thinker.exe"), "-windowed")
     startup_save = os.environ.get("SMACX_AGENT_STARTUP_SAVE")
+    startup_scenario = os.environ.get("SMACX_AGENT_STARTUP_SCENARIO")
+    if startup_save is not None and startup_scenario is not None:
+        raise RuntimeError("conflicting_startup_modes")
     if startup_save is not None:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", startup_save):
             raise RuntimeError("invalid_startup_save")
         game_command.append(f"saves\\agent\\{match_id}\\{startup_save}.sav")
+    if startup_scenario is not None:
+        parts = startup_scenario.split("/")
+        if not parts or len(startup_scenario) > 512 \
+                or not startup_scenario.upper().endswith(".SC") \
+                or any(part in ("", ".", "..") or not re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9 _.'()-]{0,95}", part,
+                ) for part in parts):
+            raise RuntimeError("invalid_startup_scenario")
+        scenario_path = game / "scenarios"
+        for part in parts:
+            scenario_path /= part
+        resolved_scenario = scenario_path.resolve()
+        if not resolved_scenario.is_file() or game.resolve() not in resolved_scenario.parents:
+            raise RuntimeError("startup_scenario_unavailable")
+        game_command.append("scenarios\\" + "\\".join(parts))
     game_process = start(
         game_command,
         environment,

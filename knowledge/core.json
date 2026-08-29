@@ -19,7 +19,7 @@
       "topic": "economy",
       "title": "Nutrients, minerals, energy, labs, psych, and economy",
       "summary": "Nutrients sustain growth, minerals build and support, while harvested energy is allocated among economy, psych, and research.",
-      "body": "A base first feeds its population; nutrient surplus advances growth and shortage can starve it. Minerals fund production and may support units depending on social ratings. Energy becomes treasury income, psych, and laboratories according to allocation and modifiers. A plan should distinguish immediate survival, production tempo, drone control, and long-run research rather than maximizing one output blindly.",
+      "body": "A base first feeds its population; nutrient surplus advances growth and shortage can starve it. Minerals fund production and may support units depending on social ratings. Energy becomes treasury income, psych, and laboratories according to allocation and modifiers. Resource allocation therefore changes growth, production, stability, treasury income, and research at different rates.",
       "tags": ["nutrients", "minerals", "energy", "labs", "psych", "growth"],
       "source_url": null,
       "source_title": "Sid Meier's Alpha Centauri manual (operator-supplied legal copy)",
@@ -79,7 +79,7 @@
       "topic": "ecology",
       "title": "Planet ecology, fungus, native life, and eco-damage",
       "summary": "Industrial and terraforming choices interact with Planet; ecological damage can trigger native-life responses and terrain changes.",
-      "body": "Treat eco-damage as a strategic risk, not merely a base statistic. High mineral throughput and ecologically disruptive improvements can increase pressure. Planet rating, facilities, projects, and later technology alter native-life interaction and fungal productivity. Native units use psi combat, so conventional weapon and armor values do not fully describe those battles.",
+      "body": "Eco-damage is a base statistic connected to Planet's ecological response. High mineral throughput and ecologically disruptive improvements can increase pressure. Planet rating, facilities, projects, and later technology alter native-life interaction and fungal productivity. Native units use psi combat, so conventional weapon and armor values do not fully describe those battles.",
       "tags": ["planet", "ecology", "eco-damage", "fungus", "native-life", "psi"],
       "source_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Terraforming",
       "source_title": "StrategyWiki: Terraforming",
@@ -91,7 +91,7 @@
       "topic": "research",
       "title": "Research priorities, blind research, and technology",
       "summary": "Research converts labs into discoveries; blind research follows priorities while directed research selects an available technology.",
-      "body": "Technologies unlock facilities, projects, chassis, weapons, armor, reactors, abilities, terraforming, social models, and victory paths. With blind research, choose a priority and adapt to the resulting discoveries. With directed research, compare the next unlock against immediate strategic needs. Technology can also move through trade, conquest, probe operations, artifacts, and faction-specific effects.",
+      "body": "Technologies unlock facilities, projects, chassis, weapons, armor, reactors, abilities, terraforming, social models, and victory paths. Blind research accepts a research category rather than a specific available technology; directed research exposes a technology selection. Technology can also move through trade, conquest, probe operations, artifacts, and faction-specific effects.",
       "tags": ["research", "technology", "blind-research", "labs", "artifacts"],
       "source_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Table_of_Contents",
       "source_title": "StrategyWiki Alpha Centauri technology reference",
@@ -103,7 +103,7 @@
       "topic": "units",
       "title": "Unit Workshop design model",
       "summary": "A design combines chassis, weapon or equipment, armor, reactor, and compatible special abilities; cost and role emerge from the complete design.",
-      "body": "Choose a chassis for domain and movement, a weapon or noncombat equipment package for function, armor for defense, and a reactor for durability/cost effects. Special abilities add rules and cost and may have prerequisites or incompatibilities. Prototype cost, upgrade cost, support, mobility, morale, and the enemy's actual composition all matter. Retiring or upgrading a design is consequential and should use current quoted choices.",
+      "body": "A design contains a chassis for domain and movement, a weapon or noncombat equipment package, armor, a reactor, and zero or more compatible special abilities. Special abilities add rules and cost and may have prerequisites or incompatibilities. Prototype cost, upgrade cost, support, mobility, and morale are properties of the resulting design and current faction state.",
       "tags": ["unit-workshop", "design", "chassis", "weapon", "armor", "reactor", "prototype"],
       "source_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Table_of_Contents",
       "source_title": "StrategyWiki Alpha Centauri units reference",
@@ -117,9 +117,9 @@
       "summary": "Combat outcome depends on design, reactor/health, morale, terrain and base defenses, abilities, diplomacy, and whether combat is conventional or psi.",
       "body": "Use fresh odds and legal actions rather than inferring a result from weapon and armor alone. Stacks may suffer collateral effects. Artillery and air operations have distinct range and response rules. Moving into peaceful territory or using certain weapons can create incidents, Vendetta, or atrocities. Nerve gas, Planet Busters, genetic plague, nerve stapling, and base obliteration carry exceptional diplomatic and Planetary consequences and require deliberate confirmation.",
       "tags": ["combat", "morale", "terrain", "artillery", "psi", "atrocity", "vendetta"],
-      "source_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Walkthrough",
-      "source_title": "StrategyWiki Alpha Centauri walkthrough",
-      "source_license": "Project-authored Apache-2.0 text; cited page used only to verify facts (CC BY-SA 4.0 expression not reproduced)",
+      "source_url": null,
+      "source_title": "Sid Meier's Alpha Centauri manual and game data (operator-supplied legal copy)",
+      "source_license": "Project-authored Apache-2.0 text; proprietary source expression not reproduced",
       "provenance": "Original project wording; live odds and confirmations are authoritative."
     },
     {
@@ -127,7 +127,7 @@
       "topic": "society",
       "title": "Social Engineering models and ratings",
       "summary": "Politics, economics, values, and future society combine into ratings that reshape growth, efficiency, support, morale, police, planet, probe, industry, economy, and research.",
-      "body": "Evaluate a complete combination rather than one attractive bonus. Ratings affect base efficiency and bureaucracy, unit support and morale, drone control/police, ecological/native interaction, probe security, production cost, energy thresholds, growth, and research. Factions may prefer or prohibit models, and ideological alignment influences diplomacy. Switching has a cost and may immediately alter stability or support.",
+      "body": "The complete model combination produces the active ratings. Ratings affect base efficiency and bureaucracy, unit support and morale, drone control/police, ecological/native interaction, probe security, production cost, energy thresholds, growth, and research. Factions may prefer or prohibit models, and ideological alignment influences diplomacy. Switching has a cost and may immediately alter stability or support.",
       "tags": ["social-engineering", "politics", "economics", "values", "future-society", "ratings"],
       "source_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Social_Engineering",
       "source_title": "StrategyWiki: Social Engineering",
@@ -165,9 +165,9 @@
       "summary": "Probe operations trade a specialized unit and risk for intelligence, technology, disruption, or control; many actions can trigger diplomatic incidents.",
       "body": "Infiltration expands legitimate intelligence about a target. Other missions may steal technology or energy, sabotage production or facilities, subvert a unit, rescue a leader, spread genetic plague, or perform faction-specific operations. Availability, cost, target, success conditions, and incident/atrocity consequences differ. Use the exact current mission choices; never infer hidden facility or unit information before the game reveals it.",
       "tags": ["probe", "infiltration", "espionage", "sabotage", "subversion", "incident"],
-      "source_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Walkthrough",
-      "source_title": "StrategyWiki Alpha Centauri walkthrough",
-      "source_license": "Project-authored Apache-2.0 text; cited page used only to verify facts (CC BY-SA 4.0 expression not reproduced)",
+      "source_url": null,
+      "source_title": "Sid Meier's Alpha Centauri manual and game data (operator-supplied legal copy)",
+      "source_license": "Project-authored Apache-2.0 text; proprietary source expression not reproduced",
       "provenance": "Original project wording cross-checked against implemented probe state machines."
     },
     {
@@ -217,18 +217,6 @@
       "source_title": "SMACX Agent native mixed-LAN evidence",
       "source_license": "Project-authored Apache-2.0 operational summary",
       "provenance": "Independent project wording derived from contained native mixed-LAN tests."
-    },
-    {
-      "document_id": "strategy.no-cheese",
-      "topic": "strategy",
-      "title": "Balanced strategic planning without hidden information",
-      "summary": "Good play coordinates expansion, security, infrastructure, research, ecology, and politics while preserving uncertainty about opponents.",
-      "body": "Maintain explicit goals but revise them when evidence changes. Separate observed facts from player claims and beliefs. Compare opportunity costs across bases and turns, preserve reserves for threats, and watch rivals' visible victory progress. Use diplomacy as an active strategic system: ask motives, negotiate terms, record commitments, and evaluate patterns over time. The reference corpus explains mechanics; it does not reveal the current hidden map or prescribe exploitative scripts.",
-      "tags": ["strategy", "planning", "uncertainty", "politics", "goals", "fair-play"],
-      "source_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Walkthrough",
-      "source_title": "StrategyWiki Alpha Centauri walkthrough",
-      "source_license": "Project-authored Apache-2.0 text; cited page used only to verify facts (CC BY-SA 4.0 expression not reproduced)",
-      "provenance": "Original project synthesis; deliberately excludes step-by-step cheese."
     }
   ]
 }

@@ -1,6 +1,101 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = ["setup", "login", "dashboard"];
 let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], harnessRuns: [], backups: [], schedules: [], graphiti: null, capabilities: null};
+const gameRuleFields = [
+  ["victory_transcendence", "Transcendence victory"], ["victory_conquest", "Conquest victory"],
+  ["victory_diplomatic", "Diplomatic victory"], ["victory_economic", "Economic victory"],
+  ["victory_cooperative", "Cooperative victory"], ["do_or_die", "Do or Die"],
+  ["look_first", "Look First"], ["tech_stagnation", "Tech stagnation"],
+  ["spoils_of_war", "Spoils of war"], ["blind_research", "Blind research"],
+  ["intense_rivalry", "Intense rivalry"], ["unity_survey", "Unity survey"],
+  ["unity_scattering", "Unity scattering"], ["random_events", "Random events"],
+  ["time_warp", "Time warp"], ["ironman", "Ironman"],
+  ["random_leader_personalities", "Random leader personalities"],
+  ["random_leader_agendas", "Random leader agendas"],
+];
+
+function appendRuleFields(rootSelector, prefix) {
+  const root = $(rootSelector);
+  gameRuleFields.forEach(([name, labelText]) => {
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    const select = document.createElement("select");
+    select.name = `${prefix}${name}`;
+    [["", "Game default"], ["true", "Enabled"], ["false", "Disabled"]].forEach(([value, text]) => {
+      const option = document.createElement("option");
+      option.value = value; option.textContent = text; select.append(option);
+    });
+    label.append(select); root.append(label);
+  });
+}
+
+function installRuleFields() {
+  appendRuleFields("#solo-rule-fields", "rule_");
+  const lanRoot = $("#lan-rule-fields");
+  gameRuleFields.slice(0, -2).forEach(([name, labelText]) => {
+    const label = document.createElement("label"); label.textContent = labelText;
+    const select = document.createElement("select"); select.name = `lan_rule_${name}`;
+    [["", "Game default"], ["true", "Enabled"], ["false", "Disabled"]].forEach(([value, text]) => {
+      const option = document.createElement("option"); option.value = value;
+      option.textContent = text; select.append(option);
+    });
+    label.append(select); lanRoot.append(label);
+  });
+}
+
+async function refreshScenarioSelect(sourceSelector, targetSelector, includeFresh = false) {
+  const sourceId = $(sourceSelector).value;
+  const target = $(targetSelector);
+  target.replaceChildren();
+  if (includeFresh) {
+    const fresh = document.createElement("option");
+    fresh.value = ""; fresh.textContent = "Fresh random-map game"; target.append(fresh);
+  }
+  if (!sourceId) return;
+  const result = await api(`/api/v1/game-sources/${sourceId}/scenarios`);
+  (result.scenarios || []).forEach((scenario) => {
+    const option = document.createElement("option");
+    option.value = scenario.scenario_id;
+    option.textContent = `${scenario.display_name} · ${scenario.scenario_id}`;
+    target.append(option);
+  });
+}
+
+function gameSettingsFromForm(values) {
+  const settings = {
+    map_generation: values.map_generation || "random",
+    world_size: Number(values.world_size),
+  };
+  if (settings.map_generation === "custom") {
+    Object.assign(settings, {
+      world_size: 99, custom_width: Number(values.custom_width),
+      custom_height: Number(values.custom_height),
+      ocean_coverage: Number(values.ocean_coverage),
+      erosive_forces: Number(values.erosive_forces),
+      native_life: Number(values.native_life), cloud_cover: Number(values.cloud_cover),
+    });
+  }
+  gameRuleFields.forEach(([name]) => {
+    const value = values[`rule_${name}`];
+    if (value === "true" || value === "false") settings[name] = value === "true";
+  });
+  return settings;
+}
+
+function lanGameSettingsFromForm(values) {
+  const settings = {
+    difficulty: Number(values.lan_difficulty), time_control: Number(values.time_control),
+    world_size: Number(values.lan_world_size),
+    ocean_coverage: Number(values.lan_ocean_coverage),
+    erosive_forces: Number(values.lan_erosive_forces),
+    native_life: Number(values.lan_native_life), cloud_cover: Number(values.lan_cloud_cover),
+  };
+  gameRuleFields.forEach(([name]) => {
+    const value = values[`lan_rule_${name}`];
+    if (value === "true" || value === "false") settings[name] = value === "true";
+  });
+  return settings;
+}
 
 function show(name) {
   sections.forEach((id) => $(`#${id}`).classList.toggle("hidden", id !== name));
@@ -77,6 +172,10 @@ async function loadDashboard() {
   populateSelect("#lan-agents", dashboardState.agents, "agent_id", "display_name", "Create at least two agents first");
   populateSelect("#lan-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
   populateSelect("#lan-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
+  await Promise.all([
+    refreshScenarioSelect("#match-source", "#match-scenario"),
+    refreshScenarioSelect("#lan-source", "#lan-scenario", true),
+  ]);
   populateSelect("#harness-match", dashboardState.matches, "match_id", "display_name", "Create a match first");
   populateHarnessAgents();
   populateSelect("#harness-provider", dashboardState.providers.filter((item) => item.default_model_id), "provider_id", "display_name", "Select a provider model first");
@@ -240,9 +339,17 @@ function renderAssets(sources, runtimes, docker) {
   dockerState.className = `pill ${docker.ok ? "healthy" : "unreachable"}`;
   const root = $("#assets");
   root.replaceChildren();
-  sources.forEach((source) => root.append(record(
-    source.display_name, `Game source · ${source.host_path}`, source.status,
-  )));
+  sources.forEach((source) => {
+    const metadata = source.metadata || {};
+    const reference = metadata.private_reference || {};
+    const detail = [
+      `Game source · ${source.host_path}`,
+      Number.isInteger(metadata.scenario_count) ? `${metadata.scenario_count} scenario(s)` : null,
+      Number.isInteger(reference.documents)
+        ? `${reference.documents} private mechanics chunk(s) · no guides` : null,
+    ].filter(Boolean).join(" · ");
+    root.append(record(source.display_name, detail, source.status));
+  });
   runtimes.forEach((runtime) => root.append(record(
     runtime.display_name, `Private ${runtime.runtime_kind} · ${runtime.storage_ref}`, runtime.status,
   )));
@@ -720,13 +827,16 @@ $("#match-form").addEventListener("submit", async (event) => {
         runtime_id: values.runtime_id,
         faction_id: Number(values.faction_id),
         autostart: {
-          enabled: true,
+          enabled: values.launch_mode !== "scenario",
           faction_id: Number(values.faction_id),
           difficulty: Number(values.difficulty),
           world_size: Number(values.world_size),
           blind_research: true,
           narrative_ui: false,
           tutorial_ui: false,
+          ...(values.launch_mode === "scenario"
+            ? {scenario_id: values.scenario_id}
+            : {game_settings: gameSettingsFromForm(values)}),
         },
         view_enabled: values.view_enabled === "on",
       }),
@@ -774,6 +884,10 @@ $("#lan-form").addEventListener("submit", async (event) => {
         human_host_name: hostKind === "human" ? humanHostName : null,
         human_player_names: humanNames,
         runtime_id: values.runtime_id, profile: values.profile,
+        scenario_id: hostKind === "agent" ? values.scenario_id || null : null,
+        game_settings: hostKind === "agent" && !values.scenario_id
+          && values.lan_setup_mode === "custom"
+          ? lanGameSettingsFromForm(values) : null,
         view_enabled: values.view_enabled === "on",
         start_now: values.start_now === "on",
       }),
@@ -892,6 +1006,19 @@ $("#schedule-form").addEventListener("submit", async (event) => {
 });
 
 $("#harness-match").addEventListener("change", populateHarnessAgents);
+$("#match-source").addEventListener("change", () =>
+  refreshScenarioSelect("#match-source", "#match-scenario").catch((error) => notify(error.message, true)));
+$("#lan-source").addEventListener("change", () =>
+  refreshScenarioSelect("#lan-source", "#lan-scenario", true).catch((error) => notify(error.message, true)));
+$("#match-launch-mode").addEventListener("change", (event) => {
+  $("#match-scenario-label").hidden = event.target.value !== "scenario";
+  $("#solo-custom-settings").hidden = event.target.value === "scenario";
+});
+$("#lan-setup-mode").addEventListener("change", (event) => {
+  const custom = event.target.value === "custom";
+  $("#lan-profile-label").hidden = custom;
+  $("#lan-custom-settings").hidden = !custom;
+});
 
 $("#refresh").addEventListener("click", async () => {
   try { await loadDashboard(); notify("Control Center refreshed."); }
@@ -904,6 +1031,7 @@ $("#logout").addEventListener("click", async () => {
   show("login");
 });
 
+installRuleFields();
 (async () => {
   try {
     await api("/api/v1/auth/session");

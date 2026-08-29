@@ -17,7 +17,7 @@ FROM debian:trixie-slim AS worker
 RUN dpkg --add-architecture i386 \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        cabextract ca-certificates fluxbox novnc procps python3 socat tini \
+        cabextract ca-certificates fluxbox novnc poppler-utils procps python3 socat tini \
         websockify wine wine32:i386 wine64 x11-utils x11vnc xvfb \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin smacx \
@@ -25,8 +25,10 @@ RUN dpkg --add-architecture i386 \
 
 COPY --from=bridge-build /build/thinker.dll /opt/smacx/bridge/thinker.dll
 COPY --from=bridge-build /build/thinker.exe /opt/smacx/bridge/thinker.exe
-COPY worker/entrypoint.py worker/healthcheck.py worker/inspect_source.py worker/alsa-null.conf \
-    worker/fluxbox-init worker/fluxbox-overlay /opt/smacx/
+COPY worker/entrypoint.py worker/healthcheck.py worker/inspect_source.py \
+    worker/extract_reference.py worker/list_scenarios.py worker/alsa-null.conf \
+    worker/fluxbox-init worker/fluxbox-overlay worker/thinker.ini \
+    worker/modmenu.txt /opt/smacx/
 
 ENV DISPLAY=:99 \
     WINEARCH=win64 \

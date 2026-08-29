@@ -40,9 +40,10 @@ is delivered as vertical, independently testable milestones.
 8. **Deployment validation** — Linux preflight and native-process certification
    are complete. Windows Docker Desktop/WSL2 and physical two-machine runs have
    runnable checklists but require those external hosts.
-9. **Gameplay expansion** — typed scenario launch and remaining consequential
-   LAN mutations stay fail-closed until legal scenario assets and convergent
-   native two-client tests are available.
+9. **Gameplay expansion** — typed solo/LAN scenario launch and fully typed
+   custom game setup are implemented and native-live-tested. Remaining
+   consequential LAN mutations stay fail-closed until their native two-client
+   effects converge.
 
 The ordinary operator experience remains:
 

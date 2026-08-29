@@ -38,6 +38,32 @@ const uint32_t GameRulesOptions[][2] = {
 static uint32_t custom_game_rules = 0;
 static uint32_t custom_more_rules = 0;
 
+static bool agent_environment_bool(const char* name, bool* value) {
+    char text[8] = {};
+    if (!GetEnvironmentVariableA(name, text, sizeof(text))) {
+        return false;
+    }
+    if (!strcmp(text, "1")) {
+        *value = true;
+        return true;
+    }
+    if (!strcmp(text, "0")) {
+        *value = false;
+        return true;
+    }
+    return false;
+}
+
+static void agent_environment_rule(const char* name, uint32_t rule, bool inverted = false) {
+    bool enabled = false;
+    if (!agent_environment_bool(name, &enabled)) {
+        return;
+    }
+    bool set_bit = inverted ? !enabled : enabled;
+    if (set_bit) AlphaIniPrefs->rules |= rule;
+    else AlphaIniPrefs->rules &= ~rule;
+}
+
 
 const char* resource_icon(int res_type, bool ocean, bool add) {
     if (res_type == RES_NUTRIENT) {
@@ -329,9 +355,43 @@ void __cdecl control_game() {
                     break;
                 }
             } else if (startup_load_path.size()) {
-                if (!mod_load_daemon(startup_load_path.c_str(), 0)) {
+                bool loaded = !mod_load_daemon(startup_load_path.c_str(), 0);
+                if (loaded) {
                     for (int i = 1; i < MaxPlayerNum; ++i) {
                         load_faction_art(i);
+                    }
+                    char scenario_id[520] = {};
+                    if (GetEnvironmentVariableA("SMACX_AGENT_STARTUP_SCENARIO",
+                        scenario_id, sizeof(scenario_id))) {
+                        char requested[32] = {};
+                        if (!(*GameRules & RULES_SCN_FORCE_CURRENT_DIFF_LEVEL)
+                        && GetEnvironmentVariableA("SMACX_AGENT_DIFFICULTY",
+                            requested, sizeof(requested))) {
+                            *DiffLevel = clamp(atoi(requested), 0, MaxDiffNum - 1);
+                        }
+                        memset(requested, 0, sizeof(requested));
+                        if (!(*GameRules & RULES_SCN_FORCE_PLAYER_PLAY_CURRENT_FACT)
+                        && GetEnvironmentVariableA("SMACX_AGENT_FACTION_ID",
+                            requested, sizeof(requested))) {
+                            int faction_id = clamp(atoi(requested), 1, MaxPlayerNum - 1);
+                            if (is_alive(faction_id)) {
+                                MapWin->cOwner = faction_id;
+                            }
+                        }
+                        FactionStatus[0] = 1 << MapWin->cOwner;
+                        *ControlTurnMove = MapWin->cOwner;
+                        *GameState &= ~(STATE_EDITOR_ONLY_MODE | STATE_OMNISCIENT_VIEW
+                            | STATE_SCENARIO_EDITOR | STATE_SCENARIO_CHEATED_FLAG);
+                        scenario_setup();
+                        char narrative_ui[8] = {};
+                        if (!GetEnvironmentVariableA("SMACX_AGENT_NARRATIVE_UI",
+                            narrative_ui, sizeof(narrative_ui)) || strcmp(narrative_ui, "1")) {
+                            *GamePreferences |= PREF_AV_INTERLUDES_DISABLED;
+                            *GamePreferences &= ~PREF_AV_SECRET_PROJECT_MOVIES;
+                            *GameMorePreferences |= MPREF_AV_MONUMENTS_DISABLED;
+                        }
+                        debug("agent_scenario_start id=%s difficulty=%d faction=%d rules=%08x\n",
+                            scenario_id, *DiffLevel, MapWin->cOwner, *GameRules);
                     }
                 }
                 startup_load_path = "";
@@ -533,6 +593,19 @@ int __cdecl size_of_planet(int setup_mode) {
         if (selection != 99) {
             width = widths[selection];
             *MapAreaY = heights[selection];
+        } else if (setup_mode == 1) {
+            char custom_x_text[16] = {};
+            char custom_y_text[16] = {};
+            int custom_x = GetEnvironmentVariableA(
+                "SMACX_AGENT_CUSTOM_WIDTH", custom_x_text, sizeof(custom_x_text))
+                ? atoi(custom_x_text) : prefs_get_2("Custom Map X", 40, 0);
+            int custom_y = GetEnvironmentVariableA(
+                "SMACX_AGENT_CUSTOM_HEIGHT", custom_y_text, sizeof(custom_y_text))
+                ? atoi(custom_y_text) : prefs_get_2("Custom Map Y", 80, 0);
+            width = clamp(custom_x, 16, 512);
+            *MapAreaY = clamp(custom_y, 16, 512);
+            prefs_put_2("Custom Map X", width, 0);
+            prefs_put_2("Custom Map Y", *MapAreaY, 0);
         } else {
             Popup_start(&cur_popup, PopupScriptFile, "CUSTOMMAP", -1, 0, 0x44, 0);
             int custom_x  = prefs_get_2("Custom Map X", 40, 0);
@@ -693,7 +766,9 @@ int __cdecl top_menu(int flag) {
         }
         memset(value, 0, sizeof(value));
         if (GetEnvironmentVariableA("SMACX_AGENT_WORLD_SIZE", value, sizeof(value))) {
-            AlphaIniPrefs->custom_world[0] = clamp(atoi(value), 0, 4);
+            int requested_size = atoi(value);
+            AlphaIniPrefs->custom_world[0] = requested_size == 99
+                ? 99 : clamp(requested_size, 0, 4);
         }
         memset(value, 0, sizeof(value));
         if (GetEnvironmentVariableA("SMACX_AGENT_FACTION_ID", value, sizeof(value))) {
@@ -705,6 +780,45 @@ int __cdecl top_menu(int flag) {
                 AlphaIniPrefs->rules |= RULES_BLIND_RESEARCH;
             } else if (!strcmp(value, "0")) {
                 AlphaIniPrefs->rules &= ~RULES_BLIND_RESEARCH;
+            }
+        }
+        agent_environment_rule("SMACX_AGENT_RULE_VICTORY_TRANSCENDENCE", RULES_VICTORY_TRANSCENDENCE);
+        agent_environment_rule("SMACX_AGENT_RULE_VICTORY_CONQUEST", RULES_VICTORY_CONQUEST);
+        agent_environment_rule("SMACX_AGENT_RULE_VICTORY_DIPLOMATIC", RULES_VICTORY_DIPLOMATIC);
+        agent_environment_rule("SMACX_AGENT_RULE_VICTORY_ECONOMIC", RULES_VICTORY_ECONOMIC);
+        agent_environment_rule("SMACX_AGENT_RULE_VICTORY_COOPERATIVE", RULES_VICTORY_COOPERATIVE);
+        agent_environment_rule("SMACX_AGENT_RULE_DO_OR_DIE", RULES_DO_OR_DIE);
+        agent_environment_rule("SMACX_AGENT_RULE_LOOK_FIRST", RULES_LOOK_FIRST);
+        agent_environment_rule("SMACX_AGENT_RULE_TECH_STAGNATION", RULES_TECH_STAGNATION);
+        agent_environment_rule("SMACX_AGENT_RULE_SPOILS_OF_WAR", RULES_SPOILS_OF_WAR);
+        agent_environment_rule("SMACX_AGENT_RULE_BLIND_RESEARCH", RULES_BLIND_RESEARCH);
+        agent_environment_rule("SMACX_AGENT_RULE_INTENSE_RIVALRY", RULES_INTENSE_RIVALRY);
+        agent_environment_rule("SMACX_AGENT_RULE_UNITY_SURVEY", RULES_NO_UNITY_SURVEY, true);
+        agent_environment_rule("SMACX_AGENT_RULE_UNITY_SCATTERING", RULES_NO_UNITY_SCATTERING, true);
+        agent_environment_rule("SMACX_AGENT_RULE_RANDOM_EVENTS", RULES_BELL_CURVE, true);
+        agent_environment_rule("SMACX_AGENT_RULE_TIME_WARP", RULES_TIME_WARP);
+        agent_environment_rule("SMACX_AGENT_RULE_IRONMAN", RULES_IRONMAN);
+        bool enabled = false;
+        if (agent_environment_bool("SMACX_AGENT_RULE_RANDOM_LEADER_PERSONALITIES", &enabled)) {
+            if (enabled) AlphaIniPrefs->semaphore |= STATE_RAND_FAC_LEADER_PERSONALITIES;
+            else AlphaIniPrefs->semaphore &= ~STATE_RAND_FAC_LEADER_PERSONALITIES;
+        }
+        if (agent_environment_bool("SMACX_AGENT_RULE_RANDOM_LEADER_AGENDAS", &enabled)) {
+            if (enabled) AlphaIniPrefs->semaphore |= STATE_RAND_FAC_LEADER_SOCIAL_AGENDA;
+            else AlphaIniPrefs->semaphore &= ~STATE_RAND_FAC_LEADER_SOCIAL_AGENDA;
+        }
+        *GameState = (*GameState & ~(STATE_RAND_FAC_LEADER_PERSONALITIES
+            | STATE_RAND_FAC_LEADER_SOCIAL_AGENDA)) | AlphaIniPrefs->semaphore;
+        const struct { const char* name; int index; } world_fields[] = {
+            {"SMACX_AGENT_OCEAN_COVERAGE", 1},
+            {"SMACX_AGENT_EROSIVE_FORCES", 3},
+            {"SMACX_AGENT_CLOUD_COVER", 5},
+            {"SMACX_AGENT_NATIVE_LIFE", 6},
+        };
+        for (const auto& field : world_fields) {
+            memset(value, 0, sizeof(value));
+            if (GetEnvironmentVariableA(field.name, value, sizeof(value))) {
+                AlphaIniPrefs->custom_world[field.index] = clamp(atoi(value), 0, 2);
             }
         }
         memset(value, 0, sizeof(value));
@@ -719,7 +833,10 @@ int __cdecl top_menu(int flag) {
             *GamePreferences &= ~PREF_BSC_TUTORIAL_MSGS;
             AlphaIniPrefs->preferences &= ~PREF_BSC_TUTORIAL_MSGS;
         }
-        DefaultPrefs->map_type = 0; // random world
+        memset(value, 0, sizeof(value));
+        DefaultPrefs->map_type = GetEnvironmentVariableA(
+            "SMACX_AGENT_MAP_GENERATION", value, sizeof(value))
+            && !strcmp(value, "custom") ? 1 : 0;
         debug("agent_autostart difficulty=%d world=%d faction=%d\n",
             DefaultPrefs->difficulty, AlphaIniPrefs->custom_world[0], DefaultPrefs->faction_id);
         return map_menu(1);

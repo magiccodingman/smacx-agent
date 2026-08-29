@@ -17,6 +17,10 @@ import uuid
 from smacx_control import ControlPlane
 from smacx_controller import BridgeUnavailable, bridge_request_to
 from smacx_docker import DockerClient, DockerError, DockerNotFound
+from smacx_game_settings import (
+    LAN_RULE_FIELDS, game_settings_environment, normalize_game_settings,
+    normalize_lan_game_settings,
+)
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, StoreError
 
 
@@ -207,6 +211,7 @@ class WorkerManager:
                 }],
             },
         })
+        registered: dict[str, Any] | None = None
         try:
             self.docker.start_container(identifier)
             finished = self.docker.wait_container(identifier, timeout=120)
@@ -219,12 +224,171 @@ class WorkerManager:
                 r"[a-f0-9]{64}", str(source.get("terranx_sha256", "")),
             ):
                 raise WorkerManagerError("invalid_game_source_probe_response")
-            return self.control.register_game_source(
+            registered = self.control.register_game_source(
                 display_name, host_path, str(source["terranx_sha256"]),
                 metadata={"validated_by": "container", "worker_image": self.worker_image},
             )
         finally:
             self._cleanup_container(identifier, "game-source-inspector")
+        if registered is None:
+            raise WorkerManagerError("game_source_registration_failed")
+        reference = self.import_private_game_reference(registered["game_source_id"])
+        scenario_catalog = self.list_scenarios(registered["game_source_id"])
+        updated = self.control.register_game_source(
+            display_name, host_path, str(registered["executable_sha256"]),
+            game_source_id=str(registered["game_source_id"]),
+            metadata={
+                "validated_by": "container", "worker_image": self.worker_image,
+                "private_reference": reference,
+                "scenario_count": len(scenario_catalog["scenarios"]),
+            },
+        )
+        updated["private_reference"] = reference
+        updated["scenario_catalog"] = scenario_catalog
+        return updated
+
+    def list_scenarios(self, game_source_id: str) -> dict[str, Any]:
+        """Return only catalogued relative .SC identifiers from a legal source."""
+        source = self.control.get_game_source(game_source_id)
+        host_path = _host_path(str(source["host_path"]), "game_source_host_path")
+        self.docker.inspect_image(self.worker_image)
+        # Dashboard clients may request the same catalog for solo and LAN
+        # selectors concurrently. Inspector names must therefore be unique;
+        # ownership labels, not names, define the cleanup boundary.
+        name = self._name("scenarios", f"{game_source_id}-{uuid.uuid4().hex}")
+        identifier = self.docker.create_container(name, {
+            "Image": self.worker_image,
+            "Entrypoint": ["python3", "/opt/smacx/list_scenarios.py"],
+            "Cmd": [], "Tty": True,
+            "Labels": self._labels("scenario-catalog", **{"io.smacx.game-source": game_source_id}),
+            "HostConfig": {
+                "NetworkMode": "none", "ReadonlyRootfs": True, "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {"/tmp": "rw,nosuid,nodev,noexec,size=32m"},
+                "Mounts": [{
+                    "Type": "bind", "Source": host_path, "Target": "/game-source",
+                    "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"},
+                }],
+            },
+        })
+        try:
+            self.docker.start_container(identifier)
+            finished = self.docker.wait_container(identifier, timeout=120)
+            payload = self._last_json(self.docker.container_logs(identifier, tail=20))
+            if finished.get("State", {}).get("ExitCode") != 0 \
+                    or payload.get("schema") != "smacx.scenario-catalog.v1" \
+                    or payload.get("terranx_sha256") != source["executable_sha256"] \
+                    or not isinstance(payload.get("scenarios"), list):
+                raise WorkerManagerError("scenario_catalog_failed")
+            return payload
+        finally:
+            self._cleanup_container(identifier, "scenario-catalog")
+
+    def import_private_game_reference(self, game_source_id: str) -> dict[str, Any]:
+        """Build a local-only mechanics index from an operator's legal source."""
+        source = self.control.get_game_source(game_source_id)
+        host_path = _host_path(str(source["host_path"]), "game_source_host_path")
+        self.docker.inspect_image(self.worker_image)
+        name = self._name("reference", game_source_id)
+        identifier = self.docker.create_container(name, {
+            "Image": self.worker_image,
+            "Entrypoint": ["python3", "/opt/smacx/extract_reference.py"],
+            "Cmd": [],
+            "Tty": True,
+            "Labels": self._labels(
+                "game-reference-extractor", **{"io.smacx.game-source": game_source_id},
+            ),
+            "HostConfig": {
+                "NetworkMode": "none",
+                "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=128m,mode=1777"},
+                "Mounts": [{
+                    "Type": "bind", "Source": host_path, "Target": "/game-source",
+                    "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"},
+                }],
+            },
+        })
+        try:
+            self.docker.start_container(identifier)
+            finished = self.docker.wait_container(identifier, timeout=300)
+            logs = self.docker.container_logs(identifier, tail=1000)
+            if finished.get("State", {}).get("ExitCode") != 0:
+                raise WorkerManagerError("private_reference_extraction_failed")
+            manifest: dict[str, Any] | None = None
+            complete: dict[str, Any] | None = None
+            documents: list[dict[str, Any]] = []
+            for line in logs.splitlines():
+                try:
+                    item = json.loads(line.strip())
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "manifest":
+                    manifest = item
+                elif item.get("type") == "complete":
+                    complete = item
+                elif item.get("type") == "document":
+                    documents.append(item)
+            if not manifest or manifest.get("schema") != "smacx.private-reference.v1" \
+                    or manifest.get("policy") != "mechanics_only_no_guides" \
+                    or manifest.get("terranx_sha256") != source["executable_sha256"]:
+                raise WorkerManagerError("invalid_private_reference_manifest")
+            if not complete or complete.get("documents") != len(documents) \
+                    or not 1 <= len(documents) <= 900:
+                raise WorkerManagerError("incomplete_private_reference_extract")
+            validated: list[dict[str, Any]] = []
+            for item in documents:
+                source_name = str(item.get("source_name", ""))
+                source_hash = str(item.get("source_sha256", ""))
+                topic = str(item.get("topic", ""))
+                body = str(item.get("body", ""))
+                chunk_index = item.get("chunk_index")
+                chunk_count = item.get("chunk_count")
+                if not re.fullmatch(r"[A-Za-z0-9_. -]{1,80}", source_name) \
+                        or not re.fullmatch(r"[a-f0-9]{64}", source_hash) \
+                        or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", topic) \
+                        or not isinstance(chunk_index, int) or not isinstance(chunk_count, int) \
+                        or not 0 <= chunk_index < chunk_count <= 900 \
+                        or not 80 <= len(body) <= 8192:
+                    raise WorkerManagerError("invalid_private_reference_document")
+                validated.append({
+                    "document_id": (
+                        f"private.{game_source_id}."
+                        f"{re.sub(r'[^a-z0-9]+', '-', source_name.casefold()).strip('-')[:28]}."
+                        f"{source_hash[:12]}.{chunk_index:04d}"
+                    ),
+                    "topic": topic,
+                    "title": f"{source_name} — private mechanics reference {chunk_index + 1}/{chunk_count}",
+                    "summary": (
+                        "Private runtime excerpt from the operator's legal game installation; "
+                        "retrieve only when this mechanic is relevant."
+                    ),
+                    "body": body,
+                    "tags": ("private", "legal-copy", "mechanics", topic),
+                    "source_title": source_name,
+                    "source_license": (
+                        "Operator-supplied proprietary source; private runtime retrieval only; not distributed"
+                    ),
+                    "provenance": (
+                        "Generated locally from a validated legal game source. Excluded from the repository "
+                        "and restricted to mechanics-only files; scripts, guides, and scenarios are omitted."
+                    ),
+                })
+            prefix = f"private.{game_source_id}."
+            removed = self.store.delete_reference_documents(prefix)
+            for document in validated:
+                self.store.upsert_reference_document(**document)
+            return {
+                "status": "ready", "policy": "mechanics_only_no_guides",
+                "sources": int(complete.get("sources", 0)),
+                "documents": len(validated), "replaced": removed,
+                "distributed": False,
+            }
+        finally:
+            self._cleanup_container(identifier, "game-reference-extractor")
 
     def import_proton(self, source_host_path: str, *, display_name: str = "Managed Proton") -> dict[str, Any]:
         source_host_path = _host_path(source_host_path, "proton_source_path")
@@ -366,6 +530,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if source["status"] != "validated" or runtime["status"] != "ready" \
                 or runtime["storage_kind"] != "docker-volume":
             raise WorkerManagerError("worker_assets_not_ready")
+        normalized_autostart = self._autostart(autostart)
+        scenario_id = normalized_autostart.get("scenario_id")
+        if isinstance(scenario_id, str):
+            catalog = self.list_scenarios(game_source_id)
+            if scenario_id not in {
+                    item.get("scenario_id") for item in catalog.get("scenarios", [])
+                    if isinstance(item, Mapping)}:
+                raise InvalidRecord("unknown_worker_scenario_id")
         runtime_volume = self.docker.inspect_volume(runtime["storage_ref"])
         self.docker.require_owned(runtime_volume, self.installation_id, purpose="proton-runtime")
         self.docker.inspect_image(self.worker_image)
@@ -407,7 +579,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             worker = self.control.put_worker_spec(
                 instance_id, game_source_id, runtime_id, self.worker_image,
                 container_name, data_volume, bridge_secret_id,
-                autostart=self._autostart(autostart),
+                autostart=normalized_autostart,
                 network={
                     "name": self.network_name,
                     "secret_volume": secret_volume,
@@ -453,28 +625,94 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
     @staticmethod
     def _autostart(value: Mapping[str, Any] | None) -> dict[str, Any]:
         supplied = dict(value or {})
+        nested_settings = supplied.get("game_settings")
+        if nested_settings is not None and not isinstance(nested_settings, Mapping):
+            raise InvalidRecord("invalid_worker_game_settings")
+        settings_input = dict(nested_settings or {})
+        settings_input.setdefault("world_size", int(supplied.get("world_size", 0)))
+        settings_input.setdefault("blind_research", bool(supplied.get("blind_research", True)))
+        game_settings = normalize_game_settings(
+            settings_input,
+            default_blind_research=bool(supplied.get("blind_research", True)),
+        )
         result = {
             "enabled": bool(supplied.get("enabled", True)),
             "difficulty": int(supplied.get("difficulty", 0)),
-            "world_size": int(supplied.get("world_size", 0)),
+            "world_size": int(game_settings["world_size"]),
             "faction_id": int(supplied.get("faction_id", 1)),
-            "blind_research": bool(supplied.get("blind_research", True)),
+            "blind_research": bool(game_settings.get("blind_research", True)),
             "initial_research_priority": int(supplied.get("initial_research_priority", 1)),
             "narrative_ui": bool(supplied.get("narrative_ui", False)),
             "tutorial_ui": bool(supplied.get("tutorial_ui", False)),
+            "game_settings": game_settings,
         }
         startup_save = supplied.get("startup_save")
+        scenario_id = supplied.get("scenario_id")
+        lan_scenario_id = supplied.get("lan_scenario_id")
+        if startup_save is not None and scenario_id is not None:
+            raise InvalidRecord("conflicting_worker_startup_modes")
         if startup_save is not None:
             if not isinstance(startup_save, str) or not re.fullmatch(
                     r"[A-Za-z0-9_-]{1,32}", startup_save):
                 raise InvalidRecord("invalid_worker_startup_save")
             result["startup_save"] = startup_save
             result["enabled"] = False
-        if not 0 <= result["difficulty"] <= 5 or not 0 <= result["world_size"] <= 4 \
+        if scenario_id is not None:
+            if not isinstance(scenario_id, str) or len(scenario_id) > 512 \
+                    or not scenario_id.upper().endswith(".SC"):
+                raise InvalidRecord("invalid_worker_scenario_id")
+            parts = scenario_id.split("/")
+            if not parts or any(
+                    part in ("", ".", "..")
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _.'()-]{0,95}", part)
+                    for part in parts):
+                raise InvalidRecord("invalid_worker_scenario_id")
+            result["scenario_id"] = scenario_id
+            result["enabled"] = False
+        if lan_scenario_id is not None:
+            if not isinstance(lan_scenario_id, str) or len(lan_scenario_id) > 512 \
+                    or not lan_scenario_id.upper().endswith(".SC"):
+                raise InvalidRecord("invalid_worker_lan_scenario_id")
+            parts = lan_scenario_id.split("/")
+            if not parts or any(
+                    part in ("", ".", "..")
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _.'()-]{0,95}", part)
+                    for part in parts):
+                raise InvalidRecord("invalid_worker_lan_scenario_id")
+            result["lan_scenario_id"] = lan_scenario_id
+        if not 0 <= result["difficulty"] <= 5 or result["world_size"] not in (*range(5), 99) \
                 or not 1 <= result["faction_id"] <= 7 \
                 or not 0 <= result["initial_research_priority"] <= 3:
             raise InvalidRecord("invalid_worker_autostart")
         return result
+
+    @staticmethod
+    def _lan_settings_match(observed: object, expected: Mapping[str, Any] | None,
+                            profile: str) -> bool:
+        if not isinstance(observed, Mapping):
+            return False
+        if expected is None:
+            return observed.get("profile") == profile
+        checks = (
+            (observed.get("difficulty", {}).get("id"), expected["difficulty"]),
+            (observed.get("time_control", {}).get("id"), expected["time_control"]),
+            (observed.get("map_size", {}).get("id"), expected["world_size"]),
+            (observed.get("world", {}).get("ocean_coverage", {}).get("id"),
+             expected["ocean_coverage"]),
+            (observed.get("world", {}).get("erosive_forces", {}).get("id"),
+             expected["erosive_forces"]),
+            (observed.get("world", {}).get("native_life", {}).get("id"),
+             expected["native_life"]),
+            (observed.get("world", {}).get("cloud_cover", {}).get("id"),
+             expected["cloud_cover"]),
+        )
+        if any(actual != wanted for actual, wanted in checks):
+            return False
+        rules = observed.get("rules")
+        return isinstance(rules, Mapping) and all(
+            rules.get(key) is value for key, value in expected.items()
+            if key in LAN_RULE_FIELDS
+        )
 
     def _worker_environment(self, spec: Mapping[str, Any], session_id: str) -> list[str]:
         autostart = spec["autostart"]
@@ -504,6 +742,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         }
         if isinstance(autostart.get("startup_save"), str):
             values["SMACX_AGENT_STARTUP_SAVE"] = autostart["startup_save"]
+        if isinstance(autostart.get("scenario_id"), str):
+            values["SMACX_AGENT_STARTUP_SCENARIO"] = autostart["scenario_id"]
+        if isinstance(autostart.get("lan_scenario_id"), str):
+            values["SMACX_AGENT_LAN_SCENARIO"] = autostart["lan_scenario_id"]
+        values.update(game_settings_environment(autostart["game_settings"]))
         return [f"{key}={value}" for key, value in values.items()]
 
     def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
@@ -1179,6 +1422,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
 
     def start_lan_match(self, match_id: str, *, session_name: str | None = None,
                         profile: str = "small_easy", resume_slot: str | None = None,
+                        scenario_id: str | None = None,
+                        game_settings: Mapping[str, Any] | None = None,
                         timeout: float = 420.0) -> dict[str, Any]:
         match = self.control.get_match(match_id)
         if session_name is None:
@@ -1190,6 +1435,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise InvalidRecord("invalid_lan_session_name")
         if resume_slot is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", resume_slot):
             raise InvalidRecord("invalid_save_slot")
+        if resume_slot is not None and scenario_id is not None:
+            raise InvalidRecord("conflicting_lan_startup_modes")
+        if game_settings is not None and (resume_slot is not None or scenario_id is not None):
+            raise InvalidRecord("lan_settings_require_fresh_game")
+        normalized_lan_settings = (
+            normalize_lan_game_settings(game_settings) if game_settings is not None else None
+        )
         seats = self.control.list_seats(match_id)
         agent_seats = [seat for seat in seats if seat["controller_kind"] == "agent"]
         human_seats = [seat for seat in seats if seat["controller_kind"] == "human"]
@@ -1200,8 +1452,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise WorkerManagerError("managed_lan_seat_not_provisioned")
         if any(seat.get("instance_id") for seat in human_seats):
             raise WorkerManagerError("external_human_seat_must_not_have_worker")
-        if profile not in LAN_PROFILES:
+        if normalized_lan_settings is None and profile not in LAN_PROFILES:
             raise InvalidRecord("unsupported_lan_profile")
+        if normalized_lan_settings is not None:
+            profile = "custom"
         human_hosted = seats[0]["controller_kind"] == "human"
         if human_hosted:
             if seats[0].get("metadata", {}).get("role") != "host" \
@@ -1219,18 +1473,40 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             return self.finalize_external_lan_match(match_id, timeout=timeout)
         host = seats[0]
         host_instance = str(host["instance_id"])
+        if scenario_id is not None:
+            host_spec = self.control.get_worker_spec(host_instance)
+            catalog = self.list_scenarios(str(host_spec["game_source_id"]))
+            if scenario_id not in {
+                    item.get("scenario_id") for item in catalog.get("scenarios", [])
+            }:
+                raise InvalidRecord("unknown_lan_scenario_id")
+        scenario_context_id = scenario_id
+        if scenario_context_id is None and resume_slot is not None:
+            stored_scenario = match.get("metadata", {}).get("scenario_id")
+            if isinstance(stored_scenario, str):
+                scenario_context_id = stored_scenario
         deadline = time.monotonic() + min(max(float(timeout), 120.0), 900.0)
         self.control.update_match_lifecycle(
             match_id, "starting", host_instance_id=host_instance,
             metadata={
                 "lan_profile": profile, "lan_session_name": session_name,
-                "resume_slot": resume_slot,
+                "resume_slot": resume_slot, "scenario_id": scenario_context_id,
+                "game_settings": normalized_lan_settings,
             },
         )
         try:
             for seat in agent_seats:
+                instance_id = str(seat["instance_id"])
+                spec = self.control.get_worker_spec(instance_id)
+                if spec["observed_status"] != "running":
+                    autostart = dict(spec["autostart"])
+                    if scenario_context_id is None:
+                        autostart.pop("lan_scenario_id", None)
+                    else:
+                        autostart["lan_scenario_id"] = scenario_context_id
+                    self.control.update_worker_autostart(instance_id, autostart)
                 remaining = max(30.0, deadline - time.monotonic())
-                self.start_worker(str(seat["instance_id"]), timeout=min(remaining, 300.0))
+                self.start_worker(instance_id, timeout=min(remaining, 300.0))
             hosted = self._native_request(
                 host_instance, "semantic_lan", timeout=min(140.0, max(30.0, deadline - time.monotonic())),
                 action="host", session_name=session_name, player_name="Semantic Host",
@@ -1264,6 +1540,26 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         value.get("lifecycle") == "lobby"
                         and value.get("lobby", {}).get("game_type") == "load"
                     ), timeout=45, context="host_loaded_lobby", action="status",
+                )
+            elif scenario_id is not None:
+                identity = host_lobby["identity"]
+                loaded_checkpoint = self._native_request(
+                    host_instance, "semantic_lan", action="load_scenario",
+                    scenario_id=scenario_id,
+                    match_id=identity["match_id"], session_id=identity["session_id"],
+                    expected_lobby_revision=host_lobby["lobby"]["revision"],
+                    client_operation_id=self._lan_operation_id(match_id, "scenario"),
+                )
+                if not loaded_checkpoint.get("ok"):
+                    detail = json.dumps(loaded_checkpoint, separators=(",", ":"))[:1200]
+                    raise WorkerManagerError(f"native_lan_scenario_load_failed:{detail}")
+                host_lobby = self._wait_native(
+                    host_instance, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("lobby", {}).get("game_type")
+                        == "multiplayer_scenario"
+                    ), timeout=45, context="host_scenario_lobby", action="status",
                 )
             host_address = self._container_address(host_instance)
             for seat in agent_seats[1:]:
@@ -1305,10 +1601,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 ), timeout=45, context="host_participant_count", action="status",
             )
             resume_choices_by_seat: dict[int, int] = {}
-            if resume_slot is None:
+            scenario_choices_by_seat: dict[int, int] = {}
+            if resume_slot is None and scenario_id is None:
                 identity = host_lobby["identity"]
                 configured = self._native_request(
                     host_instance, "semantic_lan", action="configure", profile=profile,
+                    **(normalized_lan_settings or {}),
                     match_id=identity["match_id"], session_id=identity["session_id"],
                     expected_lobby_revision=host_lobby["lobby"]["revision"],
                     client_operation_id=self._lan_operation_id(match_id, "configure"),
@@ -1319,11 +1617,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     host_instance, "semantic_lan",
                     lambda value: (
                         value.get("lifecycle") == "lobby"
-                        and value.get("lobby", {}).get("settings", {}).get("profile") == profile
+                        and self._lan_settings_match(
+                            value.get("lobby", {}).get("settings"),
+                            normalized_lan_settings, profile,
+                        )
                     ), timeout=45, context="host_configured_lobby",
                     action="status",
                 )
-            else:
+            elif resume_slot is not None:
                 restored_by_player: dict[int, int] = {}
                 for seat in agent_seats:
                     seat_index = int(seat["seat_index"])
@@ -1464,6 +1765,72 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     raise WorkerManagerError(
                         f"native_lan_loaded_faction_binding_mismatch:{detail}"
                     )
+            else:
+                for seat in agent_seats:
+                    seat_index = int(seat["seat_index"])
+                    instance_id = str(seat["instance_id"])
+                    lobby = self._wait_native(
+                        instance_id, "semantic_lan",
+                        lambda value, expected=network_session_id: (
+                            value.get("lifecycle") == "lobby"
+                            and value.get("identity", {}).get("network_session_id") == expected
+                            and value.get("lobby", {}).get("game_type")
+                            == "multiplayer_scenario"
+                            and value.get("lobby", {}).get("participant_count")
+                            == participant_count
+                        ), timeout=75,
+                        context=f"seat_{seat_index}_scenario_faction_lobby",
+                        action="status",
+                    )
+                    available = lobby.get("lobby", {}).get(
+                        "native_selector_record_ids", []
+                    )
+                    preferred = seat.get("metadata", {}).get(
+                        "scenario_faction_choice_id"
+                    )
+                    choice = preferred if isinstance(preferred, int) else (
+                        available[0] if available else None
+                    )
+                    if not isinstance(choice, int) or choice not in available:
+                        detail = json.dumps({
+                            "seat_index": seat_index, "preferred": preferred,
+                            "available": available,
+                        }, separators=(",", ":"))[:1000]
+                        raise WorkerManagerError(
+                            f"native_lan_scenario_faction_unavailable:{detail}"
+                        )
+                    selected = self._native_request(
+                        instance_id, "semantic_lan", action="select_faction",
+                        faction_choice_id=choice,
+                        match_id=lobby["identity"]["match_id"],
+                        session_id=lobby["identity"]["session_id"],
+                        expected_lobby_revision=lobby["lobby"]["revision"],
+                        client_operation_id=self._lan_operation_id(
+                            match_id, "scenario-faction", seat_index,
+                        ),
+                    )
+                    if not selected.get("ok"):
+                        detail = json.dumps(selected, separators=(",", ":"))[:1200]
+                        raise WorkerManagerError(
+                            f"native_lan_scenario_faction_selection_failed:{detail}"
+                        )
+                    scenario_choices_by_seat[seat_index] = choice
+                    host_lobby = self._wait_native(
+                        host_instance, "semantic_lan",
+                        lambda value, player_index=seat_index + 1,
+                        faction_choice_id=choice: (
+                            value.get("lifecycle") == "lobby"
+                            and next(
+                                (item for item in value.get("lobby", {}).get(
+                                    "participants", []
+                                ) if isinstance(item, Mapping)
+                                 and item.get("player_index") == player_index),
+                                {},
+                            ).get("faction_choice_id") == faction_choice_id
+                        ), timeout=75,
+                        context=f"host_observed_scenario_faction_{seat_index}",
+                        action="status",
+                    )
             for seat in agent_seats[1:]:
                 seat_index = int(seat["seat_index"])
                 instance_id = str(seat["instance_id"])
@@ -1474,7 +1841,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         and (
                             value.get("lobby", {}).get("game_type") == "load"
                             if resume_slot is not None else
-                            value.get("lobby", {}).get("settings", {}).get("profile") == profile
+                            value.get("lobby", {}).get("game_type")
+                            == "multiplayer_scenario"
+                            if scenario_id is not None else
+                            self._lan_settings_match(
+                                value.get("lobby", {}).get("settings"),
+                                normalized_lan_settings, profile,
+                            )
                         )
                     ), timeout=45, context=f"client_{seat_index}_configured_lobby", action="status",
                 )
@@ -1506,6 +1879,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                             "session_name": session_name,
                             "human_players": human_players,
                             "resume_slot": resume_slot,
+                            "scenario_id": scenario_id,
+                            "game_settings": normalized_lan_settings,
                         },
                     },
                 )
@@ -1515,6 +1890,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "network_session_id": network_session_id,
                     "profile": profile,
                     "resume_slot": resume_slot,
+                    "scenario_id": scenario_id,
+                    "game_settings": normalized_lan_settings,
                     "loaded_checkpoint": loaded_checkpoint,
                     "lobby_open": True,
                     "awaiting_external_humans": True,
@@ -1566,15 +1943,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     timeout=45, context=f"seat_{seat['seat_index']}_snapshot",
                 )
                 faction = snapshot["snapshot"]["faction"]
+                seat_index = int(seat["seat_index"])
                 faction_choice_id = resume_choices_by_seat.get(
-                    int(seat["seat_index"])
+                    seat_index, scenario_choices_by_seat.get(seat_index)
                 )
                 seat_metadata = {
                     "network_session_id": network_session_id,
                     "native_role": "host" if seat is host else "client",
                 }
                 if isinstance(faction_choice_id, int):
-                    seat_metadata["native_loaded_faction_choice_id"] = faction_choice_id
+                    seat_metadata[
+                        "native_loaded_faction_choice_id" if resume_slot is not None
+                        else "native_scenario_faction_choice_id"
+                    ] = faction_choice_id
                 self.control.update_lan_seat(
                     match_id, int(seat["seat_index"]),
                     faction_id=int(faction["id"]), faction_name=str(faction.get("name") or "") or None,
@@ -1593,6 +1974,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             return {
                 "ok": True, "match": match, "network_session_id": network_session_id,
                 "profile": profile, "resume_slot": resume_slot,
+                "scenario_id": scenario_id,
+                "game_settings": normalized_lan_settings,
                 "loaded_checkpoint": loaded_checkpoint, "seats": native,
                 "pixels_or_ui_input_used": False,
             }
@@ -2040,6 +2423,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "SMACX_LEGACY_KNOWLEDGE_ROOT=/worker-state/legacy-knowledge",
                 "SMACX_CAPABILITY_GAP_LOG=/var/lib/smacx/capability-gaps.jsonl",
                 f"SMACX_AGENT_ID={spec['agent_id']}",
+                f"SMACX_GAME_SOURCE_ID={spec['game_source_id']}",
             ],
             "Tty": True,
             "Labels": labels,

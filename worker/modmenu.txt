@@ -1,0 +1,299 @@
+;
+; *****************************************
+; *  SMACX Thinker Mod by Induktio        *
+; *  https://github.com/induktio/thinker  *
+; *****************************************
+;
+#MAINMENU
+#xs 400
+#caption Thinker Mod
+^^Mod Version: {$MSG0}
+^^Mod Build Date: {$MSG1}
+
+Close Dialog
+Change Mod Options
+Change Scenario Rules
+Open Project Homepage
+
+#GAMEMENU
+#xs 400
+#caption Thinker Mod
+^^Mod Version: {$MSG0}
+^^Mod Build Date: {$MSG1}
+^^Game Time Spent: {$NUM0} hours, {$NUM1} minutes, {$NUM2} seconds.
+
+Close Dialog
+Show Statistics
+Change Mod Options
+Open Project Homepage
+
+#STATS
+#xs 400
+#caption Thinker Mod Statistics
+^^Total bases: $NUM0
+^^Total units: $NUM1
+^^Total population: $NUM2
+^^Total mineral production: $NUM3
+^^Total energy production: $NUM4
+^^Faction bases: $NUM5
+^^Faction units: $NUM6
+^^Faction population: $NUM7
+^^Faction mineral production: $NUM8
+^^Faction energy production: $NUM9
+
+#OPTIONS
+#xs 480
+#caption Thinker Mod Options
+#itemlist
+Use new random map generator.
+__Set map generator emphasis on larger continents.
+__Add modified landmarks on random maps.
+__Add polar caps on random maps.
+__Mirror maps along X axis.
+__Mirror maps along Y axis.
+Thinker manages player base governors.
+Thinker manages player automated units.
+Warn when manually replacing tile improvements.
+Show additional base details on world map.
+Show foreign treaty changes on popup window.
+Always minimise game window when not activated.
+
+#GOVOPTIONS
+#xs 440
+#caption Governor Settings for $BASENAME0
+#checkbox 21
+#itemlist
+Governor is active.
+Governor may use multiple priorities (e.g. Explore AND Discover), or no priorities.
+Governor sets new units to "fully automate".
+Governor manages citizens and specialists (including drone riots).
+Governor manages production.
+__Governor may produce scout/exploration units.
+__Governor may produce land combat units.
+__Governor may produce naval combat units.
+__Governor may produce air combat units.
+__Governor may produce native combat units.
+__Governor may produce land defense units.
+__Governor may produce air defense units.
+__Governor may produce prototypes.
+__Governor may produce transports.
+__Governor may produce probe teams.
+__Governor may produce terraformers.
+__Governor may produce colony pods.
+__Governor may produce base facilities.
+__Governor may produce psych facilities with side effects.
+__Governor may produce secret projects.
+__Governor may HURRY production.
+
+#TOPMENU
+#xs 420
+#itemlist
+#x -5
+#y -5
+START GAME
+QUICK START
+SCENARIO
+LOAD GAME
+MULTIPLAYER
+CHANGE OPTIONS
+VIEW CREDITS
+EXIT GAME
+
+#HURRY
+#xs 400
+#caption Operations Director
+^$BASENAME0 can hurry $ITEM1 completely with {$NUM0} credits.
+^Minimum cost to hurry for next turn completion is {$NUM1} credits.
+^We have {$NUM2} energy credits in reserve.
+
+#REJECTIDEA
+#xs 440
+#caption $CAPTION7
+"$TITLE0 $NAME1, I can hardly even imagine agreeing to such a request."
+
+#REJECTLOAN
+#xs 440
+#caption $CAPTION7
+"I'm sorry, I cannot grant additional loans at this time."
+
+#ASKNUMBER
+#xs 400
+#caption Thinker Mod Options
+Enter a new value for {$MSG0}.
+
+Value:
+
+#MAPGEN
+#xs 400
+#caption Thinker Mod
+Enter a new value for random map generator.
+
+Value:
+
+#GENERIC
+#xs 400
+#caption $MSG0
+$MSG1
+
+#PROBE
+#xs 440
+#caption Operations Director
+^Our probe team has linked to the $<M1:$FACTIONADJ1> network and is awaiting instructions.
+^We estimate the current infiltration will expire after {$NUM0} turns.
+
+#SPYRENEW
+#xs 440
+#caption Operations Director
+We estimate the infiltration on $MSG0 will expire after $NUM0 turns.
+
+#SPYLOST
+#xs 440
+#caption Operations Director
+Our infiltration on {$MSG0} has been discovered! The spies have been lost.
+
+#SPYFOUND
+#xs 440
+#caption Operations Director
+We have discovered and removed {$MSG0} infiltration on our networks!
+
+#BASELIMIT
+#xs 440
+#caption Operations Director
+Unable to build more bases until any old ones are removed.
+
+#GOVHURRY
+#xs 600
+#caption Operations Director
+Governor of $MSG0 hurries $MSG1!
+
+#NERVESTAPLE2
+#xs 440
+#caption Operations Director
+^Nerve staple citizens of $BASENAME0?
+^This will carry serious consequences since the base was captured.
+
+No! That is a serious atrocity!
+Yes! Teach those drones a lesson!
+
+#EDITVEH2A
+#xs 400
+#caption Edit Vehicle Data
+#itemlist
+Damage Incurred:
+Moves Expended (times three):
+Year to End Lurking
+Turns Spent Away From Base:
+
+#NEEDCOLONISTS
+#xs 320
+#wave 6
+#caption Operations Director
+Only Colony Pods can perform that function.
+
+#RETOOLPENALTY3
+#xs 400
+#caption Operations Director
+Switching production now
+carries a $NUM0% retooling penalty.
+$NUM2 minerals would be lost.
+
+Keep making $ITEM0.
+Retool for $ITEM1.
+
+#RETOOLPENALTY3A
+#xs 400
+#caption Operations Director
+Switching production in mid-course
+carries a $NUM0% retooling penalty
+for all but the first $NUM1 minerals.
+$NUM2 minerals would be lost.
+
+Keep making $ITEM0.
+Retool for $ITEM1.
+
+#TERRTREATY2
+#xs 440
+#caption Operations Director
+$TITLE0, our treaty with $TITLE5 $NAME6 of the $FACTION2 precludes us from
+building bases in $<M1:$FACTIONADJ3> territorial waters.
+
+Never mind.
+Break treaty!
+
+#TERRTRUCE2
+#xs 440
+#caption Operations Director
+$TITLE5 $NAME6 claims these as territorial waters. We have no obligation to
+respect the claim, but if we build a base here the $FACTION2
+may decide to attack.
+
+Cancel base.
+Build base anyway.
+
+#NEEDADVECOENG
+#xs 320
+#wave 4
+#caption Planetary Ecologist
+Sea enhancements can only be built here after you have researched
+Advanced Ecological Engineering.
+
+#HELPFAC1
+Administrative center of your colony.
+$LINK<+1 ENERGY=43>. No $LINK<inefficiency=25>.
+Units defending here will receive a $LINK<+1 MORALE=11> modifier.
+^
+Enemy $LINK<probe teams=30006> may not attempt mind control here.
+
+#HELPFAC2
+Base receives +2 on $LINK<GROWTH=130006> scale and +2 on
+$LINK<EFFICIENCY=130001> scale when determining the $LINK<inefficiency=25>.
+All negative $LINK<MORALE=130004> effects are cancelled for units in
+base square; instead such units receive a +1 MORALE modifier.
+^
+Reduces base's vulnerability to enemy mind control.
+
+#HELPFAC4
+Increases defense multiplier of base against any land attackers.
+This effectively doubles the defense strength (or triples it
+when combined with a $LINK<Tachyon Field=100005>) if the effect of
+intrinsic base defense bonus is excluded.
+
+#HELPFAC28
+Increases defense multiplier of base against any attacking ships.
+^Repairs damaged naval units quickly. Naval units built here
+receive two $LINK<morale=11> upgrades.
+
+#HELPFAC29
+Increases defense multiplier of base against any attacking aircraft.
+^Repairs damaged air units quickly. Air units built here receive
+two $LINK<morale=11> upgrades. Base must have an Aerospace complex before
+it can produce space-based improvements.
+
+#HELPPROJ7
+All bases will increase to population level 3. One less $LINK<drone=36>
+at all bases of population level 3 and under.
+
+#HELPPROJ8
+All $LINK<Xenofungus=14> squares are treated as $LINK<roads=90005>, and the
+rate at which your $LINK<Formers=30001> $LINK<remove=90010> and/or
+$LINK<plant fungus=90011> is doubled.
+^Any alien lifeforms you breed gain a $LINK<+1 lifecycle=11> bonus.
+Any units stationed in fungus heal faster and completely.
+
+#HELPPROJ10
+Increases the movement rate of all naval units by two, and
+counts as a $LINK<Naval Yard=100028> at every one of your bases.
+
+#HELPPROJ29
+Increases $LINK<MINERALS=42> output at every base by 50%. Cumulative with
+all other facilities of this type.
+
+#HELPPROJ34
++1 $LINK<morale=11> to all $LINK<Probe Teams=30006> built. -25% cost of probe team
+actions. All probe teams are considered to have $LINK<Algorithmic Enhancement=80028>.
+
+#HELPPROJ35
+Free $LINK<Aerospace Complex=100029> in every base. Increases the movement
+rate of all aircraft units by two.
+
+# ; This line must remain at end of file
