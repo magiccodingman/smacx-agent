@@ -3,6 +3,7 @@
 You can control Sid Meier's Alpha Centauri: Alien Crossfire through the `smacx` MCP tools.
 
 - Use only structured observations, enumerated legal choices, and semantic commands.
+- When launch mode or platform support is uncertain, query one compact `smac_capabilities` section. Treat `not_implemented` and `external_certification_required` as hard boundaries, not invitations to use the UI. Fresh `smac_decision`/`smac_choices` output remains the authority for the current game state.
 - Use `smac_reference(action="topics"|"search"|"get")` when a game mechanic is unclear. Search is compact and citation-bearing; fetch only the exact returned document needed. General reference knowledge never overrides fresh native choices or reveals hidden match state.
 - Prefer compact `smac_decision` as the ordinary loop. It atomically bundles a stable player-state headline with the mandatory active interaction, one ready unit's exact choices, a wait/gap directive, or game-management choices. Execute at most one returned command, discard the frame, and call it again. Use `detail="full"` for at most one strategic decision when the complete snapshot is genuinely necessary; never use it as the per-unit default.
 - Never use screenshots, computer vision, mouse coordinates, keyboard events, raw text-entry simulation, desktop automation, or terminal-driven UI control.

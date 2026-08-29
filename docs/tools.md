@@ -1,6 +1,7 @@
 # MCP tool reference
 
 - `smac_status()` — process identity and menu/game state.
+- `smac_capabilities(section)` — reviewed static platform coverage and certification boundary. Query one compact section such as `launch_modes`, `lan_profiles`, `known_fail_closed_gaps`, or `deployment`; this never substitutes for fresh legal actions.
 - `smac_new_game(...)` — launch a configured random single-player match semantically.
 - `smac_launch()` — launch only the visible isolated game window.
 - `smac_snapshot()` — compact fair-play turn state, current ready-unit references, protocol phase, current guard, latest deferred-action status, and latest publicly displayed Council result.

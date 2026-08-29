@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = ["setup", "login", "dashboard"];
-let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], harnessRuns: [], backups: [], schedules: [], graphiti: null};
+let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], harnessRuns: [], backups: [], schedules: [], graphiti: null, capabilities: null};
 
 function show(name) {
   sections.forEach((id) => $(`#${id}`).classList.toggle("hidden", id !== name));
@@ -36,12 +36,12 @@ function formObject(form) {
 }
 
 async function loadDashboard() {
-  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, harnessRunsResult, operationsResult, backupsResult, schedulesResult, graphitiResult] = await Promise.all([
+  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, harnessRunsResult, operationsResult, backupsResult, schedulesResult, graphitiResult, capabilitiesResult] = await Promise.all([
     api("/api/v1/status"), api("/api/v1/providers"), api("/api/v1/agents"),
     api("/api/v1/game-sources"), api("/api/v1/runtimes"), api("/api/v1/workers"),
     api("/api/v1/matches"), api("/api/v1/harness-profiles"), api("/api/v1/harness-runs"),
     api("/api/v1/operations/status"), api("/api/v1/backups"), api("/api/v1/schedules"),
-    api("/api/v1/graphiti"),
+    api("/api/v1/graphiti"), api("/api/v1/capabilities"),
   ]);
   dashboardState = {
     agents: agentsResult.agents,
@@ -55,6 +55,7 @@ async function loadDashboard() {
     backups: backupsResult.backups,
     schedules: schedulesResult.schedules,
     graphiti: graphitiResult,
+    capabilities: capabilitiesResult,
   };
   $("#installation").textContent = status.installation_id;
   $("#provider-count").textContent = status.counts.model_providers;
@@ -69,6 +70,7 @@ async function loadDashboard() {
   renderHarnessRuns(dashboardState.harnessRuns);
   renderOperations(operationsResult, dashboardState.backups, dashboardState.schedules);
   renderGraphiti(graphitiResult);
+  renderCapabilities(capabilitiesResult);
   populateSelect("#match-agent", dashboardState.agents, "agent_id", "display_name", "Create an agent first");
   populateSelect("#match-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
   populateSelect("#match-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
@@ -80,6 +82,19 @@ async function loadDashboard() {
   populateSelect("#harness-provider", dashboardState.providers.filter((item) => item.default_model_id), "provider_id", "display_name", "Select a provider model first");
   populateScheduleMatches();
   show("dashboard");
+}
+
+function renderCapabilities(capabilities) {
+  const profiles = Object.keys(capabilities.lan_profiles || {});
+  const deployment = capabilities.deployment || {};
+  const pendingExternal = Object.values(deployment).filter((item) =>
+    String(item.status || "").includes("external_certification_required")
+  ).length;
+  const scenario = capabilities.launch_modes?.solo_scenario?.status || "unknown";
+  $("#capability-summary").textContent =
+    `${profiles.length} native-tested random-map profiles · scenario launch ${scenario.replaceAll("_", " ")} · ${pendingExternal} external certification gate(s)`;
+  $("#capability-detail").textContent =
+    "Agents can query the same fail-closed ledger through smac_capabilities; current-turn choices remain authoritative.";
 }
 
 function renderGraphiti(graphiti) {

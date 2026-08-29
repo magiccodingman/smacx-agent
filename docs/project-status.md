@@ -88,8 +88,9 @@ names, participant count, readiness, and saved-faction reclamation. For a human
 host, managed clients discover/select one exact session, join and ready, then
 wait for the human's native Start.
 
-The manager refuses ordinary Docker bridge publication and requires an
-operator-created, non-internal macvlan/ipvlan network. Identity, readiness,
+The manager refuses an arbitrary Docker bridge. It requires either an
+operator-created non-internal macvlan/ipvlan network or the exact labeled,
+firewalled routed-player bridge. Identity, readiness,
 faction, and network-driver guards are contained-tested, and the entire native
 lifecycle is locally live-tested with an independent third process. A physical
 second machine has not yet certified this path.
@@ -104,57 +105,69 @@ been built; Hermes remains the supported reference runtime. Control Center can
 also own the official digest-pinned Hermes container, preserve its per-match
 conversation volume, stop/resume it, and restart bounded exits.
 
-## Optional Graphiti: implemented core, unfinished product integration
+## Optional Graphiti: delivered, isolated, and default-off
 
-The following Graphiti work is delivered:
+The optional Compose profile now provides a digest-pinned Neo4j service and a
+`graphiti-core` projector. It derives each namespace from the installation,
+match, agent, and perspective; advances deterministic event cursors only after
+successful projection; retries failures; and supports one exact-perspective
+rebuild through the authenticated Control Center. Graph/model/embedding
+credentials use Docker file secrets and neither service publishes a host port.
 
-- a direct `graphiti-core` adapter;
-- internally derived namespace
-  `smacx:{installation}:{match}:{agent}:{perspective}`;
-- immutable SQLite event projection with deterministic episode IDs;
-- advance-on-success cursors, retry after failure, bounded draining, and
-  scope-local rebuild;
-- untrusted-chat extraction instructions; and
-- adversarial contained tests preventing cross-perspective leakage.
+The real pinned Neo4j stack reached healthy state. A deliberate projection to
+unavailable model endpoints degraded only the projector while the authoritative
+SQLite event remained intact. The current Qwen endpoint does not implement
+`/embeddings`, so this installation correctly keeps Graphiti disabled. This is
+deployment and failure-isolation evidence, not evidence that graph recall
+improves play; SQLite FTS5/BM25 remains the production default.
 
-The following is **not** yet delivered:
+## Deployment paths implemented but awaiting external certification
 
-- a Neo4j/Graphiti service in the default Compose deployment;
-- Control Center configuration, health, enable/disable, and rebuild controls;
-- automatic projector scheduling for every active perspective;
-- secure secret injection for graph/model/embedding credentials;
-- a real end-to-end evaluation using the intended Qwen extraction model and a
-  compatible embedding model; and
-- evidence that Graphiti improves decisions enough to justify enabling it by
-  default.
+The project includes an encrypted Tailscale subnet router, persistent auth
+state, explicit-IP DirectPlay joining, and a firewall that admits only TCP
+47624 plus TCP/UDP 2300–2400 into a dedicated player network. A local live
+route test passed real TCP and UDP traffic across two isolated subnets.
 
-Until those items are complete, Graphiti is an optional manually operated
-projection. SQLite memory and BM25 recall are the production default.
+The Windows 11 path is WSL2 plus Linux Docker and the same Proton worker. Its
+preflight checks WSL2, x86-64, Docker/Compose, `/dev/net/tun`, legal game and
+DirectX paths, and an actual read-only Docker bind. The Linux reference host
+passed that preflight. No Windows host or physical second computer exists in
+the development environment, so neither physical two-machine LAN nor Windows
+11/WSL2 is labeled certified.
+
+## Profiles and capability accounting
+
+Five guarded random-map profiles—Citizen/Tiny, Citizen/Small,
+Librarian/Standard, Thinker/Large, and Transcend/Huge—passed a fresh
+two-process native DirectPlay configuration matrix with synchronized host and
+client state and no visual input. The MCP and authenticated Control Center API
+expose the reviewed capability ledger, including external-certification
+boundaries and exact fail-closed gaps.
 
 ## Not yet delivered
 
 - First-class personality-card editing and behavioral evaluation. Durable
   agents have a `personality_ref`, and the Hermes system prompt preserves
   player autonomy, but the complete personality workflow remains future work.
-- Physical two-machine human-LAN certification, remote virtual-LAN transport,
-  Internet matchmaking, and automated Windows Docker Desktop/WSL2 networking.
-- Menu/lobby automation for every game profile and scenario. Managed LAN
-  currently validates the `small_easy` profile and exact checkpoint resumes.
+- Physical two-machine human-LAN and Windows 11/WSL2 certification. The
+  implementation and runnable checklists exist, but those external environments
+  are required to produce honest evidence.
+- Typed single-player and multiplayer scenario selection/launch. The legal
+  reference installation contains no scenario campaign files, and the bridge
+  does not expose a scenario-selector contract; it never falls back to menu
+  clicking.
 - Every rare scenario interaction or LAN synchronization path. See
   [Coverage and limits](coverage.md); missing mandatory interactions fail
   closed.
 - Training data, a LoRA, or gameplay-specific model fine-tuning.
 
-## Definition of the next complete platform milestone
+## Remaining release gates
 
-The next platform milestone should not be called complete until it includes:
-
-1. one-command optional Graphiti/Neo4j deployment with per-perspective
-   scheduling, Control Center health, and real-backend evaluation;
-2. a physical mixed human/AI LAN game across two machines, including chat,
-   checkpoint, disconnect/rejoin, and continue; and
-3. operator backup/restore and crash-recovery documentation validated from a
-   clean installation.
+The implementation milestone is complete only up to the evidence boundary
+above. Release certification still requires a physical mixed game across two
+machines, the same matrix on Windows 11/WSL2, and supplied scenario content for
+typed scenario-launch development and tests. Rare consequential LAN mutations
+remain withheld until their two-client effects converge in native tests.
 
 Personality-card semantics are intentionally outside this milestone. The
 opaque attachment seam remains reserved, but card format, editing, prompting,

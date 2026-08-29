@@ -20,7 +20,8 @@ Managed LAN supports two to seven total seats and at least one agent. Seat zero
 may be an agent or an explicitly named human host; every other seat may be an
 isolated agent or named human player. Agent-only games stay on the private
 Docker network. Mixed games are accepted only on an operator-created
-non-internal macvlan/ipvlan network.
+non-internal macvlan/ipvlan network or the exact labeled, firewalled
+routed-player bridge used by the Tailscale deployment.
 
 ## Start once
 
@@ -132,7 +133,7 @@ ports; use HTTPS before doing this on any network you do not fully trust.
 Starting a managed game worker also starts a dedicated MCP sidecar on the same
 private Docker network. The sidecar receives only that seat's bridge secret,
 worker state, perspective, and authoritative SQLite scope. Its HTTP port is
-published on a random loopback-only host port. It exposes all 19 semantic
+published on a random loopback-only host port. It exposes all 20 semantic
 gameplay/memory tools, but mechanically refuses agent requests to launch, load,
 stop, or create games.
 
@@ -286,6 +287,12 @@ additional MAC/IP identities. Wi-Fi, some managed switches, VPNs, and Docker
 Desktop/WSL2 may block it. Windows external-LAN deployment is therefore not yet
 certified; run the Linux host or a Linux VM with bridged networking for the
 predictable path.
+
+On Wi-Fi or Docker Desktop/WSL2, use
+`scripts/create-routed-player-lan.sh` and the encrypted subnet router instead
+of macvlan. The worker manager accepts that bridge only when its exact purpose
+and transport labels are present; an ordinary application bridge remains
+invalid for mixed play.
 
 For encrypted play between remote networks, keep those per-worker addresses
 and add the durable Tailscale subnet-router overlay. It uses explicit host-IP

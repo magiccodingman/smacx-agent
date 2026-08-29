@@ -21,6 +21,7 @@ Focused regressions:
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
+PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/capability_manifest_test.py
 PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/mcp_command_schema_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_management_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_citizen_test.py
@@ -713,6 +714,19 @@ PYTHONPATH=src python3 scripts/virtual_lan_contract_test.py
 PYTHONPATH=src python3 scripts/lan_profile_contract_test.py
 ```
 
+The native profile matrix is part of `lan_two_client_join_test.py`. To stop
+after configuration synchronization for all five fresh profiles:
+
+```bash
+SMACX_TEST_PROFILE_MATRIX_ONLY=1 \
+SMACX_TEST_JOIN_GAME_PATH=/absolute/path/to/second/private/game-copy \
+PYTHONPATH=src python3 scripts/lan_two_client_join_test.py
+```
+
+The reference run synchronized `tiny_citizen`, `small_easy`,
+`standard_librarian`, `large_thinker`, and `huge_transcend` between two real
+processes with `pixels_or_ui_input_used=false`.
+
 For WSL2 add `--require-wsl2`. A physical mixed human/AI certification is one
 complete matrix, not a successful ping:
 
@@ -734,4 +748,4 @@ complete matrix, not a successful ping:
 
 The latest regression artifacts are written under `runtime/`. A successful
 cleanup leaves no `terranx.exe` or Xephyr `:99` process. The persistent MCP
-should finish `active` and expose exactly 19 semantic tools.
+should finish `active` and expose exactly 20 semantic tools.

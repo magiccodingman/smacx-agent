@@ -11,10 +11,11 @@ is delivered as vertical, independently testable milestones.
    MCP contract. A project-authored, citation-bearing rules corpus now adds
    global FTS5/BM25 mechanics lookup without importing proprietary game text.
 3. **Memory projection** — the optional Graphiti adapter, derived namespaces,
-   replay cursors, failure isolation, and adversarial cross-scope leakage tests
-   are implemented. Default Compose packaging, Control Center health/config,
-   automatic scheduling, secure secret injection, and real-backend evaluation
-   remain before it can be considered default-on.
+   replay cursors, failure isolation, adversarial cross-scope leakage tests,
+   digest-pinned Compose packaging, Control Center health/config/rebuild,
+   scheduling, file-secret injection, and real Neo4j failure-isolation test are
+   implemented. It remains default-off because the reference Qwen endpoint has
+   no compatible embedding API and decision-quality benefit is not established.
 4. **Linux game worker** — user-supplied game import, private Wine/Proton
    prefix, semantic bridge, virtual display, health protocol, and view-only
    spectator stream.
@@ -29,11 +30,19 @@ is delivered as vertical, independently testable milestones.
    exact-address joining, persistent chat attention, save/park/rejoin, and
    interactive human seats. Multi-agent host/join/lobby/start, human-owned
    lobby discovery/join/readiness, native checkpoint save/load with exact
-   faction restoration, match-wide park, and opt-in macvlan/ipvlan human-seat
-   publication are implemented. Broader
-   Internet transports and automated Windows networking remain out of scope.
-7. **Deployment validation** — Linux home lab first, then Windows Docker
-   Desktop/WSL2 and remote virtual-LAN compatibility.
+   faction restoration, match-wide park, five guarded random-map profiles, and
+   opt-in macvlan/ipvlan human-seat publication are implemented and locally
+   native-tested.
+7. **Remote transport** — a persistent, firewalled Tailscale subnet-router
+   profile supports physical player LANs and dedicated routed Docker bridges.
+   DirectPlay TCP/UDP routing is live-tested locally; an actual Internet peer
+   remains an external certification step.
+8. **Deployment validation** — Linux preflight and native-process certification
+   are complete. Windows Docker Desktop/WSL2 and physical two-machine runs have
+   runnable checklists but require those external hosts.
+9. **Gameplay expansion** — typed scenario launch and remaining consequential
+   LAN mutations stay fail-closed until legal scenario assets and convergent
+   native two-client tests are available.
 
 The ordinary operator experience remains:
 

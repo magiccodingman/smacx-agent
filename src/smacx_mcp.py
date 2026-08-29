@@ -14,6 +14,7 @@ import uuid
 
 from mcp.server import MCPServer
 
+from smacx_capabilities import capability_manifest
 from smacx_controller import (
     BridgeUnavailable,
     bridge_request,
@@ -168,6 +169,21 @@ def smac_status() -> dict:
             "next": "Stop the current game if needed. The orchestrator must extend/test the bridge and restart MCP before any launch, load, new game, or command can proceed.",
         }
     return result
+
+
+@mcp.tool(
+    description=(
+        "Read the reviewed platform capability and certification ledger. This is static product coverage, "
+        "not the current turn's legal actions. Query a section to keep context compact."
+    )
+)
+def smac_capabilities(
+    section: Literal[
+        "all", "policy", "launch_modes", "lan_profiles", "semantic_surface",
+        "known_fail_closed_gaps", "deployment", "evidence",
+    ] = "all",
+) -> dict:
+    return capability_manifest(section)
 
 
 @mcp.tool(description="Launch the isolated Alien Crossfire spectator window and connect its semantic bridge. This does not click a menu.")

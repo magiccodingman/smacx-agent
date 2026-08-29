@@ -93,10 +93,12 @@ know.
 | AI-hosted and human-hosted mixed LAN | Implemented and live-tested with an independent third native process; physical two-machine certification remains |
 | View-only noVNC spectators | Implemented and live-tested |
 | Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore plus verified worker and Hermes-conversation archives tested |
-| Optional Graphiti projector | Core adapter/isolation/replay implemented; deployment automation and real backend evaluation remain |
+| Optional Graphiti projector | One-command isolated Neo4j/Graphiti profile implemented and backend-live-tested; disabled until compatible chat and embedding endpoints are configured |
 | Curated Alien Crossfire rules/search corpus | Implemented; 19 project-authored, citation/provenance-tracked documents with compact BM25-then-get retrieval |
-| Windows/WSL2 and Internet-LAN deployment | Not yet certified |
-| Every obscure scenario, menu profile, and LAN mutation | Not claimed; unsupported states stop and report a capability gap |
+| Internet/virtual-LAN transport | Encrypted, firewalled Tailscale route implemented and packet-live-tested locally; an actual remote second machine still requires certification |
+| Windows/WSL2 deployment | Preflight and routed Docker design implemented; physical Windows 11/WSL2 certification remains external |
+| Random-map LAN profiles | Five guarded Citizen/Tiny through Transcend/Huge profiles passed a real two-process DirectPlay matrix |
+| Scenarios and every obscure LAN mutation | Not claimed; scenario launch and exact listed mutations remain fail-closed |
 
 See [Project status](docs/project-status.md) for the exact boundary between
 delivered, validated, optional/manual, and planned work. See
@@ -177,6 +179,11 @@ game reaches an unsupported mandatory interaction, the model calls
 `smac_report_capability_gap`; the session then rejects further mutation until a
 typed handler is developed and a fresh native session is started.
 
+`smac_capabilities` returns the same reviewed boundary as structured data. An
+agent can query only `launch_modes`, `lan_profiles`, `known_fail_closed_gaps`,
+or another compact section instead of assuming that an absent tool can be
+reached through the UI.
+
 Read [Safe semantic play loop](docs/agent-loop.md) and [Tool
 reference](docs/tools.md) before authoring another harness adapter or agent
 prompt.
@@ -209,15 +216,17 @@ Hermes dashboard.
 - [Control-plane ADR](docs/adr/0002-control-plane-and-runtime-boundary.md) —
   container, secret, and harness boundaries.
 - [Optional Graphiti projection](docs/graphiti.md) — implemented adapter,
-  configuration, isolation, and current integration status.
+  deployment, configuration, isolation, and current integration status.
 - [Coverage and limits](docs/coverage.md) — exact gameplay coverage and gaps.
 - [Testing](docs/testing.md) — contained, native, Docker, Hermes, and LAN
   validation commands.
 - [Rules reference](docs/reference-knowledge.md) — legal corpus boundary,
   hierarchy, provenance, and compact agent retrieval protocol.
 - [Troubleshooting](docs/troubleshooting.md) — fail-closed recovery guidance.
-- [Platform roadmap](docs/platform-roadmap.md) — remaining deployment and
-  product milestones.
+- [Windows/WSL2](docs/windows-wsl2.md) and [encrypted remote LAN](docs/virtual-lan.md)
+  — deployment paths and their honest certification boundaries.
+- [Platform roadmap](docs/platform-roadmap.md) — completed milestones and
+  remaining external/gameplay certification work.
 
 ## Repository layout
 

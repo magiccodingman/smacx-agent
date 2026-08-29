@@ -20,6 +20,7 @@ import time
 from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
 
+from smacx_capabilities import capability_manifest
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
 from smacx_harness_manager import HarnessManager
@@ -213,6 +214,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/status":
                 self._authentication()
                 self._json(200, self.server.control.status())
+                return
+            if path == "/api/v1/capabilities":
+                self._authentication()
+                self._json(200, capability_manifest())
                 return
             if path == "/api/v1/providers":
                 self._authentication()
