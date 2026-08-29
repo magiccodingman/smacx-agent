@@ -83,6 +83,30 @@
       <section class="panel operations-panel">
         <div class="section-heading">
           <div>
+            <p class="kicker">Optional temporal memory</p>
+            <h2>Graphiti projection</h2>
+            <p>Graphiti enriches long-running recall but never replaces the scoped SQLite ledger. It requires separate compatible chat and embedding endpoints; a failure cannot stop play.</p>
+          </div>
+          <span id="graphiti-state" class="pill">Checking projector</span>
+        </div>
+        <div class="form-grid">
+          <form id="graphiti-form">
+            <h3>Projection policy</h3>
+            <label class="check"><input name="enabled" id="graphiti-enabled" type="checkbox"> Project new scoped events</label>
+            <button type="submit">Save projection policy</button>
+          </form>
+          <form id="graphiti-rebuild-form">
+            <h3>Rebuild one exact perspective</h3>
+            <label>Perspective <select name="scope" id="graphiti-scope" required></select></label>
+            <button type="submit">Queue isolated rebuild</button>
+          </form>
+        </div>
+        <div id="graphiti-detail" class="record-list"></div>
+      </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
             <p class="kicker">Runtime assets</p>
             <h2>Prepare the legal game runtime</h2>
             <p>The original game stays read-only. Proton is imported once into a private managed volume so live Steam files are never modified.</p>

@@ -132,7 +132,7 @@ ports; use HTTPS before doing this on any network you do not fully trust.
 Starting a managed game worker also starts a dedicated MCP sidecar on the same
 private Docker network. The sidecar receives only that seat's bridge secret,
 worker state, perspective, and authoritative SQLite scope. Its HTTP port is
-published on a random loopback-only host port. It exposes all 18 semantic
+published on a random loopback-only host port. It exposes all 19 semantic
 gameplay/memory tools, but mechanically refuses agent requests to launch, load,
 stop, or create games.
 

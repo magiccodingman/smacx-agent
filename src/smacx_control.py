@@ -26,7 +26,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 import uuid
 
-from smacx_store import InvalidRecord, ScopeViolation, SmacxStore, StoreError
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 
 
 CONTROL_ID = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -271,6 +271,62 @@ class ControlPlane:
                 "updated_unix=excluded.updated_unix",
                 (key, json.dumps(value, sort_keys=True, separators=(",", ":")), time.time()),
             )
+
+    def ensure_graphiti_setting(self, *, default_enabled: bool = False) -> dict[str, Any]:
+        current = self._setting("graphiti.enabled")
+        if current is None:
+            self._set_setting("graphiti.enabled", bool(default_enabled))
+        return self.graphiti_status()
+
+    def set_graphiti_enabled(self, enabled: bool) -> dict[str, Any]:
+        if not isinstance(enabled, bool):
+            raise InvalidRecord("invalid_graphiti_enabled")
+        self._set_setting("graphiti.enabled", enabled)
+        return self.graphiti_status()
+
+    def graphiti_status(self) -> dict[str, Any]:
+        enabled = self._setting("graphiti.enabled") is True
+        with self.store.transaction() as connection:
+            state = connection.execute(
+                "SELECT * FROM graphiti_runtime_state WHERE singleton=1"
+            ).fetchone()
+            queued = int(connection.execute(
+                "SELECT count(*) FROM graphiti_rebuild_requests "
+                "WHERE status IN ('queued','running')"
+            ).fetchone()[0])
+            scopes = [dict(row) for row in connection.execute(
+                "SELECT p.match_id, m.display_name AS match_name, p.agent_id, "
+                "a.display_name AS agent_name, p.perspective_id, p.status "
+                "FROM perspectives p JOIN matches m ON m.match_id=p.match_id "
+                "JOIN agents a ON a.agent_id=p.agent_id "
+                "ORDER BY m.created_unix DESC, a.display_name"
+            ).fetchall()]
+        runtime = dict(state) if state else {
+            "status": "stopped", "backend": "neo4j", "projected_events": 0,
+            "failed_events": 0, "active_scopes": 0, "last_heartbeat_unix": None,
+            "last_projection_unix": None, "last_error": None, "metadata_json": "{}",
+        }
+        runtime["metadata"] = json.loads(runtime.pop("metadata_json"))
+        return {"ok": True, "enabled": enabled, "runtime": runtime,
+                "queued_rebuilds": queued, "scopes": scopes,
+                "sqlite_authoritative": True}
+
+    def request_graphiti_rebuild(self, match_id: str, agent_id: str,
+                                 perspective_id: str, *,
+                                 admin_id: str | None = None) -> dict[str, Any]:
+        scope = MemoryScope(match_id, agent_id, perspective_id)
+        self.store.require_scope(scope)
+        identifier = _new_id("rebuild")
+        now = time.time()
+        with self.store.transaction() as connection:
+            connection.execute(
+                "INSERT INTO graphiti_rebuild_requests(rebuild_id, match_id, agent_id, "
+                "perspective_id, status, requested_by_admin_id, created_unix) "
+                "VALUES (?, ?, ?, ?, 'queued', ?, ?)",
+                (identifier, match_id, agent_id, perspective_id, admin_id, now),
+            )
+        return {"rebuild_id": identifier, "match_id": match_id, "agent_id": agent_id,
+                "perspective_id": perspective_id, "status": "queued", "created_unix": now}
 
     def admin_exists(self) -> bool:
         with self.store.transaction() as connection:

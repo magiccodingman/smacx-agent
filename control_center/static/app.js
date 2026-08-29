@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = ["setup", "login", "dashboard"];
-let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], harnessRuns: [], backups: [], schedules: []};
+let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], harnessRuns: [], backups: [], schedules: [], graphiti: null};
 
 function show(name) {
   sections.forEach((id) => $(`#${id}`).classList.toggle("hidden", id !== name));
@@ -36,11 +36,12 @@ function formObject(form) {
 }
 
 async function loadDashboard() {
-  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, harnessRunsResult, operationsResult, backupsResult, schedulesResult] = await Promise.all([
+  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, harnessRunsResult, operationsResult, backupsResult, schedulesResult, graphitiResult] = await Promise.all([
     api("/api/v1/status"), api("/api/v1/providers"), api("/api/v1/agents"),
     api("/api/v1/game-sources"), api("/api/v1/runtimes"), api("/api/v1/workers"),
     api("/api/v1/matches"), api("/api/v1/harness-profiles"), api("/api/v1/harness-runs"),
     api("/api/v1/operations/status"), api("/api/v1/backups"), api("/api/v1/schedules"),
+    api("/api/v1/graphiti"),
   ]);
   dashboardState = {
     agents: agentsResult.agents,
@@ -53,6 +54,7 @@ async function loadDashboard() {
     harnessRuns: harnessRunsResult.harness_runs,
     backups: backupsResult.backups,
     schedules: schedulesResult.schedules,
+    graphiti: graphitiResult,
   };
   $("#installation").textContent = status.installation_id;
   $("#provider-count").textContent = status.counts.model_providers;
@@ -66,6 +68,7 @@ async function loadDashboard() {
   renderHarnessProfiles(dashboardState.harnessProfiles);
   renderHarnessRuns(dashboardState.harnessRuns);
   renderOperations(operationsResult, dashboardState.backups, dashboardState.schedules);
+  renderGraphiti(graphitiResult);
   populateSelect("#match-agent", dashboardState.agents, "agent_id", "display_name", "Create an agent first");
   populateSelect("#match-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
   populateSelect("#match-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
@@ -77,6 +80,36 @@ async function loadDashboard() {
   populateSelect("#harness-provider", dashboardState.providers.filter((item) => item.default_model_id), "provider_id", "display_name", "Select a provider model first");
   populateScheduleMatches();
   show("dashboard");
+}
+
+function renderGraphiti(graphiti) {
+  const runtime = graphiti.runtime || {};
+  const state = $("#graphiti-state");
+  state.textContent = `${graphiti.enabled ? "Enabled" : "Disabled"} · ${runtime.status || "stopped"}`;
+  state.className = `pill ${["ready", "disabled"].includes(runtime.status) ? "healthy" : runtime.status === "degraded" ? "error" : ""}`;
+  $("#graphiti-enabled").checked = graphiti.enabled === true;
+  const select = $("#graphiti-scope");
+  const previous = select.value;
+  select.replaceChildren();
+  (graphiti.scopes || []).forEach((scope) => {
+    const option = document.createElement("option");
+    option.value = JSON.stringify([scope.match_id, scope.agent_id, scope.perspective_id]);
+    option.textContent = `${scope.match_name} · ${scope.agent_name}`;
+    option.selected = previous === option.value;
+    select.append(option);
+  });
+  if (!select.options.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Create a match perspective first";
+    select.append(option);
+  }
+  const detail = $("#graphiti-detail");
+  detail.replaceChildren(record(
+    "Derived graph health",
+    `${runtime.projected_events || 0} projected · ${runtime.failed_events || 0} failed · ${runtime.active_scopes || 0} active scope(s) · ${graphiti.queued_rebuilds || 0} rebuild(s) queued`,
+    runtime.status || "stopped",
+  ));
 }
 
 function populateScheduleMatches() {
@@ -762,6 +795,36 @@ $("#harness-form").addEventListener("submit", async (event) => {
   } finally {
     button.disabled = false;
   }
+});
+
+$("#graphiti-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  button.disabled = true;
+  try {
+    await api("/api/v1/graphiti", {method: "POST", body: JSON.stringify({
+      enabled: $("#graphiti-enabled").checked,
+    })});
+    notify("Graphiti projection policy saved. SQLite remains authoritative.");
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
+});
+
+$("#graphiti-rebuild-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  if (!$("#graphiti-scope").value) return;
+  button.disabled = true;
+  try {
+    const [match_id, agent_id, perspective_id] = JSON.parse($("#graphiti-scope").value);
+    await api("/api/v1/graphiti/rebuild", {method: "POST", body: JSON.stringify({
+      match_id, agent_id, perspective_id,
+    })});
+    notify("Exact-perspective Graphiti rebuild queued.");
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
 });
 
 $("#backup-form").addEventListener("submit", async (event) => {

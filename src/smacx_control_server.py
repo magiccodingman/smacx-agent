@@ -257,6 +257,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     "ok": True, "harness_runs": self.server.control.list_harness_runs(),
                 })
                 return
+            if path == "/api/v1/graphiti":
+                self._authentication()
+                self._json(200, self.server.control.graphiti_status())
+                return
             if path == "/api/v1/operations/status":
                 self._authentication()
                 self._json(200, self._operations().status())
@@ -548,6 +552,32 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(201, {"ok": True, "run": run})
                 return
+            if path == "/api/v1/graphiti":
+                auth = self._authorize_mutation()
+                body = self._body()
+                if not isinstance(body.get("enabled"), bool):
+                    raise InvalidRecord("invalid_graphiti_enabled")
+                result = self.server.control.set_graphiti_enabled(body["enabled"])
+                self.server.control.audit(
+                    auth["admin_id"], "graphiti.configure", "installation", None,
+                    "success", {"enabled": body["enabled"]}, self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            if path == "/api/v1/graphiti/rebuild":
+                auth = self._authorize_mutation()
+                body = self._body()
+                result = self.server.control.request_graphiti_rebuild(
+                    str(body.get("match_id", "")), str(body.get("agent_id", "")),
+                    str(body.get("perspective_id", "")), admin_id=auth["admin_id"],
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "graphiti.rebuild", "perspective",
+                    result["perspective_id"], "success",
+                    {"rebuild_id": result["rebuild_id"]}, self.client_address[0],
+                )
+                self._json(202, {"ok": True, "rebuild": result})
+                return
             harness_run_match = HARNESS_RUN_PATH.fullmatch(path)
             if harness_run_match:
                 auth = self._authorize_mutation()
@@ -808,7 +838,11 @@ def build_control(data_root: Path) -> ControlPlane:
         Path(__file__).resolve().parents[1] / "knowledge" / "core.json",
     ))
     seed_reference_corpus(store, corpus)
-    return ControlPlane(store, secret_root)
+    control = ControlPlane(store, secret_root)
+    control.ensure_graphiti_setting(
+        default_enabled=os.environ.get("SMACX_GRAPHITI_DEFAULT_ENABLED", "0") == "1",
+    )
+    return control
 
 
 def parser() -> argparse.ArgumentParser:

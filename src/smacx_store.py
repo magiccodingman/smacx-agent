@@ -713,6 +713,36 @@ CREATE TABLE harness_runtime_specs (
     updated_unix REAL NOT NULL
 );
 
+CREATE TABLE graphiti_runtime_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+    status TEXT NOT NULL CHECK (status IN ('stopped','starting','ready','degraded','disabled')),
+    backend TEXT NOT NULL DEFAULT 'neo4j',
+    projected_events INTEGER NOT NULL DEFAULT 0,
+    failed_events INTEGER NOT NULL DEFAULT 0,
+    active_scopes INTEGER NOT NULL DEFAULT 0,
+    last_heartbeat_unix REAL,
+    last_projection_unix REAL,
+    last_error TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    updated_unix REAL NOT NULL
+);
+
+CREATE TABLE graphiti_rebuild_requests (
+    rebuild_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id),
+    perspective_id TEXT NOT NULL REFERENCES perspectives(perspective_id),
+    status TEXT NOT NULL CHECK (status IN ('queued','running','completed','failed')),
+    requested_by_admin_id TEXT REFERENCES control_admins(admin_id),
+    result_json TEXT NOT NULL DEFAULT '{}',
+    last_error TEXT,
+    created_unix REAL NOT NULL,
+    started_unix REAL,
+    completed_unix REAL
+);
+CREATE INDEX graphiti_rebuild_queue
+    ON graphiti_rebuild_requests(status, created_unix);
+
 CREATE TABLE operation_schedules (
     schedule_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
