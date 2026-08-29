@@ -4,8 +4,8 @@ The merged semantic bridge is the protected gameplay baseline. Platform work
 is delivered as vertical, independently testable milestones.
 
 1. **Durable foundation** — installation/match/agent/perspective/instance/session
-   identities, versioned SQLite migrations, immutable events, structured
-   memory, chat history, and scoped full-text retrieval.
+   identities, one canonical pre-release SQLite schema, immutable events,
+   structured memory, chat history, and scoped full-text retrieval.
 2. **Runtime integration** — migrate the controller's manifests and knowledge
    ledger into SQLite while retaining guarded legacy import and the existing
    MCP contract.

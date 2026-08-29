@@ -561,7 +561,7 @@ SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh \
   env PYTHONPATH=src:scripts python3 scripts/live_match_knowledge_test.py
 ```
 
-The durable-platform regressions are fully contained and require neither a game process nor Graphiti/Neo4j. They prove concurrent atomic migration, immutable events, perspective isolation, versioned structured memory, bounded recall, chat player/faction mapping and exactly-once attention, guarded memory writes, legacy JSON history import, Graphiti failure-safe cursors, and group-local rebuild:
+The durable-platform regressions are fully contained and require neither a game process nor Graphiti/Neo4j. They prove concurrent atomic initialization of the canonical pre-release schema, immutable events, perspective isolation, versioned structured memory records, bounded recall, chat player/faction mapping and exactly-once attention, guarded memory writes, legacy JSON history import, Graphiti failure-safe cursors, and group-local rebuild:
 
 ```bash
 PYTHONPATH=src python3 scripts/platform_store_test.py
