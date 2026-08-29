@@ -5022,15 +5022,42 @@ bool native_lan_lobby_active() {
         && *ModalStackCurrent == reinterpret_cast<Win*>(NetWin);
 }
 
-bool lan_small_easy_profile_active() {
+struct LanProfile {
+    const char* id;
+    int difficulty;
+    int map_size;
+};
+
+const LanProfile lan_profiles[] = {
+    {"tiny_citizen", 0, 0},
+    {"small_easy", 0, 1},
+    {"standard_librarian", 3, 2},
+    {"large_thinker", 4, 3},
+    {"huge_transcend", 5, 4},
+};
+
+const LanProfile* lan_profile_named(const std::string& id) {
+    for (const LanProfile& profile : lan_profiles) {
+        if (id == profile.id) return &profile;
+    }
+    return nullptr;
+}
+
+const LanProfile* lan_active_profile() {
     const signed char* settings = reinterpret_cast<signed char*>(0x90E8E0);
-    return settings[2] == 0 && settings[6] == 1;
+    for (const LanProfile& profile : lan_profiles) {
+        if (settings[2] == profile.difficulty && settings[6] == profile.map_size) {
+            return &profile;
+        }
+    }
+    return nullptr;
 }
 
 void append_lan_settings(std::ostringstream& out) {
     const signed char* settings = reinterpret_cast<signed char*>(0x90E8E0);
+    const LanProfile* active_profile = lan_active_profile();
     out << "{\"profile\":"
-        << json_string(lan_small_easy_profile_active() ? "small_easy" : "custom")
+        << json_string(active_profile ? active_profile->id : "custom")
         << ",\"difficulty\":{\"id\":" << static_cast<int>(settings[2])
         << ",\"name\":" << json_string(lan_difficulty_name(settings[2])) << '}'
         << ",\"map_size\":{\"id\":" << static_cast<int>(settings[6])
@@ -5056,6 +5083,7 @@ void append_lan_lobby_state(std::ostringstream& out) {
     const int local_index = lan_local_player_index();
     const int host_index = lan_host_player_index();
     const bool local_host = local_index >= 1 && local_index == host_index;
+    const LanProfile* active_profile = lan_active_profile();
     bool every_client_ready = count >= 2;
     for (int index = 1; index <= count; ++index) {
         if (index != host_index && !lan_player_ready(index)) {
@@ -5161,10 +5189,18 @@ void append_lan_lobby_state(std::ostringstream& out) {
                    "\"expected_lobby_revision\",\"client_operation_id\"]}";
             action_comma = true;
         }
-        if (!any_client_ready && !lan_small_easy_profile_active()) {
+        if (!any_client_ready) {
             if (action_comma) out << ',';
-            out << "{\"action\":\"configure\",\"profile\":\"small_easy\","
-                   "\"effect\":{\"difficulty\":\"citizen\",\"map_size\":\"small\"},"
+            out << "{\"action\":\"configure\",\"parameters\":{\"profile\":{"
+                   "\"type\":\"string\",\"enum\":[";
+            bool profile_comma = false;
+            for (const LanProfile& profile : lan_profiles) {
+                if (active_profile && std::string(active_profile->id) == profile.id) continue;
+                if (profile_comma) out << ',';
+                out << json_string(profile.id);
+                profile_comma = true;
+            }
+            out << "]}},"
                    "\"requires\":[\"match_id\",\"session_id\","
                    "\"expected_lobby_revision\",\"client_operation_id\"]}";
             action_comma = true;
@@ -5776,13 +5812,15 @@ bool test_fixture) {
                 }
             }
             std::string profile = field_string(request, "profile");
-            if (profile != "small_easy") {
+            const LanProfile* requested_profile = lan_profile_named(profile);
+            if (!requested_profile) {
                 return error_response("unsupported_lan_profile",
-                    "The currently validated guarded profile is small_easy (Citizen difficulty on a Small random map).");
+                    "Choose one of the exact guarded profiles returned by the fresh lobby legal_actions.");
             }
-            if (lan_small_easy_profile_active()) {
+            const LanProfile* current_profile = lan_active_profile();
+            if (current_profile && profile == current_profile->id) {
                 return error_response("lan_profile_already_active",
-                    "The small_easy profile is already active. Follow the fresh lobby legal_actions.");
+                    "The requested guarded profile is already active. Follow the fresh lobby legal_actions.");
             }
         } else if (action == "set_ready") {
             if (local_host) {
@@ -5898,6 +5936,12 @@ bool test_fixture) {
         }
 
         if (action == "configure") {
+            std::string profile_id = field_string(request, "profile");
+            const LanProfile* profile = lan_profile_named(profile_id);
+            if (!profile) {
+                return error_response("unsupported_lan_profile",
+                    "The requested guarded profile disappeared before native execution.");
+            }
             unsigned char previous_settings[24] = {};
             unsigned char* native_settings =
                 reinterpret_cast<unsigned char*>(0x90E8E0);
@@ -5905,8 +5949,8 @@ bool test_fixture) {
             // Change only the two named fields.  World-generation levels,
             // timer policy, victory conditions, and advanced rules remain
             // exactly as selected by the host's stock lobby state.
-            native_settings[2] = 0; // Citizen
-            native_settings[6] = 1; // Small random map
+            native_settings[2] = static_cast<unsigned char>(profile->difficulty);
+            native_settings[6] = static_cast<unsigned char>(profile->map_size);
             struct LanConfigurationPacket {
                 uint16_t type;
                 uint16_t reserved;
@@ -5931,7 +5975,8 @@ bool test_fixture) {
             lan_lobby_operation_action = action;
             std::ostringstream configured;
             configured << "{\"ok\":true,\"duplicate\":false,"
-                << "\"action\":\"configure\",\"profile\":\"small_easy\","
+                << "\"action\":\"configure\",\"profile\":"
+                << json_string(profile->id) << ','
                 << "\"native_packet_type\":12034,\"native_send_result\":"
                 << native_send_result
                 << ",\"pixels_or_ui_input_used\":false,\"settings\":";

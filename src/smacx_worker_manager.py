@@ -24,6 +24,10 @@ RESOURCE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$")
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 UNSAFE_LOG_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 SAFE_HOST_PATH_LIMIT = 4096
+LAN_PROFILES = {
+    "tiny_citizen", "small_easy", "standard_librarian",
+    "large_thinker", "huge_transcend",
+}
 
 
 class WorkerManagerError(StoreError):
@@ -681,13 +685,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise WorkerManagerError("external_lan_network_not_configured")
         network = self.docker.inspect_network(self.network_name)
         driver = str(network.get("Driver") or "")
-        if driver not in {"macvlan", "ipvlan"} or network.get("Internal") is True:
+        labels = network.get("Labels") if isinstance(network.get("Labels"), Mapping) else {}
+        routed_bridge = driver == "bridge" \
+            and labels.get("io.smacx.player-lan") == "true" \
+            and labels.get("io.smacx.transport") == "tailscale-routed"
+        if (driver not in {"macvlan", "ipvlan"} and not routed_bridge) \
+                or network.get("Internal") is True:
             raise WorkerManagerError(
-                "external_lan_requires_non_internal_macvlan_or_ipvlan"
+                "external_lan_requires_player_lan_transport"
             )
         return {
             "name": self.network_name,
             "driver": driver,
+            "transport": "tailscale-routed" if routed_bridge else "physical-lan",
             "scope": str(network.get("Scope") or "local"),
         }
 
@@ -1190,6 +1200,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise WorkerManagerError("managed_lan_seat_not_provisioned")
         if any(seat.get("instance_id") for seat in human_seats):
             raise WorkerManagerError("external_human_seat_must_not_have_worker")
+        if profile not in LAN_PROFILES:
+            raise InvalidRecord("unsupported_lan_profile")
         human_hosted = seats[0]["controller_kind"] == "human"
         if human_hosted:
             if seats[0].get("metadata", {}).get("role") != "host" \
@@ -1202,8 +1214,6 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
         if agent_seats[0].get("seat_index") != 0:
             raise WorkerManagerError("agent_hosted_lan_seat_order_invalid")
-        if profile != "small_easy":
-            raise InvalidRecord("unsupported_lan_profile")
         external_network = self._external_lan_network() if human_seats else None
         if human_seats and match["status"] == "lobby":
             return self.finalize_external_lan_match(match_id, timeout=timeout)

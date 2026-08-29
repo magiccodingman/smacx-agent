@@ -363,6 +363,7 @@ function renderMatches(matches) {
     start.disabled = match.status === "running" || match.status === "starting";
     const sessionPayload = {
       session_name: match.metadata?.lan_session_name || "SMACX Managed LAN",
+      profile: match.metadata?.lan_profile || "small_easy",
     };
     start.addEventListener("click", () => {
       if (match.status === "lobby" && humanHosted
@@ -421,7 +422,7 @@ async function matchAction(matchId, action, button, reload = true, payload = {})
   notify(`${labels[action] || "Running managed operation"}…`);
   try {
     const result = await api(`/api/v1/matches/${matchId}/${action}`, {
-      method: "POST", body: JSON.stringify({profile: "small_easy", ...payload}),
+      method: "POST", body: JSON.stringify(payload),
     });
     if (result.awaiting_external_host) {
       notify(`Managed agents are ready. Create the native lobby as ${result.external_host?.player_name}, then choose “Find human lobby”.`);

@@ -208,7 +208,13 @@
           </label>
           <label>Game source <select name="game_source_id" id="lan-source" required></select></label>
           <label>Runtime <select name="runtime_id" id="lan-runtime" required></select></label>
-          <label>Lobby profile <select name="profile"><option value="small_easy">Citizen · Small random map</option></select></label>
+          <label>Lobby profile <select name="profile">
+            <option value="tiny_citizen">Citizen · Tiny random map</option>
+            <option value="small_easy" selected>Citizen · Small random map</option>
+            <option value="standard_librarian">Librarian · Standard random map</option>
+            <option value="large_thinker">Thinker · Large random map</option>
+            <option value="huge_transcend">Transcend · Huge random map</option>
+          </select></label>
           <label class="check"><input name="view_enabled" type="checkbox"> Enable view-only spectators for agent seats</label>
           <label class="check"><input name="start_now" type="checkbox" checked> Prepare now (agent hosts open a lobby; human hosts start managed clients)</label>
           <button type="submit">Create managed LAN</button>

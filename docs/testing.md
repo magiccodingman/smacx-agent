@@ -701,4 +701,37 @@ SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh \
   env PYTHONPATH=src:scripts python3 scripts/base_management_test.py
 ```
 
-The latest regression artifacts are written under `runtime/`. A successful cleanup leaves no `terranx.exe` or Xephyr `:99` process. The persistent MCP should finish `active` and `hermes mcp test smacx` should discover exactly 16 tools.
+## Platform, routed-LAN, and physical certification
+
+Run the platform and routed transport checks before involving another machine:
+
+```bash
+python3 scripts/platform_preflight.py \
+  --game-path /absolute/legal/game --directx-redist /absolute/directx-redist.exe
+PYTHONPATH=src python3 scripts/virtual_lan_contract_test.py
+./scripts/virtual_lan_route_live_test.sh
+PYTHONPATH=src python3 scripts/lan_profile_contract_test.py
+```
+
+For WSL2 add `--require-wsl2`. A physical mixed human/AI certification is one
+complete matrix, not a successful ping:
+
+1. Put the human game and managed worker on different physical computers and
+   record OS, Docker, WSL (if any), Tailscale, Proton, and game hashes.
+2. Confirm only the intended player subnet route is approved and that TCP
+   47624 plus TCP/UDP 2300–2400 pass; verify an unrelated container port is
+   rejected.
+3. Run one AI-hosted and one human-hosted game. In each, validate exact names,
+   distinct factions, private and public faction-attributed chat, and at least
+   one paired-diplomacy offer/accept/decline path.
+4. Create the native host checkpoint, disconnect the remote participant, park
+   every managed seat, resume the checkpoint, reclaim exact saved factions,
+   exchange chat, and complete another turn.
+5. Stop and resume one managed harness and one worker; confirm match identity
+   and scoped memory remain while process-session identity rotates.
+6. Save logs and fill `docs/certification-record.example.md`; do not promote an
+   unrun row to certified.
+
+The latest regression artifacts are written under `runtime/`. A successful
+cleanup leaves no `terranx.exe` or Xephyr `:99` process. The persistent MCP
+should finish `active` and expose exactly 19 semantic tools.

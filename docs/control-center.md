@@ -196,7 +196,8 @@ IPv4 address and only a freshly returned DirectPlay session GUID.
 For an agent host, the Control Center:
 
 1. waits for every stock Multiplayer Setup lobby;
-2. applies the guarded `small_easy` profile (Citizen, Small random map);
+2. applies one guarded random-map profile from Citizen/Tiny through
+   Transcend/Huge (the default is `small_easy`, Citizen/Small);
 3. waits until every client observes the synchronized settings;
 4. readies each client using the game's named native action;
 5. starts only after the host observes every client ready; and

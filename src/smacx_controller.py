@@ -33,7 +33,7 @@ if not 1 <= BRIDGE_PORT <= 65535:
 STEAM_ROOT = Path.home() / ".local/share/Steam"
 PRESSURE_VESSEL = STEAM_ROOT / "steamapps/common/SteamLinuxRuntime_4/run"
 PROTON = STEAM_ROOT / "steamapps/common/Proton - Experimental/proton"
-COMPAT_DATA = RUNTIME / "compatdata"
+COMPAT_DATA = Path(os.environ.get("SMACX_COMPAT_DATA", RUNTIME / "compatdata"))
 LOG_FILE = RUNTIME / "game-launch.log"
 KNOWLEDGE_ROOT = Path(os.environ.get(
     "SMACX_LEGACY_KNOWLEDGE_ROOT",

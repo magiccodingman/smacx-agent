@@ -44,6 +44,20 @@ may each advertise a different, non-overlapping player subnet and use
 `--accept-routes`, which the packaged router already requests. Tailscale ACLs
 should restrict membership and the advertised subnet to intended players.
 
+For Wi-Fi, cloud VMs, Windows Docker Desktop, or any host where macvlan is not
+available, create the dedicated labeled bridge instead:
+
+```bash
+export SMACX_LAN_NETWORK=smacx-routed-player-lan
+export SMACX_PLAYER_LAN_SUBNET=172.29.50.0/24
+./scripts/create-routed-player-lan.sh
+```
+
+The custom router image inserts a forwarding reject for that subnet and then
+permits only TCP 47624 and TCP/UDP 2300–2400 from `tailscale0`, plus established
+replies. This prevents tailnet routing from becoming a path to Control Center,
+MCP, database, or model-provider ports on the Docker network.
+
 The deployment follows Tailscale's documented
 [subnet-router](https://tailscale.com/docs/features/subnet-routers) and
 [Docker](https://tailscale.com/docs/features/containers/docker/docker-params)

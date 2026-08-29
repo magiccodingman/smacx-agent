@@ -26,8 +26,10 @@ import sys
 expected = ipaddress.ip_network(sys.argv[1], strict=True)
 record = json.loads(sys.argv[2])[0]
 driver = record.get("Driver")
-if driver not in {"macvlan", "ipvlan"}:
-    raise SystemExit(f"player LAN must use macvlan or ipvlan, got {driver!r}")
+labels = record.get("Labels") or {}
+routed = driver == "bridge" and labels.get("io.smacx.player-lan") == "true" and labels.get("io.smacx.transport") == "tailscale-routed"
+if driver not in {"macvlan", "ipvlan"} and not routed:
+    raise SystemExit(f"player LAN must use macvlan/ipvlan or the labeled routed bridge, got {driver!r}")
 if record.get("Internal"):
     raise SystemExit("player LAN cannot be an internal Docker network")
 subnets = {

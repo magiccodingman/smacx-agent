@@ -3,7 +3,10 @@
 # ports; operators approve its exact subnet route in their Tailscale policy.
 services:
   tailscale-router:
-    image: ${SMACX_TAILSCALE_IMAGE:-tailscale/tailscale:stable@sha256:8c42c4574ab066384fcb72f69e086a2ff1dd3652eb6f56856cee34bcf0d2f680}
+    build:
+      context: .
+      dockerfile: transport/Dockerfile
+    image: smacx-agent-tailscale:dev
     hostname: ${SMACX_TAILSCALE_HOSTNAME:-smacx-player-lan}
     restart: unless-stopped
     environment:
@@ -15,6 +18,7 @@ services:
       TS_EXTRA_ARGS: --accept-routes
       TS_ENABLE_HEALTH_CHECK: "true"
       TS_LOCAL_ADDR_PORT: 127.0.0.1:9002
+      SMACX_PLAYER_LAN_SUBNET: ${SMACX_PLAYER_LAN_SUBNET:?set SMACX_PLAYER_LAN_SUBNET}
     volumes:
       - smacx-tailscale-state:/var/lib/tailscale
     devices:

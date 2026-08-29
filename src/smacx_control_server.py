@@ -26,7 +26,7 @@ from smacx_harness_manager import HarnessManager
 from smacx_operations import OperationsManager, restore_backup_offline
 from smacx_reference import seed_reference_corpus
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
-from smacx_worker_manager import WorkerManager, WorkerManagerError
+from smacx_worker_manager import LAN_PROFILES, WorkerManager, WorkerManagerError
 
 
 MAX_REQUEST_BODY = 1024 * 1024
@@ -426,6 +426,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(human_player_names, list) \
                         or not all(isinstance(item, str) for item in human_player_names):
                     raise InvalidRecord("invalid_lan_human_player_names")
+                profile = str(body.get("profile", "small_easy"))
+                if profile not in LAN_PROFILES:
+                    raise InvalidRecord("unsupported_lan_profile")
                 created = self.server.control.create_lan_match(
                     str(body.get("display_name", "")), list(agent_ids),
                     human_player_names=list(human_player_names),
@@ -433,7 +436,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     human_host_name=(str(body["human_host_name"])
                                      if body.get("human_host_name") is not None else None),
                     metadata={
-                        "lan_profile": str(body.get("profile", "small_easy")),
+                        "lan_profile": profile,
                         "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
                     },
                 )
@@ -481,7 +484,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         created["match"]["match_id"],
                         session_name=(str(body["session_name"])
                                       if body.get("session_name") is not None else None),
-                        profile=str(body.get("profile", "small_easy")),
+                        profile=profile,
                     )
                 self._json(201, result)
                 return
