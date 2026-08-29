@@ -89,14 +89,17 @@ A recovery set contains:
 
 - a SQLite online-backup snapshot with an integrity check;
 - every active mode-0600 secret when selected;
-- one SHA-256-identified archive per managed worker volume when selected; and
+- one SHA-256-identified archive per managed worker volume when selected;
+- one SHA-256-identified archive per provisioned Hermes conversation volume;
+  and
 - a hash-bound manifest tied to the installation ID.
 
-Running workers are paused at Docker's process boundary only while their volume
-is archived, then unpaused in a guaranteed cleanup path. Backup helpers have no
-network, mount the source read-only, and are deleted after use. Verification
-checks the manifest, database, installation identity, and every worker archive
-before the set is accepted.
+Running workers and harnesses are paused at Docker's process boundary only
+while their volume is archived, then unpaused in a guaranteed cleanup path.
+Backup helpers have no network, mount the source read-only, run as that source
+volume's private UID, and are deleted after use. Verification checks the
+manifest, database, installation identity, and every worker/conversation
+archive before the set is accepted.
 
 Restore is deliberately offline and requires the exact installation ID. Stop
 Control Center, then run:
@@ -111,10 +114,10 @@ docker compose up -d control-center
 ```
 
 Restore first creates an emergency rollback set. It restores the authoritative
-database and vault; worker-volume restore is intentionally a separate operator
-action because overwriting a volume is destructive and requires every referenced
-worker to be parked. The backup itself already contains and verifies those
-worker archives.
+database and vault; worker and harness-volume restore is intentionally a
+separate operator action because overwriting a volume is destructive and
+requires every referenced process to be parked. The backup itself already
+contains and verifies those archives.
 
 Enable **view-only spectator** while provisioning a solo or LAN worker when a
 human should watch that seat. **Watch** asks the authenticated Control Center
@@ -133,10 +136,17 @@ published on a random loopback-only host port. It exposes all 18 semantic
 gameplay/memory tools, but mechanically refuses agent requests to launch, load,
 stop, or create games.
 
-In **Bind Hermes to a running match**, select the running match, model
-provider, and reasoning level. The Control Center checks that both the real
-game worker and exact MCP sidecar are healthy before returning a secret-free
-descriptor. Run its generated command from the repository root:
+In **Run a managed Hermes player**, select the running match, exact agent seat,
+model provider, and reasoning level. The Control Center checks that both the
+real game worker and exact MCP sidecar are healthy, provisions the agent's
+private Hermes data and provider-secret volumes, and starts the digest-pinned
+official Hermes container. The browser receives the run identity and status,
+never a provider credential. Stop and Resume retain the same profile and
+`--continue <match-id>` conversation; the supervisor can restart bounded
+process exits until the operator-specified limit.
+
+The older host-profile adapter remains available for an unkeyed local provider
+or for development. Run its command from the repository root:
 
 ```bash
 ./scripts/smacx-hermes configure-from-control \
@@ -160,11 +170,20 @@ has been configured; no restart of the dashboard or the legacy MCP service is
 required. Parking the match removes its sidecar, so the agent receives a clear
 connection failure rather than accidentally attaching to another game.
 
-The initial host adapter supports providers that do not require an API key,
-including a trusted local OpenAI-compatible endpoint. Control Center never
-returns stored provider keys. Keyed remote providers will be enabled later by
-mounting the exact secret directly into a contained harness runtime instead of
-exposing it through the browser API.
+The host adapter intentionally supports only providers that do not require an
+API key. The managed runtime supports keyed OpenAI-compatible providers: the
+vault value is copied into a private purpose-labeled Docker volume, mounted
+read-only at `/run/secrets`, and read by a tiny launcher into the Hermes
+process environment. The profile stores only `key_env`; the credential is not
+placed in Docker `Env`, command arguments, profile files, HTTP responses, or
+browser state. Reprovisioning rotates the secret volume, including when a
+profile changes from keyed to unkeyed.
+
+The official runtime is pinned by tag and digest in `compose.yaml`. Override
+`SMACX_HERMES_IMAGE` only as an explicit operator choice. The Control Center
+container has Docker access; harness containers do not. They run as UID 10000
+with a read-only root filesystem, all Linux capabilities dropped, no Docker
+socket, and only their own data/secret volumes plus the match network.
 
 ## Managed LAN
 

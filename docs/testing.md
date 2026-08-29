@@ -19,6 +19,7 @@ Focused regressions:
 
 ```bash
 PYTHONPATH=src python3 scripts/operations_contract_test.py
+PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
 PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/mcp_command_schema_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_management_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_citizen_test.py
@@ -42,6 +43,14 @@ container, and waits for the supervisor to restore turn 1 with a new MCP
 sidecar. Its certified result includes
 `live_worker_volume_backup_verified=true` and
 `native_crash_recovered_without_ui=true`.
+
+`harness_manager_contract_test.py` proves the official image digest pin,
+`key_env`-only profile configuration, absence of key material from Docker
+inspect-visible configuration, purpose-volume injection, secret rotation on
+reprovision, and the read-only/capability-dropped semantic runtime. The opt-in
+`harness_backup_live_test.py` creates a real UID-10000 private profile volume
+inside a disposable Control Center data volume and verifies its conversation
+archive and hash manifest.
 
 The real two-client LAN regression creates two isolated game processes and a nested join display, then drives only the semantic bridge. It covers exact-session discovery/join, guarded lobby configuration/readiness/start, startup decisions, paired human Treaty negotiation, focused technology/energy transfers, the post-diplomacy settlement phase, combat, turn transfer, synchronized strategy/base state, and two-way chat:
 
@@ -92,10 +101,12 @@ reported the opening `PLANETFALL` interaction. Its sole enumerated guarded
 operation was used in this validation.
 
 The full managed vertical slice additionally starts an authenticated Control
-Center, real Proton game worker, exact MCP sidecar, and temporary isolated
-Hermes profile. Qwen3.8-27B runs at low reasoning with only the `smacx` toolset,
-uses status/decision/command semantically, and must advance the bridge's native
-revision before the test passes:
+Center, real Proton game worker, exact MCP sidecar, and official digest-pinned
+Hermes container. Qwen3.8-27B runs at low reasoning with only semantic
+toolsets, uses status/decision/command semantically, and must advance the
+bridge's native revision before the test passes. The same run inspects the
+container for secret leaks and verifies a recovery set containing both worker
+state and the durable Hermes conversation:
 
 ```bash
 SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
@@ -106,7 +117,7 @@ SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
 PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
 ```
 
-Every container, network, volume, and temporary Hermes home in this regression
+Every container, network, volume, and managed Hermes home in this regression
 is uniquely test-owned and removed afterward. The user's default Hermes
 profile/dashboard and legacy MCP service are not read or restarted.
 

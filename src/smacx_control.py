@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sqlite3
 import ssl
 import tempfile
 import threading
@@ -1284,8 +1285,6 @@ class ControlPlane:
         if network.get("mcp_status") != "running" or not isinstance(mcp_url, str):
             raise ScopeViolation("managed_mcp_not_running")
         provider = self.get_provider(provider_id)
-        if provider["has_api_key"]:
-            raise ScopeViolation("keyed_provider_requires_managed_harness_secret_injection")
         model_id = provider.get("default_model_id")
         model = next(
             (item for item in provider["models"] if item["model_id"] == model_id), None,
@@ -1327,6 +1326,178 @@ class ControlPlane:
             "context_length": context_length,
             "reasoning_effort": reasoning_effort,
         }
+
+    def provider_api_key(self, provider_id: str) -> str | None:
+        """Internal runtime-only credential access; never expose through HTTP."""
+        _require_id(provider_id, "provider_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT api_key_secret_id FROM model_providers WHERE provider_id=? ",
+                (provider_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_provider_id")
+        secret_id = row["api_key_secret_id"]
+        if not secret_id:
+            return None
+        return self.vault.read(
+            str(secret_id), purpose=f"provider.{provider_id}.api_key",
+        )
+
+    def put_harness_runtime_spec(self, harness_profile_id: str, *, image_ref: str,
+                                 data_volume: str, secret_volume: str,
+                                 container_name: str,
+                                 metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        _require_id(harness_profile_id, "harness_profile_id")
+        for value, field, maximum in (
+            (image_ref, "harness_image_ref", 512),
+            (data_volume, "harness_data_volume", 255),
+            (secret_volume, "harness_secret_volume", 255),
+            (container_name, "harness_container_name", 255),
+        ):
+            _bounded(value, field, maximum)
+        now = time.time()
+        with self.store.transaction() as connection:
+            if not connection.execute(
+                "SELECT 1 FROM harness_profiles WHERE harness_profile_id=?",
+                (harness_profile_id,),
+            ).fetchone():
+                raise ScopeViolation("unknown_harness_profile")
+            connection.execute(
+                "INSERT INTO harness_runtime_specs(harness_profile_id, image_ref, data_volume, "
+                "secret_volume, container_name, observed_status, metadata_json, created_unix, updated_unix) "
+                "VALUES (?, ?, ?, ?, ?, 'provisioned', ?, ?, ?) "
+                "ON CONFLICT(harness_profile_id) DO UPDATE SET image_ref=excluded.image_ref, "
+                "data_volume=excluded.data_volume, secret_volume=excluded.secret_volume, "
+                "container_name=excluded.container_name, metadata_json=excluded.metadata_json, "
+                "updated_unix=excluded.updated_unix",
+                (harness_profile_id, image_ref, data_volume, secret_volume, container_name,
+                 _json(metadata), now, now),
+            )
+        return self.get_harness_runtime_spec(harness_profile_id)
+
+    def get_harness_runtime_spec(self, harness_profile_id: str) -> dict[str, Any]:
+        _require_id(harness_profile_id, "harness_profile_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM harness_runtime_specs WHERE harness_profile_id=?",
+                (harness_profile_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_harness_runtime")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
+    def create_harness_run(self, harness_profile_id: str, *, match_id: str,
+                           initial_prompt: str,
+                           continuation_prompt: str,
+                           restart_policy: Mapping[str, Any],
+                           run_id: str | None = None) -> dict[str, Any]:
+        for value, field in ((harness_profile_id, "harness_profile_id"),
+                             (match_id, "match_id")):
+            _require_id(value, field)
+        if not isinstance(initial_prompt, str) or not 1 <= len(initial_prompt) <= 65_536:
+            raise InvalidRecord("invalid_harness_initial_prompt")
+        if not isinstance(continuation_prompt, str) or not 1 <= len(continuation_prompt) <= 16_384:
+            raise InvalidRecord("invalid_harness_continuation_prompt")
+        profile = self.get_harness_profile(harness_profile_id)
+        metadata = profile.get("metadata", {})
+        if metadata.get("active_match_id") != match_id:
+            raise ScopeViolation("harness_profile_match_mismatch")
+        identifier = run_id or _new_id("run")
+        _require_id(identifier, "run_id")
+        now = time.time()
+        with self.store.transaction() as connection:
+            seat = connection.execute(
+                "SELECT agent_id, perspective_id, instance_id FROM seat_assignments "
+                "WHERE match_id=? AND agent_id=? AND controller_kind='agent'",
+                (match_id, profile["agent_id"]),
+            ).fetchone()
+            if not seat or not seat["instance_id"]:
+                raise ScopeViolation("harness_run_seat_unavailable")
+            native = connection.execute(
+                "SELECT session_id FROM sessions WHERE instance_id=? AND status='running' "
+                "ORDER BY started_unix DESC LIMIT 1", (seat["instance_id"],),
+            ).fetchone()
+            try:
+                connection.execute(
+                    "INSERT INTO harness_runs(run_id, harness_profile_id, match_id, agent_id, "
+                    "perspective_id, instance_id, native_session_id, status, initial_prompt, "
+                    "continuation_prompt, restart_policy_json, metadata_json, created_unix, updated_unix) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, '{}', ?, ?)",
+                    (identifier, harness_profile_id, match_id, seat["agent_id"],
+                     seat["perspective_id"], seat["instance_id"],
+                     native["session_id"] if native else None, initial_prompt, continuation_prompt,
+                     _json(restart_policy), now, now),
+                )
+            except sqlite3.IntegrityError as exc:
+                if "harness_runs.match_id" in str(exc):
+                    raise ScopeViolation("harness_run_already_active_for_seat") from exc
+                raise
+        return self.get_harness_run(identifier)
+
+    def update_harness_run(self, run_id: str, *, status: str | None = None,
+                           desired_status: str | None = None,
+                           container_name: str | None = None,
+                           external_session_id: str | None = None,
+                           last_error: str | None = None,
+                           exit_code: int | None = None,
+                           increment_restart: bool = False,
+                           heartbeat: bool = False) -> dict[str, Any]:
+        _require_id(run_id, "run_id")
+        if status is not None and status not in {
+                "queued", "starting", "running", "restarting", "stopped", "completed", "error"}:
+            raise InvalidRecord("invalid_harness_run_status")
+        if desired_status is not None and desired_status not in {"running", "stopped"}:
+            raise InvalidRecord("invalid_harness_desired_status")
+        now = time.time()
+        fields = ["updated_unix=?"]
+        values: list[Any] = [now]
+        for name, value in (("status", status), ("desired_status", desired_status),
+                            ("container_name", container_name),
+                            ("external_session_id", external_session_id),
+                            ("last_error", last_error), ("exit_code", exit_code)):
+            if value is not None:
+                fields.append(f"{name}=?")
+                values.append(value)
+        if heartbeat:
+            fields.append("last_heartbeat_unix=?")
+            values.append(now)
+        if increment_restart:
+            fields.append("restart_count=restart_count+1")
+        if status == "running":
+            fields.append("started_unix=COALESCE(started_unix, ?)")
+            values.append(now)
+        if status in {"stopped", "completed", "error"}:
+            fields.append("stopped_unix=?")
+            values.append(now)
+        values.append(run_id)
+        with self.store.transaction() as connection:
+            cursor = connection.execute(
+                f"UPDATE harness_runs SET {', '.join(fields)} WHERE run_id=?", values,
+            )
+            if cursor.rowcount != 1:
+                raise ScopeViolation("unknown_harness_run")
+        return self.get_harness_run(run_id)
+
+    def get_harness_run(self, run_id: str) -> dict[str, Any]:
+        _require_id(run_id, "run_id")
+        with self.store.transaction() as connection:
+            row = connection.execute("SELECT * FROM harness_runs WHERE run_id=?", (run_id,)).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_harness_run")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        result["restart_policy"] = json.loads(result.pop("restart_policy_json"))
+        return result
+
+    def list_harness_runs(self) -> list[dict[str, Any]]:
+        with self.store.transaction() as connection:
+            identifiers = [str(row[0]) for row in connection.execute(
+                "SELECT run_id FROM harness_runs ORDER BY created_unix DESC"
+            )]
+        return [self.get_harness_run(identifier) for identifier in identifiers]
 
     def get_harness_profile(self, harness_profile_id: str) -> dict[str, Any]:
         _require_id(harness_profile_id, "harness_profile_id")

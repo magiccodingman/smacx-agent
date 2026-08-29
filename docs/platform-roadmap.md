@@ -21,8 +21,9 @@ is delivered as vertical, independently testable milestones.
    agents/personalities, match builder, secrets, isolated per-worker MCP,
    view-only spectators, and Hermes profile/session management. The durable
    operator and host-Hermes vertical slices, durable schedules, verified
-   backups, MCP repair, and checkpoint-gated native crash recovery are
-   implemented. Fully managed harness-process supervision remains.
+   backups, MCP repair, checkpoint-gated native crash recovery, digest-pinned
+   managed Hermes processes, durable continuation, heartbeat/restart ownership,
+   and purpose-volume provider secret injection are implemented.
 6. **Managed multiplayer** — one isolated worker per seat, managed hosting,
    exact-address joining, persistent chat attention, save/park/rejoin, and
    interactive human seats. Multi-agent host/join/lobby/start, human-owned

@@ -4,7 +4,7 @@
 Authenticated Control Center -- owns match/seat/worker/harness lifecycle
              |
              v
-Qwen 3.8 27B / isolated Hermes profile (one durable agent identity)
+Qwen 3.8 27B / managed isolated Hermes container (one durable agent identity)
              |
              | exact MCP Streamable HTTP endpoint
              v
@@ -23,9 +23,12 @@ The Control Center also owns a durable operations plane. SQLite schedules are
 claimed transactionally; immutable run records retain outcomes. Reconciliation
 may repair an MCP sidecar in place, but native recovery requires a previously
 recorded bridge-verified save. Backups use SQLite's online backup API and
-briefly pause each game container while a no-network helper archives its
-persistent volume. Backup and reconciliation share an exclusive operations
-lock so an intentional consistency freeze cannot be classified as failure.
+briefly pause each game or running harness container while a no-network helper
+archives its persistent volume under the source volume's private UID. Backup
+and reconciliation share an exclusive operations lock so an intentional
+consistency freeze cannot be classified as failure. Hermes provider keys are
+mounted from a separate read-only purpose volume and are never included in the
+inspect-visible process configuration.
 
 The model should use MCP rather than connect to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Keeping the bridge protocol independent makes it possible to add a different harness later without changing the DLL.
 

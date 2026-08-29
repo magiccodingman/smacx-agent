@@ -22,6 +22,7 @@ from urllib.parse import unquote, urlsplit
 
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
+from smacx_harness_manager import HarnessManager
 from smacx_operations import OperationsManager, restore_backup_offline
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 from smacx_worker_manager import WorkerManager, WorkerManagerError
@@ -39,6 +40,7 @@ MATCH_PATH = re.compile(
 SCHEDULE_PATH = re.compile(r"^/api/v1/schedules/([A-Za-z0-9_-]{8,96})/(activate|pause|disable)$")
 BACKUP_PATH = re.compile(r"^/api/v1/backups/([A-Za-z0-9_-]{8,96})/verify$")
 RECOVERY_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(checkpoint|recover)$")
+HARNESS_RUN_PATH = re.compile(r"^/api/v1/harness-runs/([A-Za-z0-9_-]{8,96})/(start|stop|status)$")
 
 
 class RequestRateLimiter:
@@ -67,13 +69,15 @@ class ControlHTTPServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], control: ControlPlane,
                  static_root: Path, *, secure_cookies: bool = False,
                  worker_manager: WorkerManager | None = None,
-                 operations: OperationsManager | None = None) -> None:
+                 operations: OperationsManager | None = None,
+                 harness_manager: HarnessManager | None = None) -> None:
         super().__init__(address, ControlRequestHandler)
         self.control = control
         self.static_root = static_root.resolve()
         self.secure_cookies = secure_cookies
         self.worker_manager = worker_manager
         self.operations = operations
+        self.harness_manager = harness_manager
         self.login_limiter = RequestRateLimiter()
 
 
@@ -244,6 +248,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._json(200, {
                     "ok": True,
                     "harness_profiles": self.server.control.list_harness_profiles(),
+                })
+                return
+            if path == "/api/v1/harness-runs":
+                self._authentication()
+                self._json(200, {
+                    "ok": True, "harness_runs": self.server.control.list_harness_runs(),
                 })
                 return
             if path == "/api/v1/operations/status":
@@ -498,6 +508,65 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, {"ok": True, "descriptor": descriptor})
                 return
+            if path == "/api/v1/harness-runs":
+                auth = self._authorize_mutation()
+                body = self._body()
+                match_id = str(body.get("match_id", ""))
+                agent_id = str(body.get("agent_id", "")) or None
+                manager = self._manager()
+                worker = self.server.control.worker_for_match(match_id, agent_id=agent_id)
+                observed = manager.worker_status(worker["instance_id"])
+                mcp = observed.get("mcp") if isinstance(observed.get("mcp"), dict) else {}
+                if not observed.get("running") or observed.get("health") != "healthy":
+                    raise WorkerManagerError("game_worker_not_healthy")
+                if not mcp.get("running") or mcp.get("health") != "healthy":
+                    raise WorkerManagerError("managed_mcp_not_healthy")
+                try:
+                    budget = int(body.get("run_budget_seconds", 3600))
+                    max_turns = int(body.get("max_turns", 5000))
+                    restart_limit = int(body.get("restart_limit", 1000))
+                except (TypeError, ValueError) as exc:
+                    raise InvalidRecord("invalid_harness_run_limits") from exc
+                descriptor = self.server.control.prepare_hermes_profile(
+                    match_id, str(body.get("provider_id", "")), agent_id=agent_id,
+                    reasoning_effort=str(body.get("reasoning_effort", "low")),
+                )
+                run = self._harness_manager().create_run(
+                    descriptor,
+                    initial_prompt=(str(body["initial_prompt"])
+                                    if body.get("initial_prompt") else None),
+                    run_budget_seconds=budget,
+                    max_turns=max_turns,
+                    restart_limit=restart_limit,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "harness.start", "harness_run", run["run_id"],
+                    "success", {"match_id": match_id, "agent_id": descriptor["agent_id"],
+                                "provider_secret_injected": descriptor["provider_requires_api_key"]},
+                    self.client_address[0],
+                )
+                self._json(201, {"ok": True, "run": run})
+                return
+            harness_run_match = HARNESS_RUN_PATH.fullmatch(path)
+            if harness_run_match:
+                auth = self._authorize_mutation()
+                self._body()
+                run_id, action = harness_run_match.groups()
+                if action == "stop":
+                    result = self._harness_manager().stop_run(run_id)
+                elif action == "start":
+                    current = self.server.control.update_harness_run(
+                        run_id, desired_status="running", status="queued",
+                    )
+                    result = self._harness_manager().start_run(str(current["run_id"]))
+                else:
+                    result = self._harness_manager().status(run_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"harness.{action}", "harness_run", run_id,
+                    "success", {}, self.client_address[0],
+                )
+                self._json(200, {"ok": True, "result": result})
+                return
             if path == "/api/v1/schedules":
                 auth = self._authorize_mutation()
                 body = self._body()
@@ -672,6 +741,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             raise StoreError("operations_manager_disabled")
         return self.server.operations
 
+    def _harness_manager(self) -> HarnessManager:
+        if self.server.harness_manager is None:
+            raise StoreError("harness_manager_disabled")
+        return self.server.harness_manager
+
     @staticmethod
     def _redact_worker(worker: dict[str, Any]) -> dict[str, Any]:
         result = dict(worker)
@@ -795,6 +869,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("control_server_already_running") from exc
     control.ensure_bootstrap_token()
     worker_manager = None
+    harness_manager = None
     if os.environ.get("SMACX_DOCKER_ENABLED", "0") == "1":
         worker_manager = WorkerManager(
             control,
@@ -806,6 +881,11 @@ def main(argv: list[str] | None = None) -> int:
             directx_redist_host_path=os.environ.get("SMACX_DIRECTX_REDIST_HOST") or None,
             view_publish_ip=os.environ.get("SMACX_VIEW_PUBLISH_IP", "127.0.0.1"),
         )
+        harness_manager = HarnessManager(
+            control, worker_manager.docker, worker_manager,
+            image_ref=os.environ.get("SMACX_HERMES_IMAGE") or None
+            or "docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843",
+        )
     host = getattr(arguments, "host", os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))
     port = getattr(arguments, "port", int(os.environ.get("SMACX_CONTROL_PORT", "8080")))
     static_root = getattr(
@@ -816,12 +896,14 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("invalid port")
     operations = OperationsManager(
         control, data_root=Path(arguments.data_root), worker_manager=worker_manager,
+        harness_manager=harness_manager,
     )
     operations.start(interval_seconds=float(os.environ.get("SMACX_SUPERVISOR_INTERVAL", "10")))
     server = ControlHTTPServer(
         (host, port), control, Path(static_root),
         secure_cookies=os.environ.get("SMACX_SECURE_COOKIES", "0") == "1",
         worker_manager=worker_manager, operations=operations,
+        harness_manager=harness_manager,
     )
     print(json.dumps({
         "event": "control_ready", "host": host, "port": server.server_port,

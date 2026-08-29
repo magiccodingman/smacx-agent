@@ -85,7 +85,9 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
                       match_id: str, mcp_url: str, provider_base_url: str,
                       model_id: str, reasoning_effort: str = "low",
                       profile_id: str | None = None,
-                      context_length: int | None = None) -> dict[str, Any]:
+                      context_length: int | None = None,
+                      provider_api_key_env: str | None = None,
+                      runtime_hermes_root: Path | None = None) -> dict[str, Any]:
     agent_id = _identity(agent_id, "agent_id")
     match_id = _identity(match_id, "match_id")
     profile_id = profile_id or default_profile_id(agent_id)
@@ -102,9 +104,16 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             raise HermesAdapterError(f"invalid_{field}")
     if context_length is not None and not 1024 <= int(context_length) <= 16_777_216:
         raise HermesAdapterError("invalid_context_length")
+    if provider_api_key_env is not None and not re.fullmatch(
+            r"[A-Z][A-Z0-9_]{2,127}", provider_api_key_env):
+        raise HermesAdapterError("invalid_provider_api_key_env")
 
     hermes_root = hermes_root.expanduser().resolve()
     profile_root = hermes_root / "profiles" / profile_id
+    runtime_root = (runtime_hermes_root or hermes_root)
+    if not runtime_root.is_absolute():
+        raise HermesAdapterError("runtime_hermes_root_must_be_absolute")
+    runtime_profile_root = runtime_root / "profiles" / profile_id
     marker_path = profile_root / MARKER
     if profile_root.exists() and not marker_path.is_file():
         raise HermesAdapterError("refusing_to_overwrite_non_smacx_hermes_profile")
@@ -123,6 +132,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
     ):
         directory.mkdir(parents=True, exist_ok=True)
     workspace = profile_root / "workspace" / "matches" / match_id
+    runtime_workspace = runtime_profile_root / "workspace" / "matches" / match_id
     rules = gameplay_rules(agent_name.strip())
     config: dict[str, Any] = {
         "_config_version": 39,
@@ -151,11 +161,13 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "max_attempts": 3,
         },
         "memory": {"memory_enabled": False, "user_profile_enabled": False},
-        "terminal": {"backend": "local", "cwd": str(workspace)},
+        "terminal": {"backend": "local", "cwd": str(runtime_workspace)},
         "platform_toolsets": {"cli": ["web", "smacx"]},
         "mcp_servers": {"smacx": {"url": mcp_url, "enabled": True}},
         "display": {"show_reasoning": False, "streaming": True},
     }
+    if provider_api_key_env:
+        config["custom_providers"][0]["key_env"] = provider_api_key_env
     if context_length is not None:
         config["model"]["context_length"] = int(context_length)
     _atomic_json(profile_root / "config.yaml", config)
@@ -174,8 +186,8 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
     return {
         "ok": True,
         "profile_id": profile_id,
-        "profile_root": str(profile_root),
-        "workspace": str(workspace),
+        "profile_root": str(runtime_profile_root),
+        "workspace": str(runtime_workspace),
         "agent_id": agent_id,
         "match_id": match_id,
         "model_id": model_id.strip(),

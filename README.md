@@ -87,12 +87,12 @@ know.
 | Native diplomacy, Council, production, units, bases, research, and endgame | Broadly implemented; exact remaining gaps are fail-closed |
 | Durable chat and political/strategic memory | Implemented and contained-tested |
 | Authenticated Control Center and isolated Docker workers | Implemented and live-tested on Linux |
-| OpenAI-compatible provider discovery and Hermes adapter | Implemented; unkeyed local-provider path tested with Qwen/Hermes |
+| OpenAI-compatible providers and managed Hermes runtime | Implemented; digest-pinned official Hermes image, resumable sessions, low-reasoning Qwen path, and purpose-volume key injection tested |
 | Agent-only managed DirectPlay LAN | Implemented and live-tested with two real workers |
 | Multiplayer save, park, stock reload, faction restoration, and continue | Implemented and live-tested |
 | AI-hosted and human-hosted mixed LAN | Implemented and live-tested with an independent third native process; physical two-machine certification remains |
 | View-only noVNC spectators | Implemented and live-tested |
-| Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore and live worker-volume backup tested |
+| Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore plus verified worker and Hermes-conversation archives tested |
 | Optional Graphiti projector | Core adapter/isolation/replay implemented; deployment automation and real backend evaluation remain |
 | Curated Alien Crossfire wiki/RAG corpus | Not yet delivered |
 | Windows/WSL2 and Internet-LAN deployment | Not yet certified |

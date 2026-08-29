@@ -638,8 +638,15 @@ CREATE TABLE harness_runs (
     instance_id TEXT NOT NULL REFERENCES instances(instance_id),
     native_session_id TEXT REFERENCES sessions(session_id),
     external_session_id TEXT,
-    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'stopped', 'completed', 'error')),
+    container_name TEXT,
+    desired_status TEXT NOT NULL DEFAULT 'running' CHECK (desired_status IN ('running', 'stopped')),
+    status TEXT NOT NULL CHECK (status IN ('queued', 'starting', 'running', 'restarting', 'stopped', 'completed', 'error')),
     initial_prompt TEXT NOT NULL DEFAULT '',
+    continuation_prompt TEXT NOT NULL DEFAULT '',
+    restart_policy_json TEXT NOT NULL DEFAULT '{}',
+    restart_count INTEGER NOT NULL DEFAULT 0,
+    last_heartbeat_unix REAL,
+    exit_code INTEGER,
     last_error TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     created_unix REAL NOT NULL,
@@ -651,7 +658,20 @@ CREATE INDEX harness_runs_scope_time
     ON harness_runs(match_id, agent_id, perspective_id, created_unix DESC);
 CREATE UNIQUE INDEX harness_one_live_run_per_perspective
     ON harness_runs(match_id, agent_id, perspective_id)
-    WHERE status IN ('queued', 'running');
+    WHERE status IN ('queued', 'starting', 'running', 'restarting');
+
+CREATE TABLE harness_runtime_specs (
+    harness_profile_id TEXT PRIMARY KEY REFERENCES harness_profiles(harness_profile_id),
+    image_ref TEXT NOT NULL,
+    data_volume TEXT NOT NULL UNIQUE,
+    secret_volume TEXT NOT NULL UNIQUE,
+    container_name TEXT NOT NULL UNIQUE,
+    observed_status TEXT NOT NULL,
+    last_error TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
 
 CREATE TABLE operation_schedules (
     schedule_id TEXT PRIMARY KEY,

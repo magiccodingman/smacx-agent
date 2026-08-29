@@ -17,5 +17,6 @@ else
 fi
 
 docker compose "$@" --profile build build control-center worker-image
+docker compose "$@" --profile build pull harness-image
 docker compose "$@" up -d control-center
 docker compose "$@" ps control-center

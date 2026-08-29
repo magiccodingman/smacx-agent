@@ -49,7 +49,8 @@ RUN python3 -m venv /opt/smacx/mcp-venv \
     && /opt/smacx/mcp-venv/bin/pip install --no-cache-dir "mcp==2.0.0"
 
 COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
-    src/smacx_docker.py src/smacx_worker_manager.py src/smacx_operations.py src/smacx_controller.py \
+    src/smacx_docker.py src/smacx_worker_manager.py src/smacx_operations.py \
+    src/smacx_harness_manager.py src/smacx_hermes.py src/smacx_controller.py \
     src/smacx_mcp.py /opt/smacx/src/
 COPY control_center/static/ /opt/smacx/control_center/static/
 COPY --chmod=0755 control_center/smacx-control /usr/local/bin/smacx-control

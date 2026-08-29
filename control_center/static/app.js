@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = ["setup", "login", "dashboard"];
-let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], backups: [], schedules: []};
+let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], harnessRuns: [], backups: [], schedules: []};
 
 function show(name) {
   sections.forEach((id) => $(`#${id}`).classList.toggle("hidden", id !== name));
@@ -36,10 +36,10 @@ function formObject(form) {
 }
 
 async function loadDashboard() {
-  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, operationsResult, backupsResult, schedulesResult] = await Promise.all([
+  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, harnessRunsResult, operationsResult, backupsResult, schedulesResult] = await Promise.all([
     api("/api/v1/status"), api("/api/v1/providers"), api("/api/v1/agents"),
     api("/api/v1/game-sources"), api("/api/v1/runtimes"), api("/api/v1/workers"),
-    api("/api/v1/matches"), api("/api/v1/harness-profiles"),
+    api("/api/v1/matches"), api("/api/v1/harness-profiles"), api("/api/v1/harness-runs"),
     api("/api/v1/operations/status"), api("/api/v1/backups"), api("/api/v1/schedules"),
   ]);
   dashboardState = {
@@ -50,6 +50,7 @@ async function loadDashboard() {
     providers: providerResult.providers,
     matches: matchesResult.matches,
     harnessProfiles: harnessResult.harness_profiles,
+    harnessRuns: harnessRunsResult.harness_runs,
     backups: backupsResult.backups,
     schedules: schedulesResult.schedules,
   };
@@ -63,6 +64,7 @@ async function loadDashboard() {
   renderWorkers(dashboardState.workers);
   renderMatches(dashboardState.matches);
   renderHarnessProfiles(dashboardState.harnessProfiles);
+  renderHarnessRuns(dashboardState.harnessRuns);
   renderOperations(operationsResult, dashboardState.backups, dashboardState.schedules);
   populateSelect("#match-agent", dashboardState.agents, "agent_id", "display_name", "Create an agent first");
   populateSelect("#match-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
@@ -478,6 +480,43 @@ function renderHarnessProfiles(profiles) {
   }
 }
 
+function renderHarnessRuns(runs) {
+  const root = $("#harness-runs");
+  root.replaceChildren();
+  runs.forEach((run) => {
+    const item = record(
+      `Run ${run.run_id}`,
+      `${run.match_id} · restart ${run.restart_count}/${run.restart_policy.restart_limit} · ${run.last_heartbeat_unix ? `heartbeat ${new Date(run.last_heartbeat_unix * 1000).toLocaleTimeString()}` : "awaiting heartbeat"}`,
+      run.status,
+    );
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const action = document.createElement("button");
+    action.className = "quiet";
+    const live = ["queued", "starting", "running", "restarting"].includes(run.status);
+    action.textContent = live ? "Stop player" : "Resume player";
+    action.addEventListener("click", async () => {
+      action.disabled = true;
+      try {
+        await api(`/api/v1/harness-runs/${run.run_id}/${live ? "stop" : "start"}`, {
+          method: "POST", body: "{}",
+        });
+        notify(live ? "Managed player stopped; its conversation remains durable." : "Managed player resumed.");
+        await loadDashboard();
+      } catch (error) { notify(error.message, true); action.disabled = false; }
+    });
+    actions.append(action);
+    item.append(actions);
+    root.append(item);
+  });
+  if (!runs.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No managed harness run has been started.";
+    root.append(empty);
+  }
+}
+
 async function workerAction(instanceId, action, button, reload = true) {
   button.disabled = true;
   notify(`${action === "start" ? "Starting" : action === "park" ? "Parking" : "Inspecting"} worker…`);
@@ -710,15 +749,13 @@ $("#harness-form").addEventListener("submit", async (event) => {
   const values = formObject(form);
   button.disabled = true;
   try {
-    const result = await api("/api/v1/harness-profiles/hermes", {
+    const result = await api("/api/v1/harness-runs", {
       method: "POST", body: JSON.stringify(values),
     });
-    const descriptor = result.descriptor;
-    const command = `./scripts/smacx-hermes configure-from-control --control-url ${location.origin} --match-id ${descriptor.match_id} --agent-id ${descriptor.agent_id} --provider-id ${descriptor.provider_id} --reasoning ${descriptor.reasoning_effort} --start`;
-    $("#harness-command").textContent = command;
-    $("#harness-detail").textContent = `${descriptor.agent_name} · ${descriptor.model_id} · exact worker ${descriptor.instance_id}`;
+    $("#harness-command").textContent = result.run.run_id;
+    $("#harness-detail").textContent = `Match ${result.run.match_id} · exact agent ${result.run.agent_id}`;
     $("#harness-result").classList.remove("hidden");
-    notify("Hermes binding validated; the host profile command is ready.");
+    notify("Managed Hermes player started with durable session continuation.");
     await loadDashboard();
   } catch (error) {
     notify(error.message, true);

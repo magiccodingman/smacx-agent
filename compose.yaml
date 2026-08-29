@@ -17,6 +17,7 @@ services:
       SMACX_DOCKER_NETWORK: ${SMACX_DOCKER_NETWORK:-smacx-agent_default}
       SMACX_WORKER_IMAGE: smacx-agent-worker:dev
       SMACX_MCP_IMAGE: smacx-agent-control:dev
+      SMACX_HERMES_IMAGE: ${SMACX_HERMES_IMAGE:-docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843}
       SMACX_CONTROL_DATA_VOLUME: smacx-agent_smacx-control-data
       SMACX_DIRECTX_REDIST_HOST: ${SMACX_DIRECTX_REDIST:-}
       SMACX_VIEW_PUBLISH_IP: ${SMACX_VIEW_PUBLISH_IP:-127.0.0.1}
@@ -47,6 +48,13 @@ services:
       context: .
       dockerfile: worker/Dockerfile
     image: smacx-agent-worker:dev
+    entrypoint: ["/bin/true"]
+
+  # Pull-only build profile. Managed harness runs are created dynamically and
+  # receive isolated data/secret volumes plus only their seat's MCP network.
+  harness-image:
+    profiles: ["build"]
+    image: ${SMACX_HERMES_IMAGE:-docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843}
     entrypoint: ["/bin/true"]
 
 volumes:

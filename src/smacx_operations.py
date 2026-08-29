@@ -19,10 +19,14 @@ import threading
 import time
 from typing import Any, Mapping
 import uuid
+from typing import TYPE_CHECKING
 
 from smacx_docker import DockerNotFound
 from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager, WorkerManagerError
+
+if TYPE_CHECKING:
+    from smacx_harness_manager import HarnessManager
 
 
 IDENTITY = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -61,16 +65,18 @@ class OperationsManager:
     """One-process coordinator backed by cross-process-safe SQLite claims."""
 
     def __init__(self, control, *, data_root: Path | str,
-                 worker_manager: WorkerManager | None = None) -> None:
+                 worker_manager: WorkerManager | None = None,
+                 harness_manager: "HarnessManager | None" = None) -> None:
         self.control = control
         self.store = control.store
         self.worker_manager = worker_manager
+        self.harness_manager = harness_manager
         self.data_root = Path(data_root).expanduser().resolve()
         self.backup_root = (self.data_root / "backups").resolve()
         if self.backup_root.parent != self.data_root:
             raise StoreError("invalid_backup_root")
-        self.backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(self.backup_root, 0o700)
+        self.backup_root.mkdir(parents=True, exist_ok=True, mode=0o750)
+        os.chmod(self.backup_root, 0o750)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._operation_lock = threading.RLock()
@@ -187,28 +193,40 @@ class OperationsManager:
             raise ScopeViolation("unknown_or_revoked_secret")
         return str(row["purpose"])
 
-    def _backup_worker_volume(self, backup_relative: str, instance_id: str,
-                              volume_name: str) -> None:
+    def _backup_managed_volume(self, backup_relative: str, identity: str,
+                               volume_name: str, *, volume_purpose: str,
+                               archive_relative: str,
+                               active_container: str | None = None,
+                               active_purpose: str | None = None,
+                               source_user: str = "10001:10001") -> None:
         manager = self.worker_manager
         if manager is None or not manager.control_data_volume:
             raise WorkerManagerError("worker_backup_requires_managed_control_volume")
         resource = manager.docker.inspect_volume(volume_name)
-        manager.docker.require_owned(resource, manager.installation_id, purpose="worker-data")
-        helper_name = manager._name("backup", f"{backup_relative}:{instance_id}")  # noqa: SLF001
-        archive_relative = f"backups/{backup_relative}/workers/{instance_id}.tar.gz"
+        manager.docker.require_owned(
+            resource, manager.installation_id, purpose=volume_purpose,
+        )
+        helper_name = manager._name("backup", f"{backup_relative}:{identity}")  # noqa: SLF001
+        target_relative = f"backups/{backup_relative}/{archive_relative}"
+        target_path = (self.data_root / target_relative).resolve()
+        if self.data_root not in target_path.parents:
+            raise ScopeViolation("backup_archive_path_outside_data_root")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(target_path.parent, 0o770)
+        target_path.touch(mode=0o660, exist_ok=False)
+        os.chmod(target_path, 0o660)
         script = (
             "import pathlib,tarfile;"
-            "p=pathlib.Path('/control/')/" + repr(archive_relative) + ";"
-            "p.parent.mkdir(parents=True,exist_ok=True);"
-            "t=tarfile.open(p,'w:gz');t.add('/source',arcname='.');t.close();"
-            "p.chmod(0o600)"
+            "p=pathlib.Path('/control/')/" + repr(target_relative) + ";"
+            "t=tarfile.open(p,'w:gz');t.add('/source',arcname='.');t.close()"
         )
         config = {
             "Image": manager.mcp_image,
             "Entrypoint": ["python3"],
             "Cmd": ["-c", script],
+            "User": source_user,
             "Labels": manager._labels("backup-helper", **{  # noqa: SLF001
-                "io.smacx.instance": instance_id,
+                "io.smacx.backup-source": identity,
             }),
             "HostConfig": {
                 "ReadonlyRootfs": True,
@@ -224,15 +242,17 @@ class OperationsManager:
         identifier: str | None = None
         paused_container: str | None = None
         try:
-            spec = self.control.get_worker_spec(instance_id)
-            try:
-                worker = manager.docker.inspect_container(str(spec["container_name"]))
-                manager.docker.require_owned(worker, manager.installation_id, purpose="game-worker")
-                if worker.get("State", {}).get("Running"):
-                    manager.docker.pause_container(str(spec["container_name"]))
-                    paused_container = str(spec["container_name"])
-            except DockerNotFound:
-                pass
+            if active_container and active_purpose:
+                try:
+                    running = manager.docker.inspect_container(active_container)
+                    manager.docker.require_owned(
+                        running, manager.installation_id, purpose=active_purpose,
+                    )
+                    if running.get("State", {}).get("Running"):
+                        manager.docker.pause_container(active_container)
+                        paused_container = active_container
+                except DockerNotFound:
+                    pass
             try:
                 old = manager.docker.inspect_container(helper_name)
                 manager.docker.require_owned(old, manager.installation_id, purpose="backup-helper")
@@ -245,7 +265,11 @@ class OperationsManager:
             manager.docker.start_container(identifier)
             state = manager.docker.wait_container(identifier, timeout=1800)
             if int(state.get("State", {}).get("ExitCode", -1)) != 0:
-                raise WorkerManagerError("worker_backup_helper_failed")
+                detail = manager.docker.container_logs(identifier, tail=100).strip()[-2000:]
+                raise WorkerManagerError(
+                    "worker_backup_helper_failed" + (f":{detail}" if detail else "")
+                )
+            os.chmod(target_path, 0o600)
         finally:
             if identifier:
                 try:
@@ -256,11 +280,33 @@ class OperationsManager:
                 try:
                     manager.docker.unpause_container(paused_container)
                 except Exception as exc:
-                    self.control.update_worker_observation(
-                        instance_id, observed_status="error",
-                        last_error=f"backup_unpause_failed:{str(exc)[:1000]}",
-                    )
+                    if volume_purpose == "worker-data":
+                        self.control.update_worker_observation(
+                            identity, observed_status="error",
+                            last_error=f"backup_unpause_failed:{str(exc)[:1000]}",
+                        )
                     raise WorkerManagerError("worker_backup_unpause_failed") from exc
+
+    def _backup_worker_volume(self, backup_relative: str, instance_id: str,
+                              volume_name: str) -> None:
+        spec = self.control.get_worker_spec(instance_id)
+        self._backup_managed_volume(
+            backup_relative, instance_id, volume_name,
+            volume_purpose="worker-data",
+            archive_relative=f"workers/{instance_id}.tar.gz",
+            active_container=str(spec["container_name"]), active_purpose="game-worker",
+        )
+
+    def _backup_harness_volume(self, backup_relative: str,
+                               harness_profile_id: str, volume_name: str,
+                               container_name: str) -> None:
+        self._backup_managed_volume(
+            backup_relative, harness_profile_id, volume_name,
+            volume_purpose="harness-data",
+            archive_relative=f"harnesses/{harness_profile_id}.tar.gz",
+            active_container=container_name, active_purpose="harness-run",
+            source_user="10000:10001",
+        )
 
     def create_backup(self, *, include_secrets: bool = True,
                       include_workers: bool = True) -> dict[str, Any]:
@@ -274,7 +320,10 @@ class OperationsManager:
         backup_id = _new_id("backup")
         final_path = self._backup_path(backup_id)
         temporary_path = Path(tempfile.mkdtemp(prefix=f".{backup_id}.", dir=self.backup_root))
-        os.chmod(temporary_path, 0o700)
+        # Purpose-specific archive helpers need group traversal only while this
+        # hidden staging bundle exists. Every payload is 0600 and the completed
+        # bundle is locked back to 0700 before publication.
+        os.chmod(temporary_path, 0o750)
         relative_path = backup_id
         now = time.time()
         installation_id = self.store.installation_id()
@@ -291,6 +340,7 @@ class OperationsManager:
             os.chmod(database_path, 0o600)
             secret_count = self._copy_secrets(temporary_path / "secrets") if include_secrets else 0
             workers: list[dict[str, Any]] = []
+            harnesses: list[dict[str, Any]] = []
             if include_workers:
                 if self.worker_manager is None:
                     with self.store.transaction() as connection:
@@ -313,6 +363,30 @@ class OperationsManager:
                             "sha256": _sha256(archive),
                             "size_bytes": archive.stat().st_size,
                         })
+                    with self.store.transaction() as connection:
+                        runtime_rows = connection.execute(
+                            "SELECT harness_profile_id, data_volume, container_name "
+                            "FROM harness_runtime_specs ORDER BY harness_profile_id"
+                        ).fetchall()
+                    if runtime_rows and self.harness_manager is None:
+                        raise WorkerManagerError("harness_backup_manager_unavailable")
+                    if self.harness_manager is not None:
+                        for runtime in runtime_rows:
+                            profile_id = str(runtime["harness_profile_id"])
+                            self._backup_harness_volume(
+                                temporary_path.name, profile_id,
+                                str(runtime["data_volume"]), str(runtime["container_name"]),
+                            )
+                            archive = temporary_path / "harnesses" / f"{profile_id}.tar.gz"
+                            if not archive.is_file():
+                                raise StoreError("harness_backup_archive_missing")
+                            harnesses.append({
+                                "harness_profile_id": profile_id,
+                                "volume_name": runtime["data_volume"],
+                                "archive": f"harnesses/{profile_id}.tar.gz",
+                                "sha256": _sha256(archive),
+                                "size_bytes": archive.stat().st_size,
+                            })
             manifest = {
                 "schema": "smacx.backup.v1",
                 "backup_id": backup_id,
@@ -321,12 +395,14 @@ class OperationsManager:
                 "database": {"path": "state.sqlite3", "sha256": _sha256(database_path)},
                 "secrets": {"included": include_secrets, "count": secret_count},
                 "workers": workers,
+                "harnesses": harnesses,
             }
             manifest_path = temporary_path / "manifest.json"
             manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                                      encoding="utf-8")
             os.chmod(manifest_path, 0o600)
             manifest_sha = _sha256(manifest_path)
+            os.chmod(temporary_path, 0o700)
             os.replace(temporary_path, final_path)
             size = _tree_size(final_path)
             completed = time.time()
@@ -398,9 +474,19 @@ class OperationsManager:
             if archive.parent != (path / "workers").resolve() or not archive.is_file() \
                     or _sha256(archive) != worker.get("sha256"):
                 raise StoreError("backup_worker_integrity_failure")
+        for harness in manifest.get("harnesses", []):
+            relative = harness.get("archive")
+            if not isinstance(relative, str) or not re.fullmatch(
+                    r"harnesses/harness-[A-Za-z0-9_-]{1,87}\.tar\.gz", relative):
+                raise StoreError("backup_harness_manifest_invalid")
+            archive = (path / relative).resolve()
+            if archive.parent != (path / "harnesses").resolve() or not archive.is_file() \
+                    or _sha256(archive) != harness.get("sha256"):
+                raise StoreError("backup_harness_integrity_failure")
         return {
             "ok": True, "backup_id": backup_id, "installation_id": record["installation_id"],
             "worker_count": len(manifest.get("workers", [])),
+            "harness_count": len(manifest.get("harnesses", [])),
             "includes_secrets": bool(manifest.get("secrets", {}).get("included")),
             "size_bytes": _tree_size(path),
         }
@@ -520,7 +606,10 @@ class OperationsManager:
 
     def _reconcile_once(self) -> dict[str, Any]:
         if self.worker_manager is None:
-            return {"ok": True, "checked": 0, "recovered": 0, "operator_required": 0}
+            harness_result = self.harness_manager.reconcile_once() \
+                if self.harness_manager is not None else {"checked": 0, "restarted": 0}
+            return {"ok": True, "checked": 0, "recovered": 0, "operator_required": 0,
+                    "harness": harness_result}
         checked = recovered = operator_required = 0
         for spec in self.control.list_worker_specs():
             if spec["desired_status"] != "running":
@@ -564,8 +653,12 @@ class OperationsManager:
                 self._incident(str(spec["instance_id"]), "supervisor_error", "operator_required",
                                {"error": str(exc)[:1000]})
                 operator_required += 1
+        # Restore the native worker and MCP endpoint before restarting a model
+        # that depends on them.
+        harness_result = self.harness_manager.reconcile_once() \
+            if self.harness_manager is not None else {"checked": 0, "restarted": 0}
         return {"ok": True, "checked": checked, "recovered": recovered,
-                "operator_required": operator_required}
+                "operator_required": operator_required, "harness": harness_result}
 
     def status(self) -> dict[str, Any]:
         with self.store.transaction() as connection:

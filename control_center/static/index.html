@@ -242,8 +242,8 @@
         <div class="section-heading">
           <div>
             <p class="kicker">Agent runtime</p>
-            <h2>Bind Hermes to a running match</h2>
-            <p>Validate the exact game worker and private MCP sidecar, then create the isolated host profile with the generated command.</p>
+            <h2>Run a managed Hermes player</h2>
+            <p>Start one isolated, resumable harness container for the selected agent seat. Its provider key is mounted through a private secret volume and never returned to the browser.</p>
           </div>
         </div>
         <form id="harness-form" class="harness-form">
@@ -253,14 +253,15 @@
           <label>Reasoning
             <select name="reasoning_effort"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
           </label>
-          <button type="submit">Prepare Hermes binding</button>
+          <button type="submit">Start managed player</button>
         </form>
         <div id="harness-result" class="command-result hidden">
-          <p>The binding is healthy. Run this from the repository root; it securely prompts for the Control Center password, creates or updates the isolated profile, and starts that agent's durable match conversation:</p>
+          <p>The managed run has started. It continues the same match-scoped Hermes conversation after a clean budget rollover or recoverable process exit:</p>
           <code id="harness-command"></code>
           <p id="harness-detail"></p>
         </div>
         <div id="harness-profiles" class="record-list"></div>
+        <div id="harness-runs" class="record-list"></div>
       </section>
     </section>
   </main>
