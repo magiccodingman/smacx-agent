@@ -52,7 +52,7 @@ class MemoryScope:
     perspective_id: str
 
 
-MIGRATION_1 = r"""
+INITIAL_SCHEMA_FOUNDATION = r"""
 CREATE TABLE installations (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     installation_id TEXT NOT NULL UNIQUE,
@@ -452,7 +452,7 @@ CREATE TABLE legacy_imports (
 );
 """
 
-MIGRATION_2 = r"""
+INITIAL_SCHEMA_CONTROL = r"""
 CREATE TABLE control_settings (
     setting_key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,
@@ -553,6 +553,8 @@ CREATE TABLE harness_profiles (
     harness_profile_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
     adapter_kind TEXT NOT NULL,
+    agent_id TEXT REFERENCES agents(agent_id),
+    external_profile_id TEXT,
     provider_id TEXT REFERENCES model_providers(provider_id),
     model_id TEXT,
     reasoning_effort TEXT NOT NULL DEFAULT 'low',
@@ -564,6 +566,9 @@ CREATE TABLE harness_profiles (
     created_unix REAL NOT NULL,
     updated_unix REAL NOT NULL
 );
+CREATE UNIQUE INDEX harness_profile_agent_adapter
+    ON harness_profiles(agent_id, adapter_kind)
+    WHERE agent_id IS NOT NULL;
 
 CREATE TABLE worker_specs (
     instance_id TEXT PRIMARY KEY REFERENCES instances(instance_id),
@@ -573,6 +578,7 @@ CREATE TABLE worker_specs (
     container_name TEXT NOT NULL UNIQUE,
     data_volume TEXT NOT NULL UNIQUE,
     bridge_secret_id TEXT NOT NULL REFERENCES secret_refs(secret_id),
+    view_secret_id TEXT REFERENCES secret_refs(secret_id),
     desired_status TEXT NOT NULL CHECK (desired_status IN ('stopped', 'running', 'parked', 'retired')),
     observed_status TEXT NOT NULL,
     autostart_json TEXT NOT NULL DEFAULT '{}',
@@ -622,13 +628,7 @@ BEGIN
 END;
 """
 
-MIGRATION_3 = r"""
-ALTER TABLE harness_profiles ADD COLUMN agent_id TEXT REFERENCES agents(agent_id);
-ALTER TABLE harness_profiles ADD COLUMN external_profile_id TEXT;
-CREATE UNIQUE INDEX harness_profile_agent_adapter
-    ON harness_profiles(agent_id, adapter_kind)
-    WHERE agent_id IS NOT NULL;
-
+INITIAL_SCHEMA_HARNESS = r"""
 CREATE TABLE harness_runs (
     run_id TEXT PRIMARY KEY,
     harness_profile_id TEXT NOT NULL REFERENCES harness_profiles(harness_profile_id),
@@ -654,16 +654,12 @@ CREATE UNIQUE INDEX harness_one_live_run_per_perspective
     WHERE status IN ('queued', 'running');
 """
 
-MIGRATION_4 = r"""
-ALTER TABLE worker_specs ADD COLUMN view_secret_id TEXT REFERENCES secret_refs(secret_id);
-"""
-
-MIGRATIONS: tuple[tuple[int, str, str], ...] = (
-    (1, "durable_identity_and_memory_foundation", MIGRATION_1),
-    (2, "control_plane_foundation", MIGRATION_2),
-    (3, "harness_identity_and_run_ledger", MIGRATION_3),
-    (4, "view_only_worker_spectator_secret", MIGRATION_4),
-)
+INITIAL_SCHEMA = "\n".join((
+    INITIAL_SCHEMA_FOUNDATION,
+    INITIAL_SCHEMA_CONTROL,
+    INITIAL_SCHEMA_HARNESS,
+))
+SCHEMA_REVISION = 1
 
 
 def _new_id(kind: str) -> str:
@@ -705,8 +701,8 @@ class SmacxStore:
             path = data_root / "smacx-agent" / "smacx.sqlite3"
         self.path = Path(path).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._migration_lock = threading.Lock()
-        self._migrate()
+        self._initialization_lock = threading.Lock()
+        self._initialize_schema()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10.0)
@@ -743,38 +739,39 @@ class SmacxStore:
         finally:
             connection.close()
 
-    def _migrate(self) -> None:
-        with self._migration_lock:
+    def _initialize_schema(self) -> None:
+        """Create the one canonical pre-release schema; never upgrade in place."""
+        with self._initialization_lock:
             connection = self._connect()
             try:
                 # The exclusive SQLite transaction is also the cross-process
-                # migration lock. Re-read applied versions only after it is held.
+                # initialization lock. Re-read state only after it is held.
                 connection.execute("BEGIN EXCLUSIVE")
-                connection.execute(
-                    "CREATE TABLE IF NOT EXISTS schema_migrations ("
-                    "version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_unix REAL NOT NULL)"
-                )
-                applied = {
-                    int(row["version"])
-                    for row in connection.execute("SELECT version FROM schema_migrations")
-                }
-                for version, name, sql in MIGRATIONS:
-                    if version in applied:
-                        continue
-                    statement = ""
-                    for line in sql.splitlines(keepends=True):
-                        statement += line
-                        if sqlite3.complete_statement(statement):
-                            if statement.strip():
-                                connection.execute(statement)
-                            statement = ""
-                    if statement.strip():
-                        raise StoreError("incomplete_schema_migration")
-                    connection.execute(
-                        "INSERT INTO schema_migrations(version, name, applied_unix) VALUES (?, ?, ?)",
-                        (version, name, time.time()),
+                revision = int(connection.execute("PRAGMA user_version").fetchone()[0])
+                if revision == SCHEMA_REVISION:
+                    connection.commit()
+                    return
+                if revision != 0:
+                    raise StoreError("unsupported_prerelease_schema_recreate_database")
+                existing_tables = {
+                    str(row["name"])
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                     )
-                    connection.execute(f"PRAGMA user_version = {version}")
+                }
+                if existing_tables:
+                    raise StoreError("unversioned_prerelease_schema_recreate_database")
+                statement = ""
+                for line in INITIAL_SCHEMA.splitlines(keepends=True):
+                    statement += line
+                    if sqlite3.complete_statement(statement):
+                        if statement.strip():
+                            connection.execute(statement)
+                        statement = ""
+                if statement.strip():
+                    raise StoreError("incomplete_initial_schema")
+                connection.execute(f"PRAGMA user_version = {SCHEMA_REVISION}")
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -1495,7 +1492,7 @@ class SmacxStore:
                         self._append_event(
                             connection,
                             scope,
-                            "migration.legacy_fact_imported",
+                            "legacy_import.fact_imported",
                             {
                                 "fact_id": fact_id,
                                 "fact_key": fact_key,
@@ -1547,7 +1544,7 @@ class SmacxStore:
             self._append_event(
                 connection,
                 scope,
-                "migration.legacy_knowledge_completed",
+                "legacy_import.knowledge_completed",
                 result,
                 source="legacy_import",
                 dedupe_key=f"legacy-ledger:{content_sha256}",

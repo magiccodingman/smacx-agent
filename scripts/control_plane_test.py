@@ -232,7 +232,7 @@ def main() -> int:
             lambda: control.authenticate(session.token),
             "invalid_session",
         )
-        if control.status()["schema_version"] != 4:
+        if control.status()["schema_version"] != 1:
             raise AssertionError("Control Center schema version is incorrect")
 
         print(json.dumps({
