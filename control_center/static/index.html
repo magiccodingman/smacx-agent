@@ -207,6 +207,40 @@
       <section class="panel operations-panel">
         <div class="section-heading">
           <div>
+            <p class="kicker">Durability</p>
+            <h2>Supervision, checkpoints, and backups</h2>
+            <p>The supervisor repairs MCP sidecars automatically and resumes native games only from a bridge-verified checkpoint. Backups include a consistent SQLite snapshot, secrets, and crash-consistent worker volumes.</p>
+          </div>
+          <span id="supervisor-state" class="pill">Checking supervisor</span>
+        </div>
+        <div class="form-grid">
+          <form id="backup-form">
+            <h3>Create a recovery set</h3>
+            <label class="check"><input name="include_secrets" type="checkbox" checked> Include encrypted-provider and worker secrets</label>
+            <label class="check"><input name="include_workers" type="checkbox" checked> Include every managed worker volume</label>
+            <button type="submit">Create and verify backup</button>
+          </form>
+          <form id="schedule-form">
+            <h3>Schedule recurring work</h3>
+            <label>Name <input name="display_name" value="Nightly platform backup" required></label>
+            <label>Operation
+              <select name="operation_kind">
+                <option value="backup">Platform backup</option>
+                <option value="checkpoint">Match checkpoint</option>
+              </select>
+            </label>
+            <label>Match <select name="target_id" id="schedule-match"><option value="">Whole installation</option></select></label>
+            <label>Interval (minutes) <input name="interval_minutes" type="number" min="1" max="43200" value="1440" required></label>
+            <button type="submit">Create schedule</button>
+          </form>
+        </div>
+        <div id="backups" class="record-list"></div>
+        <div id="schedules" class="record-list"></div>
+      </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
             <p class="kicker">Agent runtime</p>
             <h2>Bind Hermes to a running match</h2>
             <p>Validate the exact game worker and private MCP sidecar, then create the isolated host profile with the generated command.</p>

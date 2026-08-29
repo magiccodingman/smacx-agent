@@ -875,6 +875,20 @@ class ControlPlane:
             )
         return self.get_worker_spec(instance_id)
 
+    def update_worker_autostart(self, instance_id: str,
+                                autostart: Mapping[str, Any]) -> dict[str, Any]:
+        """Replace the validated worker launch policy before its next start."""
+        _require_id(instance_id, "instance_id")
+        encoded = _json(autostart)
+        with self.store.transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE worker_specs SET autostart_json=?, updated_unix=? WHERE instance_id=?",
+                (encoded, time.time(), instance_id),
+            )
+            if cursor.rowcount != 1:
+                raise ScopeViolation("unknown_worker_instance")
+        return self.get_worker_spec(instance_id)
+
     def status(self) -> dict[str, Any]:
         with self.store.transaction() as connection:
             counts = {
@@ -882,6 +896,7 @@ class ControlPlane:
                 for table in (
                     "agents", "matches", "instances", "model_providers", "game_sources",
                     "runtime_assets", "harness_profiles", "harness_runs",
+                    "operation_schedules", "backup_sets", "supervision_incidents",
                 )
             }
         return {

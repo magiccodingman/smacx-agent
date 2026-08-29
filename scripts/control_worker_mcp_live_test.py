@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.error import HTTPError
 import uuid
 
 from mcp import ClientSession
@@ -38,8 +39,15 @@ def api(opener, base_url: str, method: str, path: str, body: dict | None = None,
         headers["Content-Type"] = "application/json"
     if csrf:
         headers["X-CSRF-Token"] = csrf
-    with opener.open(Request(base_url + path, data=data, headers=headers, method=method), timeout=timeout) as response:
-        return json.load(response)
+    try:
+        with opener.open(Request(base_url + path, data=data, headers=headers, method=method), timeout=timeout) as response:
+            return json.load(response)
+    except HTTPError as exc:
+        try:
+            detail = json.load(exc)
+        except Exception:
+            detail = {"status": exc.code}
+        raise RuntimeError(f"api_{method}_{path}:{detail}") from exc
 
 
 async def inspect_mcp(url: str, expected_match: str) -> dict:
@@ -81,6 +89,54 @@ async def inspect_mcp(url: str, expected_match: str) -> dict:
         "tool_count": len(names), "status": status_value,
         "snapshot": snapshot_value, "launch": launch_value,
     }
+
+
+async def prepare_checkpoint(url: str) -> dict:
+    allowed_parameters = {"response", "option", "phase", "priority", "name", "tech_id"}
+    latest: dict = {}
+    for _ in range(30):
+        latest = await mcp_tool(url, "smac_decision", {"finish_ready_units": True})
+        if not latest.get("ok"):
+            raise AssertionError(f"decision failed before checkpoint: {latest}")
+        if latest.get("phase") == "turn":
+            return latest
+        if latest.get("phase") == "wait":
+            await mcp_tool(url, "smac_wait", {"seconds": 1})
+            continue
+        choice = next((item for item in latest.get("choices", []) if item.get("command") in {
+            "acknowledge_popup", "choose_research_priority", "advance_technology_presentation",
+            "set_first_base_name",
+        }), None)
+        if not choice:
+            raise AssertionError(f"unexpected interaction before checkpoint: {latest}")
+        arguments = {"command": choice["command"], **latest["required_next"]["guard"]}
+        arguments.update({key: choice[key] for key in allowed_parameters if key in choice})
+        if choice["command"] == "set_first_base_name":
+            arguments["name"] = str(choice.get("suggested_name") or "Alpha Prime")
+        result = await mcp_tool(url, "smac_command", arguments)
+        if not result.get("ok"):
+            raise AssertionError(f"opening interaction failed before checkpoint: {result}")
+    raise AssertionError(f"game never became checkpointable: {latest}")
+
+
+async def mcp_tool(url: str, name: str, arguments: dict | None = None) -> dict:
+    async with streamable_http_client(url) as streams:
+        async with ClientSession(streams[0], streams[1]) as session:
+            await session.initialize()
+            result = await session.call_tool(name, arguments or {})
+    structured = getattr(result, "structured_content", None)
+    if isinstance(structured, dict):
+        return structured
+    for item in getattr(result, "content", []):
+        value = getattr(item, "text", None)
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(decoded, dict):
+                return decoded
+    return {}
 
 
 def run_hermes_semantic_turn(descriptor: dict) -> dict:
@@ -218,6 +274,51 @@ def main() -> int:
         if endpoint.get("status") != "running" or not endpoint.get("url"):
             raise AssertionError(f"worker did not receive an MCP sidecar: {started}")
         mcp_result = asyncio.run(inspect_mcp(endpoint["url"], created["match"]["match_id"]))
+        asyncio.run(prepare_checkpoint(endpoint["url"]))
+        checkpoint = api(
+            opener, base_url, "POST",
+            f"/api/v1/matches/{created['match']['match_id']}/checkpoint",
+            {"slot": "control_recovery"}, csrf, 60,
+        )
+        checkpoint_turn = checkpoint["checkpoint"].get("turn")
+        backup = api(
+            opener, base_url, "POST", "/api/v1/backups",
+            {"include_secrets": True, "include_workers": True}, csrf, 1800,
+        )["backup"]
+        verified = api(
+            opener, base_url, "POST", f"/api/v1/backups/{backup['backup_id']}/verify",
+            {}, csrf, 120,
+        )
+        if verified.get("worker_count") != 1:
+            raise AssertionError(f"live worker backup was incomplete: {verified}")
+        docker("stop", "-t", "1", worker["container_name"])
+        recovery_deadline = time.monotonic() + 480
+        recovered_worker = None
+        while time.monotonic() < recovery_deadline:
+            workers_now = api(opener, base_url, "GET", "/api/v1/workers")["workers"]
+            current = next(item for item in workers_now if item["instance_id"] == worker["instance_id"])
+            matches_now = api(opener, base_url, "GET", "/api/v1/matches")["matches"]
+            current_match = next(
+                item for item in matches_now if item["match_id"] == created["match"]["match_id"]
+            )
+            if current["observed_status"] == "running" and current_match["status"] == "running" \
+                    and current_match.get("metadata", {}).get("last_recovered_slot") == "control_recovery":
+                recovered_worker = current
+                break
+            time.sleep(2)
+        if recovered_worker is None:
+            raise AssertionError("supervisor did not recover the crashed native worker")
+        recovered_endpoint = recovered_worker.get("network", {}).get("mcp_url")
+        if not recovered_endpoint:
+            raise AssertionError("recovered worker did not receive a fresh MCP sidecar")
+        recovered_mcp = asyncio.run(inspect_mcp(
+            recovered_endpoint, created["match"]["match_id"],
+        ))
+        recovered_turn = recovered_mcp.get("snapshot", {}).get("snapshot", {}).get("turn")
+        if checkpoint_turn is not None and recovered_turn != checkpoint_turn:
+            raise AssertionError(
+                f"supervisor recovered the wrong checkpoint turn: {checkpoint_turn} -> {recovered_turn}"
+            )
         provider_url = os.environ.get("SMACX_TEST_PROVIDER_URL")
         provider_model = os.environ.get("SMACX_TEST_PROVIDER_MODEL")
         if provider_url and provider_model:
@@ -239,11 +340,11 @@ def main() -> int:
                     "provider_id": provider["provider_id"], "reasoning_effort": "low",
                 }, csrf,
             )["descriptor"]
-            if descriptor["mcp_url"] != endpoint["url"]:
+            if descriptor["mcp_url"] != recovered_endpoint:
                 raise AssertionError("Control descriptor did not use the exact live MCP sidecar")
             hermes_result = run_hermes_semantic_turn(descriptor)
-            after = asyncio.run(inspect_mcp(endpoint["url"], created["match"]["match_id"]))
-            before_revision = mcp_result["snapshot"].get("snapshot", {}).get("revision")
+            after = asyncio.run(inspect_mcp(recovered_endpoint, created["match"]["match_id"]))
+            before_revision = recovered_mcp["snapshot"].get("snapshot", {}).get("revision")
             after_revision = after["snapshot"].get("snapshot", {}).get("revision")
             if not before_revision or before_revision == after_revision:
                 raise AssertionError(
@@ -263,6 +364,10 @@ def main() -> int:
                 "mcp_tool_count": mcp_result["tool_count"],
                 "mcp_bound_to_exact_match": True,
                 "managed_lifecycle_blocked": True,
+                "bridge_verified_checkpoint": True,
+                "live_worker_volume_backup_verified": True,
+                "native_crash_recovered_without_ui": True,
+                "recovered_checkpoint_turn": recovered_turn,
                 "sidecar_removed_on_park": True,
                 "hermes_semantic_turn": bool(hermes_result),
                 "hermes_low_reasoning": bool(

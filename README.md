@@ -92,6 +92,7 @@ know.
 | Multiplayer save, park, stock reload, faction restoration, and continue | Implemented and live-tested |
 | AI-hosted and human-hosted mixed LAN | Implemented and live-tested with an independent third native process; physical two-machine certification remains |
 | View-only noVNC spectators | Implemented and live-tested |
+| Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore and live worker-volume backup tested |
 | Optional Graphiti projector | Core adapter/isolation/replay implemented; deployment automation and real backend evaluation remain |
 | Curated Alien Crossfire wiki/RAG corpus | Not yet delivered |
 | Windows/WSL2 and Internet-LAN deployment | Not yet certified |
@@ -116,6 +117,9 @@ The current regression suite has demonstrated:
   a second entry into gameplay;
 - a real password-protected noVNC endpoint whose server is forced into
   view-only mode and whose secret is absent from container configuration; and
+- an intentional native worker crash recovered at the exact bridge-verified
+  turn, plus a cryptographically verified live backup of SQLite, secrets, and
+  the worker volume while the supervisor remained online; and
 - adversarial scope, stale-revision, ownership, hidden-information, chat,
   memory, Graphiti cursor, authentication, CSRF, Docker-ownership, and cleanup
   tests.
@@ -220,6 +224,8 @@ Hermes dashboard.
 - `control_center/` — authenticated operator service and web UI.
 - `src/smacx_store.py` — authoritative SQLite identities, events, and memory.
 - `src/smacx_worker_manager.py` — contained worker and LAN lifecycle.
+- `src/smacx_operations.py` — durable schedules, supervision, backups, and
+  verified-checkpoint recovery.
 - `src/smacx_mcp.py` — semantic MCP surface.
 - `src/smacx_graphiti.py` — optional temporal-graph projector.
 - `src/smacx_hermes.py` — current reference harness adapter.

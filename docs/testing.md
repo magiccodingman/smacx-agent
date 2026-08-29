@@ -18,6 +18,7 @@ SMACX_TEST_TIMEOUT=220 scripts/nested_display_test.sh \
 Focused regressions:
 
 ```bash
+PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src "$HOME/.hermes/hermes-agent/venv/bin/python" scripts/mcp_command_schema_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_management_test.py
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/base_citizen_test.py
@@ -31,6 +32,16 @@ SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts
 SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/settlement_status_test.py
 SMACX_TEST_TIMEOUT=120 scripts/nested_display_test.sh env PYTHONPATH=src:scripts python3 scripts/semantic_soak.py --target-turn 1 --deadline 90
 ```
+
+`operations_contract_test.py` proves one canonical schema, exactly-once due
+schedule claims, immutable completed-run history, consistent SQLite snapshots,
+secret backup/restore, automatic pre-restore rollback, and hash tamper
+detection. The opt-in `control_worker_mcp_live_test.py` additionally creates a
+real bridge checkpoint, archives the active worker volume, kills the native
+container, and waits for the supervisor to restore turn 1 with a new MCP
+sidecar. Its certified result includes
+`live_worker_volume_backup_verified=true` and
+`native_crash_recovered_without_ui=true`.
 
 The real two-client LAN regression creates two isolated game processes and a nested join display, then drives only the semantic bridge. It covers exact-session discovery/join, guarded lobby configuration/readiness/start, startup decisions, paired human Treaty negotiation, focused technology/energy transfers, the post-diplomacy settlement phase, combat, turn transfer, synchronized strategy/base state, and two-way chat:
 

@@ -652,6 +652,82 @@ CREATE INDEX harness_runs_scope_time
 CREATE UNIQUE INDEX harness_one_live_run_per_perspective
     ON harness_runs(match_id, agent_id, perspective_id)
     WHERE status IN ('queued', 'running');
+
+CREATE TABLE operation_schedules (
+    schedule_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    operation_kind TEXT NOT NULL CHECK (
+        operation_kind IN ('backup', 'checkpoint', 'match_start', 'match_resume')
+    ),
+    target_kind TEXT NOT NULL CHECK (target_kind IN ('installation', 'match')),
+    target_id TEXT,
+    interval_seconds INTEGER NOT NULL CHECK (interval_seconds BETWEEN 60 AND 2592000),
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'disabled')),
+    next_run_unix REAL NOT NULL,
+    last_run_unix REAL,
+    last_outcome TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+CREATE INDEX operation_schedules_due
+    ON operation_schedules(status, next_run_unix);
+
+CREATE TABLE operation_runs (
+    operation_run_id TEXT PRIMARY KEY,
+    schedule_id TEXT REFERENCES operation_schedules(schedule_id),
+    operation_kind TEXT NOT NULL,
+    target_kind TEXT NOT NULL,
+    target_id TEXT,
+    status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'skipped')),
+    result_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    started_unix REAL NOT NULL,
+    finished_unix REAL
+);
+CREATE INDEX operation_runs_time
+    ON operation_runs(started_unix DESC);
+CREATE TRIGGER operation_runs_no_update_after_finish BEFORE UPDATE ON operation_runs
+WHEN OLD.finished_unix IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'finished operation run is immutable');
+END;
+CREATE TRIGGER operation_runs_no_delete BEFORE DELETE ON operation_runs
+BEGIN
+    SELECT RAISE(ABORT, 'operation run is immutable');
+END;
+
+CREATE TABLE backup_sets (
+    backup_id TEXT PRIMARY KEY,
+    installation_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('creating', 'complete', 'invalid', 'restored')),
+    relative_path TEXT NOT NULL UNIQUE,
+    manifest_sha256 TEXT,
+    database_sha256 TEXT,
+    includes_secrets INTEGER NOT NULL CHECK (includes_secrets IN (0, 1)),
+    worker_count INTEGER NOT NULL DEFAULT 0,
+    size_bytes INTEGER,
+    last_error TEXT,
+    created_unix REAL NOT NULL,
+    completed_unix REAL,
+    restored_unix REAL
+);
+
+CREATE TABLE supervision_incidents (
+    incident_id TEXT PRIMARY KEY,
+    match_id TEXT REFERENCES matches(match_id),
+    instance_id TEXT REFERENCES instances(instance_id),
+    incident_kind TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('open', 'recovered', 'operator_required', 'closed')),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    first_seen_unix REAL NOT NULL,
+    last_seen_unix REAL NOT NULL,
+    recovered_unix REAL
+);
+CREATE INDEX supervision_incidents_open
+    ON supervision_incidents(status, last_seen_unix DESC);
 """
 
 INITIAL_SCHEMA = "\n".join((

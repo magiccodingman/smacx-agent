@@ -459,6 +459,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "narrative_ui": bool(supplied.get("narrative_ui", False)),
             "tutorial_ui": bool(supplied.get("tutorial_ui", False)),
         }
+        startup_save = supplied.get("startup_save")
+        if startup_save is not None:
+            if not isinstance(startup_save, str) or not re.fullmatch(
+                    r"[A-Za-z0-9_-]{1,32}", startup_save):
+                raise InvalidRecord("invalid_worker_startup_save")
+            result["startup_save"] = startup_save
+            result["enabled"] = False
         if not 0 <= result["difficulty"] <= 5 or not 0 <= result["world_size"] <= 4 \
                 or not 1 <= result["faction_id"] <= 7 \
                 or not 0 <= result["initial_research_priority"] <= 3:
@@ -491,6 +498,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "SMACX_AGENT_TUTORIAL_UI": "1" if autostart["tutorial_ui"] else "0",
             "SMACX_BRIDGE_START_TIMEOUT": "180",
         }
+        if isinstance(autostart.get("startup_save"), str):
+            values["SMACX_AGENT_STARTUP_SAVE"] = autostart["startup_save"]
         return [f"{key}={value}" for key, value in values.items()]
 
     def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
@@ -1840,6 +1849,107 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 parked.append(self.park_worker(str(seat["instance_id"])))
         match = self.control.update_match_lifecycle(match_id, "parked")
         return {"ok": True, "match": match, "workers": parked}
+
+    def checkpoint_match(self, match_id: str, *,
+                         slot: str = "control_recovery") -> dict[str, Any]:
+        """Create and record one verified native checkpoint for managed recovery."""
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
+            raise InvalidRecord("invalid_save_slot")
+        match = self.control.get_match(match_id)
+        if match["status"] != "running":
+            raise WorkerManagerError("checkpoint_requires_running_match")
+        seats = self.control.list_seats(match_id)
+        if not seats or seats[0]["controller_kind"] != "agent" \
+                or not seats[0].get("instance_id"):
+            raise WorkerManagerError("external_human_host_owns_checkpoint")
+        host_instance_id = str(seats[0]["instance_id"])
+        choices = self._native_request(
+            host_instance_id, "semantic_choices", kind="game_management",
+            timeout=30.0,
+        )
+        choice = next(
+            (item for item in choices.get("choices", [])
+             if isinstance(item, Mapping) and item.get("command") == "save_game"),
+            None,
+        )
+        if not choice:
+            raise WorkerManagerError("native_checkpoint_not_currently_legal")
+        saved = self._native_request(
+            host_instance_id, "semantic_command", command="save_game", slot=slot,
+            match_id=choices.get("match_id"), session_id=choices.get("session_id"),
+            expected_revision=choices.get("revision"), timeout=30.0,
+        )
+        if not saved.get("ok"):
+            raise WorkerManagerError("native_checkpoint_failed")
+        checkpoint = {
+            "slot": slot,
+            "verified": True,
+            "created_unix": time.time(),
+            "host_instance_id": host_instance_id,
+            "turn": saved.get("turn"),
+            "year": saved.get("year"),
+            "path": saved.get("path"),
+        }
+        updated = self.control.update_match_lifecycle(
+            match_id, "running", metadata={"recovery_checkpoint": checkpoint,
+                                           "recovery_required": False},
+        )
+        return {"ok": True, "match": updated, "checkpoint": checkpoint}
+
+    def recover_match(self, match_id: str) -> dict[str, Any]:
+        """Resume a managed match only from its last bridge-verified checkpoint."""
+        match = self.control.get_match(match_id)
+        checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
+        if not isinstance(checkpoint, Mapping) or checkpoint.get("verified") is not True:
+            raise WorkerManagerError("verified_recovery_checkpoint_required")
+        slot = str(checkpoint.get("slot") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
+            raise WorkerManagerError("invalid_recovery_checkpoint")
+        seats = self.control.list_seats(match_id)
+        if not seats or seats[0]["controller_kind"] != "agent":
+            raise WorkerManagerError("external_human_host_recovery_required")
+        self.park_match(match_id)
+        if match["mode"] == "lan":
+            result = self.start_lan_match(
+                match_id,
+                session_name=str(match.get("metadata", {}).get(
+                    "lan_session_name", "SMACX Managed LAN"
+                )),
+                profile=str(match.get("metadata", {}).get("lan_profile", "small_easy")),
+                resume_slot=slot,
+            )
+        elif match["mode"] == "singleplayer":
+            instance_id = str(seats[0].get("instance_id") or "")
+            if not instance_id:
+                raise WorkerManagerError("managed_solo_worker_missing")
+            spec = self.control.get_worker_spec(instance_id)
+            autostart = dict(spec["autostart"])
+            autostart["enabled"] = False
+            autostart["startup_save"] = slot
+            self.control.update_worker_autostart(instance_id, autostart)
+            started = self.start_worker(instance_id)
+            loaded = self._wait_native(
+                instance_id, "semantic_snapshot",
+                lambda value: value.get("ok") is True
+                and isinstance(value.get("snapshot"), Mapping)
+                and value["snapshot"].get("turn") is not None,
+                timeout=120.0, context="solo_recovery",
+            )
+            running = self.control.update_match_lifecycle(
+                match_id, "running", host_instance_id=instance_id,
+                metadata={"recovery_required": False, "last_recovered_unix": time.time(),
+                          "last_recovered_slot": slot},
+            )
+            result = {"ok": True, "match": running, "worker": started,
+                      "loaded_checkpoint": loaded}
+        else:
+            raise WorkerManagerError("unsupported_match_recovery_mode")
+        self.control.update_match_lifecycle(
+            match_id, "running", metadata={"recovery_required": False,
+                                           "last_recovered_unix": time.time(),
+                                           "last_recovered_slot": slot},
+        )
+        return result
 
     def start_mcp_sidecar(self, instance_id: str, *, timeout: float = 90.0) -> dict[str, Any]:
         if not self.control_data_volume:

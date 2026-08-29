@@ -19,6 +19,14 @@ Thinker-derived 32-bit bridge DLL
 Visible/view-only SMACX process under an isolated Proton prefix
 ```
 
+The Control Center also owns a durable operations plane. SQLite schedules are
+claimed transactionally; immutable run records retain outcomes. Reconciliation
+may repair an MCP sidecar in place, but native recovery requires a previously
+recorded bridge-verified save. Backups use SQLite's online backup API and
+briefly pause each game container while a no-network helper archives its
+persistent volume. Backup and reconciliation share an exclusive operations
+lock so an intentional consistency freeze cannot be classified as failure.
+
 The model should use MCP rather than connect to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Keeping the bridge protocol independent makes it possible to add a different harness later without changing the DLL.
 
 For managed LAN, every agent seat has a separate game/MCP pair but shares one

@@ -137,8 +137,10 @@ projection. SQLite memory and BM25 recall are the production default.
 - First-class personality-card editing and behavioral evaluation. Durable
   agents have a `personality_ref`, and the Hermes system prompt preserves
   player autonomy, but the complete personality workflow remains future work.
-- Automated long-running scheduling, crash policy, backups, and unattended
-  agent supervision in the Control Center.
+- Fully managed Hermes process supervision. Control Center scheduling,
+  sidecar repair, checkpoint-gated native crash recovery, consistent backups,
+  verification, and offline control-state restore are implemented; harness
+  run/heartbeat/restart ownership is the remaining part of unattended play.
 - Managed secret injection for keyed remote model providers. The current
   Hermes path intentionally rejects a keyed provider rather than exposing its
   credential.

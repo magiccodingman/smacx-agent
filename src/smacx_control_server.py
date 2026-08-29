@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict, deque
+import fcntl
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,7 @@ from urllib.parse import unquote, urlsplit
 
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
+from smacx_operations import OperationsManager, restore_backup_offline
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 from smacx_worker_manager import WorkerManager, WorkerManagerError
 
@@ -34,6 +36,9 @@ MATCH_PATH = re.compile(
     r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/"
     r"(start|park|status|discover-external-host|join-external-host|finalize-external-host)$"
 )
+SCHEDULE_PATH = re.compile(r"^/api/v1/schedules/([A-Za-z0-9_-]{8,96})/(activate|pause|disable)$")
+BACKUP_PATH = re.compile(r"^/api/v1/backups/([A-Za-z0-9_-]{8,96})/verify$")
+RECOVERY_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(checkpoint|recover)$")
 
 
 class RequestRateLimiter:
@@ -61,12 +66,14 @@ class ControlHTTPServer(ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int], control: ControlPlane,
                  static_root: Path, *, secure_cookies: bool = False,
-                 worker_manager: WorkerManager | None = None) -> None:
+                 worker_manager: WorkerManager | None = None,
+                 operations: OperationsManager | None = None) -> None:
         super().__init__(address, ControlRequestHandler)
         self.control = control
         self.static_root = static_root.resolve()
         self.secure_cookies = secure_cookies
         self.worker_manager = worker_manager
+        self.operations = operations
         self.login_limiter = RequestRateLimiter()
 
 
@@ -238,6 +245,18 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "harness_profiles": self.server.control.list_harness_profiles(),
                 })
+                return
+            if path == "/api/v1/operations/status":
+                self._authentication()
+                self._json(200, self._operations().status())
+                return
+            if path == "/api/v1/schedules":
+                self._authentication()
+                self._json(200, {"ok": True, "schedules": self._operations().list_schedules()})
+                return
+            if path == "/api/v1/backups":
+                self._authentication()
+                self._json(200, {"ok": True, "backups": self._operations().list_backups()})
                 return
             if path.startswith("/api/"):
                 self._error(404, "not_found")
@@ -479,6 +498,81 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, {"ok": True, "descriptor": descriptor})
                 return
+            if path == "/api/v1/schedules":
+                auth = self._authorize_mutation()
+                body = self._body()
+                try:
+                    interval_seconds = int(body.get("interval_seconds", 0))
+                except (TypeError, ValueError) as exc:
+                    raise InvalidRecord("invalid_schedule_interval") from exc
+                schedule = self._operations().create_schedule(
+                    str(body.get("display_name", "")), str(body.get("operation_kind", "")),
+                    target_kind=str(body.get("target_kind", "")),
+                    target_id=(str(body["target_id"]) if body.get("target_id") is not None else None),
+                    interval_seconds=interval_seconds,
+                    next_run_unix=body.get("next_run_unix"),
+                    payload=body.get("payload") if isinstance(body.get("payload"), dict) else None,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "schedule.create", "schedule", schedule["schedule_id"],
+                    "success", {"operation_kind": schedule["operation_kind"]},
+                    self.client_address[0],
+                )
+                self._json(201, {"ok": True, "schedule": schedule})
+                return
+            schedule_match = SCHEDULE_PATH.fullmatch(path)
+            if schedule_match:
+                auth = self._authorize_mutation()
+                self._body()
+                schedule_id, action = schedule_match.groups()
+                status = {"activate": "active", "pause": "paused", "disable": "disabled"}[action]
+                schedule = self._operations().set_schedule_status(schedule_id, status)
+                self.server.control.audit(
+                    auth["admin_id"], f"schedule.{action}", "schedule", schedule_id,
+                    "success", {}, self.client_address[0],
+                )
+                self._json(200, {"ok": True, "schedule": schedule})
+                return
+            if path == "/api/v1/backups":
+                auth = self._authorize_mutation()
+                body = self._body()
+                backup = self._operations().create_backup(
+                    include_secrets=body.get("include_secrets", True) is True,
+                    include_workers=body.get("include_workers", True) is True,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "backup.create", "backup", backup["backup_id"],
+                    "success", {"worker_count": backup["worker_count"]}, self.client_address[0],
+                )
+                self._json(201, {"ok": True, "backup": backup})
+                return
+            backup_match = BACKUP_PATH.fullmatch(path)
+            if backup_match:
+                auth = self._authorize_mutation()
+                self._body()
+                backup_id = backup_match.group(1)
+                verified = self._operations().verify_backup(backup_id)
+                self.server.control.audit(
+                    auth["admin_id"], "backup.verify", "backup", backup_id,
+                    "success", {"size_bytes": verified["size_bytes"]}, self.client_address[0],
+                )
+                self._json(200, verified)
+                return
+            recovery_match = RECOVERY_PATH.fullmatch(path)
+            if recovery_match:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id, action = recovery_match.groups()
+                result = manager.checkpoint_match(
+                    match_id, slot=str(body.get("slot", "control_recovery")),
+                ) if action == "checkpoint" else manager.recover_match(match_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"match.{action}", "match", match_id,
+                    "success", {"managed_recovery": True}, self.client_address[0],
+                )
+                self._json(200, result)
+                return
             match = PROVIDER_PATH.fullmatch(path)
             if match:
                 auth = self._authorize_mutation()
@@ -573,6 +667,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             raise WorkerManagerError("docker_manager_disabled")
         return self.server.worker_manager
 
+    def _operations(self) -> OperationsManager:
+        if self.server.operations is None:
+            raise StoreError("operations_manager_disabled")
+        return self.server.operations
+
     @staticmethod
     def _redact_worker(worker: dict[str, Any]) -> dict[str, Any]:
         result = dict(worker)
@@ -641,6 +740,12 @@ def parser() -> argparse.ArgumentParser:
     serve.add_argument("--static-root", default=str(Path(__file__).resolve().parents[1] / "control_center/static"))
     commands.add_parser("bootstrap-token", help="print the one-time first-run token")
     commands.add_parser("status", help="print redacted service status")
+    backup = commands.add_parser("backup", help="create or verify an offline-safe backup")
+    backup.add_argument("action", choices=("create", "list", "verify"))
+    backup.add_argument("--backup-id")
+    restore = commands.add_parser("restore", help="restore control state while the server is stopped")
+    restore.add_argument("--backup-id", required=True)
+    restore.add_argument("--confirm-installation", required=True)
     return result
 
 
@@ -654,6 +759,40 @@ def main(argv: list[str] | None = None) -> int:
     if command == "status":
         print(json.dumps(control.status(), sort_keys=True))
         return 0
+    if command == "backup":
+        operations = OperationsManager(control, data_root=Path(arguments.data_root))
+        if arguments.action == "create":
+            result = operations.create_backup(include_secrets=True, include_workers=False)
+        elif arguments.action == "list":
+            result = {"ok": True, "backups": operations.list_backups()}
+        else:
+            if not arguments.backup_id:
+                raise SystemExit("--backup-id is required for verify")
+            result = operations.verify_backup(arguments.backup_id)
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if command == "restore":
+        lock_path = Path(arguments.data_root).expanduser().resolve() / ".control-server.lock"
+        lock_path.touch(mode=0o600, exist_ok=True)
+        with lock_path.open("r+") as lock:
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise SystemExit("control_server_must_be_stopped_for_restore") from exc
+            result = restore_backup_offline(
+                control, Path(arguments.data_root), arguments.backup_id,
+                confirm_installation_id=arguments.confirm_installation,
+            )
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    lock_path = Path(arguments.data_root).expanduser().resolve() / ".control-server.lock"
+    lock_path.touch(mode=0o600, exist_ok=True)
+    server_lock = lock_path.open("r+")
+    try:
+        fcntl.flock(server_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        server_lock.close()
+        raise SystemExit("control_server_already_running") from exc
     control.ensure_bootstrap_token()
     worker_manager = None
     if os.environ.get("SMACX_DOCKER_ENABLED", "0") == "1":
@@ -675,10 +814,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not 1 <= port <= 65535:
         raise SystemExit("invalid port")
+    operations = OperationsManager(
+        control, data_root=Path(arguments.data_root), worker_manager=worker_manager,
+    )
+    operations.start(interval_seconds=float(os.environ.get("SMACX_SUPERVISOR_INTERVAL", "10")))
     server = ControlHTTPServer(
         (host, port), control, Path(static_root),
         secure_cookies=os.environ.get("SMACX_SECURE_COOKIES", "0") == "1",
-        worker_manager=worker_manager,
+        worker_manager=worker_manager, operations=operations,
     )
     print(json.dumps({
         "event": "control_ready", "host": host, "port": server.server_port,
@@ -696,7 +839,9 @@ def main(argv: list[str] | None = None) -> int:
         while not stopping.is_set():
             server.handle_request()
     finally:
+        operations.stop()
         server.server_close()
+        server_lock.close()
         print(json.dumps({"event": "control_stopped"}, separators=(",", ":")), flush=True)
     return 0
 

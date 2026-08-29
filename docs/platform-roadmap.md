@@ -20,8 +20,9 @@ is delivered as vertical, independently testable milestones.
 5. **Control plane** — authenticated Control Center, provider discovery,
    agents/personalities, match builder, secrets, isolated per-worker MCP,
    view-only spectators, and Hermes profile/session management. The durable
-   operator and host-Hermes vertical slices are implemented; scheduler/backups
-   remain.
+   operator and host-Hermes vertical slices, durable schedules, verified
+   backups, MCP repair, and checkpoint-gated native crash recovery are
+   implemented. Fully managed harness-process supervision remains.
 6. **Managed multiplayer** — one isolated worker per seat, managed hosting,
    exact-address joining, persistent chat attention, save/park/rejoin, and
    interactive human seats. Multi-agent host/join/lobby/start, human-owned

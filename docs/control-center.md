@@ -12,7 +12,9 @@ match will not require taking this service down. Its current foundation owns:
 - isolated worker provisioning, health checks, parking, and resume;
 - optional password-protected view-only spectators for each worker;
 - one private MCP sidecar per running game worker;
-- exact Hermes agent/match profile descriptors and host profile setup.
+- exact Hermes agent/match profile descriptors and host profile setup; and
+- durable recurring schedules, worker/MCP supervision, native recovery
+  checkpoints, and verified platform backups.
 
 Managed LAN supports two to seven total seats and at least one agent. Seat zero
 may be an agent or an explicitly named human host; every other seat may be an
@@ -59,6 +61,60 @@ The data volume, private runtime, match ID, perspective, and memory remain.
 **Resume** creates a fresh native process session for that same match. This is
 the intended always-on flow: the Control Center remains up while games come and
 go.
+
+## Long-running operations and recovery
+
+The **Durability** panel is part of the always-on Control Center. It can create
+recurring installation backups or per-match native checkpoints without taking
+the service down. Schedule claims and finished results are durable; a finished
+operation record is immutable, and concurrent service processes cannot claim
+the same due run twice.
+
+**Recovery checkpoint** requests the ordinary guarded `save_game` action from
+the native bridge. It is available only while the managed agent is the real
+native host and saving is currently legal. The resulting slot, turn, year, and
+host instance are recorded only after the engine confirms success. If that
+worker later disappears, the supervisor parks the broken process set and
+resumes the recorded slot into a fresh native process session and MCP sidecar.
+It never starts a new game and calls it recovery. A missing/unverified save, or
+a human-owned native host, becomes an explicit operator-required incident.
+
+An unhealthy or missing MCP sidecar is recreated without restarting its healthy
+game worker. Native startup has a short reconciliation grace period, and live
+volume backup holds the same operations lock as crash reconciliation; this
+prevents the supervisor from mistaking an intentional startup/backup transition
+for a crash.
+
+A recovery set contains:
+
+- a SQLite online-backup snapshot with an integrity check;
+- every active mode-0600 secret when selected;
+- one SHA-256-identified archive per managed worker volume when selected; and
+- a hash-bound manifest tied to the installation ID.
+
+Running workers are paused at Docker's process boundary only while their volume
+is archived, then unpaused in a guaranteed cleanup path. Backup helpers have no
+network, mount the source read-only, and are deleted after use. Verification
+checks the manifest, database, installation identity, and every worker archive
+before the set is accepted.
+
+Restore is deliberately offline and requires the exact installation ID. Stop
+Control Center, then run:
+
+```bash
+docker compose stop control-center
+docker compose run --rm control-center smacx-control backup list
+docker compose run --rm control-center smacx-control backup verify --backup-id BACKUP_ID
+docker compose run --rm control-center smacx-control restore \
+  --backup-id BACKUP_ID --confirm-installation INSTALLATION_ID
+docker compose up -d control-center
+```
+
+Restore first creates an emergency rollback set. It restores the authoritative
+database and vault; worker-volume restore is intentionally a separate operator
+action because overwriting a volume is destructive and requires every referenced
+worker to be parked. The backup itself already contains and verifies those
+worker archives.
 
 Enable **view-only spectator** while provisioning a solo or LAN worker when a
 human should watch that seat. **Watch** asks the authenticated Control Center

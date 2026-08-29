@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = ["setup", "login", "dashboard"];
-let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: []};
+let dashboardState = {agents: [], sources: [], runtimes: [], workers: [], providers: [], matches: [], harnessProfiles: [], backups: [], schedules: []};
 
 function show(name) {
   sections.forEach((id) => $(`#${id}`).classList.toggle("hidden", id !== name));
@@ -36,10 +36,11 @@ function formObject(form) {
 }
 
 async function loadDashboard() {
-  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult] = await Promise.all([
+  const [status, providerResult, agentsResult, sourcesResult, runtimesResult, workersResult, matchesResult, harnessResult, operationsResult, backupsResult, schedulesResult] = await Promise.all([
     api("/api/v1/status"), api("/api/v1/providers"), api("/api/v1/agents"),
     api("/api/v1/game-sources"), api("/api/v1/runtimes"), api("/api/v1/workers"),
     api("/api/v1/matches"), api("/api/v1/harness-profiles"),
+    api("/api/v1/operations/status"), api("/api/v1/backups"), api("/api/v1/schedules"),
   ]);
   dashboardState = {
     agents: agentsResult.agents,
@@ -49,6 +50,8 @@ async function loadDashboard() {
     providers: providerResult.providers,
     matches: matchesResult.matches,
     harnessProfiles: harnessResult.harness_profiles,
+    backups: backupsResult.backups,
+    schedules: schedulesResult.schedules,
   };
   $("#installation").textContent = status.installation_id;
   $("#provider-count").textContent = status.counts.model_providers;
@@ -60,6 +63,7 @@ async function loadDashboard() {
   renderWorkers(dashboardState.workers);
   renderMatches(dashboardState.matches);
   renderHarnessProfiles(dashboardState.harnessProfiles);
+  renderOperations(operationsResult, dashboardState.backups, dashboardState.schedules);
   populateSelect("#match-agent", dashboardState.agents, "agent_id", "display_name", "Create an agent first");
   populateSelect("#match-source", dashboardState.sources, "game_source_id", "display_name", "Validate game files first");
   populateSelect("#match-runtime", dashboardState.runtimes, "runtime_id", "display_name", "Import Proton first");
@@ -69,7 +73,70 @@ async function loadDashboard() {
   populateSelect("#harness-match", dashboardState.matches, "match_id", "display_name", "Create a match first");
   populateHarnessAgents();
   populateSelect("#harness-provider", dashboardState.providers.filter((item) => item.default_model_id), "provider_id", "display_name", "Select a provider model first");
+  populateScheduleMatches();
   show("dashboard");
+}
+
+function populateScheduleMatches() {
+  const select = $("#schedule-match");
+  const previous = select.value;
+  select.replaceChildren();
+  const whole = document.createElement("option");
+  whole.value = "";
+  whole.textContent = "Whole installation";
+  select.append(whole);
+  dashboardState.matches.forEach((match) => {
+    const option = document.createElement("option");
+    option.value = match.match_id;
+    option.textContent = match.display_name;
+    option.selected = previous === option.value;
+    select.append(option);
+  });
+}
+
+function renderOperations(status, backups, schedules) {
+  const state = $("#supervisor-state");
+  state.textContent = status.running
+    ? `Supervisor active · ${status.open_incidents} incident(s)` : "Supervisor stopped";
+  state.className = `pill ${status.running && !status.open_incidents ? "healthy" : "error"}`;
+  const backupRoot = $("#backups");
+  backupRoot.replaceChildren();
+  backups.forEach((backup) => backupRoot.append(record(
+    backup.backup_id,
+    `${backup.worker_count} worker volume(s) · ${backup.size_bytes || 0} bytes · ${backup.includes_secrets ? "secrets included" : "no secrets"}`,
+    backup.status,
+  )));
+  if (!backups.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No recovery set has been created yet.";
+    backupRoot.append(empty);
+  }
+  const scheduleRoot = $("#schedules");
+  scheduleRoot.replaceChildren();
+  schedules.forEach((schedule) => {
+    const item = record(
+      schedule.display_name,
+      `${schedule.operation_kind} · every ${Math.round(schedule.interval_seconds / 60)} minute(s) · next ${new Date(schedule.next_run_unix * 1000).toLocaleString()}`,
+      schedule.status,
+    );
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const action = document.createElement("button");
+    action.className = "quiet";
+    action.textContent = schedule.status === "active" ? "Pause" : "Activate";
+    action.addEventListener("click", async () => {
+      action.disabled = true;
+      try {
+        await api(`/api/v1/schedules/${schedule.schedule_id}/${schedule.status === "active" ? "pause" : "activate"}`, {method: "POST", body: "{}"});
+        notify("Schedule updated.");
+        await loadDashboard();
+      } catch (error) { notify(error.message, true); action.disabled = false; }
+    });
+    actions.append(action);
+    item.append(actions);
+    scheduleRoot.append(item);
+  });
 }
 
 function populateSelect(selector, items, valueKey, labelKey, emptyLabel) {
@@ -176,6 +243,22 @@ function renderWorkers(workers) {
     inspect.textContent = "Inspect";
     inspect.addEventListener("click", () => workerAction(worker.instance_id, "status", inspect, false));
     actions.append(start, park, inspect);
+    if (match.status === "running" && match.metadata?.host_controller_kind !== "human") {
+      const checkpoint = document.createElement("button");
+      checkpoint.className = "quiet";
+      checkpoint.textContent = "Recovery checkpoint";
+      checkpoint.addEventListener("click", () => matchAction(
+        match.match_id, "checkpoint", checkpoint, true, {slot: "control_recovery"},
+      ));
+      actions.append(checkpoint);
+    }
+    if (match.status === "error" && match.metadata?.recovery_checkpoint?.verified) {
+      const recover = document.createElement("button");
+      recover.className = "quiet";
+      recover.textContent = "Recover verified save";
+      recover.addEventListener("click", () => matchAction(match.match_id, "recover", recover));
+      actions.append(recover);
+    }
     if (worker.network?.view_enabled) {
       const watch = document.createElement("button");
       watch.className = "quiet";
@@ -296,7 +379,11 @@ function renderMatches(matches) {
 
 async function matchAction(matchId, action, button, reload = true, payload = {}) {
   button.disabled = true;
-  notify(`${action === "start" ? "Starting native LAN" : action === "park" ? "Parking every seat" : "Inspecting LAN seats"}…`);
+  const labels = {
+    start: "Starting native LAN", park: "Parking every seat", status: "Inspecting LAN seats",
+    checkpoint: "Creating a bridge-verified checkpoint", recover: "Recovering the verified checkpoint",
+  };
+  notify(`${labels[action] || "Running managed operation"}…`);
   try {
     const result = await api(`/api/v1/matches/${matchId}/${action}`, {
       method: "POST", body: JSON.stringify({profile: "small_easy", ...payload}),
@@ -318,8 +405,14 @@ async function matchAction(matchId, action, button, reload = true, payload = {})
       notify(`${live} of ${result.seats.length} LAN seats report native gameplay.`);
       button.disabled = false;
     } else {
-      notify(action === "start" || action === "finalize-external-host"
-        ? "Native LAN started for every managed seat." : "Every LAN seat parked.");
+      const outcomes = {
+        start: "Native LAN started for every managed seat.",
+        "finalize-external-host": "Native LAN started for every managed seat.",
+        park: "Every LAN seat parked.",
+        checkpoint: "Recovery checkpoint created and verified by the native bridge.",
+        recover: "The match resumed from its verified recovery checkpoint.",
+      };
+      notify(outcomes[action] || "Managed operation completed.");
     }
     if (reload) await loadDashboard();
   } catch (error) {
@@ -632,6 +725,54 @@ $("#harness-form").addEventListener("submit", async (event) => {
   } finally {
     button.disabled = false;
   }
+});
+
+$("#backup-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const values = formObject(form);
+  button.disabled = true;
+  try {
+    notify("Creating a consistent recovery set; active workers are frozen only while their volumes are copied…");
+    const created = await api("/api/v1/backups", {
+      method: "POST", body: JSON.stringify({
+        include_secrets: values.include_secrets === "on",
+        include_workers: values.include_workers === "on",
+      }),
+    });
+    await api(`/api/v1/backups/${created.backup.backup_id}/verify`, {method: "POST", body: "{}"});
+    notify(`Backup ${created.backup.backup_id} created and verified.`);
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
+});
+
+$("#schedule-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const values = formObject(form);
+  const matchOperation = values.operation_kind !== "backup";
+  if (matchOperation && !values.target_id) {
+    notify("Choose a match for checkpoint scheduling.", true);
+    return;
+  }
+  button.disabled = true;
+  try {
+    await api("/api/v1/schedules", {method: "POST", body: JSON.stringify({
+      display_name: values.display_name,
+      operation_kind: values.operation_kind,
+      target_kind: matchOperation ? "match" : "installation",
+      target_id: matchOperation ? values.target_id : null,
+      interval_seconds: Number(values.interval_minutes) * 60,
+      payload: values.operation_kind === "checkpoint"
+        ? {slot: "control_recovery"} : {include_secrets: true, include_workers: true},
+    })});
+    notify("Recurring operation scheduled.");
+    await loadDashboard();
+  } catch (error) { notify(error.message, true); }
+  finally { button.disabled = false; }
 });
 
 $("#harness-match").addEventListener("change", populateHarnessAgents);
