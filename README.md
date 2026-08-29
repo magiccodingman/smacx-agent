@@ -94,7 +94,7 @@ know.
 | View-only noVNC spectators | Implemented and live-tested |
 | Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore plus verified worker and Hermes-conversation archives tested |
 | Optional Graphiti projector | Core adapter/isolation/replay implemented; deployment automation and real backend evaluation remain |
-| Curated Alien Crossfire wiki/RAG corpus | Not yet delivered |
+| Curated Alien Crossfire rules/search corpus | Implemented; 19 project-authored, citation/provenance-tracked documents with compact BM25-then-get retrieval |
 | Windows/WSL2 and Internet-LAN deployment | Not yet certified |
 | Every obscure scenario, menu profile, and LAN mutation | Not claimed; unsupported states stop and report a capability gap |
 
@@ -213,6 +213,8 @@ Hermes dashboard.
 - [Coverage and limits](docs/coverage.md) — exact gameplay coverage and gaps.
 - [Testing](docs/testing.md) — contained, native, Docker, Hermes, and LAN
   validation commands.
+- [Rules reference](docs/reference-knowledge.md) — legal corpus boundary,
+  hierarchy, provenance, and compact agent retrieval protocol.
 - [Troubleshooting](docs/troubleshooting.md) — fail-closed recovery guidance.
 - [Platform roadmap](docs/platform-roadmap.md) — remaining deployment and
   product milestones.

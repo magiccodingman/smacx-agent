@@ -24,6 +24,7 @@ from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
 from smacx_harness_manager import HarnessManager
 from smacx_operations import OperationsManager, restore_backup_offline
+from smacx_reference import seed_reference_corpus
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 from smacx_worker_manager import WorkerManager, WorkerManagerError
 
@@ -801,7 +802,13 @@ def build_control(data_root: Path) -> ControlPlane:
     data_root.mkdir(parents=True, exist_ok=True)
     database = Path(os.environ.get("SMACX_DB_PATH", data_root / "smacx.sqlite3"))
     secret_root = Path(os.environ.get("SMACX_SECRET_ROOT", data_root / "secrets"))
-    return ControlPlane(SmacxStore(database), secret_root)
+    store = SmacxStore(database)
+    corpus = Path(os.environ.get(
+        "SMACX_REFERENCE_CORPUS",
+        Path(__file__).resolve().parents[1] / "knowledge" / "core.json",
+    ))
+    seed_reference_corpus(store, corpus)
+    return ControlPlane(store, secret_root)
 
 
 def parser() -> argparse.ArgumentParser:

@@ -8,7 +8,8 @@ is delivered as vertical, independently testable milestones.
    structured memory, chat history, and scoped full-text retrieval.
 2. **Runtime integration** — migrate the controller's manifests and knowledge
    ledger into SQLite while retaining guarded legacy import and the existing
-   MCP contract.
+   MCP contract. A project-authored, citation-bearing rules corpus now adds
+   global FTS5/BM25 mechanics lookup without importing proprietary game text.
 3. **Memory projection** — the optional Graphiti adapter, derived namespaces,
    replay cursors, failure isolation, and adversarial cross-scope leakage tests
    are implemented. Default Compose packaging, Control Center health/config,

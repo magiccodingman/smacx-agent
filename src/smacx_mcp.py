@@ -23,6 +23,7 @@ from smacx_controller import (
     load_saved_game,
     new_game,
     put_match_knowledge,
+    read_game_reference,
     read_platform_memory,
     read_match_knowledge,
     semantic_chat as controller_semantic_chat,
@@ -986,6 +987,28 @@ def smac_memory(
         unread_only=unread_only,
         acknowledge=acknowledge,
         limit=limit,
+    )
+
+
+@mcp.tool(
+    description=(
+        "Search or read the provenance-tracked Alien Crossfire mechanics reference. "
+        "topics lists the hierarchy; search returns compact BM25-ranked titles/summaries and "
+        "citations; get returns one complete document by its returned document_id. The corpus "
+        "contains general rules only, never hidden match state, and excludes copied proprietary prose."
+    )
+)
+def smac_reference(
+    action: Literal["topics", "search", "get"],
+    query: str = "",
+    topic: str = "",
+    document_id: str = "",
+    limit: int = 8,
+    include_body: bool = False,
+) -> dict:
+    return read_game_reference(
+        action, query=query, topic=topic, document_id=document_id,
+        limit=limit, include_body=include_body,
     )
 
 

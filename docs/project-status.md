@@ -133,9 +133,6 @@ projection. SQLite memory and BM25 recall are the production default.
 
 ## Not yet delivered
 
-- A curated, locally searchable Alien Crossfire rules/wiki corpus or RAG
-  service. The model may use an explicitly allowed web tool, but no bundled
-  copyrighted corpus is shipped.
 - First-class personality-card editing and behavioral evaluation. Durable
   agents have a `personality_ref`, and the Hermes system prompt preserves
   player autonomy, but the complete personality workflow remains future work.
@@ -154,11 +151,9 @@ The next platform milestone should not be called complete until it includes:
 
 1. one-command optional Graphiti/Neo4j deployment with per-perspective
    scheduling, Control Center health, and real-backend evaluation;
-2. a legally sourced, reproducible rules knowledge layer with citations and
-   no copied proprietary corpus;
-3. a physical mixed human/AI LAN game across two machines, including chat,
+2. a physical mixed human/AI LAN game across two machines, including chat,
    checkpoint, disconnect/rejoin, and continue; and
-4. operator backup/restore and crash-recovery documentation validated from a
+3. operator backup/restore and crash-recovery documentation validated from a
    clean installation.
 
 Personality-card semantics are intentionally outside this milestone. The
