@@ -9,7 +9,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 
-from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 
 
 def expect_error(error_type: type[Exception], function, code: str) -> None:
@@ -29,27 +29,19 @@ def main() -> int:
             concurrent_results = list(executor.map(
                 lambda _: SmacxStore(concurrent_database).schema_version(), range(8),
             ))
-        if concurrent_results != [4] * 8:
-            raise AssertionError("concurrent schema migration failed")
-        upgrade_database = Path(temporary) / "upgrade" / "smacx.sqlite3"
-        legacy_store = SmacxStore(upgrade_database)
-        legacy_installation_id = legacy_store.installation_id()
-        with sqlite3.connect(upgrade_database) as connection:
-            connection.execute("ALTER TABLE worker_specs DROP COLUMN view_secret_id")
-            connection.execute("DELETE FROM schema_migrations WHERE version=4")
-            connection.execute("PRAGMA user_version=3")
-        upgraded_store = SmacxStore(upgrade_database)
-        with sqlite3.connect(upgrade_database) as connection:
-            worker_columns = {
-                str(row[1]) for row in connection.execute("PRAGMA table_info(worker_specs)")
-            }
-        if upgraded_store.schema_version() != 4 \
-                or upgraded_store.installation_id() != legacy_installation_id \
-                or "view_secret_id" not in worker_columns:
-            raise AssertionError("version-3 database did not upgrade in place")
+        if concurrent_results != [1] * 8:
+            raise AssertionError("concurrent canonical schema initialization failed")
+        incompatible_database = Path(temporary) / "incompatible" / "smacx.sqlite3"
+        incompatible_database.parent.mkdir(parents=True)
+        with sqlite3.connect(incompatible_database) as connection:
+            connection.execute("PRAGMA user_version=4")
+        expect_error(
+            StoreError, lambda: SmacxStore(incompatible_database),
+            "unsupported_prerelease_schema_recreate_database",
+        )
         database = Path(temporary) / "state" / "smacx.sqlite3"
         store = SmacxStore(database)
-        if store.schema_version() != 4:
+        if store.schema_version() != 1:
             raise AssertionError("unexpected schema version")
         installation_id = store.installation_id()
 
@@ -258,8 +250,8 @@ def main() -> int:
         )
 
         reopened = SmacxStore(database)
-        if reopened.installation_id() != installation_id or reopened.schema_version() != 4:
-            raise AssertionError("database identity or migration was not durable")
+        if reopened.installation_id() != installation_id or reopened.schema_version() != 1:
+            raise AssertionError("database identity or initialization was not durable")
         if len(reopened.get_facts(alpha, fact_key="deirdre.intent", include_history=True)) != 2:
             raise AssertionError("facts did not survive reopening")
 
@@ -267,8 +259,8 @@ def main() -> int:
             "event": "pass",
             "payload": {
                 "schema_version": reopened.schema_version(),
-                "concurrent_migration_safe": True,
-                "version_3_upgrade_safe": True,
+                "concurrent_initialization_safe": True,
+                "incompatible_prerelease_schema_rejected": True,
                 "installation_stable": True,
                 "immutable_events": True,
                 "perspective_isolation": True,
