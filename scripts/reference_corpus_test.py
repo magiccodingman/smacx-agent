@@ -26,8 +26,8 @@ def main() -> int:
         if not compact.get("results") or any("body" in item for item in compact["results"]):
             raise AssertionError("compact reference search was empty or returned full bodies")
         result = compact["results"][0]
-        if not result.get("source_url") or not result.get("source_license") \
-                or not result.get("content_sha256"):
+        if not result.get("source_title") or not result.get("source_license") \
+                or not result.get("provenance") or not result.get("content_sha256"):
             raise AssertionError("search result omitted citation/provenance")
         full = read_reference(store, "get", document_id=result["document_id"])
         if not full.get("document", {}).get("body"):
@@ -39,6 +39,21 @@ def main() -> int:
         if not focused["results"] or any(item["topic"] != "expansion" for item in focused["results"]):
             raise AssertionError("topic-scoped BM25 search escaped its hierarchy")
         raw = corpus.read_text(encoding="utf-8")
+        payload = json.loads(raw)
+        if "every official" in payload.get("description", "").casefold():
+            raise AssertionError("reference corpus overclaims completeness")
+        for document in payload.get("documents", []):
+            license_note = str(document.get("source_license", ""))
+            provenance = str(document.get("provenance", ""))
+            if "Project-authored Apache-2.0" not in license_note:
+                raise AssertionError(
+                    f"reference document lacks project-authored boundary: "
+                    f"{document.get('document_id')}"
+                )
+            if not provenance:
+                raise AssertionError(
+                    f"reference document lacks provenance: {document.get('document_id')}"
+                )
         for forbidden in ("Manual.pdf", "Script.txt", "helpx.txt", "alpha.txt"):
             if f'"copied_asset": "{forbidden}"' in raw:
                 raise AssertionError("proprietary asset was embedded in the distributable corpus")
@@ -49,6 +64,7 @@ def main() -> int:
                 "bm25_search": True,
                 "compact_then_get_protocol": True,
                 "citations_and_licenses": True,
+                "independent_expression_boundary": True,
                 "no_proprietary_assets_bundled": True,
                 "match_hidden_state_absent": True,
             },

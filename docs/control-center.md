@@ -270,6 +270,19 @@ For a human-hosted match:
    Start** observes the transition and durably binds every visible player name
    and faction; it never issues Start from an agent client.
 
+Configure every desired custom rule in the human-owned lobby before asking the
+managed agents to join. The native DirectPlay packet preserves those settings;
+each agent can inspect synchronized difficulty, map dimensions, world-generation
+levels, timer identifier, and raw game/more-rules masks through `smac_lan`.
+The masks are not yet decoded to named options, so the Control Center does not
+claim full semantic understanding of arbitrary custom rules.
+
+For an AI-hosted lobby, the selected guarded profile changes only difficulty
+and map size. Ocean coverage, erosion, native life, cloud cover, timer, victory
+conditions, and advanced rules remain exactly at the native lobby values and
+are synchronized to every client. Full typed mutation of those fields is future
+game-setup work; no agent uses the settings window as a fallback.
+
 For a human-hosted checkpoint, the human host owns the save file and reopens it
 through the game's **Load Multiplayer Game** path. Parking retains every agent's
 worker volume, match memory, and recorded faction. After the human reopens the

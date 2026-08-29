@@ -65,7 +65,7 @@ authenticated operator
         |                                                    |
         | creates one isolated seat                          +--> optional Graphiti projection
         v
-  Hermes or another harness <---- private MCP sidecar
+  managed Hermes container <---- private MCP sidecar
         |                              |
         | typed decisions              | authenticated semantic bridge
         v                              v
@@ -94,10 +94,11 @@ know.
 | View-only noVNC spectators | Implemented and live-tested |
 | Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore plus verified worker and Hermes-conversation archives tested |
 | Optional Graphiti projector | One-command isolated Neo4j/Graphiti profile implemented and backend-live-tested; disabled until compatible chat and embedding endpoints are configured |
-| Curated Alien Crossfire rules/search corpus | Implemented; 19 project-authored, citation/provenance-tracked documents with compact BM25-then-get retrieval |
+| Focused Alien Crossfire rules/search corpus | Implemented; 19 independently written, provenance-tracked primers with compact BM25-then-get retrieval; not a complete manual/wiki |
 | Internet/virtual-LAN transport | Encrypted, firewalled Tailscale route implemented and packet-live-tested locally; an actual remote second machine still requires certification |
 | Windows/WSL2 deployment | Preflight and routed Docker design implemented; physical Windows 11/WSL2 certification remains external |
 | Random-map LAN profiles | Five guarded Citizen/Tiny through Transcend/Huge profiles passed a real two-process DirectPlay matrix |
+| Human-hosted custom rules | Native settings synchronize to agents; world levels are named, while timer/rule masks are preserved but not yet semantically decoded |
 | Scenarios and every obscure LAN mutation | Not claimed; scenario launch and exact listed mutations remain fail-closed |
 
 See [Project status](docs/project-status.md) for the exact boundary between
@@ -137,8 +138,9 @@ Requirements:
 - a legal Alien Crossfire game directory;
 - a local Proton distribution;
 - the February 2010 DirectX redistributable for native DirectPlay; and
-- an OpenAI-compatible model endpoint. Hermes is the current reference
-  harness, but game/memory contracts are harness-neutral.
+- an OpenAI-compatible model endpoint. Hermes is the supported agent harness;
+  the game and memory protocols remain independently testable security
+  boundaries rather than a plan to replace Hermes.
 
 Start the persistent operator service:
 
@@ -185,8 +187,8 @@ or another compact section instead of assuming that an absent tool can be
 reached through the UI.
 
 Read [Safe semantic play loop](docs/agent-loop.md) and [Tool
-reference](docs/tools.md) before authoring another harness adapter or agent
-prompt.
+reference](docs/tools.md) before changing the managed Hermes integration or
+its agent prompt.
 
 ## Legacy single-instance development flow
 
@@ -239,7 +241,7 @@ Hermes dashboard.
   verified-checkpoint recovery.
 - `src/smacx_mcp.py` — semantic MCP surface.
 - `src/smacx_graphiti.py` — optional temporal-graph projector.
-- `src/smacx_hermes.py` — current reference harness adapter.
+- `src/smacx_hermes.py` — managed Hermes harness integration.
 - `scripts/` — builds, deployment helpers, and regressions.
 - `docs/` — architecture, protocols, status, operations, and evidence.
 

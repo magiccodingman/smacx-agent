@@ -30,7 +30,7 @@ consistency freeze cannot be classified as failure. Hermes provider keys are
 mounted from a separate read-only purpose volume and are never included in the
 inspect-visible process configuration.
 
-The model should use MCP rather than connect to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Keeping the bridge protocol independent makes it possible to add a different harness later without changing the DLL.
+The model uses MCP rather than connecting to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Hermes remains the permanent supported harness; the independent bridge protocol keeps that integration secure and testable without coupling the DLL to the harness process.
 
 For managed LAN, every agent seat has a separate game/MCP pair but shares one
 durable `match_id`. In an agent-hosted match, seat zero hosts the real

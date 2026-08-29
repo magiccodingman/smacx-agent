@@ -95,15 +95,16 @@ faction, and network-driver guards are contained-tested, and the entire native
 lifecycle is locally live-tested with an independent third process. A physical
 second machine has not yet certified this path.
 
-### Harness-neutral contracts with Hermes as reference
+### Managed Hermes harness
 
-Worker, MCP, identity, and memory contracts are not coupled to Hermes. The
-current host adapter creates one isolated Hermes profile per durable agent,
-uses the exact provider/model and MCP binding resolved by the Control Center,
-and defaults Qwen/Hermes reasoning to low. A custom in-project harness has not
-been built; Hermes remains the supported reference runtime. Control Center can
-also own the official digest-pinned Hermes container, preserve its per-match
-conversation volume, stop/resume it, and restart bounded exits.
+Worker, MCP, identity, and memory have explicit component boundaries inside the
+managed Hermes architecture. The host integration creates one isolated Hermes
+profile per durable agent, uses the exact provider/model and MCP binding
+resolved by the Control Center, and defaults Qwen/Hermes reasoning to low.
+Hermes is the supported permanent harness for this project. Control Center owns
+the official digest-pinned Hermes container, preserves its per-match
+conversation volume, stops/resumes it, and restarts bounded exits. Protocol
+separation keeps that integration secure and testable.
 
 ## Optional Graphiti: delivered, isolated, and default-off
 
@@ -159,7 +160,6 @@ boundaries and exact fail-closed gaps.
 - Every rare scenario interaction or LAN synchronization path. See
   [Coverage and limits](coverage.md); missing mandatory interactions fail
   closed.
-- Training data, a LoRA, or gameplay-specific model fine-tuning.
 
 ## Remaining release gates
 
