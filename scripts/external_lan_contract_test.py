@@ -186,7 +186,7 @@ def main() -> int:
         print(json.dumps({
             "event": "pass",
             "payload": {
-                "agent_host_required": True,
+                "agent_hosted_external_client_path": True,
                 "human_has_no_agent_perspective": True,
                 "exact_player_names": True,
                 "unexpected_player_rejected": True,

@@ -155,6 +155,31 @@ faction:
 PYTHONPATH=src python3 scripts/external_lan_contract_test.py
 ```
 
+The complementary human-host contract proves that seat zero has no worker or
+MCP, every managed client discovers one exact session, joins and readies, no
+client can issue native Start, and all player/faction identities bind durably
+after the human-owned transition:
+
+```bash
+PYTHONPATH=src python3 scripts/human_hosted_lan_contract_test.py
+```
+
+Its full native regression uses an independent third process as the external
+human fixture and gives that process exclusive ownership of Host, Configure,
+Start, Save, and Load:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+scripts/human-hosted-lan-live-test.sh
+```
+
+The reference run passed fresh and loaded lobbies with two managed agents,
+bidirectional faction-attributed chat, external-host checkpointing, complete
+managed disconnect/rejoin, exact faction restoration, and post-resume chat.
+It reported `pixels_or_ui_input_used=false`.
+
 `scripts/worker_manager_live_test.py` provisions a real view-enabled worker,
 connects to its random noVNC port, verifies the operator-only password is not
 present in container environment/configuration, parks it, and starts the same

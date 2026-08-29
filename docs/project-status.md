@@ -64,6 +64,12 @@ chat after resume. This was a production-equivalent local network test with no
 pixels or UI input; it is not a claim that a physical second computer has been
 certified yet.
 
+The inverse path is also live-tested: a named external human owns seat zero,
+the native lobby, Start, Save, and Load, while two managed agents discover the
+exact session, join, ready, exchange faction-attributed chat, park, reclaim
+their loaded factions, and continue. Control Center never sends the native
+Start command on this path.
+
 ### View-only spectators
 
 Per-worker noVNC is optional, password-protected, published to loopback by
@@ -75,11 +81,12 @@ Agents and MCP tools never receive spectator access.
 
 ### Named external human seats
 
-Mixed matches require an agent host but may assign remaining seats to exact
-human player names. Human seats receive no agent identity, perspective, worker,
-or MCP endpoint. The first Start stages the native lobby; the second Start
-validates exact names, participant count, readiness, and saved-faction
-reclamation before allowing the host to launch.
+Mixed matches support either an agent or an exact named human as native host.
+Human seats receive no agent identity, perspective, worker, or MCP endpoint.
+For an AI host, the first Start stages the lobby and the second validates exact
+names, participant count, readiness, and saved-faction reclamation. For a human
+host, managed clients discover/select one exact session, join and ready, then
+wait for the human's native Start.
 
 The manager refuses ordinary Docker bridge publication and requires an
 operator-created, non-internal macvlan/ipvlan network. Identity, readiness,

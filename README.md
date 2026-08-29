@@ -36,8 +36,8 @@ actually observed.
   temporal graph.
 - **It can share a real LAN game.** Isolated AI seats can host, join, chat,
   negotiate, save, park, reload, reclaim their exact factions, and continue.
-  Named human seats are staged through the native lobby and validated before
-  the AI host may start.
+  A named human may join an AI-owned lobby or own seat zero and host the lobby;
+  managed agents discover, join, ready, and resume without taking over Start.
 - **The operator stays in control.** An authenticated Control Center owns
   game/runtime registration, model selection, worker lifecycle, match seats,
   and optional password-protected view-only spectators. Agents never receive
@@ -90,7 +90,7 @@ know.
 | OpenAI-compatible provider discovery and Hermes adapter | Implemented; unkeyed local-provider path tested with Qwen/Hermes |
 | Agent-only managed DirectPlay LAN | Implemented and live-tested with two real workers |
 | Multiplayer save, park, stock reload, faction restoration, and continue | Implemented and live-tested |
-| Named external human LAN seats | Implemented and contract-tested; physical two-machine certification remains |
+| AI-hosted and human-hosted mixed LAN | Implemented and live-tested with an independent third native process; physical two-machine certification remains |
 | View-only noVNC spectators | Implemented and live-tested |
 | Optional Graphiti projector | Core adapter/isolation/replay implemented; deployment automation and real backend evaluation remain |
 | Curated Alien Crossfire wiki/RAG corpus | Not yet delivered |

@@ -934,29 +934,40 @@ class ControlPlane:
 
     def create_lan_match(self, display_name: str, agent_ids: list[str], *,
                          human_player_names: list[str] | None = None,
+                         host_controller_kind: str = "agent",
+                         human_host_name: str | None = None,
                          match_id: str | None = None,
                          ruleset_id: str = "smacx-small-easy",
                          metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
         display_name = _bounded(display_name, "match_name", 160)
         human_player_names = list(human_player_names or [])
+        if host_controller_kind not in {"agent", "human"}:
+            raise InvalidRecord("invalid_lan_host_controller_kind")
         if not isinstance(agent_ids, list) or not 1 <= len(agent_ids) <= 7:
             raise InvalidRecord("lan_requires_one_to_seven_agents")
+        all_human_names = list(human_player_names)
+        if host_controller_kind == "human":
+            if not isinstance(human_host_name, str):
+                raise InvalidRecord("human_lan_host_name_required")
+            all_human_names.insert(0, human_host_name)
+        elif human_host_name is not None:
+            raise InvalidRecord("agent_lan_host_cannot_have_human_host_name")
         if not all(isinstance(name, str) and 1 <= len(name) <= 31
                    and all(32 <= ord(character) <= 126 for character in name)
-                   for name in human_player_names):
+                   for name in all_human_names):
             raise InvalidRecord("invalid_lan_human_player_name")
-        if not 2 <= len(agent_ids) + len(human_player_names) <= 7:
+        if not 2 <= len(agent_ids) + len(all_human_names) <= 7:
             raise InvalidRecord("lan_requires_two_to_seven_total_seats")
         if len(set(agent_ids)) != len(agent_ids):
             raise InvalidRecord("duplicate_lan_agent")
-        if len(set(human_player_names)) != len(human_player_names):
+        if len(set(all_human_names)) != len(all_human_names):
             raise InvalidRecord("duplicate_lan_human_player_name")
-        reserved_names = {"Semantic Host"}
-        reserved_names.update(
-            f"Semantic Agent {seat_index + 1}"
-            for seat_index in range(1, len(agent_ids))
-        )
-        if reserved_names.intersection(human_player_names):
+        first_agent_seat = 0 if host_controller_kind == "agent" else 1
+        reserved_names = {
+            "Semantic Host" if seat_index == 0 else f"Semantic Agent {seat_index + 1}"
+            for seat_index in range(first_agent_seat, first_agent_seat + len(agent_ids))
+        }
+        if reserved_names.intersection(all_human_names):
             raise InvalidRecord("reserved_lan_human_player_name")
         for agent_id in agent_ids:
             _require_id(agent_id, "agent_id")
@@ -970,13 +981,30 @@ class ControlPlane:
             }
         if active != set(agent_ids):
             raise ScopeViolation("unknown_active_lan_agent")
+        match_metadata = dict(metadata or {})
+        match_metadata["host_controller_kind"] = host_controller_kind
         match = self.store.create_match(
             match_id=match_id, display_name=display_name, mode="lan",
-            ruleset_id=ruleset_id, metadata=metadata,
+            ruleset_id=ruleset_id, metadata=match_metadata,
         )
         seats: list[dict[str, Any]] = []
         try:
-            for seat_index, agent_id in enumerate(agent_ids):
+            if host_controller_kind == "human":
+                now = time.time()
+                with self.store.transaction() as connection:
+                    connection.execute(
+                        "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
+                        "status, metadata_json, created_unix, updated_unix) "
+                        "VALUES (?, ?, 0, 'human', 'assigned', ?, ?, ?)",
+                        (_new_id("seat"), match["match_id"], _json({
+                            "role": "host",
+                            "external_player_name": human_host_name,
+                            "network_join_pending": False,
+                        }), now, now),
+                    )
+                seats.append(self.get_seat(match["match_id"], 0))
+            for offset, agent_id in enumerate(agent_ids):
+                seat_index = first_agent_seat + offset
                 perspective = self.store.create_perspective(
                     match["match_id"], agent_id, controller_kind="agent",
                     metadata={"seat_index": seat_index, "native_faction_pending": True},
@@ -993,7 +1021,7 @@ class ControlPlane:
                     )
                 seats.append(self.get_seat(match["match_id"], seat_index))
             for offset, player_name in enumerate(human_player_names):
-                seat_index = len(agent_ids) + offset
+                seat_index = first_agent_seat + len(agent_ids) + offset
                 now = time.time()
                 with self.store.transaction() as connection:
                     connection.execute(

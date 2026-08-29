@@ -45,7 +45,8 @@ An unknown modal is a hard stop, not permission to improvise UI input. The model
 
 - Fogged and unknown tiles are never filtered using hidden occupants. A move into uncertainty may be queued and then resolved by the native engine, just as for a human player.
 - Technology demands expose only the exact script-named bundle for the active native variant and revalidate player ownership before concession. Reciprocal counteroffers expose only a counterpart-owned technology the player does not own; no hidden blind-research target is read or returned.
-- Agent-only DirectPlay is live-tested between isolated workers on one Linux
-  host. Named external human seats and their fail-closed lobby validation are
-  implemented, but physical two-machine macvlan/ipvlan compatibility and
-  firewall behavior still require certification.
+- Agent-only and mixed DirectPlay are live-tested between independent native
+  processes on one Linux host. Both AI-hosted and human-hosted paths cover
+  exact identity, chat, checkpoint, disconnect/rejoin, saved factions, and
+  continuation. Physical two-machine macvlan/ipvlan compatibility and firewall
+  behavior still require certification.

@@ -14,10 +14,11 @@ match will not require taking this service down. Its current foundation owns:
 - one private MCP sidecar per running game worker;
 - exact Hermes agent/match profile descriptors and host profile setup.
 
-Managed LAN supports two to seven total seats. Seat zero is always an agent
-host; remaining seats may be isolated agents or explicitly named human
-players. Agent-only games stay on the private Docker network. Mixed games are
-accepted only on an operator-created non-internal macvlan/ipvlan network.
+Managed LAN supports two to seven total seats and at least one agent. Seat zero
+may be an agent or an explicitly named human host; every other seat may be an
+isolated agent or named human player. Agent-only games stay on the private
+Docker network. Mixed games are accepted only on an operator-created
+non-internal macvlan/ipvlan network.
 
 ## Start once
 
@@ -111,12 +112,13 @@ exposing it through the browser API.
 
 ## Managed LAN
 
-Create at least two durable agents for an agent-only game, or choose one agent
-host plus one or more exact external human names. Every selected agent receives
-its own perspective, data/secret volume, game
-worker, MCP sidecar, and later Hermes profile. Seat zero is the native host;
-the other workers discover the host by its exact private IPv4 address and join
-only the freshly returned DirectPlay session GUID. The Control Center then:
+Create at least two total seats and at least one durable agent. The native host
+may be the first selected agent or an exact named external human. Every selected
+agent receives its own perspective, data/secret volume, game worker, MCP
+sidecar, and later Hermes profile. Joining workers use the host's exact private
+IPv4 address and only a freshly returned DirectPlay session GUID.
+
+For an agent host, the Control Center:
 
 1. waits for every stock Multiplayer Setup lobby;
 2. applies the guarded `small_easy` profile (Citizen, Small random map);
@@ -140,7 +142,7 @@ checkpoint…** and enter that exact slot. The Control Center opens the stock
 **Load Multiplayer Game** lobby, rejoins each managed client, validates the
 loaded faction binding, and starts only after every participant is ready.
 
-### Let human players join
+### Let human players join or host
 
 Legacy DirectPlay embeds peer addresses and cannot be reliably published by
 ordinary Docker port translation. Give each game worker a real LAN address:
@@ -162,7 +164,7 @@ Control Center to that external network, and tells dynamic workers/sidecars to
 use it. This is a one-time deployment choice; creating and parking games does
 not take the Control Center down.
 
-For a mixed match:
+For an AI-hosted mixed match:
 
 1. Create the match with one agent host, optional additional agents, and one
    exact in-game name for each human.
@@ -174,6 +176,29 @@ For a mixed match:
 4. **Check humans & start** reads the native lobby. Unknown or duplicate names,
    missing readiness, participant-count changes, and wrong saved factions fail
    closed. Once valid, the AI host starts the game.
+
+For a human-hosted match:
+
+1. Choose **External human player** as Native lobby host, enter the host's exact
+   player name, and select one or more agents. Additional named human clients
+   are optional.
+2. **Prepare now** starts only the managed agent clients. On the human's legal
+   game copy, create a new TCP/IP lobby or load a multiplayer checkpoint.
+3. Choose **Find human lobby**, enter the host game's reachable IPv4 address,
+   and select the exact freshly discovered session if more than one exists.
+4. Control Center joins every managed agent under its deterministic player
+   name, restores its recorded faction in a loaded lobby, and marks it Ready.
+   It validates that the expected named human really owns the native host seat.
+5. The human reviews settings/seats and presses Start in the game. **Check human
+   Start** observes the transition and durably binds every visible player name
+   and faction; it never issues Start from an agent client.
+
+For a human-hosted checkpoint, the human host owns the save file and reopens it
+through the game's **Load Multiplayer Game** path. Parking retains every agent's
+worker volume, match memory, and recorded faction. After the human reopens the
+save, repeat discovery/join; each managed client must reclaim its exact saved
+faction before it can Ready. This supports recovery even though the host save
+is intentionally outside the platform's storage boundary.
 
 Human menu interaction remains human input; no model screenshots, clicks, or
 keyboard tools are introduced. During play, chat and paired diplomacy identify

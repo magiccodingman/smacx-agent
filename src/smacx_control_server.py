@@ -30,7 +30,10 @@ SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
 PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
 WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator)$")
-MATCH_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
+MATCH_PATH = re.compile(
+    r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/"
+    r"(start|park|status|discover-external-host|join-external-host|finalize-external-host)$"
+)
 
 
 class RequestRateLimiter:
@@ -392,6 +395,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 created = self.server.control.create_lan_match(
                     str(body.get("display_name", "")), list(agent_ids),
                     human_player_names=list(human_player_names),
+                    host_controller_kind=str(body.get("host_controller_kind", "agent")),
+                    human_host_name=(str(body["human_host_name"])
+                                     if body.get("human_host_name") is not None else None),
                     metadata={
                         "lan_profile": str(body.get("profile", "small_easy")),
                         "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
@@ -423,7 +429,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     {
                         "seat_count": len(created["seats"]),
                         "agent_seat_count": len(workers),
-                        "human_seat_count": len(human_player_names),
+                        "human_seat_count": len([
+                            seat for seat in created["seats"]
+                            if seat["controller_kind"] == "human"
+                        ]),
+                        "host_controller_kind": str(
+                            body.get("host_controller_kind", "agent")
+                        ),
                     }, self.client_address[0],
                 )
                 result: dict[str, Any] = {
@@ -527,8 +539,20 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     )
                 elif action == "park":
                     result = manager.park_match(match_id)
-                else:
+                elif action == "status":
                     result = manager.lan_match_status(match_id)
+                elif action == "discover-external-host":
+                    result = manager.discover_human_hosted_lan_match(
+                        match_id, host_address=str(body.get("host_address", "")),
+                    )
+                elif action == "join-external-host":
+                    result = manager.join_human_hosted_lan_match(
+                        match_id,
+                        host_address=str(body.get("host_address", "")),
+                        network_session_id=str(body.get("network_session_id", "")),
+                    )
+                else:
+                    result = manager.finalize_human_hosted_lan_match(match_id)
                 self.server.control.audit(
                     auth["admin_id"], f"match.{action}", "match", match_id,
                     "success", {"managed_lan": True}, self.client_address[0],

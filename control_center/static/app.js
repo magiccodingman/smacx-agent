@@ -222,8 +222,12 @@ function renderMatches(matches) {
   root.replaceChildren();
   matches.filter((match) => match.mode === "lan").forEach((match) => {
     const external = match.metadata?.external_lan;
+    const humanHosted = external?.mode === "human_hosted";
     const externalDetail = external
-      ? ` · join ${external.host_address} · ${external.session_name}` : "";
+      ? humanHosted
+        ? ` · human host ${external.host_player_name || "pending"} · ${external.phase}`
+        : ` · join ${external.host_address} · ${external.session_name}`
+      : "";
     const item = record(
       match.display_name,
       `${match.match_id} · ${match.ruleset_id}${externalDetail}`,
@@ -233,16 +237,25 @@ function renderMatches(matches) {
     const actions = document.createElement("div");
     actions.className = "actions";
     const start = document.createElement("button");
-    start.textContent = match.status === "lobby" && external
+    start.textContent = match.status === "lobby" && humanHosted
+      ? external.phase === "awaiting_human_start" ? "Check human Start" : "Find human lobby"
+      : match.status === "lobby" && external
       ? "Check humans & start"
       : match.status === "parked" ? "Start fresh lobby" : "Start";
     start.disabled = match.status === "running" || match.status === "starting";
     const sessionPayload = {
       session_name: match.metadata?.lan_session_name || "SMACX Managed LAN",
     };
-    start.addEventListener("click", () => matchAction(
-      match.match_id, "start", start, true, sessionPayload,
-    ));
+    start.addEventListener("click", () => {
+      if (match.status === "lobby" && humanHosted
+          && external.phase !== "awaiting_human_start") {
+        connectHumanHostedLobby(match.match_id, start);
+      } else if (match.status === "lobby" && humanHosted) {
+        matchAction(match.match_id, "finalize-external-host", start, true);
+      } else {
+        matchAction(match.match_id, "start", start, true, sessionPayload);
+      }
+    });
     const park = document.createElement("button");
     park.className = "quiet";
     park.textContent = "Park all seats";
@@ -288,7 +301,14 @@ async function matchAction(matchId, action, button, reload = true, payload = {})
     const result = await api(`/api/v1/matches/${matchId}/${action}`, {
       method: "POST", body: JSON.stringify({profile: "small_easy", ...payload}),
     });
-    if (result.awaiting_external_humans) {
+    if (result.awaiting_external_host) {
+      notify(`Managed agents are ready. Create the native lobby as ${result.external_host?.player_name}, then choose “Find human lobby”.`);
+    } else if (result.awaiting_human_start) {
+      const blockers = (result.blockers || []).map((item) => item.player_name
+        ? `${item.player_name}: ${item.reason}` : item.reason).join(", ");
+      notify(blockers || result.external_host?.instructions
+        || "Managed agents are Ready; press Start in the human-owned native lobby.");
+    } else if (result.awaiting_external_humans) {
       const join = result.external_join || {};
       const blockers = (join.blockers || []).map((item) => item.player_name
         ? `${item.player_name}: ${item.reason}` : item.reason).join(", ");
@@ -298,12 +318,54 @@ async function matchAction(matchId, action, button, reload = true, payload = {})
       notify(`${live} of ${result.seats.length} LAN seats report native gameplay.`);
       button.disabled = false;
     } else {
-      notify(action === "start" ? "Native LAN started for every managed seat." : "Every LAN seat parked.");
+      notify(action === "start" || action === "finalize-external-host"
+        ? "Native LAN started for every managed seat." : "Every LAN seat parked.");
     }
     if (reload) await loadDashboard();
   } catch (error) {
     button.disabled = false;
     notify(error.message, true);
+  }
+}
+
+async function connectHumanHostedLobby(matchId, button) {
+  const hostAddress = window.prompt("Reachable IPv4 address of the human-hosted game");
+  if (!hostAddress) return;
+  button.disabled = true;
+  try {
+    notify("Discovering native sessions at the human host…");
+    const discovered = await api(`/api/v1/matches/${matchId}/discover-external-host`, {
+      method: "POST", body: JSON.stringify({host_address: hostAddress}),
+    });
+    if (!discovered.sessions.length) {
+      notify("No joinable native session was discovered at that address.", true);
+      return;
+    }
+    let selected = discovered.sessions[0];
+    if (discovered.sessions.length > 1) {
+      const menu = discovered.sessions.map((session) =>
+        `${session.network_session_id} — ${session.session_name || "unnamed"}`).join("\n");
+      const chosenId = window.prompt(`Choose the exact session ID:\n${menu}`);
+      selected = discovered.sessions.find((session) =>
+        session.network_session_id === chosenId);
+      if (!selected) {
+        notify("The selected session ID was not in the fresh discovery result.", true);
+        return;
+      }
+    }
+    const joined = await api(`/api/v1/matches/${matchId}/join-external-host`, {
+      method: "POST", body: JSON.stringify({
+        host_address: hostAddress,
+        network_session_id: selected.network_session_id,
+      }),
+    });
+    notify(joined.external_host?.instructions
+      || "Managed agents joined and readied. The human host may press Start.");
+    await loadDashboard();
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -510,23 +572,34 @@ $("#lan-form").addEventListener("submit", async (event) => {
   const agentIds = [...$("#lan-agents").selectedOptions].map((option) => option.value);
   const humanNames = String(values.human_player_names || "")
     .split(/[\n,]+/).map((value) => value.trim()).filter(Boolean);
-  if (agentIds.length < 1 || agentIds.length + humanNames.length < 2) {
-    notify("Choose an agent host and at least one additional agent or human seat.", true);
+  const hostKind = values.host_controller_kind || "agent";
+  const humanHostName = String(values.human_host_name || "").trim();
+  const totalSeats = agentIds.length + humanNames.length + (hostKind === "human" ? 1 : 0);
+  if (agentIds.length < 1 || totalSeats < 2) {
+    notify("Choose at least one agent and configure two or more total seats.", true);
+    return;
+  }
+  if (hostKind === "human" && !humanHostName) {
+    notify("Enter the exact in-game player name for the human host.", true);
     return;
   }
   button.disabled = true;
   try {
-    await api("/api/v1/matches/lan", {
+    const created = await api("/api/v1/matches/lan", {
       method: "POST", body: JSON.stringify({
         display_name: values.display_name, session_name: values.session_name,
         agent_ids: agentIds, game_source_id: values.game_source_id,
+        host_controller_kind: hostKind,
+        human_host_name: hostKind === "human" ? humanHostName : null,
         human_player_names: humanNames,
         runtime_id: values.runtime_id, profile: values.profile,
         view_enabled: values.view_enabled === "on",
         start_now: values.start_now === "on",
       }),
     });
-    notify(values.start_now === "on" && humanNames.length
+    notify(created.started?.awaiting_external_host
+      ? "Managed clients are ready. Create the human lobby, then use Find human lobby."
+      : values.start_now === "on" && humanNames.length
       ? "AI-hosted lobby is open. Human players can now join and mark Ready."
       : values.start_now === "on" ? "Managed native LAN is running." : "Managed LAN seats provisioned.");
     await loadDashboard();
