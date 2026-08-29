@@ -697,6 +697,18 @@ class ControlPlane:
             results.append(item)
         return results
 
+    def get_game_source(self, game_source_id: str) -> dict[str, Any]:
+        _require_id(game_source_id, "game_source_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM game_sources WHERE game_source_id=?", (game_source_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_game_source_id")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
     def list_runtimes(self) -> list[dict[str, Any]]:
         with self.store.transaction() as connection:
             rows = connection.execute(
@@ -708,6 +720,124 @@ class ControlPlane:
             item["metadata"] = json.loads(item.pop("metadata_json"))
             results.append(item)
         return results
+
+    def get_runtime(self, runtime_id: str) -> dict[str, Any]:
+        _require_id(runtime_id, "runtime_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM runtime_assets WHERE runtime_id=?", (runtime_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_runtime_id")
+        result = dict(row)
+        result["metadata"] = json.loads(result.pop("metadata_json"))
+        return result
+
+    def put_worker_spec(self, instance_id: str, game_source_id: str, runtime_id: str,
+                        image_ref: str, container_name: str, data_volume: str,
+                        bridge_secret_id: str, *, autostart: Mapping[str, Any] | None = None,
+                        network: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        for value, field in (
+            (instance_id, "instance_id"), (game_source_id, "game_source_id"),
+            (runtime_id, "runtime_id"), (bridge_secret_id, "bridge_secret_id"),
+        ):
+            _require_id(value, field)
+        image_ref = _bounded(image_ref, "worker_image_ref", 512)
+        container_name = _bounded(container_name, "worker_container_name", 255)
+        data_volume = _bounded(data_volume, "worker_data_volume", 255)
+        now = time.time()
+        with self.store.transaction() as connection:
+            if not connection.execute("SELECT 1 FROM instances WHERE instance_id=?", (instance_id,)).fetchone():
+                raise ScopeViolation("unknown_instance_id")
+            if not connection.execute(
+                "SELECT 1 FROM game_sources WHERE game_source_id=? AND status='validated'", (game_source_id,),
+            ).fetchone():
+                raise ScopeViolation("game_source_not_validated")
+            if not connection.execute(
+                "SELECT 1 FROM runtime_assets WHERE runtime_id=? AND status='ready'", (runtime_id,),
+            ).fetchone():
+                raise ScopeViolation("runtime_not_ready")
+            if not connection.execute(
+                "SELECT 1 FROM secret_refs WHERE secret_id=? AND status='active'", (bridge_secret_id,),
+            ).fetchone():
+                raise ScopeViolation("bridge_secret_not_active")
+            connection.execute(
+                "INSERT INTO worker_specs(instance_id, game_source_id, runtime_id, image_ref, "
+                "container_name, data_volume, bridge_secret_id, desired_status, observed_status, "
+                "autostart_json, network_json, created_unix, updated_unix) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'stopped', 'provisioned', ?, ?, ?, ?)",
+                (instance_id, game_source_id, runtime_id, image_ref, container_name, data_volume,
+                 bridge_secret_id, _json(autostart), _json(network), now, now),
+            )
+        return self.get_worker_spec(instance_id)
+
+    def get_worker_spec(self, instance_id: str) -> dict[str, Any]:
+        _require_id(instance_id, "instance_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT w.*, i.match_id, i.agent_id, i.perspective_id, i.status AS instance_status, "
+                "i.bridge_host, i.bridge_port FROM worker_specs w JOIN instances i "
+                "ON i.instance_id=w.instance_id WHERE w.instance_id=?", (instance_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_worker_instance")
+        result = dict(row)
+        result["autostart"] = json.loads(result.pop("autostart_json"))
+        result["network"] = json.loads(result.pop("network_json"))
+        return result
+
+    def list_worker_specs(self) -> list[dict[str, Any]]:
+        with self.store.transaction() as connection:
+            identifiers = [row["instance_id"] for row in connection.execute(
+                "SELECT instance_id FROM worker_specs ORDER BY created_unix"
+            )]
+        return [self.get_worker_spec(str(identifier)) for identifier in identifiers]
+
+    def update_worker_observation(self, instance_id: str, *, desired_status: str | None = None,
+                                  observed_status: str | None = None,
+                                  last_error: str | None = None,
+                                  bridge_host: str | None = None,
+                                  bridge_port: int | None = None,
+                                  instance_status: str | None = None) -> dict[str, Any]:
+        _require_id(instance_id, "instance_id")
+        if desired_status is not None and desired_status not in ("stopped", "running", "parked", "retired"):
+            raise InvalidRecord("invalid_worker_desired_status")
+        if observed_status is not None:
+            observed_status = _bounded(observed_status, "worker_observed_status", 64)
+        if last_error is not None:
+            last_error = last_error[:2000]
+        if bridge_port is not None and not 1 <= int(bridge_port) <= 65535:
+            raise InvalidRecord("invalid_bridge_port")
+        now = time.time()
+        with self.store.transaction() as connection:
+            current = connection.execute(
+                "SELECT 1 FROM worker_specs WHERE instance_id=?", (instance_id,),
+            ).fetchone()
+            if not current:
+                raise ScopeViolation("unknown_worker_instance")
+            fields = ["updated_unix=?"]
+            values: list[Any] = [now]
+            for name, value in (
+                ("desired_status", desired_status), ("observed_status", observed_status),
+                ("last_error", last_error),
+            ):
+                if value is not None:
+                    fields.append(f"{name}=?")
+                    values.append(value)
+            values.append(instance_id)
+            connection.execute(
+                f"UPDATE worker_specs SET {', '.join(fields)} WHERE instance_id=?", values,
+            )
+            instance_fields = ["updated_unix=?", "bridge_host=?", "bridge_port=?"]
+            instance_values: list[Any] = [now, bridge_host, bridge_port]
+            if instance_status is not None:
+                instance_fields.append("status=?")
+                instance_values.append(instance_status)
+            instance_values.append(instance_id)
+            connection.execute(
+                f"UPDATE instances SET {', '.join(instance_fields)} WHERE instance_id=?", instance_values,
+            )
+        return self.get_worker_spec(instance_id)
 
     def status(self) -> dict[str, Any]:
         with self.store.transaction() as connection:
@@ -722,3 +852,85 @@ class ControlPlane:
             "setup_required": not self.admin_exists(),
             "counts": counts,
         }
+
+    def create_agent(self, display_name: str, *, agent_id: str | None = None,
+                     personality_ref: str | None = None,
+                     metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        agent_id = agent_id or _new_id("agent")
+        return self.store.ensure_agent(
+            agent_id, display_name, personality_ref=personality_ref, metadata=metadata,
+        )
+
+    def create_solo_match(self, display_name: str, agent_id: str, *,
+                          match_id: str | None = None,
+                          faction_id: int = 1, faction_name: str | None = None,
+                          ruleset_id: str = "smacx-default",
+                          metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        _require_id(agent_id, "agent_id")
+        if not 1 <= int(faction_id) <= 7:
+            raise InvalidRecord("invalid_faction_id")
+        with self.store.transaction() as connection:
+            if not connection.execute(
+                "SELECT 1 FROM agents WHERE agent_id=? AND status='active'", (agent_id,),
+            ).fetchone():
+                raise ScopeViolation("unknown_active_agent")
+        match = self.store.create_match(
+            match_id=match_id, display_name=display_name, mode="singleplayer",
+            ruleset_id=ruleset_id, metadata=metadata,
+        )
+        perspective = self.store.create_perspective(
+            match["match_id"], agent_id, faction_id=int(faction_id),
+            faction_name=faction_name, controller_kind="agent",
+        )
+        return {"match": match, "perspective": perspective}
+
+    def discard_unstarted_match(self, match_id: str, perspective_id: str) -> bool:
+        """Remove only a just-created match that never acquired runtime state."""
+        _require_id(match_id, "match_id")
+        _require_id(perspective_id, "perspective_id")
+        with self.store.transaction() as connection:
+            match = connection.execute(
+                "SELECT status FROM matches WHERE match_id=?", (match_id,),
+            ).fetchone()
+            perspective = connection.execute(
+                "SELECT match_id FROM perspectives WHERE perspective_id=?", (perspective_id,),
+            ).fetchone()
+            if not match or not perspective:
+                return False
+            if match["status"] != "created" or perspective["match_id"] != match_id:
+                raise StoreError("match_not_discardable")
+            if connection.execute(
+                "SELECT 1 FROM instances WHERE match_id=? LIMIT 1", (match_id,),
+            ).fetchone():
+                raise StoreError("match_has_runtime_state")
+            connection.execute(
+                "DELETE FROM perspectives WHERE perspective_id=? AND match_id=?",
+                (perspective_id, match_id),
+            )
+            connection.execute(
+                "DELETE FROM matches WHERE match_id=? AND status='created'", (match_id,),
+            )
+        return True
+
+    def list_agents(self) -> list[dict[str, Any]]:
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT agent_id, display_name, status, profile_ref, personality_ref, "
+                "metadata_json, created_unix, updated_unix FROM agents ORDER BY display_name, agent_id"
+            ).fetchall()
+        results = []
+        for row in rows:
+            item = dict(row)
+            item["metadata"] = json.loads(item.pop("metadata_json"))
+            results.append(item)
+        return results
+
+    def list_matches(self) -> list[dict[str, Any]]:
+        with self.store.transaction() as connection:
+            rows = connection.execute("SELECT * FROM matches ORDER BY created_unix DESC").fetchall()
+        results = []
+        for row in rows:
+            item = dict(row)
+            item["metadata"] = json.loads(item.pop("metadata_json"))
+            results.append(item)
+        return results

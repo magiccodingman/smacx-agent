@@ -117,6 +117,19 @@ def main() -> int:
             if provider_body["api_key"] in json.dumps(providers):
                 raise AssertionError("provider API key leaked in list response")
 
+            status, _, workers = request(
+                server.server_port, "GET", "/api/v1/workers", cookies=cookies,
+            )
+            if status != 200 or workers["docker"]["error"] != "docker_manager_disabled":
+                raise AssertionError("disabled Docker manager state was not explicit")
+            status, _, disabled = request(
+                server.server_port, "POST", "/api/v1/game-sources/validate",
+                body={"host_path": "/legal/game"}, cookies=cookies,
+                csrf=cookies["smacx_csrf"],
+            )
+            if status != 409 or disabled["error"]["code"] != "docker_manager_disabled":
+                raise AssertionError("Docker mutations were not blocked when manager was disabled")
+
             status, _, traversal = request(server.server_port, "GET", "/%2e%2e/README.md")
             if status != 404 or traversal["error"]["code"] != "not_found":
                 raise AssertionError("static path traversal was not rejected")
@@ -140,6 +153,7 @@ def main() -> int:
                     "http_only_session": True,
                     "csrf_enforced": True,
                     "provider_secret_redacted": True,
+                    "docker_manager_disable_guard": True,
                     "static_traversal_rejected": True,
                     "logout_revokes_session": True,
                 },

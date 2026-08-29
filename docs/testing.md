@@ -512,6 +512,30 @@ The durable-platform regressions are fully contained and require neither a game 
 PYTHONPATH=src python3 scripts/platform_store_test.py
 PYTHONPATH=src python3 scripts/platform_controller_test.py
 PYTHONPATH=src python3 scripts/graphiti_projection_test.py
+PYTHONPATH=src python3 scripts/control_plane_test.py
+PYTHONPATH=src python3 scripts/control_http_test.py
+PYTHONPATH=src python3 scripts/worker_contract_test.py
+```
+
+The Docker client contract requires access to a local Docker socket. It creates
+only uniquely named, installation-labeled scratch resources and removes them:
+
+```bash
+PYTHONPATH=src python3 scripts/docker_client_test.py
+```
+
+The opt-in worker-manager regression validates the legal source in a read-only
+container, imports Proton into a private checksummed volume, transfers the
+bridge token without an environment variable, boots the real game twice,
+observes a healthy authenticated semantic opening both times, and proves the
+match identity survives while the process session rotates. It removes its
+containers and volumes on success or failure:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/game \
+SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
+SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+PYTHONPATH=src python3 scripts/worker_manager_live_test.py
 ```
 
 The capability-gap safety regression proves one audit record per match/session, zero native command calls after the latch, blocked launch/new/load escape paths, visibility through status, absence of an agent clear tool, and restoration only after a developer-controlled MCP restart:

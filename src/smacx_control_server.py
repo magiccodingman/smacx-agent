@@ -20,13 +20,16 @@ from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
 
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
-from smacx_store import InvalidRecord, ScopeViolation, SmacxStore, StoreError
+from smacx_docker import DockerClient, DockerError, DockerUnavailable
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
+from smacx_worker_manager import WorkerManager, WorkerManagerError
 
 
 MAX_REQUEST_BODY = 1024 * 1024
 SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
 PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
+WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status)$")
 
 
 class RequestRateLimiter:
@@ -53,11 +56,13 @@ class ControlHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, address: tuple[str, int], control: ControlPlane,
-                 static_root: Path, *, secure_cookies: bool = False) -> None:
+                 static_root: Path, *, secure_cookies: bool = False,
+                 worker_manager: WorkerManager | None = None) -> None:
         super().__init__(address, ControlRequestHandler)
         self.control = control
         self.static_root = static_root.resolve()
         self.secure_cookies = secure_cookies
+        self.worker_manager = worker_manager
         self.login_limiter = RequestRateLimiter()
 
 
@@ -197,6 +202,24 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, {"ok": True, "providers": self.server.control.list_providers()})
                 return
+            if path == "/api/v1/agents":
+                self._authentication()
+                self._json(200, {"ok": True, "agents": self.server.control.list_agents()})
+                return
+            if path == "/api/v1/matches":
+                self._authentication()
+                self._json(200, {"ok": True, "matches": self.server.control.list_matches()})
+                return
+            if path == "/api/v1/workers":
+                self._authentication()
+                self._json(200, {
+                    "ok": True,
+                    "docker": self.server.worker_manager.health() if self.server.worker_manager else {
+                        "ok": False, "error": "docker_manager_disabled",
+                    },
+                    "workers": [self._redact_worker(item) for item in self.server.control.list_worker_specs()],
+                })
+                return
             if path == "/api/v1/game-sources":
                 self._authentication()
                 self._json(200, {"ok": True, "game_sources": self.server.control.list_game_sources()})
@@ -266,6 +289,86 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, {"ok": True, "provider": provider})
                 return
+            if path == "/api/v1/agents":
+                auth = self._authorize_mutation()
+                body = self._body()
+                agent = self.server.control.create_agent(
+                    str(body.get("display_name", "")), agent_id=body.get("agent_id"),
+                    personality_ref=body.get("personality_ref"),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "agent.create", "agent", agent["agent_id"],
+                    "success", {"display_name": agent["display_name"]}, self.client_address[0],
+                )
+                self._json(201, {"ok": True, "agent": agent})
+                return
+            if path == "/api/v1/game-sources/validate":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                source = manager.validate_game_source(
+                    str(body.get("host_path", "")),
+                    display_name=str(body.get("display_name", "Alien Crossfire")),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "game_source.validate", "game_source",
+                    source["game_source_id"], "success",
+                    {"executable_sha256": source["executable_sha256"]}, self.client_address[0],
+                )
+                self._json(201, {"ok": True, "game_source": source})
+                return
+            if path == "/api/v1/runtimes/import-proton":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                runtime = manager.import_proton(
+                    str(body.get("source_host_path", "")),
+                    display_name=str(body.get("display_name", "Managed Proton")),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "runtime.import", "runtime", runtime["runtime_id"],
+                    "success", {"content_fingerprint": runtime["content_fingerprint"]},
+                    self.client_address[0],
+                )
+                self._json(201, {"ok": True, "runtime": runtime})
+                return
+            if path == "/api/v1/matches/solo":
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                faction_id = body.get("faction_id", 1)
+                if isinstance(faction_id, bool):
+                    raise InvalidRecord("invalid_faction_id")
+                try:
+                    faction_id = int(faction_id)
+                except (TypeError, ValueError) as exc:
+                    raise InvalidRecord("invalid_faction_id") from exc
+                created = self.server.control.create_solo_match(
+                    str(body.get("display_name", "")), str(body.get("agent_id", "")),
+                    faction_id=faction_id,
+                    faction_name=body.get("faction_name"),
+                )
+                perspective = created["perspective"]
+                try:
+                    worker = manager.provision_worker(
+                        MemoryScope(created["match"]["match_id"], perspective["agent_id"],
+                                    perspective["perspective_id"]),
+                        str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
+                        autostart=body.get("autostart") if isinstance(body.get("autostart"), dict) else None,
+                    )
+                except Exception:
+                    self.server.control.discard_unstarted_match(
+                        created["match"]["match_id"], perspective["perspective_id"],
+                    )
+                    raise
+                self.server.control.audit(
+                    auth["admin_id"], "match.create_solo", "match", created["match"]["match_id"],
+                    "success", {"instance_id": worker["instance_id"]}, self.client_address[0],
+                )
+                self._json(201, {
+                    "ok": True, **created, "worker": self._redact_worker(worker),
+                })
+                return
             match = PROVIDER_PATH.fullmatch(path)
             if match:
                 auth = self._authorize_mutation()
@@ -289,6 +392,25 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     )
                 self._json(200, {"ok": True, "provider": provider})
                 return
+            worker_match = WORKER_PATH.fullmatch(path)
+            if worker_match:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                self._body()
+                instance_id, action = worker_match.groups()
+                if action == "start":
+                    result = manager.start_worker(instance_id)
+                elif action == "park":
+                    result = manager.park_worker(instance_id)
+                else:
+                    result = manager.worker_status(instance_id)
+                self.server.control.audit(
+                    auth["admin_id"], f"worker.{action}", "instance", instance_id,
+                    "success", {"status": result.get("status") or result.get("health")},
+                    self.client_address[0],
+                )
+                self._json(200, result)
+                return
             self._error(404, "not_found")
         except Exception as exc:
             self._handle_exception(exc)
@@ -297,6 +419,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         key = f"{operation}:{self.client_address[0]}"
         if not self.server.login_limiter.allow(key):
             raise AuthenticationError("too_many_attempts")
+
+    def _manager(self) -> WorkerManager:
+        if self.server.worker_manager is None:
+            raise WorkerManagerError("docker_manager_disabled")
+        return self.server.worker_manager
+
+    @staticmethod
+    def _redact_worker(worker: dict[str, Any]) -> dict[str, Any]:
+        result = dict(worker)
+        result.pop("bridge_secret_id", None)
+        return result
 
     def _static(self, path: str) -> None:
         if path in ("", "/"):
@@ -325,6 +458,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._error(400, str(exc))
         elif isinstance(exc, ProviderError):
             self._error(502, str(exc))
+        elif isinstance(exc, DockerUnavailable):
+            self._error(503, "docker_engine_unavailable")
+        elif isinstance(exc, DockerError):
+            self._error(502, "docker_operation_failed")
+        elif isinstance(exc, WorkerManagerError):
+            self._error(409, str(exc))
         elif isinstance(exc, StoreError):
             self._error(409, str(exc))
         else:
@@ -367,6 +506,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(control.status(), sort_keys=True))
         return 0
     control.ensure_bootstrap_token()
+    worker_manager = None
+    if os.environ.get("SMACX_DOCKER_ENABLED", "0") == "1":
+        worker_manager = WorkerManager(
+            control,
+            DockerClient(os.environ.get("SMACX_DOCKER_SOCKET", "/var/run/docker.sock")),
+            worker_image=os.environ.get("SMACX_WORKER_IMAGE", "smacx-agent-worker:dev"),
+            network_name=os.environ.get("SMACX_DOCKER_NETWORK") or None,
+            directx_redist_host_path=os.environ.get("SMACX_DIRECTX_REDIST_HOST") or None,
+        )
     host = getattr(arguments, "host", os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))
     port = getattr(arguments, "port", int(os.environ.get("SMACX_CONTROL_PORT", "8080")))
     static_root = getattr(
@@ -378,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
     server = ControlHTTPServer(
         (host, port), control, Path(static_root),
         secure_cookies=os.environ.get("SMACX_SECURE_COOKIES", "0") == "1",
+        worker_manager=worker_manager,
     )
     print(json.dumps({
         "event": "control_ready", "host": host, "port": server.server_port,

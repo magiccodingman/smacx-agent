@@ -45,7 +45,8 @@ RUN ln -sf libsqlite3.so.3.53.4 /usr/local/lib/libsqlite3.so.0 \
     && ldconfig \
     && python3 -c "import sqlite3,sys; v=sqlite3.sqlite_version_info; sys.exit(1) if v < (3,51,3) else None; db=sqlite3.connect(':memory:'); db.execute('CREATE VIRTUAL TABLE docs USING fts5(content)'); db.close()"
 
-COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py /opt/smacx/src/
+COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
+    src/smacx_docker.py src/smacx_worker_manager.py /opt/smacx/src/
 COPY control_center/static/ /opt/smacx/control_center/static/
 COPY --chmod=0755 control_center/smacx-control /usr/local/bin/smacx-control
 

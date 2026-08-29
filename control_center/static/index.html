@@ -79,6 +79,95 @@
         </form>
         <div id="providers" class="providers"></div>
       </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">Runtime assets</p>
+            <h2>Prepare the legal game runtime</h2>
+            <p>The original game stays read-only. Proton is imported once into a private managed volume so live Steam files are never modified.</p>
+          </div>
+          <span id="docker-state" class="pill">Checking Docker</span>
+        </div>
+        <div class="form-grid">
+          <form id="source-form">
+            <h3>Validate game files</h3>
+            <label>Name <input name="display_name" value="Steam Alien Crossfire" required></label>
+            <label>Host game directory <input name="host_path" placeholder="/path/to/legal/game/files" required></label>
+            <button type="submit">Validate source</button>
+          </form>
+          <form id="runtime-form">
+            <h3>Import Proton runtime</h3>
+            <label>Name <input name="display_name" value="Managed Proton" required></label>
+            <label>Host Proton directory <input name="source_host_path" placeholder="/path/to/Proton - Experimental" required></label>
+            <button type="submit">Import private copy</button>
+          </form>
+        </div>
+        <div id="assets" class="record-list"></div>
+      </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">Identity</p>
+            <h2>Agents and solo matches</h2>
+            <p>An agent identity survives restarts. Every match, perspective, worker, and native session receives a separate durable ID.</p>
+          </div>
+        </div>
+        <div class="form-grid">
+          <form id="agent-form">
+            <h3>Create an agent</h3>
+            <label>Display name <input name="display_name" placeholder="Planetary strategist" required></label>
+            <label>Personality reference <input name="personality_ref" placeholder="Optional card or profile reference"></label>
+            <button type="submit">Create agent</button>
+          </form>
+          <form id="match-form">
+            <h3>Provision a solo match</h3>
+            <label>Match name <input name="display_name" placeholder="First landing" required></label>
+            <label>Agent <select name="agent_id" id="match-agent" required></select></label>
+            <label>Game source <select name="game_source_id" id="match-source" required></select></label>
+            <label>Runtime <select name="runtime_id" id="match-runtime" required></select></label>
+            <div class="compact-fields">
+              <label>Faction slot
+                <select name="faction_id">
+                  <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                  <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                  <option value="7">7</option>
+                </select>
+              </label>
+              <label>Difficulty
+                <select name="difficulty">
+                  <option value="0">Citizen</option><option value="1">Specialist</option>
+                  <option value="2">Talent</option><option value="3">Librarian</option>
+                  <option value="4">Thinker</option><option value="5">Transcend</option>
+                </select>
+              </label>
+              <label>World
+                <select name="world_size">
+                  <option value="0">Tiny</option><option value="1">Small</option>
+                  <option value="2">Standard</option><option value="3">Large</option>
+                  <option value="4">Huge</option>
+                </select>
+              </label>
+            </div>
+            <label class="check"><input name="start_now" type="checkbox" checked> Start the game after provisioning</label>
+            <button type="submit">Create match</button>
+          </form>
+        </div>
+        <div id="agents" class="record-list"></div>
+      </section>
+
+      <section class="panel operations-panel">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">Game workers</p>
+            <h2>Run, park, and resume</h2>
+            <p>Parking removes the disposable container while retaining the game prefix, save data, memory scope, and match identity.</p>
+          </div>
+          <button id="refresh" class="quiet">Refresh</button>
+        </div>
+        <div id="workers" class="record-list"></div>
+      </section>
     </section>
   </main>
   <script src="/app.js" defer></script>

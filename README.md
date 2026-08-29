@@ -20,6 +20,7 @@ This installation is isolated from the Steam game directory. The working game co
 - Traverse the production victory presentation stack semantically—native victory interludes, credits, score report, Quayle rating, Hall of Fame, and replay—then explicitly finish or continue from the final-score decision and expose the native process-exit state.
 - Resolve the native Alien Artifact menu semantically: keep the Artifact, confirmation-gated linking for a technology, or confirmation-gated contribution to the exact active Secret Project/unprototyped unit.
 - Assign durable installation, match, agent, perspective, instance, and process-session identities. SQLite now owns immutable events, chat, versioned facts/beliefs/relationships/commitments/goals/summaries, correction history, and scoped FTS5/BM25 recall; the former JSON ledger is a compatibility mirror/import source.
+- Run an authenticated, always-on Control Center that discovers OpenAI-compatible providers, validates a legal game source without modifying it, imports a private checksummed Proton runtime, provisions isolated solo workers, and parks/resumes the same durable match with a fresh process session.
 - Bundle the mandatory next decision in `smac_decision`: one stable match/session/revision frame containing an active modal, selected ready unit, wait/gap directive, or end-turn/game-management choices. Compact detail is the default; a full snapshot is opt-in for occasional strategic analysis.
 - Treat every returned `revision` as a single-decision capability: choices from an old revision, match, session, object owner, or turn phase are rejected, even if later actions restore identical game state. `end_turn` is withheld until all ready-unit decisions are resolved.
 - Reject commands from the wrong match/session or a stale observation before mutating game state.
@@ -34,6 +35,19 @@ The MCP deliberately exposes no screenshot, mouse, keyboard, native map-coordina
 `tile_id` values are identifiers, not coordinates. Agents must obtain them from fresh observations or choices and must not calculate with or invent them. Both the MCP schema and the authenticated native bridge reject x/y-driven play.
 
 ## Start using it
+
+For the new containerized operator flow, run:
+
+```bash
+./scripts/control-center-up.sh
+docker compose exec control-center smacx-control bootstrap-token
+```
+
+Then open `http://127.0.0.1:8080`. See [Control Center](docs/control-center.md)
+for legal game/Proton registration, security, LAN publication, and worker
+lifecycle details. The Hermes adapter for these managed workers is under active
+development; the existing single-instance MCP service below remains available
+without restarting it.
 
 The MCP service is enabled as a user service and normally starts automatically:
 

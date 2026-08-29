@@ -279,6 +279,8 @@ def main() -> int:
     if len(token) < 16:
         raise RuntimeError("invalid_or_missing_smacx_agent_token")
     worker_root = Path(os.environ.get("SMACX_WORKER_ROOT", "/var/lib/smacx"))
+    worker_home = worker_root / "home"
+    worker_home.mkdir(parents=True, exist_ok=True)
     source = Path(os.environ.get("SMACX_GAME_SOURCE", "/game-source"))
     game = worker_root / "game"
     source_identity = validate_source(source)
@@ -291,6 +293,7 @@ def main() -> int:
         raise RuntimeError("invalid_smacx_winearch")
     environment.update({
         "DISPLAY": os.environ.get("DISPLAY", ":99"),
+        "HOME": str(worker_home),
         "WINEARCH": winearch,
         "WINEPREFIX": str(worker_root / "prefix"),
         "WINEDLLOVERRIDES": "mscoree,mshtml=",

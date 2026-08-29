@@ -12,7 +12,7 @@ import tempfile
 import threading
 
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
-from smacx_store import SmacxStore
+from smacx_store import ScopeViolation, SmacxStore
 
 
 def expect(error_type, function, message: str) -> None:
@@ -135,6 +135,22 @@ def main() -> int:
         if game["status"] != "validated" or runtime["status"] != "ready":
             raise AssertionError("runtime inventory was not persisted")
 
+        expect(
+            ScopeViolation,
+            lambda: control.create_solo_match("Orphan prevention", "agent-does-not-exist"),
+            "unknown_active_agent",
+        )
+        if control.status()["counts"]["matches"] != 0:
+            raise AssertionError("invalid solo match left an orphaned match")
+        agent = control.create_agent("Test agent")
+        solo = control.create_solo_match("Valid solo match", agent["agent_id"])
+        if solo["perspective"]["match_id"] != solo["match"]["match_id"]:
+            raise AssertionError("solo match perspective was scoped incorrectly")
+        if not control.discard_unstarted_match(
+            solo["match"]["match_id"], solo["perspective"]["perspective_id"],
+        ) or control.status()["counts"]["matches"] != 0:
+            raise AssertionError("unstarted match rollback failed")
+
         with sqlite3.connect(store.path) as connection:
             audit = connection.execute("SELECT audit_id FROM control_audit LIMIT 1").fetchone()
             if not audit:
@@ -167,6 +183,8 @@ def main() -> int:
                 "provider_discovery": True,
                 "model_selection_contract": True,
                 "runtime_inventory": True,
+                "solo_match_orphan_guard": True,
+                "unstarted_match_rollback": True,
                 "immutable_audit": True,
             },
         }, separators=(",", ":")))

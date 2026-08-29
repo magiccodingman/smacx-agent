@@ -203,11 +203,15 @@ def test_distribution_contract() -> None:
     assert "COPY runtime" not in dockerfile
     assert "COPY toolchain" not in dockerfile
     assert "alsa-null.conf" in dockerfile
+    assert "inspect_source.py" in dockerfile
     assert "fluxbox-init" in dockerfile
     assert "fluxbox-overlay" in dockerfile
     entrypoint_source = (ROOT / "worker" / "entrypoint.py").read_text(encoding="utf-8")
+    manager_source = (ROOT / "src" / "smacx_worker_manager.py").read_text(encoding="utf-8")
     assert '"fluxbox", "-rc", "/opt/smacx/fluxbox-init", "-no-toolbar"' in entrypoint_source
     assert 'if stopping:\n                emit("worker_stopped", reason="signal")' in entrypoint_source
+    assert '"Target": "/proton",\n             "ReadOnly": True' in manager_source
+    assert "SMACX_PROTON_DIST_LOCK" in manager_source
     assert "runtime" in dockerignore
     assert "toolchain" in dockerignore
 

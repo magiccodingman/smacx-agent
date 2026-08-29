@@ -25,7 +25,7 @@ RUN dpkg --add-architecture i386 \
 
 COPY --from=bridge-build /build/thinker.dll /opt/smacx/bridge/thinker.dll
 COPY --from=bridge-build /build/thinker.exe /opt/smacx/bridge/thinker.exe
-COPY worker/entrypoint.py worker/healthcheck.py worker/alsa-null.conf \
+COPY worker/entrypoint.py worker/healthcheck.py worker/inspect_source.py worker/alsa-null.conf \
     worker/fluxbox-init worker/fluxbox-overlay /opt/smacx/
 
 ENV DISPLAY=:99 \
