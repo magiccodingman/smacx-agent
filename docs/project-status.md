@@ -153,9 +153,9 @@ boundaries and exact fail-closed gaps.
   implementation and runnable checklists exist, but those external environments
   are required to produce honest evidence.
 - Typed single-player and multiplayer scenario selection/launch. The legal
-  reference installation contains no scenario campaign files, and the bridge
-  does not expose a scenario-selector contract; it never falls back to menu
-  clicking.
+  Steam source contains scenario files, but the isolated native test import did
+  not include them and the bridge exposes no scenario-selector contract; it
+  never falls back to menu clicking.
 - Every rare scenario interaction or LAN synchronization path. See
   [Coverage and limits](coverage.md); missing mandatory interactions fail
   closed.
