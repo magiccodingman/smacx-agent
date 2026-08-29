@@ -7,6 +7,7 @@ import json
 import os
 import socket
 import sys
+from pathlib import Path
 
 
 def secret_value(name: str) -> str:
@@ -21,6 +22,14 @@ def secret_value(name: str) -> str:
 
 
 def main() -> int:
+    # The entrypoint owns native bridge startup. Probing the forking socat
+    # proxy before that handshake completes can leave one proxy child per
+    # timed-out probe and overwhelm a slow first-run Wine prefix.
+    ready_marker = Path(os.environ.get(
+        "SMACX_READY_MARKER", "/tmp/smacx/bridge-ready",
+    ))
+    if not ready_marker.is_file():
+        return 1
     token = secret_value("SMACX_AGENT_TOKEN")
     port = int(os.environ.get("SMACX_BRIDGE_PROXY_PORT", "47814"))
     if len(token) < 16:

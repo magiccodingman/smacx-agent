@@ -129,15 +129,31 @@ class WorkerManager:
 
     def _wait_native(self, instance_id: str, operation: str, predicate, *,
                      timeout: float, poll_seconds: float = 0.25,
+                     context: str | None = None,
                      **arguments: Any) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
         latest: dict[str, Any] = {}
         while time.monotonic() < deadline:
-            latest = self._native_request(instance_id, operation, **arguments)
+            try:
+                latest = self._native_request(instance_id, operation, **arguments)
+            except WorkerManagerError as exc:
+                # A stock multiplayer checkpoint is deserialized on the game
+                # thread when its setup packet arrives. During that bounded
+                # interval the authenticated bridge can time out even though
+                # the worker and DirectPlay session remain healthy. Retry only
+                # this transport condition; ownership/lifecycle errors remain
+                # immediate failures.
+                if str(exc) != "game_worker_bridge_unavailable":
+                    raise
+                latest = {"ok": False, "error": str(exc)}
+                time.sleep(poll_seconds)
+                continue
             if predicate(latest):
                 return latest
             time.sleep(poll_seconds)
-        raise WorkerManagerError(f"native_{operation}_timeout")
+        detail = json.dumps(latest, separators=(",", ":"), default=str)[:1800]
+        stage = f"_{context}" if context else ""
+        raise WorkerManagerError(f"native_{operation}{stage}_timeout:{detail}")
 
     def _name(self, kind: str, identity: str | None = None) -> str:
         suffix = hashlib.sha256((identity or uuid.uuid4().hex).encode()).hexdigest()[:16]
@@ -526,7 +542,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 health = state.get("Health", {}).get("Status")
                 if health == "healthy":
                     break
-                if not state.get("Running") or health == "unhealthy":
+                # Docker can report unhealthy after its image-level startup
+                # grace expires while a first-run Proton prefix is still
+                # registering DirectPlay. Health checks continue afterward
+                # and can recover, so the manager's explicit bounded deadline
+                # is authoritative as long as the worker process is alive.
+                if not state.get("Running"):
                     raise WorkerManagerError("worker_failed_healthcheck")
                 time.sleep(1)
             else:
@@ -590,12 +611,15 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return address
 
     def start_lan_match(self, match_id: str, *, session_name: str = "SMACX Managed LAN",
-                        profile: str = "small_easy", timeout: float = 420.0) -> dict[str, Any]:
+                        profile: str = "small_easy", resume_slot: str | None = None,
+                        timeout: float = 420.0) -> dict[str, Any]:
         if profile != "small_easy":
             raise InvalidRecord("unsupported_lan_profile")
         if not isinstance(session_name, str) or not 1 <= len(session_name) <= 31 \
                 or any(ord(character) < 32 or ord(character) > 126 for character in session_name):
             raise InvalidRecord("invalid_lan_session_name")
+        if resume_slot is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", resume_slot):
+            raise InvalidRecord("invalid_save_slot")
         seats = self.control.list_seats(match_id)
         if not 2 <= len(seats) <= 7 or any(seat["controller_kind"] != "agent" for seat in seats):
             raise WorkerManagerError("managed_lan_requires_two_to_seven_agent_seats")
@@ -606,7 +630,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         deadline = time.monotonic() + min(max(float(timeout), 120.0), 900.0)
         self.control.update_match_lifecycle(
             match_id, "starting", host_instance_id=host_instance,
-            metadata={"lan_profile": profile, "lan_session_name": session_name},
+            metadata={
+                "lan_profile": profile, "lan_session_name": session_name,
+                "resume_slot": resume_slot,
+            },
         )
         try:
             for seat in seats:
@@ -622,11 +649,30 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             host_lobby = self._wait_native(
                 host_instance, "semantic_lan",
                 lambda value: value.get("lifecycle") == "lobby", timeout=45,
-                action="status",
+                context="host_lobby", action="status",
             )
             network_session_id = host_lobby.get("identity", {}).get("network_session_id")
             if not isinstance(network_session_id, str) or not network_session_id:
                 raise WorkerManagerError("native_lan_network_identity_missing")
+            loaded_checkpoint = None
+            if resume_slot is not None:
+                identity = host_lobby["identity"]
+                loaded_checkpoint = self._native_request(
+                    host_instance, "semantic_lan", action="load_save", slot=resume_slot,
+                    match_id=identity["match_id"], session_id=identity["session_id"],
+                    expected_lobby_revision=host_lobby["lobby"]["revision"],
+                    client_operation_id=self._lan_operation_id(match_id, "load"),
+                )
+                if not loaded_checkpoint.get("ok"):
+                    detail = json.dumps(loaded_checkpoint, separators=(",", ":"))[:1200]
+                    raise WorkerManagerError(f"native_lan_load_failed:{detail}")
+                host_lobby = self._wait_native(
+                    host_instance, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("lobby", {}).get("game_type") == "load"
+                    ), timeout=45, context="host_loaded_lobby", action="status",
+                )
             host_address = self._container_address(host_instance)
             for seat in seats[1:]:
                 seat_index = int(seat["seat_index"])
@@ -656,7 +702,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     lambda value, expected=network_session_id: (
                         value.get("lifecycle") == "lobby"
                         and value.get("identity", {}).get("network_session_id") == expected
-                    ), timeout=45, action="status",
+                    ), timeout=45, context=f"client_{seat_index}_joined_lobby", action="status",
                 )
             participant_count = len(seats)
             host_lobby = self._wait_native(
@@ -664,17 +710,168 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 lambda value: (
                     value.get("lifecycle") == "lobby"
                     and value.get("lobby", {}).get("participant_count") == participant_count
-                ), timeout=45, action="status",
+                ), timeout=45, context="host_participant_count", action="status",
             )
-            identity = host_lobby["identity"]
-            configured = self._native_request(
-                host_instance, "semantic_lan", action="configure", profile=profile,
-                match_id=identity["match_id"], session_id=identity["session_id"],
-                expected_lobby_revision=host_lobby["lobby"]["revision"],
-                client_operation_id=self._lan_operation_id(match_id, "configure"),
-            )
-            if not configured.get("ok"):
-                raise WorkerManagerError("native_lan_configure_failed")
+            resume_choices_by_seat: dict[int, int] = {}
+            if resume_slot is None:
+                identity = host_lobby["identity"]
+                configured = self._native_request(
+                    host_instance, "semantic_lan", action="configure", profile=profile,
+                    match_id=identity["match_id"], session_id=identity["session_id"],
+                    expected_lobby_revision=host_lobby["lobby"]["revision"],
+                    client_operation_id=self._lan_operation_id(match_id, "configure"),
+                )
+                if not configured.get("ok"):
+                    raise WorkerManagerError("native_lan_configure_failed")
+                host_lobby = self._wait_native(
+                    host_instance, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and value.get("lobby", {}).get("settings", {}).get("profile") == profile
+                    ), timeout=45, context="host_configured_lobby",
+                    action="status",
+                )
+            else:
+                restored_by_player: dict[int, int] = {}
+                for seat in seats:
+                    seat_index = int(seat["seat_index"])
+                    instance_id = str(seat["instance_id"])
+                    expected_faction = seat.get("faction_id")
+                    if not isinstance(expected_faction, int):
+                        raise WorkerManagerError("native_lan_saved_faction_missing")
+                    lobby = self._wait_native(
+                        instance_id, "semantic_lan",
+                        lambda value, expected=network_session_id: (
+                            value.get("lifecycle") == "lobby"
+                            and value.get("identity", {}).get("network_session_id") == expected
+                            and value.get("lobby", {}).get("game_type") == "load"
+                            and value.get("lobby", {}).get("participant_count") == participant_count
+                        ), timeout=75, context=f"seat_{seat_index}_loaded_faction_lobby",
+                        action="status",
+                    )
+                    if restored_by_player:
+                        lobby = self._wait_native(
+                            instance_id, "semantic_lan",
+                            lambda value, prior=dict(restored_by_player): (
+                                value.get("lifecycle") == "lobby"
+                                and all(
+                                    next(
+                                        (item for item in value.get("lobby", {}).get(
+                                            "participants", []
+                                        ) if isinstance(item, Mapping)
+                                         and item.get("player_index") == player_index),
+                                        {},
+                                    ).get("faction_choice_id") == faction_choice_id
+                                    for player_index, faction_choice_id in prior.items()
+                                )
+                            ), timeout=75,
+                            context=f"seat_{seat_index}_prior_faction_choices",
+                            action="status",
+                        )
+                    local = next(
+                        (item for item in lobby["lobby"].get("participants", [])
+                         if isinstance(item, Mapping) and item.get("local") is True),
+                        {},
+                    )
+                    if local.get("faction_id") != expected_faction:
+                        detail = json.dumps(local, separators=(",", ":"))[:1000]
+                        raise WorkerManagerError(
+                            f"native_lan_restored_faction_binding_mismatch:{detail}"
+                        )
+                    expected_choice = local.get("required_faction_choice_id")
+                    if not isinstance(expected_choice, int):
+                        detail = json.dumps(local, separators=(",", ":"))[:1000]
+                        raise WorkerManagerError(
+                            f"native_lan_loaded_faction_choice_unavailable:{detail}"
+                        )
+                    if local.get("faction_choice_id") != expected_choice:
+                        selected = self._native_request(
+                            instance_id, "semantic_lan", action="select_faction",
+                            faction_choice_id=expected_choice,
+                            match_id=lobby["identity"]["match_id"],
+                            session_id=lobby["identity"]["session_id"],
+                            expected_lobby_revision=lobby["lobby"]["revision"],
+                            client_operation_id=self._lan_operation_id(
+                                match_id, "faction", seat_index,
+                            ),
+                        )
+                        if not selected.get("ok"):
+                            detail = json.dumps({
+                                "seat_index": seat_index,
+                                "expected_faction_choice_id": expected_choice,
+                                "native_selector_record_ids": lobby.get(
+                                    "lobby", {}
+                                ).get("native_selector_record_ids", []),
+                                "participants": lobby.get("lobby", {}).get(
+                                    "participants", []
+                                ),
+                                "result": selected,
+                            }, separators=(",", ":"))[:1800]
+                            raise WorkerManagerError(
+                                f"native_lan_faction_selection_failed:{detail}"
+                            )
+                    resume_choices_by_seat[seat_index] = expected_choice
+                    restored_by_player[seat_index + 1] = expected_choice
+                    host_lobby = self._wait_native(
+                        host_instance, "semantic_lan",
+                        lambda value, player_index=seat_index + 1,
+                        faction_choice_id=expected_choice: (
+                            value.get("lifecycle") == "lobby"
+                            and next(
+                                (item for item in value.get("lobby", {}).get(
+                                    "participants", []
+                                ) if isinstance(item, Mapping)
+                                 and item.get("player_index") == player_index),
+                                {},
+                            ).get("faction_choice_id") == faction_choice_id
+                        ), timeout=75,
+                        context=f"host_observed_seat_{seat_index}_faction_choice",
+                        action="status",
+                    )
+                expected_by_player = dict(restored_by_player)
+                host_lobby = self._wait_native(
+                    host_instance, "semantic_lan",
+                    lambda value: (
+                        value.get("lifecycle") == "lobby"
+                        and all(
+                            next(
+                                (item for item in value.get("lobby", {}).get("participants", [])
+                                 if isinstance(item, Mapping)
+                                 and item.get("player_index") == player_index),
+                                {},
+                            ).get("faction_choice_id") == faction_id
+                            for player_index, faction_id in expected_by_player.items()
+                        )
+                    ), timeout=75, context="host_faction_choices_converged",
+                    action="status",
+                )
+                participants = {
+                    int(item["player_index"]): item
+                    for item in host_lobby.get("lobby", {}).get("participants", [])
+                    if isinstance(item, Mapping) and isinstance(item.get("player_index"), int)
+                }
+                mismatches: list[dict[str, Any]] = []
+                for seat in seats:
+                    expected_faction = seat.get("faction_id")
+                    expected_choice = resume_choices_by_seat.get(
+                        int(seat["seat_index"])
+                    )
+                    participant = participants.get(int(seat["seat_index"]) + 1, {})
+                    if not isinstance(expected_faction, int) \
+                            or not isinstance(expected_choice, int) \
+                            or participant.get("faction_choice_id") != expected_choice \
+                            or participant.get("faction_id") != expected_faction:
+                        mismatches.append({
+                            "seat_index": seat["seat_index"],
+                            "expected_faction_id": expected_faction,
+                            "expected_faction_choice_id": expected_choice,
+                            "participant": participant,
+                        })
+                if mismatches:
+                    detail = json.dumps(mismatches, separators=(",", ":"))[:1600]
+                    raise WorkerManagerError(
+                        f"native_lan_loaded_faction_binding_mismatch:{detail}"
+                    )
             for seat in seats[1:]:
                 seat_index = int(seat["seat_index"])
                 instance_id = str(seat["instance_id"])
@@ -682,8 +879,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     instance_id, "semantic_lan",
                     lambda value: (
                         value.get("lifecycle") == "lobby"
-                        and value.get("lobby", {}).get("settings", {}).get("profile") == profile
-                    ), timeout=45, action="status",
+                        and (
+                            value.get("lobby", {}).get("game_type") == "load"
+                            if resume_slot is not None else
+                            value.get("lobby", {}).get("settings", {}).get("profile") == profile
+                        )
+                    ), timeout=45, context=f"client_{seat_index}_configured_lobby", action="status",
                 )
                 identity = lobby["identity"]
                 ready = self._native_request(
@@ -699,7 +900,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 lambda value: (
                     value.get("lifecycle") == "lobby"
                     and value.get("lobby", {}).get("all_clients_ready") is True
-                ), timeout=45, action="status",
+                ), timeout=45, context="host_all_clients_ready", action="status",
             )
             self.control.update_match_lifecycle(
                 match_id, "lobby", host_instance_id=host_instance,
@@ -721,22 +922,32 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     instance_id, "semantic_lan",
                     lambda value: value.get("lifecycle") == "game",
                     timeout=max(60.0, deadline - time.monotonic()), poll_seconds=0.5,
-                    action="status",
+                    context=f"seat_{seat['seat_index']}_game", action="status",
                 )
                 snapshot = self._wait_native(
                     instance_id, "semantic_snapshot",
                     lambda value: isinstance(value.get("snapshot", {}).get("faction"), Mapping),
-                    timeout=45,
+                    timeout=45, context=f"seat_{seat['seat_index']}_snapshot",
                 )
                 faction = snapshot["snapshot"]["faction"]
+                faction_choice_id = resume_choices_by_seat.get(
+                    int(seat["seat_index"])
+                )
+                seat_metadata = {
+                    "network_session_id": network_session_id,
+                    "native_role": "host" if seat is host else "client",
+                }
+                if isinstance(faction_choice_id, int):
+                    seat_metadata["native_loaded_faction_choice_id"] = faction_choice_id
                 self.control.update_lan_seat(
                     match_id, int(seat["seat_index"]),
                     faction_id=int(faction["id"]), faction_name=str(faction.get("name") or "") or None,
-                    metadata={"network_session_id": network_session_id, "native_role": "host" if seat is host else "client"},
+                    metadata=seat_metadata,
                 )
                 native.append({
                     "seat_index": int(seat["seat_index"]), "instance_id": instance_id,
                     "faction_id": int(faction["id"]), "faction_name": faction.get("name"),
+                    "faction_choice_id": faction_choice_id,
                     "lifecycle": game["lifecycle"],
                 })
             match = self.control.update_match_lifecycle(
@@ -745,7 +956,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
             return {
                 "ok": True, "match": match, "network_session_id": network_session_id,
-                "profile": profile, "seats": native,
+                "profile": profile, "resume_slot": resume_slot,
+                "loaded_checkpoint": loaded_checkpoint, "seats": native,
                 "pixels_or_ui_input_used": False,
             }
         except Exception as exc:

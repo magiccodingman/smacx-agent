@@ -112,7 +112,10 @@ int __cdecl mod_except_handler3(EXCEPTION_RECORD* rec, PVOID* frame, CONTEXT* ct
     int32_t* p = (int32_t*)ctx->Esp;
     fprintf(debug_log, "Stack dump:\n");
 
-    for (int i = 0; i < 24; i++) {
+    // Multiplayer and DirectPlay calls use large native stack frames. Keep
+    // enough words to include the originating game call site, not only the
+    // innermost CRT/network helper frames.
+    for (int i = 0; i < 128; i++) {
         if (ReadProcessMemory(hProcess, p + i, &bytes, 4, NULL)) {
             fprintf(debug_log, "%08x: %08x\n", (int32_t)(p + i), bytes);
         } else {
@@ -229,4 +232,3 @@ void print_base(int id) {
         base->mineral_surplus, base->minerals_accumulated,
         base->state_flags, prod, prod_name(prod), (char*)&(base->name));
 }
-

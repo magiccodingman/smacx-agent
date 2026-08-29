@@ -259,6 +259,42 @@ def bridge_ready(port: int, token: str) -> bool:
         return False
 
 
+def windows_process_ids(image_name: str, proc_root: Path = Path("/proc")) -> set[int]:
+    """Return Wine process ids whose argv/comm names one exact PE image."""
+    expected = image_name.lower()
+    process_ids: set[int] = set()
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            command = (entry / "cmdline").read_bytes().split(b"\0")
+            arguments = [value.decode("utf-8", "replace") for value in command if value]
+            comm = (entry / "comm").read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+            continue
+        names = [comm]
+        names.extend(
+            argument.replace("\\", "/").rsplit("/", 1)[-1]
+            for argument in arguments
+        )
+        if any(name.lower() == expected for name in names):
+            process_ids.add(int(entry.name))
+    return process_ids
+
+
+def terminate_runtime(environment: dict[str, str]) -> None:
+    """Stop this worker's isolated Wine/Proton prefix after the game exits."""
+    subprocess.run(
+        [runtime_server(environment), "-k"],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        timeout=10,
+    )
+
+
 def stop_all(*_: Any) -> None:
     global stopping
     if stopping:
@@ -352,10 +388,11 @@ def main() -> int:
     initialize_wine(environment, worker_root)
     directplay = install_directplay(environment, worker_root)
     proxy_port = int(os.environ.get("SMACX_BRIDGE_PROXY_PORT", "47814"))
-    start([
-        "socat", f"TCP-LISTEN:{proxy_port},bind=0.0.0.0,reuseaddr,fork",
-        "TCP:127.0.0.1:47813",
-    ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ready_marker = Path(os.environ.get(
+        "SMACX_READY_MARKER", "/tmp/smacx/bridge-ready",
+    ))
+    ready_marker.parent.mkdir(parents=True, exist_ok=True)
+    ready_marker.unlink(missing_ok=True)
 
     metadata = {
         "schema": "smacx.worker.v1",
@@ -382,21 +419,64 @@ def main() -> int:
     )
     deadline = time.monotonic() + min(max(int(os.environ.get("SMACX_BRIDGE_START_TIMEOUT", "90")), 10), 300)
     while time.monotonic() < deadline:
-        if bridge_ready(proxy_port, token):
+        if bridge_ready(47813, token):
+            start([
+                "socat", f"TCP-LISTEN:{proxy_port},bind=0.0.0.0,reuseaddr,fork",
+                "TCP:127.0.0.1:47813",
+            ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ready_marker.touch(mode=0o600)
             emit("worker_ready", **metadata)
             # Thinker is a native launcher and may exit successfully after it
-            # hands terranx.exe to Wine.  Supervise the prefix, not that shim.
+            # hands terranx.exe to Wine. DirectPlay's dplaysvr.exe can outlive
+            # the game indefinitely, so wineserver --wait alone is not an
+            # honest game-liveness signal. Supervise the exact PE image while
+            # retaining the prefix waiter as a secondary runtime signal.
             wine_waiter = start([runtime_server(environment), "--wait"], environment)
-            return_code = wine_waiter.wait()
-            if stopping:
-                emit("worker_stopped", reason="signal")
-                return 0
-            emit("game_exited", return_code=return_code)
-            return return_code
+            game_seen = bool(windows_process_ids("terranx.exe"))
+            absent_since: float | None = None
+            exit_grace = min(max(float(os.environ.get(
+                "SMACX_GAME_EXIT_GRACE", "5",
+            )), 1), 30)
+            while True:
+                if stopping:
+                    ready_marker.unlink(missing_ok=True)
+                    emit("worker_stopped", reason="signal")
+                    return 0
+                process_ids = windows_process_ids("terranx.exe")
+                if process_ids:
+                    game_seen = True
+                    absent_since = None
+                elif game_seen:
+                    if absent_since is None:
+                        absent_since = time.monotonic()
+                    elif time.monotonic() - absent_since >= exit_grace:
+                        ready_marker.unlink(missing_ok=True)
+                        launcher_return_code = game_process.poll()
+                        emit(
+                            "game_process_exited",
+                            image="terranx.exe",
+                            launcher_return_code=launcher_return_code,
+                            grace_seconds=exit_grace,
+                        )
+                        terminate_runtime(environment)
+                        return 70
+                runtime_return_code = wine_waiter.poll()
+                if runtime_return_code is not None:
+                    ready_marker.unlink(missing_ok=True)
+                    if stopping:
+                        emit("worker_stopped", reason="signal")
+                        return 0
+                    emit(
+                        "runtime_exited",
+                        return_code=runtime_return_code,
+                        game_process_seen=game_seen,
+                    )
+                    return runtime_return_code or 71
+                time.sleep(1)
         launcher_return_code = game_process.poll()
         if launcher_return_code not in (None, 0):
             raise RuntimeError(f"game_launcher_failed:{launcher_return_code}")
-        time.sleep(0.5)
+        time.sleep(1)
     raise RuntimeError("bridge_start_timeout")
 
 

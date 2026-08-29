@@ -45,6 +45,27 @@ void __thiscall agent_chat_display(void* This, const char* text,
 // while multiplayer_init initializes the surrounding lobby/game state.
 int __thiscall agent_network_initialize(void* This, int mode);
 
+// When the semantic native host requests a named multiplayer checkpoint, let
+// the stock Multiplayer Setup handler choose its Load mode and file without a
+// coordinate, key, pixel, or file-dialog dependency. Other calls retain the
+// original UI behavior.
+int __thiscall agent_multiplayer_game_type_choice(
+    void* This, int left, int top, void* callback);
+int __cdecl agent_multiplayer_load_game(int save_mode, int flags);
+int __thiscall agent_multiplayer_faction_choice_result(
+    void* This, int left, int top, void* callback);
+int __cdecl agent_multiplayer_faction_map_result(
+    int selector_result, const unsigned char* native_frame);
+int __thiscall agent_multiplayer_faction_validation(void* This, int flags);
+
+// The stock loaded-game manifest has a one-byte record index and storage for
+// exactly 256 entries, but continues enumerating past that limit on modern
+// distributions with larger install directories. Stop FindNextFile at the
+// protocol boundary before the next record can overrun the native buffer.
+BOOL __stdcall agent_multiplayer_manifest_find_next(
+    HANDLE search_handle, WIN32_FIND_DATAA* find_data,
+    const unsigned char* native_frame);
+
 // Preserve the native presentation in single-player. In LAN, queue its exact
 // public technology identity semantically so the recipient never deadlocks in
 // the stock private modal loop after an otherwise completed native transfer.

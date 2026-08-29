@@ -506,6 +506,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         match_id,
                         session_name=str(body.get("session_name", "SMACX Managed LAN")),
                         profile=str(body.get("profile", "small_easy")),
+                        resume_slot=(str(body["resume_slot"])
+                                     if body.get("resume_slot") is not None else None),
                     )
                 elif action == "park":
                     result = manager.park_match(match_id)

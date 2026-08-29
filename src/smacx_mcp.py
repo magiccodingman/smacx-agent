@@ -290,7 +290,14 @@ def smac_chat(
         "legal only from the inactive menu. Supply a unique client_operation_id for host/join and "
         "reuse that exact ID after an uncertain response. Discovery returns opaque network_session_id "
         "values; join accepts only one freshly returned exact ID. In the lobby, follow only the "
-        "returned legal_actions. Before clients ready, the host may apply the guarded small_easy "
+        "returned legal_actions. While it is the only lobby participant, the native host may use "
+        "load_save with a match-scoped slot; this follows the stock Load Multiplayer Game path. "
+        "In a loaded lobby, each unready returning seat must execute select_faction through the "
+        "stock Multiplayer Setup handler to restore its durable original faction_choice_id "
+        "before becoming ready; this lobby template choice is distinct from the runtime "
+        "faction_id/player slot. Fresh games assign it during native Start; managed resume "
+        "supplies it automatically. "
+        "Before clients ready, the host may apply the guarded small_easy "
         "profile (Citizen difficulty, Small random map) with configure; its native setup packet is "
         "synchronized to every peer. A joining client then uses set_ready; once every client is ready, only "
         "the host may use start. Copy match_id, session_id, and expected_lobby_revision from the "
@@ -299,7 +306,7 @@ def smac_chat(
     )
 )
 def smac_lan(
-    action: Literal["status", "host", "discover", "join", "configure", "set_ready", "start"],
+    action: Literal["status", "host", "discover", "join", "load_save", "select_faction", "configure", "set_ready", "start"],
     session_name: str = "SMACX Agent Game",
     player_name: str = "Semantic Host",
     client_operation_id: str = "",
@@ -309,12 +316,14 @@ def smac_lan(
     session_id: str = "",
     expected_lobby_revision: str = "",
     profile: str = "small_easy",
+    slot: str = "",
+    faction_choice_id: int = -1,
     ready: bool = False,
     agent_id: str = "",
     perspective_id: str = "",
     instance_id: str = "",
 ) -> dict:
-    if action in {"host", "join", "configure", "set_ready", "start"}:
+    if action in {"host", "join", "load_save", "select_faction", "configure", "set_ready", "start"}:
         blocked = _capability_gap_blocked(f"LAN {action}")
         if blocked:
             return blocked
@@ -345,6 +354,8 @@ def smac_lan(
         session_id=session_id,
         expected_lobby_revision=expected_lobby_revision,
         profile=profile,
+        slot=slot,
+        faction_choice_id=faction_choice_id,
         ready=ready,
     )
 

@@ -111,6 +111,16 @@ std::string lan_network_session_id;
 std::string lan_client_operation_id;
 std::string lan_lobby_operation_id;
 std::string lan_lobby_operation_action;
+std::string lan_pending_load_path;
+volatile LONG lan_pending_load_active = 0;
+volatile LONG lan_pending_load_choice_seen = 0;
+volatile LONG lan_pending_load_native_status = -1;
+volatile LONG lan_pending_faction_choice_active = 0;
+volatile LONG lan_pending_faction_choice_seen = 0;
+volatile LONG lan_pending_faction_choice_id = -1;
+volatile LONG lan_pending_faction_selector_result = -1;
+volatile LONG lan_pending_faction_choice_before_validation = -1;
+volatile LONG lan_pending_faction_validation_result = -1;
 int pending_base_name_id = -1;
 std::string pending_base_name;
 int pending_research_focus_faction_id = -1;
@@ -4868,6 +4878,50 @@ unsigned char* lan_setup_record(int index) {
         0x90DB98 + index * LanSetupRecordStride);
 }
 
+unsigned char* lan_faction_choice_records() {
+    return NetWin ? *reinterpret_cast<unsigned char**>(
+        reinterpret_cast<char*>(NetWin) + 0x772C) : NULL;
+}
+
+int lan_faction_choice_count() {
+    unsigned char* records = lan_faction_choice_records();
+    return records ? static_cast<unsigned char>(records[1]) : 0;
+}
+
+bool lan_faction_choice_selectable(int choice_id) {
+    unsigned char* records = lan_faction_choice_records();
+    int count = lan_faction_choice_count();
+    if (!records || choice_id < 0 || choice_id >= count
+    || records[choice_id * 0x190 + 9] == 0) {
+        return false;
+    }
+    int game_type = *reinterpret_cast<int*>(0x90E778);
+    if (game_type == 2 || game_type == 3) {
+        for (int index = 1; index <= lan_player_count(); ++index) {
+            if (static_cast<signed char>(lan_setup_record(index)[3]) == choice_id) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+int lan_required_faction_choice(int player_index) {
+    if (player_index < 1 || player_index > lan_player_count()
+    || *reinterpret_cast<int*>(0x90E778) != 3) {
+        return -1;
+    }
+    const int count = lan_faction_choice_count();
+    unsigned char* records = lan_faction_choice_records();
+    // A loaded campaign reconstructs AlphaNet's player-to-faction binding
+    // before anyone claims a selector row. Its faction slot is the selector
+    // record id (1..7). Per-player save-token fields are copied before join
+    // assignment and are not authoritative for a newly joined client.
+    const int faction_id = lan_player_faction(player_index);
+    return records && faction_id >= 1 && faction_id < count
+        && records[faction_id * 0x190 + 9] != 0 ? faction_id : -1;
+}
+
 bool lan_player_ready(int index) {
     return index >= 1 && index <= lan_player_count()
         && lan_setup_record(index)[1] != 0;
@@ -4941,6 +4995,22 @@ const char* lan_world_level_name(int id) {
     return id >= 0 && id < 3 ? names[id] : "unknown";
 }
 
+const char* lan_game_type_name(int id) {
+    const char* names[] = {
+        "new_game", "scenario", "multiplayer_scenario", "load"
+    };
+    return id >= 0 && id < 4 ? names[id] : "unknown";
+}
+
+bool native_lan_lobby_active() {
+    // Loading a multiplayer checkpoint reconstructs live map/faction data
+    // before the stock Multiplayer Setup window is dismissed. game_active()
+    // is therefore true behind that lobby. Identify the lobby by its exact
+    // native modal owner and halt state instead of guessing from loaded data.
+    return *MultiplayerActive && *WinModalState && *GameHalted
+        && *ModalStackCurrent == reinterpret_cast<Win*>(NetWin);
+}
+
 bool lan_small_easy_profile_active() {
     const signed char* settings = reinterpret_cast<signed char*>(0x90E8E0);
     return settings[2] == 0 && settings[6] == 1;
@@ -4984,6 +5054,8 @@ void append_lan_lobby_state(std::ostringstream& out) {
     out << ",\"lobby\":{\"revision\":"
         << json_string(lan_lobby_revision().c_str())
         << ",\"role\":" << json_string(local_host ? "host" : "client")
+        << ",\"game_type\":"
+        << json_string(lan_game_type_name(*reinterpret_cast<int*>(0x90E778)))
         << ",\"local_player_index\":" << local_index
         << ",\"host_player_index\":" << host_index
         << ",\"participant_count\":" << count
@@ -4997,16 +5069,33 @@ void append_lan_lobby_state(std::ostringstream& out) {
         char name[32] = {};
         memcpy(name, lan_player_name(index), 31);
         int faction_choice = static_cast<signed char>(setup[3]);
+        int required_faction_choice = lan_required_faction_choice(index);
         out << "{\"player_index\":" << index
             << ",\"name\":" << json_string(name)
             << ",\"local\":" << (index == local_index ? "true" : "false")
             << ",\"host\":" << (index == host_index ? "true" : "false")
             << ",\"ready\":" << (lan_player_ready(index) ? "true" : "false")
             << ",\"difficulty_id\":" << static_cast<int>(setup[2])
+            << ",\"faction_id\":";
+        int bound_faction_id = lan_player_faction(index);
+        if (bound_faction_id < 1) out << "null";
+        else out << bound_faction_id;
+        out
             << ",\"faction_choice_id\":";
         if (faction_choice < 0) out << "null";
         else out << faction_choice;
+        out << ",\"required_faction_choice_id\":";
+        if (required_faction_choice < 0) out << "null";
+        else out << required_faction_choice;
         out << '}';
+    }
+    out << "],\"native_selector_record_ids\":[";
+    bool faction_choice_comma = false;
+    for (int choice_id = 0; choice_id < lan_faction_choice_count(); ++choice_id) {
+        if (!lan_faction_choice_selectable(choice_id)) continue;
+        if (faction_choice_comma) out << ',';
+        out << choice_id;
+        faction_choice_comma = true;
     }
     out << "],\"all_clients_ready\":"
         << (every_client_ready ? "true" : "false")
@@ -5016,13 +5105,53 @@ void append_lan_lobby_state(std::ostringstream& out) {
         any_client_ready |= index != host_index && lan_player_ready(index);
     }
     if (local_index >= 1 && !local_host) {
+        bool action_comma = false;
+        int local_choice = static_cast<signed char>(lan_setup_record(local_index)[3]);
+        int local_faction = lan_player_faction(local_index);
+        int required_choice = lan_required_faction_choice(local_index);
+        if (*reinterpret_cast<int*>(0x90E778) == 3
+        && !lan_player_ready(local_index) && local_faction >= 1
+        && local_choice < 0 && required_choice >= 0) {
+            out << "{\"action\":\"select_faction\",\"parameters\":{"
+                   "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":["
+                << required_choice
+                << "]}},\"requires\":[\"match_id\",\"session_id\","
+                   "\"expected_lobby_revision\",\"client_operation_id\"]}";
+            action_comma = true;
+        }
+        if (action_comma) out << ',';
         out << "{\"action\":\"set_ready\",\"ready\":"
             << (lan_player_ready(local_index) ? "false" : "true")
             << ",\"requires\":[\"match_id\",\"session_id\","
                "\"expected_lobby_revision\",\"client_operation_id\"]}";
     } else if (local_host) {
         bool action_comma = false;
+        if (count == 1
+        && *reinterpret_cast<int*>(0x90E778) != 3) {
+            out << "{\"action\":\"load_save\","
+                   "\"parameters\":{\"slot\":{\"type\":\"string\","
+                   "\"pattern\":\"^[A-Za-z0-9_-]{1,32}$\"}},"
+                   "\"requires\":[\"match_id\",\"session_id\","
+                   "\"expected_lobby_revision\",\"client_operation_id\"]}";
+            action_comma = true;
+        }
+        int local_choice = local_index >= 1
+            ? static_cast<signed char>(lan_setup_record(local_index)[3]) : -1;
+        int local_faction = lan_player_faction(local_index);
+        int required_choice = lan_required_faction_choice(local_index);
+        if (*reinterpret_cast<int*>(0x90E778) == 3
+        && !lan_player_ready(local_index) && local_faction >= 1
+        && local_choice < 0 && required_choice >= 0) {
+            if (action_comma) out << ',';
+            out << "{\"action\":\"select_faction\",\"parameters\":{"
+                   "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":["
+                << required_choice
+                << "]}},\"requires\":[\"match_id\",\"session_id\","
+                   "\"expected_lobby_revision\",\"client_operation_id\"]}";
+            action_comma = true;
+        }
         if (!any_client_ready && !lan_small_easy_profile_active()) {
+            if (action_comma) out << ',';
             out << "{\"action\":\"configure\",\"profile\":\"small_easy\","
                    "\"effect\":{\"difficulty\":\"citizen\",\"map_size\":\"small\"},"
                    "\"requires\":[\"match_id\",\"session_id\","
@@ -5449,10 +5578,11 @@ bool test_fixture) {
         int received_packets_processed = *MultiplayerActive
             && agent_modal_service_depth == 0
             ? pump_native_network_packets() : 0;
-        const char* lifecycle = game_active() ? "game"
-            : (*MultiplayerActive ? "lobby" : (lan_test_in_progress
+        const bool lobby_active = native_lan_lobby_active();
+        const char* lifecycle = lobby_active ? "lobby"
+            : (game_active() ? "game" : (*MultiplayerActive ? "lobby" : (lan_test_in_progress
                 ? "hosting" : (lan_test_lobby_pending
-                    ? "starting_lobby" : "menu")));
+                    ? "starting_lobby" : "menu"))));
         std::ostringstream status;
         status << "{\"ok\":true,\"identity\":{\"match_id\":"
             << json_string(agent_match_id.c_str()) << ",\"session_id\":"
@@ -5471,9 +5601,16 @@ bool test_fixture) {
             << (lan_test_lobby_pending ? "true" : "false")
             << ",\"multiplayer_active\":"
             << (*MultiplayerActive ? "true" : "false")
+            << ",\"native_window_state\":{\"win_modal\":"
+            << (*WinModalState ? "true" : "false")
+            << ",\"game_halted\":" << (*GameHalted ? "true" : "false")
+            << ",\"popup_modal\":" << (*PopupDialogState ? "true" : "false")
+            << ",\"modal_is_net_window\":"
+            << (*ModalStackCurrent == reinterpret_cast<Win*>(NetWin)
+                ? "true" : "false") << '}'
             << ",\"received_packets_processed\":"
             << received_packets_processed;
-        if (*MultiplayerActive && !game_active()) {
+        if (lobby_active || (*MultiplayerActive && !game_active())) {
             append_lan_lobby_state(status);
         } else if (*MultiplayerActive && game_active()) {
             const int local_index = lan_local_player_index();
@@ -5483,6 +5620,12 @@ bool test_fixture) {
                     ? "host" : "client")
                 << ",\"local_player_index\":" << local_index
                 << ",\"host_player_index\":" << host_index
+                << ",\"local_faction_choice_id\":";
+            int local_faction_choice_id = local_index >= 1
+                ? static_cast<signed char>(lan_setup_record(local_index)[3]) : -1;
+            if (local_faction_choice_id < 0) status << "null";
+            else status << local_faction_choice_id;
+            status
                 << "},\"game_settings\":{\"difficulty\":{\"id\":"
                 << *DiffLevel << ",\"name\":"
                 << json_string(lan_difficulty_name(*DiffLevel))
@@ -5509,8 +5652,9 @@ bool test_fixture) {
     if (action == "discover" || action == "join") {
         return semantic_lan_join_response(request, test_fixture);
     }
-    if (action == "configure" || action == "set_ready" || action == "start") {
-        if (!*MultiplayerActive || game_active() || lan_test_lobby_pending) {
+    if (action == "load_save" || action == "select_faction" || action == "configure"
+    || action == "set_ready" || action == "start") {
+        if (!native_lan_lobby_active() || lan_test_lobby_pending) {
             return error_response("lan_lobby_action_unavailable",
                 "Configure, ready, and start are legal only inside the active native Multiplayer Setup lobby.");
         }
@@ -5557,7 +5701,59 @@ bool test_fixture) {
             return error_response("lan_lobby_identity_unavailable",
                 "The native lobby has not assigned stable local and host participants yet.");
         }
-        if (action == "configure") {
+        if (action == "load_save") {
+            if (!local_host) {
+                return error_response("lan_load_host_only",
+                    "Only the native session host can load a multiplayer campaign.");
+            }
+            if (count != 1) {
+                return error_response("lan_load_requires_host_only_lobby",
+                    "Load the multiplayer campaign before any clients join its lobby.");
+            }
+            if (*reinterpret_cast<int*>(0x90E778) == 3) {
+                return error_response("lan_save_already_loaded",
+                    "This native lobby has already loaded a multiplayer campaign.");
+            }
+            std::string slot = field_string(request, "slot");
+            if (!safe_path_component(slot, 32)
+            || !safe_path_component(agent_match_id, 80)) {
+                return error_response("invalid_save_slot",
+                    "Load slots must contain 1 through 32 ASCII letters, digits, hyphens, or underscores.");
+            }
+            std::string path = agent_save_path(slot);
+            if (GetFileAttributesA(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+                return error_response("save_not_found",
+                    "The named multiplayer checkpoint does not exist in this host worker's match-scoped storage.");
+            }
+        } else if (action == "select_faction") {
+            if (*reinterpret_cast<int*>(0x90E778) != 3) {
+                return error_response("lan_faction_selection_requires_load",
+                    "Guarded faction restoration is available only in a loaded multiplayer lobby.");
+            }
+            if (lan_player_ready(local_index)) {
+                return error_response("lan_faction_selection_requires_unready",
+                    "Clear Ready before selecting a multiplayer faction.");
+            }
+            int faction_choice_id = field_int(request, "faction_choice_id", -1);
+            int required_choice_id = lan_required_faction_choice(local_index);
+            if (faction_choice_id < 0
+            || faction_choice_id >= lan_faction_choice_count()
+            || !lan_faction_choice_selectable(faction_choice_id)) {
+                return error_response("invalid_lan_faction_choice",
+                    "faction_choice_id must identify a currently selectable native lobby record.");
+            }
+            if (required_choice_id < 0 || faction_choice_id != required_choice_id) {
+                return error_response("wrong_loaded_faction_choice",
+                    "faction_choice_id must match this player's restored native network faction binding.");
+            }
+            for (int index = 1; index <= count; ++index) {
+                int choice = static_cast<signed char>(lan_setup_record(index)[3]);
+                if (index != local_index && choice == faction_choice_id) {
+                    return error_response("lan_faction_already_selected",
+                        "Another lobby participant has already selected that faction.");
+                }
+            }
+        } else if (action == "configure") {
             if (!local_host) {
                 return error_response("lan_configure_host_only",
                     "Only the native session host can configure match settings.");
@@ -5603,6 +5799,91 @@ bool test_fixture) {
                         "Every joined client must report ready before the host can start.");
                 }
             }
+        }
+
+        if (action == "load_save") {
+            std::string slot = field_string(request, "slot");
+            lan_pending_load_path = agent_save_path(slot);
+            InterlockedExchange(&lan_pending_load_choice_seen, 0);
+            InterlockedExchange(&lan_pending_load_native_status, -1);
+            InterlockedExchange(&lan_pending_load_active, 1);
+            // Invoke the stock named Type-of-Game handler. The two narrowly
+            // patched calls choose Load and supply this exact match-scoped
+            // path; all deserialization, faction reconstruction, setup-packet
+            // generation, and lobby refresh remain the game's own code.
+            typedef void(__thiscall *FLanGameType)(void*);
+            reinterpret_cast<FLanGameType>(0x47D300)(
+                reinterpret_cast<void*>(0x80A6F8));
+            InterlockedExchange(&lan_pending_load_active, 0);
+            int choice_seen = lan_pending_load_choice_seen;
+            int native_status = lan_pending_load_native_status;
+            lan_pending_load_path.clear();
+            if (!choice_seen || native_status != SAVE_LOAD_VALID
+            || *reinterpret_cast<int*>(0x90E778) != 3) {
+                return std::string("{\"ok\":false,\"error\":{\"code\":\"native_lan_load_failed\","
+                    "\"message\":\"The stock multiplayer lobby did not accept the named checkpoint.\"},"
+                    "\"choice_seen\":") + (choice_seen ? "true" : "false")
+                    + ",\"native_status\":" + std::to_string(native_status)
+                    + ",\"game_type\":"
+                    + json_string(lan_game_type_name(
+                        *reinterpret_cast<int*>(0x90E778))) + '}';
+            }
+            lan_lobby_operation_id = client_operation_id;
+            lan_lobby_operation_action = action;
+            std::ostringstream loaded;
+            loaded << "{\"ok\":true,\"duplicate\":false,"
+                << "\"action\":\"load_save\",\"slot\":"
+                << json_string(slot.c_str())
+                << ",\"native_status\":" << native_status
+                << ",\"game_type\":\"load\",\"turn\":" << *CurrentTurn
+                << ",\"year\":" << game_year(*CurrentTurn)
+                << ",\"pixels_or_ui_input_used\":false,\"identity\":{\"match_id\":"
+                << json_string(agent_match_id.c_str()) << ",\"session_id\":"
+                << json_string(agent_session_id.c_str())
+                << ",\"network_session_id\":"
+                << json_string(lan_network_session_id.c_str()) << "}}";
+            return loaded.str();
+        }
+
+        if (action == "select_faction") {
+            int faction_choice_id = field_int(request, "faction_choice_id", -1);
+            InterlockedExchange(&lan_pending_faction_choice_id, faction_choice_id);
+            typedef void(__thiscall *FLanFactionChoice)(void*, int);
+            // The guarded call-site hook returns the row that the stock source
+            // list assigns to this network-binding-derived record. The native
+            // handler then maps and validates it exactly once without opening
+            // its private presentation modal.
+            InterlockedExchange(&lan_pending_faction_choice_seen, 0);
+            InterlockedExchange(&lan_pending_faction_choice_before_validation, -1);
+            InterlockedExchange(&lan_pending_faction_validation_result, -1);
+            InterlockedExchange(&lan_pending_faction_selector_result, -1);
+            InterlockedExchange(&lan_pending_faction_choice_active, 1);
+            reinterpret_cast<FLanFactionChoice>(0x47C530)(
+                reinterpret_cast<void*>(0x80A6F8), local_index);
+            InterlockedExchange(&lan_pending_faction_choice_active, 0);
+            int selector_result = static_cast<int>(
+                lan_pending_faction_selector_result);
+            if (selector_result < 0
+            || !lan_pending_faction_choice_seen
+            || lan_pending_faction_choice_before_validation != faction_choice_id
+            || lan_pending_faction_validation_result == 0) {
+                return std::string("{\"ok\":false,\"error\":{\"code\":\"native_lan_faction_selection_failed\","
+                    "\"message\":\"The stock Multiplayer Setup faction handler did not accept the restored faction.\"},"
+                    "\"requested_faction_choice_id\":") + std::to_string(faction_choice_id)
+                    + ",\"observed_before_validation\":"
+                    + std::to_string(static_cast<int>(
+                        lan_pending_faction_choice_before_validation))
+                    + ",\"native_validation_result\":"
+                    + std::to_string(static_cast<int>(
+                        lan_pending_faction_validation_result)) + '}';
+            }
+            lan_lobby_operation_id = client_operation_id;
+            lan_lobby_operation_action = action;
+            return std::string("{\"ok\":true,\"duplicate\":false,\"action\":\"select_faction\","
+                "\"faction_choice_id\":") + std::to_string(faction_choice_id)
+                + ",\"selector_result\":" + std::to_string(selector_result)
+                + ",\"native_handler\":\"NetWindow::choose_faction\","
+                  "\"pixels_or_ui_input_used\":false}";
         }
 
         if (action == "configure") {
@@ -5675,7 +5956,7 @@ bool test_fixture) {
     }
     if (!test_fixture && action != "host") {
         return error_response("invalid_lan_action",
-            "Use action=status, host, discover, join, configure, set_ready, or start as permitted by the current legal_actions.");
+            "Use action=status, host, discover, join, load_save, configure, set_ready, or start as permitted by the current legal_actions.");
     }
     std::string client_operation_id = field_string(
         request, "client_operation_id");
@@ -10976,6 +11257,8 @@ std::string semantic_command_response(const std::string& request) {
             + ",\"replaced\":" + (replaced ? "true" : "false")
             + ",\"multiplayer\":" + (*MultiplayerActive ? "true" : "false")
             + ",\"native_host\":" + (*MultiplayerActive ? "true" : "false")
+            + ",\"turn\":" + std::to_string(*CurrentTurn)
+            + ",\"year\":" + std::to_string(game_year(*CurrentTurn))
             + ",\"match_id\":" + json_string(agent_match_id.c_str()) + '}';
     }
     if (command == "skip_all_ready_units") {
@@ -14630,6 +14913,128 @@ int __thiscall agent_network_initialize(void* This, int mode) {
     }
     typedef int(__thiscall *FNativeNetworkInitialize)(void*, int);
     return reinterpret_cast<FNativeNetworkInitialize>(0x52DF30)(This, mode);
+}
+
+int __thiscall agent_multiplayer_game_type_choice(
+void* This, int left, int top, void* callback) {
+    if (InterlockedCompareExchange(&lan_pending_load_active, 1, 1) == 1) {
+        InterlockedExchange(&lan_pending_load_choice_seen, 1);
+        // The stock list is New Game, Scenario, Multiplayer Scenario, Load.
+        // Returning its semantic Load index preserves the surrounding native
+        // NetWindow logic while bypassing only the modal selector.
+        return 3;
+    }
+    typedef int(__thiscall *FNativeGameTypeChoice)(
+        void*, int, int, void*);
+    return reinterpret_cast<FNativeGameTypeChoice>(0x59D250)(
+        This, left, top, callback);
+}
+
+int __cdecl agent_multiplayer_load_game(int save_mode, int flags) {
+    if (InterlockedCompareExchange(&lan_pending_load_active, 1, 1) == 1) {
+        int status = lan_pending_load_path.empty()
+            ? SAVE_LOAD_NONE
+            : mod_load_daemon(lan_pending_load_path.c_str(), flags);
+        if (status == SAVE_LOAD_VALID) {
+            // The modal selector normally updates both its NetWindow backing
+            // field and the shared type value before returning. Our semantic
+            // selection bypasses that presentation, so preserve precisely the
+            // same bookkeeping before the stock handler publishes packet
+            // 0x2F03 and rebuilds the loaded-faction lobby.
+            *reinterpret_cast<int*>(reinterpret_cast<char*>(NetWin) + 0x7728) = 3;
+            *reinterpret_cast<int*>(0x90E778) = 3;
+        }
+        InterlockedExchange(&lan_pending_load_native_status, status);
+        return status;
+    }
+    return load_game(save_mode, flags);
+}
+
+int __thiscall agent_multiplayer_faction_choice_result(
+void* This, int left, int top, void* callback) {
+    if (InterlockedCompareExchange(&lan_pending_faction_choice_active, 1, 1) == 1) {
+        // NetWindow::choose_faction builds this source list in ascending
+        // record order, omitting disabled records and factions already held
+        // by a lobby participant. Return that list's zero-based row directly
+        // at its one call site. This avoids entering any presentation/modal
+        // lifecycle while leaving the stock record mapping, validation,
+        // setup mutation, and 0x2F04 publication untouched.
+        int required = static_cast<int>(lan_pending_faction_choice_id);
+        if (!lan_faction_choice_selectable(required)) {
+            InterlockedExchange(&lan_pending_faction_selector_result, -1);
+            return -1;
+        }
+        // Any in-range row reaches the immediately adjacent guarded mapping
+        // hook. That hook supplies the authoritative record directly because
+        // this presentation-free path intentionally never builds the modal's
+        // private result table.
+        InterlockedExchange(&lan_pending_faction_choice_seen, 1);
+        InterlockedExchange(&lan_pending_faction_selector_result, 0);
+        return 0;
+    }
+    typedef int(__thiscall *FNativeFactionChoiceResult)(
+        void*, int, int, void*);
+    return reinterpret_cast<FNativeFactionChoiceResult>(0x59D250)(
+        This, left, top, callback);
+}
+
+int __cdecl agent_multiplayer_faction_map_result(
+int selector_result, const unsigned char* native_frame) {
+    if (InterlockedCompareExchange(&lan_pending_faction_choice_active, 1, 1) == 1) {
+        // The stock mapping produces a one-based record id, then the caller
+        // decrements it before validation. Supply exactly that representation.
+        int required = static_cast<int>(lan_pending_faction_choice_id);
+        return lan_faction_choice_selectable(required) ? required + 1 : -1;
+    }
+    if (!native_frame || selector_result < 0 || selector_result >= 64) {
+        return -1;
+    }
+    // Original instruction at 0x47C721:
+    // mov ebx,[ebp + selector_result*20 - 0x848]
+    return *reinterpret_cast<const int*>(
+        native_frame + selector_result * 20 - 0x848);
+}
+
+int __thiscall agent_multiplayer_faction_validation(void* This, int flags) {
+    if (InterlockedCompareExchange(&lan_pending_faction_choice_active, 1, 1) == 1) {
+        int local_index = lan_local_player_index();
+        int observed = local_index >= 1
+            ? static_cast<signed char>(lan_setup_record(local_index)[3]) : -1;
+        InterlockedExchange(&lan_pending_faction_choice_before_validation, observed);
+        // A wrong selector row must never reach native validation: returning
+        // false makes NetWindow::choose_faction restore the prior setup record.
+        if (observed != static_cast<int>(lan_pending_faction_choice_id)) {
+            InterlockedExchange(&lan_pending_faction_validation_result, 0);
+            return 0;
+        }
+    }
+    typedef int(__thiscall *FNativeFactionValidation)(void*, int);
+    int result = reinterpret_cast<FNativeFactionValidation>(0x47C970)(This, flags);
+    if (InterlockedCompareExchange(&lan_pending_faction_choice_active, 1, 1) == 1) {
+        InterlockedExchange(&lan_pending_faction_validation_result, result);
+    }
+    return result;
+}
+
+BOOL __stdcall agent_multiplayer_manifest_find_next(
+HANDLE search_handle, WIN32_FIND_DATAA* find_data,
+const unsigned char* native_frame) {
+    // NetDaemon_send_files stores the number of completed 0x0F06 records at
+    // EBP-0x24. Each record is 0x11c bytes, its index is serialized as one
+    // byte, and the stock allocation is exactly 0x11c00 bytes. Steam's SMACX
+    // distribution has more than 256 root files, so the unmodified loop asks
+    // for record 257 and writes beyond that allocation before sending it.
+    // Ending enumeration here preserves the native protocol and its cleanup
+    // path instead of inventing wrapped record identifiers.
+    if (!native_frame || !find_data || search_handle == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    int completed_records = *reinterpret_cast<const int*>(native_frame - 0x24);
+    if (completed_records >= 256) {
+        debug("NetDaemon_send_files: capped loaded-game manifest at 256 records\n");
+        return FALSE;
+    }
+    return FindNextFileA(search_handle, find_data);
 }
 
 void __thiscall agent_new_technology_presentation(void* This,

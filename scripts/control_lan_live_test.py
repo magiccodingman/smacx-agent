@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import time
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.error import HTTPError
 import uuid
 
 from mcp import ClientSession
@@ -32,8 +33,15 @@ def api(opener, base_url: str, method: str, path: str, body: dict | None = None,
         headers["Content-Type"] = "application/json"
     if csrf:
         headers["X-CSRF-Token"] = csrf
-    with opener.open(Request(base_url + path, data=data, headers=headers, method=method), timeout=timeout) as response:
-        return json.load(response)
+    try:
+        with opener.open(Request(base_url + path, data=data, headers=headers, method=method), timeout=timeout) as response:
+            return json.load(response)
+    except HTTPError as exc:
+        try:
+            detail = json.load(exc)
+        except (json.JSONDecodeError, ValueError):
+            detail = {"body": exc.read().decode("utf-8", errors="replace")[:2000]}
+        raise RuntimeError(f"api_{method}_{path}_{exc.code}:{detail}") from exc
 
 
 def mcp_result(result) -> dict:
@@ -139,6 +147,7 @@ def main() -> int:
     opener = None
     base_url = ""
     csrf = ""
+    failed = False
     try:
         docker("volume", "create", control_volume)
         docker("network", "create", *labels, network)
@@ -243,6 +252,31 @@ def main() -> int:
         if save_bytes < 1024:
             raise AssertionError(f"native multiplayer save was unexpectedly small: {save_bytes}")
         api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/park", {}, csrf, 180)
+        original_factions = {
+            seat["seat_index"]: seat["faction_id"] for seat in started["seats"]
+        }
+        resumed = api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/start", {
+            "session_name": "Managed LAN Resume Test",
+            "profile": "small_easy",
+            "resume_slot": save_slot,
+        }, csrf, 900)
+        if not resumed.get("ok") or resumed.get("resume_slot") != save_slot \
+                or resumed.get("loaded_checkpoint", {}).get("turn") != saved.get("turn"):
+            raise AssertionError(f"managed LAN checkpoint did not resume: {resumed}")
+        resumed_factions = {
+            seat["seat_index"]: seat["faction_id"] for seat in resumed.get("seats", [])
+        }
+        if resumed_factions != original_factions:
+            raise AssertionError(
+                f"resumed factions changed seats: {original_factions} -> {resumed_factions}"
+            )
+        resumed_status = api(
+            opener, base_url, "POST", f"/api/v1/matches/{match_id}/status", {}, csrf, 60,
+        )
+        if any(seat.get("native", {}).get("lifecycle") != "game"
+               for seat in resumed_status.get("seats", [])):
+            raise AssertionError(f"resumed LAN seats did not enter gameplay: {resumed_status}")
+        api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/park", {}, csrf, 180)
         print(json.dumps({
             "event": "pass",
             "payload": {
@@ -255,22 +289,49 @@ def main() -> int:
                 "native_host_role_observable": True,
                 "native_host_campaign_save": True,
                 "multiplayer_save_bytes": save_bytes,
+                "stock_multiplayer_lobby_reload": True,
+                "faction_seats_restored": True,
                 "pixels_or_ui_input_used": False,
                 "match_wide_park": True,
             },
         }, separators=(",", ":")))
     except Exception:
+        failed = True
         logs = docker("logs", "--tail", "120", control_name, check=False)
         if logs:
             print(json.dumps({"event": "control_logs", "tail": logs[-6000:]}, separators=(",", ":")))
+        if installation_id:
+            containers = docker(
+                "ps", "-aq", "--filter", f"label=io.smacx.installation={installation_id}",
+                check=False,
+            ).splitlines()
+            for identifier in containers:
+                if not identifier:
+                    continue
+                worker_logs = docker("logs", "--tail", "100", identifier, check=False)
+                if worker_logs:
+                    print(json.dumps({
+                        "event": "managed_container_logs",
+                        "container_id": identifier[:12], "tail": worker_logs[-6000:],
+                    }, separators=(",", ":")))
         raise
     finally:
-        if opener and base_url and csrf and match_id:
+        keep_failed = failed and os.environ.get("SMACX_TEST_KEEP_ON_FAILURE") == "1"
+        if keep_failed:
+            print(json.dumps({
+                "event": "kept_failed_resources",
+                "control_name": control_name,
+                "control_volume": control_volume,
+                "network": network,
+                "installation_id": installation_id,
+                "match_id": match_id,
+            }, separators=(",", ":")))
+        if not keep_failed and opener and base_url and csrf and match_id:
             try:
                 api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/park", {}, csrf, 180)
             except Exception:
                 pass
-        if installation_id:
+        if not keep_failed and installation_id:
             containers = docker(
                 "ps", "-aq", "--filter", f"label=io.smacx.installation={installation_id}", check=False,
             ).splitlines()
@@ -284,9 +345,10 @@ def main() -> int:
             for volume in volumes:
                 if volume:
                     docker("volume", "rm", volume, check=False)
-        docker("rm", "-f", control_name, check=False)
-        docker("volume", "rm", control_volume, check=False)
-        docker("network", "rm", network, check=False)
+        if not keep_failed:
+            docker("rm", "-f", control_name, check=False)
+            docker("volume", "rm", control_volume, check=False)
+            docker("network", "rm", network, check=False)
     return 0
 
 

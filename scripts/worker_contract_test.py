@@ -158,6 +158,24 @@ def test_prefix_architecture_is_immutable() -> None:
             raise AssertionError("worker accepted an in-place prefix architecture change")
 
 
+def test_windows_game_process_detection() -> None:
+    with tempfile.TemporaryDirectory(prefix="smacx-proc-test-") as temp_name:
+        proc = Path(temp_name)
+        game = proc / "101"
+        game.mkdir()
+        (game / "cmdline").write_bytes(
+            b"/opt/proton/wine\0Z:\\game\\terranx.exe\0-windowed\0"
+        )
+        (game / "comm").write_text("wine\n", encoding="utf-8")
+        helper = proc / "102"
+        helper.mkdir()
+        (helper / "cmdline").write_bytes(b"C:\\windows\\dplaysvr.exe\0")
+        (helper / "comm").write_text("dplaysvr.exe\n", encoding="utf-8")
+        exited = proc / "103"
+        exited.mkdir()
+        assert entrypoint.windows_process_ids("terranx.exe", proc) == {101}
+
+
 def test_authenticated_healthcheck() -> None:
     token = "worker-contract-token"
     ready = threading.Event()
@@ -178,21 +196,24 @@ def test_authenticated_healthcheck() -> None:
     server = threading.Thread(target=serve, daemon=True)
     server.start()
     assert ready.wait(2)
-    old_token = os.environ.get("SMACX_AGENT_TOKEN")
-    old_port = os.environ.get("SMACX_BRIDGE_PROXY_PORT")
-    try:
-        os.environ["SMACX_AGENT_TOKEN"] = token
-        os.environ["SMACX_BRIDGE_PROXY_PORT"] = str(port_holder[0])
-        assert healthcheck.main() == 0
-    finally:
-        if old_token is None:
-            os.environ.pop("SMACX_AGENT_TOKEN", None)
-        else:
-            os.environ["SMACX_AGENT_TOKEN"] = old_token
-        if old_port is None:
-            os.environ.pop("SMACX_BRIDGE_PROXY_PORT", None)
-        else:
-            os.environ["SMACX_BRIDGE_PROXY_PORT"] = old_port
+    old_values = {
+        name: os.environ.get(name)
+        for name in ("SMACX_AGENT_TOKEN", "SMACX_BRIDGE_PROXY_PORT", "SMACX_READY_MARKER")
+    }
+    with tempfile.TemporaryDirectory(prefix="smacx-healthcheck-test-") as temp_name:
+        marker = Path(temp_name) / "ready"
+        marker.touch()
+        try:
+            os.environ["SMACX_AGENT_TOKEN"] = token
+            os.environ["SMACX_BRIDGE_PROXY_PORT"] = str(port_holder[0])
+            os.environ["SMACX_READY_MARKER"] = str(marker)
+            assert healthcheck.main() == 0
+        finally:
+            for name, value in old_values.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
     server.join(2)
 
 
@@ -209,7 +230,9 @@ def test_distribution_contract() -> None:
     entrypoint_source = (ROOT / "worker" / "entrypoint.py").read_text(encoding="utf-8")
     manager_source = (ROOT / "src" / "smacx_worker_manager.py").read_text(encoding="utf-8")
     assert '"fluxbox", "-rc", "/opt/smacx/fluxbox-init", "-no-toolbar"' in entrypoint_source
-    assert 'if stopping:\n                emit("worker_stopped", reason="signal")' in entrypoint_source
+    assert 'emit("worker_stopped", reason="signal")' in entrypoint_source
+    assert 'windows_process_ids("terranx.exe")' in entrypoint_source
+    assert 'emit(\n                            "game_process_exited"' in entrypoint_source
     assert '"Target": "/proton",\n             "ReadOnly": True' in manager_source
     assert "SMACX_PROTON_DIST_LOCK" in manager_source
     assert "runtime" in dockerignore
@@ -223,6 +246,7 @@ if __name__ == "__main__":
     test_file_secret_precedence()
     test_runtime_binary_selection()
     test_prefix_architecture_is_immutable()
+    test_windows_game_process_detection()
     test_authenticated_healthcheck()
     test_distribution_contract()
     print("worker contract test passed")
