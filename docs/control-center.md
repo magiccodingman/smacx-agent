@@ -286,6 +286,11 @@ Desktop/WSL2 may block it. Windows external-LAN deployment is therefore not yet
 certified; run the Linux host or a Linux VM with bridged networking for the
 predictable path.
 
+For encrypted play between remote networks, keep those per-worker addresses
+and add the durable Tailscale subnet-router overlay. It uses explicit host-IP
+join rather than broadcast discovery, publishes no DirectPlay ports, and stays
+authenticated across games. See [Encrypted remote player LAN](virtual-lan.md).
+
 The default port publication is loopback-only. To listen on a trusted home LAN:
 
 ```bash
