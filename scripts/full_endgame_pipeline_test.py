@@ -53,6 +53,7 @@ def main() -> int:
     stale_source: dict[str, Any] | None = None
     initial_unit_id = -1
     mutation_guard_verified = False
+    observed_outcome: dict[str, Any] = {}
 
     while time.monotonic() < deadline:
         current = observe(deadline)
@@ -100,6 +101,16 @@ def main() -> int:
             continue
 
         if label == "GAMEOVERMAN":
+            observed_outcome = dict(current.get("outcome", {}))
+            expected_victory = ("economic_solo"
+                                if os.environ.get("SMACX_AGENT_TEST_FULL_ENDGAME") == "narrative"
+                                else "transcendence_solo")
+            if observed_outcome.get("game_completed") is not True \
+                    or observed_outcome.get("final_score_completed") is not True \
+                    or observed_outcome.get("perspective_result") != "win" \
+                    or observed_outcome.get("victory_type") != expected_victory:
+                emit("failure", {"stage": "outcome", "outcome": observed_outcome})
+                return 6
             choices = bridge_request("semantic_choices", kind="interaction")
             finish = next((item for item in choices.get("choices", [])
                            if item.get("response") == "finish"), None)
@@ -164,6 +175,7 @@ def main() -> int:
         "native_pipeline_phases": phases,
         "final_score_done": True,
         "native_exit_path_requested": True,
+        "native_outcome": observed_outcome,
         "presentation_mutation_guard_verified": True,
         "stale_replay_rejected": True,
         "pixels_or_ui_input_used": False,

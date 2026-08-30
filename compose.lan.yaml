@@ -3,7 +3,7 @@
 # and dynamically created game/MCP containers share that external network;
 # each game worker therefore receives its own LAN-reachable address.
 services:
-  control-center:
+  control-api:
     environment:
       SMACX_DOCKER_NETWORK: ${SMACX_LAN_NETWORK:?set SMACX_LAN_NETWORK}
     networks:

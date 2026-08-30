@@ -1,183 +1,150 @@
 # Project status
 
-This document distinguishes four words that matter in a project spanning a
-native game, container orchestration, model harnesses, and optional memory
-services:
+This document distinguishes implementation from evidence. “Verified” means a
+test actually crossed the stated boundary; it does not mean every future host,
+network, mod, provider, or rare native state is certified.
 
-- **Implemented** — production code and its local contract exist.
-- **Contained-tested** — behavior is verified without requiring the real game
-  or an external service.
-- **Live-tested** — the real Alien Crossfire executable, Proton, Docker, or
-  harness completed the described workflow.
-- **Certified** — the workflow has been tested in the deployment environment
-  being claimed. Linux-local success is not Windows, Wi-Fi, or arbitrary-LAN
-  certification.
+## Delivered platform
 
-## Delivered and live-tested
+| Area | Implementation | Evidence |
+| --- | --- | --- |
+| Blazor LAN portal | .NET 10 Blazor Web App, MudBlazor, WebAssembly client pages, controllers, SignalR, responsive navigation | .NET integration test plus Chrome desktop/mobile interaction |
+| Accounts | first-run token, no default password, Identity cookie sessions, admin/member roles, CLI/admin reset tickets, case-insensitive handles, provisional invited accounts | contained HTTP/database flow |
+| Lobby directory | listed/waiting/running/parked history, membership, seven seats, unranked policy, future-ranked field | .NET integration flow and Chrome |
+| Typed setup | Alien Crossfire, standard/scenario, world size, six difficulties, four planet traits, five timers, five victory paths, ten advanced rules, Do or Die | validation contracts and native solo/LAN/scenario tests |
+| Browser human play | Selkies H.264/WebRTC-style stream transport with audio/input/fullscreen/reconnect through authenticated portal proxy | real `terranx.exe` rendered in Chrome; keyboard/mouse reached the game |
+| Spectating | admin cross-seat, opt-in anonymous LAN observer deck, seat switching, worker-enforced read-only mode | real stream plus authorization/read-only checks |
+| Native human seats | exact host/session/handle/faction join details and durable account association | mixed independent native process locally tested; external physical client pending |
+| Portal/native chat | public/private recipient, player + faction attribution, sequence/deduplication, messages outside active turn | contained and native mixed-LAN tests |
+| Provider management | OpenAI-compatible discovery, keyed/unkeyed providers, chosen model/context | contract tests and real Qwen endpoint |
+| AI profiles | versioned model/reasoning/context/notes, deactivation, `None` personality layer | .NET/Control contracts and real managed run |
+| Managed Hermes | digest-pinned official image, isolated home/conversation, `smacx,web` only, provider secret volume, restart supervision | contract/secret inspection and real Qwen run |
+| Match lifecycle | provision, checkpoint, race-safe park, recover, idle browser park, crash reconciliation | real native checkpoint/park/recover; live park race regression |
+| Analytics | scoped history, turn duration, Hermes input/output/cache/reasoning/API counters, CSV, isolated read-only SQL lab | fresh-schema .NET tests and real Hermes telemetry query |
+| Knowledge | 22 original mechanics primers, hierarchy, FTS5/BM25; optional private installed-doc extraction | corpus/copyright guard; 294 private documents from 22 local sources on reference install |
+| Memory | events, facts, beliefs, relationships, commitments, goals, summaries, compression budgets, chat, scoped recall | contained adversarial scope/compression/retrieval tests and real Qwen writes |
+| Graphiti | optional Neo4j temporal derivative, projection cursor/rebuild/isolation | contract and backend live test; disabled when endpoints are incompatible |
+| Operations | schedules, immutable runs, worker/MCP/Hermes reconciliation, online/volume backups, offline restore guard | contract tests, native recovery, verified live backup |
+| Multiple concurrent seats/matches | separate workers/displays/streams/MCP/sessions/volumes/perspectives | two managed clients plus independent native client locally; capacity-dependent |
 
-### Semantic game control
+## Real semantic model certification
 
-The Thinker-derived bridge exposes fair-play observations, legal choices, and
-guarded game-thread mutations from the real `terranx.exe`. It covers the core
-strategic loop plus broad production, research, Social Engineering, base,
-unit, diplomacy, Council, Workshop, save/load, and endgame interactions.
+On the Linux reference host, Qwen3.8-27B ran at low reasoning in a managed
+Hermes container with only `smacx,web` toolsets. It:
 
-Long semantic soaks have reached 100 turns without screenshots or UI input.
-Unsupported mandatory states stop and emit a structured capability gap instead
-of granting the model a coordinate-click escape hatch.
+- acknowledged the native Planetfall state;
+- named the first base;
+- moved/automated units and advanced from turn 1 to turn 13/year 2113;
+- searched and retrieved the mechanics corpus when it needed colony rules;
+- wrote scoped durable goals and facts;
+- handled stale-revision guards by re-observing; and
+- was stopped, checkpointed, and parked without screenshot/click fallback.
 
-### Durable identity, chat, and memory
+Hermes recorded one durable session, 97 provider calls, 5,785,165 input tokens,
+38,224 output tokens, and 21,743 reasoning tokens. These figures are evidence
+of the current prompting/context economics, not a performance target.
 
-SQLite owns installation, match, agent, perspective, instance, and process
-session identity. It stores immutable events and chat plus versioned facts,
-beliefs, relationships, commitments, goals, and summaries. Recall is scoped to
-the exact match/agent/perspective and uses local FTS5/BM25 search.
+## Native gameplay coverage
 
-This is the delivered memory path. It does not depend on Graphiti and continues
-to work when every optional external service is absent.
+Broad typed coverage exists for:
 
-### Control Center and Linux workers
+- opening/name/base decisions and normal turn boundaries;
+- fair map/unit/base/research/social-engineering observation;
+- unit movement, orders, automation, combat, transports, probe actions,
+  artillery/bombardment, air/carrier operations, upgrades/gifts/disband;
+- base production, purchasing, specialists/citizens, facilities, obliteration;
+- prototype design/retire/bulk upgrade;
+- research and technology commerce;
+- social engineering;
+- AI diplomacy, pacts/treaties/truces/vendetta, demands/offers, energy/tech/unit
+  transfers, loans, joint attacks, atrocities, territorial incidents;
+- Planetary Council proposals, votes, bribes/counteroffers;
+- economic/Transcendence/conquest/cooperative/endgame interactions;
+- native chat and participant identity;
+- standard/custom/scenario setup, DirectPlay lobby, native save/load; and
+- persistent orders/goals and fail-closed capability reporting.
 
-The authenticated Control Center validates a user-supplied legal game source,
-imports a private checksummed Proton runtime, discovers OpenAI-compatible
-models, creates durable agents/matches, provisions isolated workers and private
-MCP sidecars, parks/resumes workers, and prepares isolated Hermes sessions.
+The exact command surface and remaining named gaps live in
+[coverage.md](coverage.md). An absent adapter is not treated as available through
+mouse automation.
 
-The live worker regression validates read-only game/Proton mounts, file-based
-bridge secrets, a read-only container root, semantic opening, process-session
-rotation, durable match identity, and exact owned-resource cleanup.
+## LAN evidence
 
-### Managed agent LAN
+Locally verified with real native processes:
 
-Two real contained game workers have completed native DirectPlay
-host/discover/join/configure/ready/start, entered one shared match through
-distinct factions and process sessions, saved only from the actual native
-host, parked completely, reopened the stock **Load Multiplayer Game** lobby,
-rejoined, restored exact faction-to-seat bindings, and returned to gameplay.
+- two isolated managed DirectPlay clients host/discover/join/ready/start;
+- distinct factions and perspectives under one durable match;
+- host-only verified save, complete park, stock multiplayer reload, exact
+  faction restoration, second entry into gameplay;
+- an independent third native process acting as a human fixture;
+- human disconnect/rejoin and post-resume faction-attributed chat;
+- advanced external-human-host flow where the human exclusively owns native
+  Host/Configure/Start/Save/Load; and
+- five guarded random-map profiles plus typed custom rules/scenarios.
 
-A separate three-process live regression has now exercised the AI-hosted mixed
-path with two managed agents and one independent native client. The external
-client joined by exact DirectPlay session identity, appeared under its assigned
-name and faction in chat, disconnected after a host-only native checkpoint,
-rejoined the stock loaded lobby, reclaimed the saved faction, and exchanged
-chat after resume. This was a production-equivalent local network test with no
-pixels or UI input; it is not a claim that a physical second computer has been
-certified yet.
+These tests use multiple processes on one Linux host/network fixture. They do
+not substitute for the explicitly deferred physical two-computer test.
 
-The inverse path is also live-tested: a named external human owns seat zero,
-the native lobby, Start, Save, and Load, while two managed agents discover the
-exact session, join, ready, exchange faction-attributed chat, park, reclaim
-their loaded factions, and continue. Control Center never sends the native
-Start command on this path.
+## Knowledge/copyright boundary
 
-### View-only spectators
+The repository ships 22 short, independently written mechanics primers. It
+ships no installed manual pages, help database extraction, strategy guide,
+scenario solution, or copied wiki corpus. The reference guard compared shipped
+text against local `Manual.pdf`, `Script.txt`, and help text and found no
+eight-word copied sequence under its normalization.
 
-Per-worker noVNC is optional, password-protected, published to loopback by
-default, and starts `x11vnc` in enforced view-only mode. The live test verifies
-the socket and confirms the password is not present in container configuration.
-Agents and MCP tools never receive spectator access.
+The optional extractor operates only after the operator validates a game
+source. On the reference legal copy it produced 294 private searchable
+documents from 22 sources, with guides excluded. That database stays in the
+operator's control volume and is not part of source/image artifacts.
 
-## Implemented and contained-tested
+## Canonical pre-release schemas
 
-### Named external human seats
+The repository has not released a public database schema. Portal and control
+databases each have one canonical initial schema created directly on a fresh
+volume. There are no fictional v2/v3/v4 migrations and no
+`__EFMigrationsHistory` table. After a first public release, future incompatible
+changes can begin a real migration history.
 
-Mixed matches support either an agent or an exact named human as native host.
-Human seats receive no agent identity, perspective, worker, or MCP endpoint.
-For an AI host, the first Start stages the lobby and the second validates exact
-names, participant count, readiness, and saved-faction reclamation. For a human
-host, managed clients discover/select one exact session, join and ready, then
-wait for the human's native Start.
+Development volumes made by older commits are disposable and should be
+re-created; they are not production upgrade fixtures.
 
-The manager refuses an arbitrary Docker bridge. It requires either an
-operator-created non-internal macvlan/ipvlan network or the exact labeled,
-firewalled routed-player bridge. Identity, readiness,
-faction, and network-driver guards are contained-tested, and the entire native
-lifecycle is locally live-tested with an independent third process. A physical
-second machine has not yet certified this path.
+## Designed or implemented but externally unverified
 
-### Managed Hermes harness
+These are intentionally outside the current Linux-local certification:
 
-Worker, MCP, identity, and memory have explicit component boundaries inside the
-managed Hermes architecture. The host integration creates one isolated Hermes
-profile per durable agent, uses the exact provider/model and MCP binding
-resolved by the Control Center, and defaults Qwen/Hermes reasoning to low.
-Hermes is the supported permanent harness for this project. Control Center owns
-the official digest-pinned Hermes container, preserves its per-match
-conversation volume, stops/resumes it, and restarts bounded exits. Protocol
-separation keeps that integration secure and testable.
+1. a mixed human/AI game across two physical computers;
+2. an actual remote Tailscale/Internet peer traversal;
+3. Windows 11/WSL2 operation;
+4. every third-party mod/binary combination;
+5. every rare stock-game modal/state across arbitrary scenarios; and
+6. provider-specific billing accuracy where the provider/Hermes does not report
+   cost.
 
-## Optional Graphiti: delivered, isolated, and default-off
+Contracts and deployment notes exist for the first three, but documentation
+must not call them certified until the physical environments are exercised.
 
-The optional Compose profile now provides a digest-pinned Neo4j service and a
-`graphiti-core` projector. It derives each namespace from the installation,
-match, agent, and perspective; advances deterministic event cursors only after
-successful projection; retries failures; and supports one exact-perspective
-rebuild through the authenticated Control Center. Graph/model/embedding
-credentials use Docker file secrets and neither service publishes a host port.
+## Explicitly not delivered in this milestone
 
-The real pinned Neo4j stack reached healthy state. A deliberate projection to
-unavailable model endpoints degraded only the projector while the authoritative
-SQLite event remained intact. The current Qwen endpoint does not implement
-`/embeddings`, so this installation correctly keeps Graphiti disabled. This is
-deployment and failure-isolation evidence, not evidence that graph recall
-improves play; SQLite FTS5/BM25 remains the production default.
+- public Internet hosting, matchmaking, or binary distribution;
+- ranked ratings/anti-cheat policy (all matches are unranked);
+- authored personality cards or faction personas (`None` only);
+- strategy/cheese guides or scenario walkthroughs;
+- screenshot/mouse/keyboard fallback tools for AI seats.
 
-## Deployment paths implemented but awaiting external certification
+## Operational note from development
 
-The project includes an encrypted Tailscale subnet router, persistent auth
-state, explicit-IP DirectPlay joining, and a firewall that admits only TCP
-47624 plus TCP/UDP 2300–2400 into a dedicated player network. A local live
-route test passed real TCP and UDP traffic across two isolated subnets.
+The original 8 GiB RAM/1 GiB swap VM was OOM-killed while three Docker builds
+and Blazor optimization ran concurrently. The kernel killed the desktop Codex
+renderer; native match data was not the cause. The startup script now forces
+Compose build parallelism to one and builds control, portal, and worker images
+sequentially. The verified continuation host has 16 GiB RAM and 16 GiB swap.
 
-The Windows 11 path is WSL2 plus Linux Docker and the same Proton worker. Its
-preflight checks WSL2, x86-64, Docker/Compose, `/dev/net/tun`, legal game and
-DirectX paths, and an actual read-only Docker bind. The Linux reference host
-passed that preflight. No Windows host or physical second computer exists in
-the development environment, so neither physical two-machine LAN nor Windows
-11/WSL2 is labeled certified.
+## Definition of a capability gap
 
-## Profiles and capability accounting
-
-Five guarded random-map profiles—Citizen/Tiny, Citizen/Small,
-Librarian/Standard, Thinker/Large, and Transcend/Huge—passed a fresh
-two-process native DirectPlay configuration matrix with synchronized host and
-client state and no visual input. The MCP and authenticated Control Center API
-expose the reviewed capability ledger, including external-certification
-boundaries and exact fail-closed gaps.
-
-Typed custom setup now covers solo and AI-hosted LAN difficulty, map size,
-ocean coverage, erosive forces, native life, cloud cover, victory conditions,
-and all ordinary game-rule toggles. LAN additionally exposes the five bounded
-native timer choices. A deliberately asymmetric two-process matrix proved that
-every named field converged on both native copies; raw masks remain diagnostic,
-not an agent-facing guessing interface.
-
-The legal-copy scenario catalog is discovered through a read-only worker. Solo
-and multiplayer scenario launches use an exact catalog ID, never a path or menu
-click. Multiplayer scenarios load before peers join, expose only the native
-scenario faction records, preserve scenario-authored restrictions, and passed
-a two-worker DirectPlay launch into gameplay.
-
-## Not yet delivered
-
-- First-class personality-card editing and behavioral evaluation. Durable
-  agents have a `personality_ref`, and the Hermes system prompt preserves
-  player autonomy, but the complete personality workflow remains future work.
-- Physical two-machine human-LAN and Windows 11/WSL2 certification. The
-  implementation and runnable checklists exist, but those external environments
-  are required to produce honest evidence.
-- Every rare scenario interaction or LAN synchronization path. See
-  [Coverage and limits](coverage.md); missing mandatory interactions fail
-  closed.
-
-## Remaining release gates
-
-The implementation milestone is complete only up to the evidence boundary
-above. Release certification still requires a physical mixed game across two
-machines and the same matrix on Windows 11/WSL2. Rare consequential LAN
-mutations remain withheld until their two-client effects converge in native
-tests.
-
-Personality-card semantics are intentionally outside this milestone. The
-opaque attachment seam remains reserved, but card format, editing, prompting,
-and behavioral evaluation will be designed separately.
+A capability gap is a reproducible native state where the agent lacks a typed
+fair observation/action needed to continue. The agent calls
+`smac_report_capability_gap`; mutation latches closed for that session. An
+operator can then add/test an adapter and recover into a fresh process. A model
+playing poorly, choosing a bad strategy, or using many tokens is not itself a
+control capability gap.

@@ -1,0 +1,72 @@
+﻿@page "/"
+@inject Services.PortalApiClient Api
+
+<PageTitle>Command deck · SMACX Agent</PageTitle>
+
+<div class="hero-grid">
+    <section class="hero-copy">
+        <div class="eyebrow"><span></span> PLANETARY NETWORK ONLINE</div>
+        <h1>Your Alpha Centauri<br/><em>command deck.</em></h1>
+        <p>Launch reliable LAN matches, bring humans and agentic players together, and return everyone to their seat after the unexpected.</p>
+        <div class="hero-actions">
+            <MudButton Href="lobbies/new" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.RocketLaunch">Create a match</MudButton>
+            <MudButton Href="lobbies" Variant="Variant.Outlined" Size="Size.Large" StartIcon="@Icons.Material.Filled.Groups">Browse lobbies</MudButton>
+        </div>
+    </section>
+    <section class="planet-card" aria-label="Planetary network overview">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <div class="planet"><div class="planet-glow"></div><span>α</span></div>
+        <div class="planet-caption"><strong>Mission control</strong><span>@(status?.ControlConnected == true ? "Control plane linked" : "Waiting for control plane")</span></div>
+    </section>
+</div>
+
+<section class="metric-grid">
+    <MetricCard Label="ACTIVE MATCHES" Value="@(status?.ActiveMatches ?? 0)" Detail="Running now" Icon="@Icons.Material.Filled.Public" Tone="mint" />
+    <MetricCard Label="PLAYERS ONLINE" Value="@(status?.OnlinePlayers ?? 0)" Detail="Across this LAN" Icon="@Icons.Material.Filled.Group" Tone="gold" />
+    <MetricCard Label="AI SEATS" Value="@(status?.RunningAiSeats ?? 0)" Detail="Agent-controlled" Icon="@Icons.Material.Filled.SmartToy" Tone="violet" />
+    <MetricCard Label="RECOVERABLE" Value="@(status?.RecoverableMatches ?? 0)" Detail="Ready to resume" Icon="@Icons.Material.Filled.RestartAlt" Tone="blue" />
+</section>
+
+<section class="dashboard-grid">
+    <div class="surface-panel activity-panel">
+        <div class="panel-heading"><div><span class="panel-kicker">LIVE ACTIVITY</span><h2>Across the network</h2></div><MudButton Href="spectate" Variant="Variant.Text" EndIcon="@Icons.Material.Filled.ArrowForward">Spectate</MudButton></div>
+        @if (activity.Count == 0)
+        {
+            <div class="empty-state compact"><MudIcon Icon="@Icons.Material.Filled.Sensors"/><strong>No active transmissions</strong><span>Running matches and lobby events will appear here in real time.</span></div>
+        }
+        else
+        {
+            @foreach (var item in activity)
+            {
+                <a class="quick-link" href="@($"lobbies/{item.MatchId}")">
+                    <span class="quick-icon mint"><MudIcon Icon="@Icons.Material.Filled.Sensors"/></span>
+                    <span><strong>@item.MatchName</strong><small>@item.Summary · @item.CreatedAt.ToLocalTime().ToString("g")</small></span>
+                    <span class="status-badge">@item.Status</span>
+                </a>
+            }
+        }
+    </div>
+    <div class="surface-panel quick-panel">
+        <div class="panel-heading"><div><span class="panel-kicker">QUICK START</span><h2>Begin a mission</h2></div></div>
+        <a class="quick-link" href="lobbies/new"><span class="quick-icon mint"><MudIcon Icon="@Icons.Material.Filled.AddCircle"/></span><span><strong>New LAN lobby</strong><small>Humans, native bots, or AI seats</small></span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>
+        <a class="quick-link" href="history"><span class="quick-icon gold"><MudIcon Icon="@Icons.Material.Filled.PlayCircle"/></span><span><strong>Resume a game</strong><small>Restore seats from a checkpoint</small></span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>
+        <a class="quick-link" href="analytics"><span class="quick-icon violet"><MudIcon Icon="@Icons.Material.Filled.Science"/></span><span><strong>Run a simulation</strong><small>Compare agents and native difficulty</small></span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>
+    </div>
+</section>
+
+@code {
+    private PortalStatus? status;
+    private IReadOnlyList<PortalActivityItem> activity = [];
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var statusTask = Api.GetAsync<PortalStatus>("api/status");
+            var activityTask = Api.GetAsync<IReadOnlyList<PortalActivityItem>>("api/status/activity");
+            await Task.WhenAll(statusTask, activityTask);
+            status = statusTask.Result?.Data;
+            activity = activityTask.Result?.Data ?? [];
+        }
+        catch (HttpRequestException) { }
+    }
+}

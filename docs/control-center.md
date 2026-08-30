@@ -1,390 +1,390 @@
-# Control Center
+# Operator guide
 
-The Control Center is the always-on operator service. Starting or stopping a
-match will not require taking this service down. Its current foundation owns:
+The Control Center is the ordinary way to run SMACX Agent. It is a persistent
+.NET 10 Blazor LAN application backed by a private Python control API. You do
+not need an existing Hermes installation or dashboard: AI seats receive an
+isolated, digest-pinned Hermes runtime automatically.
 
-- first-run administrator bootstrap and authenticated browser sessions;
-- the authoritative SQLite identity/memory database;
-- a permission-restricted local secret vault;
-- OpenAI-compatible provider discovery and explicit model/context selection;
-- container-validated legal game sources and checksummed private Proton imports;
-- durable agent, solo-match, perspective, instance, and process-session IDs;
-- isolated worker provisioning, health checks, parking, and resume;
-- optional password-protected view-only spectators for each worker;
-- one private MCP sidecar per running game worker;
-- exact Hermes agent/match profile descriptors and host profile setup; and
-- durable recurring schedules, worker/MCP supervision, native recovery
-  checkpoints, and verified platform backups.
+This guide assumes Linux and a trusted localhost/private-LAN deployment. The
+portal is not designed as a public Internet service.
 
-Managed LAN supports two to seven total seats and at least one agent. Seat zero
-may be an agent or an explicitly named human host; every other seat may be an
-isolated agent or named human player. Agent-only games stay on the private
-Docker network. Mixed games are accepted only on an operator-created
-non-internal macvlan/ipvlan network or the exact labeled, firewalled
-routed-player bridge used by the Tailscale deployment.
+## 1. Start the platform once
 
-## Start once
+Prerequisites:
+
+- Docker Engine with Compose v2;
+- the current account can run `docker ps` without `sudo`;
+- a legal Alien Crossfire installation directory containing `terranx.exe`;
+- a Proton distribution directory; and
+- `directx_feb2010_redist.exe` for native DirectPlay.
 
 ```bash
-./scripts/control-center-up.sh
-docker compose exec control-center smacx-control bootstrap-token
+SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+  ./scripts/control-center-up.sh
 ```
 
-Open `http://127.0.0.1:8080`, leave the username as `admin`, paste the one-time
-token, and choose a password of at least 12 characters. The token is stored in
-a mode-0600 file, is printed only by the explicit command above, and is deleted
-after successful setup. There is no default password. Later restarts preserve
-the database and secret vault in `smacx-control-data` and return directly to
-the sign-in page.
+The script checks the Docker socket, adds its actual group ID to the private
+control container, serializes memory-intensive image builds, builds the worker
+and portal images, pulls the official Hermes image, and starts two persistent
+services:
 
-The start helper reads the Docker socket group ID, builds both service images,
-and starts only the always-on Control Center. It does not start a game. On a
-newly configured Linux account, sign out and back in (or use `newgrp docker`)
-before running it so the Docker group applies to that shell.
+- `control-api`: private native/Docker authority, not host-published;
+- `control-center`: the browser portal at `127.0.0.1:8080` by default.
 
-In **Runtime assets**, provide the directory containing the legally installed
-`terranx.exe`, then provide a Proton installation directory. Validation runs
-in a disposable, no-network container against a read-only bind. Proton is
-copied into a checksummed named volume; its source is read-only. Legal-source
-validation also discovers the exact scenario catalog and builds a private,
-mechanics-only reference index; neither source text nor game assets enter an
-image or the repository. Create a durable agent, select the two validated
-assets, then choose a random/custom world or one exact scenario and provision a
-solo match. Starting the worker runs
-the real game in its isolated virtual display and waits for the authenticated
-semantic bridge to become healthy. No screenshot, mouse, or keyboard input is
-part of this lifecycle.
+Both use `restart: unless-stopped`. Named volumes retain accounts, match
+identity, saves, memory, provider configuration, and agent conversations. Leave
+the services up and create as many sequential or concurrent lobbies as the host
+can support.
 
-The importer redirects Proton's otherwise distribution-local `dist.lock` into
-each worker's private tmpfs. That small generated patch is included in the
-runtime fingerprint and lets the shared Proton volume remain read-only without
-sharing a mutable lock or installation tree across concurrent seats.
-
-**Park** gracefully stops the game and removes only its disposable container.
-The data volume, private runtime, match ID, perspective, and memory remain.
-**Resume** creates a fresh native process session for that same match. This is
-the intended always-on flow: the Control Center remains up while games come and
-go.
-
-## Long-running operations and recovery
-
-The **Durability** panel is part of the always-on Control Center. It can create
-recurring installation backups or per-match native checkpoints without taking
-the service down. Schedule claims and finished results are durable; a finished
-operation record is immutable, and concurrent service processes cannot claim
-the same due run twice.
-
-**Recovery checkpoint** requests the ordinary guarded `save_game` action from
-the native bridge. It is available only while the managed agent is the real
-native host and saving is currently legal. The resulting slot, turn, year, and
-host instance are recorded only after the engine confirms success. If that
-worker later disappears, the supervisor parks the broken process set and
-resumes the recorded slot into a fresh native process session and MCP sidecar.
-It never starts a new game and calls it recovery. A missing/unverified save, or
-a human-owned native host, becomes an explicit operator-required incident.
-
-An unhealthy or missing MCP sidecar is recreated without restarting its healthy
-game worker. Native startup has a short reconciliation grace period, and live
-volume backup holds the same operations lock as crash reconciliation; this
-prevents the supervisor from mistaking an intentional startup/backup transition
-for a crash.
-
-A recovery set contains:
-
-- a SQLite online-backup snapshot with an integrity check;
-- every active mode-0600 secret when selected;
-- one SHA-256-identified archive per managed worker volume when selected;
-- one SHA-256-identified archive per provisioned Hermes conversation volume;
-  and
-- a hash-bound manifest tied to the installation ID.
-
-Running workers and harnesses are paused at Docker's process boundary only
-while their volume is archived, then unpaused in a guaranteed cleanup path.
-Backup helpers have no network, mount the source read-only, run as that source
-volume's private UID, and are deleted after use. Verification checks the
-manifest, database, installation identity, and every worker/conversation
-archive before the set is accepted.
-
-Restore is deliberately offline and requires the exact installation ID. Stop
-Control Center, then run:
+Check health without rebuilding:
 
 ```bash
-docker compose stop control-center
-docker compose run --rm control-center smacx-control backup list
-docker compose run --rm control-center smacx-control backup verify --backup-id BACKUP_ID
-docker compose run --rm control-center smacx-control restore \
-  --backup-id BACKUP_ID --confirm-installation INSTALLATION_ID
-docker compose up -d control-center
+docker compose ps
+curl --fail http://127.0.0.1:8080/healthz
 ```
 
-Restore first creates an emergency rollback set. It restores the authoritative
-database and vault; worker and harness-volume restore is intentionally a
-separate operator action because overwriting a volume is destructive and
-requires every referenced process to be parked. The backup itself already
-contains and verifies those archives.
+When source changes, use `./scripts/control-center-up.sh` again. Do not invoke a
+bare `docker compose up` for the control service unless you first export
+`SMACX_DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)`.
 
-Enable **view-only spectator** while provisioning a solo or LAN worker when a
-human should watch that seat. **Watch** asks the authenticated Control Center
-for the password, copies it to the operator clipboard when the browser permits,
-and opens noVNC. `x11vnc` is started with `-viewonly`: neither the browser nor
-the agent can send game input. Spectators bind to `127.0.0.1` by default. On a
-trusted LAN, `SMACX_VIEW_PUBLISH_IP=0.0.0.0` publishes the randomly selected
-ports; use HTTPS before doing this on any network you do not fully trust.
+### Build resources
 
-## Start or resume the AI player
+The worker image and Blazor publish optimizer are the expensive phases. Builds
+are intentionally sequential. The known-good development VM has 16 GiB RAM,
+16 GiB swap, and eight virtual CPUs. About 12 GiB RAM plus 4 GiB swap is a
+practical source-build target. Runtime demand is much lower and grows mainly
+with active browser/game/AI seats.
 
-Starting a managed game worker also starts a dedicated MCP sidecar on the same
-private Docker network. The sidecar receives only that seat's bridge secret,
-worker state, perspective, and authoritative SQLite scope. Its HTTP port is
-published on a random loopback-only host port. It exposes all 20 semantic
-gameplay/memory tools, but mechanically refuses agent requests to launch, load,
-stop, or create games.
+## 2. First administrator
 
-In **Run a managed Hermes player**, select the running match, exact agent seat,
-model provider, and reasoning level. The Control Center checks that both the
-real game worker and exact MCP sidecar are healthy, provisions the agent's
-private Hermes data and provider-secret volumes, and starts the digest-pinned
-official Hermes container. The browser receives the run identity and status,
-never a provider credential. Stop and Resume retain the same profile and
-`--continue <match-id>` conversation; the supervisor can restart bounded
-process exits until the operator-specified limit.
-
-The older host-profile adapter remains available for an unkeyed local provider
-or for development. Run its command from the repository root:
+There is no default password. Read the one-time bootstrap token:
 
 ```bash
-./scripts/smacx-hermes configure-from-control \
-  --control-url http://127.0.0.1:8080 \
-  --match-id MATCH_ID --provider-id PROVIDER_ID \
-  --reasoning low --start
+docker compose exec -T control-center dotnet Smacx.Portal.dll bootstrap-token
 ```
 
-The helper prompts for the Control Center password without putting it in shell
-history. It creates `~/.hermes/profiles/smacx-<agent-hash>` and a separate
-`workspace/matches/<match-id>` directory. The Hermes profile belongs to the
-durable agent, while `--continue <match-id>` preserves a separate conversation
-for every match. Its normal filesystem/terminal/computer-use tools and general
-Hermes memory are disabled; match knowledge goes through scoped MCP memory.
-Web lookup remains available, but in-game speech is explicitly treated as
-untrusted player communication rather than operator instruction.
+Open <http://127.0.0.1:8080>, use username `admin`, enter the token, and choose
+a password. The token is revoked after successful bootstrap.
 
-The existing Hermes dashboard can continue running. The new named profile is
-stored under the normal Hermes profile root and can be selected there after it
-has been configured; no restart of the dashboard or the legacy MCP service is
-required. Parking the match removes its sidecar, so the agent receives a clear
-connection failure rather than accidentally attaching to another game.
-
-The host adapter intentionally supports only providers that do not require an
-API key. The managed runtime supports keyed OpenAI-compatible providers: the
-vault value is copied into a private purpose-labeled Docker volume, mounted
-read-only at `/run/secrets`, and read by a tiny launcher into the Hermes
-process environment. The profile stores only `key_env`; the credential is not
-placed in Docker `Env`, command arguments, profile files, HTTP responses, or
-browser state. Reprovisioning rotates the secret volume, including when a
-profile changes from keyed to unkeyed.
-
-The official runtime is pinned by tag and digest in `compose.yaml`. Override
-`SMACX_HERMES_IMAGE` only as an explicit operator choice. The Control Center
-container has Docker access; harness containers do not. They run as UID 10000
-with a read-only root filesystem, all Linux capabilities dropped, no Docker
-socket, and only their own data/secret volumes plus the match network.
-
-## Managed LAN
-
-Create at least two total seats and at least one durable agent. The native host
-may be the first selected agent or an exact named external human. Every selected
-agent receives its own perspective, data/secret volume, game worker, MCP
-sidecar, and later Hermes profile. Joining workers use the host's exact private
-IPv4 address and only a freshly returned DirectPlay session GUID.
-
-For an agent host, the Control Center:
-
-1. waits for every stock Multiplayer Setup lobby;
-2. applies a guarded profile, a fully typed custom setup, or an exact
-   legal-copy multiplayer scenario;
-3. waits until every client observes the synchronized settings;
-4. readies each client using the game's named native action;
-5. starts only after the host observes every client ready; and
-6. records each resulting native faction against its durable seat perspective.
-
-The operation uses no screenshots or synthetic input. Agents may then be bound
-to the same match one seat at a time by selecting both the match and agent in
-the Hermes section. Their native process sessions and faction perspectives are
-distinct, while memory and chat remain isolated by `(match, agent,
-perspective)`.
-
-**Park all seats** stops every disposable worker and MCP sidecar. At this
-point preserves identities, memory, chat, worker volumes, and host save files.
-Multiplayer checkpoint creation is semantic and host-only: the bridge identifies
-the actual DirectPlay host, exposes `save_game` only on that seat, and writes
-into the match-scoped directory in its persistent worker volume. Use **Resume
-checkpoint…** and enter that exact slot. The Control Center opens the stock
-**Load Multiplayer Game** lobby, rejoins each managed client, validates the
-loaded faction binding, and starts only after every participant is ready.
-
-### Let human players join or host
-
-Legacy DirectPlay embeds peer addresses and cannot be reliably published by
-ordinary Docker port translation. Give each game worker a real LAN address:
+If the original administrator password is lost, create a 30-minute reset
+ticket without deleting any data:
 
 ```bash
-# Choose the parent interface, subnet, gateway, and an unused range that your
-# DHCP server will never allocate. These values are examples only.
+docker compose exec -T control-center dotnet Smacx.Portal.dll admin-reset-token admin
+```
+
+Enter the printed username/token on the Reset access page and choose a new
+password. Administrators can issue the same kind of ticket for members from
+**Administration → Users** and can promote another account.
+
+Registration is deliberately lightweight for a friendly LAN: no email is
+required. Usernames/game handles compare case-insensitively and use characters
+accepted by the native game. Inviting a handle to a lobby reserves a
+passwordless provisional account; registering that handle later claims the
+existing seat and history.
+
+## 3. Publish on a trusted LAN
+
+The default binding is host-only. To let household/friend devices reach the
+portal:
+
+```bash
+SMACX_PORTAL_PUBLISH=0.0.0.0:8080 \
+SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+  ./scripts/control-center-up.sh
+```
+
+Players browse to `http://HOST_LAN_IP:8080`. Restrict that port with the host
+firewall to the trusted LAN. Do not forward it from the router and do not put
+it behind public Internet ingress.
+
+Browser seats need only the website. Stream traffic remains behind the portal;
+worker ports are never shared as public credentials.
+
+## 4. Register the game and Proton
+
+Go to **Administration → Game runtime**.
+
+1. Enter an absolute host path for the installed game and select **Validate**.
+   The control plane rejects symlinks, missing/non-PE executables, and unsafe
+   sources, records checksums, and mounts the source read-only.
+2. Enter an absolute Proton distribution path and select **Import runtime**.
+   Proton is copied into an installation-owned volume because its runtime lock
+   and prefix behavior require a private writable copy.
+
+The managed worker builds its own prefix, installs the local DirectPlay
+redistributable, injects the bridge, and keeps game saves in a durable volume.
+Neither the game nor the redistributable enters the repository or project
+images.
+
+The Steam installation used during development is accepted directly; Steam
+does not need to be running while managed workers use their private copy.
+
+## 5. Configure model providers and AI profiles
+
+Go to **Administration → Providers & AI profiles**.
+
+1. Add an OpenAI-compatible base URL such as
+   `http://model-host:8000/v1`.
+2. Add an API key only if the provider requires one.
+3. Discover models and select the intended model.
+4. Create a named, versioned profile with reasoning effort, optional context
+   override, and experiment notes.
+
+The provider may be on the Docker host, another LAN host, or a home-lab model
+server reachable from the Docker network. Multiple profiles may use one model
+with different reasoning/context settings. Old versions can be deactivated but
+are not deleted, preserving historical reports.
+
+Provider keys are held in the control vault, copied into a purpose-specific
+read-only volume, and read by a tiny Hermes launcher. They are absent from
+Docker inspect-visible environment/configuration, the portal database, logs,
+and analytics exports.
+
+AI seats use:
+
+- the official pinned Hermes container;
+- a private Hermes profile/home and durable conversation;
+- only `smacx,web` toolsets;
+- a stable fair-play/game-player system layer;
+- immutable match identity and policy;
+- the optional personality layer (`None` is the only current value); and
+- scoped match memory.
+
+The managed path does not use or interfere with a host `hermes dashboard`.
+
+## 6. Create a lobby
+
+Choose **New lobby** and set:
+
+- standard new game or an exact installed `.SC` scenario;
+- Tiny through Huge world size;
+- Citizen through Transcend difficulty;
+- ocean, erosive forces, native life, and cloud cover;
+- native multiplayer turn clock;
+- Transcendence, Conquest, Diplomatic, Economic, and Cooperative victory;
+- Look First, Tech Stagnation, Spoils of War, Blind Research, Intense Rivalry,
+  Unity Survey, Unity Scattering, Random Events, Time Warp, Ironman, and Do or
+  Die;
+- managed host (human owner or first AI profile);
+- browser or direct/native human mode, invited handles, AI profiles, and stock
+  game-controlled remaining factions;
+- anonymous spectators (off by default), managed-clients-only, and Graphiti.
+
+The portal validates named values and sends typed native settings. It does not
+drive setup menus with clicks. Scenarios use a catalog built from the validated
+game source and their native faction restrictions.
+
+Every current match is recorded as `unranked`; attempts to create `ranked`
+matches are rejected. Personality storage is present but only `None` can be
+selected until authored cards are designed separately.
+
+### Who should host?
+
+For the normal experience, let the platform own the native host:
+
+- choose **Human owner** when a browser human should control seat zero;
+- choose **First AI profile** for an AI-hosted lobby, optionally reserving a
+  separate human seat for yourself.
+
+This gives the supervisor reliable save, park, recovery, reconnect, and stream
+authority. Human-hosted external games remain an advanced supported path, but
+the portal-managed host is simpler and more recoverable.
+
+## 7. Human play modes
+
+### Managed browser seat
+
+Select the assigned lobby seat and **Play**. Selkies streams the real game with
+audio and accepts ordinary mouse, keyboard, shortcuts, text, and fullscreen.
+The transport reconnects to the same worker after a browser refresh. A user can
+leave the browser and return without changing their native faction.
+
+Interactive stream tickets are short-lived and seat-scoped. Only the seat's
+member or an administrator can request one. Spectator tickets are always
+read-only at the worker transport—not merely disabled in JavaScript.
+
+### Direct/native game client
+
+The lobby page shows the exact host address, native session name/ID, assigned
+player handle, seat, and recorded faction. Launch the user's own Alien
+Crossfire client, choose TCP/IP multiplayer, and join with that exact handle.
+Names bind case-insensitively to portal accounts and analytics.
+
+Direct clients require workers on a network reachable from the physical LAN.
+Create a macvlan/ipvlan network appropriate for the host, then publish it to the
+manager:
+
+```bash
 docker network create -d macvlan \
-  --subnet=192.168.1.0/24 --gateway=192.168.1.1 \
-  --ip-range=192.168.1.224/28 -o parent=enp3s0 smacx-player-lan
+  --subnet=192.168.1.0/24 \
+  --gateway=192.168.1.1 \
+  -o parent=eno1 smacx-player-lan
 
 SMACX_LAN_NETWORK=smacx-player-lan \
+SMACX_PLAYER_LAN_SUBNET=192.168.1.0/24 \
 SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
-./scripts/control-center-up.sh
+  ./scripts/control-center-up.sh
 ```
 
-The helper automatically includes `compose.lan.yaml`, attaches the always-on
-Control Center to that external network, and tells dynamic workers/sidecars to
-use it. This is a one-time deployment choice; creating and parking games does
-not take the Control Center down.
+Use the real interface/subnet and reserve addresses outside DHCP. Wi-Fi often
+rejects additional macvlan MAC addresses; ipvlan or the firewalled routed-player
+bridge in `scripts/create-routed-player-lan.sh` is usually better there. The
+manager rejects an ordinary private Docker bridge for external human seats.
 
-For an AI-hosted mixed match:
+When a direct client disconnects from a live DirectPlay match, the recoverable
+path may require a verified save/restart and exact faction reclaim. Browser
+seat reconnects are normally transparent.
 
-1. Create the match with one agent host, optional additional agents, and one
-   exact in-game name for each human.
-2. The first **Start** opens and configures the native lobby and shows its LAN
-   address/session name. It does not wait inside one long HTTP request.
-3. Each human launches their own legal game, chooses Multiplayer TCP/IP, joins
-   that address, enters the assigned name exactly, chooses their recorded
-   faction when resuming, and marks Ready.
-4. **Check humans & start** reads the native lobby. Unknown or duplicate names,
-   missing readiness, participant-count changes, and wrong saved factions fail
-   closed. Once valid, the AI host starts the game.
+### Managed clients only
 
-For a human-hosted match:
+Enable this per lobby when every human must use a managed browser worker. It is
+the reproducibility/parity option and prevents direct clients. The platform
+otherwise treats binary/mod fingerprints as diagnostics, not policing.
 
-1. Choose **External human player** as Native lobby host, enter the host's exact
-   player name, and select one or more agents. Additional named human clients
-   are optional.
-2. **Prepare now** starts only the managed agent clients. On the human's legal
-   game copy, create a new TCP/IP lobby or load a multiplayer checkpoint.
-3. Choose **Find human lobby**, enter the host game's reachable IPv4 address,
-   and select the exact freshly discovered session if more than one exists.
-4. Control Center joins every managed agent under its deterministic player
-   name, restores its recorded faction in a loaded lobby, and marks it Ready.
-   It validates that the expected named human really owns the native host seat.
-5. The human reviews settings/seats and presses Start in the game. **Check human
-   Start** observes the transition and durably binds every visible player name
-   and faction; it never issues Start from an agent client.
+## 8. Chat, diplomacy, and identity
 
-Configure every desired custom rule in the human-owned lobby before asking the
-managed agents to join. The native DirectPlay packet preserves those settings;
-each agent can inspect synchronized difficulty, map size, world-generation
-levels, timer, victory conditions, and ordinary game rules by name through
-`smac_lan`. Raw masks are retained only for diagnostics.
+The lobby chat can broadcast or target a known recipient faction. Native chat
+is imported with both player handle and faction name; outbound recipient IDs
+are sent through the game bridge. Messages remain durable per match and are
+available when an agent resumes.
 
-For an AI-hosted lobby, choose a guarded profile or **Custom**. Custom setup
-validates difficulty, one of five native timer modes, map size, ocean coverage,
-erosion, native life, cloud cover, victory conditions, and ordinary rules before
-opening the lobby. The sixth visual custom-clock editor and random-leader flags
-that are not synchronized in the LAN `GameRules` record are intentionally not
-offered. Every accepted field is verified on host and clients before readiness.
+An AI is prompted to treat chat as communication from other players, not as
+higher-priority instructions. It may agree, refuse, investigate, ally, feud,
+trade, or betray according to its own game state and future personality layer.
+Facts, beliefs, suspicions, relationship scores, commitments, and goals remain
+separate memory records.
 
-Choose **Scenario** to load one exact multiplayer scenario from the selected
-legal-copy catalog. The host loads it before clients join; each managed seat
-selects a distinct currently offered native scenario faction and the manager
-verifies that choice on the host. Scenario-authored rules and restrictions are
-authoritative. An arbitrary filesystem path is never accepted.
+## 9. Spectating
 
-For a human-hosted checkpoint, the human host owns the save file and reopens it
-through the game's **Load Multiplayer Game** path. Parking retains every agent's
-worker volume, match memory, and recorded faction. After the human reopens the
-save, repeat discovery/join; each managed client must reclaim its exact saved
-faction before it can Ready. This supports recovery even though the host save
-is intentionally outside the platform's storage boundary.
+Administrators can watch any managed seat. A lobby owner can opt into anonymous
+LAN spectating; it is disabled by default. Anonymous viewers can open the
+observation deck and switch among permitted seats without creating an account,
+but every stream is read-only.
 
-Human menu interaction remains human input; no model screenshots, clicks, or
-keyboard tools are introduced. During play, chat and paired diplomacy identify
-the connected native player/faction, and each agent retains its own fair-play
-perspective and memory scope.
+The observation deck is also the main debugging surface for AI games: it pairs
+the visible native screen with public match/faction/turn health. Private
+semantic faction state and secrets are not sent to spectators.
 
-Macvlan/ipvlan is Linux-first and depends on the physical network accepting
-additional MAC/IP identities. Wi-Fi, some managed switches, VPNs, and Docker
-Desktop/WSL2 may block it. Windows external-LAN deployment is therefore not yet
-certified; run the Linux host or a Linux VM with bridged networking for the
-predictable path.
+## 10. Checkpoint, park, recover
 
-On Wi-Fi or Docker Desktop/WSL2, use
-`scripts/create-routed-player-lan.sh` and the encrypted subnet router instead
-of macvlan. The worker manager accepts that bridge only when its exact purpose
-and transport labels are present; an ordinary application bridge remains
-invalid for mixed play.
+**Checkpoint** asks the native host to save into a bounded platform slot and
+verifies the resulting file/turn/year. Saving can honestly fail while the stock
+engine is in a native state where save is illegal.
 
-For encrypted play between remote networks, keep those per-worker addresses
-and add the durable Tailscale subnet-router overlay. It uses explicit host-IP
-join rather than broadcast discovery, publishes no DirectPlay ports, and stays
-authenticated across games. See [Encrypted remote player LAN](virtual-lan.md).
+**Park** is race-safe:
 
-The default port publication is loopback-only. To listen on a trusted home LAN:
+1. mark the portal lifecycle `parking` so the supervisor cannot replace a run;
+2. stop every active Hermes caller for the match;
+3. create and verify the native checkpoint;
+4. stop/remove MCP and game containers; and
+5. mark the durable match `parked`.
+
+If checkpointing fails, the portal returns the match to `running`, records the
+error, and may restart the AI; no worker is silently destroyed without a save.
+
+**Recover** creates fresh process/session identities, loads the verified slot,
+restores exact seat/faction ownership, starts MCP sidecars, and continues the
+same scoped Hermes conversation. Agents must re-observe; stale commands from
+the old process are rejected.
+
+If every human seat is a managed browser seat and all of them remain absent for
+the idle window, the supervisor applies the same checkpoint-first park. It does
+not auto-park AI-only simulations or infer presence for direct clients.
+
+## 11. Analytics and reports
+
+The Analytics page scopes ordinary users to matches they joined; administrators
+see the installation. It records:
+
+- completed/active/recoverable matches and recovery evidence;
+- per-turn duration excluding errored turns;
+- model/provider/reasoning/profile version;
+- Hermes input, output, cache-read, cache-write, reasoning tokens, and API
+  calls; and
+- native per-seat completion, victory type, and classified win/loss outcomes.
+
+The bridge classifies only engine victory types that are unambiguous from the
+seat's own perspective. Time-limit and scenario paths without retained winner
+identity remain `unknown` and are excluded from win-rate denominators.
+
+Token counters come from Hermes's durable `sessions` database. A no-network,
+read-only helper reads only that agent's purpose volume and the portal stores
+cumulative deltas by observed turn. CSV export is available. Administrators
+also receive a constrained read-only SQL lab over an isolated in-memory copy
+containing only `matches`, `turn_metrics`, `ai_profiles`, and `ai_outcomes`; identity and
+secret tables are never attached.
+
+## 12. Graphiti
+
+SQLite remains authoritative. Graphiti is an optional derived temporal
+projection and can be toggled per match. Start it only after configuring a
+compatible chat-completions model and embedding endpoint:
 
 ```bash
-SMACX_CONTROL_PUBLISH=0.0.0.0:8080 docker compose up -d
+./scripts/graphiti-up.sh
 ```
 
-Plain HTTP exposes the login exchange to devices that can observe that network.
-For anything beyond a trusted LAN, place the service behind an HTTPS reverse
-proxy and set `SMACX_SECURE_COOKIES=1`. Do not expose it directly to the public
-Internet.
+If Graphiti is disabled or unavailable, gameplay, FTS5/BM25 memory, chat,
+checkpointing, and recovery continue normally. Projection namespaces include
+installation + match + agent + perspective, preventing cross-agent/game mixing.
+See [graphiti.md](graphiti.md).
 
-## Provider behavior
+## 13. Backups and supervision
 
-Enter the complete OpenAI-compatible base URL, normally ending in `/v1`, such
-as `http://10.26.26.20:8000/v1`. Discovery requests `GET /models`. If the
-endpoint advertises exactly one usable model, it becomes the selected model.
-If it advertises more than one, the operator must select one. An optional
-context override takes precedence over discovered context metadata.
-
-API keys are written to the secret volume as mode-0600 files and represented
-in SQLite only by a reference and SHA-256 integrity fingerprint. List and
-status responses expose only `has_api_key`; they never return the value.
-
-## Security model
-
-- Passwords use scrypt with a unique 256-bit salt.
-- Browser session and CSRF values are random; only their SHA-256 digests are
-  stored in SQLite.
-- Session cookies are HttpOnly and SameSite Strict. Cookie-authenticated
-  mutations require a matching CSRF header and server-side digest.
-- Login/setup attempts are rate-limited per source address.
-- Control actions have an append-only audit table protected by SQLite triggers.
-- The container runs as UID 10001 with all capabilities dropped, a read-only
-  root filesystem, and writable state only in its named volume.
-- Bridge bearer values are written to per-worker read-only secret volumes and
-  are never placed in worker environment variables or HTTP responses.
-- Every Docker object is named and labeled with the installation ID and a
-  purpose. The manager refuses to mutate an object that does not carry the
-  expected ownership labels.
-- Game workers run as UID 10001 with a read-only root filesystem, all
-  capabilities dropped, and `no-new-privileges`. The game source is always
-  read-only and the Steam Proton tree is never mounted into a game worker.
-
-The worker manager necessarily receives access to the Docker daemon and is
-therefore a high-authority component despite running as a non-root Unix user.
-Treat Control Center administrator access as host-administrator access. Keep
-the default loopback publication, use it only on a trusted LAN, and never make
-it a public Internet service. Its Docker client exposes no generic endpoint to
-the browser; request schemas, resource names, labels, mounts, and lifecycle
-operations are fixed in code.
-
-## Runtime settings
-
-The helper accepts normal Compose environment overrides:
+The private control plane includes transactional schedules, immutable operation
+runs, worker/MCP reconciliation, verified native recovery checkpoints, and
+online SQLite plus volume backups. Advanced CLI examples:
 
 ```bash
-SMACX_CONTROL_PUBLISH=0.0.0.0:8080 \
-SMACX_VIEW_PUBLISH_IP=0.0.0.0 \
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
-./scripts/control-center-up.sh
+docker compose run --rm control-api smacx-control backup create
+docker compose run --rm control-api smacx-control backup list
+docker compose run --rm control-api smacx-control backup verify --backup-id BACKUP_ID
 ```
 
-`SMACX_DIRECTX_REDIST` is an optional host path. When present, the game worker
-uses it only to initialize DirectPlay inside that worker's private prefix. It
-is not redistributed by this project. `SMACX_WORKER_IMAGE` and
-`SMACX_DOCKER_NETWORK` may be overridden for an advanced deployment, but the
-default Compose project supplies deterministic values.
+Restore is deliberately offline and confirmation-gated. Read the command help
+and park relevant matches before using it:
+
+```bash
+docker compose run --rm control-api smacx-control restore --help
+```
+
+Backups use SQLite's online backup API and no-network helpers. A running game or
+Hermes container is briefly paused only while its persistent volume is archived;
+operations locking prevents that intentional pause from being misclassified as
+a crash.
+
+## 14. Stop and restart
+
+To stop only the persistent services while retaining all named volumes:
+
+```bash
+docker compose stop control-center control-api
+```
+
+Start them again with the normal script so Docker socket permissions and images
+are validated:
+
+```bash
+SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+  ./scripts/control-center-up.sh
+```
+
+Do not add `-v` to `docker compose down` unless you intentionally want to delete
+portal accounts and the authoritative control state. Dynamic workers are safe
+to recreate; named platform volumes are the durable system.
+
+## Security summary
+
+- Portal: the only ordinary host/LAN HTTP entry point.
+- Control API, Docker socket, MCP endpoints, Graphiti/Neo4j, bridge tokens, and
+  stream credentials: private.
+- Blazor client authorization: convenience only; controllers enforce every
+  account/role/seat policy server-side.
+- Stream tickets: short-lived, seat-scoped, mode-scoped, revocable.
+- Agent tools: semantic gameplay and web research only; lifecycle is
+  operator-owned.
+- Public Internet ingress and matchmaking: out of scope.
+
+For failures, continue with [troubleshooting.md](troubleshooting.md). For exact
+trust boundaries, see [architecture.md](architecture.md).

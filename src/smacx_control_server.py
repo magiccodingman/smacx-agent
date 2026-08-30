@@ -14,18 +14,20 @@ import os
 from pathlib import Path
 import re
 import signal
+import secrets
 import sys
 import threading
 import time
 from typing import Any, Callable
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
+import hmac
 
 from smacx_capabilities import capability_manifest
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
 from smacx_harness_manager import HarnessManager
 from smacx_operations import OperationsManager, restore_backup_offline
-from smacx_reference import seed_reference_corpus
+from smacx_reference import read_reference, seed_reference_corpus
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 from smacx_worker_manager import LAN_PROFILES, WorkerManager, WorkerManagerError
 
@@ -34,15 +36,19 @@ MAX_REQUEST_BODY = 1024 * 1024
 SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
 PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
-WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator)$")
+WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator|chat)$")
 MATCH_PATH = re.compile(
     r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/"
     r"(start|park|status|discover-external-host|join-external-host|finalize-external-host)$"
 )
+MATCH_DETAIL_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})$")
+MATCH_STATUS_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/status$")
 SCHEDULE_PATH = re.compile(r"^/api/v1/schedules/([A-Za-z0-9_-]{8,96})/(activate|pause|disable)$")
 BACKUP_PATH = re.compile(r"^/api/v1/backups/([A-Za-z0-9_-]{8,96})/verify$")
 RECOVERY_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(checkpoint|recover)$")
-HARNESS_RUN_PATH = re.compile(r"^/api/v1/harness-runs/([A-Za-z0-9_-]{8,96})/(start|stop|status)$")
+HARNESS_RUN_PATH = re.compile(
+    r"^/api/v1/harness-runs/([A-Za-z0-9_-]{8,96})/(start|stop|status|telemetry)$"
+)
 SCENARIO_CATALOG_PATH = re.compile(r"^/api/v1/game-sources/([A-Za-z0-9_-]{8,96})/scenarios$")
 
 
@@ -73,7 +79,8 @@ class ControlHTTPServer(ThreadingHTTPServer):
                  static_root: Path, *, secure_cookies: bool = False,
                  worker_manager: WorkerManager | None = None,
                  operations: OperationsManager | None = None,
-                 harness_manager: HarnessManager | None = None) -> None:
+                 harness_manager: HarnessManager | None = None,
+                 service_token: str | None = None) -> None:
         super().__init__(address, ControlRequestHandler)
         self.control = control
         self.static_root = static_root.resolve()
@@ -81,6 +88,7 @@ class ControlHTTPServer(ThreadingHTTPServer):
         self.worker_manager = worker_manager
         self.operations = operations
         self.harness_manager = harness_manager
+        self.service_token = service_token
         self.login_limiter = RequestRateLimiter()
 
 
@@ -158,6 +166,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return cookies
 
     def _authentication(self) -> tuple[dict[str, Any], str]:
+        service_token = self.headers.get("X-SMACX-Service-Token", "")
+        if service_token:
+            expected = self.server.service_token
+            if not expected or not hmac.compare_digest(service_token, expected):
+                raise AuthenticationError("invalid_service_token")
+            return {
+                "admin_id": None,
+                "username": "portal-service",
+                "auth_session_id": "service",
+                "service": True,
+            }, "service"
         authorization = self.headers.get("Authorization", "")
         if authorization.startswith("Bearer "):
             token = authorization[7:].strip()
@@ -194,7 +213,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         ]
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
-        path = urlsplit(self.path).path
+        parts = urlsplit(self.path)
+        path = parts.path
         try:
             if path == "/healthz":
                 self._json(200, {"ok": True, "service": "smacx-control"})
@@ -231,6 +251,21 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/matches":
                 self._authentication()
                 self._json(200, {"ok": True, "matches": self.server.control.list_matches()})
+                return
+            match_status = MATCH_STATUS_PATH.fullmatch(path)
+            if match_status:
+                self._authentication()
+                self._json(200, self._manager().lan_match_status(match_status.group(1)))
+                return
+            match_detail = MATCH_DETAIL_PATH.fullmatch(path)
+            if match_detail:
+                self._authentication()
+                match_id = match_detail.group(1)
+                self._json(200, {
+                    "ok": True,
+                    "match": self.server.control.get_match(match_id),
+                    "seats": self.server.control.list_seats(match_id),
+                })
                 return
             if path == "/api/v1/workers":
                 self._authentication()
@@ -287,6 +322,30 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/backups":
                 self._authentication()
                 self._json(200, {"ok": True, "backups": self._operations().list_backups()})
+                return
+            if path == "/api/v1/reference/topics":
+                self._authentication()
+                self._json(200, read_reference(self.server.control.store, "topics"))
+                return
+            if path == "/api/v1/reference/search":
+                self._authentication()
+                query = parse_qs(parts.query, keep_blank_values=True)
+                try:
+                    limit = min(max(int(query.get("limit", ["8"])[0]), 1), 30)
+                except (TypeError, ValueError) as exc:
+                    raise InvalidRecord("invalid_reference_limit") from exc
+                self._json(200, read_reference(
+                    self.server.control.store, "search",
+                    query=query.get("q", [""])[0], topic=query.get("topic", [""])[0],
+                    limit=limit, include_body=False,
+                ))
+                return
+            if path.startswith("/api/v1/reference/documents/"):
+                self._authentication()
+                document_id = unquote(path.removeprefix("/api/v1/reference/documents/"))
+                self._json(200, read_reference(
+                    self.server.control.store, "get", document_id=document_id,
+                ))
                 return
             if path.startswith("/api/"):
                 self._error(404, "not_found")
@@ -403,10 +462,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     faction_id = int(faction_id)
                 except (TypeError, ValueError) as exc:
                     raise InvalidRecord("invalid_faction_id") from exc
+                controller_kind = str(body.get("controller_kind", "agent"))
                 created = self.server.control.create_solo_match(
-                    str(body.get("display_name", "")), str(body.get("agent_id", "")),
+                    str(body.get("display_name", "")),
+                    (str(body.get("agent_id", "")) if controller_kind == "agent" else None),
+                    match_id=(str(body["match_id"]) if body.get("match_id") else None),
                     faction_id=faction_id,
                     faction_name=body.get("faction_name"),
+                    controller_kind=controller_kind,
+                    human_player_name=(str(body["human_player_name"])
+                                       if body.get("human_player_name") else None),
+                    metadata={"graphiti_enabled": body.get("graphiti_enabled", True) is True},
                 )
                 perspective = created["perspective"]
                 try:
@@ -416,6 +482,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
                         autostart=body.get("autostart") if isinstance(body.get("autostart"), dict) else None,
                         view_enabled=body.get("view_enabled") is True,
+                        view_mode=("interactive" if controller_kind == "human" else "view-only"),
+                        controller_kind=controller_kind,
                     )
                 except Exception:
                     self.server.control.discard_unstarted_match(
@@ -444,24 +512,37 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(human_player_names, list) \
                         or not all(isinstance(item, str) for item in human_player_names):
                     raise InvalidRecord("invalid_lan_human_player_names")
+                managed_human_player_names = body.get("managed_human_player_names", [])
+                if not isinstance(managed_human_player_names, list) \
+                        or not all(isinstance(item, str) for item in managed_human_player_names):
+                    raise InvalidRecord("invalid_lan_managed_human_player_names")
                 profile = str(body.get("profile", "small_easy"))
                 if profile not in LAN_PROFILES:
                     raise InvalidRecord("unsupported_lan_profile")
                 created = self.server.control.create_lan_match(
                     str(body.get("display_name", "")), list(agent_ids),
                     human_player_names=list(human_player_names),
+                    managed_human_player_names=list(managed_human_player_names),
                     host_controller_kind=str(body.get("host_controller_kind", "agent")),
                     human_host_name=(str(body["human_host_name"])
                                      if body.get("human_host_name") is not None else None),
+                    human_host_managed=body.get("human_host_managed") is True,
+                    match_id=(str(body["match_id"])
+                              if body.get("match_id") is not None else None),
                     metadata={
                         "lan_profile": profile,
                         "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
+                        "graphiti_enabled": body.get("graphiti_enabled", True) is True,
                     },
                 )
                 workers = []
                 try:
                     for seat in created["seats"]:
-                        if seat["controller_kind"] != "agent":
+                        managed = seat["controller_kind"] == "agent" or (
+                            seat["controller_kind"] == "human"
+                            and seat.get("metadata", {}).get("managed") is True
+                        )
+                        if not managed:
                             continue
                         workers.append(manager.provision_worker(
                             MemoryScope(
@@ -471,6 +552,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                             str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
                             autostart={"enabled": False},
                             view_enabled=body.get("view_enabled") is True,
+                            view_mode=("interactive" if seat["controller_kind"] == "human"
+                                       else "view-only"),
+                            controller_kind=str(seat["controller_kind"]),
                         ))
                 except Exception as exc:
                     self.server.control.update_match_lifecycle(
@@ -478,6 +562,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         metadata={"last_lan_error": str(exc)[:1000]},
                     )
                     raise
+                created["seats"] = self.server.control.list_seats(
+                    created["match"]["match_id"],
+                )
                 self.server.control.audit(
                     auth["admin_id"], "match.create_lan", "match",
                     created["match"]["match_id"], "success",
@@ -527,6 +614,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     match_id, str(body.get("provider_id", "")),
                     agent_id=agent_id,
                     reasoning_effort=str(body.get("reasoning_effort", "low")),
+                    model_id=(str(body["model_id"]) if body.get("model_id") else None),
+                    context_length=body.get("context_length"),
                 )
                 self.server.control.audit(
                     auth["admin_id"], "harness.prepare_hermes", "match", match_id,
@@ -560,6 +649,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 descriptor = self.server.control.prepare_hermes_profile(
                     match_id, str(body.get("provider_id", "")), agent_id=agent_id,
                     reasoning_effort=str(body.get("reasoning_effort", "low")),
+                    model_id=(str(body["model_id"]) if body.get("model_id") else None),
+                    context_length=body.get("context_length"),
                 )
                 run = self._harness_manager().create_run(
                     descriptor,
@@ -615,6 +706,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         run_id, desired_status="running", status="queued",
                     )
                     result = self._harness_manager().start_run(str(current["run_id"]))
+                elif action == "telemetry":
+                    result = self._harness_manager().telemetry(run_id)
                 else:
                     result = self._harness_manager().status(run_id)
                 self.server.control.audit(
@@ -725,14 +818,26 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if worker_match:
                 auth = self._authorize_mutation()
                 manager = self._manager()
-                self._body()
+                body = self._body()
                 instance_id, action = worker_match.groups()
                 if action == "start":
                     result = manager.start_worker(instance_id)
                 elif action == "park":
                     result = manager.park_worker(instance_id)
                 elif action == "spectator":
-                    result = manager.spectator_access(instance_id)
+                    result = manager.spectator_access(
+                        instance_id, interactive=body.get("interactive") is True,
+                    )
+                elif action == "chat":
+                    result = manager.portal_chat(
+                        instance_id,
+                        action=str(body.get("action", "list")),
+                        text=(str(body["text"]) if body.get("text") is not None else None),
+                        recipient_faction_id=int(body.get("recipient_faction_id", 0)),
+                        client_message_id=(str(body["client_message_id"])
+                                           if body.get("client_message_id") else None),
+                        after_sequence=int(body.get("after_sequence", 0)),
+                    )
                 else:
                     result = manager.worker_status(instance_id)
                 self.server.control.audit(
@@ -752,18 +857,35 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     raise InvalidRecord("invalid_lan_game_settings")
                 match_id, action = match_action.groups()
                 if action == "start":
-                    result = manager.start_lan_match(
-                        match_id,
-                        session_name=str(body.get("session_name", "SMACX Managed LAN")),
-                        profile=str(body.get("profile", "small_easy")),
-                        resume_slot=(str(body["resume_slot"])
-                                     if body.get("resume_slot") is not None else None),
-                        scenario_id=(str(body["scenario_id"])
-                                     if body.get("scenario_id") is not None else None),
-                        game_settings=(body.get("game_settings")
-                                       if isinstance(body.get("game_settings"), dict) else None),
-                    )
+                    current_match = self.server.control.get_match(match_id)
+                    if current_match["mode"] == "singleplayer":
+                        worker = self.server.control.worker_for_match(match_id)
+                        started = manager.start_worker(str(worker["instance_id"]))
+                        running = self.server.control.update_match_lifecycle(
+                            match_id, "running", host_instance_id=str(worker["instance_id"]),
+                        )
+                        result = {"ok": True, "match": running, "worker": started}
+                    else:
+                        result = manager.start_lan_match(
+                            match_id,
+                            session_name=str(body.get("session_name", "SMACX Managed LAN")),
+                            profile=str(body.get("profile", "small_easy")),
+                            resume_slot=(str(body["resume_slot"])
+                                         if body.get("resume_slot") is not None else None),
+                            scenario_id=(str(body["scenario_id"])
+                                         if body.get("scenario_id") is not None else None),
+                            game_settings=(body.get("game_settings")
+                                           if isinstance(body.get("game_settings"), dict) else None),
+                        )
                 elif action == "park":
+                    # Stop autonomous callers before touching native runtime
+                    # state.  This keeps direct API users as safe as the portal
+                    # and makes park idempotent across supervisor retries.
+                    for run in self.server.control.list_harness_runs():
+                        if run.get("match_id") == match_id and run.get("status") in {
+                            "queued", "starting", "running", "restarting",
+                        }:
+                            self._harness_manager().stop_run(str(run["run_id"]))
                     result = manager.park_match(match_id)
                 elif action == "status":
                     result = manager.lan_match_status(match_id)
@@ -877,6 +999,21 @@ def build_control(data_root: Path) -> ControlPlane:
     return control
 
 
+def ensure_portal_service_token(data_root: Path) -> str:
+    configured = os.environ.get("SMACX_PORTAL_SERVICE_TOKEN_FILE")
+    token_path = Path(configured) if configured else data_root / "secrets" / "portal-service-token"
+    token_path = token_path.expanduser().resolve()
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    if not token_path.exists():
+        token_path.write_text(secrets.token_urlsafe(48), encoding="utf-8")
+        if os.name != "nt":
+            token_path.chmod(0o600)
+    token = token_path.read_text(encoding="utf-8").strip()
+    if len(token) < 32 or len(token) > 256:
+        raise SystemExit("invalid_portal_service_token")
+    return token
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="smacx-control")
     result.add_argument("--data-root", default=os.environ.get("SMACX_CONTROL_DATA", "/var/lib/smacx"))
@@ -977,6 +1114,7 @@ def main(argv: list[str] | None = None) -> int:
         secure_cookies=os.environ.get("SMACX_SECURE_COOKIES", "0") == "1",
         worker_manager=worker_manager, operations=operations,
         harness_manager=harness_manager,
+        service_token=ensure_portal_service_token(Path(arguments.data_root)),
     )
     print(json.dumps({
         "event": "control_ready", "host": host, "port": server.server_port,

@@ -17,11 +17,12 @@ is delivered as vertical, independently testable milestones.
    implemented. It remains default-off because the reference Qwen endpoint has
    no compatible embedding API and decision-quality benefit is not established.
 4. **Linux game worker** — user-supplied game import, private Wine/Proton
-   prefix, semantic bridge, virtual display, health protocol, and view-only
-   spectator stream.
-5. **Control plane** — authenticated Control Center, provider discovery,
-   agents/personalities, match builder, secrets, isolated per-worker MCP,
-   view-only spectators, and Hermes profile/session management. The durable
+   prefix, semantic bridge, virtual display, health protocol, and Selkies
+   interactive/read-only browser stream.
+5. **Control plane and portal** — authenticated Blazor Control Center, provider
+   discovery, versioned AI profiles, typed match builder, secrets, isolated
+   per-worker MCP, browser human seats, observer deck, and managed Hermes
+   profile/session management. The durable
    operator and host-Hermes vertical slices, durable schedules, verified
    backups, MCP repair, checkpoint-gated native crash recovery, digest-pinned
    managed Hermes processes, durable continuation, heartbeat/restart ownership,
@@ -44,6 +45,11 @@ is delivered as vertical, independently testable milestones.
    custom game setup are implemented and native-live-tested. Remaining
    consequential LAN mutations stay fail-closed until their native two-client
    effects converge.
+10. **LAN browser product surface** — accounts, lobbies, browser/native human
+    modes, portal/native chat, stream tickets, reconnect, race-safe park,
+    activity/history, authoritative Hermes telemetry, CSV and isolated SQL
+    analytics, canonical pre-release schemas, and complete operator docs are
+    implemented and locally verified.
 
 The ordinary operator experience remains:
 
@@ -54,5 +60,10 @@ open Control Center -> create or resume match -> assign seats -> launch -> play
 Docker Compose starts the control plane once and leaves it running. Per-match
 workers are created, parked, resumed, and retired by the match manager rather
 than by manual `docker compose down/up` cycles.
+
+The remaining roadmap is certification, not missing product architecture: a
+physical second computer, a real remote Tailscale peer, and Windows/WSL2. Ranked
+policy and authored personality content are separate future design work and are
+not silently implied by the current schema bones.
 
 For a claim-by-claim accounting, see [Project status](project-status.md).

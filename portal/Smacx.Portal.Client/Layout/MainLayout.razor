@@ -1,0 +1,65 @@
+﻿@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="Theme" IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout Class="portal-shell">
+    <NavBar ToggleRequested="ToggleDrawer" />
+    <MudDrawer @bind-Open="drawerOpen"
+               Variant="DrawerVariant.Temporary"
+               Breakpoint="Breakpoint.Md"
+               Elevation="10"
+               Class="portal-drawer">
+        <NavMenu OnNavigate="CloseDrawer" />
+    </MudDrawer>
+    <MudMainContent Class="portal-main">
+        <main class="portal-content">
+            @Body
+        </main>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool drawerOpen;
+
+    private void ToggleDrawer() => drawerOpen = !drawerOpen;
+
+    private readonly MudTheme Theme = new()
+    {
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#65e6c4",
+            Secondary = "#ffbd59",
+            Background = "#07151c",
+            Surface = "#0c2029",
+            DrawerBackground = "#0a1c24",
+            AppbarBackground = "#081920e8",
+            TextPrimary = "#edf8f5",
+            TextSecondary = "#9bb3b4",
+            Divider = "#21404a",
+            Success = "#65e6c4",
+            Warning = "#ffbd59",
+            Error = "#ff707f",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = ["Inter", "sans-serif"] },
+            H1 = new H1Typography { FontFamily = ["Space Grotesk", "sans-serif"], FontWeight = "700" },
+            H2 = new H2Typography { FontFamily = ["Space Grotesk", "sans-serif"], FontWeight = "700" },
+            H3 = new H3Typography { FontFamily = ["Space Grotesk", "sans-serif"], FontWeight = "600" },
+            H4 = new H4Typography { FontFamily = ["Space Grotesk", "sans-serif"], FontWeight = "600" },
+            H5 = new H5Typography { FontFamily = ["Space Grotesk", "sans-serif"], FontWeight = "600" },
+            H6 = new H6Typography { FontFamily = ["Space Grotesk", "sans-serif"], FontWeight = "600" },
+        },
+    };
+
+    private void CloseDrawer() => drawerOpen = false;
+}

@@ -25,6 +25,15 @@ __pycache__/
 .venv/
 venv/
 
+# .NET build, test, and IDE output.
+**/bin/
+**/obj/
+TestResults/
+artifacts/
+*.user
+*.suo
+/portal/**/Data/runtime/
+
 # Local configuration and secrets.
 .env
 .env.*

@@ -168,6 +168,34 @@ class WorkerManager:
         stage = f"_{context}" if context else ""
         raise WorkerManagerError(f"native_{operation}{stage}_timeout:{detail}")
 
+    def portal_chat(self, instance_id: str, *, action: str = "list",
+                    text: str | None = None, recipient_faction_id: int = 0,
+                    client_message_id: str | None = None,
+                    after_sequence: int = 0) -> dict[str, Any]:
+        """Read or send native chat for one exact managed human seat."""
+        spec = self.control.get_worker_spec(instance_id)
+        if spec.get("network", {}).get("controller_kind") != "human":
+            raise WorkerManagerError("portal_chat_requires_managed_human_seat")
+        listed = self._native_request(
+            instance_id, "semantic_chat", action="list",
+            after_sequence=max(int(after_sequence), 0), timeout=20.0,
+        )
+        if action == "list":
+            return listed
+        if action != "send" or not isinstance(text, str):
+            raise InvalidRecord("invalid_portal_chat_action")
+        identity = listed.get("identity")
+        if not isinstance(identity, Mapping):
+            raise WorkerManagerError("native_chat_identity_unavailable")
+        message_id = client_message_id or _new_id("portal-chat")
+        return self._native_request(
+            instance_id, "semantic_chat", action="send", text=text,
+            recipient_faction_id=int(recipient_faction_id),
+            client_message_id=message_id,
+            match_id=identity.get("match_id"), session_id=identity.get("session_id"),
+            timeout=20.0,
+        )
+
     def _name(self, kind: str, identity: str | None = None) -> str:
         suffix = hashlib.sha256((identity or uuid.uuid4().hex).encode()).hexdigest()[:16]
         name = f"{self.resource_prefix}-{kind}-{suffix}"
@@ -523,8 +551,16 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
 
     def provision_worker(self, scope: MemoryScope, game_source_id: str, runtime_id: str, *,
                          autostart: Mapping[str, Any] | None = None,
-                         view_enabled: bool = False) -> dict[str, Any]:
+                         view_enabled: bool = False,
+                         view_mode: str = "view-only",
+                         controller_kind: str = "agent") -> dict[str, Any]:
         self.store.require_scope(scope)
+        if view_mode not in {"view-only", "interactive"}:
+            raise InvalidRecord("invalid_worker_view_mode")
+        if controller_kind not in {"agent", "human"}:
+            raise InvalidRecord("invalid_worker_controller_kind")
+        if controller_kind == "human" and not view_enabled:
+            raise InvalidRecord("managed_human_requires_stream")
         source = self.control.get_game_source(game_source_id)
         runtime = self.control.get_runtime(runtime_id)
         if source["status"] != "validated" or runtime["status"] != "ready" \
@@ -564,12 +600,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             self._seed_secret_volume(secret_volume, instance_id, "bridge-token", token)
             if view_enabled:
                 view_password = secrets.token_urlsafe(24)
+                view_only_password = secrets.token_urlsafe(24)
                 view_secret = self.control.vault.put(
-                    f"worker.{instance_id}.view_password", view_password,
+                    f"worker.{instance_id}.view_passwords", json.dumps({
+                        "control": view_password,
+                        "viewer": view_only_password,
+                    }, separators=(",", ":")),
                 )
                 view_secret_id = str(view_secret["secret_id"])
                 self._seed_secret_volume(
                     secret_volume, instance_id, "view-password", view_password,
+                )
+                self._seed_secret_volume(
+                    secret_volume, instance_id, "view-only-password", view_only_password,
                 )
             self.store.register_instance(
                 instance_id=instance_id, worker_kind="container-linux", scope=scope,
@@ -584,7 +627,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "name": self.network_name,
                     "secret_volume": secret_volume,
                     "view_enabled": bool(view_enabled),
-                    "view_mode": "view-only",
+                    "view_mode": view_mode,
+                    "controller_kind": controller_kind,
                 },
                 view_secret_id=view_secret_id,
             )
@@ -729,7 +773,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "SMACX_REQUIRE_DIRECTPLAY": "1" if self.directx_redist_host_path else "0",
             "SMACX_VIEW_ENABLE": "1" if spec["network"].get("view_enabled") else "0",
             "SMACX_VIEW_PASSWORD_FILE": "/run/secrets/view-password",
-            "SMACX_VIEW_MODE": "view-only",
+            "SMACX_VIEW_ONLY_PASSWORD_FILE": "/run/secrets/view-only-password",
+            "SMACX_VIEW_MODE": str(spec["network"].get("view_mode") or "view-only"),
+            "SMACX_STREAM_SUBFOLDER": f"/stream/{spec['instance_id']}",
             "SMACX_AGENT_AUTOSTART": "1" if autostart["enabled"] else "0",
             "SMACX_AGENT_DIFFICULTY": str(autostart["difficulty"]),
             "SMACX_AGENT_WORLD_SIZE": str(autostart["world_size"]),
@@ -859,8 +905,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             network.update({
                 "view_status": "running" if view_port else "disabled",
                 "view_host_port": view_port,
-                "view_path": "/vnc.html?autoconnect=1&resize=scale",
+                "view_path": f"/stream/{instance_id}/",
                 "view_publish_ip": self.view_publish_ip if view_port else None,
+                "stream_backend": "selkies",
             })
             self.control.update_worker_network(instance_id, network)
             self.control.update_worker_observation(
@@ -868,14 +915,20 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 bridge_host="127.0.0.1" if host_port else spec["container_name"],
                 bridge_port=host_port or 47814, instance_status="running",
             )
-            mcp_endpoint = self.start_mcp_sidecar(instance_id) if self.control_data_volume else None
+            mcp_endpoint = (
+                self.start_mcp_sidecar(instance_id)
+                if self.control_data_volume
+                and spec["network"].get("controller_kind", "agent") == "agent"
+                else None
+            )
             return {
                 "ok": True, "instance_id": instance_id, "session_id": session_id,
                 "container_name": spec["container_name"], "container_id": container_id,
                 "health": "healthy", "bridge_host_port": host_port,
                 "spectator": ({
                     "enabled": True, "host_port": view_port,
-                    "path": network["view_path"], "mode": "view-only",
+                    "path": network["view_path"],
+                    "mode": str(network.get("view_mode") or "view-only"),
                 } if view_port else {"enabled": False}),
                 "mcp": mcp_endpoint,
             }
@@ -1445,31 +1498,37 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         seats = self.control.list_seats(match_id)
         agent_seats = [seat for seat in seats if seat["controller_kind"] == "agent"]
         human_seats = [seat for seat in seats if seat["controller_kind"] == "human"]
-        if not 2 <= len(seats) <= 7 or not agent_seats \
+        managed_seats = [seat for seat in seats if seat.get("instance_id")]
+        external_human_seats = [seat for seat in human_seats if not seat.get("instance_id")]
+        if not 2 <= len(seats) <= 7 or not managed_seats \
                 or len(agent_seats) + len(human_seats) != len(seats):
             raise WorkerManagerError("managed_lan_requires_valid_seats")
         if any(not seat.get("instance_id") for seat in agent_seats):
             raise WorkerManagerError("managed_lan_seat_not_provisioned")
-        if any(seat.get("instance_id") for seat in human_seats):
-            raise WorkerManagerError("external_human_seat_must_not_have_worker")
+        if any(
+                seat.get("metadata", {}).get("managed") is True
+                and not seat.get("instance_id") for seat in human_seats):
+            raise WorkerManagerError("managed_human_seat_not_provisioned")
         if normalized_lan_settings is None and profile not in LAN_PROFILES:
             raise InvalidRecord("unsupported_lan_profile")
         if normalized_lan_settings is not None:
             profile = "custom"
-        human_hosted = seats[0]["controller_kind"] == "human"
-        if human_hosted:
+        external_human_hosted = (
+            seats[0]["controller_kind"] == "human" and not seats[0].get("instance_id")
+        )
+        if external_human_hosted:
             if seats[0].get("metadata", {}).get("role") != "host" \
-                    or int(agent_seats[0]["seat_index"]) != 1:
+                    or int(managed_seats[0]["seat_index"]) != 1:
                 raise WorkerManagerError("human_hosted_lan_seat_order_invalid")
             if match["status"] == "lobby":
                 return self.finalize_human_hosted_lan_match(match_id, timeout=timeout)
             return self.prepare_human_hosted_lan_match(
                 match_id, profile=profile, resume_ref=resume_slot, timeout=timeout,
             )
-        if agent_seats[0].get("seat_index") != 0:
-            raise WorkerManagerError("agent_hosted_lan_seat_order_invalid")
-        external_network = self._external_lan_network() if human_seats else None
-        if human_seats and match["status"] == "lobby":
+        if managed_seats[0].get("seat_index") != 0:
+            raise WorkerManagerError("managed_hosted_lan_seat_order_invalid")
+        external_network = self._external_lan_network() if external_human_seats else None
+        if external_human_seats and match["status"] == "lobby":
             return self.finalize_external_lan_match(match_id, timeout=timeout)
         host = seats[0]
         host_instance = str(host["instance_id"])
@@ -1495,7 +1554,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             },
         )
         try:
-            for seat in agent_seats:
+            for seat in managed_seats:
                 instance_id = str(seat["instance_id"])
                 spec = self.control.get_worker_spec(instance_id)
                 if spec["observed_status"] != "running":
@@ -1507,9 +1566,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     self.control.update_worker_autostart(instance_id, autostart)
                 remaining = max(30.0, deadline - time.monotonic())
                 self.start_worker(instance_id, timeout=min(remaining, 300.0))
+            host_player_name = str(
+                host.get("metadata", {}).get("external_player_name") or "Semantic Host"
+            )
             hosted = self._native_request(
                 host_instance, "semantic_lan", timeout=min(140.0, max(30.0, deadline - time.monotonic())),
-                action="host", session_name=session_name, player_name="Semantic Host",
+                action="host", session_name=session_name, player_name=host_player_name,
                 client_operation_id=self._lan_operation_id(match_id, "host"),
             )
             if not hosted.get("ok") or not hosted.get("lobby_launch_queued"):
@@ -1562,7 +1624,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     ), timeout=45, context="host_scenario_lobby", action="status",
                 )
             host_address = self._container_address(host_instance)
-            for seat in agent_seats[1:]:
+            for seat in managed_seats[1:]:
                 seat_index = int(seat["seat_index"])
                 instance_id = str(seat["instance_id"])
                 discovered = self._native_request(
@@ -1576,10 +1638,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 ]
                 if not discovered.get("ok") or len(matches) != 1 or not matches[0].get("joinable"):
                     raise WorkerManagerError("native_lan_exact_session_not_discovered")
+                player_name = str(
+                    seat.get("metadata", {}).get("external_player_name")
+                    or f"Semantic Agent {seat_index + 1}"
+                )
                 joined = self._native_request(
                     instance_id, "semantic_lan", timeout=140, action="join",
                     network_session_id=network_session_id,
-                    player_name=f"Semantic Agent {seat_index + 1}",
+                    player_name=player_name,
                     host_address=host_address,
                     client_operation_id=self._lan_operation_id(match_id, "join", seat_index),
                 )
@@ -1592,7 +1658,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         and value.get("identity", {}).get("network_session_id") == expected
                     ), timeout=45, context=f"client_{seat_index}_joined_lobby", action="status",
                 )
-            participant_count = len(agent_seats)
+            participant_count = len(managed_seats)
             host_lobby = self._wait_native(
                 host_instance, "semantic_lan",
                 lambda value: (
@@ -1626,7 +1692,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 )
             elif resume_slot is not None:
                 restored_by_player: dict[int, int] = {}
-                for seat in agent_seats:
+                for seat in managed_seats:
                     seat_index = int(seat["seat_index"])
                     instance_id = str(seat["instance_id"])
                     expected_faction = seat.get("faction_id")
@@ -1744,7 +1810,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     if isinstance(item, Mapping) and isinstance(item.get("player_index"), int)
                 }
                 mismatches: list[dict[str, Any]] = []
-                for seat in agent_seats:
+                for seat in managed_seats:
                     expected_faction = seat.get("faction_id")
                     expected_choice = resume_choices_by_seat.get(
                         int(seat["seat_index"])
@@ -1766,7 +1832,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         f"native_lan_loaded_faction_binding_mismatch:{detail}"
                     )
             else:
-                for seat in agent_seats:
+                for seat in managed_seats:
                     seat_index = int(seat["seat_index"])
                     instance_id = str(seat["instance_id"])
                     lobby = self._wait_native(
@@ -1831,7 +1897,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         context=f"host_observed_scenario_faction_{seat_index}",
                         action="status",
                     )
-            for seat in agent_seats[1:]:
+            for seat in managed_seats[1:]:
                 seat_index = int(seat["seat_index"])
                 instance_id = str(seat["instance_id"])
                 lobby = self._wait_native(
@@ -1860,14 +1926,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 )
                 if not ready.get("ok"):
                     raise WorkerManagerError("native_lan_ready_failed")
-            if human_seats:
+            if external_human_seats:
                 human_players = [
                     {
                         "seat_index": int(seat["seat_index"]),
                         "player_name": str(seat["metadata"]["external_player_name"]),
                         "expected_faction_id": seat.get("faction_id"),
                     }
-                    for seat in human_seats
+                    for seat in external_human_seats
                 ]
                 match = self.control.update_match_lifecycle(
                     match_id, "lobby", host_instance_id=host_instance,
@@ -1929,7 +1995,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if not started.get("ok"):
                 raise WorkerManagerError("native_lan_start_failed")
             native: list[dict[str, Any]] = []
-            for seat in agent_seats:
+            for seat in managed_seats:
                 instance_id = str(seat["instance_id"])
                 game = self._wait_native(
                     instance_id, "semantic_lan",
@@ -1991,14 +2057,17 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         """Start an already-open mixed human/agent lobby after exact validation."""
         match = self.control.get_match(match_id)
         seats = self.control.list_seats(match_id)
-        agent_seats = [seat for seat in seats if seat["controller_kind"] == "agent"]
-        human_seats = [seat for seat in seats if seat["controller_kind"] == "human"]
+        managed_seats = [seat for seat in seats if seat.get("instance_id")]
+        human_seats = [
+            seat for seat in seats
+            if seat["controller_kind"] == "human" and not seat.get("instance_id")
+        ]
         external = match.get("metadata", {}).get("external_lan")
-        if match["status"] != "lobby" or not agent_seats or not human_seats \
+        if match["status"] != "lobby" or not managed_seats or not human_seats \
                 or not isinstance(external, Mapping):
             raise WorkerManagerError("external_lan_lobby_not_open")
         self._external_lan_network()
-        host_instance = str(agent_seats[0]["instance_id"])
+        host_instance = str(managed_seats[0]["instance_id"])
         host_lobby = self._native_request(
             host_instance, "semantic_lan", action="status",
         )
@@ -2019,16 +2088,18 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if name in by_name:
                 duplicate_names.add(name)
             by_name[name] = participant
-        expected_agent_names = {
-            "Semantic Host" if int(seat["seat_index"]) == 0
-            else f"Semantic Agent {int(seat['seat_index']) + 1}"
-            for seat in agent_seats
+        expected_managed_names = {
+            str(seat.get("metadata", {}).get("external_player_name") or (
+                "Semantic Host" if int(seat["seat_index"]) == 0
+                else f"Semantic Agent {int(seat['seat_index']) + 1}"
+            ))
+            for seat in managed_seats
         }
         expected_human_names = {
             str(seat["metadata"].get("external_player_name") or "")
             for seat in human_seats
         }
-        expected_names = expected_agent_names | expected_human_names
+        expected_names = expected_managed_names | expected_human_names
         unexpected = sorted(set(by_name) - expected_names)
         if duplicate_names or unexpected:
             detail = json.dumps({
@@ -2125,7 +2196,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
 
         deadline = time.monotonic() + min(max(float(timeout), 60.0), 900.0)
         native: list[dict[str, Any]] = []
-        for seat in agent_seats:
+        for seat in managed_seats:
             instance_id = str(seat["instance_id"])
             game = self._wait_native(
                 instance_id, "semantic_lan",
@@ -2188,26 +2259,61 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         seats = self.control.list_seats(match_id)
         observed_agents: dict[int, dict[str, Any]] = {}
         host_native: dict[str, Any] | None = None
+        host_snapshot: dict[str, Any] | None = None
         for seat in seats:
             instance_id = seat.get("instance_id")
             if not instance_id:
                 continue
             worker = self.worker_status(str(instance_id))
             native = None
+            snapshot = None
             if worker.get("running") and worker.get("health") == "healthy":
                 try:
                     native = self._native_request(str(instance_id), "semantic_lan", action="status")
                 except WorkerManagerError:
                     native = {"ok": False, "error": "bridge_unavailable"}
+                try:
+                    snapshot_response = self._native_request(
+                        str(instance_id), "semantic_snapshot",
+                    )
+                    candidate = snapshot_response.get("snapshot")
+                    if isinstance(candidate, Mapping):
+                        snapshot = dict(candidate)
+                except WorkerManagerError:
+                    snapshot = None
             if isinstance(native, dict) and (
                 int(seat["seat_index"]) == 0 or host_native is None
             ):
                 host_native = native
+            if snapshot is not None:
+                faction = snapshot.get("faction")
+                outcome = snapshot.get("outcome")
+                seat_metadata: dict[str, Any] = {}
+                if isinstance(outcome, Mapping):
+                    seat_metadata["outcome"] = dict(outcome)
+                if isinstance(faction, Mapping) and isinstance(faction.get("id"), int):
+                    self.control.update_lan_seat(
+                        match_id, int(seat["seat_index"]),
+                        faction_id=int(faction["id"]),
+                        faction_name=(str(faction["name"]) if faction.get("name") else None),
+                        metadata=seat_metadata,
+                    )
+                elif seat_metadata:
+                    self.control.update_lan_seat(
+                        match_id, int(seat["seat_index"]), metadata=seat_metadata,
+                    )
+                if int(seat["seat_index"]) == 0 or host_snapshot is None:
+                    host_snapshot = snapshot
             observed_agents[int(seat["seat_index"])] = {
                 "seat_index": seat["seat_index"], "controller_kind": seat["controller_kind"],
                 "agent_id": seat["agent_id"],
                 "instance_id": instance_id, "faction_id": seat.get("faction_id"),
                 "worker": worker, "native": native,
+                "progress": ({
+                    "turn": snapshot.get("turn"), "year": snapshot.get("year"),
+                    "faction": snapshot.get("faction"),
+                } if snapshot is not None else None),
+                "outcome": (snapshot.get("outcome") if snapshot is not None else None),
             }
         results: list[dict[str, Any]] = []
         for seat in seats:
@@ -2232,7 +2338,25 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "faction_id": seat.get("faction_id"),
                 "external_participant": participant,
             })
-        return {"ok": True, "match_id": match_id, "seats": results}
+        if host_snapshot is not None and isinstance(host_snapshot.get("turn"), int) \
+                and isinstance(host_snapshot.get("year"), int):
+            self.control.record_match_progress(
+                match_id, int(host_snapshot["turn"]), int(host_snapshot["year"]),
+            )
+        host_outcome = host_snapshot.get("outcome") if host_snapshot is not None else None
+        if isinstance(host_outcome, Mapping) and host_outcome.get("final_score_completed") is True:
+            current_match = self.control.get_match(match_id)
+            if current_match.get("status") != "completed":
+                self.control.update_match_lifecycle(
+                    match_id, "completed", metadata={"outcome": dict(host_outcome)},
+                )
+        return {
+            "ok": True, "match_id": match_id, "seats": results,
+            "progress": ({
+            "turn": host_snapshot.get("turn"), "year": host_snapshot.get("year"),
+            } if host_snapshot is not None else None),
+            "outcome": (dict(host_outcome) if isinstance(host_outcome, Mapping) else None),
+        }
 
     def park_match(self, match_id: str) -> dict[str, Any]:
         seats = self.control.list_seats(match_id)
@@ -2252,8 +2376,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if match["status"] != "running":
             raise WorkerManagerError("checkpoint_requires_running_match")
         seats = self.control.list_seats(match_id)
-        if not seats or seats[0]["controller_kind"] != "agent" \
-                or not seats[0].get("instance_id"):
+        # A browser-managed human host is just as recoverable as an agent:
+        # both have an isolated worker and authenticated native bridge. Only a
+        # truly external host lacks a worker we can checkpoint safely.
+        if not seats or not seats[0].get("instance_id"):
             raise WorkerManagerError("external_human_host_owns_checkpoint")
         host_instance_id = str(seats[0]["instance_id"])
         choices = self._native_request(
@@ -2299,7 +2425,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
             raise WorkerManagerError("invalid_recovery_checkpoint")
         seats = self.control.list_seats(match_id)
-        if not seats or seats[0]["controller_kind"] != "agent":
+        if not seats or not seats[0].get("instance_id"):
             raise WorkerManagerError("external_human_host_recovery_required")
         self.park_match(match_id)
         if match["mode"] == "lan":
@@ -2562,8 +2688,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 result["mcp"] = {"container_present": False, "running": False}
         return result
 
-    def spectator_access(self, instance_id: str) -> dict[str, Any]:
-        """Return view-only access only to the authenticated operator API."""
+    def spectator_access(self, instance_id: str, *, interactive: bool = False) -> dict[str, Any]:
+        """Return one short-lived caller's upstream stream credential."""
         spec = self.control.get_worker_spec(instance_id)
         if not spec["network"].get("view_enabled") or not spec.get("view_secret_id"):
             raise WorkerManagerError("spectator_not_enabled")
@@ -2572,17 +2698,24 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if not status.get("running") or status.get("health") != "healthy" \
                 or not isinstance(port, int):
             raise WorkerManagerError("spectator_not_running")
-        password = self.control.vault.read(
+        credentials = json.loads(self.control.vault.read(
             str(spec["view_secret_id"]),
-            purpose=f"worker.{instance_id}.view_password",
-        )
+            purpose=f"worker.{instance_id}.view_passwords",
+        ))
+        requested_mode = str(spec["network"].get("view_mode") or "view-only")
+        if interactive and requested_mode != "interactive":
+            raise WorkerManagerError("interactive_stream_not_available")
         return {
             "ok": True,
             "instance_id": instance_id,
-            "mode": "view-only",
+            "mode": requested_mode,
             "host_port": port,
             "path": str(spec["network"].get("view_path") or "/vnc.html"),
-            "password": password,
+            "access_mode": "interactive" if interactive else "view-only",
+            "password": credentials["control"] if interactive else credentials["viewer"],
+            "container_name": spec["container_name"],
+            "internal_port": 6080,
+            "internal_base_url": f"http://{spec['container_name']}:6080",
         }
 
     def park_worker(self, instance_id: str) -> dict[str, Any]:

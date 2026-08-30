@@ -1,0 +1,8 @@
+@page "/account"
+@attribute [Authorize]
+@inject Services.PortalApiClient Api
+@inject NavigationManager Navigation
+<PageTitle>Account · SMACX Agent</PageTitle>
+<PageHeader Kicker="LOCAL IDENTITY" Title="Your account" Description="Your LAN login and in-game handle remain local to this control center." />
+<div class="surface-panel form-panel account-panel"><AuthorizeView><Authorized Context="auth"><div class="profile-avatar">@((auth.User.Identity?.Name ?? "?")[0].ToString().ToUpperInvariant())</div><h2>@auth.User.Identity?.Name</h2><p class="section-copy">Authenticated LAN member</p><MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Logout" OnClick="Logout">Sign out</MudButton></Authorized></AuthorizeView></div>
+@code { private async Task Logout() { await Api.PostAsync<bool>("api/auth/logout", new { }); Navigation.NavigateTo("/", true); } }

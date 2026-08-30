@@ -207,6 +207,54 @@
       "provenance": "Original high-level summary; exact values intentionally delegated to live data."
     },
     {
+      "document_id": "setup.planet-and-difficulty",
+      "topic": "setup",
+      "title": "Planet size, difficulty, and world-generation settings",
+      "summary": "A new match combines a native difficulty, planet size, and four three-level world traits; these settings describe the rules of the generated world rather than a strategy recommendation.",
+      "body": "Planet size changes the available map area and usually the distance between factions. Difficulty changes the native handicap and rule environment used by the game. Ocean coverage, erosive forces, native life, and cloud cover each accept low, average, or high. Together they influence land-water balance, terrain relief, indigenous activity, and rainfall patterns. The current lobby's synchronized typed settings are authoritative; scenarios may supply their own authored world and restrictions.",
+      "tags": ["setup", "difficulty", "planet-size", "ocean", "erosion", "native-life", "cloud-cover"],
+      "source_url": null,
+      "source_title": "Sid Meier's Alpha Centauri setup rules (operator-supplied legal copy)",
+      "source_license": "Project-authored Apache-2.0 text; proprietary source expression not reproduced",
+      "provenance": "Original project wording cross-checked against the typed native setup bridge."
+    },
+    {
+      "document_id": "setup.victory-and-advanced-rules",
+      "topic": "setup",
+      "title": "Victory toggles and advanced match rules",
+      "summary": "The lobby can independently enable ordinary victory paths and native options such as blind research, technology stagnation, random events, Unity survey/scattering, spoils, rivalry, time warp, and Ironman.",
+      "body": "Victory toggles determine which native endings are legal, including Transcendence, conquest, diplomatic, economic, and cooperative outcomes. Do or Die removes cooperative survival as an escape from defeat. Blind research restricts direct technology choice, while technology stagnation slows progress. Spoils of war, intense rivalry, random events, Unity survey, Unity scattering, time warp, look first, and Ironman each alter a distinct native rule. Treat the synchronized lobby record as exact; do not assume defaults after a host or scenario changes them.",
+      "tags": ["setup", "victory", "blind-research", "tech-stagnation", "random-events", "ironman", "time-warp"],
+      "source_url": null,
+      "source_title": "Sid Meier's Alpha Centauri advanced rules (operator-supplied legal copy)",
+      "source_license": "Project-authored Apache-2.0 text; proprietary source expression not reproduced",
+      "provenance": "Original project wording aligned with the named native GameRules adapter."
+    },
+    {
+      "document_id": "setup.scenarios-and-saves",
+      "topic": "setup",
+      "title": "Standard games, scenarios, and multiplayer checkpoints",
+      "summary": "Standard generation, authored scenarios, and saved multiplayer checkpoints are different startup modes with different sources of authority.",
+      "body": "A standard game uses the selected generated-world and advanced rules. A scenario loads one exact installed scenario and may define its own map, factions, objectives, restrictions, and victory conditions. A checkpoint resumes a previous native match and must restore the recorded player-to-faction assignments rather than create a fresh world. Scenario and save identifiers come only from the validated legal installation or a verified managed save slot; arbitrary paths are not accepted.",
+      "tags": ["setup", "scenario", "save", "checkpoint", "resume", "faction-restoration"],
+      "source_url": null,
+      "source_title": "SMACX Agent typed startup and recovery evidence",
+      "source_license": "Project-authored Apache-2.0 operational summary",
+      "provenance": "Independent wording derived from native scenario and multiplayer recovery tests."
+    },
+    {
+      "document_id": "multiplayer.turn-clock",
+      "topic": "multiplayer",
+      "title": "Native multiplayer turn-clock modes",
+      "summary": "DirectPlay lobbies expose five named turn-clock choices from no clock through increasingly permissive timing; the choice is synchronized with the session.",
+      "body": "The native lobby supports none, tight, standard, moderate, and loose turn timing. This setting governs the multiplayer session's pacing and is separate from an AI harness run budget or model reasoning level. A model should finish a coherent legal turn promptly, but it must still resolve mandatory interactions and re-observe after mutations. The portal records measured decision duration independently for later comparison without changing the native clock.",
+      "tags": ["multiplayer", "turn-clock", "timer", "analytics", "reasoning"],
+      "source_url": null,
+      "source_title": "SMACX Agent typed DirectPlay settings evidence",
+      "source_license": "Project-authored Apache-2.0 operational summary",
+      "provenance": "Original wording aligned with native timer IDs verified by the bridge."
+    },
+    {
       "document_id": "multiplayer.lan",
       "topic": "multiplayer",
       "title": "Simultaneous attention in turn-based LAN play",

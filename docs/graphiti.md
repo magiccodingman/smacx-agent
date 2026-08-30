@@ -15,13 +15,14 @@ The optional `graphiti` Compose profile provides:
   all Linux capabilities dropped, and bounded per-perspective work;
 - Docker file secrets for Neo4j, the extraction model, and embeddings;
 - durable health, failure counts, and exact-scope rebuild requests in the
-  canonical revision-1 SQLite schema;
+  canonical pre-release SQLite schema;
 - enable/disable, health, and exact-perspective rebuild controls in the
   authenticated Control Center; and
 - deterministic replay and adversarial scope-isolation regressions.
 
-Graphiti is disabled by default. Enable it only after both compatible endpoints
-are configured and the projector reports healthy. A chat endpoint that returns
+New lobbies prefer Graphiti by default, but projection remains inert until an
+administrator configures both compatible endpoints, starts the optional stack,
+and the projector reports healthy. A chat endpoint that returns
 404 for `/embeddings` is not sufficient. The current reference Qwen deployment
 has that limitation, so SQLite/BM25 is the correct production path there.
 
@@ -73,8 +74,9 @@ export SMACX_GRAPHITI_EMBED_DIM=1024
 
 Set `SMACX_GRAPHITI_SECRET_DIR` if the files are elsewhere. The script validates
 the four secret files and matching Neo4j credentials before starting anything.
-It leaves the ordinary Control Center up. Enable projection in the Control
-Center only after the projector is healthy.
+It leaves the ordinary Control Center up. Enable projection globally only after
+the projector is healthy. The per-match checkbox can still disable projection
+for an experiment without changing the global service.
 
 ## Evaluation result
 
@@ -98,6 +100,6 @@ PYTHONPATH=src python scripts/graphiti_worker_contract_test.py
 ```
 
 The first verifies event isolation, deterministic IDs, failure-safe cursoring,
-resume, and group-local rebuild. The second verifies default-off policy,
+resume, and group-local rebuild. The second verifies fail-inert service policy,
 Control Center state, exact-scope rebuild guards, observable failure isolation,
 file-secret loading, and canonical schema revision 1.

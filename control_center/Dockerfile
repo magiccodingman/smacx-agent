@@ -63,13 +63,13 @@ ENV PYTHONPATH=/opt/smacx/src \
     PYTHONUNBUFFERED=1 \
     SMACX_CONTROL_DATA=/var/lib/smacx \
     SMACX_CONTROL_HOST=0.0.0.0 \
-    SMACX_CONTROL_PORT=8080
+    SMACX_CONTROL_PORT=8081
 
 WORKDIR /opt/smacx
 VOLUME ["/var/lib/smacx"]
-EXPOSE 8080
+EXPOSE 8081
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=4 \
-    CMD ["python3", "-c", "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=2)); raise SystemExit(0 if data.get('ok') else 1)"]
+    CMD ["python3", "-c", "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8081/healthz',timeout=2)); raise SystemExit(0 if data.get('ok') else 1)"]
 
 USER smacx
 ENTRYPOINT ["/usr/bin/tini", "--"]

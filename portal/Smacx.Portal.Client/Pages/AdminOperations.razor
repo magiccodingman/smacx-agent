@@ -1,0 +1,66 @@
+@page "/admin/operations"
+@attribute [Authorize(Roles = "Administrator")]
+@inject Services.PortalApiClient Api
+@using System.Text.Json
+
+<PageTitle>Operations · SMACX Agent</PageTitle>
+<PageHeader Kicker="RELIABILITY DECK" Title="Operations & recovery" Description="Inspect supervision, control optional memory, create verified backups, and schedule unattended maintenance." />
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (snapshot is not null)
+{
+ <div class="metric-grid">
+  <MetricCard Label="CONTROL" Value="@Text(snapshot.Operations, "status", "ready")" Detail="Supervisor state" Icon="@Icons.Material.Filled.MonitorHeart" />
+  <MetricCard Label="GRAPHITI" Value="@GraphitiLabel" Detail="SQLite remains authoritative" Icon="@Icons.Material.Filled.AccountTree" Tone="violet" />
+  <MetricCard Label="SCHEDULES" Value="@Count(snapshot.Schedules).ToString()" Detail="Configured jobs" Icon="@Icons.Material.Filled.Schedule" Tone="gold" />
+  <MetricCard Label="BACKUPS" Value="@Count(snapshot.Backups).ToString()" Detail="Recorded sets" Icon="@Icons.Material.Filled.Backup" Tone="blue" />
+ </div>
+ <div class="form-grid">
+  <section class="surface-panel form-panel"><h2>Optional Graphiti memory</h2><p class="section-copy">Graphiti is a failure-isolated semantic projection. Scoped SQLite facts, history, chat, and summaries remain the source of truth.</p><MudSwitch T="bool" Value="@Bool(snapshot.Graphiti, "enabled")" ValueChanged="@(value => ToggleGraphiti(value))" Color="Color.Primary">Enable installation-wide projector</MudSwitch><span class="field-help">Individual matches may still opt out.</span></section>
+  <section class="surface-panel form-panel"><h2>Backup now</h2><p class="section-copy">Create an integrity-manifested backup of control state, secrets, and optionally worker volumes.</p><MudSwitch @bind-Value="includeSecrets" Color="Color.Primary">Include managed secrets</MudSwitch><MudSwitch @bind-Value="includeWorkers" Color="Color.Primary">Include worker volumes</MudSwitch><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateBackup" Disabled="busy" StartIcon="@Icons.Material.Filled.Backup">Create backup</MudButton></section>
+  <section class="surface-panel form-panel"><h2>Maintenance schedule</h2><p class="section-copy">Schedules survive service restarts and are executed by the control supervisor.</p><MudTextField @bind-Value="scheduleName" Label="Display name" Variant="Variant.Outlined"/><MudSelect T="string" @bind-Value="operationKind" Label="Operation" Variant="Variant.Outlined"><MudSelectItem Value="@("backup")">Backup</MudSelectItem><MudSelectItem Value="@("checkpoint")">Checkpoint running match</MudSelectItem><MudSelectItem Value="@("health_check")">Health check</MudSelectItem></MudSelect><MudNumericField T="int" @bind-Value="intervalSeconds" Label="Interval (seconds)" Min="60" Variant="Variant.Outlined"/><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateSchedule" Disabled="busy">Create schedule</MudButton></section>
+  <section class="surface-panel form-panel"><h2>Recovery boundary</h2><p class="section-copy">Managed matches use bridge-verified save checkpoints. The operation remains safe if Graphiti or an AI endpoint is unavailable.</p><MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Use a running lobby’s Checkpoint button before planned downtime. Park stops its workers; Recover restarts every assigned seat from the verified save.</MudAlert></section>
+ </div>
+ <section class="surface-panel admin-list-panel mt-4">
+  <div class="panel-heading"><div><span class="panel-kicker">BACKUP CATALOG</span><h2>Verified state</h2></div><MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Reload" aria-label="Refresh operations" /></div>
+  @if (Count(snapshot.Backups) == 0)
+  {
+   <div class="empty-state compact"><MudIcon Icon="@Icons.Material.Filled.Backup" /><strong>No backups yet</strong><span>Create the first backup above.</span></div>
+  }
+  @foreach (var item in snapshot.Backups.EnumerateArray())
+  {
+   var backupId = Text(item, "backup_id");
+   <div class="admin-list-row"><div><strong>@backupId</strong><small>@Unix(item, "created_unix")</small></div><span>@Text(item, "status")</span><span>@Text(item, "size_bytes") bytes</span><MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => Verify(backupId)">Verify</MudButton></div>
+  }
+ </section>
+ <section class="surface-panel admin-list-panel mt-4">
+  <div class="panel-heading"><div><span class="panel-kicker">UNATTENDED WORK</span><h2>Schedules</h2></div></div>
+  @foreach (var item in snapshot.Schedules.EnumerateArray())
+  {
+   var scheduleId = Text(item, "schedule_id");
+   var isActive = Text(item, "status") == "active";
+   var action = isActive ? "pause" : "activate";
+   <div class="admin-list-row"><div><strong>@Text(item, "display_name")</strong><small>@Text(item, "operation_kind") · every @Text(item, "interval_seconds")s</small></div><span class="status-badge">@Text(item, "status")</span><span>next @Unix(item, "next_run_unix")</span><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => ScheduleAction(scheduleId, action)">@(isActive ? "Pause" : "Activate")</MudButton></div>
+  }
+ </section>
+}
+@if(!string.IsNullOrEmpty(message)){<MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mt-4">@message</MudAlert>}@if(!string.IsNullOrEmpty(error)){<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>}
+
+@code {
+ private AdminSnapshot? snapshot; private bool loading=true,busy,includeSecrets=true,includeWorkers=true; private string? error,message; private string scheduleName="Nightly control backup",operationKind="backup"; private int intervalSeconds=86400;
+ private string GraphitiLabel => snapshot is not null && Bool(snapshot.Graphiti, "enabled") ? "ON" : "OFF";
+ protected override async Task OnInitializedAsync()=>await Reload();
+ private async Task Reload(){loading=true;try{snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;}catch(Exception ex){error=ex.Message;}finally{loading=false;}}
+ private async Task ToggleGraphiti(bool enabled){busy=true;var result=await Api.PostAsync<JsonElement>("api/admin/graphiti",new{enabled});if(result.Payload?.Ok!=true)error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private async Task CreateBackup(){busy=true;var result=await Api.PostAsync<JsonElement>("api/admin/backups",new BackupRequest(includeSecrets,includeWorkers));if(result.Payload?.Ok==true)message="Backup created.";else error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private async Task Verify(string id){busy=true;var result=await Api.PostAsync<JsonElement>($"api/admin/backups/{id}/verify",new{});if(result.Payload?.Ok==true)message="Backup manifest verified.";else error=result.Payload?.Error?.Message;busy=false;}
+ private async Task CreateSchedule(){busy=true;var result=await Api.PostAsync<JsonElement>("api/admin/schedules",new ScheduleRequest(scheduleName,operationKind,"installation",null,intervalSeconds));if(result.Payload?.Ok!=true)error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private async Task ScheduleAction(string id,string action){await Api.PostAsync<JsonElement>($"api/admin/schedules/{id}/{action}",new{});await Reload();}
+ private static string Text(JsonElement item,string name,string fallback="—")=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)&&value.ValueKind!=JsonValueKind.Null?value.ToString():fallback;
+ private static bool Bool(JsonElement item,string name)=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.True;
+ private static int Count(JsonElement item)=>item.ValueKind==JsonValueKind.Array?item.GetArrayLength():0;
+ private static string Unix(JsonElement item,string name){if(item.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.Number)return DateTimeOffset.FromUnixTimeMilliseconds((long)(value.GetDouble()*1000)).ToLocalTime().ToString("g");return "—";}
+}

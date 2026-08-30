@@ -13,7 +13,7 @@ import time
 from typing import Any, Mapping
 
 from smacx_control import ControlPlane
-from smacx_docker import DockerClient, DockerNotFound
+from smacx_docker import DockerClient, DockerError, DockerNotFound
 from smacx_hermes import configure_profile
 from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager
@@ -382,8 +382,82 @@ class HarnessManager:
                 pass
         return {"ok": True, "run": run, "observed": observed}
 
+    def telemetry(self, run_id: str) -> dict[str, Any]:
+        """Read aggregate Hermes usage from its private durable state.
+
+        Hermes is the authority for provider token accounting.  A short-lived,
+        no-network helper reads the profile SQLite database read-only; neither
+        the portal nor the control process receives filesystem access to the
+        harness home.
+        """
+        run = self.control.get_harness_run(run_id)
+        runtime = self.control.get_harness_runtime_spec(
+            str(run["harness_profile_id"]),
+        )
+        data_volume = str(runtime["data_volume"])
+        resource = self.docker.inspect_volume(data_volume)
+        self.docker.require_owned(
+            resource, self.installation_id, purpose="harness-data",
+        )
+        helper_name = self._name("telemetry", run_id)
+        try:
+            old = self.docker.inspect_container(helper_name)
+            self.docker.require_owned(old, self.installation_id, purpose="harness-telemetry")
+            if old.get("State", {}).get("Running"):
+                self.docker.stop_container(helper_name, timeout=5)
+            self.docker.remove_container(helper_name)
+        except DockerNotFound:
+            pass
+        query = r'''import glob,json,sqlite3
+paths=glob.glob('/data/profiles/*/state.db')
+result={'sessions':0,'api_calls':0,'input_tokens':0,'output_tokens':0,'cache_read_tokens':0,'cache_write_tokens':0,'reasoning_tokens':0}
+for path in paths:
+    try:
+        db=sqlite3.connect('file:'+path+'?mode=ro',uri=True,timeout=3)
+        row=db.execute('SELECT COUNT(*),COALESCE(SUM(api_call_count),0),COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(cache_read_tokens),0),COALESCE(SUM(cache_write_tokens),0),COALESCE(SUM(reasoning_tokens),0) FROM sessions').fetchone()
+        db.close()
+        for key,value in zip(result,row): result[key]+=int(value or 0)
+    except (sqlite3.Error,OSError): pass
+print(json.dumps(result,separators=(',',':')))
+'''
+        identifier = self.docker.create_container(helper_name, {
+            "Image": self.worker_manager.mcp_image,
+            "Entrypoint": ["python3", "-c"],
+            "Cmd": [query],
+            "User": "10000:10000",
+            "Labels": self._labels("harness-telemetry", **{
+                "io.smacx.run": run_id,
+            }),
+            "HostConfig": {
+                "NetworkMode": "none", "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges"],
+                "Mounts": [{"Type": "volume", "Source": data_volume,
+                            "Target": "/data", "ReadOnly": True}],
+            },
+        })
+        try:
+            self.docker.start_container(identifier)
+            observed = self.docker.wait_container(identifier, timeout=15)
+            if int(observed.get("State", {}).get("ExitCode") or 0) != 0:
+                raise HarnessManagerError("harness_telemetry_failed")
+            logs = self.docker.container_logs(identifier, tail=20)
+            candidates = re.findall(r"\{[^\r\n]+\}", logs)
+            if not candidates:
+                raise HarnessManagerError("invalid_harness_telemetry")
+            value = json.loads(candidates[-1])
+            if not isinstance(value, dict):
+                raise HarnessManagerError("invalid_harness_telemetry")
+            return {"ok": True, "run_id": run_id, "telemetry": value}
+        finally:
+            try:
+                self.docker.remove_container(identifier)
+            except DockerNotFound:
+                pass
+
     def stop_run(self, run_id: str) -> dict[str, Any]:
         run = self.control.update_harness_run(run_id, desired_status="stopped")
+        if run.get("status") == "stopped":
+            return run
         container_name = run.get("container_name")
         if container_name:
             try:
@@ -394,6 +468,16 @@ class HarnessManager:
                 self.docker.remove_container(str(container_name))
             except DockerNotFound:
                 pass
+            except DockerError:
+                # A stop and the background reconciler may meet at the same
+                # container.  Treat that race as success only after Docker
+                # confirms the process is absent or no longer running.
+                try:
+                    observed = self.docker.inspect_container(str(container_name))
+                except DockerNotFound:
+                    observed = None
+                if observed is not None and observed.get("State", {}).get("Running"):
+                    raise
         return self.control.update_harness_run(run_id, status="stopped", exit_code=0)
 
     def reconcile_once(self) -> dict[str, Any]:

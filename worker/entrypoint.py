@@ -404,23 +404,65 @@ def main() -> int:
     ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     view_enabled = os.environ.get("SMACX_VIEW_ENABLE", "0") == "1"
+    stream_backend = "disabled"
     if view_enabled:
         password = secret_value("SMACX_VIEW_PASSWORD")
+        view_only_password = secret_value("SMACX_VIEW_ONLY_PASSWORD")
         if len(password) < 12:
             raise RuntimeError("view_password_must_be_at_least_12_characters")
-        password_file = worker_root / "view-password"
-        run_checked(["x11vnc", "-storepasswd", password, str(password_file)], environment)
-        vnc_command = [
-            "x11vnc", "-display", display, "-rfbauth", str(password_file),
-            "-rfbport", "5900", "-forever", "-shared", "-noxdamage",
-        ]
-        if os.environ.get("SMACX_VIEW_MODE", "view-only") != "interactive":
-            vnc_command.append("-viewonly")
-        start(vnc_command, environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        start([
-            "websockify", "--web", "/usr/share/novnc/",
-            os.environ.get("SMACX_VIEW_PORT", "6080"), "127.0.0.1:5900",
-        ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if len(view_only_password) < 12:
+            raise RuntimeError("view_only_password_must_be_at_least_12_characters")
+        stream_backend = os.environ.get("SMACX_STREAM_BACKEND", "selkies")
+        stream_started = False
+        if stream_backend == "selkies" and shutil.which("selkies"):
+            pulse_runtime = worker_root / "pulse"
+            pulse_runtime.mkdir(parents=True, exist_ok=True)
+            pulse_socket = pulse_runtime / "native"
+            environment.update({
+                "PULSE_RUNTIME_PATH": str(pulse_runtime),
+                "PULSE_SERVER": f"unix:{pulse_socket}",
+            })
+            pulse = start([
+                "pulseaudio", "--daemonize=no", "--exit-idle-time=-1",
+                "--log-target=stderr",
+                f"--load=module-native-protocol-unix socket={pulse_socket} auth-anonymous=1",
+                "--load=module-null-sink sink_name=smacx",
+            ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            pulse_deadline = time.monotonic() + 10
+            while time.monotonic() < pulse_deadline and not pulse_socket.exists():
+                if pulse.poll() is not None:
+                    break
+                time.sleep(0.1)
+            subfolder = os.environ.get("SMACX_STREAM_SUBFOLDER", "")
+            stream = start([
+                "selkies", "--addr=0.0.0.0",
+                f"--port={os.environ.get('SMACX_VIEW_PORT', '6080')}",
+                "--enable-https=false", "--enable-basic-auth=true",
+                "--basic-auth-user=smacx", f"--basic-auth-password={password}",
+                f"--basic-auth-viewonly-password={view_only_password}",
+                f"--subfolder={subfolder}", "--mode=websocket",
+                "--encoder=h264enc", "--framerate=30", "--video-bitrate=5000",
+                "--audio-enabled=true", "--enable-resize=false",
+            ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
+            stream_started = stream.poll() is None
+            if not stream_started:
+                emit("selkies_unavailable", fallback="novnc")
+        if not stream_started:
+            password_file = worker_root / "view-password"
+            run_checked(["x11vnc", "-storepasswd", password, str(password_file)], environment)
+            vnc_command = [
+                "x11vnc", "-display", display, "-rfbauth", str(password_file),
+                "-rfbport", "5900", "-forever", "-shared", "-noxdamage",
+            ]
+            if os.environ.get("SMACX_VIEW_MODE", "view-only") != "interactive":
+                vnc_command.append("-viewonly")
+            start(vnc_command, environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            start([
+                "websockify", "--web", "/usr/share/novnc/",
+                os.environ.get("SMACX_VIEW_PORT", "6080"), "127.0.0.1:5900",
+            ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stream_backend = "novnc"
 
     initialize_wine(environment, worker_root)
     directplay = install_directplay(environment, worker_root)
@@ -443,6 +485,7 @@ def main() -> int:
         "display": display,
         "view_enabled": view_enabled,
         "view_mode": os.environ.get("SMACX_VIEW_MODE", "view-only"),
+        "stream_backend": stream_backend,
         "bridge_proxy_port": proxy_port,
     }
     (worker_root / "worker.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

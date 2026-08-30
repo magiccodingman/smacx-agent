@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/portal/">
+    <Project Path="portal/Smacx.Portal.Client/Smacx.Portal.Client.csproj" />
+    <Project Path="portal/Smacx.Portal.Contracts/Smacx.Portal.Contracts.csproj" />
+    <Project Path="portal/Smacx.Portal.Tests/Smacx.Portal.Tests.csproj" />
+    <Project Path="portal/Smacx.Portal/Smacx.Portal.csproj" />
+  </Folder>
+</Solution>

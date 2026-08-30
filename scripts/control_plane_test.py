@@ -212,6 +212,9 @@ def main() -> int:
             raise AssertionError("LAN seats did not receive distinct ordered perspectives")
         if any(seat["match_id"] != lan["match"]["match_id"] for seat in lan["seats"]):
             raise AssertionError("LAN seats escaped their shared durable match")
+        progressed = control.record_match_progress(lan["match"]["match_id"], 9, 2109)
+        if progressed["last_turn"] != 9 or progressed["last_year"] != 2109:
+            raise AssertionError("public native turn/year progress was not persisted")
 
         with sqlite3.connect(store.path) as connection:
             audit = connection.execute("SELECT audit_id FROM control_audit LIMIT 1").fetchone()
@@ -250,6 +253,7 @@ def main() -> int:
                 "isolated_harness_profile": True,
                 "exact_hermes_descriptor": True,
                 "managed_lan_identity_contract": True,
+                "native_progress_mirror": True,
                 "immutable_audit": True,
             },
         }, separators=(",", ":")))

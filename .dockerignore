@@ -12,3 +12,5 @@ bridge/cmake-build-*
 work
 .venv
 dist
+**/bin
+**/obj

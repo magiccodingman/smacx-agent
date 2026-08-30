@@ -1,0 +1,10 @@
+<header class="page-header">
+    <div><span class="panel-kicker">@Kicker</span><h1>@Title</h1><p>@Description</p></div>
+    @ChildContent
+</header>
+@code {
+    [Parameter, EditorRequired] public string Kicker { get; set; } = "";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public string Description { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -972,11 +972,25 @@ class ControlPlane:
             agent_id, display_name, personality_ref=personality_ref, metadata=metadata,
         )
 
-    def create_solo_match(self, display_name: str, agent_id: str, *,
+    def create_solo_match(self, display_name: str, agent_id: str | None = None, *,
                           match_id: str | None = None,
                           faction_id: int = 1, faction_name: str | None = None,
+                          controller_kind: str = "agent",
+                          human_player_name: str | None = None,
                           ruleset_id: str = "smacx-default",
                           metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        if controller_kind not in {"agent", "human"}:
+            raise InvalidRecord("invalid_solo_controller_kind")
+        if controller_kind == "human":
+            if not isinstance(human_player_name, str) or not 1 <= len(human_player_name) <= 31 \
+                    or not all(32 <= ord(character) <= 126 for character in human_player_name):
+                raise InvalidRecord("invalid_solo_human_player_name")
+            agent_id = _new_id("human")
+            self.store.ensure_agent(agent_id, human_player_name, metadata={
+                "managed_human": True, "match_id": match_id, "solo": True,
+            })
+        if agent_id is None:
+            raise InvalidRecord("solo_agent_required")
         _require_id(agent_id, "agent_id")
         if not 1 <= int(faction_id) <= 7:
             raise InvalidRecord("invalid_faction_id")
@@ -991,39 +1005,52 @@ class ControlPlane:
         )
         perspective = self.store.create_perspective(
             match["match_id"], agent_id, faction_id=int(faction_id),
-            faction_name=faction_name, controller_kind="agent",
+            faction_name=faction_name, controller_kind=controller_kind,
         )
         now = time.time()
         with self.store.transaction() as connection:
             connection.execute(
                 "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
                 "agent_id, perspective_id, faction_id, faction_name, status, metadata_json, "
-                "created_unix, updated_unix) VALUES (?, ?, 0, 'agent', ?, ?, ?, ?, 'assigned', '{}', ?, ?)",
-                (_new_id("seat"), match["match_id"], agent_id, perspective["perspective_id"],
-                 int(faction_id), faction_name, now, now),
+                "created_unix, updated_unix) VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?)",
+                (_new_id("seat"), match["match_id"], controller_kind, agent_id,
+                 perspective["perspective_id"], int(faction_id), faction_name, _json({
+                     "managed": True,
+                     "external_player_name": human_player_name if controller_kind == "human" else None,
+                 }), now, now),
             )
         return {"match": match, "perspective": perspective}
 
     def create_lan_match(self, display_name: str, agent_ids: list[str], *,
                          human_player_names: list[str] | None = None,
+                         managed_human_player_names: list[str] | None = None,
                          host_controller_kind: str = "agent",
                          human_host_name: str | None = None,
+                         human_host_managed: bool = False,
                          match_id: str | None = None,
                          ruleset_id: str = "smacx-small-easy",
                          metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
         display_name = _bounded(display_name, "match_name", 160)
         human_player_names = list(human_player_names or [])
+        managed_human_player_names = list(managed_human_player_names or [])
         if host_controller_kind not in {"agent", "human"}:
             raise InvalidRecord("invalid_lan_host_controller_kind")
-        if not isinstance(agent_ids, list) or not 1 <= len(agent_ids) <= 7:
-            raise InvalidRecord("lan_requires_one_to_seven_agents")
+        if not isinstance(agent_ids, list) or len(agent_ids) > 7:
+            raise InvalidRecord("lan_allows_up_to_seven_agents")
+        if host_controller_kind == "agent" and not agent_ids:
+            raise InvalidRecord("agent_host_requires_an_agent")
         all_human_names = list(human_player_names)
+        all_human_names.extend(managed_human_player_names)
         if host_controller_kind == "human":
             if not isinstance(human_host_name, str):
                 raise InvalidRecord("human_lan_host_name_required")
             all_human_names.insert(0, human_host_name)
+            if not isinstance(human_host_managed, bool):
+                raise InvalidRecord("invalid_human_host_managed")
         elif human_host_name is not None:
             raise InvalidRecord("agent_lan_host_cannot_have_human_host_name")
+        elif human_host_managed:
+            raise InvalidRecord("agent_lan_host_cannot_be_managed_human")
         if not all(isinstance(name, str) and 1 <= len(name) <= 31
                    and all(32 <= ord(character) <= 126 for character in name)
                    for name in all_human_names):
@@ -1043,14 +1070,16 @@ class ControlPlane:
             raise InvalidRecord("reserved_lan_human_player_name")
         for agent_id in agent_ids:
             _require_id(agent_id, "agent_id")
-        with self.store.transaction() as connection:
-            active = {
-                str(row["agent_id"]) for row in connection.execute(
-                    "SELECT agent_id FROM agents WHERE status='active' AND agent_id IN (%s)"
-                    % ",".join("?" for _ in agent_ids),
-                    agent_ids,
-                )
-            }
+        active: set[str] = set()
+        if agent_ids:
+            with self.store.transaction() as connection:
+                active = {
+                    str(row["agent_id"]) for row in connection.execute(
+                        "SELECT agent_id FROM agents WHERE status='active' AND agent_id IN (%s)"
+                        % ",".join("?" for _ in agent_ids),
+                        agent_ids,
+                    )
+                }
         if active != set(agent_ids):
             raise ScopeViolation("unknown_active_lan_agent")
         match_metadata = dict(metadata or {})
@@ -1062,18 +1091,24 @@ class ControlPlane:
         seats: list[dict[str, Any]] = []
         try:
             if host_controller_kind == "human":
-                now = time.time()
-                with self.store.transaction() as connection:
-                    connection.execute(
-                        "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
-                        "status, metadata_json, created_unix, updated_unix) "
-                        "VALUES (?, ?, 0, 'human', 'assigned', ?, ?, ?)",
-                        (_new_id("seat"), match["match_id"], _json({
-                            "role": "host",
-                            "external_player_name": human_host_name,
-                            "network_join_pending": False,
-                        }), now, now),
+                if human_host_managed:
+                    self._create_managed_human_lan_seat(
+                        match["match_id"], 0, str(human_host_name), role="host",
                     )
+                else:
+                    now = time.time()
+                    with self.store.transaction() as connection:
+                        connection.execute(
+                            "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
+                            "status, metadata_json, created_unix, updated_unix) "
+                            "VALUES (?, ?, 0, 'human', 'assigned', ?, ?, ?)",
+                            (_new_id("seat"), match["match_id"], _json({
+                                "role": "host",
+                                "external_player_name": human_host_name,
+                                "managed": False,
+                                "network_join_pending": False,
+                            }), now, now),
+                        )
                 seats.append(self.get_seat(match["match_id"], 0))
             for offset, agent_id in enumerate(agent_ids):
                 seat_index = first_agent_seat + offset
@@ -1092,8 +1127,17 @@ class ControlPlane:
                          now, now),
                     )
                 seats.append(self.get_seat(match["match_id"], seat_index))
-            for offset, player_name in enumerate(human_player_names):
+            for offset, player_name in enumerate(managed_human_player_names):
                 seat_index = first_agent_seat + len(agent_ids) + offset
+                self._create_managed_human_lan_seat(
+                    match["match_id"], seat_index, player_name, role="client",
+                )
+                seats.append(self.get_seat(match["match_id"], seat_index))
+            for offset, player_name in enumerate(human_player_names):
+                seat_index = (
+                    first_agent_seat + len(agent_ids)
+                    + len(managed_human_player_names) + offset
+                )
                 now = time.time()
                 with self.store.transaction() as connection:
                     connection.execute(
@@ -1104,6 +1148,7 @@ class ControlPlane:
                          _json({
                              "role": "client",
                              "external_player_name": player_name,
+                             "managed": False,
                              "network_join_pending": True,
                          }), now, now),
                     )
@@ -1115,6 +1160,33 @@ class ControlPlane:
                 connection.execute("DELETE FROM matches WHERE match_id=? AND status='created'", (match["match_id"],))
             raise
         return {"match": match, "seats": seats}
+
+    def _create_managed_human_lan_seat(
+            self, match_id: str, seat_index: int, player_name: str, *, role: str) -> None:
+        """Create a browser human identity without granting it an agent harness."""
+        human_id = _new_id("human")
+        self.store.ensure_agent(
+            human_id, player_name,
+            metadata={"managed_human": True, "match_id": match_id},
+        )
+        perspective = self.store.create_perspective(
+            match_id, human_id, controller_kind="human",
+            metadata={"seat_index": seat_index, "browser_managed": True},
+        )
+        now = time.time()
+        with self.store.transaction() as connection:
+            connection.execute(
+                "INSERT INTO seat_assignments(seat_id, match_id, seat_index, controller_kind, "
+                "agent_id, perspective_id, status, metadata_json, created_unix, updated_unix) "
+                "VALUES (?, ?, ?, 'human', ?, ?, 'assigned', ?, ?, ?)",
+                (_new_id("seat"), match_id, seat_index, human_id,
+                 perspective["perspective_id"], _json({
+                     "role": role,
+                     "external_player_name": player_name,
+                     "managed": True,
+                     "network_join_pending": role != "host",
+                 }), now, now),
+            )
 
     def get_seat(self, match_id: str, seat_index: int) -> dict[str, Any]:
         _require_id(match_id, "match_id")
@@ -1186,6 +1258,20 @@ class ControlPlane:
         result = dict(updated)
         result["metadata"] = json.loads(result.pop("metadata_json"))
         return result
+
+    def record_match_progress(self, match_id: str, turn: int, year: int) -> dict[str, Any]:
+        """Mirror bridge-observed public progress without changing lifecycle authority."""
+        _require_id(match_id, "match_id")
+        if not 0 <= int(turn) <= 1_000_000 or not -1_000_000 <= int(year) <= 1_000_000:
+            raise InvalidRecord("invalid_match_progress")
+        with self.store.transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE matches SET last_turn=?, last_year=?, updated_unix=? WHERE match_id=?",
+                (int(turn), int(year), time.time(), match_id),
+            )
+            if cursor.rowcount != 1:
+                raise ScopeViolation("unknown_match")
+        return self.get_match(match_id)
 
     def discard_unstarted_match(self, match_id: str, perspective_id: str) -> bool:
         """Remove only a just-created match that never acquired runtime state."""
@@ -1304,7 +1390,9 @@ class ControlPlane:
 
     def prepare_hermes_profile(self, match_id: str, provider_id: str, *,
                                agent_id: str | None = None,
-                               reasoning_effort: str = "low") -> dict[str, Any]:
+                               reasoning_effort: str = "low",
+                               model_id: str | None = None,
+                               context_length: int | None = None) -> dict[str, Any]:
         """Resolve one match seat to its exact provider, worker, and MCP endpoint.
 
         The returned descriptor is intentionally secret-free.  A host adapter
@@ -1341,13 +1429,14 @@ class ControlPlane:
         if network.get("mcp_status") != "running" or not isinstance(mcp_url, str):
             raise ScopeViolation("managed_mcp_not_running")
         provider = self.get_provider(provider_id)
-        model_id = provider.get("default_model_id")
+        model_id = model_id or provider.get("default_model_id")
         model = next(
             (item for item in provider["models"] if item["model_id"] == model_id), None,
         )
         if not model_id or not model:
             raise ScopeViolation("harness_model_not_selected")
-        context_length = provider.get("context_length_override") or model.get("context_length")
+        context_length = context_length or provider.get("context_length_override") \
+            or model.get("context_length")
         external_profile_id = "smacx-" + hashlib.sha256(
             str(seat["agent_id"]).encode("utf-8")
         ).hexdigest()[:20]
