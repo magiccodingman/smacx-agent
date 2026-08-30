@@ -1,7 +1,7 @@
 name: smacx-agent
 
 services:
-  control-center:
+  control-api:
     build:
       context: .
       dockerfile: control_center/Dockerfile
@@ -10,7 +10,7 @@ services:
     environment:
       SMACX_CONTROL_DATA: /var/lib/smacx
       SMACX_CONTROL_HOST: 0.0.0.0
-      SMACX_CONTROL_PORT: 8080
+      SMACX_CONTROL_PORT: 8081
       SMACX_SECURE_COOKIES: ${SMACX_SECURE_COOKIES:-0}
       SMACX_DOCKER_ENABLED: "1"
       SMACX_DOCKER_SOCKET: /var/run/docker.sock
@@ -21,10 +21,8 @@ services:
       SMACX_CONTROL_DATA_VOLUME: smacx-agent_smacx-control-data
       SMACX_DIRECTX_REDIST_HOST: ${SMACX_DIRECTX_REDIST:-}
       SMACX_VIEW_PUBLISH_IP: ${SMACX_VIEW_PUBLISH_IP:-127.0.0.1}
-    ports:
-      # Default is host-local. For a trusted LAN or TLS reverse proxy, set
-      # SMACX_CONTROL_PUBLISH explicitly, for example 0.0.0.0:8080.
-      - "${SMACX_CONTROL_PUBLISH:-127.0.0.1:8080}:8080"
+    expose:
+      - "8081"
     volumes:
       - smacx-control-data:/var/lib/smacx
       - /var/run/docker.sock:/var/run/docker.sock
@@ -34,6 +32,35 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
       - /run:size=16m,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 15s
+
+  control-center:
+    build:
+      context: .
+      dockerfile: portal/Dockerfile
+    image: smacx-agent-portal:dev
+    restart: unless-stopped
+    depends_on:
+      control-api:
+        condition: service_healthy
+    environment:
+      SMACX_CONTROL_URL: http://control-api:8081/
+      SMACX_PORTAL_SERVICE_TOKEN_FILE: /var/lib/smacx-control/secrets/portal-service-token
+      SMACX_PORTAL_DATA: /var/lib/smacx-portal
+    ports:
+      # Host-local by default. Bind to a trusted private LAN explicitly, e.g.
+      # SMACX_PORTAL_PUBLISH=0.0.0.0:8080.
+      - "${SMACX_PORTAL_PUBLISH:-127.0.0.1:8080}:8080"
+    volumes:
+      - smacx-portal-data:/var/lib/smacx-portal
+      - smacx-control-data:/var/lib/smacx-control:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -131,6 +158,7 @@ services:
 
 volumes:
   smacx-control-data:
+  smacx-portal-data:
   smacx-graphiti-data:
 
 networks:

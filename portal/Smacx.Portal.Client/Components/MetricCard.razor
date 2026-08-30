@@ -1,0 +1,11 @@
+<div class="metric-card @Tone">
+    <div class="metric-top"><span>@Label</span><MudIcon Icon="@Icon" /></div>
+    <strong>@Value</strong><small>@Detail</small>
+</div>
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public object Value { get; set; } = "";
+    [Parameter, EditorRequired] public string Detail { get; set; } = "";
+    [Parameter, EditorRequired] public string Icon { get; set; } = "";
+    [Parameter] public string Tone { get; set; } = "mint";
+}

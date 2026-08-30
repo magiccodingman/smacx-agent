@@ -1,0 +1,852 @@
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+using Smacx.Portal.Contracts;
+using Smacx.Portal.Data;
+using Smacx.Portal.Hubs;
+using Smacx.Portal.Infrastructure;
+using Smacx.Portal.Services;
+
+namespace Smacx.Portal.Controllers;
+
+[ApiController]
+[Route("api/lobbies")]
+public sealed class LobbiesController(
+    ApplicationDbContext database,
+    UserManager<ApplicationUser> userManager,
+    ControlPlaneClient control,
+    IHubContext<LobbyHub> lobbyHub) : ControllerBase
+{
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<PublicLobbySummary>>>> List()
+    {
+        var profiles = await database.PortalMatches.AsNoTracking()
+            .Where(match => match.IsListed && match.Status != "deleted")
+            .OrderByDescending(match => match.UpdatedAt)
+            .ToArrayAsync(HttpContext.RequestAborted);
+        var counts = await database.PortalLobbySeats.AsNoTracking()
+            .Where(seat => seat.ControllerKind != "open")
+            .GroupBy(seat => seat.MatchId)
+            .Select(group => new { MatchId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.MatchId, item => item.Count, HttpContext.RequestAborted);
+        var results = profiles.Select(match => new PublicLobbySummary(
+            match.MatchId, match.DisplayName, match.Status, match.CurrentTurn ?? 0,
+            counts.GetValueOrDefault(match.MatchId), match.AllowAnonymousSpectators,
+            match.UpdatedAt)).ToArray();
+        return ApiResponse<IReadOnlyList<PublicLobbySummary>>.Success(results);
+    }
+
+    [HttpGet("{matchId}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ApiResponse<LobbyDetails>>> Get(string matchId)
+    {
+        var profile = await database.PortalMatches.AsNoTracking()
+            .SingleOrDefaultAsync(match => match.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null || !profile.IsListed && !CanManage(profile))
+        {
+            return NotFound(ApiResponse<LobbyDetails>.Failure("lobby_not_found", "The lobby was not found."));
+        }
+        return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
+    }
+
+    [HttpPost]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<LobbyDetails>>> Create(CreateLobbyRequest request)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null)
+        {
+            return Unauthorized(ApiResponse<LobbyDetails>.Failure("authentication_required", "Sign in to create a lobby."));
+        }
+        var validation = Validate(request);
+        if (validation is not null)
+        {
+            return BadRequest(ApiResponse<LobbyDetails>.Failure(validation.Value.Code, validation.Value.Message));
+        }
+
+        var matchId = $"match-{Guid.NewGuid():N}";
+        var now = DateTimeOffset.UtcNow;
+        var profile = new PortalMatchProfile
+        {
+            MatchId = matchId,
+            OwnerUserId = user.Id,
+            DisplayName = request.DisplayName.Trim(),
+            Status = "waiting",
+            Mode = request.Mode,
+            GameSourceId = request.GameSourceId,
+            RuntimeId = request.RuntimeId,
+            LanProfile = ResolveProfile(request.WorldSize),
+            SettingsJson = JsonSerializer.Serialize(new
+            {
+                request.WorldSize,
+                request.Difficulty,
+                request.RandomMap,
+                request.DoOrDie,
+                request.NativeBotCount,
+                request.NativeBotDifficulty,
+                request.HostController,
+                request.OwnerPlays,
+                request.TimeControl,
+                request.OceanCoverage,
+                request.ErosiveForces,
+                request.NativeLife,
+                request.CloudCover,
+                request.RuleOptions,
+                request.ScenarioId,
+                request.ResumeSlot,
+            }),
+            NativeSettingsJson = JsonSerializer.Serialize(new
+            {
+                difficulty = DifficultyId(request.Difficulty),
+                time_control = request.TimeControl,
+                world_size = WorldSizeId(request.WorldSize),
+                ocean_coverage = request.OceanCoverage,
+                erosive_forces = request.ErosiveForces,
+                native_life = request.NativeLife,
+                cloud_cover = request.CloudCover,
+                victory_transcendence = Rule(request, "victory_transcendence", true),
+                victory_conquest = Rule(request, "victory_conquest", true),
+                victory_diplomatic = Rule(request, "victory_diplomatic", true),
+                victory_economic = Rule(request, "victory_economic", true),
+                victory_cooperative = Rule(request, "victory_cooperative", !request.DoOrDie),
+                do_or_die = request.DoOrDie,
+                look_first = Rule(request, "look_first", false),
+                tech_stagnation = Rule(request, "tech_stagnation", false),
+                spoils_of_war = Rule(request, "spoils_of_war", true),
+                blind_research = Rule(request, "blind_research", true),
+                intense_rivalry = Rule(request, "intense_rivalry", false),
+                unity_survey = Rule(request, "unity_survey", false),
+                unity_scattering = Rule(request, "unity_scattering", false),
+                random_events = Rule(request, "random_events", true),
+                time_warp = Rule(request, "time_warp", false),
+                ironman = Rule(request, "ironman", false),
+            }),
+            AllowAnonymousSpectators = request.AllowAnonymousSpectators,
+            ManagedClientsOnly = request.ManagedClientsOnly,
+            RankingMode = "unranked",
+            GraphitiEnabled = request.GraphitiEnabled,
+            PersonalityCardId = "none",
+            ScenarioId = string.IsNullOrWhiteSpace(request.ScenarioId) ? null : request.ScenarioId,
+            ResumeSlot = string.IsNullOrWhiteSpace(request.ResumeSlot) ? null : request.ResumeSlot,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        database.PortalMatches.Add(profile);
+        database.PortalMatchMembers.Add(new PortalMatchMember
+        {
+            MatchId = matchId,
+            UserId = user.Id,
+            Role = "owner",
+            JoinMode = "browser",
+            JoinedAt = now,
+        });
+
+        var seatIndex = 0;
+        if (request.HostController == "agent")
+        {
+            AddAgentSeats(request.AgentIds, ref seatIndex, matchId, now);
+            if (request.OwnerPlays)
+            {
+                AddHumanSeat(user.Id, user.GameHandle, request.HumanJoinMode, ref seatIndex, matchId, now);
+            }
+        }
+        else
+        {
+            AddHumanSeat(user.Id, user.GameHandle, request.HumanJoinMode, ref seatIndex, matchId, now);
+            AddAgentSeats(request.AgentIds, ref seatIndex, matchId, now);
+        }
+        foreach (var handle in request.InvitedHumanHandles)
+        {
+            var invited = await EnsureLobbyUserAsync(handle.Trim());
+            AddHumanSeat(invited.Id, invited.GameHandle, request.HumanJoinMode,
+                ref seatIndex, matchId, now);
+        }
+        for (var index = 0; index < request.NativeBotCount; index++)
+        {
+            database.PortalLobbySeats.Add(new PortalLobbySeat
+            {
+                MatchId = matchId,
+                SeatIndex = seatIndex++,
+                ControllerKind = "native",
+                PlayerHandle = $"Native bot {index + 1}",
+                Status = "assigned",
+                UpdatedAt = now,
+            });
+        }
+        while (seatIndex < 7)
+        {
+            database.PortalLobbySeats.Add(new PortalLobbySeat
+            {
+                MatchId = matchId,
+                SeatIndex = seatIndex++,
+                ControllerKind = "open",
+                Status = "open",
+                UpdatedAt = now,
+            });
+        }
+        await database.SaveChangesAsync(HttpContext.RequestAborted);
+
+        if (request.StartNow)
+        {
+            var started = await MaterializeAsync(profile, HttpContext.RequestAborted);
+            if (started is not null)
+            {
+                return StatusCode(started.Value.Status, ApiResponse<LobbyDetails>.Failure(
+                    started.Value.Code, started.Value.Message));
+            }
+        }
+        return CreatedAtAction(nameof(Get), new { matchId },
+            ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile)));
+    }
+
+    [HttpPost("{matchId}/join")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<LobbyDetails>>> Join(
+        string matchId, JoinLobbyRequest request)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+        if (request.JoinMode is not ("browser" or "native"))
+            return BadRequest(ApiResponse<LobbyDetails>.Failure(
+                "invalid_join_mode", "Choose browser-managed or direct native play."));
+        var profile = await database.PortalMatches.SingleOrDefaultAsync(
+            item => item.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null || profile.Status != "waiting")
+            return Conflict(ApiResponse<LobbyDetails>.Failure(
+                "lobby_not_joinable", "This lobby is not accepting seat changes."));
+        if (profile.ManagedClientsOnly && request.JoinMode != "browser")
+            return BadRequest(ApiResponse<LobbyDetails>.Failure(
+                "managed_clients_required", "This lobby requires browser-managed seats."));
+        var seat = await database.PortalLobbySeats.SingleOrDefaultAsync(
+            item => item.MatchId == matchId && item.SeatIndex == request.SeatIndex,
+            HttpContext.RequestAborted);
+        if (seat is null || seat.ControllerKind is not ("open" or "human") ||
+            seat.UserId is not null && seat.UserId != user.Id ||
+            seat.ControllerKind == "human" && seat.PlayerHandle is not null &&
+            !seat.PlayerHandle.Equals(user.GameHandle, StringComparison.OrdinalIgnoreCase))
+            return Conflict(ApiResponse<LobbyDetails>.Failure(
+                "seat_unavailable", "That seat is no longer available to this player."));
+        var old = await database.PortalLobbySeats.SingleOrDefaultAsync(
+            item => item.MatchId == matchId && item.UserId == user.Id && item.SeatIndex != request.SeatIndex,
+            HttpContext.RequestAborted);
+        if (old is not null)
+        {
+            old.ControllerKind = "open"; old.UserId = null; old.PlayerHandle = null;
+            old.Status = "open"; old.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        seat.ControllerKind = "human"; seat.UserId = user.Id; seat.PlayerHandle = user.GameHandle;
+        seat.JoinMode = request.JoinMode; seat.Status = "ready"; seat.UpdatedAt = DateTimeOffset.UtcNow;
+        var member = await database.PortalMatchMembers.SingleOrDefaultAsync(
+            item => item.MatchId == matchId && item.UserId == user.Id, HttpContext.RequestAborted);
+        if (member is null)
+            database.PortalMatchMembers.Add(new PortalMatchMember
+            {
+                MatchId = matchId, UserId = user.Id, SeatIndex = request.SeatIndex,
+                Role = "player", JoinMode = request.JoinMode,
+            });
+        else
+        {
+            member.SeatIndex = request.SeatIndex; member.JoinMode = request.JoinMode;
+            member.LeftAt = null;
+        }
+        profile.UpdatedAt = DateTimeOffset.UtcNow;
+        await database.SaveChangesAsync(HttpContext.RequestAborted);
+        await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+            "LobbyChanged", matchId, HttpContext.RequestAborted);
+        return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
+    }
+
+    [HttpPost("{matchId}/lifecycle")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<LobbyDetails>>> Lifecycle(
+        string matchId, MatchLifecycleRequest request)
+    {
+        var profile = await database.PortalMatches.SingleOrDefaultAsync(
+            item => item.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null) return NotFound();
+        if (!CanManage(profile)) return Forbid();
+        try
+        {
+            switch (request.Action)
+            {
+                case "park":
+                    // Claim the lifecycle before any slow operation so the
+                    // supervisor cannot replace a stopped Hermes run while a
+                    // native checkpoint is being taken.
+                    profile.Status = "parking";
+                    profile.LastError = null;
+                    profile.UpdatedAt = DateTimeOffset.UtcNow;
+                    await database.SaveChangesAsync(HttpContext.RequestAborted);
+                    await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                        "LobbyChanged", matchId, HttpContext.RequestAborted);
+                    await StopAgentRunsAsync(matchId, HttpContext.RequestAborted);
+                    await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint",
+                        new { slot = request.Slot ?? "control_recovery" });
+                    await control.PostRawAsync($"api/v1/matches/{matchId}/park", new { });
+                    break;
+                case "checkpoint": await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint", new { slot = request.Slot ?? "control_recovery" }); break;
+                case "recover": await control.PostRawAsync($"api/v1/matches/{matchId}/recover", new { }); break;
+                default: return BadRequest(ApiResponse<LobbyDetails>.Failure(
+                    "invalid_lifecycle_action", "Choose park, checkpoint, or recover."));
+            }
+            profile.Status = request.Action == "park" ? "parked" : "running";
+            profile.LastError = null; profile.UpdatedAt = DateTimeOffset.UtcNow;
+            database.PortalMatchEvents.Add(new PortalMatchEvent
+            {
+                MatchId = matchId, EventType = request.Action,
+                Summary = $"Match {request.Action} completed.",
+            });
+            await database.SaveChangesAsync(HttpContext.RequestAborted);
+            return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
+        }
+        catch (ControlPlaneException exception)
+        {
+            if (request.Action == "park")
+            {
+                profile.Status = "running";
+                profile.LastError = exception.Message[..Math.Min(exception.Message.Length, 4000)];
+                profile.UpdatedAt = DateTimeOffset.UtcNow;
+                database.PortalMatchEvents.Add(new PortalMatchEvent
+                {
+                    MatchId = matchId, EventType = "park_failed",
+                    Summary = $"Parking failed safely: {exception.Message}",
+                });
+                await database.SaveChangesAsync(CancellationToken.None);
+                await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                    "LobbyChanged", matchId, CancellationToken.None);
+            }
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<LobbyDetails>.Failure(exception.Code, exception.Message));
+        }
+    }
+
+    private async Task StopAgentRunsAsync(string matchId, CancellationToken cancellationToken)
+    {
+        using var document = await control.GetRawAsync("api/v1/harness-runs", cancellationToken);
+        var active = document.RootElement.GetProperty("harness_runs").EnumerateArray()
+            .Where(run => run.GetProperty("match_id").GetString() == matchId &&
+                run.GetProperty("status").GetString() is "queued" or "starting" or
+                    "running" or "restarting")
+            .Select(run => run.GetProperty("run_id").GetString())
+            .Where(runId => !string.IsNullOrWhiteSpace(runId))
+            .ToArray();
+        foreach (var runId in active)
+        {
+            using (await control.PostRawAsync(
+                $"api/v1/harness-runs/{Uri.EscapeDataString(runId!)}/stop", new { },
+                cancellationToken)) { }
+        }
+    }
+
+    [HttpPost("{matchId}/start")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<LobbyDetails>>> Start(string matchId)
+    {
+        var profile = await database.PortalMatches.SingleOrDefaultAsync(
+            match => match.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null)
+        {
+            return NotFound(ApiResponse<LobbyDetails>.Failure("lobby_not_found", "The lobby was not found."));
+        }
+        if (!CanManage(profile))
+        {
+            return Forbid();
+        }
+        if (profile.Status != "waiting")
+        {
+            return Conflict(ApiResponse<LobbyDetails>.Failure(
+                "lobby_not_waiting", "Only a waiting lobby can be started."));
+        }
+        var failure = await MaterializeAsync(profile, HttpContext.RequestAborted);
+        if (failure is not null)
+        {
+            return StatusCode(failure.Value.Status,
+                ApiResponse<LobbyDetails>.Failure(failure.Value.Code, failure.Value.Message));
+        }
+        await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+            "LobbyChanged", matchId, HttpContext.RequestAborted);
+        return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
+    }
+
+    [HttpGet("{matchId}/messages")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<LobbyMessage>>>> Messages(string matchId)
+    {
+        if (!await database.PortalMatches.AsNoTracking().AnyAsync(
+                match => match.MatchId == matchId && match.IsListed, HttpContext.RequestAborted))
+        {
+            return NotFound(ApiResponse<IReadOnlyList<LobbyMessage>>.Failure(
+                "lobby_not_found", "The lobby was not found."));
+        }
+        var messages = await database.PortalLobbyMessages.AsNoTracking()
+            .Where(message => message.MatchId == matchId)
+            .OrderByDescending(message => message.CreatedAt)
+            .Take(200)
+            .OrderBy(message => message.CreatedAt)
+            .ToArrayAsync(HttpContext.RequestAborted);
+        return ApiResponse<IReadOnlyList<LobbyMessage>>.Success(messages.Select(ToMessage).ToArray());
+    }
+
+    [HttpPost("{matchId}/messages")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<LobbyMessage>>> SendMessage(
+        string matchId, SendLobbyMessageRequest request)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null)
+        {
+            return Unauthorized(ApiResponse<LobbyMessage>.Failure("authentication_required", "Sign in to chat."));
+        }
+        var content = request.Content.Trim();
+        if (content.Length is < 1 or > 1000 || content.Any(character => char.IsControl(character) && character != '\n'))
+        {
+            return BadRequest(ApiResponse<LobbyMessage>.Failure(
+                "invalid_message", "Messages must contain 1–1000 printable characters."));
+        }
+        if (!await database.PortalMatches.AnyAsync(
+                match => match.MatchId == matchId && match.IsListed, HttpContext.RequestAborted))
+        {
+            return NotFound(ApiResponse<LobbyMessage>.Failure("lobby_not_found", "The lobby was not found."));
+        }
+        if (request.RecipientFactionId is < 0 or > 7)
+        {
+            return BadRequest(ApiResponse<LobbyMessage>.Failure(
+                "invalid_chat_recipient", "Choose everyone or a known faction."));
+        }
+        var entity = new PortalLobbyMessage
+        {
+            MatchId = matchId,
+            UserId = user.Id,
+            SenderHandle = user.GameHandle,
+            Content = content,
+            DeliveredToGame = false,
+            NativeMessageUid = $"portal:{Guid.NewGuid():N}:to:{request.RecipientFactionId}",
+        };
+        database.PortalLobbyMessages.Add(entity);
+        var profile = await database.PortalMatches.AsNoTracking().SingleAsync(
+            match => match.MatchId == matchId, HttpContext.RequestAborted);
+        var managedSeat = await database.PortalLobbySeats.AsNoTracking().SingleOrDefaultAsync(
+            seat => seat.MatchId == matchId && seat.UserId == user.Id &&
+                seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
+                seat.ControlInstanceId != null, HttpContext.RequestAborted);
+        if (profile.Status == "running" && managedSeat?.ControlInstanceId is not null)
+        {
+            try
+            {
+                using var delivered = await control.PostRawAsync(
+                    $"api/v1/workers/{managedSeat.ControlInstanceId}/chat", new
+                    {
+                        action = "send", text = content,
+                        recipient_faction_id = request.RecipientFactionId,
+                        client_message_id = entity.Id,
+                    }, HttpContext.RequestAborted);
+                entity.DeliveredToGame = delivered.RootElement.TryGetProperty("sent", out var sent)
+                    && sent.GetBoolean();
+            }
+            catch (ControlPlaneException)
+            {
+                // Preserve the portal message with an explicit undelivered flag.
+                // The user can see that native transport was unavailable.
+            }
+        }
+        await database.SaveChangesAsync(HttpContext.RequestAborted);
+        var message = ToMessage(entity);
+        await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+            "LobbyMessage", message, HttpContext.RequestAborted);
+        return ApiResponse<LobbyMessage>.Success(message);
+    }
+
+    private async Task<(int Status, string Code, string Message)?> MaterializeAsync(
+        PortalMatchProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var seats = await database.PortalLobbySeats.Where(seat => seat.MatchId == profile.MatchId)
+            .OrderBy(seat => seat.SeatIndex).ToArrayAsync(cancellationToken);
+        var assigned = seats.Where(seat => seat.ControllerKind != "open").ToArray();
+        if (assigned.Length is < 1 or > 7)
+        {
+            return (400, "invalid_participant_count", "Assign between one and seven players before starting.");
+        }
+        var agents = assigned.Where(seat => seat.ControllerKind == "agent")
+            .Select(seat => seat.AgentId!).ToArray();
+        var humans = assigned.Where(seat => seat.ControllerKind == "human").ToArray();
+        var managedHumans = humans.Where(seat => seat.JoinMode == "browser").ToArray();
+        var externalHumans = humans.Where(seat => seat.JoinMode == "native").ToArray();
+        var networkSeatCount = agents.Length + humans.Length;
+        if (networkSeatCount == 1)
+        {
+            var only = assigned.Single(item => item.ControllerKind is "agent" or "human");
+            if (only.ControllerKind == "human" && only.JoinMode != "browser")
+                return (400, "solo_requires_managed_client",
+                    "A portal-managed solo game requires a browser human or AI seat.");
+            try
+            {
+                var settings = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(profile.SettingsJson)!;
+                using var created = await control.PostRawAsync("api/v1/matches/solo", new
+                {
+                    match_id = profile.MatchId,
+                    display_name = profile.DisplayName,
+                    controller_kind = only.ControllerKind,
+                    agent_id = only.AgentId,
+                    human_player_name = only.PlayerHandle,
+                    faction_id = 1,
+                    game_source_id = profile.GameSourceId,
+                    runtime_id = profile.RuntimeId,
+                    view_enabled = true,
+                    graphiti_enabled = profile.GraphitiEnabled,
+                    autostart = new
+                    {
+                        enabled = true,
+                        difficulty = settings["Difficulty"].GetString() is { } difficulty
+                            ? DifficultyId(difficulty) : 2,
+                        world_size = settings["WorldSize"].GetString() is { } world
+                            ? WorldSizeId(world) : 1,
+                        faction_id = 1,
+                        blind_research = true,
+                        initial_research_priority = 0,
+                        narrative_ui = false,
+                        tutorial_ui = false,
+                        scenario_id = profile.ScenarioId,
+                        startup_save = profile.ResumeSlot,
+                        game_settings = StandaloneSettings(profile.NativeSettingsJson),
+                    },
+                }, cancellationToken);
+                only.ControlInstanceId = created.RootElement.GetProperty("worker")
+                    .GetProperty("instance_id").GetString();
+                only.Status = "provisioned";
+                foreach (var openSeat in seats.Where(seat => seat.ControllerKind == "open"))
+                {
+                    openSeat.ControllerKind = "native";
+                    openSeat.PlayerHandle = $"Native bot {openSeat.SeatIndex + 1}";
+                    openSeat.Status = "assigned";
+                }
+                profile.Mode = "singleplayer";
+                profile.Status = "provisioning";
+                profile.UpdatedAt = DateTimeOffset.UtcNow;
+                await database.SaveChangesAsync(cancellationToken);
+                return null;
+            }
+            catch (ControlPlaneException exception)
+            {
+                return (exception.StatusCode ?? 502, exception.Code, exception.Message);
+            }
+        }
+        if (networkSeatCount < 2)
+        {
+            return (400, "lan_requires_two_network_players",
+                "A LAN match needs at least two human or AI seats; unused factions are controlled by the game.");
+        }
+        foreach (var openSeat in seats.Where(seat => seat.ControllerKind == "open"))
+        {
+            openSeat.ControllerKind = "native";
+            openSeat.PlayerHandle = $"Native bot {openSeat.SeatIndex + 1}";
+            openSeat.Status = "assigned";
+            openSeat.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        var hostKind = assigned[0].ControllerKind == "agent" ? "agent" : "human";
+        try
+        {
+            var created = await control.CreateLanMatchAsync(new
+            {
+                match_id = profile.MatchId,
+                display_name = profile.DisplayName,
+                agent_ids = agents,
+                human_player_names = externalHumans
+                    .Where(seat => hostKind != "human" || seat.SeatIndex != 0)
+                    .Select(seat => seat.PlayerHandle).ToArray(),
+                managed_human_player_names = managedHumans
+                    .Where(seat => hostKind != "human" || seat.SeatIndex != 0)
+                    .Select(seat => seat.PlayerHandle).ToArray(),
+                host_controller_kind = hostKind,
+                human_host_name = hostKind == "human" ? humans[0].PlayerHandle : null,
+                human_host_managed = hostKind == "human" && humans[0].JoinMode == "browser",
+                game_source_id = profile.GameSourceId,
+                runtime_id = profile.RuntimeId,
+                profile = profile.LanProfile,
+                session_name = profile.DisplayName[..Math.Min(profile.DisplayName.Length, 31)],
+                view_enabled = true,
+                graphiti_enabled = profile.GraphitiEnabled,
+                start_now = false,
+            }, cancellationToken);
+            foreach (var controlSeat in created.Seats)
+            {
+                var portalSeat = seats.SingleOrDefault(seat => seat.SeatIndex == controlSeat.SeatIndex);
+                if (portalSeat is not null)
+                {
+                    portalSeat.ControlInstanceId = controlSeat.InstanceId;
+                    portalSeat.Status = controlSeat.Managed ? "provisioned" : portalSeat.Status;
+                    portalSeat.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+            }
+            profile.Status = "provisioning";
+            profile.UpdatedAt = DateTimeOffset.UtcNow;
+            await database.SaveChangesAsync(cancellationToken);
+            return null;
+        }
+        catch (ControlPlaneException exception)
+        {
+            return (exception.StatusCode is >= 400 and < 600 ? exception.StatusCode.Value : 502,
+                exception.Code, exception.Message);
+        }
+    }
+
+    private async Task<LobbyDetails> MapDetailsAsync(PortalMatchProfile profile)
+    {
+        var seatEntities = await database.PortalLobbySeats.AsNoTracking()
+            .Where(seat => seat.MatchId == profile.MatchId)
+            .OrderBy(seat => seat.SeatIndex)
+            .ToArrayAsync(HttpContext.RequestAborted);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var administrator = User.IsInRole("Administrator");
+        var seats = seatEntities.Select(seat =>
+        {
+            var canControl = userId is not null && seat.UserId == userId
+                && seat.ControllerKind == "human" && seat.JoinMode == "browser";
+            var canSpectate = seat.ControlInstanceId is not null
+                && (canControl || administrator || profile.AllowAnonymousSpectators);
+            var canJoin = profile.Status == "waiting" && userId is not null &&
+                (seat.ControllerKind == "open" || seat.ControllerKind == "human" &&
+                    seat.UserId == userId);
+            return new LobbySeatSummary(
+                seat.SeatIndex, seat.ControllerKind, seat.AgentId, seat.PlayerHandle,
+                seat.FactionId, seat.FactionName, seat.Status,
+                seat.ControlInstanceId is not null, seat.ControlInstanceId, seat.JoinMode,
+                canControl, canSpectate, canJoin);
+        }).ToArray();
+        var nativeJoin = await ReadNativeJoinAsync(profile.MatchId);
+        return new LobbyDetails(
+            profile.MatchId, profile.DisplayName, profile.Mode, profile.Status,
+            profile.LanProfile, profile.CurrentTurn, profile.CurrentYear, profile.IsListed,
+            profile.AllowAnonymousSpectators, profile.ManagedClientsOnly,
+            profile.RankingMode, profile.GraphitiEnabled, profile.PersonalityCardId,
+            CanManage(profile), seats, ReadSettings(profile.SettingsJson), nativeJoin, profile.LastError,
+            profile.CreatedAt, profile.UpdatedAt);
+    }
+
+    private async Task<NativeJoinDetails?> ReadNativeJoinAsync(string matchId)
+    {
+        var value = await database.PortalSettings.AsNoTracking()
+            .Where(item => item.Key == $"native-join:{matchId}")
+            .Select(item => item.Value)
+            .SingleOrDefaultAsync(HttpContext.RequestAborted);
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        try { return JsonSerializer.Deserialize<NativeJoinDetails>(value); }
+        catch (JsonException) { return null; }
+    }
+
+    private static LobbyMessage ToMessage(PortalLobbyMessage message)
+    {
+        var marker = message.NativeMessageUid ?? string.Empty;
+        var sender = MarkerFaction(marker, ":from:");
+        var recipient = MarkerFaction(marker, ":to:") ?? 0;
+        return new LobbyMessage(
+            message.Id, message.MatchId, message.SenderHandle, message.Content,
+            message.DeliveredToGame, sender, recipient, message.CreatedAt);
+    }
+
+    private static int? MarkerFaction(string value, string marker)
+    {
+        var index = value.LastIndexOf(marker, StringComparison.Ordinal);
+        return index >= 0 && int.TryParse(value[(index + marker.Length)..], out var faction)
+            ? faction : null;
+    }
+
+    private bool CanManage(PortalMatchProfile profile) =>
+        User.IsInRole("Administrator") || User.FindFirstValue(ClaimTypes.NameIdentifier) == profile.OwnerUserId;
+
+    private void AddAgentSeats(
+        IReadOnlyList<string> agents, ref int seatIndex, string matchId, DateTimeOffset now)
+    {
+        foreach (var agent in agents)
+        {
+            var profile = database.PortalAiProfileVersions.Local.FirstOrDefault(item => item.AgentId == agent)
+                ?? database.PortalAiProfileVersions.AsNoTracking().FirstOrDefault(item => item.AgentId == agent);
+            database.PortalLobbySeats.Add(new PortalLobbySeat
+            {
+                MatchId = matchId, SeatIndex = seatIndex++, ControllerKind = "agent",
+                AgentId = agent,
+                AiProfileVersionId = profile?.ProfileVersionId,
+                PlayerHandle = profile is null ? "AI player" : $"{profile.DisplayName} v{profile.Version}",
+                Status = "assigned", UpdatedAt = now,
+            });
+        }
+    }
+
+    private void AddHumanSeat(
+        string? userId, string handle, string joinMode,
+        ref int seatIndex, string matchId, DateTimeOffset now)
+    {
+        database.PortalLobbySeats.Add(new PortalLobbySeat
+        {
+            MatchId = matchId, SeatIndex = seatIndex++, ControllerKind = "human",
+            UserId = userId, PlayerHandle = handle, Status = userId is null ? "invited" : "ready",
+            JoinMode = joinMode,
+            UpdatedAt = now,
+        });
+        if (userId is not null)
+        {
+            var member = database.PortalMatchMembers.Local.FirstOrDefault(item =>
+                item.MatchId == matchId && item.UserId == userId);
+            if (member is null)
+            {
+                member = new PortalMatchMember
+                {
+                    MatchId = matchId, UserId = userId, Role = "player",
+                    JoinMode = joinMode, JoinedAt = now,
+                };
+                database.PortalMatchMembers.Add(member);
+            }
+            member.SeatIndex = seatIndex - 1;
+        }
+    }
+
+    private async Task<ApplicationUser> EnsureLobbyUserAsync(string handle)
+    {
+        var existing = await userManager.FindByNameAsync(handle);
+        if (existing is not null) return existing;
+        var provisional = new ApplicationUser
+        {
+            UserName = handle,
+            DisplayName = handle,
+            GameHandle = handle,
+            NormalizedGameHandle = userManager.NormalizeName(handle)!,
+            EmailConfirmed = true,
+            IsProvisional = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        var created = await userManager.CreateAsync(provisional);
+        if (!created.Succeeded)
+            throw new InvalidOperationException(
+                "Could not reserve the invited LAN handle: " +
+                string.Join(" ", created.Errors.Select(item => item.Description)));
+        var role = await userManager.AddToRoleAsync(provisional, PortalRoles.Member);
+        if (!role.Succeeded)
+            throw new InvalidOperationException(
+                "Could not assign the invited LAN account role: " +
+                string.Join(" ", role.Errors.Select(item => item.Description)));
+        return provisional;
+    }
+
+    private static (string Code, string Message)? Validate(CreateLobbyRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 160)
+            return ("invalid_lobby_name", "Lobby names must contain 1–160 characters.");
+        if (request.RankingMode != "unranked")
+            return ("ranked_not_available", "All matches are currently unranked.");
+        if (request.Mode is not ("standard" or "scenario"))
+            return ("invalid_start_mode", "Choose a standard game or an installed scenario.");
+        if (request.WorldSize is not ("tiny" or "small" or "standard" or "large" or "huge"))
+            return ("invalid_world_size", "Choose a supported native planet size.");
+        if (request.Difficulty is not ("citizen" or "specialist" or "talent" or
+                "librarian" or "thinker" or "transcend") ||
+            request.NativeBotDifficulty is not ("citizen" or "specialist" or "talent" or
+                "librarian" or "thinker" or "transcend"))
+            return ("invalid_difficulty", "Choose a supported native difficulty.");
+        if (request.PersonalityCardId != "none")
+            return ("personality_not_available", "Only the None personality card is currently available.");
+        if (request.HostController is not ("human" or "agent"))
+            return ("invalid_host_controller", "Choose a human or agent host.");
+        if (request.HumanJoinMode is not ("browser" or "native"))
+            return ("invalid_human_join_mode", "Choose browser-managed or native human clients.");
+        if (request.ManagedClientsOnly && request.HumanJoinMode != "browser")
+            return ("managed_clients_required", "Managed-only lobbies require browser human seats.");
+        if (request.HostController == "agent" && request.AgentIds.Count == 0)
+            return ("agent_host_required", "An agent-hosted lobby requires at least one agent.");
+        if (request.NativeBotCount is < 0 or > 6)
+            return ("invalid_native_bot_count", "Choose between zero and six native bots.");
+        if (request.AgentIds.Distinct(StringComparer.Ordinal).Count() != request.AgentIds.Count)
+            return ("duplicate_agent", "An agent profile can occupy only one seat.");
+        if (request.InvitedHumanHandles.Any(handle =>
+                string.IsNullOrWhiteSpace(handle) || handle.Trim().Length > 31 ||
+                handle.Any(character => character < 32 || character > 126)))
+            return ("invalid_player_handle", "Player handles must contain 1–31 printable characters.");
+        var ownerSeats = request.HostController == "human" || request.OwnerPlays ? 1 : 0;
+        if (ownerSeats + request.AgentIds.Count + request.InvitedHumanHandles.Count + request.NativeBotCount > 7)
+            return ("too_many_seats", "A lobby supports at most seven players.");
+        if (request.TimeControl is < 0 or > 4 || request.OceanCoverage is < 0 or > 2 ||
+            request.ErosiveForces is < 0 or > 2 || request.NativeLife is < 0 or > 2 ||
+            request.CloudCover is < 0 or > 2)
+            return ("invalid_native_setting", "One or more native setup choices are outside the game range.");
+        var knownRules = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "victory_transcendence", "victory_conquest", "victory_diplomatic",
+            "victory_economic", "victory_cooperative", "look_first", "tech_stagnation",
+            "spoils_of_war", "blind_research", "intense_rivalry", "unity_survey",
+            "unity_scattering", "random_events", "time_warp", "ironman",
+        };
+        if (request.RuleOptions?.Keys.Any(key => !knownRules.Contains(key)) == true)
+            return ("unknown_native_rule", "The request contains an unsupported game rule.");
+        if (request.ScenarioId is not null && request.ResumeSlot is not null)
+            return ("conflicting_startup_mode", "Choose a scenario or a saved game, not both.");
+        if (request.Mode == "scenario" && string.IsNullOrWhiteSpace(request.ScenarioId))
+            return ("scenario_required", "Choose an installed scenario before launching scenario mode.");
+        if (request.ResumeSlot is not null && !System.Text.RegularExpressions.Regex.IsMatch(
+                request.ResumeSlot, "^[A-Za-z0-9_-]{1,32}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            return ("invalid_resume_slot", "Save slots use 1–32 letters, numbers, underscores, or hyphens.");
+        return null;
+    }
+
+    private static bool Rule(CreateLobbyRequest request, string name, bool fallback) =>
+        request.RuleOptions?.TryGetValue(name, out var enabled) == true ? enabled : fallback;
+
+    private static IReadOnlyDictionary<string, object?> ReadSettings(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.EnumerateObject().ToDictionary(
+            property => property.Name,
+            property => property.Value.ValueKind switch
+            {
+                JsonValueKind.String => (object?)property.Value.GetString(),
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Number when property.Value.TryGetInt64(out var number) => number,
+                _ => property.Value.GetRawText(),
+            });
+    }
+
+    private static IReadOnlyDictionary<string, object?> StandaloneSettings(string nativeJson)
+    {
+        using var document = JsonDocument.Parse(nativeJson);
+        var root = document.RootElement;
+        var result = new Dictionary<string, object?>
+        {
+            ["map_generation"] = "random",
+            ["world_size"] = root.GetProperty("world_size").GetInt32(),
+        };
+        foreach (var property in root.EnumerateObject())
+        {
+            if (property.Name is "difficulty" or "time_control" or "ocean_coverage" or
+                "erosive_forces" or "native_life" or "cloud_cover") continue;
+            if (property.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                result[property.Name] = property.Value.GetBoolean();
+        }
+        return result;
+    }
+
+    private static string ResolveProfile(string worldSize) => worldSize switch
+    {
+        "tiny" => "tiny_citizen",
+        "small" => "small_easy",
+        "standard" => "standard_librarian",
+        "large" => "large_thinker",
+        "huge" => "huge_transcend",
+        _ => "small_easy",
+    };
+
+    private static int WorldSizeId(string worldSize) => worldSize switch
+    {
+        "tiny" => 0, "small" => 1, "standard" => 2, "large" => 3, "huge" => 4, _ => 1,
+    };
+
+    private static int DifficultyId(string difficulty) => difficulty switch
+    {
+        "citizen" => 0, "specialist" => 1, "talent" => 2,
+        "librarian" => 3, "thinker" => 4, "transcend" => 5, _ => 2,
+    };
+}

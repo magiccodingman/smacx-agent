@@ -4,7 +4,7 @@ SMACX Agent ships a small, project-authored Alien Crossfire mechanics corpus.
 It is general game knowledge, not match memory: it cannot contain a current
 map, unseen factions, private chat, save data, or another player's state.
 
-The distributable baseline is a focused 18-document primer, not a claim to
+The distributable baseline is a focused 22-document primer, not a claim to
 contain every official manual, Datalinks entry, scenario rule, or numeric
 table. Exact match settings and live semantic choices remain authoritative.
 
@@ -12,16 +12,17 @@ The corpus is deliberately a reference rather than a walkthrough. It covers
 the turn loop, economy, bases and citizens, expansion, terraforming, ecology,
 research, unit design, combat, Social Engineering, diplomacy, Council votes,
 probe operations, victory paths, all original and Alien Crossfire faction
-families, and multiplayer continuity. It explains mechanics without a build
-order, walkthrough, exploit, scenario solution, or advice about how to cheese
-the game.
+families, multiplayer continuity, planet/difficulty setup, advanced rules,
+scenario/save behavior, and multiplayer clock semantics. It explains mechanics
+without a build order, walkthrough, exploit, scenario solution, or advice about
+how to cheese the game.
 
-When an operator validates a legal installation, Control Center also builds a
+When an operator validates their installation, Control Center also builds a
 private local index from an explicit allowlist: the manual's rules chapters and
 rules/options appendices, Datalinks/concept data, core numeric rules, technology
 summaries, and the mechanical headers of the fourteen faction records. The
-current legal-copy tests produce roughly 300 bounded chunks from 22 allowlisted
-files. The exact count is derived from that installation and is not a stable
+current legal-copy test produces 294 bounded documents from 22 allowlisted
+sources. The exact count is derived from that installation and is not a stable
 protocol guarantee.
 
 The extractor excludes `Script.txt`, scenario directories, tutorial and tips
@@ -63,7 +64,7 @@ or facts. Consequently, reference documents explain rules independently in
 project-authored language rather than translating source paragraphs. This is a
 conservative engineering boundary, not legal advice.
 
-The game still comes from the operator's legal installation. The implemented
+The game still comes from the operator's installation. The implemented
 local-only extractor may index the approved mechanics subset for that operator.
 The resulting private documents retain source names and SHA-256 hashes so a
 changed legal copy is replaced cleanly. Each managed MCP seat can retrieve only

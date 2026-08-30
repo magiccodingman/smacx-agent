@@ -1,0 +1,61 @@
+@page "/spectate"
+@page "/spectate/{MatchId}"
+@inject Services.PortalApiClient Api
+<PageTitle>Spectate · SMACX Agent</PageTitle>
+
+@if (string.IsNullOrWhiteSpace(MatchId))
+{
+    <PageHeader Kicker="OBSERVATION DECK" Title="Live matches" Description="Watch opted-in games without sending input. Administrators can inspect every managed seat." />
+    @if (loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary"/> }
+    else if (!lobbies.Any(item => item.AnonymousSpectators))
+    {
+        <div class="empty-state surface-panel"><div class="empty-orbit"><MudIcon Icon="@Icons.Material.Filled.Visibility"/></div><h2>No public observation feeds</h2><p>When a lobby enables spectators, its live managed seats appear here.</p></div>
+    }
+    else
+    {
+        <div class="lobby-grid">@foreach(var item in lobbies.Where(item=>item.AnonymousSpectators)){<a class="surface-panel lobby-card" href="@($"spectate/{item.MatchId}")"><span class="panel-kicker">LIVE FEED</span><h2>@item.DisplayName</h2><p>@item.SeatCount occupied seats</p><span class="lobby-state @item.Status">@item.Status</span></a>}</div>
+    }
+}
+else if (loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary"/> }
+else if (lobby is null)
+{
+    <div class="empty-state surface-panel"><h2>Observation unavailable</h2><p>@error</p><MudButton Href="spectate">Back to observation deck</MudButton></div>
+}
+else
+{
+    <PageHeader Kicker="OBSERVATION DECK" Title="@lobby.DisplayName" Description="Switch between isolated seat perspectives. This view cannot send game input." />
+    <div class="stream-shell surface-panel">
+        <div class="stream-toolbar">
+            @foreach (var seat in WatchableSeats)
+            {
+                <MudButton Variant="@(seat.SeatIndex==selectedSeat?Variant.Filled:Variant.Text)" Color="Color.Primary" OnClick="@(()=>Select(seat.SeatIndex))" StartIcon="@SeatIcon(seat.ControllerKind)">@SeatName(seat)</MudButton>
+            }
+            <MudSpacer />
+            @if (Selected is not null)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Href="@StreamUrl(Selected)" Target="_blank" aria-label="Open stream in a new tab" />
+            }
+        </div>
+        @if (Selected is null)
+        {
+            <div class="stream-empty"><MudIcon Icon="@Icons.Material.Filled.VisibilityOff"/><p>No managed seat is available to watch.</p></div>
+        }
+        else
+        {
+            <iframe @key="Selected.InstanceId" class="game-stream" src="@StreamUrl(Selected)" title="@($"{SeatName(Selected)} game stream")" allow="autoplay; fullscreen" referrerpolicy="same-origin"></iframe>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string? MatchId { get; set; }
+    [SupplyParameterFromQuery(Name="seat")] public int? RequestedSeat { get; set; }
+    private bool loading=true; private string? error; private LobbyDetails? lobby; private List<PublicLobbySummary> lobbies=[]; private int selectedSeat;
+    private IEnumerable<LobbySeatSummary> WatchableSeats => lobby?.Seats.Where(seat=>seat.CanSpectate&&seat.InstanceId is not null)??[];
+    private LobbySeatSummary? Selected => WatchableSeats.FirstOrDefault(seat=>seat.SeatIndex==selectedSeat)??WatchableSeats.FirstOrDefault();
+    protected override async Task OnParametersSetAsync(){loading=true;error=null;try{if(string.IsNullOrWhiteSpace(MatchId)){lobbies=((await Api.GetAsync<IReadOnlyList<PublicLobbySummary>>("api/lobbies"))?.Data??[]).ToList();}else{lobby=(await Api.GetAsync<LobbyDetails>($"api/lobbies/{MatchId}"))?.Data;selectedSeat=RequestedSeat??lobby?.Seats.FirstOrDefault(seat=>seat.CanSpectate)?.SeatIndex??0;}}catch(HttpRequestException){error="The stream directory could not be loaded.";}loading=false;}
+    private void Select(int seat){selectedSeat=seat;}
+    private static string SeatName(LobbySeatSummary seat)=>seat.PlayerHandle??(seat.ControllerKind=="agent"?"AI player":$"Seat {seat.SeatIndex+1}");
+    private static string SeatIcon(string kind)=>kind=="agent"?Icons.Material.Filled.SmartToy:Icons.Material.Filled.Person;
+    private static string StreamUrl(LobbySeatSummary seat)=> $"/stream/{seat.InstanceId}/?view=1";
+}

@@ -1,0 +1,12 @@
+.drawer-brand { display:flex; align-items:center; gap:13px; padding:28px 24px 21px; }
+.brand-mark { width:43px; height:43px; display:grid; place-items:center; border:1px solid #65e6c466; border-radius:12px; background:linear-gradient(145deg,#153b43,#0b252d); color:#65e6c4; font:700 27px/1 "Space Grotesk"; box-shadow:0 0 30px #65e6c41a; }
+.brand-title { color:#effcf8; font:700 17px/1 "Space Grotesk"; letter-spacing:.11em; }
+.brand-subtitle { color:#6f9295; font-size:9px; font-weight:700; letter-spacing:.26em; margin-top:6px; }
+.portal-nav { padding:10px 12px; }
+.portal-nav ::deep .mud-nav-link { border-radius:10px; margin:3px 0; min-height:46px; color:#9eb5b6; font-weight:600; }
+.portal-nav ::deep .mud-nav-link.active { color:#79edd0; background:#65e6c414; border:1px solid #65e6c421; }
+.portal-nav ::deep .mud-nav-link:hover { background:#ffffff0a; color:#edf8f5; }
+.nav-section { display:block; color:#587a7e; letter-spacing:.18em; padding:0 16px 8px; }
+.drawer-footer { position:absolute; bottom:0; left:0; right:0; display:flex; gap:12px; align-items:center; padding:20px 24px; border-top:1px solid #183640; color:#d6e8e6; font-size:12px; }
+.drawer-footer small { display:block; color:#67878a; margin-top:2px; }
+.status-pulse { width:9px; height:9px; border-radius:50%; background:#65e6c4; box-shadow:0 0 14px #65e6c4; }

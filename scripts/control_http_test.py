@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def request(port: int, method: str, path: str, *, body: dict | None = None,
-            cookies: dict[str, str] | None = None, csrf: str | None = None):
+            cookies: dict[str, str] | None = None, csrf: str | None = None,
+            service_token: str | None = None):
     headers = {}
     encoded = None
     if body is not None:
@@ -30,6 +31,8 @@ def request(port: int, method: str, path: str, *, body: dict | None = None,
         headers["Cookie"] = "; ".join(f"{key}={value}" for key, value in cookies.items())
     if csrf:
         headers["X-CSRF-Token"] = csrf
+    if service_token:
+        headers["X-SMACX-Service-Token"] = service_token
     connection = HTTPConnection("127.0.0.1", port, timeout=5)
     connection.request(method, path, body=encoded, headers=headers)
     response = connection.getresponse()
@@ -46,8 +49,10 @@ def main() -> int:
         control = ControlPlane(SmacxStore(root / "state.sqlite3"), root / "secrets")
         control.ensure_bootstrap_token()
         bootstrap_token = control.reveal_bootstrap_token()
+        service_token = "portal-service-test-token-that-is-long-enough"
         server = ControlHTTPServer(
             ("127.0.0.1", 0), control, ROOT / "control_center/static",
+            service_token=service_token,
         )
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -62,6 +67,17 @@ def main() -> int:
             status, _, unauthorized = request(server.server_port, "GET", "/api/v1/status")
             if status != 401 or unauthorized["error"]["code"] != "authentication_required":
                 raise AssertionError("unauthenticated status request was accepted")
+
+            status, _, service_state = request(
+                server.server_port, "GET", "/api/v1/status", service_token=service_token,
+            )
+            if status != 200 or not service_state["ok"]:
+                raise AssertionError("portal service authentication failed")
+            status, _, invalid_service = request(
+                server.server_port, "GET", "/api/v1/status", service_token="wrong-token",
+            )
+            if status != 401 or invalid_service["error"]["code"] != "invalid_service_token":
+                raise AssertionError("invalid portal service token was accepted")
 
             status, bootstrap_headers, result = request(
                 server.server_port, "POST", "/api/v1/setup/bootstrap",
@@ -164,6 +180,7 @@ def main() -> int:
                     "docker_manager_disable_guard": True,
                     "static_traversal_rejected": True,
                     "logout_revokes_session": True,
+                    "portal_service_auth": True,
                 },
             }, separators=(",", ":")))
         finally:

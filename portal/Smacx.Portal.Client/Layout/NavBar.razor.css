@@ -1,0 +1,9 @@
+.portal-appbar { backdrop-filter:blur(18px); border-bottom:1px solid #18343d; height:68px; padding:0 20px; }
+.menu-button { margin-right:8px; }
+.appbar-wordmark { display:flex; flex-direction:column; line-height:1; }
+.appbar-wordmark ::deep .mud-typography-h6 { font-size:17px; letter-spacing:.03em; }
+.appbar-wordmark ::deep .mud-typography-caption { color:#729195; letter-spacing:.12em; text-transform:uppercase; font-size:9px; }
+.network-pill { display:flex; gap:8px; align-items:center; border:1px solid #24434b; background:#0c242c; color:#82a4a5; border-radius:999px; padding:6px 10px; margin-right:14px; font-size:9px; font-weight:800; letter-spacing:.14em; }
+.network-pill span { width:6px; height:6px; background:#65e6c4; border-radius:50%; box-shadow:0 0 10px #65e6c4; }
+.account-button { text-transform:none; }
+@media(max-width:520px) { .network-pill { display:none; } .portal-appbar { padding:0 8px; } }

@@ -3877,6 +3877,58 @@ std::string interaction_kind(int faction_id) {
     return "turn";
 }
 
+const char* semantic_victory_type_name(int victory_type) {
+    switch (victory_type) {
+    case VIC_NONE: return "none";
+    case VIC_TRANSCEND_PLR: return "transcendence_solo";
+    case VIC_TRANSCEND_UNK: return "transcendence_unknown";
+    case VIC_TRANSCEND_LOSS: return "transcendence_loss";
+    case VIC_UNIFY_SOLO: return "unification_solo";
+    case VIC_UNIFY_COOP: return "unification_cooperative";
+    case VIC_DIPLOMATIC_SOLO: return "diplomatic_solo";
+    case VIC_LOST_CAPTURE: return "eliminated_capture";
+    case VIC_TIME_LIMIT: return "time_limit";
+    case VIC_SUDDEN_DEATH: return "scenario_sudden_death";
+    case VIC_DIPLOMATIC_COOP: return "diplomatic_cooperative";
+    case VIC_DIPLOMATIC_LOSS: return "diplomatic_loss";
+    case VIC_ECONOMIC_SOLO: return "economic_solo";
+    case VIC_ECONOMIC_COOP: return "economic_cooperative";
+    case VIC_ECONOMIC_LOSS: return "economic_loss";
+    case VIC_LOST_REMOVE: return "eliminated";
+    case VIC_ALIEN_SOLO: return "alien_solo";
+    case VIC_ALIEN_COOP: return "alien_cooperative";
+    case VIC_ALIEN_LOSS: return "alien_loss";
+    default: return "unknown";
+    }
+}
+
+const char* semantic_victory_result(int victory_type) {
+    switch (victory_type) {
+    case VIC_TRANSCEND_PLR:
+    case VIC_UNIFY_SOLO:
+    case VIC_UNIFY_COOP:
+    case VIC_DIPLOMATIC_SOLO:
+    case VIC_DIPLOMATIC_COOP:
+    case VIC_ECONOMIC_SOLO:
+    case VIC_ECONOMIC_COOP:
+    case VIC_ALIEN_SOLO:
+    case VIC_ALIEN_COOP:
+        return "win";
+    case VIC_TRANSCEND_LOSS:
+    case VIC_LOST_CAPTURE:
+    case VIC_DIPLOMATIC_LOSS:
+    case VIC_ECONOMIC_LOSS:
+    case VIC_LOST_REMOVE:
+    case VIC_ALIEN_LOSS:
+        return "loss";
+    default:
+        // The stock engine does not retain enough universal winner identity
+        // here to classify time-limit, scenario sudden-death, or the unused
+        // transcendence-unknown path without guessing.
+        return "unknown";
+    }
+}
+
 void append_turn_protocol(std::ostringstream& out, int faction_id, int ready_units) {
     std::string interaction = interaction_kind(faction_id);
     out << "\"phase\":";
@@ -7560,6 +7612,16 @@ std::string semantic_snapshot_response() {
     Win* modal_stack_popup = *ModalStackCurrent;
     BasePop* exec_popup = *BasePopExecCurrent;
     out
+        << ",\"outcome\":{\"game_completed\":"
+        << ((*GameState & STATE_GAME_DONE) ? "true" : "false")
+        << ",\"final_score_completed\":"
+        << ((*GameState & STATE_FINAL_SCORE_DONE) ? "true" : "false")
+        << ",\"victory_type_id\":" << *GameVictoryType
+        << ",\"victory_type\":"
+        << json_string(semantic_victory_type_name(*GameVictoryType))
+        << ",\"perspective_result\":"
+        << json_string((*GameState & STATE_GAME_DONE)
+            ? semantic_victory_result(*GameVictoryType) : "in_progress") << '}'
         << ",\"interaction\":{\"kind\":" << json_string(interaction_kind(faction_id).c_str())
         << ",\"popup_label\":" << json_string(agent_popup_label())
         << ",\"instance_id\":" << agent_popup_generation()

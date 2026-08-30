@@ -29,6 +29,7 @@ def _scopes(store: SmacxStore) -> list[MemoryScope]:
             "JOIN matches m ON m.match_id=p.match_id JOIN agents a ON a.agent_id=p.agent_id "
             "WHERE p.status='active' AND a.status='active' "
             "AND m.status IN ('provisioned','running','paused','error') "
+            "AND coalesce(json_extract(m.metadata_json, '$.graphiti_enabled'), 1) = 1 "
             "ORDER BY p.match_id, p.agent_id, p.perspective_id"
         ).fetchall()
     return [MemoryScope(str(row[0]), str(row[1]), str(row[2])) for row in rows]

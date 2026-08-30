@@ -1,0 +1,16 @@
+@page "/register"
+@inject Services.PortalApiClient Api
+@inject NavigationManager Navigation
+<PageTitle>Create account · SMACX Agent</PageTitle>
+<div class="auth-stage"><section class="auth-card">
+    <div class="auth-sigil">+</div><span class="panel-kicker">JOIN THE NETWORK</span><h1>Create a LAN identity</h1>
+    <p>Your username is also your default in-game handle. Accounts stay on this control center.</p>
+    <MudTextField @bind-Value="username" Label="Username / game handle" Variant="Variant.Outlined" Immediate="true" /><MudTextField @bind-Value="displayName" Label="Display name" Variant="Variant.Outlined" Immediate="true" />
+    <MudTextField @bind-Value="password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" HelperText="At least 12 characters with upper, lower, and a number." /><MudTextField @bind-Value="confirmation" Label="Confirm password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" />
+    <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="busy" OnClick="CreateAccount">Create account</MudButton><div class="auth-hint">Already registered? <a href="login">Sign in</a></div>
+    @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert> }
+</section></div>
+@code {
+    private string username = ""; private string displayName = ""; private string password = ""; private string confirmation = ""; private string? error; private bool busy;
+    private async Task CreateAccount() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/register", new RegistrationRequest(username, displayName, password, confirmation)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo("/", true); else error = result.Payload?.Error?.Message ?? "Registration failed."; }
+}

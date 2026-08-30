@@ -1,0 +1,30 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+
+<MudAppBar Elevation="0" Class="portal-appbar">
+    <MudIconButton Icon="@Icons.Material.Filled.Menu" OnClick="ToggleRequested" Class="menu-button" />
+    <div class="appbar-wordmark">
+        <MudText Typo="Typo.h6">SMACX Agent</MudText>
+        <MudText Typo="Typo.caption">Planetary network</MudText>
+    </div>
+    <MudSpacer />
+    <div class="network-pill"><span></span> LAN ONLY</div>
+    <AuthorizeView>
+        <Authorized Context="auth">
+            <MudButton Href="account" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Person" Class="account-button">
+                @auth.User.Identity?.Name
+            </MudButton>
+        </Authorized>
+        <NotAuthorized>
+            <MudButton Href="login" Variant="Variant.Outlined" Color="Color.Primary">Sign in</MudButton>
+        </NotAuthorized>
+    </AuthorizeView>
+</MudAppBar>
+
+@code {
+    [Parameter] public EventCallback ToggleRequested { get; set; }
+
+    protected override void OnInitialized() => Navigation.LocationChanged += LocationChanged;
+    private void LocationChanged(object? sender, LocationChangedEventArgs args) => InvokeAsync(StateHasChanged);
+    public void Dispose() => Navigation.LocationChanged -= LocationChanged;
+}

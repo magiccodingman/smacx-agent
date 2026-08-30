@@ -1,0 +1,31 @@
+﻿<div class="drawer-brand">
+    <div class="brand-mark">α</div>
+    <div>
+        <div class="brand-title">SMACX</div>
+        <div class="brand-subtitle">LAN CONTROL</div>
+    </div>
+</div>
+
+<MudNavMenu Class="portal-nav">
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.SpaceDashboard" OnClick="Navigate">Command deck</MudNavLink>
+    <MudNavLink Href="lobbies" Icon="@Icons.Material.Filled.Groups" OnClick="Navigate">Lobbies</MudNavLink>
+    <MudNavLink Href="spectate" Icon="@Icons.Material.Filled.Visibility" OnClick="Navigate">Spectate</MudNavLink>
+    <MudNavLink Href="history" Icon="@Icons.Material.Filled.History" OnClick="Navigate">Match history</MudNavLink>
+    <MudNavLink Href="analytics" Icon="@Icons.Material.Filled.QueryStats" OnClick="Navigate">Analytics</MudNavLink>
+    <MudDivider Class="my-3" />
+    <MudText Typo="Typo.overline" Class="nav-section">OPERATIONS</MudText>
+    <MudNavLink Href="knowledge" Icon="@Icons.Material.Filled.MenuBook" OnClick="Navigate">Datalinks</MudNavLink>
+    <AuthorizeView Roles="Administrator">
+        <MudNavLink Href="admin" Icon="@Icons.Material.Filled.AdminPanelSettings" OnClick="Navigate">Administration</MudNavLink>
+    </AuthorizeView>
+</MudNavMenu>
+
+<div class="drawer-footer">
+    <span class="status-pulse"></span>
+    <div><strong>LAN mode</strong><small>Private network only</small></div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnNavigate { get; set; }
+    private Task Navigate() => OnNavigate.InvokeAsync();
+}

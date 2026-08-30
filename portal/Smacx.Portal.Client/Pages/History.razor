@@ -1,0 +1,9 @@
+@page "/history"
+@attribute [Authorize]
+@inject Services.PortalApiClient Api
+<PageTitle>History · SMACX Agent</PageTitle>
+<PageHeader Kicker="MISSION ARCHIVE" Title="Match history" Description="Return to waiting or interrupted games and review campaigns tied to your LAN identity." />
+@if(loading){<MudProgressLinear Indeterminate="true" Color="Color.Primary"/>}
+else if(items.Count==0){<div class="empty-state surface-panel"><div class="empty-orbit"><MudIcon Icon="@Icons.Material.Filled.History"/></div><h2>Your archive is empty</h2><p>Games you join—and checkpoints that can be resumed—will be collected here.</p><MudButton Href="lobbies/new" Variant="Variant.Outlined" Color="Color.Primary">Start a campaign</MudButton></div>}
+else{<div class="history-list">@foreach(var item in items){<a class="surface-panel history-row" href="@($"lobbies/{item.MatchId}")"><span class="history-icon"><MudIcon Icon="@(item.CanResume?Icons.Material.Filled.RestartAlt:Icons.Material.Filled.Public)"/></span><span><strong>@item.DisplayName</strong><small>@item.Mode · @item.RankingMode · updated @item.UpdatedAt.ToLocalTime().ToString("g")</small></span><span>Turn @(item.CurrentTurn?.ToString()??"—")<small>@(item.CurrentYear?.ToString()??"year unknown")</small></span><span class="lobby-state @item.Status">@item.Status</span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>}</div>}
+@code{private IReadOnlyList<MatchHistoryItem> items=[];private bool loading=true;protected override async Task OnInitializedAsync(){items=(await Api.GetAsync<IReadOnlyList<MatchHistoryItem>>("api/reports/history"))?.Data??[];loading=false;}}

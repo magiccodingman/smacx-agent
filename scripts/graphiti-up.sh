@@ -3,6 +3,14 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 secret_dir="${SMACX_GRAPHITI_SECRET_DIR:-${repo_root}/runtime/graphiti-secrets}"
+docker_socket="${SMACX_DOCKER_SOCKET:-/var/run/docker.sock}"
+if [[ ! -S "${docker_socket}" ]]; then
+  echo "Docker socket is unavailable: ${docker_socket}" >&2
+  exit 1
+fi
+SMACX_DOCKER_GID="$(stat -c '%g' "${docker_socket}")"
+export SMACX_DOCKER_GID
+export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 
 required=(neo4j_auth neo4j_password llm_api_key embed_api_key)
 for name in "${required[@]}"; do
@@ -33,6 +41,6 @@ done
 
 export SMACX_GRAPHITI_SECRET_DIR="${secret_dir}"
 docker compose -f "${repo_root}/compose.yaml" --profile graphiti up -d --build \
-  control-center graphiti-db graphiti-projector
+  control-api control-center graphiti-db graphiti-projector
 docker compose -f "${repo_root}/compose.yaml" --profile graphiti ps \
-  control-center graphiti-db graphiti-projector
+  control-api control-center graphiti-db graphiti-projector

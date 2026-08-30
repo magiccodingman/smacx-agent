@@ -1,0 +1,61 @@
+@page "/admin/providers"
+@attribute [Authorize(Roles = "Administrator")]
+@inject Services.PortalApiClient Api
+@using System.Text.Json
+
+<PageTitle>AI providers · SMACX Agent</PageTitle>
+<PageHeader Kicker="AGENT INFRASTRUCTURE" Title="Models & AI profiles" Description="Configure OpenAI-compatible endpoints once, discover their models, then create immutable profile versions for matches." />
+
+@if (loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary"/> }
+else
+{
+<div class="form-grid">
+ <section class="surface-panel form-panel">
+  <h2>Model provider</h2><p class="section-copy">Secrets are injected only into managed Hermes containers and are never returned by the API.</p>
+  <MudTextField @bind-Value="providerName" Label="Display name" Variant="Variant.Outlined"/>
+  <MudTextField @bind-Value="providerUrl" Label="OpenAI-compatible base URL" HelperText="Example: http://10.26.26.20:8000/v1" Variant="Variant.Outlined"/>
+  <MudTextField @bind-Value="providerKey" Label="API key (optional)" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true"/>
+  <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="busy" OnClick="SaveProvider" StartIcon="@Icons.Material.Filled.Save">Save & discover</MudButton>
+ </section>
+ <section class="surface-panel form-panel">
+  <h2>Versioned AI profile</h2><p class="section-copy">A new version never rewrites historical matches. Personality is explicitly None until the card system is designed.</p>
+  <MudTextField @bind-Value="profileName" Label="Profile name" Variant="Variant.Outlined"/>
+  <MudSelect T="string" Value="@selectedProvider" Label="Provider" Variant="Variant.Outlined" ValueChanged="ProviderChanged">@foreach(var p in Providers){<MudSelectItem Value="@Id(p)">@Text(p,"display_name")</MudSelectItem>}</MudSelect>
+  <MudSelect T="string" @bind-Value="selectedModel" Label="Model" Variant="Variant.Outlined">@foreach(var m in Models){<MudSelectItem Value="@Id(m,"model_id")">@Text(m,"display_name")</MudSelectItem>}</MudSelect>
+  <div class="field-pair"><MudSelect T="string" @bind-Value="reasoning" Label="Reasoning effort" Variant="Variant.Outlined">@foreach(var value in reasoningValues){<MudSelectItem Value="@value">@value</MudSelectItem>}</MudSelect><MudNumericField T="int?" @bind-Value="contextLength" Label="Context override" Variant="Variant.Outlined" Min="1024" Max="16777216"/></div>
+  <MudTextField @bind-Value="profileNotes" Label="Operator note" Lines="2" Variant="Variant.Outlined"/>
+  <MudSelect T="string" Value="@("none")" Label="Personality card" Variant="Variant.Outlined" Disabled="true"><MudSelectItem Value="@("none")">None</MudSelectItem></MudSelect>
+  <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="busy" OnClick="CreateProfile" StartIcon="@Icons.Material.Filled.AddCircle">Create profile version</MudButton>
+ </section>
+</div>
+
+<section class="surface-panel admin-list-panel mt-4">
+ <div class="panel-heading"><div><span class="panel-kicker">CONFIGURED ENDPOINTS</span><h2>Providers</h2></div><MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Reload" aria-label="Refresh providers"/></div>
+ @if(Providers.Count==0){<div class="empty-state compact"><MudIcon Icon="@Icons.Material.Filled.Hub"/><strong>No providers configured</strong><span>Add a local or hosted OpenAI-compatible endpoint above.</span></div>}
+ @foreach(var provider in Providers){<div class="admin-list-row"><div><strong>@Text(provider,"display_name")</strong><small>@Text(provider,"base_url")</small></div><span class="status-badge">@Text(provider,"status")</span><span>@(provider.TryGetProperty("has_api_key",out var keyed)&&keyed.GetBoolean()?"managed key":"no key")</span><MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="()=>Discover(Id(provider))">Discover</MudButton></div>}
+</section>
+
+<section class="surface-panel admin-list-panel mt-4">
+ <div class="panel-heading"><div><span class="panel-kicker">IMMUTABLE CONFIGURATION</span><h2>AI profile versions</h2></div></div>
+ @if(profiles.Count==0){<div class="empty-state compact"><MudIcon Icon="@Icons.Material.Filled.SmartToy"/><strong>No profiles yet</strong><span>Create one after model discovery.</span></div>}
+ @foreach(var profile in profiles){<div class="admin-list-row"><div><strong>@profile.DisplayName <span class="version-chip">v@(profile.Version)</span></strong><small>@profile.ModelId · @profile.ReasoningEffort reasoning · @(profile.ContextLength?.ToString("N0")??"provider context")</small></div><span>@(profile.Active?"active":"inactive")</span><span>Personality: None</span>@if(profile.Active){<MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="()=>Deactivate(profile.ProfileVersionId)">Deactivate</MudButton>}</div>}
+</section>
+}
+@if(!string.IsNullOrEmpty(error)){<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>}
+
+@code {
+ private AdminSnapshot? snapshot; private List<AiProfileVersion> profiles=[]; private bool loading=true,busy; private string? error;
+ private string providerName="Local model server",providerUrl="http://10.26.26.20:8000/v1",providerKey="",profileName="SMACX player",selectedProvider="",selectedModel="",reasoning="low",profileNotes=""; private int? contextLength;
+ private readonly string[] reasoningValues=["none","minimal","low","medium","high","xhigh","max","ultra"];
+ private List<JsonElement> Providers=>snapshot is null?[]:snapshot.Providers.EnumerateArray().ToList();
+ private List<JsonElement> Models=>Providers.FirstOrDefault(p=>Id(p)==selectedProvider) is var p&&p.ValueKind==JsonValueKind.Object&&p.TryGetProperty("models",out var m)?m.EnumerateArray().ToList():[];
+ protected override async Task OnInitializedAsync()=>await Reload();
+ private async Task Reload(){loading=true;error=null;try{snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;profiles=((await Api.GetAsync<IReadOnlyList<AiProfileVersion>>("api/admin/ai-profiles"))?.Data??[]).ToList();selectedProvider=string.IsNullOrEmpty(selectedProvider)?Providers.FirstOrDefault().ValueKind==JsonValueKind.Object?Id(Providers[0]):"":selectedProvider;ProviderChanged(selectedProvider);}catch(Exception ex){error=ex.Message;}finally{loading=false;}}
+ private async Task SaveProvider(){busy=true;error=null;var result=await Api.PostAsync<JsonElement>("api/admin/providers",new ProviderConfigurationRequest(providerName,providerUrl,string.IsNullOrEmpty(providerKey)?null:providerKey));if(result.Payload?.Ok!=true)error=result.Payload?.Error?.Message;else{providerKey="";var id=Id(result.Payload.Data);await Api.PostAsync<JsonElement>($"api/admin/providers/{id}/discover",new{});await Reload();}busy=false;}
+ private async Task Discover(string id){busy=true;var result=await Api.PostAsync<JsonElement>($"api/admin/providers/{id}/discover",new{});if(result.Payload?.Ok!=true)error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private async Task CreateProfile(){busy=true;error=null;var result=await Api.PostAsync<AiProfileVersion>("api/admin/ai-profiles",new AiProfileVersionRequest(profileName,selectedProvider,selectedModel,reasoning,contextLength,string.IsNullOrWhiteSpace(profileNotes)?null:profileNotes));if(result.Payload?.Ok!=true)error=result.Payload?.Error?.Message;else await Reload();busy=false;}
+ private async Task Deactivate(string id){busy=true;var result=await Api.PostAsync<AiProfileVersion>($"api/admin/ai-profiles/{id}/deactivate",new{});if(result.Payload?.Ok!=true)error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private void ProviderChanged(string value){selectedProvider=value;selectedModel=Models.FirstOrDefault().ValueKind==JsonValueKind.Object?Id(Models[0],"model_id"):"";}
+ private static string Id(JsonElement item,string name="provider_id")=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var v)?v.GetString()??"":"";
+ private static string Text(JsonElement item,string name)=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var v)?v.ToString():"";
+}

@@ -1,13 +1,13 @@
 # Linux game worker
 
-One worker runs exactly one legal, user-supplied Alien Crossfire installation in
+One worker runs exactly one user-supplied Alien Crossfire installation in
 one private compatibility prefix and Xvfb display. The image builds the
 open-source semantic bridge but contains no game assets, Microsoft
 redistributables, saves, or credentials.
 
 Required mounts and secrets:
 
-- `/game-source:ro`: a legal installation containing `terranx.exe` and `alphax.txt`.
+- `/game-source:ro`: an installation containing `terranx.exe` and `alphax.txt`.
 - `/var/lib/smacx`: a unique writable volume for this worker's copied game, Wine prefix, saves, logs, and metadata.
 - `/run/secrets/bridge-token`: unique bridge credential, at least 16 characters,
   selected with `SMACX_AGENT_TOKEN_FILE`. An environment value is accepted only
@@ -32,6 +32,17 @@ Workers default to a `win64` prefix because Proton runs this 32-bit game through
 WoW64 and native DirectPlay belongs in `syswow64`. The prefix architecture is
 recorded in the private volume and cannot be changed in place.
 
-The DLL remains loopback-only. `socat` exposes it as port 47814 only to the private container network; every request still requires the unique token. The optional noVNC spectator is disabled by default. Enable it with `SMACX_VIEW_ENABLE=1` and a generated password mounted through `SMACX_VIEW_PASSWORD_FILE`; `SMACX_VIEW_MODE=view-only` prevents input. Agents never receive spectator credentials.
+The DLL remains loopback-only. `socat` exposes it as port 47814 only to the
+private container network; every request still requires the unique token.
+
+When `SMACX_VIEW_ENABLE=1`, Selkies is the primary single-port browser stream.
+It carries video, audio, and—only for `SMACX_VIEW_MODE=interactive`—ordinary
+human input. `view-only` disables input at the worker transport. A generated
+credential is mounted through the configured secret file and never placed in
+the container environment. The Blazor portal authenticates the user, obtains a
+short-lived seat-scoped access descriptor from control, and proxies HTTP plus
+WebSocket traffic; users should not connect to the random worker port directly.
+noVNC remains a view-only fallback if Selkies cannot start. Agents never receive
+stream credentials or input tools.
 
 Each worker has a private display, so multiple workers cannot see or click one another's windows. Real DirectPlay LAN games should give each worker its own LAN-reachable IP through macvlan/ipvlan or an equivalent virtual-LAN network. Ordinary Docker port translation is not assumed to preserve legacy DirectPlay addressing.

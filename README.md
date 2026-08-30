@@ -1,258 +1,250 @@
 # SMACX Agent
 
-**A fair-play, persistent AI player for Sid Meier's Alpha Centauri: Alien
-Crossfire—running inside the real game, remembering the politics, and playing
-without screenshots or mouse automation.**
+**The modern LAN table, browser launcher, and fair-play AI player for Sid
+Meier's Alpha Centauri: Alien Crossfire.**
 
-SMACX Agent gives an LLM structured observations and guarded actions through
-MCP while the ordinary Alien Crossfire window remains visible to spectators.
-The model can build, explore, research, negotiate, chat, remember promises,
-form grudges, host LAN matches, save campaigns, and return later with the same
-match identity.
+SMACX Agent makes an increasingly awkward 1999 multiplayer game pleasant to
+run again. A host can build a lobby in a polished web interface, invite people
+who play from a browser or their own native client, add autonomous LLM players,
+watch permitted seats, park a campaign, and bring everybody back later.
 
-This is not a replacement rules engine and it is not a stronger stock bot. The
-goal is an AI **player**: one that can become an ally, rival, opportunist, or
-long-term political character whose decisions are grounded in what it has
-actually observed.
+The AI does not play by staring at screenshots or guessing mouse coordinates.
+A Thinker-derived DLL runs inside the real `terranx.exe` and exposes typed,
+fair-play observations and guarded native actions. The ordinary game still
+renders, humans still play the ordinary game, and the model sees only what its
+faction is allowed to know.
 
-> Linux-first. Bring your own legal Alien Crossfire installation. Game assets,
-> Proton, and Microsoft redistributables are never shipped by this repository.
+> Linux-first and LAN-only. This application does not include or distribute
+> Sid Meier's Alpha Centauri, Alien Crossfire, or other proprietary game
+> assets. Users provide their own installation.
 
-## Why this is different
+## What it feels like
 
-- **It plays the real game.** A Thinker-derived DLL runs inside
-  `terranx.exe`; actions execute on the native game thread and the visible game
-  continues to render normally.
-- **No vision tax.** The agent receives typed game state and legal choices
-  instead of repeatedly interpreting pixels or guessing click coordinates.
-- **Fair play is enforced below the prompt.** Fog of war, perspective,
-  ownership, match/session identity, stale observations, and destructive
-  confirmations are checked by the bridge and MCP—not merely requested in a
-  system prompt. Private mechanics retrieval is additionally bound to the
-  seat's exact legal game source, so different installations or mods cannot
-  contaminate one another.
-- **Political memory survives context windows.** SQLite stores immutable
-  events, chat, facts, beliefs, relationships, commitments, goals, and
-  summaries per match, agent, and perspective. Scoped FTS5/BM25 recall is
-  always available; Graphiti can optionally project that history into a
-  temporal graph.
-- **It can share a real LAN game.** Isolated AI seats can host, join, chat,
-  negotiate, save, park, reload, reclaim their exact factions, and continue.
-  A named human may join an AI-owned lobby or own seat zero and host the lobby;
-  managed agents discover, join, ready, and resume without taking over Start.
-- **The operator stays in control.** An authenticated Control Center owns
-  game/runtime registration, model selection, worker lifecycle, match seats,
-  and optional password-protected view-only spectators. Agents never receive
-  Docker, launch, provider-secret, or spectator credentials.
+- Open one local website and create a normal, custom, scenario, human, AI, or
+  mixed lobby.
+- Play a managed seat directly in the browser with video, audio, keyboard,
+  mouse, fullscreen, and reconnect support—or join from a native game client.
+- Let Qwen or another OpenAI-compatible model run through managed Hermes with
+  no separately installed Hermes dashboard.
+- Talk in faction-attributed public or private lobby/game chat.
+- Watch AI-only games, switch seats as an administrator, or opt a lobby into
+  anonymous read-only LAN spectating.
+- Park an unfinished campaign. The platform stops its agents, verifies a
+  native save, tears down disposable workers, and later restores the same
+  seats and durable political memory.
+- Compare versioned model profiles by turn time and authoritative Hermes input,
+  output, cache, reasoning, and API-call telemetry.
 
-## The experience this enables
+This is meant to produce memorable players, not merely stronger stock bots.
+An agent can remember promises, debts, betrayals, suspicions, relationships,
+goals, territorial plans, and chat history under an exact match identity. Its
+facts remain distinct from beliefs and attitudes; optional Graphiti adds a
+temporal graph without replacing the authoritative SQLite record.
 
-Imagine a campaign where an AI remembers that you honored a technology deal
-twenty turns ago, distrusts a faction whose explanations no longer match its
-actions, asks for help in native chat, revises an expansion plan after a border
-crisis, and reloads the same campaign days later with that political history
-intact. Personality cards can eventually shape how each agent interprets those
-events without replacing the factual record.
-
-That is the north star: not merely an AI that can optimize Alpha Centauri, but
-one that makes a multiplayer table more surprising, coherent, and fun.
-
-## How it works
+## The important engineering boundary
 
 ```text
-authenticated operator
-        |
-        v
-  Control Center  ---- durable identities/events/memory ----> SQLite
-        |                                                    |
-        | creates one isolated seat                          +--> optional Graphiti projection
-        v
-  managed Hermes container <---- private MCP sidecar
-        |                              |
-        | typed decisions              | authenticated semantic bridge
-        v                              v
-  model context                  Proton + terranx.exe + Thinker-derived DLL
-                                          |
-                                          +--> visible, view-only spectator
+browser or native human                     OpenAI-compatible model
+          |                                           |
+          v                                           v
+  Blazor LAN portal  <---- lifecycle ---->  managed Hermes seat
+          |                                      semantic MCP only
+          v                                           |
+  isolated Proton game worker <---- fair bridge ----> |
+          |
+          +---- Selkies stream (interactive or read-only)
 ```
 
-Each agent seat has a distinct game worker, native process session, MCP
-endpoint, perspective, and memory scope. SQLite is authoritative. Graphiti is a
-derived, disposable projection and cannot widen what an agent is allowed to
-know.
+Every managed seat has a separate game process, Proton prefix, MCP sidecar,
+native session, perspective, and memory scope. The portal owns accounts,
+lobbies, stream tickets, and reports. The private Python control plane owns
+Docker, native matches, saves, secrets, workers, and harness runs. Neither
+service writes the other's database.
 
-## Current status
+Fair play is enforced below the prompt:
 
-| Area | Status |
-| --- | --- |
-| Fair-play single-player semantic control | Implemented; 100-turn live soaks completed without UI input |
-| Native diplomacy, Council, production, units, bases, research, and endgame | Broadly implemented; exact remaining gaps are fail-closed |
-| Durable chat and political/strategic memory | Implemented and contained-tested |
-| Authenticated Control Center and isolated Docker workers | Implemented and live-tested on Linux |
-| OpenAI-compatible providers and managed Hermes runtime | Implemented; digest-pinned official Hermes image, resumable sessions, low-reasoning Qwen path, and purpose-volume key injection tested |
-| Agent-only managed DirectPlay LAN | Implemented and live-tested with two real workers |
-| Multiplayer save, park, stock reload, faction restoration, and continue | Implemented and live-tested |
-| AI-hosted and human-hosted mixed LAN | Implemented and live-tested with an independent third native process; physical two-machine certification remains |
-| View-only noVNC spectators | Implemented and live-tested |
-| Scheduling, supervision, checkpoint recovery, and backups | Implemented; native crash/restore plus verified worker and Hermes-conversation archives tested |
-| Optional Graphiti projector | One-command isolated Neo4j/Graphiti profile implemented and backend-live-tested; disabled until compatible chat and embedding endpoints are configured |
-| Focused Alien Crossfire rules/search corpus | Implemented; 18 independently written, provenance-tracked primers plus an optional private mechanics index built from the operator's legal copy; no guides or scenario solutions |
-| Internet/virtual-LAN transport | Encrypted, firewalled Tailscale route implemented and packet-live-tested locally; an actual remote second machine still requires certification |
-| Windows/WSL2 deployment | Preflight and routed Docker design implemented; physical Windows 11/WSL2 certification remains external |
-| Random-map LAN profiles | Five guarded Citizen/Tiny through Transcend/Huge profiles passed a real two-process DirectPlay matrix |
-| Typed custom setup | Solo and AI-hosted LAN difficulty, world generation, timer, victory conditions, and game rules are named, validated, and native-live-tested |
-| Solo and multiplayer scenarios | Legal-copy catalogs, exact typed selection, native scenario loading, faction selection, and scenario restrictions are live-tested without UI input |
-| Obscure interactions and unverified LAN mutations | Exact listed mutations remain fail-closed; unknown mandatory states latch a capability gap instead of falling back to pixels |
+- fog of war and ownership are filtered in the native bridge;
+- actions carry match, process-session, perspective, and revision guards;
+- hidden coordinates never enter the agent protocol;
+- destructive or diplomatic commitments require explicit typed confirmation;
+- unsupported mandatory states fail closed and can be reported as capability
+  gaps; and
+- managed Hermes receives `smacx,web` toolsets—no computer, screenshot,
+  keyboard, mouse, terminal, or Docker tool.
 
-See [Project status](docs/project-status.md) for the exact boundary between
-delivered, validated, optional/manual, and planned work. See
-[Coverage and limits](docs/coverage.md) for the detailed semantic action list.
+## Verified today
 
-## Proof, not just architecture
+- Real single-player and DirectPlay LAN games run in isolated Linux/Proton
+  workers while remaining visible.
+- Typed setup covers world size, difficulty, planet traits, timer, victory
+  conditions, advanced rules, scenarios, and saved-game recovery.
+- Browser video/audio/input/fullscreen and reconnect use Selkies; observer and
+  anonymous spectator paths are mechanically read-only.
+- AI-hosted, human-hosted, mixed human/AI, save/park/reload, exact faction
+  restoration, native chat, and private/public portal chat paths are
+  implemented and locally native-tested.
+- A real Qwen3.8-27B low-reasoning run autonomously played through turn 13/year
+  2113 using semantic tools only, handled native opening states, searched the
+  rules corpus, moved units, maintained goals/facts, and then survived a
+  checkpoint-first park.
+- The same run exposed 5,785,165 input tokens, 38,224 output tokens, 21,743
+  reasoning tokens, and 97 provider calls through Hermes's authoritative
+  counters; the portal integration records future deltas by turn/profile.
+- Durable political/strategic memory, scoped FTS5/BM25 recall, optional
+  Graphiti projection, scheduling, verified backups, and crash recovery are
+  implemented.
+- The distributable rules corpus contains independently written mechanics
+  primers, not copied manual text or strategy/cheese guides. An optional local
+  extractor can index the operator's own installed documentation privately.
 
-The current regression suite has demonstrated:
+Physical two-computer LAN, remote Tailscale peers, and Windows/WSL2 operation
+remain external certification work; they are not claimed by the Linux-local
+evidence above. Ranked play and authored personality cards are intentionally
+not enabled. The schema contains only the `None` personality selection.
 
-- Qwen3.8-27B using only six semantic SMACX tools to start, play, save, and stop
-  a real game with no browser, terminal, screenshot, mouse, or keyboard path;
-- multiple 75–100-turn semantic playthroughs crossing exploration, expansion,
-  production, research, combat warnings, diplomacy, Council events, and defeat
-  recovery;
-- two isolated Proton workers completing native DirectPlay host/discover/join,
-  lobby synchronization, faction-separated play, host-only checkpointing,
-  complete parking, stock multiplayer reload, exact faction restoration, and
-  a second entry into gameplay;
-- a real password-protected noVNC endpoint whose server is forced into
-  view-only mode and whose secret is absent from container configuration; and
-- an intentional native worker crash recovered at the exact bridge-verified
-  turn, plus a cryptographically verified live backup of SQLite, secrets, and
-  the worker volume while the supervisor remained online; and
-- adversarial scope, stale-revision, ownership, hidden-information, chat,
-  memory, Graphiti cursor, authentication, CSRF, Docker-ownership, and cleanup
-  tests.
-
-The final managed-LAN regression used
-`pixels_or_ui_input_used=false` throughout.
-
-## Quick start: Control Center
+## Quick start
 
 Requirements:
 
-- Linux with Docker Engine and Compose;
-- a legal Alien Crossfire game directory;
-- a local Proton distribution;
-- the February 2010 DirectX redistributable for native DirectPlay; and
-- an OpenAI-compatible model endpoint. Hermes is the supported agent harness;
-  the game and memory protocols remain independently testable security
-  boundaries rather than a plan to replace Hermes.
+- Linux, Docker Engine, and Docker Compose;
+- a user account able to access `/var/run/docker.sock`;
+- an existing Alien Crossfire directory containing `terranx.exe`;
+- a Proton distribution directory;
+- the February 2010 DirectX redistributable for DirectPlay; and
+- optionally, an OpenAI-compatible model endpoint for AI seats.
 
-Start the persistent operator service:
+Start the persistent platform:
 
 ```bash
+cd /path/to/smacx-agent
 SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
-./scripts/control-center-up.sh
+  ./scripts/control-center-up.sh
 ```
 
-Open `http://127.0.0.1:8080`. The first visit creates the administrator account;
-there is deliberately no default password. The UI then guides you through:
-
-1. registering and probing the model provider;
-2. validating the legal game source;
-3. importing a private, checksummed Proton runtime;
-4. creating durable agents;
-5. creating a solo or managed LAN match;
-6. starting isolated workers and optional view-only spectators; and
-7. binding Hermes to the exact running agent seat.
-
-The Control Center stays up between games. Workers are disposable processes;
-their match identity, saves, chat, and memory are durable.
-
-For named human LAN seats, read [Control Center: Let human players
-join](docs/control-center.md#let-human-players-join) before creating the Docker
-macvlan/ipvlan network. The default private bridge deliberately does not expose
-legacy DirectPlay to the physical LAN.
-
-## Agent contract
-
-The preferred loop is `smac_decision` → execute at most one returned guarded
-choice → discard the frame → observe again. Every executable choice is bound
-to the current match, process session, perspective, and revision.
-
-The MCP deliberately exposes no screenshot, mouse, keyboard, native map
-coordinate, coordinate click, arbitrary memory scope, or raw-UI fallback.
-Opaque match-local `tile_id` values are identifiers, not coordinates. If the
-game reaches an unsupported mandatory interaction, the model calls
-`smac_report_capability_gap`; the session then rejects further mutation until a
-typed handler is developed and a fresh native session is started.
-
-`smac_capabilities` returns the same reviewed boundary as structured data. An
-agent can query only `launch_modes`, `lan_profiles`, `known_fail_closed_gaps`,
-or another compact section instead of assuming that an absent tool can be
-reached through the UI.
-
-Read [Safe semantic play loop](docs/agent-loop.md) and [Tool
-reference](docs/tools.md) before changing the managed Hermes integration or
-its agent prompt.
-
-## Legacy single-instance development flow
-
-The original host-local MCP service remains available for bridge development
-and focused testing:
+Read the one-time first-run token:
 
 ```bash
-systemctl --user status smacx-agent-mcp.service
-hermes mcp test smacx
+docker compose exec -T control-center dotnet Smacx.Portal.dll bootstrap-token
 ```
 
-Its default MCP URL is `http://127.0.0.1:47814/mcp`. Start a new Hermes
-conversation after changing the tool surface so the harness refreshes its tool
-list. The managed Control Center path does not require restarting an existing
-Hermes dashboard.
+Open <http://127.0.0.1:8080>, sign in as `admin`, enter that token, and choose
+your own password. There is no default password.
 
-## Documentation map
+In **Administration**:
 
-- [Project status](docs/project-status.md) — what is delivered, what is merely
-  implemented, and what remains.
-- [Control Center](docs/control-center.md) — operator setup, match lifecycle,
-  Hermes binding, external LAN, and security.
-- [Architecture](docs/architecture.md) — trust boundaries and why the project
-  extends the original executable instead of replacing it.
-- [Identity and memory ADR](docs/adr/0001-identities-and-authoritative-memory.md)
-  — durable scope and memory authority.
-- [Control-plane ADR](docs/adr/0002-control-plane-and-runtime-boundary.md) —
-  container, secret, and harness boundaries.
-- [Optional Graphiti projection](docs/graphiti.md) — implemented adapter,
-  deployment, configuration, isolation, and current integration status.
-- [Coverage and limits](docs/coverage.md) — exact gameplay coverage and gaps.
-- [Testing](docs/testing.md) — contained, native, Docker, Hermes, and LAN
-  validation commands.
-- [Rules reference](docs/reference-knowledge.md) — legal corpus boundary,
-  hierarchy, provenance, and compact agent retrieval protocol.
-- [Troubleshooting](docs/troubleshooting.md) — fail-closed recovery guidance.
-- [Windows/WSL2](docs/windows-wsl2.md) and [encrypted remote LAN](docs/virtual-lan.md)
-  — deployment paths and their honest certification boundaries.
-- [Platform roadmap](docs/platform-roadmap.md) — completed milestones and
-  remaining external/gameplay certification work.
+1. validate the existing Alien Crossfire directory;
+2. import Proton into an installation-owned volume;
+3. add an OpenAI-compatible provider and discover its models; and
+4. create a versioned AI profile if you want an agent seat.
+
+Then choose **New lobby**, select native rules and seats, and launch. A browser
+human clicks **Play**. A direct/native human uses the host address, native
+session name/ID, assigned player handle, and faction shown on the lobby page.
+An AI profile starts automatically in an isolated official Hermes container.
+
+To publish the portal on a trusted private LAN:
+
+```bash
+SMACX_PORTAL_PUBLISH=0.0.0.0:8080 \
+SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+  ./scripts/control-center-up.sh
+```
+
+For native clients, also configure the documented macvlan/ipvlan player
+network. Browser players do not need a local game installation and do not need
+the worker's stream port exposed directly; the authenticated portal proxies it.
+
+The platform uses `restart: unless-stopped` and named volumes, so it stays up
+between games and through host restarts. Do not take Compose down merely to
+create another lobby.
+
+## Everyday lifecycle
+
+1. A human creates a waiting lobby in the portal.
+2. The selected managed host creates the real native game. This can be a human
+   browser seat or the first AI profile.
+3. Browser seats connect through the portal; native seats join using the exact
+   details displayed there. Managed agents join automatically.
+4. The portal mirrors public turn/year, factions, chat, presence, runtime
+   health, and model telemetry without exposing private faction state.
+5. **Checkpoint** verifies a native save. **Park** first stops autonomous
+   callers, then checkpoints and tears down the disposable game workers.
+6. **Recover** restores the verified save, exact factions, MCP sidecars, and
+   the same Hermes conversation/memory scope.
+
+If all managed browser humans leave an unfinished match, the supervisor parks
+it after the idle window. Direct/native players are never inferred absent from
+browser presence. AI-only simulations continue unattended until explicitly
+parked or completed.
+
+## Administration and recovery
+
+Generate a 30-minute reset ticket for the original administrator from the
+host, even if the password is lost:
+
+```bash
+docker compose exec -T control-center dotnet Smacx.Portal.dll admin-reset-token admin
+```
+
+Other members can self-register without email. Invited handles are reserved as
+case-insensitive provisional accounts; the player claims the same durable seat
+and history when they choose a password.
+
+Model provider keys are written to purpose-scoped secrets and mounted into
+Hermes at runtime. They do not appear in Docker inspect output or the portal
+database. Provider profiles are versioned and deactivated rather than deleted,
+preserving the meaning of historical analytics.
+
+Source builds are intentionally serialized. A source build that compiles the
+native worker and optimizes Blazor benefits from roughly 12 GiB RAM plus 4 GiB
+swap; the verified development VM uses 16 GiB RAM and 16 GiB swap. Ordinary
+runtime use is substantially lighter and scales mainly with active game/AI
+seats.
+
+## Knowledge and memory
+
+Agents search a compact hierarchy of original Alien Crossfire mechanics notes
+through BM25, retrieve only the documents they need, and can build a separate
+private index from the operator's installed manual/help files. The project does
+not distribute those extracted documents. Strategy guides and scenario
+solutions are deliberately excluded.
+
+Per-match memory supports immutable events, facts, beliefs, relationships,
+commitments, goals, summaries, compression budgets, multi-record recall, and
+chat history. Every operation is scoped to match + agent + perspective, so
+parallel agents and later games cannot contaminate one another.
+
+## Documentation
+
+- [Operator guide](docs/control-center.md) — first run, LAN publication,
+  browser/native seats, providers, lobbies, recovery, users, and secrets.
+- [Architecture](docs/architecture.md) — trust boundaries, native bridge,
+  streaming, portal/control split, and memory model.
+- [Project status](docs/project-status.md) — exact implemented, verified, and
+  externally unverified boundaries.
+- [Rules knowledge](docs/reference-knowledge.md) — original corpus, private
+  extraction, provenance, and copyright guard.
+- [Testing](docs/testing.md) — .NET, Python, Docker, browser, native, and model
+  evidence.
+- [Troubleshooting](docs/troubleshooting.md) — Docker permissions, setup,
+  DirectPlay, streams, checkpoints, and capability gaps.
+- [Coverage](docs/coverage.md), [agent loop](docs/agent-loop.md), and [MCP tool
+  reference](docs/tools.md) — semantic gameplay details.
+- [Graphiti](docs/graphiti.md) — optional temporal projection and isolation.
+- [ADR 0003](docs/adr/0003-lan-browser-platform.md) — accepted LAN browser
+  platform design.
 
 ## Repository layout
 
-- `bridge/` — Thinker-derived 32-bit Windows DLL and fair-play bridge.
-- `worker/` — isolated non-root Linux game-worker image and runtime contract.
-- `control_center/` — authenticated operator service and web UI.
-- `src/smacx_store.py` — authoritative SQLite identities, events, and memory.
-- `src/smacx_worker_manager.py` — contained worker and LAN lifecycle.
-- `src/smacx_operations.py` — durable schedules, supervision, backups, and
-  verified-checkpoint recovery.
-- `src/smacx_mcp.py` — semantic MCP surface.
-- `src/smacx_graphiti.py` — optional temporal-graph projector.
-- `src/smacx_hermes.py` — managed Hermes harness integration.
-- `scripts/` — builds, deployment helpers, and regressions.
-- `docs/` — architecture, protocols, status, operations, and evidence.
+- `bridge/` — Thinker-derived 32-bit native bridge DLL.
+- `worker/` — isolated Proton game worker with Selkies streaming.
+- `src/` — control plane, MCP, memory, worker/Hermes managers, and Graphiti
+  projection.
+- `portal/` — .NET 10 Blazor Web App, WebAssembly client, controllers, SignalR,
+  Identity, stream proxy, and tests.
+- `knowledge/` — distributable original mechanics corpus only.
+- `scripts/` — reproducible contracts, native tests, and operations.
+- `docs/` — product, operator, architecture, test, and protocol documentation.
 
-## License and provenance
-
-SMACX Agent is licensed under Apache License 2.0; see [LICENSE](LICENSE). The
-bridge is a modified build of [Thinker](https://github.com/induktio/thinker) at
-commit `4aef5be73bda4eb22ffa8db424eb91780c4a51fa`, whose upstream code is
-MIT-licensed. Game assets, Proton, and the Microsoft redistributable are local
-runtime dependencies and are not distributed here. See [NOTICE.md](NOTICE.md)
-for provenance and attribution.
+SMACX Agent is licensed under Apache License 2.0. Thinker-derived code retains
+its MIT notice; see [NOTICE.md](NOTICE.md).

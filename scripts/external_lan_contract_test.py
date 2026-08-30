@@ -39,7 +39,19 @@ class ContractManager(WorkerManager):
         if operation == "semantic_lan" and arguments.get("action") == "start":
             self.start_calls += 1
             return {"ok": True}
+        if operation == "semantic_snapshot":
+            return {"ok": True, "snapshot": {
+                "turn": 42, "year": 2142,
+                "faction": {"id": 1, "name": "Gaians"},
+                "outcome": {
+                    "game_completed": True, "final_score_completed": True,
+                    "victory_type": "economic_solo", "perspective_result": "win",
+                },
+            }}
         raise AssertionError(f"unexpected native request: {operation} {arguments}")
+
+    def worker_status(self, instance_id: str):
+        return {"running": True, "health": "healthy", "instance_id": instance_id}
 
     def _wait_native(self, instance_id: str, operation: str, predicate, **arguments):
         if operation == "semantic_lan":
@@ -176,6 +188,15 @@ def main() -> int:
                 or final_seats[1]["metadata"].get("network_join_pending") is not False:
             raise AssertionError("validated mixed LAN did not enter durable running state")
 
+        status = manager.lan_match_status(scope.match_id)
+        outcome = status["seats"][0].get("outcome", {})
+        stored_outcome = control.get_seat(scope.match_id, 0)["metadata"].get("outcome", {})
+        if outcome.get("perspective_result") != "win" \
+                or stored_outcome.get("victory_type") != "economic_solo" \
+                or control.get_match(scope.match_id)["status"] != "completed" \
+                or control.get_match(scope.match_id)["last_turn"] != 42:
+            raise AssertionError("native outcome was not mirrored without inference")
+
         rejected = ContractManager(control, FakeDocker("bridge"))
         try:
             rejected._external_lan_network()
@@ -201,6 +222,7 @@ def main() -> int:
                 "unexpected_player_rejected": True,
                 "readiness_guarded": True,
                 "saved_faction_guarded": True,
+                "native_outcome_mirrored": True,
                 "physical_or_firewalled_routed_player_lan_required": True,
                 "pixels_or_ui_input_used": False,
             },

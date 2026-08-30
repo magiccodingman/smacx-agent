@@ -1,91 +1,346 @@
 # Architecture
 
+SMACX Agent is a LAN application around the real Alien Crossfire executable,
+not a replacement game engine. It separates human presentation, operator
+authority, AI reasoning, durable knowledge, and native mutation so each can be
+tested and secured independently.
+
+## Component map
+
 ```text
-Authenticated Control Center -- owns match/seat/worker/harness lifecycle
-             |
-             v
-Qwen 3.8 27B / managed isolated Hermes container (one durable agent identity)
-             |
-             | exact MCP Streamable HTTP endpoint
-             v
-Dedicated MCP sidecar (one running worker/perspective; lifecycle blocked)
-             |
-             | authenticated JSON lines on a private Docker network
-             v
-Thinker-derived 32-bit bridge DLL
-             |
-             | UI-thread message marshalling
-             v
-Visible/view-only SMACX process under an isolated Proton prefix
+trusted LAN browser
+       |
+       | accounts, lobbies, reports, short-lived stream tickets
+       v
+.NET 10 Blazor portal + controllers + SignalR
+       |
+       | purpose service token, private Docker network
+       v
+Python control API ------------------------------------+
+       |                                                |
+       | Docker lifecycle                               | SQLite authority
+       |                                                | matches/seats/saves/
+       |                                                | memory/operations
+       +------------------+-----------------------------+
+                          |
+                 one isolated seat
+                          |
+          +---------------+----------------+
+          |                                |
+          v                                v
+Proton + terranx.exe + bridge       MCP sidecar
+          |                                ^
+          | typed native state/actions     |
+          +--------------------------------+
+          |
+          +--> Selkies video/audio/input (portal proxied)
+
+OpenAI-compatible provider <--> isolated official Hermes container
+                                      |
+                                      +--> exact seat MCP only
 ```
 
-The Control Center also owns a durable operations plane. SQLite schedules are
-claimed transactionally; immutable run records retain outcomes. Reconciliation
-may repair an MCP sidecar in place, but native recovery requires a previously
-recorded bridge-verified save. Backups use SQLite's online backup API and
-briefly pause each game or running harness container while a no-network helper
-archives its persistent volume under the source volume's private UID. Backup
-and reconciliation share an exclusive operations lock so an intentional
-consistency freeze cannot be classified as failure. Hermes provider keys are
-mounted from a separate read-only purpose volume and are never included in the
-inspect-visible process configuration.
+Optional Graphiti/Neo4j reads committed authoritative events through a cursor
+and writes only a derived temporal graph. It is never on the gameplay authority
+path.
 
-The model uses MCP rather than connecting to the game bridge directly. MCP gives Qwen compact schemas, bounded waits, stable match identity, scoped memory, and a deliberately semantic-only capability boundary. In the legacy single-instance flow MCP also owns launch lifecycle. In the managed flow, lifecycle tools are mechanically blocked and only the authenticated Control Center may start, park, or resume a worker. Hermes remains the permanent supported harness; the independent bridge protocol keeps that integration secure and testable without coupling the DLL to the harness process.
+## Why the original executable
 
-For managed LAN, every agent seat has a separate game/MCP pair but shares one
-durable `match_id`. In an agent-hosted match, seat zero hosts the real
-DirectPlay session. In a human-hosted match, seat zero deliberately has no
-worker or MCP and the managed clients discover the human game's explicitly
-supplied IPv4 address plus a freshly enumerated network-session GUID. The Control Center reads each worker's bridge
-token directly from its purpose-scoped vault entry and may invoke only named
-native semantic operations; it never exposes those tokens or a generic bridge
-proxy through HTTP. Each process keeps a unique `session_id` and perspective,
-so simultaneous chat, memory, and optimistic-concurrency guards cannot cross
-seats.
+OpenSMACX is an incomplete historical engine-reimplementation scaffold and does
+not supply playable Alpha Centauri state/control. The project instead extends a
+pinned Thinker-derived DLL inside `terranx.exe`. Thinker provides maintained
+reverse-engineered structures and hooks while the stock engine continues to
+render, resolve rules, load scenarios, run DirectPlay, and write native saves.
 
-External human seats deliberately have no agent identity, perspective, worker,
-or MCP endpoint. They are durable lobby assignments keyed by an operator-chosen
-native player name and, after first start, the observed faction. A mixed match
-uses an explicitly configured macvlan/ipvlan network so every worker has a real
-LAN address. The manager stages the lobby, then validates exact names,
-readiness, participant count, and saved-faction reclamation. It invokes Start
-only for an agent host; for a human host it readies every managed client and
-observes the human's native Start.
+The bridge exposes only reviewed semantic adapters. Unknown or unsupported
+mandatory UI states latch a capability gap. The MCP has no generic screenshot,
+mouse, keyboard, window, text-entry, arbitrary memory-scope, or raw bridge
+proxy escape hatch.
 
-Native actions that must cross the Windows event loop are tracked as small transactions. The bridge assigns an `action_id`, records the intended objects, and publishes pending/completed/rejected status plus the native result and observed match-local tile IDs. The MCP waits for completion within a bound, preventing a model from confusing “message queued” with “game action applied.” Native map coordinates remain internal to the DLL.
+## Authority split
 
-The Planetary Council is a special nested native event loop. The bridge opens the engine's own proposal list, takes one compound semantic proposal-plus-ballot decision, and schedules the native Council vote/close handlers with a Windows timer on the same UI thread. The normal Council chamber remains visible; no synthetic input or cross-thread engine access is used.
+### Portal authority
 
-The Unit Workshop does not open its coordinate-oriented window. The bridge derives fair component catalogs from the human faction's acquired technologies, applies role and ability compatibility checks, and then calls the engine's native prototype routines on the UI thread. Prototype creation is part of the semantic revision, so any prior guard becomes stale immediately. Retirement and bulk upgrade additionally validate ownership, live unit/queue references, affordability, and explicit confirmation.
+The portal is the only ordinary browser/LAN entry point and the only writer of
+its canonical pre-release SQLite schema:
 
-## Why Thinker, not OpenSMACX
+- ASP.NET Core Identity users/roles/password-reset grants;
+- case-insensitive game handles and provisional invited identities;
+- lobby drafts, browser membership, UI policy, stream presence/tickets;
+- versioned provider-facing AI profile metadata; and
+- public history/analytics projections, including evidence-backed per-seat
+  native outcomes.
 
-OpenSMACX is an old, incomplete engine-reimplementation scaffold and does not provide playable Alpha Centauri state or control. GLSMAC is active but has not reached full gameplay. Thinker is mature, MIT-licensed, injects into the original `terranx.exe`, and already contains maintained reverse-engineered engine structures and hooks. That lets this project preserve the real visible game while exposing a narrow control surface.
+Client-side Blazor state is not an authorization boundary. Controllers recheck
+the principal, role, match ownership/membership, seat, lobby policy, and stream
+mode. SignalR carries notifications/presence, not game video.
 
-New native adapters are exposed only after their state and effect path are identified. For example, the Alien Crossfire Council-window path at `0x428110` handles `VOTEFORMETECH` by transferring the two publicly named technology IDs stored at `0x93F800` and `0x93F80C`, then casting the player's ballot; the path at `0x428285` handles `VOTEFORME` by transferring the parsed energy quote before the same ballot call. The semantic adapter reads only the terms named by that active dialog, requires explicit commitment confirmation, and lets the original suspended Council code apply the effect after the popup closes.
+### Control authority
 
-## Thread safety
+The private Python service is the only writer of the authoritative gameplay and
+operations SQLite schema:
 
-The socket worker never reads or mutates engine memory. It accepts one bounded request, places it in a synchronized slot, and posts a private Windows message. `ModWinProc` executes ordinary requests on the game's UI thread and signals the worker with the response. Stock paired-diplomacy and DirectPlay waits can consume or starve that window message, so audited game-thread message and native wait boundaries service the same serialized slot. A re-entry latch prevents the active request from calling itself, while modal-depth tracking prevents a hook-serviced read from recursively entering DirectPlay's packet pump. Timeout diagnostics report which dispatch boundaries ran. This preserves single-threaded access to the 1999 engine's global data structures even inside its private loops.
+- installation, game source/runtime fingerprints, vault secrets;
+- native match, seat, agent, perspective, process-session, and instance IDs;
+- worker/MCP/Hermes lifecycle and Docker ownership labels;
+- verified saves, recovery, schedules, operation runs, and backups;
+- immutable events, chat, facts, beliefs, relationships, commitments, goals,
+  summaries, and Graphiti projection cursor; and
+- original/private mechanics search indexes.
 
-## Fair-play boundary
+The portal authenticates with a purpose file credential mounted read-only. The
+control API is not host-published. Neither service opens or writes the other's
+database.
 
-- The perspective is always `CurrentPlayerFaction`; callers cannot request another faction.
-- Bases are returned only when owned by that faction.
-- Own units include full actionable fields. Foreign units appear only when the engine marks them currently visible and omit private order/home-base fields.
-- Tiles must be known. Currently visible tiles include current terrain/owner; fogged tiles include only remembered feature bits and omit current terrain/owner.
-- A transient engine pointer to a hidden AI unit is filtered before it becomes `current_vehicle_id`.
-- Unit/base semantic actions validate ownership and wait for the human, non-modal turn.
-- Every mutation uses optimistic concurrency over `match_id`, per-process `session_id`, and fair action-relevant `revision`.
-- Durable strategic knowledge uses the same identity boundary: writes require the active match/session/revision, record turn/year provenance, retain correction history, and cannot name arbitrary filesystem paths. Reads from another match are rejected while play is active.
-- A reported capability gap creates an MCP-side development latch whose audit identity is keyed by `(match_id, session_id)`. The agent can continue read-only diagnosis or stop the isolated game, but commands, launch, new-game, and load operations are refused for the remainder of that MCP process. There is intentionally no agent-accessible reset; after the bridge is extended and tested, the developer restarts MCP and begins a fresh native session.
-- The authenticated native bridge itself rejects the former raw `act` operation. This defense is below MCP discovery: direct socket clients also cannot send mouse, keyboard, text-entry, chat keystrokes, or coordinate menu actions.
-- The bridge does not expose scenario-editor omniscience or arbitrary memory reads.
+### Native authority
 
-## Security boundary
+The DLL on the real game UI thread decides what the current faction can observe
+and whether a command is legal. The control plane may request named operations,
+but it cannot forge a bridge revision, faction perspective, native participant,
+or successful save.
 
-The in-process game bridge binds only to loopback and requires a 256-bit token.
-Managed workers expose its authenticated proxy only to their selected container
-network; MCP and spectator host ports default to loopback. Requests are capped
-at 16 KiB and controller responses at 4 MB. External DirectPlay publication is
-an explicit macvlan/ipvlan operator choice, never an implicit port-forward.
+## Identity and fair play
+
+Every action is bound to:
+
+```text
+installation_id
+  match_id
+    seat_index
+      agent_id (agent seats only)
+      perspective_id (agent seats only)
+      instance_id (managed process)
+        session_id (fresh per native process)
+        revision (fresh per observed game state)
+```
+
+Agent memory scope is exactly `match_id + agent_id + perspective_id`. Another
+agent in the same match, the same model in another match, and a recovered native
+process cannot reuse that scope accidentally. Match-local tile IDs are opaque
+identifiers; coordinates remain inside the bridge.
+
+Native state is filtered for the seat's faction. Unit/base ownership, map
+visibility, contacts, council state, diplomacy, chat participants, and legal
+choices are derived under that perspective. MCP independently checks the same
+scope and stale revision before forwarding mutation.
+
+## Native thread model
+
+The socket worker never reads or mutates engine globals. It accepts one bounded
+request into a synchronized slot and posts a private Windows message. The
+Thinker-derived `ModWinProc` executes on the game's UI thread and returns the
+result. Audited DirectPlay/diplomacy waits service the same serialized slot,
+with re-entry and modal-depth guards preventing recursion.
+
+Long-running native effects use small transactions. The bridge records an
+`action_id`, intended objects, pending/completed/rejected state, and native
+result. MCP waits for bounded completion so the model cannot confuse “queued”
+with “applied.”
+
+Nested systems such as the Planetary Council, paired diplomacy, Unit Workshop,
+scenario setup, and DirectPlay lobby have purpose adapters that call original
+engine handlers on the UI thread. They are not coordinate macros.
+
+## Agent decision protocol
+
+The preferred cycle is:
+
+```text
+smac_decision
+  -> review one returned guarded choice
+  -> execute at most that choice
+  -> discard the frame
+  -> observe again
+```
+
+Decision frames merge the current actionable surface: required interactions,
+incoming diplomacy/council items, ready units, bases needing choices, research,
+social engineering, unit design, strategic orders, chat, and end-turn guards.
+Mutations invalidate earlier frames.
+
+Consequential actions carry typed confirmation flags and review fields. End
+turn is rejected while mandatory work or pending native action remains.
+
+## Hermes integration and prompt layering
+
+Hermes is the supported long-running agent harness, but it is managed as an
+isolated runtime rather than a prerequisite desktop dashboard. Each agent
+profile has:
+
+- official digest-pinned image;
+- private durable data volume and separate provider-secret volume;
+- match-specific workspace and continued conversation key;
+- exact MCP endpoint for its worker/perspective;
+- `smacx,web` toolsets only; and
+- restart budget/turn/run policy owned by control.
+
+Prompt composition is deterministic:
+
+1. Hermes tool-critical runtime layer;
+2. stable SMACX fair-play/player contract;
+3. immutable match/seat/policy identity;
+4. optional personality card (`None` only in this milestone); and
+5. scoped durable memory/retrieval.
+
+Chat messages and web content remain untrusted game information. They do not
+become operator/system instructions. Lifecycle, Docker, backups, provider
+secrets, stream tickets, and recovery are never agent tools.
+
+## Human seats and streaming
+
+Managed browser humans receive the same isolated Proton worker model without
+MCP/Hermes authority. Selkies encodes the real X11 game display and audio,
+accepts ordinary input for interactive tickets, and supports reconnect and
+fullscreen. The portal reverse-proxies HTTP/WebSocket transport and rewrites
+the WebSocket Origin expected by Selkies.
+
+Authorization happens before proxying:
+
+- member controls their exact browser seat;
+- administrator may control their own seat and observe any seat;
+- lobby opt-in may issue anonymous spectator tickets;
+- observer/anonymous modes are enforced read-only at transport; and
+- direct worker credentials/passwords are not exposed.
+
+`managed clients only` rejects external/native clients for a lobby. Otherwise,
+native human seats have no agent/perspective/MCP identity and join the real
+DirectPlay session using an assigned handle/faction.
+
+## LAN lifecycle
+
+An agent-hosted match gives seat zero a game worker and native Host/Start
+authority. A managed browser human host uses the same path without an agent.
+Advanced external-human hosting gives seat zero no worker; managed clients
+discover an explicitly selected IP/session, ready, and wait for the human's
+native Start.
+
+Lobby staging validates names, readiness, participant count, and saved faction
+reclamation. Exact external join details are copied to the portal through the
+private service call.
+
+Parking is an ordered transaction:
+
+```text
+portal status=parking
+  -> stop active Hermes runs
+  -> native verified checkpoint
+  -> stop/remove MCP and worker containers
+  -> authoritative match=parked
+  -> portal match=parked
+```
+
+The `parking` claim suppresses the supervisor's normal “ensure agent is
+running” behavior. If the native save is currently illegal, the transaction
+fails before worker teardown, records `park_failed`, and returns to running.
+The control API independently stops harness callers for direct API park users.
+
+Recovery always assigns fresh native session/revision identities, loads the
+verified save, reclaims exact factions, restores MCP sidecars, and continues
+the durable Hermes conversation. A model must re-observe.
+
+## Chat and memory
+
+Native and portal chat are normalized into durable match events with sender
+handle, sender faction, recipient faction (`0` means broadcast), sequence, and
+deduplication marker. This supports public/private diplomacy and correct
+identity even when messages arrive outside the agent's active turn.
+
+Authoritative memory separates:
+
+- immutable observed events;
+- facts with provenance/status;
+- beliefs/suspicions and confidence;
+- relationship dimensions such as trust/affinity/threat/respect;
+- commitments/debts and deadlines;
+- active/completed/abandoned goals; and
+- bounded summaries/compression records.
+
+FTS5/BM25 retrieval is scoped and supports multiple records. Write budgets and
+summary replacement prevent unbounded context growth without erasing the raw
+event history.
+
+## Knowledge system
+
+The shipped `knowledge/core.json` contains short independently written
+mechanics primers with topic/section/title/keywords/provenance. It excludes
+strategy guides and scenario solutions. The control plane builds a searchable
+Markdown-like document index with FTS5/BM25.
+
+An optional private extractor reads documentation from the validated game
+source, extracts PDF/TXT/HTML/help text inside an operator-owned volume, stores
+source hashes, and never copies the resulting documents into source or images.
+Retrieval remains bound to the exact game-source fingerprint so mods/install
+variants do not contaminate another match.
+
+## Graphiti
+
+Graphiti is a derived temporal projection:
+
+```text
+authoritative SQLite event cursor
+  -> projector validates installation/match/agent/perspective
+  -> Graphiti episodes
+  -> isolated Neo4j namespace
+```
+
+Projection may lag, be rebuilt, or be deleted. Gameplay and scoped BM25 memory
+continue. Graphiti cannot create facts in SQLite or broaden a perspective.
+
+## Analytics
+
+The native bridge mirrors only public progress (turn/year and own faction) into
+control state. Portal supervisor polling is throttled to avoid competing with
+the serialized agent bridge slot.
+
+Hermes remains authoritative for provider usage. On an observed new turn, a
+short-lived helper with no network and a read-only mount queries the exact
+profile's `sessions` table. The portal stores nonnegative deltas for input,
+output, cache-read, cache-write, reasoning tokens, and API calls under the
+match/agent/profile version/turn. This avoids estimates and keeps the Hermes
+filesystem private.
+
+Reports use the portal projection. The administrator SQL lab populates a new
+in-memory database with a strict allowlist of report tables; it never attaches
+the real Identity or secret/control databases.
+
+## Docker and secret boundaries
+
+Every dynamic container/volume/network carries:
+
+- `io.smacx.managed=true`;
+- exact installation label; and
+- purpose label plus relevant match/agent/run identity.
+
+The minimal Docker client mutates only resources whose labels match. Containers
+drop all capabilities, use `no-new-privileges`, read-only roots where possible,
+bounded tmpfs, and non-root users. Helpers run without network. Provider keys,
+bridge tokens, and stream passwords live in separate purpose volumes/files and
+are absent from inspect-visible environment values.
+
+## Operations and concurrency
+
+SQLite claims operation schedules transactionally and retains immutable run
+outcomes. Reconciliation may repair MCP/harness sidecars. Native recovery
+requires a recorded verified save. Backups use SQLite online backup and
+no-network volume helpers; running game/Hermes containers are briefly paused
+under the same exclusive operations lock so a consistency freeze is not
+classified as a crash.
+
+Multiple matches and agents may run concurrently because each has isolated
+workers, displays, streams, MCP endpoints, sessions, volumes, and memory scope.
+Capacity—not screen focus—is the limit. Build concurrency is separately forced
+to one to avoid native/Blazor optimization exhausting home-lab memory.
+
+## Deliberate limits
+
+- Linux is the implemented and locally verified deployment.
+- Physical two-computer LAN, real remote Tailscale peer, and Windows/WSL2 are
+  designed/contract-tested but await external certification.
+- The service is LAN-only, not Internet matchmaking/hosting.
+- All matches are unranked.
+- Personality schema/injection exists; authored cards do not.
+- Unknown game states remain fail-closed instead of invoking pixels.
+
+See [ADR 0001](adr/0001-identities-and-authoritative-memory.md), [ADR
+0002](adr/0002-control-plane-and-runtime-boundary.md), and [ADR
+0003](adr/0003-lan-browser-platform.md) for the accepted design decisions.
