@@ -135,12 +135,20 @@ In **Administration**:
 1. validate the existing Alien Crossfire directory;
 2. import Proton into an installation-owned volume;
 3. add an OpenAI-compatible provider and discover its models; and
-4. create a versioned AI profile if you want an agent seat.
+4. create a versioned AI player profile—the raw provider alone cannot occupy
+   an agent seat.
 
-Then choose **New lobby**, select native rules and seats, and launch. A browser
+Then choose **New lobby**, select native rules and seats, and launch. AI hosting
+is the recommended default; the first selected AI profile owns the native
+session while you may add yourself as a human player. A browser
 human clicks **Play**. A direct/native human uses the host address, native
 session name/ID, assigned player handle, and faction shown on the lobby page.
 An AI profile starts automatically in an isolated official Hermes container.
+
+**Save without starting** creates a waiting portal lobby only. **Launch game
+now** also provisions the players, starts the native game, and advertises the
+joinable session. A single validated game installation and Proton runtime are
+chosen automatically; advanced selectors appear only when alternatives exist.
 
 To publish the portal on a trusted private LAN:
 

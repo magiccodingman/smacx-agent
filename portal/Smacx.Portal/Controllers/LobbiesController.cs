@@ -757,7 +757,8 @@ public sealed class LobbiesController(
         if (request.ManagedClientsOnly && request.HumanJoinMode != "browser")
             return ("managed_clients_required", "Managed-only lobbies require browser human seats.");
         if (request.HostController == "agent" && request.AgentIds.Count == 0)
-            return ("agent_host_required", "An agent-hosted lobby requires at least one agent.");
+            return ("agent_host_required",
+                "Choose at least one AI player profile, or create one in Administration → Models & AI profiles.");
         if (request.NativeBotCount is < 0 or > 6)
             return ("invalid_native_bot_count", "Choose between zero and six native bots.");
         if (request.AgentIds.Distinct(StringComparer.Ordinal).Count() != request.AgentIds.Count)

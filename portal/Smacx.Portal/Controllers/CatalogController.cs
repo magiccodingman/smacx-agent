@@ -21,7 +21,10 @@ public sealed class CatalogController(ControlPlaneClient control, ApplicationDbC
             var runtimes = await control.ListRuntimesAsync(HttpContext.RequestAborted);
             var agents = await control.ListAgentsAsync(HttpContext.RequestAborted);
             var activeProfiles = await database.PortalAiProfileVersions.AsNoTracking()
-                .Where(item => item.Active).ToArrayAsync(HttpContext.RequestAborted);
+                .Where(item => item.Active)
+                .OrderBy(item => item.DisplayName)
+                .ThenByDescending(item => item.Version)
+                .ToArrayAsync(HttpContext.RequestAborted);
             var agentStatus = agents.ToDictionary(item => item.AgentId, item => item.Status);
             return ApiResponse<LobbyCatalog>.Success(new(
                 sources.Select(item => new CatalogItem(item.Id, item.DisplayName, item.Status)).ToArray(),
