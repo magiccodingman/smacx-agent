@@ -88,6 +88,14 @@ public sealed record JoinLobbyRequest(int SeatIndex, string JoinMode = "browser"
 
 public sealed record MatchLifecycleRequest(string Action, string? Slot = null);
 
+public sealed record ControllerLeaseRequest(string PlayInstanceId);
+
+public sealed record ControllerLeaseActionRequest(string LeaseId);
+
+public sealed record ControllerLeaseState(
+    string LeaseId, string Role, DateTimeOffset ExpiresAt, long Generation,
+    bool ControllerPresent, int ExpiresInSeconds);
+
 public sealed record LobbySeatSummary(
     int SeatIndex,
     string ControllerKind,
@@ -128,7 +136,12 @@ public sealed record LobbyDetails(
     NativeJoinDetails? NativeJoin,
     string? LastError,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    MatchPresenceState? Presence = null);
+
+public sealed record MatchPresenceState(
+    string State, string Summary, bool AutomaticParkingEnabled,
+    int? SecondsUntilParking = null, DateTimeOffset? ParkingEligibleAt = null);
 
 public sealed record LobbyMessage(
     string Id,
@@ -176,7 +189,9 @@ public sealed record HumanUiState(
     bool RootMenuVisible, int MenuDepth, bool Modal,
     string? PopupLabel, string? LifecycleIntent, long Revision,
     string ResolutionProfileId = "1280x800", int NativeWidth = 1280,
-    int NativeHeight = 800, bool CanRequestNativeChange = true);
+    int NativeHeight = 800, bool CanRequestNativeChange = true,
+    int StreamBitrateKbps = 5000, string StreamEncoder = "h264enc",
+    bool NativeQuitIntercepted = false);
 
 public sealed record GovernanceProposal(
     string ProposalId, string MatchId, string Kind, string Status,

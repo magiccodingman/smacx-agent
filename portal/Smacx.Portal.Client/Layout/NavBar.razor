@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject NavigationManager Navigation
+@inject Services.PortalApiClient Api
 
 <MudAppBar Elevation="0" Class="portal-appbar">
     <MudIconButton Icon="@Icons.Material.Filled.Menu" OnClick="ToggleRequested" Class="menu-button" />
@@ -11,11 +12,16 @@
     <div class="network-pill"><span></span> LAN ONLY</div>
     <AuthorizeView>
         <Authorized Context="auth">
-            <MudButton Href="account" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Person" Class="account-button">
-                @auth.User.Identity?.Name
-            </MudButton>
+            <MudMenu Label="@auth.User.Identity?.Name" Variant="Variant.Text"
+                     StartIcon="@Icons.Material.Filled.Person" Class="account-button"
+                     AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <MudMenuItem Href="account" Icon="@Icons.Material.Filled.ManageAccounts">Account</MudMenuItem>
+                <MudMenuItem Href="install" Icon="@Icons.Material.Filled.InstallMobile">Install app</MudMenuItem>
+                <MudMenuItem OnClick="Logout" Icon="@Icons.Material.Filled.Logout">Sign out</MudMenuItem>
+            </MudMenu>
         </Authorized>
         <NotAuthorized>
+            <MudIconButton Href="install" Icon="@Icons.Material.Filled.InstallMobile" aria-label="Install app" />
             <MudButton Href="login" Variant="Variant.Outlined" Color="Color.Primary">Sign in</MudButton>
         </NotAuthorized>
     </AuthorizeView>
@@ -25,6 +31,11 @@
     [Parameter] public EventCallback ToggleRequested { get; set; }
 
     protected override void OnInitialized() => Navigation.LocationChanged += LocationChanged;
+    private async Task Logout()
+    {
+        await Api.PostAsync<bool>("api/auth/logout", new { });
+        Navigation.NavigateTo("login", forceLoad: true);
+    }
     private void LocationChanged(object? sender, LocationChangedEventArgs args) => InvokeAsync(StateHasChanged);
     public void Dispose() => Navigation.LocationChanged -= LocationChanged;
 }

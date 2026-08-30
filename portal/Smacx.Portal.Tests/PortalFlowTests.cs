@@ -159,6 +159,16 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, rejected.Response.StatusCode);
         Assert.Equal("ranked_not_available", rejected.Payload.Error?.Code);
 
+        var duplicateHandles = create with
+        {
+            DisplayName = "Duplicate handles",
+            InvitedHumanHandles = ["CaseTwin", "casetwin"],
+        };
+        var duplicateRejected = await PostAsync<LobbyDetails>(
+            "api/lobbies", duplicateHandles, csrf.Token);
+        Assert.Equal(HttpStatusCode.BadRequest, duplicateRejected.Response.StatusCode);
+        Assert.Equal("duplicate_player_handle", duplicateRejected.Payload.Error?.Code);
+
         await using var connection = new SqliteConnection(
             $"Data Source={Path.Combine(dataRoot, "portal.sqlite3")}");
         await connection.OpenAsync();

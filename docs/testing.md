@@ -10,6 +10,9 @@ installation-owned.
 dotnet restore Smacx.Agent.slnx
 dotnet test Smacx.Agent.slnx --no-restore
 
+node scripts/pwa_install_test.mjs
+python3 scripts/human_ui_safety_test.py
+
 python3 -m compileall -q src worker scripts
 PYTHONPATH=src python3 scripts/control_plane_test.py
 PYTHONPATH=src python3 scripts/control_http_test.py
@@ -143,7 +146,12 @@ Run the browser portal at desktop and mobile widths and verify:
 11. connected-player voting, stable-boundary maintenance curtain, checkpoint,
     park, profile change, delegation/reclaim, and recover UI/state;
 12. turn/year/faction activity feed; and
-13. analytics, native classified/unknown outcomes, CSV, and constrained SQL report.
+13. analytics, native classified/unknown outcomes, CSV, and constrained SQL report;
+14. install page and account/nav entry points at desktop and phone widths;
+15. first-tab controller, second-tab viewer, explicit takeover, and old-stream
+    revocation; and
+16. internal Exit game view confirmation, external unload warning, semantic
+    native-quit cancellation, and idle-parking countdown.
 
 The 2026-08-29 Chrome run rendered the actual game through Selkies, accepted
 browser input, kept observer paths read-only, and verified the desktop/mobile

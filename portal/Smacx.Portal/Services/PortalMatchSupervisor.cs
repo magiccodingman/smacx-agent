@@ -100,8 +100,10 @@ public sealed class PortalMatchSupervisor(
             if (humans.Length == 0 || humans.Any(item => item.JoinMode != "browser" ||
                     item.ControlInstanceId == null)) continue;
             var snapshots = humans.Select(item => presence.Get(item.ControlInstanceId!)).ToArray();
-            if (snapshots.Any(item => !item.EverConnected || item.ActiveConnections > 0 ||
-                    item.LastSeen is null || item.LastSeen > cutoff)) continue;
+            if (snapshots.Any(item => item.ActiveConnections > 0)) continue;
+            var lastHumanActivity = snapshots.Where(item => item.LastSeen is not null)
+                .Select(item => item.LastSeen!.Value).DefaultIfEmpty(match.CreatedAt).Max();
+            if (lastHumanActivity > cutoff) continue;
             try
             {
                 await control.PostRawAsync($"api/v1/matches/{match.MatchId}/checkpoint",
@@ -221,7 +223,8 @@ public sealed class PortalMatchSupervisor(
                 seat.FactionId = controlSeat.FactionId;
                 seat.FactionName = controlSeat.FactionName;
                 seat.ControlInstanceId ??= controlSeat.InstanceId;
-                if (!string.IsNullOrWhiteSpace(controlSeat.PlayerHandle))
+                if (!string.IsNullOrWhiteSpace(controlSeat.PlayerHandle) &&
+                    (seat.ControllerKind != "human" || string.IsNullOrWhiteSpace(seat.PlayerHandle)))
                     seat.PlayerHandle = controlSeat.PlayerHandle;
                 seat.Status = controlSeat.Status;
                 seat.UpdatedAt = DateTimeOffset.UtcNow;
@@ -232,7 +235,9 @@ public sealed class PortalMatchSupervisor(
                     if (stream.LastSeen is not null)
                         seat.LastBrowserSeenAt = stream.LastSeen;
                     seat.ConnectionState = stream.ActiveConnections > 0 ? "connected" :
-                        stream.EverConnected ? "disconnected" : "awaiting_browser";
+                        !stream.EverConnected ? "awaiting_first_connection" :
+                        stream.LastSeen > DateTimeOffset.UtcNow - TimeSpan.FromSeconds(30)
+                            ? "temporarily_disconnected" : "idle_grace_period";
                 }
                 else if (seat.ControllerKind == "human" && seat.JoinMode != "browser")
                 {
@@ -567,6 +572,13 @@ public sealed class PortalMatchSupervisor(
             .Where(item => item.MatchId == match.MatchId && item.ControllerKind == "human" &&
                 item.JoinMode == "browser" && item.ControlInstanceId != null)
             .ToArrayAsync(cancellationToken);
+        var canonicalParticipants = (await database.PortalLobbySeats.AsNoTracking()
+                .Where(item => item.MatchId == match.MatchId && item.FactionId != null &&
+                    item.PlayerHandle != null)
+                .Select(item => new { FactionId = item.FactionId!.Value, item.PlayerHandle })
+                .ToArrayAsync(cancellationToken))
+            .GroupBy(item => item.FactionId)
+            .ToDictionary(group => group.Key, group => group.First().PlayerHandle!);
         foreach (var seat in seats)
         {
             try
@@ -620,8 +632,9 @@ public sealed class PortalMatchSupervisor(
                     }
                     database.PortalLobbyMessages.Add(new PortalLobbyMessage
                     {
-                        MatchId = match.MatchId, SenderHandle = participants.GetValueOrDefault(
-                            faction, $"Faction {faction}"),
+                        MatchId = match.MatchId, SenderHandle = canonicalParticipants
+                            .GetValueOrDefault(faction) ?? participants.GetValueOrDefault(
+                                faction, $"Faction {faction}"),
                         Content = content,
                         DeliveredToGame = true, NativeMessageUid = uid,
                         Channel = channel, ConversationId = conversationId,

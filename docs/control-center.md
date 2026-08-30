@@ -108,6 +108,14 @@ it behind public Internet ingress.
 Browser seats need only the website. Stream traffic remains behind the portal;
 worker ports are never shared as public credentials.
 
+### Install on a desktop or mobile device
+
+Open **Install app** in the portal. The host itself can install from the
+loopback URL. Other LAN devices need a trusted HTTPS origin before browsers can
+offer reliable PWA installation; ordinary HTTP browsing continues to work but
+is not treated as installable. See [installable-app.md](installable-app.md) for
+the prompt fallback, manifest, icon, and no-offline-cache boundaries.
+
 ## 4. Register the game and Proton
 
 Go to **Administration → Game runtime**.
@@ -269,9 +277,11 @@ read-only at the worker transport—not merely disabled in JavaScript.
 ### Direct/native game client
 
 The lobby page shows the exact host address, native session name/ID, assigned
-player handle, seat, and recorded faction. Launch the user's own Alien
-Crossfire client, choose TCP/IP multiplayer, and join with that exact handle.
-Names bind case-insensitively to portal accounts and analytics.
+match-local native alias, seat, and recorded faction. Launch the user's own
+Alien Crossfire client, choose TCP/IP multiplayer, and join with that exact
+alias. The portal keeps the account's normal game handle for chat, history,
+analytics, and memory; the alias exists only to make DirectPlay seat binding
+unambiguous and collision-proof.
 
 Direct clients require workers on a network reachable from the physical LAN.
 Create a macvlan/ipvlan network appropriate for the host, then publish it to the

@@ -13,6 +13,7 @@ public sealed class StreamProxyService(
     Data.ApplicationDbContext database,
     ControlPlaneClient control,
     StreamPresenceTracker presence,
+    ControllerLeaseService controllerLeases,
     ILogger<StreamProxyService> logger)
 {
     private static readonly ForwarderRequestConfig RequestConfig = new()
@@ -55,10 +56,23 @@ public sealed class StreamProxyService(
         // view-only credential, even though administrators may inspect any seat.
         var forceViewOnly = context.Request.Query.TryGetValue("view", out var view)
             && view.Count > 0 && view[0] == "1";
+        var leaseId = context.Request.Query.TryGetValue("lease", out var leaseValues)
+            ? leaseValues.FirstOrDefault() : null;
+        var controllerRevoked = CancellationToken.None;
+        var hasControllerLease = userId is not null &&
+            controllerLeases.TryGetControllerCancellation(
+                instanceId, userId, leaseId, out controllerRevoked);
         var interactive = !forceViewOnly && ownsSeat
             && seat.ControllerKind == "human"
-            && seat.JoinMode == "browser";
+            && seat.JoinMode == "browser"
+            && hasControllerLease;
         using var presenceLease = interactive ? presence.Enter(instanceId) : null;
+        using var linkedCancellation = interactive
+            ? CancellationTokenSource.CreateLinkedTokenSource(
+                context.RequestAborted, controllerRevoked)
+            : null;
+        if (linkedCancellation is not null)
+            context.RequestAborted = linkedCancellation.Token;
         ControlStreamAccess access;
         try
         {
@@ -77,8 +91,25 @@ public sealed class StreamProxyService(
         }
 
         var transformer = new StreamTransformer(access.Password);
-        var error = await forwarder.SendAsync(
-            context, access.InternalBaseUrl, streamHttpClient, RequestConfig, transformer);
+        ForwarderError error;
+        try
+        {
+            error = await forwarder.SendAsync(
+                context, access.InternalBaseUrl, streamHttpClient, RequestConfig, transformer);
+        }
+        catch (OperationCanceledException) when (
+            interactive && controllerRevoked.IsCancellationRequested)
+        {
+            logger.LogInformation(
+                "Closed superseded controller stream for {InstanceId}", instanceId);
+            return;
+        }
+        if (interactive && controllerRevoked.IsCancellationRequested)
+        {
+            logger.LogInformation(
+                "Closed superseded controller stream for {InstanceId}", instanceId);
+            return;
+        }
         if (error != ForwarderError.None)
         {
             var feature = context.GetForwarderErrorFeature();

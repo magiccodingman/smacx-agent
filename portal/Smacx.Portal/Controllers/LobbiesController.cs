@@ -19,7 +19,8 @@ public sealed class LobbiesController(
     ApplicationDbContext database,
     UserManager<ApplicationUser> userManager,
     ControlPlaneClient control,
-    IHubContext<LobbyHub> lobbyHub) : ControllerBase
+    IHubContext<LobbyHub> lobbyHub,
+    StreamPresenceTracker presence) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
@@ -67,6 +68,14 @@ public sealed class LobbiesController(
         if (validation is not null)
         {
             return BadRequest(ApiResponse<LobbyDetails>.Failure(validation.Value.Code, validation.Value.Message));
+        }
+        if ((request.HostController == "human" || request.OwnerPlays) &&
+            request.InvitedHumanHandles.Any(handle =>
+                handle.Trim().Equals(user.GameHandle, StringComparison.OrdinalIgnoreCase)))
+        {
+            return BadRequest(ApiResponse<LobbyDetails>.Failure(
+                "duplicate_player_handle",
+                "Your account is already assigned to this lobby; do not invite the same handle again."));
         }
 
         var matchId = $"match-{Guid.NewGuid():N}";
@@ -489,15 +498,20 @@ public sealed class LobbiesController(
                 entity.ConversationName = await database.PortalChatGroups.AsNoTracking()
                     .Where(item => item.GroupId == request.ConversationId)
                     .Select(item => item.DisplayName).SingleOrDefaultAsync(HttpContext.RequestAborted);
+                var canonicalHandles = await CanonicalFactionHandlesAsync(matchId);
                 foreach (var delivery in sent.RootElement.GetProperty("deliveries").EnumerateArray())
+                {
+                    var recipientFactionId = delivery.GetProperty("recipient_faction_id").GetInt32();
                     database.PortalChatDeliveries.Add(new PortalChatDelivery
                     {
                         MessageId = entity.Id,
-                        RecipientFactionId = delivery.GetProperty("recipient_faction_id").GetInt32(),
+                        RecipientFactionId = recipientFactionId,
+                        RecipientHandle = canonicalHandles.GetValueOrDefault(recipientFactionId),
                         Status = delivery.GetProperty("status").GetString() ?? "failed",
                         DeliveredAt = delivery.GetProperty("status").GetString() == "delivered"
                             ? DateTimeOffset.UtcNow : null,
                     });
+                }
                 entity.DeliveredToGame = sent.RootElement.GetProperty("ok").GetBoolean();
             }
             catch (ControlPlaneException exception)
@@ -554,11 +568,12 @@ public sealed class LobbiesController(
             using var document = await control.PostRawAsync(
                 $"api/v1/workers/{seat.ControlInstanceId}/group-chat",
                 new { action = "list" }, HttpContext.RequestAborted);
+            var canonicalHandles = await CanonicalFactionHandlesAsync(matchId);
             var groups = new List<ChatConversation>();
             foreach (var group in document.RootElement.GetProperty("groups").EnumerateArray())
             {
                 await MirrorGroupAsync(matchId, user.Id, group);
-                groups.Add(MapConversation(matchId, group, seat.FactionId));
+                groups.Add(MapConversation(matchId, group, seat.FactionId, canonicalHandles));
             }
             await database.SaveChangesAsync(HttpContext.RequestAborted);
             return ApiResponse<IReadOnlyList<ChatConversation>>.Success(groups);
@@ -588,6 +603,7 @@ public sealed class LobbiesController(
             using var document = await control.PostRawAsync(
                 $"api/v1/workers/{seat.ControlInstanceId}/group-chat",
                 new { action = "list" }, HttpContext.RequestAborted);
+            var canonicalHandles = await CanonicalFactionHandlesAsync(matchId);
             var participants = document.RootElement.GetProperty("participants")
                 .EnumerateArray().Select(item =>
                 {
@@ -597,7 +613,8 @@ public sealed class LobbiesController(
                     var factionName = item.TryGetProperty("faction_name", out var faction) &&
                         faction.ValueKind == JsonValueKind.String ? faction.GetString() : null;
                     return new ChatParticipant(
-                        $"faction:{factionId}", playerName ?? factionName ?? $"Faction {factionId}",
+                        $"faction:{factionId}", canonicalHandles.GetValueOrDefault(factionId)
+                            ?? playerName ?? factionName ?? $"Faction {factionId}",
                         factionId, factionName, "available",
                         item.TryGetProperty("local", out var local) && local.ValueKind == JsonValueKind.True,
                         item.TryGetProperty("private_eligible", out var eligible) &&
@@ -636,7 +653,8 @@ public sealed class LobbiesController(
             var group = document.RootElement.GetProperty("group");
             await MirrorGroupAsync(matchId, user.Id, group);
             await database.SaveChangesAsync(HttpContext.RequestAborted);
-            var conversation = MapConversation(matchId, group, seat.FactionId);
+            var conversation = MapConversation(matchId, group, seat.FactionId,
+                await CanonicalFactionHandlesAsync(matchId));
             await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
                 "ChatGroupsChanged", matchId, HttpContext.RequestAborted);
             return ApiResponse<ChatConversation>.Success(conversation);
@@ -674,7 +692,8 @@ public sealed class LobbiesController(
             var group = document.RootElement.GetProperty("group");
             await MirrorGroupAsync(matchId, user.Id, group);
             await database.SaveChangesAsync(HttpContext.RequestAborted);
-            var conversation = MapConversation(matchId, group, seat.FactionId);
+            var conversation = MapConversation(matchId, group, seat.FactionId,
+                await CanonicalFactionHandlesAsync(matchId));
             await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
                 "ChatGroupsChanged", matchId, HttpContext.RequestAborted);
             return ApiResponse<ChatConversation>.Success(conversation);
@@ -719,7 +738,14 @@ public sealed class LobbiesController(
                 HashCode.Combine(rootMenu, modal, menuDepth,
                     root.GetProperty("selected_hitbox_tag").GetInt32()),
                 profileId, root.GetProperty("native_width").GetInt32(),
-                root.GetProperty("native_height").GetInt32(), true);
+                root.GetProperty("native_height").GetInt32(), true,
+                root.TryGetProperty("stream_bitrate_kbps", out var bitrate) &&
+                    bitrate.TryGetInt32(out var bitrateValue) ? bitrateValue : 3500,
+                root.TryGetProperty("stream_encoder", out var encoder) &&
+                    encoder.ValueKind == JsonValueKind.String
+                        ? encoder.GetString() ?? "h264enc" : "h264enc",
+                root.TryGetProperty("native_quit_intercepted", out var intercepted) &&
+                    intercepted.ValueKind == JsonValueKind.True);
             return ApiResponse<HumanUiState>.Success(result);
         }
         catch (ControlPlaneException exception)
@@ -745,6 +771,16 @@ public sealed class LobbiesController(
         var humans = assigned.Where(seat => seat.ControllerKind == "human").ToArray();
         var managedHumans = humans.Where(seat => seat.JoinMode == "browser").ToArray();
         var externalHumans = humans.Where(seat => seat.JoinMode == "native").ToArray();
+        var occupiedNativeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var index in Enumerable.Range(0, 7))
+        {
+            occupiedNativeNames.Add(index == 0 ? "Semantic Host" : $"Semantic Agent {index + 1}");
+            occupiedNativeNames.Add($"Native bot {index + 1}");
+        }
+        var humanAliases = humans.ToDictionary(
+            seat => seat.SeatIndex,
+            seat => NativePlayerIdentity.AllocateAlias(
+                profile.MatchId, seat.SeatIndex, seat.PlayerHandle!, occupiedNativeNames));
         var networkSeatCount = agents.Length + humans.Length;
         foreach (var candidate in seats) candidate.IsManagedHost = false;
         assigned[0].IsManagedHost = true;
@@ -828,12 +864,13 @@ public sealed class LobbiesController(
                 agent_ids = agents,
                 human_player_names = externalHumans
                     .Where(seat => hostKind != "human" || seat.SeatIndex != 0)
-                    .Select(seat => seat.PlayerHandle).ToArray(),
+                    .Select(seat => humanAliases[seat.SeatIndex]).ToArray(),
                 managed_human_player_names = managedHumans
                     .Where(seat => hostKind != "human" || seat.SeatIndex != 0)
-                    .Select(seat => seat.PlayerHandle).ToArray(),
+                    .Select(seat => humanAliases[seat.SeatIndex]).ToArray(),
                 host_controller_kind = hostKind,
-                human_host_name = hostKind == "human" ? humans[0].PlayerHandle : null,
+                human_host_name = hostKind == "human"
+                    ? humanAliases[humans[0].SeatIndex] : null,
                 human_host_managed = hostKind == "human" && humans[0].JoinMode == "browser",
                 game_source_id = profile.GameSourceId,
                 runtime_id = profile.RuntimeId,
@@ -897,7 +934,39 @@ public sealed class LobbiesController(
             profile.AllowAnonymousSpectators, profile.ManagedClientsOnly,
             profile.RankingMode, profile.GraphitiEnabled, profile.PersonalityCardId,
             CanManage(profile), seats, ReadSettings(profile.SettingsJson), nativeJoin, profile.LastError,
-            profile.CreatedAt, profile.UpdatedAt);
+            profile.CreatedAt, profile.UpdatedAt,
+            Presence(profile, seatEntities));
+    }
+
+    private MatchPresenceState Presence(
+        PortalMatchProfile profile, IReadOnlyList<PortalLobbySeat> seats)
+    {
+        if (profile.Status == "parked")
+            return new("parked", "The campaign is safely parked and ready to resume.", true);
+        var humans = seats.Where(item => item.ControllerKind == "human").ToArray();
+        if (humans.Length == 0)
+            return new("unattended_simulation",
+                "No human seat is assigned; AI-only simulation continues unattended.", false);
+        if (humans.Any(item => item.JoinMode != "browser" || item.ControlInstanceId is null))
+            return new("native_presence_unverified",
+                "A direct native player is assigned, so the portal will not infer that every human left.", false);
+        var snapshots = humans.Select(item => presence.Get(item.ControlInstanceId!)).ToArray();
+        if (snapshots.Any(item => item.ActiveConnections > 0))
+            return new("connected", "At least one browser player is connected.", true);
+        var last = snapshots.Where(item => item.LastSeen is not null)
+            .Select(item => item.LastSeen!.Value).DefaultIfEmpty(profile.CreatedAt).Max();
+        var eligibleAt = last + TimeSpan.FromMinutes(10);
+        var seconds = Math.Max(0, (int)Math.Ceiling((eligibleAt - DateTimeOffset.UtcNow).TotalSeconds));
+        if (seconds == 0)
+            return new("checkpoint_pending",
+                "Every browser player is away; safe parking will complete at the next verified checkpoint.",
+                true, 0, eligibleAt);
+        var neverConnected = snapshots.All(item => !item.EverConnected);
+        return new(neverConnected ? "awaiting_first_connection" : "idle_grace_period",
+            neverConnected
+                ? "No browser player has connected yet; the abandoned-lobby timer is running."
+                : "Every browser player is away; reconnect before the countdown ends to keep the match live.",
+            true, seconds, eligibleAt);
     }
 
     private async Task<NativeJoinDetails?> ReadNativeJoinAsync(string matchId)
@@ -958,19 +1027,23 @@ public sealed class LobbiesController(
             var portalSeat = await database.PortalLobbySeats.AsNoTracking().SingleOrDefaultAsync(
                 item => item.MatchId == matchId && item.FactionId == factionId,
                 HttpContext.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(portalSeat?.PlayerHandle))
+                existing.DisplayName = portalSeat.PlayerHandle;
             existing.UserId = portalSeat?.UserId;
         }
     }
 
     private static ChatConversation MapConversation(
-        string matchId, JsonElement group, int? localFactionId)
+        string matchId, JsonElement group, int? localFactionId,
+        IReadOnlyDictionary<int, string> canonicalHandles)
     {
         var members = group.GetProperty("members").EnumerateArray().Select(member =>
         {
             var factionId = member.GetProperty("faction_id").GetInt32();
             return new ChatParticipant(
                 $"faction:{factionId}",
-                member.GetProperty("display_name").GetString() ?? $"Faction {factionId}",
+                canonicalHandles.GetValueOrDefault(factionId)
+                    ?? member.GetProperty("display_name").GetString() ?? $"Faction {factionId}",
                 factionId,
                 member.TryGetProperty("faction_name", out var faction) &&
                     faction.ValueKind == JsonValueKind.String ? faction.GetString() : null,
@@ -982,6 +1055,18 @@ public sealed class LobbiesController(
             group.GetProperty("display_name").GetString() ?? "Group", members, 0,
             DateTimeOffset.FromUnixTimeMilliseconds((long)(
                 group.GetProperty("updated_unix").GetDouble() * 1000)));
+    }
+
+    private async Task<IReadOnlyDictionary<int, string>> CanonicalFactionHandlesAsync(
+        string matchId)
+    {
+        var seats = await database.PortalLobbySeats.AsNoTracking()
+            .Where(item => item.MatchId == matchId && item.FactionId != null &&
+                item.PlayerHandle != null)
+            .Select(item => new { FactionId = item.FactionId!.Value, item.PlayerHandle })
+            .ToArrayAsync(HttpContext.RequestAborted);
+        return seats.GroupBy(item => item.FactionId).ToDictionary(
+            group => group.Key, group => group.First().PlayerHandle!);
     }
 
     private static LobbyMessage ToMessage(
@@ -1120,6 +1205,12 @@ public sealed class LobbiesController(
                 string.IsNullOrWhiteSpace(handle) || handle.Trim().Length > 31 ||
                 handle.Any(character => character < 32 || character > 126)))
             return ("invalid_player_handle", "Player handles must contain 1–31 printable characters.");
+        var normalizedInvites = request.InvitedHumanHandles
+            .Select(handle => handle.Trim()).ToArray();
+        if (normalizedInvites.Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
+            normalizedInvites.Length)
+            return ("duplicate_player_handle",
+                "Each invited player handle can occupy only one seat, regardless of letter case.");
         var ownerSeats = request.HostController == "human" || request.OwnerPlays ? 1 : 0;
         if (ownerSeats + request.AgentIds.Count + request.InvitedHumanHandles.Count + request.NativeBotCount > 7)
             return ("too_many_seats", "A lobby supports at most seven players.");

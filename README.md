@@ -70,6 +70,19 @@ claim their handle, and take their seat.
 </p>
 <p align="center"><sub><strong>Planet in your pocket:</strong> the complete 800×600 game, aspect-correct and scroll-free in a phone-sized landscape viewport.</sub></p>
 
+Install the command deck from its own **Install app** page and it becomes a
+focused desktop or home-screen app with the same lobbies, play links,
+spectating, and reconnect behavior. Chromium gets a real one-click install
+prompt when available; Safari, Firefox, and platform-specific fallbacks get
+clear local instructions instead of a dead button. The installed experience
+remains attached to your private host—gameplay and authentication are never
+pretended to be offline.
+
+On the host, loopback works immediately. Phones, tablets, and other LAN
+devices use HTTPS so browsers can trust and install the app. Once installed,
+Planet can sit beside any other game in a launcher even though the original
+Windows executable remains isolated on the Linux host.
+
 The original MENU button also becomes the doorway to managed play. While its
 plain root menu is open, a compact human-only control rail appears for
 fullscreen, display policy, modern chat, votes, and session recovery. It
@@ -105,10 +118,19 @@ accounts, lobby history, active and parked matches, player associations, saves,
 chat, AI profiles, and analytics in one place. Run separate matches for friends
 or experiments without repeatedly rebuilding or taking the platform down.
 
-If a browser refreshes, reconnect it. If a managed worker dies, the supervisor
-reconciles it.
-If everyone leaves an unfinished managed game, park it safely instead of
-leaving a forgotten Windows process burning forever in the corner.
+If a browser refreshes, reconnect it. A second tab opens safely as a viewer;
+it must explicitly take control, and doing so immediately revokes the old
+tab's input stream. Browser back/close receives a leave warning, while the
+managed **Exit game view** action leaves the faction reserved. If somebody
+reaches the original game's Quit confirmation anyway, the human-only semantic
+bridge cancels it and points them back to the managed exit path. If a managed
+worker dies, the supervisor reconciles it.
+
+If every managed browser player leaves an unfinished game, a visible ten-minute
+grace period begins. Reconnecting cancels it. Otherwise the platform waits for
+a verified safe checkpoint and parks the campaign instead of leaving forgotten
+Windows processes burning forever in the corner. AI-only simulations keep
+running; direct/native seats are never guessed from browser presence.
 
 Disruptive changes are treated like table decisions, not surprise process
 kills. Native resolution changes, temporary computer control for an absent
@@ -130,8 +152,10 @@ As a modern human game host it already gives you:
 - lightweight private-LAN accounts with durable, case-insensitive game handles;
 - browser play that removes per-player game installation and compatibility
   setup;
+- installable desktop/mobile command deck with a guided cross-browser PWA
+  flow;
 - adaptive native resolution from phone-friendly 800×600 to 5K ultrawide,
-  plus instant per-device fitting and fullscreen;
+  adaptive H.264 bitrate, instant per-device fitting, and fullscreen;
 - ordinary native-client joining for players who want it;
 - durable global, private, and consent-based group chat with player/faction
   attribution;
@@ -222,7 +246,7 @@ deal? Was it strong, merely expensive, or—most importantly—fun to play with?
 | Experience | What you get |
 | --- | --- |
 | **Create** | Typed standard/custom/scenario setup, durable waiting lobbies, seven-seat composition, human/AI/native-bot mixing |
-| **Play** | Real game streaming with audio/input/fullscreen, true 800×600-to-5120×1440 profiles, instant fit, browser reconnect, or native-client joining |
+| **Play** | Installable command deck; real game streaming with audio/input/fullscreen; true 800×600-to-5120×1440 profiles; adaptive bitrate; one-controller tab safety; instant fit, reconnect, or native-client joining |
 | **Host** | Isolated game workers, prepared Proton environments, DirectPlay setup, exact player identity, concurrent matches |
 | **Watch** | Admin seat switching, AI observation, opt-in anonymous spectator deck, worker-enforced read-only streams |
 | **Continue** | Connected-player votes, stable-boundary checkpoints, safe temporary bot delegation/reclaim, crash reconciliation, faction restoration |
@@ -281,6 +305,7 @@ evidence live where they can stay precise:
 - [Project status and validation](docs/project-status.md)
 - [Operator guide](docs/control-center.md)
 - [Managed play, display, chat, voting, and recovery](docs/managed-play.md)
+- [Installable app and LAN HTTPS](docs/installable-app.md)
 - [Architecture and trust boundaries](docs/architecture.md)
 - [Semantic gameplay coverage](docs/coverage.md)
 - [Agent loop and fair-play contract](docs/agent-loop.md)
