@@ -127,9 +127,16 @@ Go to **Administration → Providers & AI profiles**.
 1. Add an OpenAI-compatible base URL such as
    `http://model-host:8000/v1`.
 2. Add an API key only if the provider requires one.
-3. Discover models and select the intended model.
-4. Create a named, versioned profile with reasoning effort, optional context
-   override, and experiment notes.
+3. Choose **Save endpoint & discover models**. Saving a provider does not yet
+   create a lobby player.
+4. Select a discovered model and create a named, versioned **AI player
+   profile** with reasoning effort, optional context override, and experiment
+   notes. The profile—not the raw endpoint—is what appears in the lobby seat
+   picker.
+
+The form intentionally ships with a blank provider URL. An address entered on
+one installation is stored only in that installation's control data; the
+project does not contain a developer-specific model-server address.
 
 The provider may be on the Docker host, another LAN host, or a home-lab model
 server reachable from the Docker network. Multiple profiles may use one model
@@ -166,7 +173,8 @@ Choose **New lobby** and set:
 - Look First, Tech Stagnation, Spoils of War, Blind Research, Intense Rivalry,
   Unity Survey, Unity Scattering, Random Events, Time Warp, Ironman, and Do or
   Die;
-- managed host (human owner or first AI profile);
+- managed host (the first selected AI profile by default, or an advanced human
+  host);
 - browser or direct/native human mode, invited handles, AI profiles, and stock
   game-controlled remaining factions;
 - anonymous spectators (off by default), managed-clients-only, and Graphiti.
@@ -181,15 +189,34 @@ selected until authored cards are designed separately.
 
 ### Who should host?
 
-For the normal experience, let the platform own the native host:
+For the normal experience, let the first selected AI profile own the native
+host:
 
-- choose **Human owner** when a browser human should control seat zero;
-- choose **First AI profile** for an AI-hosted lobby, optionally reserving a
-  separate human seat for yourself.
+- choose **First selected AI profile (recommended)** for an AI-hosted lobby,
+  optionally adding yourself as a separate human player;
+- choose **My managed human seat (advanced)** only when a browser human should
+  control native seat zero.
 
 This gives the supervisor reliable save, park, recovery, reconnect, and stream
-authority. Human-hosted external games remain an advanced supported path, but
-the portal-managed host is simpler and more recoverable.
+authority. Human-hosted sessions remain an advanced supported path, but
+the agent-hosted managed path is simpler and more recoverable.
+
+**Save without starting** creates only a durable waiting lobby. It does not
+start a game process or advertise a native session. **Launch game now** creates
+the lobby, provisions its managed players, starts the game, and begins native
+session advertising immediately. Merely opening the New lobby page does
+nothing.
+
+Reserved player handles are case-insensitive seat reservations; they do not
+send notifications. A matching existing or future local account claims the
+reserved seat. Reserving stock computer opponents is also optional: it prevents
+those seats being claimed while a lobby waits. Every seat still open at launch
+becomes a stock game-controlled faction automatically.
+
+When only one validated game installation and one Proton runtime exist, the
+portal selects and summarizes them automatically. Selection controls appear
+only when an administrator has configured alternatives such as another patch,
+mod, installation, or Proton version.
 
 ## 7. Human play modes
 

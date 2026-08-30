@@ -122,6 +122,14 @@ portal layout. The portal routes use WebAssembly interactivity without
 prerender for authenticated cookie consistency; SignalR remains available for
 presence/lobby events.
 
+A follow-up first-run UX run used a disposable portal database against the real
+control catalog. It verified the no-profile warning and disabled launch guard,
+the two-step endpoint/profile onboarding path, automatic selection when only
+one game source/runtime exists, policy help text, and the save-versus-launch
+explanation. Drawer geometry was checked directly: closed is fully off-canvas,
+open is flush at the left edge, and route navigation closes it. The disposable
+test account, container, and volume were removed afterward.
+
 ## Managed worker and semantic AI
 
 The complete worker/MCP/Hermes vertical slice:

@@ -1,4 +1,6 @@
 ﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Navigation
 
 <MudThemeProvider Theme="Theme" IsDarkMode="true" />
 <MudPopoverProvider />
@@ -32,6 +34,14 @@
 
     private void ToggleDrawer() => drawerOpen = !drawerOpen;
 
+    protected override void OnInitialized() => Navigation.LocationChanged += LocationChanged;
+
+    private void LocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        drawerOpen = false;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private readonly MudTheme Theme = new()
     {
         PaletteDark = new PaletteDark
@@ -62,4 +72,6 @@
     };
 
     private void CloseDrawer() => drawerOpen = false;
+
+    public void Dispose() => Navigation.LocationChanged -= LocationChanged;
 }
