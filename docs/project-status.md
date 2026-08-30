@@ -18,10 +18,10 @@ network, mod, provider, or rare native state is certified.
 | Portal/native chat | public/private recipient, player + faction attribution, sequence/deduplication, messages outside active turn | contained and native mixed-LAN tests |
 | Provider management | OpenAI-compatible discovery, keyed/unkeyed providers, chosen model/context | contract tests and real Qwen endpoint |
 | AI profiles | versioned model/reasoning/context/notes, deactivation, `None` personality layer | .NET/Control contracts and real managed run |
-| Managed Hermes | digest-pinned official image, isolated home/conversation, `smacx,web` only, provider secret volume, restart supervision | contract/secret inspection and real Qwen run |
+| Managed Hermes | SMACX-derived/digest-pinned official image, isolated home/conversation, exact SMACX-owned system message, `smacx` only, provider secret volume, restart supervision | contract/secret inspection, captured provider request, and real Qwen run |
 | Match lifecycle | provision, checkpoint, race-safe park, recover, idle browser park, crash reconciliation | real native checkpoint/park/recover; live park race regression |
 | Analytics | scoped history, turn duration, Hermes input/output/cache/reasoning/API counters, CSV, isolated read-only SQL lab | fresh-schema .NET tests and real Hermes telemetry query |
-| Knowledge | 22 original mechanics primers, hierarchy, FTS5/BM25; optional private installed-doc extraction | corpus/copyright guard; 294 private documents from 22 local sources on reference install |
+| Knowledge | 52 original mechanics documents plus automatic structured private installation encyclopedia, exact/batch/related lookup, precedence, FTS5/BM25, canonical and archived citations | corpus/copyright guard; 672 private documents from 18 local sources on reference install |
 | Memory | events, facts, beliefs, relationships, commitments, goals, summaries, compression budgets, chat, scoped recall | contained adversarial scope/compression/retrieval tests and real Qwen writes |
 | Graphiti | optional Neo4j temporal derivative, projection cursor/rebuild/isolation | contract and backend live test; disabled when endpoints are incompatible |
 | Operations | schedules, immutable runs, worker/MCP/Hermes reconciliation, online/volume backups, offline restore guard | contract tests, native recovery, verified live backup |
@@ -30,7 +30,7 @@ network, mod, provider, or rare native state is certified.
 ## Real semantic model certification
 
 On the Linux reference host, Qwen3.8-27B ran at low reasoning in a managed
-Hermes container with only `smacx,web` toolsets. It:
+Hermes container with only the `smacx` toolset. It:
 
 - acknowledged the native Planetfall state;
 - named the first base;
@@ -87,16 +87,21 @@ not substitute for the explicitly deferred physical two-computer test.
 
 ## Knowledge/copyright boundary
 
-The repository ships 22 short, independently written mechanics primers. It
+The repository ships 52 independently written mechanics documents. It
 ships no installed manual pages, help database extraction, strategy guide,
 scenario solution, or copied wiki corpus. The reference guard compared shipped
-text against local `Manual.pdf`, `Script.txt`, and help text and found no
+text against local `Manual.pdf`, `helpx.txt`, and `alphax.txt` and found no
 eight-word copied sequence under its normalization.
 
 The optional extractor operates only after the operator validates a game
-source. On the reference legal copy it produced 294 private searchable
-documents from 22 sources, with guides excluded. That database stays in the
+source. On the reference legal copy it produced 672 private searchable
+documents from 18 sources, including exact structured entities and relations,
+with guides excluded. That database stays in the
 operator's control volume and is not part of source/image artifacts.
+
+Canonical web citations also carry fixed Internet Archive snapshot URLs,
+timestamps, and verified CDX digests. They are citation fallbacks only; neither
+website is read during startup or private extraction.
 
 ## Canonical pre-release schemas
 

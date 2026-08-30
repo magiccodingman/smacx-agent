@@ -14,7 +14,9 @@ python3 -m compileall -q src worker scripts
 PYTHONPATH=src python3 scripts/control_plane_test.py
 PYTHONPATH=src python3 scripts/control_http_test.py
 PYTHONPATH=src python3 scripts/worker_contract_test.py
+PYTHONPATH=src python3 scripts/hermes_adapter_test.py
 PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
+PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/platform_store_test.py
 PYTHONPATH=src python3 scripts/platform_controller_test.py
@@ -37,10 +39,21 @@ native-progress mirroring, managed Hermes secret/tool boundaries, lifecycle
 reconciliation, operations, LAN validation, Graphiti cursor isolation, and the
 reference corpus.
 
+The MCP package is intentionally isolated in the control image. Run briefing
+and decision contracts through that environment:
+
+```bash
+docker run --rm --network none \
+  --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -e PYTHONPATH=/repo/src -v "$PWD:/repo:ro" \
+  smacx-agent-control:dev /repo/scripts/match_briefing_contract_test.py
+```
+
 ## Knowledge and copyright guard
 
-The distributable corpus test verifies 22 unique original documents, hierarchy,
-metadata/content hashes, guide exclusions, and BM25 retrieval:
+The distributable corpus test verifies 52 unique original documents, hierarchy,
+exact entity lookup, metadata/content hashes, fixed archive fallbacks, guide
+exclusions, and BM25 retrieval:
 
 ```bash
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
@@ -54,8 +67,9 @@ PYTHONPATH=src python3 scripts/private_reference_test.py \
   --game-source /absolute/path/to/legal/game
 ```
 
-On the reference installation it produced 294 private documents from 22
-allowlisted sources and excluded guides/scenarios/tutorial narrative.
+On the reference installation it produced 672 private documents from 18
+allowlisted sources, including 87 technologies and all 14 faction headers, and
+excluded guides/scenarios/tutorial narrative.
 
 The copyright regression compares normalized sequences without emitting source
 passages:
@@ -63,8 +77,8 @@ passages:
 ```bash
 python3 scripts/reference_copyright_audit.py \
   --source /absolute/path/to/legal/game/Manual.pdf \
-  --source /absolute/path/to/legal/game/Script.txt \
-  --source /absolute/path/to/legal/game/help.txt
+  --source /absolute/path/to/legal/game/helpx.txt \
+  --source /absolute/path/to/legal/game/alphax.txt
 ```
 
 The reference run found no shipped sequence of eight or more normalized source
@@ -98,6 +112,17 @@ Container images are digest-pinned where upstream stability matters. Also
 inspect the generated SBOM/package lists and run the scanner available in the
 target CI/registry; absence of one local scanner is not evidence of no
 vulnerabilities.
+
+The strict provider boundary has two levels of proof:
+
+```bash
+docker build -f harness/Dockerfile -t smacx-agent-harness:dev .
+PYTHONPATH=src python3 scripts/hermes_provider_capture_test.py
+```
+
+The capture test runs the real derived Hermes image against a local
+OpenAI-compatible recorder and asserts one exact SMACX-owned system message,
+with no Hermes scaffold or workspace rule content.
 
 ## Browser portal test
 
@@ -143,14 +168,14 @@ SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
 PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
 ```
 
-It provisions a real game worker, MCP sidecar, and official Hermes image,
+It provisions a real game worker, MCP sidecar, and SMACX-derived Hermes image,
 checks exact identities/secret isolation/toolsets, requires a native semantic
 revision advance, and verifies a recovery set including the Hermes
 conversation.
 
 The portal-driven certification went further: Qwen3.8-27B at low reasoning
 played a Tiny/Citizen Alien Crossfire game through turn 13/year 2113 with only
-`smacx,web`. Logs and native bridge state proved semantic snapshot/decision/
+`smacx`. Logs and native bridge state proved semantic snapshot/decision/
 command, rules retrieval, unit movement, goal/fact memory, and stale-revision
 re-observation. No screenshot, computer, mouse, keyboard, terminal, or raw UI
 tool was available. The live match then passed stop-agent → checkpoint → park.

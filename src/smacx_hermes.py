@@ -93,7 +93,8 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
                       profile_id: str | None = None,
                       context_length: int | None = None,
                       provider_api_key_env: str | None = None,
-                      runtime_hermes_root: Path | None = None) -> dict[str, Any]:
+                      runtime_hermes_root: Path | None = None,
+                      system_prompt: str | None = None) -> dict[str, Any]:
     agent_id = _identity(agent_id, "agent_id")
     match_id = _identity(match_id, "match_id")
     profile_id = profile_id or default_profile_id(agent_id)
@@ -139,7 +140,10 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         directory.mkdir(parents=True, exist_ok=True)
     workspace = profile_root / "workspace" / "matches" / match_id
     runtime_workspace = runtime_profile_root / "workspace" / "matches" / match_id
-    rules = gameplay_rules(agent_name.strip())
+    rules = system_prompt if system_prompt is not None else gameplay_rules(agent_name.strip())
+    if not isinstance(rules, str) or not rules.strip() or len(rules) > 65_536:
+        raise HermesAdapterError("invalid_system_prompt")
+    system_prompt_hash = hashlib.sha256(rules.encode("utf-8")).hexdigest()
     config: dict[str, Any] = {
         "_config_version": 39,
         "model": {
@@ -168,7 +172,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         },
         "memory": {"memory_enabled": False, "user_profile_enabled": False},
         "terminal": {"backend": "local", "cwd": str(runtime_workspace)},
-        "platform_toolsets": {"cli": ["web", "smacx"]},
+        "platform_toolsets": {"cli": ["smacx"]},
         "mcp_servers": {"smacx": {"url": mcp_url, "enabled": True}},
         "display": {"show_reasoning": False, "streaming": True},
     }
@@ -183,12 +187,13 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "profile_id": profile_id,
         "active_match_id": match_id,
         "mcp_url": mcp_url,
+        "system_prompt_sha256": system_prompt_hash,
     })
     (profile_root / ".env").touch(mode=0o600, exist_ok=True)
     os.chmod(profile_root / ".env", 0o600)
     (profile_root / ".no-bundled-skills").touch(exist_ok=True)
     (profile_root / "SOUL.md").write_text(rules, encoding="utf-8")
-    (workspace / "AGENTS.md").write_text(rules, encoding="utf-8")
+    (profile_root / "SYSTEM.md").write_text(rules, encoding="utf-8")
     return {
         "ok": True,
         "profile_id": profile_id,
@@ -199,6 +204,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "model_id": model_id.strip(),
         "reasoning_effort": reasoning_effort,
         "mcp_url": mcp_url,
+        "system_prompt_sha256": system_prompt_hash,
     }
 
 
@@ -276,8 +282,8 @@ def descriptor_from_control(*, control_url: str, match_id: str, provider_id: str
 def hermes_command(profile: dict[str, Any], *, prompt_file: str | None = None,
                    query: str | None = None, max_turns: int = 500,
                    run_budget_seconds: int | None = None,
-                   toolsets: str = "smacx,web") -> list[str]:
-    if toolsets not in ("smacx", "smacx,web"):
+                   toolsets: str = "smacx") -> list[str]:
+    if toolsets != "smacx":
         raise HermesAdapterError("unsafe_gameplay_toolset")
     command = [
         "hermes", "-p", profile["profile_id"], "chat",
@@ -322,7 +328,7 @@ def parser() -> argparse.ArgumentParser:
     group.add_argument("--query")
     run.add_argument("--max-turns", type=int, default=500)
     run.add_argument("--run-budget", type=int)
-    run.add_argument("--toolsets", default="smacx,web")
+    run.add_argument("--toolsets", default="smacx")
     return result
 
 

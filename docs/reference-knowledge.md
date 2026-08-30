@@ -1,103 +1,128 @@
-# Rules and mechanics reference
+# Alien Crossfire mechanics encyclopedia
 
-SMACX Agent ships a small, project-authored Alien Crossfire mechanics corpus.
-It is general game knowledge, not match memory: it cannot contain a current
-map, unseen factions, private chat, save data, or another player's state.
+SMACX Agent gives each managed player a local, provenance-tracked mechanics
+encyclopedia. It is general game knowledge, never current match memory: it
+cannot contain an unseen faction, private opponent state, unexplored map data,
+save internals, or chat that was not delivered to that seat.
 
-The distributable baseline is a focused 22-document primer, not a claim to
-contain every official manual, Datalinks entry, scenario rule, or numeric
-table. Exact match settings and live semantic choices remain authoritative.
+The encyclopedia has two complementary layers:
 
-The corpus is deliberately a reference rather than a walkthrough. It covers
-the turn loop, economy, bases and citizens, expansion, terraforming, ecology,
-research, unit design, combat, Social Engineering, diplomacy, Council votes,
-probe operations, victory paths, all original and Alien Crossfire faction
-families, multiplayer continuity, planet/difficulty setup, advanced rules,
-scenario/save behavior, and multiplayer clock semantics. It explains mechanics
-without a build order, walkthrough, exploit, scenario solution, or advice about
-how to cheese the game.
+1. A distributable, independently written 52-document handbook explains the
+   major mechanics and authority rules without build orders, walkthroughs,
+   exploits, scenario solutions, or advice about how to win.
+2. First validation of an operator's legal Alien Crossfire installation builds
+   a much larger private index inside that installation's SQLite namespace.
+   The reference Steam copy currently produces 672 documents from 18 approved
+   sources. Counts are descriptive test evidence, not a protocol constant.
 
-When an operator validates their installation, Control Center also builds a
-private local index from an explicit allowlist: the manual's rules chapters and
-rules/options appendices, Datalinks/concept data, core numeric rules, technology
-summaries, and the mechanical headers of the fourteen faction records. The
-current legal-copy test produces 294 bounded documents from 22 allowlisted
-sources. The exact count is derived from that installation and is not a stable
-protocol guarantee.
+The private build is automatic. Registering or revalidating a game installation
+runs the extractor in an isolated container with a read-only source mount and no
+network. It replaces only that source's prior private namespace. No separate
+wiki download, embedding service, or operator command is required.
+
+## Structured private records
+
+The extractor reads the expansion-native `alphax.txt` rules data before any
+fallback prose and generates exact typed entities with stable normalized keys.
+The reference installation yields:
+
+- 87 technologies with prerequisite and reverse-unlock relations;
+- 110 facilities, orbital assets, and Secret Projects;
+- 29 special abilities, 26 weapons/modules, 14 defenses, 9 chassis, 4 reactors,
+  23 predefined units, and morale records;
+- all 14 original and Alien Crossfire faction mechanical headers;
+- 15 social models plus every named rating band;
+- Council proposals, difficulty levels, multiplayer clocks, world sizes,
+  resource records, and terraforming orders; and
+- 190 bounded expansion Datalinks/concepts and manual-rules fallback sections.
+
+Expansion-native entity records have source priority 300, expansion help has
+priority 200, and manual fallback has priority 100. The base-game duplicates
+`alpha.txt`, `help.txt`, and `concepts.txt` are deliberately omitted from this
+Alien Crossfire ruleset, so a base-game record cannot accidentally outrank or
+contradict its expansion counterpart.
+
+Entity metadata contains readable native fields, aliases, prerequisites, and
+typed relations. Technology relations are bidirectional: a technology can
+return what it requires and the facilities, components, orders, models, units,
+or proposals it unlocks. Exact lookup therefore avoids spending context on
+anonymous fixed-size chunks.
+
+## Agent retrieval protocol
+
+`smac_reference` supports five actions:
+
+1. `topics` returns the hierarchy, document counts, and structured entity
+   counts.
+2. `search` performs compact FTS5/BM25 retrieval. It first requires all query
+   terms and falls back to any-term search only when the strict query is empty.
+   Exact titles and higher-priority expansion sources rank first.
+3. `get` returns one complete document by `document_id`.
+4. `lookup` resolves one entity or a batch of up to 30 `{kind,key}` pairs. This
+   is the preferred path when the entity is known.
+5. `related` returns an exact entity together with its prerequisite/unlock
+   neighborhood.
+
+Example calls:
+
+```text
+smac_reference(action="lookup", entity_kind="technology", entity_key="ecology", include_body=true)
+smac_reference(action="related", entity_kind="technology", entity_key="ecology")
+smac_reference(action="lookup", entities_json='[{"kind":"faction","key":"angels"},{"kind":"ability","key":"clean-reactor"}]')
+```
+
+The current native state and enumerated legal choices always override the
+encyclopedia. The mandatory `smac_match_briefing` tells a managed player which
+non-default settings and scenario restrictions apply before it plans.
+
+## Included and excluded local sources
+
+The private allowlist is intentionally narrow: the manual's rules chapters and
+rules/options appendices; Alien Crossfire Datalinks and concepts; expansion
+numeric rules; and the mechanical headers of fourteen faction records.
 
 The extractor excludes `Script.txt`, scenario directories, tutorial and tips
-sections, advanced customization/editor material, narrative faction content,
-walkthroughs, and guides. It runs against the legal source read-only. Extracted
-text is stored only in the operator's private SQLite volume and is never copied
-into an image, repository, backup intended for distribution, or API response
-outside authenticated reference retrieval.
+sections, editor/customization material, faction dialogue and story prose,
+walkthroughs, and guides. It does not index the web. Extracted text stays in the
+operator's private SQLite volume and is not copied into an image, repository,
+release archive, or public API response.
 
-## Agent protocol
+## Copyright and citation boundary
 
-`smac_reference` has three actions:
+The repository does **not** contain or translate the game manual, Datalinks
+text, `Script.txt`, `alpha.txt`/`alphax.txt`, faction prose, wiki page dumps,
+images, or extracted assets. `knowledge/core.json` uses original project
+wording about mechanics. The copyright audit fails on eight or more consecutive
+normalized words shared with a supplied proprietary source and emits hashes and
+overlap lengths only—never source passages.
 
-1. `topics` returns the hierarchy and document counts.
-2. `search` runs BM25 over titles, summaries, bodies, and tags. Its default
-   result is compact and includes `document_id`, summary, source URL, license,
-   provenance, and content hash.
-3. `get` returns one complete document selected from search.
+Online pages are citations used to cross-check facts, not corpus input.
+`knowledge/sources.json` records each canonical citation plus a fixed Internet
+Archive snapshot, timestamp, and CDX digest verified as a captured HTTP 200 on
+2026-08-29. These are durability fallbacks; startup never depends on either the
+canonical site or the archive. StrategyWiki expression is not copied or adapted.
 
-An agent should search only when a mechanic is unclear and fetch only the
-document needed. Fresh semantic state and legal choices always override a
-general reference.
+Copyright protects source expression rather than the underlying mechanics and
+facts. This conservative engineering boundary is not legal advice.
 
-## Copyright and provenance boundary
+## Rebuild and verification
 
-The repository does **not** contain or translate the game manual, Datalinks text,
-`Script.txt`, `alpha.txt`/`alphax.txt`, faction prose, wiki page dumps, images,
-or extracted game assets. `knowledge/core.json` consists of original project
-wording about game mechanics. Every document records its provenance, source,
-license characterization, and a deterministic content hash. Citations identify
-materials used only to cross-check facts; no cited expression is incorporated
-into the Apache-2.0 corpus. StrategyWiki text is CC BY-SA 4.0 and would carry
-attribution/share-alike obligations if copied or adapted, so this corpus does
-neither. The operator's legal manual and game data are local verification
-sources and are never committed.
-
-Copyright protects source expression, not the underlying mechanics, systems,
-or facts. Consequently, reference documents explain rules independently in
-project-authored language rather than translating source paragraphs. This is a
-conservative engineering boundary, not legal advice.
-
-The game still comes from the operator's installation. The implemented
-local-only extractor may index the approved mechanics subset for that operator.
-The resulting private documents retain source names and SHA-256 hashes so a
-changed legal copy is replaced cleanly. Each managed MCP seat can retrieve only
-the shared project-authored baseline plus the private namespace belonging to
-that seat's exact `game_source_id`; rules from another registered installation
-or mod cannot leak into its search or `get` calls. Source text and generated
-chunks must never be committed or shipped by this project. No web wiki is downloaded:
-the private legal copy and independently authored baseline are sufficient for
-the current mechanics-only milestone.
-
-## Rebuild and test
-
-Control Center seeds or updates the bundled corpus idempotently at startup. It
-does not create schema migrations; the unreleased project still initializes
-one canonical schema revision.
+Control Center idempotently seeds the authored handbook at startup. This
+unreleased project retains one canonical schema and no migration chain; delete
+pre-release data volumes when the canonical schema changes.
 
 ```bash
 PYTHONPATH=src python3 -m smacx_reference \
-  --database /path/to/smacx.sqlite3 --query "Treaty Pact trust"
+  --database /tmp/smacx-reference.sqlite3 --query "Treaty Pact trust"
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 PYTHONPATH=src python3 scripts/private_reference_test.py \
-  --game-source /path/to/legal/game
+  --game-source "/path/to/legal/game" --live-docker
 python3 scripts/reference_copyright_audit.py \
-  --source /path/to/legal/game/Manual.pdf \
-  --source /path/to/legal/game/Script.txt \
-  --source /path/to/legal/game/help.txt
+  --source "/path/to/legal/game/Manual.pdf" \
+  --source "/path/to/legal/game/helpx.txt" \
+  --source "/path/to/legal/game/alphax.txt"
 ```
 
-The audit reports hashes, document identifiers, and overlap lengths only. It
-does not print or persist source passages. A match of eight or more consecutive
-normalized words fails by default so maintainers can rewrite the project text
-without copying or translating the source expression.
-
-SQLite FTS5 is the production search path and requires no embedding service.
-Optional Graphiti remains a derived match-memory projection and is not used for
-these static rules documents.
+SQLite FTS5 is the authoritative retrieval path and requires no embeddings.
+Optional Graphiti remains a perspective-scoped projection of dynamic match
+memory; it is not used for static rules documents.

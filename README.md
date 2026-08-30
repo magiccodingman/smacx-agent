@@ -69,8 +69,11 @@ Fair play is enforced below the prompt:
 - destructive or diplomatic commitments require explicit typed confirmation;
 - unsupported mandatory states fail closed and can be reported as capability
   gaps; and
-- managed Hermes receives `smacx,web` toolsets—no computer, screenshot,
+- managed Hermes receives only the `smacx` toolset—no web, computer, screenshot,
   keyboard, mouse, terminal, or Docker tool.
+- SMACX replaces Hermes prompt assembly with one integrity-checked provider
+  system contract; live settings must be read and exactly acknowledged before
+  the decision/command surface unlocks.
 
 ## Verified today
 
@@ -93,9 +96,12 @@ Fair play is enforced below the prompt:
 - Durable political/strategic memory, scoped FTS5/BM25 recall, optional
   Graphiti projection, scheduling, verified backups, and crash recovery are
   implemented.
-- The distributable rules corpus contains independently written mechanics
-  primers, not copied manual text or strategy/cheese guides. An optional local
-  extractor can index the operator's own installed documentation privately.
+- The distributable rules corpus contains 52 independently written mechanics
+  documents, not copied manual text or strategy/cheese guides. First game-source
+  validation automatically generated 672 private records on the reference copy,
+  including exact technologies, facilities, components, factions, settings,
+  prerequisites, and unlock relations. Canonical citations have fixed verified
+  Internet Archive fallbacks; neither website is required at runtime.
 
 Physical two-computer LAN, remote Tailscale peers, and Windows/WSL2 operation
 remain external certification work; they are not claimed by the Linux-local
@@ -143,7 +149,8 @@ is the recommended default; the first selected AI profile owns the native
 session while you may add yourself as a human player. A browser
 human clicks **Play**. A direct/native human uses the host address, native
 session name/ID, assigned player handle, and faction shown on the lobby page.
-An AI profile starts automatically in an isolated official Hermes container.
+An AI profile starts automatically in the isolated SMACX-derived Hermes
+container built from the digest-pinned official runtime.
 
 **Save without starting** creates a waiting portal lobby only. **Launch game
 now** also provisions the players, starts the native game, and advertises the
@@ -211,11 +218,11 @@ seats.
 
 ## Knowledge and memory
 
-Agents search a compact hierarchy of original Alien Crossfire mechanics notes
-through BM25, retrieve only the documents they need, and can build a separate
-private index from the operator's installed manual/help files. The project does
-not distribute those extracted documents. Strategy guides and scenario
-solutions are deliberately excluded.
+Agents search the authored handbook and exact private Alien Crossfire entities
+through typed lookup, relations, and FTS5/BM25. Game-source validation builds
+the private installation index automatically and the project does not
+distribute it. Strategy guides and scenario solutions are deliberately
+excluded.
 
 Per-match memory supports immutable events, facts, beliefs, relationships,
 commitments, goals, summaries, compression budgets, multi-record recall, and

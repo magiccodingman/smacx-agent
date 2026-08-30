@@ -2,6 +2,17 @@
 
 SMACX Agent uses an explicit state machine and optimistic concurrency. The model does not send a stream of keys or clicks.
 
+Before this loop is available, the player must call
+`smac_match_briefing(action="read")`. The briefing combines the exact live
+faction, difficulty, generated map, victory toggles, advanced rules,
+multiplayer clock, scenario restrictions, match policy, and legal-copy source
+identity. The player reviews unfamiliar non-default mechanics through
+`smac_reference`, then acknowledges the exact returned hash. `smac_decision`
+returns no choices and every `smac_command` is rejected until that hash is
+acknowledged. A recovery or native settings change creates a different hash and
+locks mutations again. Acknowledgements are isolated by match, agent,
+perspective, and process `session_id`.
+
 The three guard values have different lifetimes:
 
 | Value | Meaning | When it changes | What an old value prevents |

@@ -6,6 +6,10 @@
 - `smac_scenarios()` — list exact safe scenario IDs from the operator's legal game copy; no scenario asset is returned.
 - `smac_new_scenario(scenario_id, ...)` — load one returned solo scenario directly while preserving scenario-authored rules and restrictions.
 - `smac_launch()` — launch only the visible isolated game window.
+- `smac_match_briefing(action, briefing_hash)` — read the authoritative live
+  faction/difficulty/map/victory/rules/clock/scenario/seat briefing, then
+  acknowledge its exact hash. Decisions and gameplay mutations remain locked
+  until the current process session's hash is acknowledged.
 - `smac_snapshot()` — compact fair-play turn state, current ready-unit references, protocol phase, current guard, latest deferred-action status, and latest publicly displayed Council result.
 - `smac_decision(..., detail="compact")` — preferred action-ordered loop: a revision-stable player-state headline plus the exact active interaction, selected ready unit choices, wait/gap directive, or game-management choices. It retries assembly if state changes between observation and enumeration. Compact is the default and avoids replaying the comprehensive snapshot on every unit; use `detail="full"` only for one decision that genuinely needs the complete turn document. Set `finish_ready_units=true` only after deliberately deciding every remaining unit is finished; this returns the exact guarded skip-all/game-management frame and conflicts with selecting one `unit_id`.
 - `smac_list(kind, ...)` — bases, units, factions, technologies, or known/visible tiles.
@@ -17,7 +21,11 @@
 - `smac_saves(action, match_id, slot)` — list or load match-scoped save slots. Stop the current game before load.
 - `smac_knowledge(action, match_id, ...)` — list/get/history or record durable match facts in the authoritative scoped SQLite store. Writes require the active `session_id` and current snapshot `revision`; corrections retain audit history and the former JSON ledger is only a compatibility mirror. Session-local unit/base/prototype engine IDs are rejected.
 - `smac_memory(...)` — retrieve the bounded working set, scoped FTS5/BM25 search, batched recall, chat/events, structured projection histories, or optional Graphiti projection status. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.
-- `smac_reference(action, ...)` — list mechanics topics, run compact global BM25 search with citations/provenance, or fetch one exact returned rules document. This corpus contains no match state and never overrides fresh native choices.
+- `smac_reference(action, ...)` — list mechanics topics, run compact FTS5/BM25
+  search with canonical/archive citations, fetch a document, resolve one or a
+  batch of exact typed entities, or retrieve prerequisite/unlock relations.
+  Expansion-native private records outrank fallback prose. This corpus contains
+  no match state and never overrides fresh native choices.
 - `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
 - `smac_report_capability_gap(...)` — record one missing semantic capability, deduplicate repeated reports for that session, and latch commands plus launch/new/load. Only a developer MCP restart followed by a fresh session after bridge development can resume play.
 - `smac_stop()` — terminate only this project's isolated game processes; MCP stays running.

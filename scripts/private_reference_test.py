@@ -52,15 +52,21 @@ def main() -> int:
     source = arguments.game_source.expanduser().resolve()
     items = extract(source)
     documents = [item for item in items if item.get("type") == "document"]
-    assert items[0].get("schema") == "smacx.private-reference.v1"
+    assert items[0].get("schema") == "smacx.private-reference.v2"
     assert items[0].get("policy") == "mechanics_only_no_guides"
+    assert items[0].get("precedence") == [
+        "structured-alien-crossfire", "expansion-datalinks", "manual-rules",
+    ]
     assert items[-1].get("documents") == len(documents)
     assert 1 <= len(documents) <= 900
+    counts = items[-1].get("entity_counts", {})
+    assert counts.get("technology", 0) >= 80
+    assert counts.get("faction") == 14
+    assert counts.get("difficulty") == 6
     combined = "\n".join(str(item.get("body", "")) for item in documents).casefold()
     assert not any(value in combined for value in BANNED)
     approved_sources = {name.casefold() for name in (
-        "Manual.pdf", "alpha.txt", "alphax.txt", "help.txt", "helpx.txt",
-        "concepts.txt", "conceptsx.txt", "TECHSHORTS.txt", "GAIANS.TXT",
+        "Manual.pdf", "alphax.txt", "helpx.txt", "conceptsx.txt", "GAIANS.TXT",
         "MORGAN.TXT", "PEACE.TXT", "angels.txt", "believe.txt", "caretake.txt",
         "cyborg.txt", "drone.txt", "fungboy.txt", "hive.txt", "pirates.txt",
         "spartans.txt", "univ.txt", "usurper.txt",
@@ -72,6 +78,7 @@ def main() -> int:
     payload: dict = {
         "event": "pass", "documents": len(documents),
         "sources": items[-1].get("sources"), "guides_excluded": True,
+        "structured_entity_counts": counts,
     }
     if arguments.live_docker:
         with tempfile.TemporaryDirectory(prefix="smacx-reference-test-") as directory:
@@ -88,8 +95,15 @@ def main() -> int:
                 private_prefix=f"private.{registration['game_source_id']}.",
             )
             assert search and any(str(item["document_id"]).startswith("private.") for item in search)
+            exact = store.lookup_reference_entities(
+                [("technology", "Ecology"), ("faction", "angels")],
+                private_prefix=f"private.{registration['game_source_id']}.",
+            )
+            assert [item["entity_kind"] for item in exact] == ["technology", "faction"]
+            assert exact[0]["source_priority"] > 0
             payload["docker_import"] = imported
             payload["search_result_count"] = len(search)
+            payload["exact_entity_lookup"] = [item["title"] for item in exact]
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0
 

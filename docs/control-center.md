@@ -25,7 +25,8 @@ SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
 
 The script checks the Docker socket, adds its actual group ID to the private
 control container, serializes memory-intensive image builds, builds the worker
-and portal images, pulls the official Hermes image, and starts two persistent
+and portal images, builds the SMACX prompt-owned image from the digest-pinned
+official Hermes runtime, and starts two persistent
 services:
 
 - `control-api`: private native/Docker authority, not host-published;
@@ -152,9 +153,10 @@ AI seats use:
 
 - the official pinned Hermes container;
 - a private Hermes profile/home and durable conversation;
-- only `smacx,web` toolsets;
-- a stable fair-play/game-player system layer;
+- only the `smacx` toolset;
+- an integrity-checked, SMACX-owned complete provider system prompt;
 - immutable match identity and policy;
+- a mandatory native-settings briefing and exact acknowledgement gate;
 - the optional personality layer (`None` is the only current value); and
 - scoped match memory.
 

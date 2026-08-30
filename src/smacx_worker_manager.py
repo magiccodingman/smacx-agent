@@ -360,42 +360,75 @@ class WorkerManager:
                     complete = item
                 elif item.get("type") == "document":
                     documents.append(item)
-            if not manifest or manifest.get("schema") != "smacx.private-reference.v1" \
+            if not manifest or manifest.get("schema") != "smacx.private-reference.v2" \
                     or manifest.get("policy") != "mechanics_only_no_guides" \
+                    or manifest.get("ruleset_id") != "smacx" \
+                    or manifest.get("precedence") != [
+                        "structured-alien-crossfire", "expansion-datalinks", "manual-rules",
+                    ] \
                     or manifest.get("terranx_sha256") != source["executable_sha256"]:
                 raise WorkerManagerError("invalid_private_reference_manifest")
             if not complete or complete.get("documents") != len(documents) \
                     or not 1 <= len(documents) <= 900:
                 raise WorkerManagerError("incomplete_private_reference_extract")
+            required_entity_kinds = {
+                "technology", "facility", "weapon", "defense", "ability", "faction",
+                "social-model", "council-proposal", "time-control", "difficulty",
+            }
+            counts = complete.get("entity_counts")
+            if not isinstance(counts, dict) or not required_entity_kinds.issubset(counts) \
+                    or any(not isinstance(counts[key], int) or counts[key] < 1
+                           for key in required_entity_kinds):
+                raise WorkerManagerError("incomplete_private_reference_entities")
             validated: list[dict[str, Any]] = []
             for item in documents:
                 source_name = str(item.get("source_name", ""))
                 source_hash = str(item.get("source_sha256", ""))
                 topic = str(item.get("topic", ""))
                 body = str(item.get("body", ""))
-                chunk_index = item.get("chunk_index")
-                chunk_count = item.get("chunk_count")
+                document_kind = str(item.get("document_kind", ""))
+                source_priority = item.get("source_priority")
+                title = str(item.get("title", ""))
+                summary = str(item.get("summary", ""))
+                metadata = item.get("metadata")
                 if not re.fullmatch(r"[A-Za-z0-9_. -]{1,80}", source_name) \
                         or not re.fullmatch(r"[a-f0-9]{64}", source_hash) \
                         or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", topic) \
-                        or not isinstance(chunk_index, int) or not isinstance(chunk_count, int) \
-                        or not 0 <= chunk_index < chunk_count <= 900 \
-                        or not 80 <= len(body) <= 8192:
+                        or document_kind not in {"entity", "section"} \
+                        or not isinstance(source_priority, int) or not 0 <= source_priority <= 1000 \
+                        or not 1 <= len(title) <= 240 or not 1 <= len(summary) <= 1200 \
+                        or not isinstance(metadata, dict) or not 40 <= len(body) <= 65_536 \
+                        or (document_kind == "section" and len(body) < 80):
                     raise WorkerManagerError("invalid_private_reference_document")
+                entity_kind = item.get("entity_kind")
+                entity_key = item.get("entity_key")
+                section_index = item.get("section_index")
+                section_count = item.get("section_count")
+                if document_kind == "entity":
+                    if not isinstance(entity_kind, str) or not re.fullmatch(
+                            r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", entity_kind) \
+                            or not isinstance(entity_key, str) or not re.fullmatch(
+                                r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", entity_key):
+                        raise WorkerManagerError("invalid_private_reference_entity")
+                    identity = f"entity:{entity_kind}:{entity_key}:{source_hash}"
+                else:
+                    if not isinstance(section_index, int) or not isinstance(section_count, int) \
+                            or not 0 <= section_index < section_count <= 900:
+                        raise WorkerManagerError("invalid_private_reference_section")
+                    identity = f"section:{source_name}:{source_hash}:{section_index}"
+                document_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
                 validated.append({
-                    "document_id": (
-                        f"private.{game_source_id}."
-                        f"{re.sub(r'[^a-z0-9]+', '-', source_name.casefold()).strip('-')[:28]}."
-                        f"{source_hash[:12]}.{chunk_index:04d}"
-                    ),
+                    "document_id": f"private.{game_source_id}.{document_hash}",
                     "topic": topic,
-                    "title": f"{source_name} — private mechanics reference {chunk_index + 1}/{chunk_count}",
-                    "summary": (
-                        "Private runtime excerpt from the operator's legal game installation; "
-                        "retrieve only when this mechanic is relevant."
-                    ),
+                    "title": title, "summary": summary,
                     "body": body,
-                    "tags": ("private", "legal-copy", "mechanics", topic),
+                    "tags": tuple(filter(None, (
+                        "private", "legal-copy", "mechanics", "smacx", topic,
+                        str(entity_kind or "section"),
+                    ))),
+                    "entity_kind": entity_kind, "entity_key": entity_key,
+                    "ruleset_id": "smacx", "source_priority": source_priority,
+                    "metadata": metadata,
                     "source_title": source_name,
                     "source_license": (
                         "Operator-supplied proprietary source; private runtime retrieval only; not distributed"
@@ -413,6 +446,9 @@ class WorkerManager:
                 "status": "ready", "policy": "mechanics_only_no_guides",
                 "sources": int(complete.get("sources", 0)),
                 "documents": len(validated), "replaced": removed,
+                "entity_counts": counts,
+                "ruleset_id": "smacx",
+                "precedence": manifest["precedence"],
                 "distributed": False,
             }
         finally:

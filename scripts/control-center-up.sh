@@ -41,7 +41,7 @@ esac
 docker compose "$@" --profile build build control-api
 docker compose "$@" --profile build build control-center
 docker compose "$@" --profile build build worker-image
-docker compose "$@" --profile build pull harness-image
+docker compose "$@" --profile build build harness-image
 # Word splitting is deliberate: this is a fixed internal service list, never
 # operator-provided input.
 # shellcheck disable=SC2086

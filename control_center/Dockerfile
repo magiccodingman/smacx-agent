@@ -52,7 +52,7 @@ COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_docker.py src/smacx_worker_manager.py src/smacx_operations.py \
     src/smacx_harness_manager.py src/smacx_hermes.py src/smacx_controller.py \
     src/smacx_mcp.py src/smacx_reference.py src/smacx_capabilities.py \
-    src/smacx_game_settings.py /opt/smacx/src/
+    src/smacx_game_settings.py src/smacx_prompt.py /opt/smacx/src/
 COPY knowledge/ /opt/smacx/knowledge/
 COPY control_center/static/ /opt/smacx/control_center/static/
 COPY --chmod=0755 control_center/smacx-control /usr/local/bin/smacx-control

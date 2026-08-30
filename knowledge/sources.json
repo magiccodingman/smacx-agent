@@ -1,0 +1,50 @@
+{
+  "schema": "smacx.reference-sources.v1",
+  "policy": "citation_metadata_only_no_remote_content",
+  "verified_at": "2026-08-29",
+  "verified_via": "Internet Archive CDX index; captured status 200",
+  "sources": [
+    {
+      "canonical_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri",
+      "archive_url": "https://web.archive.org/web/20071016075355id_/http://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri",
+      "archive_timestamp": "20071016075355",
+      "archive_digest": "2YAPR3GAWGHWIWFOH2L7XEATDKICUPGG"
+    },
+    {
+      "canonical_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Diplomacy",
+      "archive_url": "https://web.archive.org/web/20071103113336id_/http://strategywiki.org:80/wiki/Sid_Meier%27s_Alpha_Centauri/Diplomacy",
+      "archive_timestamp": "20071103113336",
+      "archive_digest": "47TF2MLVAAZ7LC5QD3GJGHDYM7GR3IV2"
+    },
+    {
+      "canonical_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Facilities",
+      "archive_url": "https://web.archive.org/web/20071103124022id_/http://strategywiki.org:80/wiki/Sid_Meier%27s_Alpha_Centauri/Facilities",
+      "archive_timestamp": "20071103124022",
+      "archive_digest": "2LXKOIYGZURK5V3YTXIN7RLPGS243VKE"
+    },
+    {
+      "canonical_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Factions",
+      "archive_url": "https://web.archive.org/web/20071103124027id_/http://strategywiki.org:80/wiki/Sid_Meier%27s_Alpha_Centauri/Factions",
+      "archive_timestamp": "20071103124027",
+      "archive_digest": "NDS6IF5YURHDOEPRUBLAFBPMXQ7SAEUQ"
+    },
+    {
+      "canonical_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Social_Engineering",
+      "archive_url": "https://web.archive.org/web/20071103124032id_/http://strategywiki.org:80/wiki/Sid_Meier%27s_Alpha_Centauri/Social_Engineering",
+      "archive_timestamp": "20071103124032",
+      "archive_digest": "Y5UYKPL6MH5WT327O6IBDVD4NEZOWG3I"
+    },
+    {
+      "canonical_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Table_of_Contents",
+      "archive_url": "https://web.archive.org/web/20210920115827id_/https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Table_of_Contents",
+      "archive_timestamp": "20210920115827",
+      "archive_digest": "FI3GZZDNNA7WCBUK26LAFN3YWW235CDV"
+    },
+    {
+      "canonical_url": "https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Terraforming",
+      "archive_url": "https://web.archive.org/web/20210920031628id_/https://strategywiki.org/wiki/Sid_Meier%27s_Alpha_Centauri/Terraforming",
+      "archive_timestamp": "20210920031628",
+      "archive_digest": "KUBTTQIT2YB5PYRSUYFFAIHJNXTRKBYY"
+    }
+  ]
+}
