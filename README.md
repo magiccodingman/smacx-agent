@@ -21,6 +21,11 @@ no AI at all.
 This is not a remake. It is the original game, made dramatically easier to
 host, watch, resume, explore, and share.
 
+<p align="center">
+  <img src="docs/images/command-deck.jpg" alt="SMACX Agent command deck showing the private-LAN lobby and match controls" width="100%">
+</p>
+<p align="center"><sub><strong>The command deck:</strong> one private-LAN home for creating, joining, recovering, and watching games.</sub></p>
+
 > Linux-first and built for localhost or a trusted private LAN. This project
 > does not include or distribute Sid Meier's Alpha Centauri, Alien Crossfire,
 > or other proprietary game assets. You provide your own installation.
@@ -32,9 +37,19 @@ from a friendly web lobby. Pick the world, difficulty, Planet traits, turn
 clock, victory conditions, advanced rules, humans, native bots, and optional AI
 players without walking through the original setup screens.
 
+<p align="center">
+  <img src="docs/images/mixed-lobby.jpg" alt="A seven-seat SMACX lobby with three Qwen AI players, one human, and three native game bots" width="100%">
+</p>
+<p align="center"><sub><strong>Build the table you want:</strong> humans, named AI profiles, and the original game's bots can share all seven seats.</sub></p>
+
 When the game starts, every managed human gets the real `terranx.exe` streamed
 through the portal with video, audio, mouse, keyboard, shortcuts, text entry,
 fullscreen, and reconnect support.
+
+<p align="center">
+  <img src="docs/images/browser-gameplay.jpg" alt="The original Alien Crossfire game running live in a Chrome browser through SMACX Agent" width="100%">
+</p>
+<p align="center"><sub><strong>This is the real game:</strong> an isolated managed instance of <code>terranx.exe</code>, live in a browser and ready to reconnect.</sub></p>
 
 - Play at a desktop without installing or patching the game there.
 - Open the same private site from a laptop, tablet, or phone. The fixed game
