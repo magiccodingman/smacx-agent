@@ -102,7 +102,8 @@ else
             else
             {
                 <MudSelect T="string" @bind-SelectedValues="agentIds" MultiSelection="true"
-                           Label="AI player profiles" Variant="Variant.Outlined">
+                           Label="AI player profiles" Variant="Variant.Outlined"
+                           ToStringFunc="AgentDisplayName" Strict="true">
                     @foreach (var agent in catalog?.Agents ?? [])
                     {
                         <MudSelectItem Value="@agent.Id">@agent.DisplayName</MudSelectItem>
@@ -341,6 +342,16 @@ else
     {
         sourceId = value;
         await LoadScenarios();
+    }
+
+    private string AgentDisplayName(string? agentId)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            return string.Empty;
+        }
+        return catalog?.Agents.FirstOrDefault(item => item.Id == agentId)?.DisplayName
+            ?? "Unavailable AI profile";
     }
 
     private async Task LoadScenarios()
