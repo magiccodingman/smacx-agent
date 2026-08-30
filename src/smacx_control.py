@@ -586,6 +586,33 @@ class ControlPlane:
             )]
         return [self.get_provider(str(identifier)) for identifier in identifiers]
 
+    def delete_provider(self, provider_id: str) -> dict[str, Any]:
+        """Remove an unused provider and revoke its stored API key, if any.
+
+        Harness profiles are immutable historical configuration.  Refusing to
+        remove a provider they reference keeps old match and telemetry records
+        intelligible instead of leaving a dangling provider identity.
+        """
+        _require_id(provider_id, "provider_id")
+        with self.store.transaction() as connection:
+            provider = connection.execute(
+                "SELECT api_key_secret_id FROM model_providers WHERE provider_id=?",
+                (provider_id,),
+            ).fetchone()
+            if not provider:
+                raise ScopeViolation("unknown_provider_id")
+            if connection.execute(
+                "SELECT 1 FROM harness_profiles WHERE provider_id=? LIMIT 1",
+                (provider_id,),
+            ).fetchone():
+                raise StoreError("provider_in_use_by_harness_profile")
+            secret_id = provider["api_key_secret_id"]
+            connection.execute("DELETE FROM provider_models WHERE provider_id=?", (provider_id,))
+            connection.execute("DELETE FROM model_providers WHERE provider_id=?", (provider_id,))
+        if secret_id:
+            self.vault.revoke(str(secret_id))
+        return {"ok": True, "provider_id": provider_id, "deleted": True}
+
     def discover_provider(self, provider_id: str, *, timeout: float = 10.0,
                           ssl_context: ssl.SSLContext | None = None) -> dict[str, Any]:
         _require_id(provider_id, "provider_id")

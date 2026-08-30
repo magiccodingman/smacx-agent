@@ -15,10 +15,14 @@
 else
 {
     <div class="form-grid">
-        <section class="surface-panel form-panel">
+        <section class="surface-panel form-panel" id="endpoint-editor">
             <span class="panel-kicker">STEP 1</span>
-            <h2>Connect a model endpoint</h2>
-            <p class="section-copy">Saving the endpoint discovers its available models. It does not create a playable AI profile yet.</p>
+            <h2>@(IsEditingProvider ? "Edit model endpoint" : "Connect a model endpoint")</h2>
+            <p class="section-copy">
+                @(IsEditingProvider
+                    ? "Update this endpoint without exposing its stored API key. Saving also refreshes its available models."
+                    : "Saving the endpoint discovers its available models. It does not create a playable AI profile yet.")
+            </p>
             <MudTextField @bind-Value="providerName" Label="Display name" Variant="Variant.Outlined"
                           HelperText="Use a unique label for each model endpoint."
                           InputId="smacx-provider-label" autocomplete="off" name="smacx_provider_label"
@@ -31,15 +35,26 @@ else
                           InputMode="InputMode.url" autocapitalize="none" spellcheck="false"
                           data-form-type="other" data-1p-ignore="true" data-lpignore="true" />
             <MudTextField @bind-Value="providerKey" Label="API key (optional)"
-                          HelperText="Leave blank when authentication is not required. Stored in the control vault and never returned; password managers are asked to ignore this field."
+                          HelperText="@ProviderKeyHelp"
                           InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true"
+                          Disabled="removeProviderKey"
                           InputId="smacx-provider-token" autocomplete="new-password" name="smacx_provider_api_token"
                           autocapitalize="none" spellcheck="false"
                           data-form-type="other" data-1p-ignore="true" data-lpignore="true" />
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSaveProvider)"
-                       OnClick="SaveProvider" StartIcon="@Icons.Material.Filled.Hub">
-                Save endpoint & discover models
-            </MudButton>
+            @if (IsEditingProvider && editingProviderHasKey)
+            {
+                <MudCheckBox @bind-Value="removeProviderKey" Label="Remove the currently stored API key" Color="Color.Warning" />
+            }
+            <div class="form-actions endpoint-editor-actions">
+                @if (IsEditingProvider)
+                {
+                    <MudButton Variant="Variant.Text" Disabled="busy" OnClick="ResetProviderForm">Cancel edit</MudButton>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSaveProvider)"
+                           OnClick="SaveProvider" StartIcon="@Icons.Material.Filled.Hub">
+                    @(IsEditingProvider ? "Save changes & discover models" : "Save endpoint & discover models")
+                </MudButton>
+            </div>
         </section>
 
         <section class="surface-panel form-panel">
@@ -129,8 +144,26 @@ else
                 <div><strong>@Text(provider, "display_name")</strong><small>@Text(provider, "base_url")</small></div>
                 <span class="status-badge">@Text(provider, "status")</span>
                 <span>@(provider.TryGetProperty("has_api_key", out var keyed) && keyed.GetBoolean() ? "managed key" : "no key")</span>
-                <MudButton Size="Size.Small" Variant="Variant.Outlined" Disabled="busy" OnClick="() => Discover(Id(provider))">Discover</MudButton>
+                <div class="endpoint-actions">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Disabled="busy" OnClick="() => Discover(Id(provider))">Discover</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="busy"
+                               StartIcon="@Icons.Material.Filled.Edit" OnClick="() => EditProvider(provider)">Edit</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="busy"
+                               StartIcon="@Icons.Material.Filled.DeleteOutline" OnClick="() => BeginRemoveProvider(provider)">Remove</MudButton>
+                </div>
             </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(pendingDeleteId))
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="endpoint-remove-confirmation">
+                <strong>Remove @pendingDeleteName?</strong>
+                <div>This permanently removes the endpoint and its managed API key. Endpoints referenced by AI profiles or historical harness configuration are protected and cannot be removed.</div>
+                <div class="setup-callout-actions">
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="busy" OnClick="CancelRemoveProvider">Cancel</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" Disabled="busy"
+                               StartIcon="@Icons.Material.Filled.DeleteForever" OnClick="RemoveProvider">Remove unused endpoint</MudButton>
+                </div>
+            </MudAlert>
         }
     </section>
 
@@ -183,6 +216,11 @@ else
     private string providerName = "Local model server";
     private string providerUrl = "";
     private string providerKey = "";
+    private string? editingProviderId;
+    private bool editingProviderHasKey;
+    private bool removeProviderKey;
+    private string? pendingDeleteId;
+    private string? pendingDeleteName;
     private string profileName = "SMACX player";
     private string selectedProvider = "";
     private string selectedModel = "";
@@ -201,6 +239,10 @@ else
         && !string.IsNullOrWhiteSpace(providerName)
         && Uri.TryCreate(providerUrl, UriKind.Absolute, out var uri)
         && uri.Scheme is "http" or "https";
+    private bool IsEditingProvider => !string.IsNullOrWhiteSpace(editingProviderId);
+    private string ProviderKeyHelp => IsEditingProvider && editingProviderHasKey
+        ? "Leave blank to keep the stored key, enter a replacement, or select Remove below. The current key is never returned to the browser."
+        : "Leave blank when authentication is not required. Stored in the control vault and never returned; password managers are asked to ignore this field.";
     private bool CanCreateProfile => !busy
         && !string.IsNullOrWhiteSpace(profileName)
         && !string.IsNullOrWhiteSpace(selectedProvider)
@@ -248,15 +290,18 @@ else
         notice = null;
         try
         {
+            var providerId = editingProviderId;
+            var apiKey = removeProviderKey
+                ? ""
+                : string.IsNullOrEmpty(providerKey) ? null : providerKey;
             var result = await Api.PostAsync<JsonElement>("api/admin/providers",
-                new ProviderConfigurationRequest(providerName, providerUrl, string.IsNullOrEmpty(providerKey) ? null : providerKey));
+                new ProviderConfigurationRequest(providerName, providerUrl, apiKey, providerId));
             if (result.Payload?.Ok != true)
             {
                 error = result.Payload?.Error?.Message ?? "The endpoint could not be saved.";
             }
             else
             {
-                providerKey = "";
                 var id = Id(result.Payload.Data);
                 var discovered = await Api.PostAsync<JsonElement>($"api/admin/providers/{id}/discover", new { });
                 if (discovered.Payload?.Ok != true)
@@ -265,9 +310,79 @@ else
                 }
                 await Reload(id);
                 notice = Models.Count > 0
-                    ? $"Endpoint saved and {Models.Count} model{(Models.Count == 1 ? "" : "s")} discovered. Complete step 2 to make an AI player."
-                    : "Endpoint saved, but it did not advertise any models yet.";
+                    ? $"Endpoint {(providerId is null ? "saved" : "updated")} and {Models.Count} model{(Models.Count == 1 ? "" : "s")} discovered. Complete step 2 to make an AI player."
+                    : $"Endpoint {(providerId is null ? "saved" : "updated")}, but it did not advertise any models yet.";
+                ResetProviderForm();
             }
+        }
+        catch (HttpRequestException)
+        {
+            error = "The portal could not reach its server. Check the service and try again.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private void EditProvider(JsonElement provider)
+    {
+        editingProviderId = Id(provider);
+        providerName = Text(provider, "display_name");
+        providerUrl = Text(provider, "base_url");
+        providerKey = "";
+        editingProviderHasKey = provider.TryGetProperty("has_api_key", out var keyed) && keyed.GetBoolean();
+        removeProviderKey = false;
+        pendingDeleteId = null;
+        pendingDeleteName = null;
+        error = null;
+        notice = $"Editing {providerName} in step 1.";
+    }
+
+    private void ResetProviderForm()
+    {
+        editingProviderId = null;
+        editingProviderHasKey = false;
+        removeProviderKey = false;
+        providerName = "Local model server";
+        providerUrl = "";
+        providerKey = "";
+    }
+
+    private void BeginRemoveProvider(JsonElement provider)
+    {
+        pendingDeleteId = Id(provider);
+        pendingDeleteName = Text(provider, "display_name");
+        error = null;
+        notice = null;
+    }
+
+    private void CancelRemoveProvider()
+    {
+        pendingDeleteId = null;
+        pendingDeleteName = null;
+    }
+
+    private async Task RemoveProvider()
+    {
+        if (string.IsNullOrWhiteSpace(pendingDeleteId)) return;
+        var providerId = pendingDeleteId;
+        var providerNameToRemove = pendingDeleteName ?? "endpoint";
+        busy = true;
+        error = null;
+        notice = null;
+        try
+        {
+            var result = await Api.PostAsync<JsonElement>($"api/admin/providers/{providerId}/delete", new { });
+            if (result.Payload?.Ok != true)
+            {
+                error = result.Payload?.Error?.Message ?? "The endpoint could not be removed.";
+                return;
+            }
+            if (editingProviderId == providerId) ResetProviderForm();
+            CancelRemoveProvider();
+            await Reload();
+            notice = $"{providerNameToRemove} was removed.";
         }
         catch (HttpRequestException)
         {

@@ -119,6 +119,10 @@ public sealed class PortalFlowTests : IAsyncLifetime
             });
             await database.SaveChangesAsync();
         }
+        var protectedProvider = await PostAsync<System.Text.Json.JsonElement>(
+            "api/admin/providers/provider-test/delete", new { }, csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, protectedProvider.Response.StatusCode);
+        Assert.Equal("provider_in_use_by_ai_profile", protectedProvider.Payload.Error?.Code);
         var withJoin = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Equal("192.0.2.25", withJoin.NativeJoin?.HostAddress);
         Assert.Equal("GaianGuest", withJoin.NativeJoin?.Players.Single().PlayerName);

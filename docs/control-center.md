@@ -138,6 +138,13 @@ The form intentionally ships with a blank provider URL. An address entered on
 one installation is stored only in that installation's control data; the
 project does not contain a developer-specific model-server address.
 
+Configured endpoints can be edited or removed from the endpoint list. Editing
+never sends the existing API key back to the browser: leave the key field blank
+to preserve it, enter a replacement, or explicitly select its removal. Endpoint
+removal requires confirmation, revokes its managed key, and is limited to
+unused endpoints. An endpoint referenced by an AI profile or historical harness
+configuration remains protected so match history stays meaningful.
+
 The provider may be on the Docker host, another LAN host, or a home-lab model
 server reachable from the Docker network. Multiple profiles may use one model
 with different reasoning/context settings. Old versions can be deactivated but

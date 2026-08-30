@@ -71,6 +71,20 @@ public sealed class AdministrationController(
             context_length_override = request.ContextLengthOverride,
         }, "provider");
 
+    [HttpPost("providers/{providerId}/delete")]
+    public async Task<ActionResult<ApiResponse<JsonElement?>>> DeleteProvider(string providerId)
+    {
+        var referenced = await database.PortalAiProfileVersions.AsNoTracking()
+            .AnyAsync(item => item.ProviderId == providerId, HttpContext.RequestAborted);
+        if (referenced)
+        {
+            return Conflict(ApiResponse<JsonElement?>.Failure(
+                "provider_in_use_by_ai_profile",
+                "This model endpoint is referenced by an AI player profile and must remain for historical records. Only unused endpoints can be removed."));
+        }
+        return await Proxy($"api/v1/providers/{Uri.EscapeDataString(providerId)}/delete", new { });
+    }
+
     [HttpGet("ai-profiles")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<AiProfileVersion>>>> Profiles()
     {

@@ -35,7 +35,7 @@ from smacx_worker_manager import LAN_PROFILES, WorkerManager, WorkerManagerError
 MAX_REQUEST_BODY = 1024 * 1024
 SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
-PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select)$")
+PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select|delete)$")
 WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator|chat)$")
 MATCH_PATH = re.compile(
     r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/"
@@ -795,6 +795,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if match:
                 auth = self._authorize_mutation()
                 provider_id, action = match.groups()
+                if action == "delete":
+                    self._body()
+                    result = self.server.control.delete_provider(provider_id)
+                    self.server.control.audit(
+                        auth["admin_id"], "provider.delete", "provider", provider_id,
+                        "success", {}, self.client_address[0],
+                    )
+                    self._json(200, result)
+                    return
                 if action == "discover":
                     self._body()
                     provider = self.server.control.discover_provider(provider_id)
@@ -977,7 +986,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         elif isinstance(exc, WorkerManagerError):
             self._error(409, str(exc))
         elif isinstance(exc, StoreError):
-            self._error(409, str(exc))
+            code = str(exc)
+            messages = {
+                "provider_in_use_by_harness_profile":
+                    "This model endpoint is used by historical harness configuration and cannot be removed.",
+            }
+            self._error(409, code, messages.get(code))
         else:
             print(json.dumps({
                 "event": "control_error", "error_type": type(exc).__name__,
