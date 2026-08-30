@@ -2,7 +2,103 @@
 @attribute [Authorize]
 @inject Services.PortalApiClient Api
 @inject NavigationManager Navigation
+
 <PageTitle>Account · SMACX Agent</PageTitle>
-<PageHeader Kicker="LOCAL IDENTITY" Title="Your account" Description="Your LAN login and in-game handle remain local to this control center." />
-<div class="surface-panel form-panel account-panel"><AuthorizeView><Authorized Context="auth"><div class="profile-avatar">@((auth.User.Identity?.Name ?? "?")[0].ToString().ToUpperInvariant())</div><h2>@auth.User.Identity?.Name</h2><p class="section-copy">Authenticated LAN member</p><MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Logout" OnClick="Logout">Sign out</MudButton></Authorized></AuthorizeView></div>
-@code { private async Task Logout() { await Api.PostAsync<bool>("api/auth/logout", new { }); Navigation.NavigateTo("/", true); } }
+<PageHeader Kicker="LOCAL IDENTITY"
+            Title="Your account"
+            Description="Manage your LAN login and in-game identity without leaving this control center." />
+
+<div class="form-grid account-grid">
+    <section class="surface-panel form-panel account-panel">
+        <AuthorizeView>
+            <Authorized Context="auth">
+                <div class="profile-avatar">@((auth.User.Identity?.Name ?? "?")[0].ToString().ToUpperInvariant())</div>
+                <h2>@auth.User.Identity?.Name</h2>
+                <p class="section-copy">Authenticated LAN member</p>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.Logout" OnClick="Logout">
+                    Sign out
+                </MudButton>
+            </Authorized>
+        </AuthorizeView>
+    </section>
+
+    <section class="surface-panel form-panel">
+        <span class="panel-kicker">SECURITY</span>
+        <h2>Change password</h2>
+        <p class="section-copy">If you know your current password, change it here without an administrator reset ticket.</p>
+        <MudTextField @bind-Value="currentPassword" Label="Current password"
+                      InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true"
+                      autocomplete="current-password" />
+        <MudTextField @bind-Value="newPassword" Label="New password"
+                      InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true"
+                      HelperText="@PasswordHelp" autocomplete="new-password" />
+        <MudTextField @bind-Value="confirmation" Label="Confirm new password"
+                      InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true"
+                      autocomplete="new-password" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanChangePassword)"
+                   StartIcon="@Icons.Material.Filled.Password" OnClick="ChangePassword">
+            Change password
+        </MudButton>
+        <span class="field-help flush mt-3">Forgot the current password? A local administrator can issue a short-lived reset ticket. The original admin can also generate one from the Docker host.</span>
+        @if (!string.IsNullOrWhiteSpace(notice))
+        {
+            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mt-4">@notice</MudAlert>
+        }
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>
+        }
+    </section>
+</div>
+
+@code {
+    private int passwordMinimumLength = 8;
+    private string currentPassword = "";
+    private string newPassword = "";
+    private string confirmation = "";
+    private string? notice;
+    private string? error;
+    private bool busy;
+
+    private string PasswordHelp =>
+        $"At least {passwordMinimumLength} characters with upper, lower, and a number.";
+    private bool CanChangePassword => !busy
+        && !string.IsNullOrWhiteSpace(currentPassword)
+        && newPassword.Length >= passwordMinimumLength
+        && newPassword == confirmation;
+
+    protected override async Task OnInitializedAsync()
+    {
+        passwordMinimumLength = (await Api.GetAsync<PortalSetupState>("api/auth/setup"))
+            ?.Data?.PasswordMinimumLength ?? 8;
+    }
+
+    private async Task ChangePassword()
+    {
+        if (!CanChangePassword) return;
+        busy = true;
+        error = null;
+        notice = null;
+        var result = await Api.PostAsync<PortalSession>("api/auth/password/change",
+            new ChangePasswordRequest(currentPassword, newPassword, confirmation));
+        busy = false;
+        if (result.Payload?.Ok == true)
+        {
+            currentPassword = "";
+            newPassword = "";
+            confirmation = "";
+            notice = "Your password was changed. Other signed-in sessions will be asked to authenticate again.";
+        }
+        else
+        {
+            error = result.Payload?.Error?.Message ?? "The password could not be changed.";
+        }
+    }
+
+    private async Task Logout()
+    {
+        await Api.PostAsync<bool>("api/auth/logout", new { });
+        Navigation.NavigateTo("/", true);
+    }
+}

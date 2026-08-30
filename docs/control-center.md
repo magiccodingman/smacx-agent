@@ -64,7 +64,9 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll bootstrap-token
 ```
 
 Open <http://127.0.0.1:8080>, use username `admin`, enter the token, and choose
-a password. The token is revoked after successful bootstrap.
+an eight-character-or-longer password. The token is revoked after successful
+bootstrap. The minimum can be raised at startup with
+`SMACX_PASSWORD_MIN_LENGTH`; values from 8 through 128 are accepted.
 
 If the original administrator password is lost, create a 30-minute reset
 ticket without deleting any data:
@@ -76,6 +78,10 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll admin-reset-token 
 Enter the printed username/token on the Reset access page and choose a new
 password. Administrators can issue the same kind of ticket for members from
 **Administration → Users** and can promote another account.
+
+Any signed-in member who knows their current password can change it directly
+from **Your account → Change password**. No reset ticket or administrator is
+needed for an ordinary password change.
 
 Registration is deliberately lightweight for a friendly LAN: no email is
 required. Usernames/game handles compare case-insensitively and use characters

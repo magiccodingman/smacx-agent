@@ -35,6 +35,7 @@ USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 MODEL_ID_LIMIT = 512
 PROVIDER_RESPONSE_LIMIT = 4 * 1024 * 1024
+PASSWORD_MINIMUM_LENGTH = 8
 PASSWORD_PARAMETERS = {"algorithm": "scrypt", "n": 32768, "r": 8, "p": 1, "dklen": 32}
 
 
@@ -367,7 +368,7 @@ class ControlPlane:
     def bootstrap_admin(self, bootstrap_token: str, password: str, *, username: str = "admin") -> dict[str, Any]:
         if not USERNAME.fullmatch(username):
             raise InvalidRecord("invalid_admin_username")
-        if not isinstance(password, str) or not 12 <= len(password) <= 1024:
+        if not isinstance(password, str) or not PASSWORD_MINIMUM_LENGTH <= len(password) <= 1024:
             raise InvalidRecord("invalid_admin_password")
         with self._bootstrap_lock:
             if self.admin_exists():

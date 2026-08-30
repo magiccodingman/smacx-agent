@@ -12,7 +12,7 @@ import tempfile
 import threading
 
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
-from smacx_store import MemoryScope, ScopeViolation, SmacxStore, StoreError
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 
 
 def expect(error_type, function, message: str) -> None:
@@ -66,11 +66,16 @@ def main() -> int:
         if bootstrap_token in json.dumps(bootstrap):
             raise AssertionError("bootstrap token leaked through setup metadata")
         expect(
+            InvalidRecord,
+            lambda: control.bootstrap_admin(bootstrap_token, "Short1A"),
+            "invalid_admin_password",
+        )
+        expect(
             AuthenticationError,
-            lambda: control.bootstrap_admin("wrong-token", "a sufficiently long password"),
+            lambda: control.bootstrap_admin("wrong-token", "Passw0rd"),
             "invalid_bootstrap_token",
         )
-        admin = control.bootstrap_admin(bootstrap_token, "a sufficiently long password")
+        admin = control.bootstrap_admin(bootstrap_token, "Passw0rd")
         if admin["username"] != "admin" or token_path.exists():
             raise AssertionError("bootstrap did not create admin and revoke its token")
         if control.ensure_bootstrap_token()["setup_required"]:
@@ -81,7 +86,7 @@ def main() -> int:
             "invalid_credentials",
         )
 
-        session = control.login("admin", "a sufficiently long password")
+        session = control.login("admin", "Passw0rd")
         authenticated = control.authenticate(session.token)
         if authenticated["admin_id"] != admin["admin_id"]:
             raise AssertionError("session authenticated as the wrong admin")

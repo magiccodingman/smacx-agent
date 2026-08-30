@@ -4,7 +4,8 @@ public sealed record PortalSetupState(
     bool SetupRequired,
     bool RegistrationEnabled,
     string DefaultAdministrator,
-    string BootstrapCommand);
+    string BootstrapCommand,
+    int PasswordMinimumLength);
 
 public sealed record PortalUser(
     string Id,
@@ -26,6 +27,9 @@ public sealed record RegistrationRequest(
     string ConfirmPassword);
 
 public sealed record BootstrapRequest(string Token, string Password, string ConfirmPassword);
+
+public sealed record ChangePasswordRequest(
+    string CurrentPassword, string NewPassword, string ConfirmPassword);
 
 public sealed record CsrfTokenResponse(string Token);
 
