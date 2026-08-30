@@ -634,8 +634,11 @@ class OperationsManager:
                     continue
                 match = self.control.get_match(str(spec["match_id"]))
                 checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
-                if isinstance(checkpoint, Mapping) and checkpoint.get("verified") is True \
-                        and match.get("metadata", {}).get("host_controller_kind") != "human":
+                # A browser-managed human host is recoverable in exactly the
+                # same way as an agent host: it has an isolated worker and a
+                # bridge-verified save. A truly external host can never have
+                # produced this managed checkpoint in the first place.
+                if isinstance(checkpoint, Mapping) and checkpoint.get("verified") is True:
                     self.worker_manager.recover_match(str(spec["match_id"]))
                     self._incident(str(spec["instance_id"]), "worker_lost", "recovered",
                                    {"action": "checkpoint_resume", "slot": checkpoint.get("slot")})

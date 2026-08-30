@@ -86,8 +86,9 @@ public sealed class PortalFlowTests : IAsyncLifetime
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var privateMessage = await PostAsync<LobbyMessage>(
             $"api/lobbies/{matchId}/messages",
-            new SendLobbyMessageRequest("A private diplomatic test", 3), csrf.Token);
+            new SendLobbyMessageRequest("A private diplomatic test", 3, "private"), csrf.Token);
         Assert.Equal(3, privateMessage.Payload.Data?.RecipientFactionId);
+        Assert.Equal("private", privateMessage.Payload.Data?.Channel);
 
         await using (var scope = factory!.Services.CreateAsyncScope())
         {

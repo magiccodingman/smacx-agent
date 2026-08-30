@@ -230,6 +230,37 @@ def main() -> int:
         if store.list_chat(beta):
             raise AssertionError("chat leaked into another perspective")
 
+        group = store.create_chat_group(
+            alpha, "Western Council", 1,
+            [
+                {"faction_id": 1, "display_name": "Deirdre", "faction_name": "Gaians"},
+                {"faction_id": 2, "display_name": "Yang", "faction_name": "Hive"},
+            ],
+        )
+        if group["status"] != "inviting" or group["viewer_status"] != "accepted":
+            raise AssertionError("group consent did not begin in the inviting state")
+        accepted = store.respond_chat_group(beta, group["group_id"], 2, "accepted")
+        if accepted["status"] != "active" or len(store.list_chat_groups(beta, 2)) != 1:
+            raise AssertionError("group did not activate after every member consented")
+        logical = store.begin_group_message(
+            alpha, group["group_id"], 1, "Coordinate the western defense.",
+            turn=14, year=2222,
+        )
+        if logical["recipients"] != [2]:
+            raise AssertionError("logical group fanout did not preserve the recipient set")
+        store.complete_group_delivery(
+            logical["logical_message_id"], 2, delivered=True,
+            native_message_uid="native-group-message-1",
+        )
+        with sqlite3.connect(database) as raw:
+            delivery = raw.execute(
+                "SELECT status, native_message_uid FROM chat_group_deliveries "
+                "WHERE logical_message_id=? AND recipient_faction_id=2",
+                (logical["logical_message_id"],),
+            ).fetchone()
+        if delivery != ("delivered", "native-group-message-1"):
+            raise AssertionError("logical group delivery was not durably acknowledged")
+
         goal = store.add_goal(
             alpha, "Secure western border", "Reach a defensible agreement with Deirdre",
             goal_key="secure-west", priority=80, due_turn=20,
@@ -298,6 +329,7 @@ def main() -> int:
                 "claims_beliefs_relationships_versioned": True,
                 "goals_commitments_versioned": True,
                 "chat_deduplicated_and_acknowledged": True,
+                "consent_group_chat_logical_delivery": True,
                 "graph_namespace_isolated": True,
                 "fts5_bm25_scoped": True,
                 "batched_recall_budgeted": True,

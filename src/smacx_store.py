@@ -212,6 +212,51 @@ CREATE TABLE chat_messages (
 CREATE INDEX chat_unread
     ON chat_messages(match_id, agent_id, perspective_id, acknowledged_unix, received_unix);
 
+CREATE TABLE chat_groups (
+    group_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    display_name TEXT NOT NULL,
+    created_by_faction_id INTEGER NOT NULL CHECK (created_by_faction_id BETWEEN 1 AND 7),
+    status TEXT NOT NULL CHECK (status IN ('inviting', 'active', 'closed')),
+    version INTEGER NOT NULL DEFAULT 1,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+CREATE INDEX chat_groups_match_time
+    ON chat_groups(match_id, updated_unix DESC);
+
+CREATE TABLE chat_group_members (
+    group_id TEXT NOT NULL REFERENCES chat_groups(group_id) ON DELETE CASCADE,
+    faction_id INTEGER NOT NULL CHECK (faction_id BETWEEN 1 AND 7),
+    display_name TEXT NOT NULL,
+    faction_name TEXT,
+    status TEXT NOT NULL CHECK (status IN ('invited', 'accepted', 'rejected', 'left')),
+    responded_unix REAL,
+    PRIMARY KEY (group_id, faction_id)
+);
+
+CREATE TABLE chat_group_messages (
+    logical_message_id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL REFERENCES chat_groups(group_id) ON DELETE CASCADE,
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    sender_faction_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    turn INTEGER,
+    year INTEGER,
+    created_unix REAL NOT NULL
+);
+CREATE INDEX chat_group_messages_time
+    ON chat_group_messages(group_id, created_unix);
+
+CREATE TABLE chat_group_deliveries (
+    logical_message_id TEXT NOT NULL REFERENCES chat_group_messages(logical_message_id) ON DELETE CASCADE,
+    recipient_faction_id INTEGER NOT NULL,
+    native_message_uid TEXT,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'delivered', 'failed')),
+    delivered_unix REAL,
+    PRIMARY KEY (logical_message_id, recipient_faction_id)
+);
+
 CREATE TABLE facts (
     fact_id TEXT PRIMARY KEY,
     match_id TEXT NOT NULL REFERENCES matches(match_id),
@@ -850,7 +895,7 @@ INITIAL_SCHEMA = "\n".join((
     INITIAL_SCHEMA_HARNESS,
 ))
 SCHEMA_REVISION = 1
-CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260829-agent-knowledge"
+CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260830-managed-play"
 
 
 def _new_id(kind: str) -> str:
@@ -1898,6 +1943,178 @@ class SmacxStore:
                     ((now, row["chat_id"]) for row in rows),
                 )
         return [self._decode_row(row, "metadata_json") for row in rows]
+
+    def create_chat_group(
+        self, scope: MemoryScope, display_name: str, creator_faction_id: int,
+        participants: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Create one match-local consent group visible only to its factions."""
+        self.require_scope(scope)
+        display_name = _bounded_text(display_name, "chat_group_name", 48)
+        if not 1 <= creator_faction_id <= 7:
+            raise InvalidRecord("invalid_creator_faction_id")
+        normalized: dict[int, tuple[str, str | None]] = {}
+        for participant in participants:
+            try:
+                faction_id = int(participant.get("faction_id"))
+            except (TypeError, ValueError):
+                raise InvalidRecord("invalid_chat_group_member")
+            if not 1 <= faction_id <= 7:
+                raise InvalidRecord("invalid_chat_group_member")
+            name = _bounded_text(
+                str(participant.get("display_name") or f"Faction {faction_id}"),
+                "chat_group_member_name", 80,
+            )
+            faction_name = str(participant.get("faction_name") or "").strip() or None
+            normalized[faction_id] = (name, faction_name)
+        if creator_faction_id not in normalized:
+            raise InvalidRecord("chat_group_creator_missing")
+        if len(normalized) < 2 or len(normalized) > 7:
+            raise InvalidRecord("invalid_chat_group_size")
+        now = time.time()
+        group_id = _new_id("group")
+        with self.transaction() as connection:
+            self.require_scope(scope, connection=connection)
+            if connection.execute(
+                "SELECT 1 FROM chat_groups WHERE match_id=? AND lower(display_name)=lower(?) "
+                "AND status!='closed'", (scope.match_id, display_name),
+            ).fetchone():
+                raise InvalidRecord("chat_group_name_already_in_use")
+            connection.execute(
+                "INSERT INTO chat_groups(group_id, match_id, display_name, "
+                "created_by_faction_id, status, created_unix, updated_unix) "
+                "VALUES (?, ?, ?, ?, 'inviting', ?, ?)",
+                (group_id, scope.match_id, display_name, creator_faction_id, now, now),
+            )
+            connection.executemany(
+                "INSERT INTO chat_group_members(group_id, faction_id, display_name, "
+                "faction_name, status, responded_unix) VALUES (?, ?, ?, ?, ?, ?)",
+                ((group_id, faction_id, name, faction_name,
+                  "accepted" if faction_id == creator_faction_id else "invited",
+                  now if faction_id == creator_faction_id else None)
+                 for faction_id, (name, faction_name) in normalized.items()),
+            )
+        return self.get_chat_group(scope, group_id, creator_faction_id)
+
+    def get_chat_group(
+        self, scope: MemoryScope, group_id: str, viewer_faction_id: int,
+    ) -> dict[str, Any]:
+        self.require_scope(scope)
+        _require_id(group_id, "group_id")
+        with self._connect() as connection:
+            group = connection.execute(
+                "SELECT * FROM chat_groups WHERE group_id=? AND match_id=?",
+                (group_id, scope.match_id),
+            ).fetchone()
+            membership = connection.execute(
+                "SELECT status FROM chat_group_members WHERE group_id=? AND faction_id=?",
+                (group_id, viewer_faction_id),
+            ).fetchone()
+            if not group or not membership:
+                raise ScopeViolation("chat_group_not_visible")
+            members = connection.execute(
+                "SELECT faction_id, display_name, faction_name, status, responded_unix "
+                "FROM chat_group_members WHERE group_id=? ORDER BY faction_id",
+                (group_id,),
+            ).fetchall()
+        result = dict(group)
+        result["members"] = [dict(item) for item in members]
+        result["viewer_status"] = membership["status"]
+        return result
+
+    def list_chat_groups(
+        self, scope: MemoryScope, viewer_faction_id: int,
+    ) -> list[dict[str, Any]]:
+        self.require_scope(scope)
+        with self._connect() as connection:
+            ids = connection.execute(
+                "SELECT g.group_id FROM chat_groups g JOIN chat_group_members m "
+                "ON m.group_id=g.group_id WHERE g.match_id=? AND m.faction_id=? "
+                "AND m.status!='left' ORDER BY g.updated_unix DESC",
+                (scope.match_id, viewer_faction_id),
+            ).fetchall()
+        return [self.get_chat_group(scope, str(row["group_id"]), viewer_faction_id)
+                for row in ids]
+
+    def respond_chat_group(
+        self, scope: MemoryScope, group_id: str, faction_id: int, response: str,
+    ) -> dict[str, Any]:
+        self.require_scope(scope)
+        _require_id(group_id, "group_id")
+        if response not in {"accepted", "rejected", "left"}:
+            raise InvalidRecord("invalid_chat_group_response")
+        now = time.time()
+        with self.transaction() as connection:
+            group = connection.execute(
+                "SELECT * FROM chat_groups WHERE group_id=? AND match_id=?",
+                (group_id, scope.match_id),
+            ).fetchone()
+            member = connection.execute(
+                "SELECT status FROM chat_group_members WHERE group_id=? AND faction_id=?",
+                (group_id, faction_id),
+            ).fetchone()
+            if not group or not member:
+                raise ScopeViolation("chat_group_not_visible")
+            if group["status"] == "closed":
+                raise InvalidRecord("chat_group_closed")
+            connection.execute(
+                "UPDATE chat_group_members SET status=?, responded_unix=? "
+                "WHERE group_id=? AND faction_id=?",
+                (response, now, group_id, faction_id),
+            )
+            statuses = [str(row["status"]) for row in connection.execute(
+                "SELECT status FROM chat_group_members WHERE group_id=?", (group_id,),
+            )]
+            status = "active" if statuses and all(item == "accepted" for item in statuses) \
+                else "inviting"
+            connection.execute(
+                "UPDATE chat_groups SET status=?, version=version+1, updated_unix=? "
+                "WHERE group_id=?", (status, now, group_id),
+            )
+        return self.get_chat_group(scope, group_id, faction_id)
+
+    def begin_group_message(
+        self, scope: MemoryScope, group_id: str, sender_faction_id: int,
+        content: str, *, turn: int | None = None, year: int | None = None,
+    ) -> dict[str, Any]:
+        group = self.get_chat_group(scope, group_id, sender_faction_id)
+        if group["status"] != "active" or group["viewer_status"] != "accepted":
+            raise InvalidRecord("chat_group_not_active")
+        content = _bounded_text(content, "chat_group_message", 180)
+        recipients = [int(item["faction_id"]) for item in group["members"]
+                      if item["status"] == "accepted"
+                      and int(item["faction_id"]) != sender_faction_id]
+        logical_id = _new_id("group-message")
+        now = time.time()
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO chat_group_messages(logical_message_id, group_id, match_id, "
+                "sender_faction_id, content, turn, year, created_unix) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (logical_id, group_id, scope.match_id, sender_faction_id,
+                 content, turn, year, now),
+            )
+            connection.executemany(
+                "INSERT INTO chat_group_deliveries(logical_message_id, recipient_faction_id, status) "
+                "VALUES (?, ?, 'pending')",
+                ((logical_id, faction_id) for faction_id in recipients),
+            )
+        return {"logical_message_id": logical_id, "group": group,
+                "recipients": recipients, "content": content, "created_unix": now}
+
+    def complete_group_delivery(
+        self, logical_message_id: str, recipient_faction_id: int, *,
+        delivered: bool, native_message_uid: str | None = None,
+    ) -> None:
+        _require_id(logical_message_id, "logical_message_id")
+        with self.transaction() as connection:
+            connection.execute(
+                "UPDATE chat_group_deliveries SET status=?, native_message_uid=?, "
+                "delivered_unix=? WHERE logical_message_id=? AND recipient_faction_id=?",
+                ("delivered" if delivered else "failed", native_message_uid,
+                 time.time() if delivered else None, logical_message_id,
+                 recipient_faction_id),
+            )
 
     def set_relationship(
         self,

@@ -197,6 +197,12 @@ accepts ordinary input for interactive tickets, and supports reconnect and
 fullscreen. The portal reverse-proxies HTTP/WebSocket transport and rewrites
 the WebSocket Origin expected by Selkies.
 
+The worker chooses one validated native framebuffer for its lifetime and writes
+the same dimensions into Xvfb, Selkies manual mode, and Thinker's custom window
+configuration. Browser CSS performs ordinary resize/orientation fitting without
+mutating that framebuffer. A native-profile change is a checkpointed worker
+replacement, never an in-place DirectDraw resize.
+
 Authorization happens before proxying:
 
 - member controls their exact browser seat;
@@ -205,11 +211,17 @@ Authorization happens before proxying:
 - observer/anonymous modes are enforced read-only at transport; and
 - direct worker credentials/passwords are not exposed.
 
+An owner-only `human_ui_state` read crosses the same private service boundary.
+The bridge exposes only native root-MENU visibility, submenu/modal state, and
+display metadata, and only when the worker controller kind is human. The portal
+uses it to show the managed control rail; no equivalent operation exists in the
+agent MCP toolset.
+
 `managed clients only` rejects external/native clients for a lobby. Otherwise,
 native human seats have no agent/perspective/MCP identity and join the real
 DirectPlay session using an assigned handle/faction.
 
-## LAN lifecycle
+## LAN lifecycle and governance
 
 An agent-hosted match gives seat zero a game worker and native Host/Start
 authority. A managed browser human host uses the same path without an agent.
@@ -241,12 +253,22 @@ Recovery always assigns fresh native session/revision identities, loads the
 verified save, reclaims exact factions, restores MCP sidecars, and continues
 the durable Hermes conversation. A model must re-observe.
 
+Portal governance rows are durable authorization records. Quorum is frozen from
+the other connected, non-delegated human seats when a proposal opens. Approval
+does not mutate native state directly: a separate maintenance coordinator must
+still pass the control plane's three-sample quiescence and verified-save gates.
+Queued work rotates by last attempt so one match waiting on a modal or active
+simultaneous-turn packet cannot starve other lobbies.
+
 ## Chat and memory
 
 Native and portal chat are normalized into durable match events with sender
-handle, sender faction, recipient faction (`0` means broadcast), sequence, and
-deduplication marker. This supports public/private diplomacy and correct
-identity even when messages arrive outside the agent's active turn.
+handle, sender faction, recipient faction (`0` means broadcast), sequence,
+channel, conversation, logical message ID, and deduplication marker. Consent
+groups fan one logical message out as native private deliveries; portal/agent
+consumers ingest the logical event once. This supports public/private/group
+diplomacy and correct identity even when messages arrive outside the agent's
+active turn.
 
 Authoritative memory separates:
 

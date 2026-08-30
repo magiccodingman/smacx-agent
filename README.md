@@ -47,14 +47,15 @@ through the portal with video, audio, mouse, keyboard, shortcuts, text entry,
 fullscreen, and reconnect support.
 
 <p align="center">
-  <img src="docs/images/browser-gameplay.jpg" alt="The original Alien Crossfire game running live in a Chrome browser through SMACX Agent" width="100%">
+  <img src="docs/images/browser-gameplay-800x600.jpg" alt="The original Alien Crossfire game running at a true native 800 by 600 resolution in a browser" width="100%">
 </p>
-<p align="center"><sub><strong>This is the real game:</strong> an isolated managed instance of <code>terranx.exe</code>, live in a browser and ready to reconnect.</sub></p>
+<p align="center"><sub><strong>This is the real game:</strong> an isolated managed instance of <code>terranx.exe</code>, live in a browser at a mobile-friendly native resolution and ready to reconnect.</sub></p>
 
 - Play at a desktop without installing or patching the game there.
-- Open the same private site from a laptop, tablet, or phone. The fixed game
-  desktop scales to the browser while preserving its aspect ratio; landscape
-  fullscreen is the sweet spot on small screens.
+- Open the same private site from a laptop, tablet, phone, Full HD monitor, or
+  ultrawide display. Validated native profiles run from 800×600 through
+  5120×1440, while instant CSS fitting preserves the game aspect ratio at any
+  browser size. Landscape fullscreen is the sweet spot on small screens.
 - Use your own native game client when that is what you prefer. The lobby gives
   you the exact host, session, handle, and faction details.
 - Keep one durable player handle and campaign history whether you prefer the
@@ -63,6 +64,31 @@ fullscreen, and reconnect support.
 Your wife does not need to learn Wine prefixes to join from the next room. Your
 friend does not need your carefully tuned Linux setup. They open the LAN site,
 claim their handle, and take their seat.
+
+<p align="center">
+  <img src="docs/images/browser-gameplay-mobile-landscape.jpg" alt="Alien Crossfire fitted into an 844 by 390 phone landscape viewport" width="72%">
+</p>
+<p align="center"><sub><strong>Planet in your pocket:</strong> the complete 800×600 game, aspect-correct and scroll-free in a phone-sized landscape viewport.</sub></p>
+
+The original MENU button also becomes the doorway to managed play. While its
+plain root menu is open, a compact human-only control rail appears for
+fullscreen, display policy, modern chat, votes, and session recovery. It
+vanishes before a native submenu or modal can cover it, never appears for an AI
+seat, and never turns browser chrome into part of the agent's action surface.
+
+## Table talk without a 1999 chat window
+
+The native network still carries the conversation, but humans and agents get a
+modern durable view of it. Broadcast to everyone, privately contact a faction
+you have actually met, or create a named group whose members must each consent
+before it becomes active. Durable history survives reconnects and tells you
+which player and faction spoke.
+
+A group message is one logical message even though DirectPlay delivers a
+private copy to each member. Humans see one clean conversation; an AI sees one
+semantic event, not duplicated evidence that accidentally looks more
+important. Private and group bodies are authorization-filtered rather than
+broadcast through the lobby's live-update channel.
 
 ## A campaign that survives real life
 
@@ -84,6 +110,15 @@ reconciles it.
 If everyone leaves an unfinished managed game, park it safely instead of
 leaving a forgotten Windows process burning forever in the corner.
 
+Disruptive changes are treated like table decisions, not surprise process
+kills. Native resolution changes, temporary computer control for an absent
+player, seat reclaim, host transfer, parking, and ending a match use persisted
+votes among the other connected humans. A passed vote authorizes the request;
+it still cannot bypass the game's stable-checkpoint gate. While the game is
+unsafe to save, everyone keeps playing. Only after three synchronized native
+samples and a verified save does the platform park, reconfigure, recover, and
+put the same factions back in their seats.
+
 ## Humans-only is a first-class game
 
 You do not need a model endpoint, an API key, Hermes, Graphiti, or any interest
@@ -95,9 +130,13 @@ As a modern human game host it already gives you:
 - lightweight private-LAN accounts with durable, case-insensitive game handles;
 - browser play that removes per-player game installation and compatibility
   setup;
+- adaptive native resolution from phone-friendly 800×600 to 5K ultrawide,
+  plus instant per-device fitting and fullscreen;
 - ordinary native-client joining for players who want it;
-- public and private chat with player and faction attribution;
-- reconnectable seats, verified saves, parking, and recovery;
+- durable global, private, and consent-based group chat with player/faction
+  attribution;
+- reconnectable seats, safe player-approved temporary bot delegation,
+  verified saves, parking, and automatic recovery;
 - concurrent lobbies and campaigns;
 - administrator cross-seat viewing; and
 - optional anonymous, read-only spectating for a lobby.
@@ -183,10 +222,10 @@ deal? Was it strong, merely expensive, or—most importantly—fun to play with?
 | Experience | What you get |
 | --- | --- |
 | **Create** | Typed standard/custom/scenario setup, durable waiting lobbies, seven-seat composition, human/AI/native-bot mixing |
-| **Play** | Real game streaming with audio and input, browser reconnect, mobile/tablet scaling, or native-client joining |
+| **Play** | Real game streaming with audio/input/fullscreen, true 800×600-to-5120×1440 profiles, instant fit, browser reconnect, or native-client joining |
 | **Host** | Isolated game workers, prepared Proton environments, DirectPlay setup, exact player identity, concurrent matches |
 | **Watch** | Admin seat switching, AI observation, opt-in anonymous spectator deck, worker-enforced read-only streams |
-| **Continue** | Verified checkpoints, safe parking, crash reconciliation, faction restoration, campaign recovery |
+| **Continue** | Connected-player votes, stable-boundary checkpoints, safe temporary bot delegation/reclaim, crash reconciliation, faction restoration |
 | **Remember** | Chat history and scoped AI facts, beliefs, relationships, promises, goals, and summaries |
 | **Experiment** | Versioned model profiles, telemetry, outcomes, analytics, CSV, and constrained SQL reports |
 
@@ -241,6 +280,7 @@ evidence live where they can stay precise:
 
 - [Project status and validation](docs/project-status.md)
 - [Operator guide](docs/control-center.md)
+- [Managed play, display, chat, voting, and recovery](docs/managed-play.md)
 - [Architecture and trust boundaries](docs/architecture.md)
 - [Semantic gameplay coverage](docs/coverage.md)
 - [Agent loop and fair-play contract](docs/agent-loop.md)

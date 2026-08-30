@@ -242,18 +242,25 @@ audio and accepts ordinary mouse, keyboard, shortcuts, text, and fullscreen.
 The transport reconnects to the same worker after a browser refresh. A user can
 leave the browser and return without changing their native faction.
 
-The managed desktop is fixed for the life of the worker (1280×800 by default,
-with an enforced minimum of 800×600). Selkies scales that desktop locally while
-preserving its aspect ratio, so narrower desktop windows, tablets, and phones do
-not change the match resolution. Landscape and fullscreen are strongly
-recommended on small touch screens because the original game UI and text remain
-desktop-sized. Remote display resizing is intentionally disabled: a browser
-resize or phone rotation must not change the shared display seen by other
-players or spectators. The stream server locks its manual resolution to the
-worker display and performs local browser scaling. A different native
-resolution can be selected through the worker environment when it is launched
-(the portal does not expose that advanced control yet), but changing it during
-a running game is not supported.
+The managed desktop is fixed for one worker lifetime, but the portal supports a
+validated native catalog from 800×600 through 5120×1440. Selkies scales the
+current desktop locally while preserving its aspect ratio, so ordinary browser
+resizing and phone rotation are instant and never disturb another player.
+Landscape and fullscreen are strongly recommended on a small touch screen.
+
+Open the game's plain root **MENU** to reveal the human-only managed-play rail.
+Its Display panel recommends 800×600 for a small touch device, 1024×768 for a
+tablet, or the largest suitable desktop profile. CSS fitting is immediate.
+**Apply natively** creates a persisted match proposal; after any required peer
+vote, the platform waits for a stable checkpoint, parks the workers, updates
+the native profile, and recovers the same factions. The rail disappears before
+any native submenu or modal and is never available to an agent seat. Display
+preferences and the optional profile lock are stored on that browser/device.
+
+Remote display resizing remains disabled inside Selkies. The stream server
+locks its manual dimensions to the worker framebuffer, and the worker writes
+matching Thinker custom-window dimensions before launch. This prevents the
+first viewer or a spectator from resizing/cropping the actual game.
 
 Interactive stream tickets are short-lived and seat-scoped. Only the seat's
 member or an administrator can request one. Spectator tickets are always
@@ -299,10 +306,18 @@ otherwise treats binary/mod fingerprints as diagnostics, not policing.
 
 ## 8. Chat, diplomacy, and identity
 
-The lobby chat can broadcast or target a known recipient faction. Native chat
-is imported with both player handle and faction name; outbound recipient IDs
-are sent through the game bridge. Messages remain durable per match and are
-available when an agent resumes.
+The lobby and in-game control center share one durable chat history. Broadcast
+to everyone, privately message a currently contacted faction, or create a named
+private group. Every invited group member must accept before it becomes active.
+The native transport receives one private copy per group recipient, while the
+portal and AI memory preserve one logical message with per-recipient delivery
+status. Native chat is imported with both player handle and faction name, even
+when it arrives outside the local player's turn.
+
+Private/group bodies are returned only to their authorized participants;
+SignalR announces a change without broadcasting those bodies. Anonymous
+spectators receive global chat only. See [managed-play.md](managed-play.md) for
+the exact consent and delivery model.
 
 An AI is prompted to treat chat as communication from other players, not as
 higher-priority instructions. It may agree, refuse, investigate, ally, feud,
@@ -321,7 +336,18 @@ The observation deck is also the main debugging surface for AI games: it pairs
 the visible native screen with public match/faction/turn health. Private
 semantic faction state and secrets are not sent to spectators.
 
-## 10. Checkpoint, park, recover
+## 10. Votes, checkpoint, park, recover
+
+Native resolution, temporary computer control for a disconnected browser
+player, seat reclaim, host transfer, park, and end are governed operations. The
+other connected humans vote; a majority passes, one remaining peer decides,
+and a solo human needs no ceremonial self-vote. Eligibility and votes are
+persisted. Resolution changes have a five-minute multiplayer cooldown which
+players can vote to waive; browser fitting never waits.
+
+A passed proposal still cannot bypass native safety. The portal keeps the game
+interactive while it waits for synchronized semantic samples and only blocks
+the stream after a verified checkpoint has been captured.
 
 **Checkpoint** asks the native host to save into a bounded platform slot and
 verifies the resulting file/turn/year. Saving can honestly fail while the stock
@@ -339,9 +365,17 @@ If checkpointing fails, the portal returns the match to `running`, records the
 error, and may restart the AI; no worker is silently destroyed without a save.
 
 **Recover** creates fresh process/session identities, loads the verified slot,
-restores exact seat/faction ownership, starts MCP sidecars, and continues the
-same scoped Hermes conversation. Agents must re-observe; stale commands from
-the old process are rejected.
+restores exact seat/faction ownership, starts only the MCP/Hermes sidecars
+assigned to agent seats, and continues each scoped conversation. Agents must
+re-observe; stale commands from the old process are rejected. Browser players
+reconnect to the same portal route.
+
+A browser disconnect does not retire its faction. After 30 seconds, connected
+humans may vote to delegate that browser-managed seat temporarily to the stock
+game AI. A returning owner can reclaim it through another stable-checkpoint
+vote. Returning to the native main menu or losing a worker triggers automatic
+recovery from the most recent verified checkpoint; without one, the match stops
+for operator review rather than risking unsaved turns.
 
 If every human seat is a managed browser seat and all of them remain absent for
 the idle window, the supervisor applies the same checkpoint-first park. It does

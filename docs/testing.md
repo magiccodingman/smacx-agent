@@ -126,7 +126,7 @@ with no Hermes scaffold or workspace rule content.
 
 ## Browser portal test
 
-Run Chrome at desktop and mobile widths and verify:
+Run the browser portal at desktop and mobile widths and verify:
 
 1. first-run/login and responsive navigation;
 2. runtime/provider/profile administration;
@@ -136,10 +136,14 @@ Run Chrome at desktop and mobile widths and verify:
 6. administrator cross-seat view;
 7. observer deck switching and read-only transport;
 8. anonymous spectator allowed/denied policy without a session;
-9. public/private chat recipient and faction label;
-10. checkpoint, park, and recover UI/state;
-11. turn/year/faction activity feed; and
-12. analytics, native classified/unknown outcomes, CSV, and constrained SQL report.
+9. global/private/consent-group chat, authorization, logical delivery, and
+   player/faction label;
+10. root-MENU-only human control rail and its disappearance for native
+    submenus/modals;
+11. connected-player voting, stable-boundary maintenance curtain, checkpoint,
+    park, profile change, delegation/reclaim, and recover UI/state;
+12. turn/year/faction activity feed; and
+13. analytics, native classified/unknown outcomes, CSV, and constrained SQL report.
 
 The 2026-08-29 Chrome run rendered the actual game through Selkies, accepted
 browser input, kept observer paths read-only, and verified the desktop/mobile
@@ -147,11 +151,26 @@ portal layout. The portal routes use WebAssembly interactivity without
 prerender for authenticated cookie consistency; SignalR remains available for
 presence/lobby events.
 
-A fixed 1280×800 Selkies stream was also measured at 1440×900, 1024×768,
-390×844, and 844×390 browser viewports. Local scaling preserved the 16:10 game
-aspect ratio, letterboxed the unused area, and produced no horizontal or
-vertical page overflow. The worker forces manual stream resolution so the
-initial connection cannot resize the shared game desktop to the first viewer.
+The managed-play run measured a true native 800×600 game at 1280×720,
+1024×768, 390×844, and 844×390 browser viewports. Local scaling preserved the
+4:3 game aspect ratio, letterboxed the unused area, centered the frame, and
+produced no horizontal or vertical page overflow. Phone portrait intentionally
+prioritizes a complete view; landscape/fullscreen makes the original text much
+more usable.
+
+The same human-only match passed native 800×600 checkpoint → park → profile
+update → recovery in about eight seconds on the reference VM. X11 then reported
+an exact 1920×1080 game window after a second stable recovery. An unexpected
+game-process exit was also observed: the supervised worker restarted from the
+verified checkpoint and the already-open browser route resumed its stream.
+The worker forces manual stream resolution and matching Thinker custom-window
+dimensions so the initial viewer cannot resize or clip the shared game desktop.
+
+The .NET suite exercises connected-human eligibility, solo approval, one-peer
+majority, resolution cooldown/waiver, the complete validated profile catalog,
+canonical schema creation, and browser API error handling. The platform-store
+suite exercises consent-group logical delivery, per-recipient status,
+deduplication, and perspective isolation.
 
 A follow-up first-run UX run used a disposable portal database against the real
 control catalog. It verified the no-profile warning and disabled launch guard,

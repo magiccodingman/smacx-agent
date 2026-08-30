@@ -100,7 +100,15 @@ def overlay_bridge(game: Path) -> None:
     shutil.copy2("/opt/smacx/modmenu.txt", game / "modmenu.txt")
 
 
-def configure_worker_game(game: Path) -> None:
+def configured_view_dimensions() -> tuple[int, int]:
+    width = min(max(int(os.environ.get("SMACX_VIEW_WIDTH", "1280")), 800), 5120)
+    height = min(max(int(os.environ.get("SMACX_VIEW_HEIGHT", "800")), 600), 2160)
+    if width * height > 3840 * 2160:
+        raise RuntimeError("view_resolution_exceeds_validated_pixel_envelope")
+    return width, height
+
+
+def configure_worker_game(game: Path, width: int, height: int) -> None:
     """Set worker-local presentation defaults without editing the legal source."""
     path = game / "Alpha Centauri.Ini"
     lines = path.read_text(encoding="latin-1").splitlines()
@@ -132,6 +140,45 @@ def configure_worker_game(game: Path) -> None:
     if in_section and not inserted:
         output.extend(value for key, value in wanted.items() if key not in seen)
     path.write_text("\n".join(output) + "\n", encoding="latin-1")
+
+    # Thinker owns the native DirectDraw surface. Xvfb alone only changes the
+    # outer framebuffer and otherwise leaves the game at its 1024x768 default.
+    # A custom fullscreen surface avoids window-decoration clipping at the
+    # 800x600 minimum and gives every managed profile a true native canvas.
+    thinker_path = game / "thinker.ini"
+    thinker_lines = thinker_path.read_text(encoding="utf-8").splitlines()
+    replacements = {
+        "video_mode": "video_mode=1",
+        "window_width": f"window_width={width}",
+        "window_height": f"window_height={height}",
+    }
+    thinker_output: list[str] = []
+    in_thinker = False
+    thinker_seen: set[str] = set()
+    thinker_inserted = False
+    for line in thinker_lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if in_thinker and not thinker_inserted:
+                thinker_output.extend(
+                    value for key, value in replacements.items() if key not in thinker_seen
+                )
+                thinker_inserted = True
+            in_thinker = stripped.casefold() == "[thinker]"
+            thinker_output.append(line)
+            continue
+        if in_thinker and "=" in line:
+            key = line.split("=", 1)[0].strip().casefold()
+            if key in replacements:
+                thinker_output.append(replacements[key])
+                thinker_seen.add(key)
+                continue
+        thinker_output.append(line)
+    if in_thinker and not thinker_inserted:
+        thinker_output.extend(
+            value for key, value in replacements.items() if key not in thinker_seen
+        )
+    thinker_path.write_text("\n".join(thinker_output) + "\n", encoding="utf-8")
 
 
 def run_checked(command: list[str], environment: dict[str, str]) -> None:
@@ -358,7 +405,8 @@ def main() -> int:
     source_identity = validate_source(source)
     import_game(source, game, source_identity)
     overlay_bridge(game)
-    configure_worker_game(game)
+    width, height = configured_view_dimensions()
+    configure_worker_game(game, width, height)
 
     environment = os.environ.copy()
     winearch = os.environ.get("SMACX_WINEARCH", "win64")
@@ -387,8 +435,6 @@ def main() -> int:
             "WINEPREFIX": str(compatdata / "pfx"),
         })
     display = environment["DISPLAY"]
-    width = min(max(int(os.environ.get("SMACX_VIEW_WIDTH", "1280")), 800), 2560)
-    height = min(max(int(os.environ.get("SMACX_VIEW_HEIGHT", "800")), 600), 1600)
     depth = 24
     x_socket_root = Path("/tmp/.X11-unix")
     x_socket_root.mkdir(mode=0o1777, exist_ok=True)
@@ -443,6 +489,12 @@ def main() -> int:
                 f"--subfolder={subfolder}", "--mode=websocket",
                 "--encoder=h264enc", "--framerate=30", "--video-bitrate=5000",
                 "--audio-enabled=true", "--enable-resize=false",
+                "--microphone-enabled=false", "--webcam-enabled=false",
+                "--gamepad-enabled=false", "--enable-clipboard=false",
+                "--file-transfers=none", "--command-enabled=false",
+                "--enable-sharing=false", "--enable-collab=false",
+                "--ui-title=SMACX Agent", "--ui-show-logo=false",
+                "--ui-show-core-buttons=false", "--ui-show-sidebar=false",
                 "--is-manual-resolution-mode=true",
                 f"--manual-width={width}", f"--manual-height={height}",
             ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

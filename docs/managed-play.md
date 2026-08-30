@@ -1,0 +1,258 @@
+# Managed play
+
+Managed play is the human-facing runtime around the original Alien Crossfire
+process. It combines a real Proton game worker, a browser stream, durable portal
+state, native checkpoint verification, and match-local governance. None of
+these controls are agent tools: AI seats continue to use only the fair-play
+semantic bridge.
+
+## Display model
+
+Each managed seat owns an independent native framebuffer. A browser never
+resizes another player's game and a spectator never changes the seat it is
+watching.
+
+Two layers deliberately remain separate:
+
+1. **Browser fit** is immediate. CSS centers and scales the current framebuffer
+   to the available width and height without cropping, scrolling, changing
+   aspect ratio, saving, or pausing the game.
+2. **Native profile** changes the actual X11 and Thinker render dimensions for
+   the next worker lifetime. It is optional and runs only through the stable
+   checkpoint/recovery workflow.
+
+The validated profile catalog is:
+
+| Use | Profiles |
+| --- | --- |
+| Touch/classic | 800×600, 1024×768 |
+| Compact desktop | 1280×720, 1280×800, 1440×900, 1600×900, 1600×1200 |
+| Full-size desktop | 1920×1080, 1920×1200, 2560×1440, 2560×1600, 3840×2160 |
+| Ultrawide | 2560×1080, 3440×1440, 3840×1600, 5120×1440 |
+
+The worker configures both Xvfb and Thinker's custom window mode from the same
+validated dimensions. This matters at 800×600: asking only the stream server
+for 800×600 while leaving Thinker at its default 1024×768 produces a clipped
+game. The worker writes `video_mode=1`, `window_width`, and `window_height`
+before every launch and rejects dimensions below 800×600 or above the validated
+pixel envelope.
+
+### Device recommendation
+
+The display panel recommends rather than silently applies a native restart:
+
+- a coarse-pointer device whose shorter side is below 700 CSS pixels selects
+  800×600;
+- a coarse-pointer tablet whose shorter side is below 1100 selects 1024×768;
+- other devices select the largest profile that fits their physical-pixel
+  viewport; and
+- 800×600 is the safe fallback.
+
+Automatic recommendation and an optional native-profile lock are stored on the
+device, not the player account. This lets the same account use a phone and a
+desktop without making either one's preference global. A locked profile keeps
+the selected native target; browser fitting still reacts instantly.
+
+Fullscreen uses the browser Fullscreen API. On touch devices the portal asks
+for landscape orientation when the platform permits it and unlocks orientation
+on exit. Safe-area insets are respected. Browser-reserved shortcuts may remain
+reserved, but ordinary game keyboard input and text entry pass through the
+interactive stream.
+
+## Native MENU control rail
+
+The portal polls a read-only `human_ui_state` contract from the native bridge.
+That contract exists only in a worker launched with
+`SMACX_CONTROLLER_KIND=human`; an agent worker receives
+`human_ui_state_unavailable`.
+
+The compact control rail is shown only when all of these are true:
+
+- the exact signed-in user owns the browser-managed human seat;
+- the game map is active;
+- the native top-level MENU window is visible;
+- no child GAME/MAP/ACTION/etc. submenu is visible; and
+- no native popup, diplomatic window, or other modal page is active.
+
+Opening a native submenu or modal closes the portal panel and removes the rail.
+The rail contains return-to-lobby confirmation, fullscreen, the current native
+dimensions, and the managed control center. It does not imitate a native menu
+hitbox, cover ordinary play continuously, or create a screen-control path for
+an AI.
+
+The control center has four surfaces:
+
+- **Display** — recommendation, device lock, instant fit, and native-profile
+  request;
+- **Chat** — global, contacted-faction private, and consent-group
+  conversations;
+- **Votes** — current proposals, quorum, deadline, and the local player's vote;
+- **Session** — disconnected/delegated seats, managed-host transfer, recovery
+  progress, confirmed safe park/end proposals, and safe return to the lobby.
+
+## Modern chat over native chat
+
+The portal stores normalized messages with sender handle, sender faction,
+recipient faction, native deduplication marker, channel, conversation, and
+logical-message identity.
+
+### Global and private
+
+Global messages use native recipient `0`. Private targets come only from the
+local faction's current, fair-play contact list. A player cannot type an
+uncontacted faction ID into the API and bypass the native contact rule.
+
+Incoming native messages are polled independently of whose turn it is and are
+deduplicated by worker/sequence/sender. The sender's player handle and faction
+are kept distinct when both are known.
+
+### Consent groups
+
+A player may invite only currently private-eligible factions. Every invited
+member must accept before a group becomes active. Rejecting or leaving changes
+that participant's membership rather than pretending the group remained
+unanimous.
+
+DirectPlay has no native group-message primitive. The sender's worker therefore
+delivers one private native message to each accepted recipient with a compact
+group prefix, while the platform records one logical message plus per-recipient
+delivery rows. Portal clients render the logical message once. Agent memory
+also ingests it once, preventing a three-member group from turning one claim
+into three apparently independent observations.
+
+Private and group message bodies are never sent through the broad SignalR lobby
+group. SignalR announces that state changed; each client refetches through the
+member/faction authorization filter. Anonymous spectators see only global chat.
+
+Chat text is bounded to the printable ASCII supported reliably by the stock
+game transport. Voice chat is not managed by this milestone.
+
+## Connected-player governance
+
+Operations that can replace a native process are durable proposals, not direct
+browser commands:
+
+- native resolution change;
+- waiver of the multiplayer resolution cooldown;
+- temporary stock-AI control for a disconnected browser player;
+- reclaim of that delegated faction;
+- managed-host transfer;
+- safe park; and
+- safe end.
+
+The requester does not vote on their own request. Eligible voters are the other
+connected, non-delegated human seats at proposal creation. Browser presence is
+measured from active stream connections; direct/native players use their native
+ready/running state. A majority of eligible voters passes. With one other
+connected human, that one vote decides. With no other connected humans, the
+request is approved immediately. Votes, eligibility, expiry, and outcome are
+stored in SQLite and survive a portal restart.
+
+Only one proposal of a kind may be open per match. Native resolution changes
+have a five-minute multiplayer cooldown because CSS fitting is always
+available instantly. The connected players may separately vote to waive that
+cooldown. Maintenance scheduling rotates among matches by last attempt, so a
+lobby waiting for a safe native boundary cannot starve approved work for other
+games.
+
+Approval is authorization, not proof that mutation is safe. The native
+checkpoint gate remains mandatory after a vote passes.
+
+## Stable checkpoints and maintenance
+
+The control plane identifies the current mode and requires three unchanged,
+synchronized semantic samples before saving. A browser-human seat must be in
+the game, with no root MENU, modal, or native page active. Agent seats must be
+at a legal turn/wait boundary with no deferred action. Multiplayer peers must
+agree on turn/session state and have no unsettled packet activity.
+
+An approved disruptive operation follows this order:
+
+```text
+approved proposal
+  -> wait while ordinary play continues
+  -> three-sample native quiescence
+  -> verified control_recovery save (turn/year recorded)
+  -> stop autonomous harness callers
+  -> park every managed worker
+  -> apply resolution/controller/host change, if any
+  -> recover exact seats and factions from the verified save
+  -> publish completion and resume browser streams
+```
+
+Before the verified checkpoint, the portal shows a non-blocking notice and
+players keep playing normally. After the safe boundary is claimed, a full
+maintenance curtain explains the current phase. A failed checkpoint does not
+tear workers down. The operation returns to waiting when the native state is
+temporarily unsafe, or records a bounded error for operator review.
+
+At ordinary turn boundaries the supervisor opportunistically records one
+verified recovery checkpoint per turn. Simultaneous-turn activity can defer a
+checkpoint; it is retried instead of rolling anyone's unsaved actions back.
+
+## Disconnect, exit, crash, and reclaim
+
+A browser refresh or navigation closes only that stream connection. The native
+seat and faction remain reserved. After 30 seconds, other connected humans can
+propose temporary stock-AI control. If approved, the system checkpoints,
+rehosts, marks the seat delegated, and lets the game's own AI continue that
+faction. The returning owner can later request reclaim through the same
+checkpoint-first process.
+
+Returning to the native main menu is different from closing the browser. The
+supervisor records `returned_to_menu`, treats the native session as lost, and
+recovers every managed seat from the latest verified checkpoint. A worker or
+game-process crash uses the same durable recovery authority. If no verified
+checkpoint exists, the platform stops in operator review rather than inventing
+a safe state.
+
+When every human is a managed browser player and all have been absent for ten
+minutes, the platform checkpoints and parks the match. It does not auto-park an
+AI-only simulation and does not infer browser presence for external/native
+clients.
+
+## Spectators and human-only games
+
+An administrator may cross-seat spectate any managed worker. A lobby may opt
+into anonymous LAN spectating; it is disabled by default. Every observer ticket
+is read-only in the stream transport itself, so a modified client cannot turn a
+watch URL into game input. Spectators receive CSS fitting only and can never
+request native resolution changes or vote as players.
+
+Nothing in managed play requires a model provider. A human-only match uses the
+same typed lobby, worker isolation, display profiles, chat, checkpoints,
+governance, idle parking, history, and recovery. Hermes/MCP containers are
+created only for assigned agent seats.
+
+## Boundaries
+
+- This is a trusted-localhost/private-LAN portal, not public matchmaking.
+- Direct/native players remain subject to legacy DirectPlay reconnect behavior;
+  managed browser reconnect is the seamless path.
+- Native profile changes replace worker lifetimes; they are intentionally not
+  live X11 resizes of a running DirectDraw surface.
+- Authored personality cards, ranked play, microphone/voice management, and
+  public-Internet service are outside this milestone.
+- The application does not include or distribute the game.
+
+## Reproducible evidence
+
+The reference-host run verified:
+
+- true native 800×600 and 1920×1080 X11/game windows;
+- 800×600 checkpoint → park → native-profile change → recovery in roughly
+  eight seconds on the development host;
+- scroll-free 390×844 portrait, 844×390 landscape, 1024×768 tablet, and
+  1280×720 desktop browser layouts;
+- keyboard input through the browser stream;
+- human-only launch with six stock factions and no agent requirement;
+- automatic browser reconnection after an unexpected native worker exit;
+- canonical schema creation without `__EFMigrationsHistory`;
+- connected-human quorum, solo approval, cooldown/waiver, and complete profile
+  catalog contracts; and
+- logical consent-group delivery and match/perspective isolation in the
+  platform store.
+
+See [testing.md](testing.md) for commands and [project-status.md](project-status.md)
+for the distinction between Linux-local evidence and deferred physical-host
+certification.

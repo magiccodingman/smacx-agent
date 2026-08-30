@@ -101,7 +101,12 @@ public sealed record LobbySeatSummary(
     string? JoinMode = null,
     bool CanControl = false,
     bool CanSpectate = false,
-    bool CanJoin = false);
+    bool CanJoin = false,
+    string ConnectionState = "unknown",
+    string DelegationStatus = "none",
+    string TemporaryControllerKind = "none",
+    DateTimeOffset? LastBrowserSeenAt = null,
+    bool IsManagedHost = false);
 
 public sealed record LobbyDetails(
     string MatchId,
@@ -133,9 +138,94 @@ public sealed record LobbyMessage(
     bool DeliveredToGame,
     int? SenderFactionId,
     int RecipientFactionId,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string Channel = "global",
+    string? ConversationId = null,
+    string? ConversationName = null,
+    string? LogicalMessageId = null,
+    IReadOnlyList<ChatDelivery>? Deliveries = null);
 
-public sealed record SendLobbyMessageRequest(string Content, int RecipientFactionId = 0);
+public sealed record ChatDelivery(
+    int RecipientFactionId, string? RecipientHandle, string Status,
+    string? NativeMessageUid = null);
+
+public sealed record SendLobbyMessageRequest(
+    string Content, int RecipientFactionId = 0,
+    string Channel = "global", string? ConversationId = null);
+
+public sealed record ChatConversation(
+    string ConversationId, string MatchId, string Kind, string DisplayName,
+    IReadOnlyList<ChatParticipant> Participants, int UnreadCount,
+    DateTimeOffset UpdatedAt);
+
+public sealed record ChatParticipant(
+    string ActorId, string DisplayName, int? FactionId, string? FactionName,
+    string MembershipStatus, bool Local, bool PrivateEligible = false);
+
+public sealed record CreateChatGroupRequest(
+    string DisplayName, IReadOnlyList<int> MemberFactionIds);
+
+public sealed record RespondChatGroupRequest(string Response);
+
+public sealed record ResolutionProfile(
+    string Id, int Width, int Height, string Label, string DeviceClass,
+    bool TouchRecommended, bool Ultrawide = false);
+
+public sealed record HumanUiState(
+    string MatchId, string InstanceId, string Surface,
+    bool RootMenuVisible, int MenuDepth, bool Modal,
+    string? PopupLabel, string? LifecycleIntent, long Revision,
+    string ResolutionProfileId = "1280x800", int NativeWidth = 1280,
+    int NativeHeight = 800, bool CanRequestNativeChange = true);
+
+public sealed record GovernanceProposal(
+    string ProposalId, string MatchId, string Kind, string Status,
+    string RequestedByHandle, string Title, string Description,
+    string PayloadJson, int EligibleVoters, int YesVotes, int NoVotes,
+    bool CurrentUserEligible, string? CurrentUserVote,
+    DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt);
+
+public sealed record CreateGovernanceProposalRequest(
+    string Kind, string PayloadJson = "{}", int TimeoutSeconds = 120);
+
+public sealed record GovernanceVoteRequest(string Vote);
+
+public sealed record MaintenanceProgress(
+    string? OperationId, string MatchId, string Kind, string Status,
+    string Phase, string Summary, int CompletedSteps, int TotalSteps,
+    int? StableTurn, int? StableYear, DateTimeOffset UpdatedAt,
+    bool CanCancel = false);
+
+public static class ResolutionProfiles
+{
+    public const string Automatic = "auto";
+    public const string MobileDefault = "800x600";
+    public const string TabletDefault = "1024x768";
+    public const string DesktopDefault = "1280x800";
+
+    public static IReadOnlyList<ResolutionProfile> All { get; } = new[]
+    {
+        new ResolutionProfile("800x600", 800, 600, "Mobile · 800 × 600", "phone", true),
+        new ResolutionProfile("1024x768", 1024, 768, "Tablet · 1024 × 768", "tablet", true),
+        new ResolutionProfile("1280x720", 1280, 720, "Compact widescreen · 1280 × 720", "desktop", false),
+        new ResolutionProfile("1280x800", 1280, 800, "Balanced desktop · 1280 × 800", "desktop", false),
+        new ResolutionProfile("1440x900", 1440, 900, "Large desktop · 1440 × 900", "desktop", false),
+        new ResolutionProfile("1600x900", 1600, 900, "HD+ · 1600 × 900", "desktop", false),
+        new ResolutionProfile("1600x1200", 1600, 1200, "Classic high resolution · 1600 × 1200", "desktop", false),
+        new ResolutionProfile("1920x1080", 1920, 1080, "Full HD · 1920 × 1080", "desktop", false),
+        new ResolutionProfile("1920x1200", 1920, 1200, "WUXGA · 1920 × 1200", "desktop", false),
+        new ResolutionProfile("2560x1080", 2560, 1080, "Ultrawide · 2560 × 1080", "desktop", false, true),
+        new ResolutionProfile("2560x1440", 2560, 1440, "QHD · 2560 × 1440", "desktop", false),
+        new ResolutionProfile("2560x1600", 2560, 1600, "QHD+ · 2560 × 1600", "desktop", false),
+        new ResolutionProfile("3440x1440", 3440, 1440, "Ultrawide QHD · 3440 × 1440", "desktop", false, true),
+        new ResolutionProfile("3840x1600", 3840, 1600, "Ultrawide 4K · 3840 × 1600", "desktop", false, true),
+        new ResolutionProfile("3840x2160", 3840, 2160, "4K · 3840 × 2160", "desktop", false),
+        new ResolutionProfile("5120x1440", 5120, 1440, "Super ultrawide · 5120 × 1440", "desktop", false, true),
+    };
+
+    public static ResolutionProfile? Find(string? id) =>
+        All.FirstOrDefault(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+}
 
 public sealed record NativeJoinPlayer(int SeatIndex, string PlayerName, int? ExpectedFactionId);
 public sealed record NativeJoinDetails(

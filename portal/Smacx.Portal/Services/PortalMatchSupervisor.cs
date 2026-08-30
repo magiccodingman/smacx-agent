@@ -205,6 +205,7 @@ public sealed class PortalMatchSupervisor(
             var observed = await control.GetMatchAsync(match.MatchId, cancellationToken);
             var previousStatus = match.Status;
             var previousTurn = match.CurrentTurn;
+            var nativeSessionLost = false;
             match.Status = observed.Match.Status;
             match.CurrentTurn = observed.Match.LastTurn;
             match.CurrentYear = observed.Match.LastYear;
@@ -224,6 +225,19 @@ public sealed class PortalMatchSupervisor(
                     seat.PlayerHandle = controlSeat.PlayerHandle;
                 seat.Status = controlSeat.Status;
                 seat.UpdatedAt = DateTimeOffset.UtcNow;
+                if (seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
+                    seat.ControlInstanceId is not null)
+                {
+                    var stream = presence.Get(seat.ControlInstanceId);
+                    if (stream.LastSeen is not null)
+                        seat.LastBrowserSeenAt = stream.LastSeen;
+                    seat.ConnectionState = stream.ActiveConnections > 0 ? "connected" :
+                        stream.EverConnected ? "disconnected" : "awaiting_browser";
+                }
+                else if (seat.ControllerKind == "human" && seat.JoinMode != "browser")
+                {
+                    seat.ConnectionState = match.Status == "running" ? "native_client" : "waiting";
+                }
             }
             if (nativeStatus is not null)
             {
@@ -235,11 +249,41 @@ public sealed class PortalMatchSupervisor(
                         foreach (var nativeSeat in nativeSeats.EnumerateArray())
                         {
                             if (!nativeSeat.TryGetProperty("seat_index", out var indexValue) ||
-                                !indexValue.TryGetInt32(out var index) ||
-                                !nativeSeat.TryGetProperty("outcome", out var outcome) ||
-                                outcome.ValueKind != JsonValueKind.Object) continue;
+                                !indexValue.TryGetInt32(out var index)) continue;
                             var seat = seats.SingleOrDefault(item => item.SeatIndex == index);
                             if (seat is null) continue;
+                            if (nativeSeat.TryGetProperty("worker", out var worker) &&
+                                worker.ValueKind == JsonValueKind.Object)
+                            {
+                                var running = worker.TryGetProperty("running", out var runningValue) &&
+                                    runningValue.ValueKind == JsonValueKind.True;
+                                var healthy = worker.TryGetProperty("health", out var healthValue) &&
+                                    healthValue.ValueKind == JsonValueKind.String &&
+                                    healthValue.GetString() == "healthy";
+                                if (running)
+                                {
+                                    seat.LastWorkerSeenAt = DateTimeOffset.UtcNow;
+                                    if (seat.ControllerKind == "agent")
+                                        seat.ConnectionState = healthy ? "connected" : "starting";
+                                }
+                                else if (match.Status == "running" && seat.DelegationStatus != "active")
+                                {
+                                    seat.ConnectionState = "worker_stopped";
+                                    seat.LastExitKind ??= "unexpected_worker_stop";
+                                }
+                            }
+                            if (nativeSeat.TryGetProperty("native", out var native) &&
+                                native.ValueKind == JsonValueKind.Object &&
+                                native.TryGetProperty("lifecycle", out var lifecycle) &&
+                                lifecycle.ValueKind == JsonValueKind.String &&
+                                lifecycle.GetString() == "menu" && match.Status == "running")
+                            {
+                                seat.ConnectionState = "left_native_game";
+                                seat.LastExitKind = "returned_to_menu";
+                                nativeSessionLost = true;
+                            }
+                            if (!nativeSeat.TryGetProperty("outcome", out var outcome) ||
+                                outcome.ValueKind != JsonValueKind.Object) continue;
                             seat.OutcomeFinalized = outcome.TryGetProperty(
                                 "final_score_completed", out var finalized) && finalized.ValueKind == JsonValueKind.True;
                             seat.OutcomeResult = outcome.TryGetProperty(
@@ -296,8 +340,19 @@ public sealed class PortalMatchSupervisor(
             await database.SaveChangesAsync(cancellationToken);
             if (match.Status == "running")
             {
-                await EnsureAgentRunsAsync(database, control, match, cancellationToken);
-                await ImportNativeChatAsync(database, control, match, cancellationToken);
+                if (nativeSessionLost)
+                {
+                    await RecoverLostNativeSessionAsync(
+                        database, control, match, cancellationToken);
+                }
+                else
+                {
+                    await EnsureAgentRunsAsync(database, control, match, cancellationToken);
+                    await ImportNativeChatAsync(database, control, match, cancellationToken);
+                    if (match.CurrentTurn is not null)
+                        await TryTurnCheckpointAsync(
+                            database, control, match, cancellationToken);
+                }
             }
             if (previousStatus != match.Status || previousTurn != match.CurrentTurn)
                 await NotifyAsync(match.MatchId, cancellationToken);
@@ -306,6 +361,101 @@ public sealed class PortalMatchSupervisor(
         {
             logger.LogDebug(exception, "Control match {MatchId} is temporarily unavailable", match.MatchId);
         }
+    }
+
+    private async Task TryTurnCheckpointAsync(
+        ApplicationDbContext database, ControlPlaneClient control,
+        PortalMatchProfile match, CancellationToken cancellationToken)
+    {
+        var alreadySaved = await database.PortalStableCheckpoints.AsNoTracking().AnyAsync(
+            item => item.MatchId == match.MatchId && item.Turn == match.CurrentTurn,
+            cancellationToken);
+        if (alreadySaved) return;
+        try
+        {
+            using var document = await control.PostRawAsync(
+                $"api/v1/matches/{match.MatchId}/checkpoint",
+                new { slot = "control_recovery" }, cancellationToken);
+            var checkpoint = document.RootElement.GetProperty("checkpoint");
+            database.PortalStableCheckpoints.Add(new PortalStableCheckpoint
+            {
+                MatchId = match.MatchId,
+                Slot = checkpoint.GetProperty("slot").GetString() ?? "control_recovery",
+                Turn = checkpoint.TryGetProperty("turn", out var turn) &&
+                    turn.ValueKind == JsonValueKind.Number ? turn.GetInt32() : match.CurrentTurn,
+                Year = checkpoint.TryGetProperty("year", out var year) &&
+                    year.ValueKind == JsonValueKind.Number ? year.GetInt32() : match.CurrentYear,
+                Stability = "three_sample_verified_turn_boundary",
+            });
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        catch (ControlPlaneException exception)
+        {
+            // Simultaneous-turn packets, native dialogs, or a model taking its
+            // next action can make this moment unsafe. The following monitor
+            // pass retries without pausing or rolling anyone back.
+            logger.LogDebug(exception,
+                "Turn checkpoint deferred for {MatchId} at turn {Turn}",
+                match.MatchId, match.CurrentTurn);
+        }
+    }
+
+    private async Task RecoverLostNativeSessionAsync(
+        ApplicationDbContext database, ControlPlaneClient control,
+        PortalMatchProfile match, CancellationToken cancellationToken)
+    {
+        var existing = await database.PortalMaintenanceOperations.AnyAsync(item =>
+            item.MatchId == match.MatchId && item.Kind == "automatic_recovery" &&
+            (item.Status == "queued" || item.Status == "running"), cancellationToken);
+        if (existing) return;
+        var checkpoint = await database.PortalStableCheckpoints.AsNoTracking()
+            .Where(item => item.MatchId == match.MatchId)
+            .OrderByDescending(item => item.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (checkpoint is null)
+        {
+            match.Status = "error";
+            match.LastError = "A native player left before the first verified recovery checkpoint. The match is preserved for operator review.";
+            await database.SaveChangesAsync(cancellationToken);
+            return;
+        }
+        var operation = new PortalMaintenanceOperation
+        {
+            MatchId = match.MatchId, Kind = "automatic_recovery", Status = "running",
+            Phase = "recovering_native_session", CompletedSteps = 1, TotalSteps = 2,
+            StableTurn = checkpoint.Turn, StableYear = checkpoint.Year,
+            Summary = "A native session ended; reconnecting every managed seat to the latest verified checkpoint.",
+            CanCancel = false,
+        };
+        database.PortalMaintenanceOperations.Add(operation);
+        await database.SaveChangesAsync(cancellationToken);
+        await NotifyAsync(match.MatchId, cancellationToken);
+        try
+        {
+            using (await control.PostRawAsync(
+                $"api/v1/matches/{match.MatchId}/recover", new { }, cancellationToken)) { }
+            operation.Status = "completed"; operation.Phase = "complete";
+            operation.CompletedSteps = 2; operation.CompletedAt = DateTimeOffset.UtcNow;
+            operation.Summary = "Every managed seat reconnected to the latest verified checkpoint.";
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+            match.Status = "running"; match.LastError = null;
+            database.PortalMatchEvents.Add(new PortalMatchEvent
+            {
+                MatchId = match.MatchId, EventType = "automatic_recovery",
+                Summary = $"Recovered the native session from turn {checkpoint.Turn?.ToString() ?? "?"}.",
+            });
+        }
+        catch (Exception exception)
+        {
+            operation.Status = "failed"; operation.Phase = "operator_review";
+            operation.Summary = $"Automatic recovery stopped safely: {exception.Message}";
+            operation.CompletedAt = DateTimeOffset.UtcNow;
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+            match.Status = "error"; match.LastError = operation.Summary;
+        }
+        match.UpdatedAt = DateTimeOffset.UtcNow;
+        await database.SaveChangesAsync(CancellationToken.None);
+        await NotifyAsync(match.MatchId, CancellationToken.None);
     }
 
     private async Task PopulateTelemetryAsync(
@@ -446,12 +596,38 @@ public sealed class PortalMatchSupervisor(
                     if (await database.PortalLobbyMessages.AnyAsync(
                             item => item.MatchId == match.MatchId && item.NativeMessageUid == uid,
                             cancellationToken)) continue;
+                    var content = message.GetProperty("text").GetString() ?? string.Empty;
+                    var channel = "private";
+                    string? conversationId = null;
+                    string? conversationName = null;
+                    if (content.StartsWith("[Group: ", StringComparison.Ordinal))
+                    {
+                        var end = content.IndexOf("] ", StringComparison.Ordinal);
+                        if (end > 8)
+                        {
+                            conversationName = content[8..end];
+                            var group = await database.PortalChatGroups.AsNoTracking()
+                                .SingleOrDefaultAsync(item => item.MatchId == match.MatchId &&
+                                    item.DisplayName == conversationName && item.Status == "active",
+                                    cancellationToken);
+                            if (group is not null)
+                            {
+                                channel = "group";
+                                conversationId = group.GroupId;
+                                content = content[(end + 2)..];
+                            }
+                        }
+                    }
                     database.PortalLobbyMessages.Add(new PortalLobbyMessage
                     {
                         MatchId = match.MatchId, SenderHandle = participants.GetValueOrDefault(
                             faction, $"Faction {faction}"),
-                        Content = message.GetProperty("text").GetString() ?? string.Empty,
+                        Content = content,
                         DeliveredToGame = true, NativeMessageUid = uid,
+                        Channel = channel, ConversationId = conversationId,
+                        ConversationName = conversationName,
+                        SenderFactionId = faction,
+                        RecipientFactionId = seat.FactionId ?? 0,
                     });
                     imported = true;
                 }
