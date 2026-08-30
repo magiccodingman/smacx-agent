@@ -59,6 +59,29 @@ on exit. Safe-area insets are respected. Browser-reserved shortcuts may remain
 reserved, but ordinary game keyboard input and text entry pass through the
 interactive stream.
 
+The H.264 target is selected from the native framebuffer rather than the
+viewer's CSS size: 2.2 Mbps at 800×600, 3.5 Mbps through 1280×800, 5.5 Mbps
+through 1920×1200, 8 Mbps through 2560×1600, 12 Mbps through 4K, and a bounded
+14 Mbps for the validated 5K-ultrawide ceiling. A 4K browser watching an
+800×600 seat therefore receives the 800×600 stream and scales it locally; it
+does not manufacture a wasteful 4K encode. Spectators inherit the seat's
+stream and cannot change it.
+
+## One controller per seat
+
+Every open Play page receives an ephemeral, server-owned, user/worker-bound
+lease. The first page controls the seat. A second tab or window for the same
+account opens in view-only mode and offers **Take control here**. Taking control
+cancels the previous reverse-proxy connection immediately; its next connection
+is issued view-only credentials. The old page then reflects the new generation
+on its heartbeat. Leases expire after 30 seconds without a heartbeat and are
+not campaign state.
+
+This remains safe even though ordinary browser cookies are shared between
+tabs: each iframe carries its own short-lived lease identifier, and the server
+still requires the authenticated seat owner and exact managed worker. A copied
+identifier is not a standalone bearer credential.
+
 ## Native MENU control rail
 
 The portal polls a read-only `human_ui_state` contract from the native bridge.
@@ -89,6 +112,19 @@ The control center has four surfaces:
 - **Votes** — current proposals, quorum, deadline, and the local player's vote;
 - **Session** — disconnected/delegated seats, managed-host transfer, recovery
   progress, confirmed safe park/end proposals, and safe return to the lobby.
+
+**Exit game view** is available both on the rail and in the Session tab. It
+warns before releasing that tab's controller and returning to the command
+deck. Internal portal navigation uses the same themed confirmation; external
+navigation, back, refresh, and tab/window close use the browser's native
+leave-page warning.
+
+The bridge also labels the exact native `REALLYQUIT` confirmation. On a managed
+human worker only, the platform submits the native choice-zero cancel path
+(`Oops, no, wait!`) and shows a snackbar explaining the managed alternatives.
+No screenshot, OCR, coordinate, or synthetic click is involved. If a rare
+quit path bypasses that guard and reaches the native menu, ordinary checkpoint
+recovery remains the second line of defense.
 
 ## Modern chat over native chat
 
@@ -210,6 +246,37 @@ When every human is a managed browser player and all have been absent for ten
 minutes, the platform checkpoints and parks the match. It does not auto-park an
 AI-only simulation and does not infer browser presence for external/native
 clients.
+
+The lobby exposes this lifecycle as `awaiting_first_connection`,
+`temporarily_disconnected`, `idle_grace_period`, or `checkpoint_pending`, with
+the remaining countdown where applicable. A never-opened browser match is not
+immortal: its ten-minute abandoned-lobby timer starts from match creation.
+Reconnecting any managed human before maintenance begins cancels the idle
+condition. Parking still waits for native stability, so simultaneous turns or
+an open modal are not discarded merely because a browser left.
+
+## Identity collision rules
+
+Portal account handles are globally case-insensitive. Invitations reserve
+provisional accounts, so registering the invited name later claims the same
+seat and history. A lobby rejects duplicate invited handles and rejects
+inviting its owner a second time. A signed-in account cannot claim a seat
+reserved for another handle.
+
+At launch, every human seat receives a deterministic, match-local DirectPlay
+alias derived from its canonical portal handle, seat, and match. The alias is
+bounded to the game's 31-character limit and is collision-checked against every
+other seat and managed worker. It is transport identity only: portal chat,
+history, analytics, group membership, and AI memory resolve the faction back to
+the canonical account handle. The exact alias is shown only where a direct
+native client needs it to join.
+
+Direct/native lobby finalization compares the observed DirectPlay participant
+set to the issued aliases. Duplicate, canonical-only, or unexpected names block
+start instead of impersonating a browser account. An invited player may join
+natively with the lobby's exact alias before creating a password and claim that
+provisional account later; an arbitrary unreserved native name is never
+silently merged with somebody else's identity.
 
 ## Spectators and human-only games
 

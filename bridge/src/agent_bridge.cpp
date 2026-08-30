@@ -4799,6 +4799,7 @@ std::string human_ui_state_response() {
             != static_cast<int>(reinterpret_cast<intptr_t>(&MapWin->oMainWin.field_4));
     bool root_menu_open = in_game && native_menu_visible
         && visible_submenus == 0 && !modal && !native_page_open;
+    const char* popup_label = semantic_popup_label();
     std::ostringstream out;
     out << "{\"ok\":true,\"schema\":\"smacx.human-ui.v1\""
         << ",\"controller_kind\":\"human\""
@@ -4810,11 +4811,41 @@ std::string human_ui_state_response() {
         << ",\"visible_submenu_index\":" << visible_submenu_index
         << ",\"selected_hitbox_tag\":" << (menu ? menu->iHitBoxTagClicked : -1)
         << ",\"modal_open\":" << (modal ? "true" : "false")
+        << ",\"popup_label\":" << json_string(popup_label)
+        << ",\"lifecycle_intent\":"
+        << json_string(!strcmp(popup_label, "REALLYQUIT")
+            ? "prevent_native_quit" : "none")
         << ",\"native_page_open\":"
         << (native_page_open ? "true" : "false")
         << ",\"rail_allowed\":" << (root_menu_open ? "true" : "false")
         << '}';
     return out.str();
+}
+
+std::string human_ui_control_response(const std::string& request) {
+    if (!managed_human_controller) {
+        return error_response("human_ui_control_unavailable",
+            "Native human controls are private to a managed human worker.");
+    }
+    std::string action = field_string(request, "action");
+    if (action != "cancel_native_quit") {
+        return error_response("invalid_human_ui_action",
+            "Only cancel_native_quit is available through this guarded portal control.");
+    }
+    if (strcmp(semantic_popup_label(), "REALLYQUIT")) {
+        return error_response("native_quit_not_active",
+            "The native quit confirmation is not active.");
+    }
+    BasePop* popup = active_default_popup();
+    if (!popup) {
+        return error_response("popup_unavailable",
+            "The native quit confirmation object is unavailable.");
+    }
+    // REALLYQUIT choice zero is the native 'Oops, no, wait!' path. Submit the
+    // engine choice directly so the synchronous modal stack unwinds correctly.
+    submit_popup_choice(popup, 0);
+    return "{\"ok\":true,\"action\":\"cancel_native_quit\","
+        "\"popup_label\":\"REALLYQUIT\",\"prevented\":true}";
 }
 
 bool valid_chat_identifier(const std::string& value) {
@@ -15240,6 +15271,7 @@ std::string execute_request(const std::string& request) {
     std::string op = field_string(request, "op");
     if (op == "ping" || op == "status") return status_response();
     if (op == "human_ui_state") return human_ui_state_response();
+    if (op == "human_ui_control") return human_ui_control_response(request);
     if (op == "observe") return observe_response();
     if (op == "list_bases") return bases_response();
     if (op == "list_units") return units_response();

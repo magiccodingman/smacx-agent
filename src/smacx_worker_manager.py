@@ -52,6 +52,22 @@ NATIVE_RESOLUTION_PROFILES: dict[str, tuple[int, int]] = {
 }
 
 
+def stream_bitrate_kbps(width: int, height: int) -> int:
+    """A bounded H.264 target for an old, mostly-static strategy UI."""
+    pixels = width * height
+    if pixels <= 800 * 600:
+        return 2200
+    if pixels <= 1280 * 800:
+        return 3500
+    if pixels <= 1920 * 1200:
+        return 5500
+    if pixels <= 2560 * 1600:
+        return 8000
+    if pixels <= 3840 * 2160:
+        return 12000
+    return 14000
+
+
 class WorkerManagerError(StoreError):
     pass
 
@@ -226,11 +242,22 @@ class WorkerManager:
                 or network.get("view_mode") != "interactive":
             raise WorkerManagerError("human_ui_state_requires_interactive_human")
         state = self._native_request(instance_id, "human_ui_state", timeout=5.0)
+        quit_intercepted = False
+        if state.get("popup_label") == "REALLYQUIT":
+            prevented = self._native_request(
+                instance_id, "human_ui_control", action="cancel_native_quit", timeout=5.0,
+            )
+            quit_intercepted = prevented.get("prevented") is True
+            state = self._native_request(instance_id, "human_ui_state", timeout=5.0)
         profile_id = str(network.get("resolution_profile") or "1280x800")
         width, height = NATIVE_RESOLUTION_PROFILES.get(profile_id, (1280, 800))
         return {**state, "instance_id": instance_id,
                 "resolution_profile_id": profile_id,
-                "native_width": width, "native_height": height}
+                "native_width": width, "native_height": height,
+                "stream_bitrate_kbps": int(network.get("stream_bitrate_kbps")
+                                           or stream_bitrate_kbps(width, height)),
+                "stream_encoder": "h264enc",
+                "native_quit_intercepted": quit_intercepted}
 
     def portal_group_chat(
         self, instance_id: str, *, action: str, group_id: str = "",
@@ -804,6 +831,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "view_mode": view_mode,
                     "controller_kind": controller_kind,
                     "resolution_profile": resolution_profile,
+                    "stream_bitrate_kbps": stream_bitrate_kbps(
+                        *NATIVE_RESOLUTION_PROFILES[resolution_profile]
+                    ),
                 },
                 view_secret_id=view_secret_id,
             )
@@ -941,6 +971,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if resolution_profile not in NATIVE_RESOLUTION_PROFILES:
             raise WorkerManagerError("invalid_native_resolution_profile")
         view_width, view_height = NATIVE_RESOLUTION_PROFILES[resolution_profile]
+        view_bitrate = stream_bitrate_kbps(view_width, view_height)
         values = {
             "SMACX_AGENT_TOKEN_FILE": "/run/secrets/bridge-token",
             "SMACX_AGENT_MATCH_ID": spec["match_id"],
@@ -962,6 +993,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "SMACX_STREAM_SUBFOLDER": f"/stream/{spec['instance_id']}",
             "SMACX_VIEW_WIDTH": str(view_width),
             "SMACX_VIEW_HEIGHT": str(view_height),
+            "SMACX_STREAM_VIDEO_BITRATE": str(view_bitrate),
             "SMACX_AGENT_AUTOSTART": "1" if autostart["enabled"] else "0",
             "SMACX_AGENT_DIFFICULTY": str(autostart["difficulty"]),
             "SMACX_AGENT_WORLD_SIZE": str(autostart["world_size"]),
@@ -1001,6 +1033,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             spec = self.control.get_worker_spec(str(instance_id))
             network = dict(spec["network"])
             network["resolution_profile"] = profile_id
+            network["stream_bitrate_kbps"] = stream_bitrate_kbps(*dimensions)
             workers.append(self.control.update_worker_network(str(instance_id), network))
         updated = self.control.update_match_lifecycle(
             match_id, match["status"], metadata={
@@ -2573,6 +2606,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             native = None
             snapshot = None
             if worker.get("running") and worker.get("health") == "healthy":
+                if seat.get("controller_kind") == "human" and \
+                        seat.get("metadata", {}).get("managed") is True:
+                    try:
+                        self.human_ui_state(str(instance_id))
+                    except WorkerManagerError:
+                        pass
                 try:
                     native = self._native_request(str(instance_id), "semantic_lan", action="status")
                 except WorkerManagerError:
@@ -3067,6 +3106,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "host_port": spec["network"].get("view_host_port"),
                 "path": spec["network"].get("view_path"),
                 "mode": spec["network"].get("view_mode") or "view-only",
+                "resolution_profile": spec["network"].get("resolution_profile") or "1280x800",
+                "bitrate_kbps": spec["network"].get("stream_bitrate_kbps") or 3500,
+                "encoder": "h264enc",
             },
         }
         mcp_name = spec["network"].get("mcp_container_name")

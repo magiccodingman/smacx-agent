@@ -42,3 +42,10 @@ export async function toggleGameFullscreen(element, landscapeOnTouch) {
   }
   return true;
 }
+
+export async function leaveGameFullscreen() {
+  if (document.fullscreenElement) {
+    try { await document.exitFullscreen(); } catch {}
+  }
+  try { screen.orientation?.unlock(); } catch {}
+}

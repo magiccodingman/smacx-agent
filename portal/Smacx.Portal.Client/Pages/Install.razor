@@ -1,0 +1,154 @@
+@page "/install"
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+
+<PageTitle>Install app · SMACX Agent</PageTitle>
+
+<PageHeader Kicker="INSTALL PLANETARY NETWORK"
+            Title="Put mission control on this device"
+            Description="Install the LAN command deck like an app—without changing how your host runs matches." />
+
+<div class="install-grid">
+    <section class="surface-panel install-hero">
+        <img src="icons/smacx-planetary-network-512.png" alt="SMACX planetary network icon" />
+        <div>
+            <span class="panel-kicker">SMACX AGENT</span>
+            <h2>@StatusTitle</h2>
+            <p>@StatusCopy</p>
+            @if (state is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (state.Installed)
+            {
+                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">This device is already using the installed app experience.</MudAlert>
+                <MudButton Href="" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.SpaceDashboard">Open command deck</MudButton>
+            }
+            else if (state.PromptReady)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.InstallMobile" OnClick="InstallNow" Disabled="busy">
+                    Install SMACX Agent
+                </MudButton>
+            }
+            else
+            {
+                <MudAlert Severity="@(state.SecureContext ? Severity.Info : Severity.Warning)" Variant="Variant.Outlined">
+                    @(state.SecureContext
+                        ? "This browser uses its own install menu. Follow the device-specific steps below."
+                        : "App installation requires HTTPS on a LAN address. The ordinary HTTP site still works in your browser.")
+                </MudAlert>
+            }
+            @if (!string.IsNullOrWhiteSpace(message))
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">@message</MudAlert>
+            }
+        </div>
+    </section>
+
+    <section class="surface-panel install-instructions">
+        <span class="panel-kicker">@PlatformLabel · @BrowserLabel</span>
+        <h2>Install from this browser</h2>
+        <ol>
+            @foreach (var step in Steps)
+            {
+                <li>@step</li>
+            }
+        </ol>
+        <p class="section-copy">The installed app stays connected to this same private-LAN host. It does not copy the game, make gameplay offline, or expose the server to the internet.</p>
+        <MudButton Href="@HelpUrl" Target="_blank" Variant="Variant.Text" EndIcon="@Icons.Material.Filled.OpenInNew">
+            Official @BrowserLabel install help
+        </MudButton>
+    </section>
+
+    <section class="surface-panel install-note">
+        <MudIcon Icon="@Icons.Material.Filled.Security" />
+        <div><strong>LAN HTTPS is the durable mobile path</strong><span>Localhost is trusted automatically on the host machine. Phones and tablets visiting a private IP need the documented HTTPS setup before browsers can offer a reliable install prompt.</span></div>
+    </section>
+</div>
+
+@code {
+    private IJSObjectReference? module;
+    private DotNetObjectReference<Install>? self;
+    private PwaState? state;
+    private bool busy;
+    private string? message;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/pwa-install-interop.js");
+        state = await module.InvokeAsync<PwaState>("getPwaInstallState");
+        self = DotNetObjectReference.Create(this);
+        await module.InvokeVoidAsync("subscribePwaInstall", self);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task OnPwaInstallStateChanged(PwaState next)
+    {
+        state = next;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task InstallNow()
+    {
+        if (module is null) return;
+        busy = true;
+        message = null;
+        var result = await module.InvokeAsync<PromptResult>("promptPwaInstall");
+        message = result.Outcome == "accepted"
+            ? "Installation accepted. Your operating system may take a moment to finish adding the app."
+            : result.Outcome == "dismissed"
+                ? "Installation was dismissed. You can try again when the browser offers the prompt, or use its install menu."
+                : "The one-shot browser prompt is not available. Use the browser instructions on this page.";
+        busy = false;
+    }
+
+    private string StatusTitle => state?.Installed == true ? "Planetary network installed" :
+        state?.PromptReady == true ? "Ready for planetfall" : "Install from your browser";
+    private string StatusCopy => state?.Installed == true
+        ? "Launch SMACX Agent from your home screen, Start menu, dock, or app launcher."
+        : "Get a focused, full-window command deck with quick access to lobbies, browser gameplay, and spectating.";
+    private string PlatformLabel => (state?.Platform ?? "device") switch
+    {
+        "ios" => "iPhone or iPad", "android" => "Android", "windows" => "Windows",
+        "macos" => "macOS", "linux" => "Linux", _ => "This device",
+    };
+    private string BrowserLabel => (state?.Browser ?? "browser") switch
+    {
+        "chrome" => "Chrome", "edge" => "Edge", "firefox" => "Firefox",
+        "safari" => "Safari", _ => "browser",
+    };
+    private IReadOnlyList<string> Steps => (state?.Platform, state?.Browser) switch
+    {
+        ("ios", _) => ["Open this page in Safari.", "Tap Share.", "Choose Add to Home Screen, then confirm Add."],
+        ("android", "firefox") => ["Open the browser menu.", "Choose Install or Add to Home screen.", "Confirm the app name."],
+        (_, "edge") => ["Open Settings and more (⋯).", "Choose Apps, then Install SMACX Agent.", "Confirm Install."],
+        (_, "chrome") => ["Open the Chrome menu (⋮).", "Choose Cast, save, and share, then Install page as app.", "Confirm Install."],
+        (_, "firefox") => ["Open the browser menu.", "Choose Install or Add to Home screen when available.", "Confirm the shortcut."],
+        _ => ["Open this browser's page or sharing menu.", "Choose Install app or Add to Home Screen.", "Confirm the app name and icon."],
+    };
+    private string HelpUrl => (state?.Platform, state?.Browser) switch
+    {
+        ("ios", _) => "https://support.apple.com/guide/iphone/turn-a-website-into-an-app-iph42ab2f3a7/ios",
+        (_, "edge") => "https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/ux",
+        (_, "firefox") => "https://support.mozilla.org/en-US/kb/use-web-apps-firefox-android",
+        _ => "https://support.google.com/chrome/answer/9658361",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            await module.InvokeVoidAsync("unsubscribePwaInstall");
+            await module.DisposeAsync();
+        }
+        self?.Dispose();
+    }
+
+    public sealed record PwaState(
+        bool Installed, bool PromptReady, bool SecureContext, bool Localhost,
+        string DisplayMode, string Platform, string Browser, bool PromptConsumed);
+    private sealed record PromptResult(string Outcome);
+}

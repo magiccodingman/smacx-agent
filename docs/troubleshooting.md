@@ -163,6 +163,24 @@ read-only at the worker transport.
 Click once inside the stream to focus it. Browser-reserved shortcuts may not be
 forwarded; ordinary game shortcuts and text input are.
 
+If the same seat is open in two tabs, only one is the controller. The other
+shows a read-only card. Select **Take control here** to move input deliberately;
+the previous stream connection is revoked and its page becomes view-only. If a
+tab was suspended for more than 30 seconds, reload or reacquire control.
+
+## Install app is unavailable
+
+Open the portal's **Install app** page. A host browsing `localhost` or
+`127.0.0.1` qualifies for the loopback secure-context exception. A phone,
+tablet, or another LAN computer needs a trusted HTTPS URL; plain
+`http://HOST_LAN_IP` can use the portal but browsers need not offer PWA
+installation there.
+
+Chromium exposes a one-use install event. If it was dismissed, use the browser
+menu instructions on the page or revisit after the browser offers it again.
+Safari/iOS does not expose the same event and uses **Share → Add to Home
+Screen**. Installation never makes live matches available offline.
+
 ## Human native client cannot see the lobby
 
 The default private Docker bridge is intentionally not reachable from the
@@ -200,10 +218,20 @@ vote and stable checkpoint both pass. When the player returns, use **Propose
 player reclaim**; the platform rehosts from another verified checkpoint and
 returns the same faction.
 
-If the player clicked the game's own Quit/Exit path and returned to the native
-main menu, the supervisor records `returned_to_menu` and recovers all managed
-seats from the latest stable checkpoint. A match with no verified checkpoint
-stops for operator review instead of discarding unsaved actions.
+Use the rail or Session tab's **Exit game view** command. Browser back, refresh,
+close, and external navigation display a leave warning. If a player selects the
+game's own Quit/Exit command, the exact `REALLYQUIT` popup is canceled
+semantically and the portal explains the managed alternatives. If a different
+or rare native path still returns to the main menu, the supervisor records
+`returned_to_menu` and recovers all managed seats from the latest verified
+checkpoint. A match with no verified checkpoint stops for operator review
+instead of discarding unsaved actions.
+
+When every human seat is browser-managed and all streams are absent, the lobby
+shows a ten-minute countdown. Any reconnect cancels the idle condition. At the
+end, the supervisor waits for a verified checkpoint and parks the campaign.
+AI-only matches continue, while matches containing direct/native humans do not
+use browser presence as proof that everyone left.
 
 ## AI profile will not start
 

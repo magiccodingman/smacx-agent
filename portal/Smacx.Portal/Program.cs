@@ -66,6 +66,8 @@ builder.Services.AddSingleton(new HttpMessageInvoker(new SocketsHttpHandler
 }));
 builder.Services.AddScoped<StreamProxyService>();
 builder.Services.AddSingleton<StreamPresenceTracker>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<ControllerLeaseService>();
 builder.Services.AddScoped<MatchGovernanceService>();
 builder.Services.AddHostedService<PortalMatchSupervisor>();
 builder.Services.AddHostedService<PortalMaintenanceCoordinator>();

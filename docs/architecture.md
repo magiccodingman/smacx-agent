@@ -10,7 +10,7 @@ tested and secured independently.
 ```text
 trusted LAN browser
        |
-       | accounts, lobbies, reports, short-lived stream tickets
+       | accounts, lobbies, reports, ephemeral controller leases
        v
 .NET 10 Blazor portal + controllers + SignalR
        |
@@ -65,7 +65,8 @@ The portal is the only ordinary browser/LAN entry point and the only writer of
 its canonical pre-release SQLite schema:
 
 - ASP.NET Core Identity users/roles/password-reset grants;
-- case-insensitive game handles and provisional invited identities;
+- case-insensitive game handles, provisional invited identities, and
+  collision-proof match-local DirectPlay aliases;
 - lobby drafts, browser membership, UI policy, stream presence/tickets;
 - versioned provider-facing AI profile metadata; and
 - public history/analytics projections, including evidence-backed per-seat
@@ -205,17 +206,24 @@ replacement, never an in-place DirectDraw resize.
 
 Authorization happens before proxying:
 
-- member controls their exact browser seat;
+- member controls their exact browser seat only while its per-tab lease is the
+  active generation;
 - administrator may control their own seat and observe any seat;
 - lobby opt-in may issue anonymous spectator tickets;
 - observer/anonymous modes are enforced read-only at transport; and
 - direct worker credentials/passwords are not exposed.
 
+Leases are process-local, expire after 30 seconds, and are bound to user plus
+worker. A takeover cancels the former controller's in-flight proxy connection,
+then reconnects that page with view-only credentials. The lease identifier in
+the iframe URL is not sufficient without the authenticated seat owner.
+
 An owner-only `human_ui_state` read crosses the same private service boundary.
-The bridge exposes only native root-MENU visibility, submenu/modal state, and
-display metadata, and only when the worker controller kind is human. The portal
-uses it to show the managed control rail; no equivalent operation exists in the
-agent MCP toolset.
+The bridge exposes only native root-MENU visibility, submenu/modal state,
+display metadata, and the exact quit-confirmation label, and only when the
+worker controller kind is human. The portal uses it to show the managed control
+rail and cancel `REALLYQUIT` through the native no-choice. No equivalent
+operation exists in the agent MCP toolset.
 
 `managed clients only` rejects external/native clients for a lobby. Otherwise,
 native human seats have no agent/perspective/MCP identity and join the real

@@ -1,0 +1,45 @@
+{
+  "id": "/",
+  "name": "SMACX Agent Planetary Network",
+  "short_name": "SMACX Agent",
+  "description": "A private-LAN command deck for Alpha Centauri matches, browser play, spectators, and agentic players.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#07151c",
+  "theme_color": "#07151c",
+  "categories": ["games", "entertainment", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/smacx-planetary-network-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/smacx-planetary-network-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/smacx-planetary-network-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/smacx-planetary-network-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Command deck", "short_name": "Command deck", "url": "/" },
+    { "name": "Lobbies", "short_name": "Lobbies", "url": "/lobbies" },
+    { "name": "Spectate", "short_name": "Spectate", "url": "/spectate" }
+  ]
+}
