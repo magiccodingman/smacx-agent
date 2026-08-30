@@ -101,14 +101,22 @@ else
             }
             else
             {
-                <MudSelect T="string" @bind-SelectedValues="agentIds" MultiSelection="true"
-                           Label="AI player profiles" Variant="Variant.Outlined"
-                           ToStringFunc="AgentDisplayName" Strict="true">
+                <div class="agent-profile-picker" role="group" aria-label="AI player profiles">
                     @foreach (var agent in catalog?.Agents ?? [])
                     {
-                        <MudSelectItem Value="@agent.Id">@agent.DisplayName</MudSelectItem>
+                        var selected = agentIds.Contains(agent.Id);
+                        <button type="button"
+                                class="agent-profile-choice @(selected ? "selected" : null)"
+                                aria-pressed="@selected.ToString().ToLowerInvariant()"
+                                @onclick="@(() => ToggleAgent(agent.Id))">
+                            <MudIcon Icon="@(selected ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.RadioButtonUnchecked)" />
+                            <span>
+                                <strong>@agent.DisplayName</strong>
+                                <small>@(selected ? "Selected as an AI player" : "Select this profile")</small>
+                            </span>
+                        </button>
                     }
-                </MudSelect>
+                </div>
                 <span class="field-help flush">Each selected profile becomes one independent AI player. The first selected profile hosts when AI hosting is chosen.</span>
             }
 
@@ -344,14 +352,14 @@ else
         await LoadScenarios();
     }
 
-    private string AgentDisplayName(string? agentId)
+    private void ToggleAgent(string agentId)
     {
-        if (string.IsNullOrWhiteSpace(agentId))
+        var selected = agentIds.ToList();
+        if (!selected.Remove(agentId))
         {
-            return string.Empty;
+            selected.Add(agentId);
         }
-        return catalog?.Agents.FirstOrDefault(item => item.Id == agentId)?.DisplayName
-            ?? "Unavailable AI profile";
+        agentIds = selected;
     }
 
     private async Task LoadScenarios()
