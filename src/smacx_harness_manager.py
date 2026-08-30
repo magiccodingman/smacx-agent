@@ -19,10 +19,7 @@ from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager
 
 
-HERMES_IMAGE = (
-    "docker.io/nousresearch/hermes-agent:v2026.8.27@"
-    "sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843"
-)
+HERMES_IMAGE = "smacx-agent-harness:dev"
 RESOURCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 
 
@@ -199,6 +196,7 @@ class HarnessManager:
             self.docker.require_owned(resource, self.installation_id, purpose=purpose)
         with tempfile.TemporaryDirectory(prefix="smacx-managed-hermes-") as temporary:
             staging = Path(temporary)
+            harness_profile = self.control.get_harness_profile(harness_profile_id)
             configure_profile(
                 hermes_root=staging,
                 runtime_hermes_root=Path("/opt/data"),
@@ -213,6 +211,7 @@ class HarnessManager:
                     "SMACX_PROVIDER_API_KEY"
                     if internal.get("provider_requires_api_key") else None
                 ),
+                system_prompt=str(harness_profile["system_prompt"]),
             )
             (staging / "smacx-runner.py").write_text(RUNNER, encoding="utf-8")
             self._seed_volume(
@@ -236,25 +235,30 @@ class HarnessManager:
                 "provider_id": internal["provider_id"],
                 "provider_secret_injected": bool(api_key),
                 "mcp_url": internal["mcp_url"],
-                "image_pinned": "@sha256:" in self.image_ref,
+                "strict_system_prompt": True,
+                "system_prompt_schema": harness_profile.get("metadata", {}).get(
+                    "system_prompt_schema"
+                ),
+                "system_prompt_sha256": harness_profile.get("metadata", {}).get(
+                    "system_prompt_sha256"
+                ),
+                "base_image_digest_pinned": True,
             },
         )
 
     @staticmethod
     def default_initial_prompt() -> str:
         return (
-            "Play this Alien Crossfire match autonomously as a genuine player until the operator "
-            "stops the managed run or a semantic capability gap requires developer work. Use only "
-            "SMACX semantic tools for the game. Observe chat every decision cycle, negotiate when "
-            "useful, pursue victory, and maintain scoped facts, beliefs, relationships, commitments, "
-            "and goals. Never use screenshots, mouse, keyboard, desktop, terminal, or raw UI input."
+            "Begin or resume this managed match now. Follow the system contract's opening "
+            "briefing protocol, then continue autonomous play until the operator stops the run "
+            "or a semantic capability gap is reported."
         )
 
     @staticmethod
     def default_continuation_prompt() -> str:
         return (
-            "Continue the same durable match and Hermes conversation from current semantic state. "
-            "Resume autonomous play until operator stop or a reported capability gap."
+            "Resume the same managed match from current semantic state. Revalidate the match "
+            "briefing as required by the system contract, then continue autonomous play."
         )
 
     def create_run(self, descriptor: Mapping[str, Any], *,
@@ -273,7 +277,7 @@ class HarnessManager:
             restart_policy={
                 "restart_on_clean_exit": True, "restart_on_error": True,
                 "restart_limit": restarts, "run_budget_seconds": budget,
-                "max_turns": turns, "toolsets": "smacx,web",
+                "max_turns": turns, "toolsets": "smacx",
             },
         )
         return self.start_run(str(run["run_id"]), runtime=runtime)
@@ -284,11 +288,15 @@ class HarnessManager:
         profile = self.control.get_harness_profile(str(run["harness_profile_id"]))
         profile_id = str(profile["external_profile_id"])
         workspace = f"/opt/data/profiles/{profile_id}/workspace/matches/{run['match_id']}"
+        prompt_path = f"/opt/data/profiles/{profile_id}/SYSTEM.md"
+        prompt_hash = str(profile.get("metadata", {}).get("system_prompt_sha256") or "")
+        if len(prompt_hash) != 64:
+            raise HarnessManagerError("managed_system_prompt_hash_missing")
         command = [
             "-p", profile_id, "chat", "--continue", str(run["match_id"]),
             "--create-if-missing", "--in", workspace,
             "--reasoning", str(profile["reasoning_effort"]),
-            "--toolsets", str(policy.get("toolsets", "smacx,web")),
+            "--toolsets", str(policy.get("toolsets", "smacx")),
             "--max-turns", str(policy.get("max_turns", 5000)),
             "--run-budget", str(policy.get("run_budget_seconds", 3600)),
             "--pass-session-id", "--query", prompt,
@@ -301,6 +309,9 @@ class HarnessManager:
             "Env": [
                 "HOME=/opt/data", "HERMES_HOME=/opt/data",
                 "PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1",
+                "SMACX_STRICT_SYSTEM_PROMPT=1",
+                f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
+                f"SMACX_SYSTEM_PROMPT_SHA256={prompt_hash}",
             ],
             "Labels": self._labels("harness-run", **{
                 "io.smacx.run": str(run["run_id"]),

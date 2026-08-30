@@ -5,10 +5,12 @@ from __future__ import annotations
 
 from io import BytesIO
 import json
+from pathlib import Path
 import tarfile
 
 from smacx_docker import DockerClient, DockerNotFound
 from smacx_harness_manager import HERMES_IMAGE, HarnessManager
+from smacx_prompt import SYSTEM_PROMPT_SCHEMA, compose_player_system_prompt, prompt_sha256
 
 
 class FakeStore:
@@ -46,9 +48,20 @@ class FakeControl:
         return self.key
 
     def get_harness_profile(self, _profile_id: str) -> dict:
+        prompt = compose_player_system_prompt(
+            agent_name="Contract Player", agent_id="agent-contract-player",
+            match_id="match-contract-game", match_name="Contract match",
+            perspective_id="perspective-contract-player", ruleset_id="smacx",
+            seat_index=0,
+        )
         return {
             "external_profile_id": "smacx-contract-player",
             "reasoning_effort": "low",
+            "system_prompt": prompt,
+            "metadata": {
+                "system_prompt_schema": SYSTEM_PROMPT_SCHEMA,
+                "system_prompt_sha256": prompt_sha256(prompt),
+            },
         }
 
 
@@ -158,7 +171,7 @@ def main() -> int:
         "run_id": "run-contract-player", "harness_profile_id": "harness-contract-profile",
         "match_id": "match-contract-game", "agent_id": "agent-contract-player",
         "restart_count": 0, "restart_policy": {
-            "toolsets": "smacx,web", "max_turns": 100, "run_budget_seconds": 60,
+            "toolsets": "smacx", "max_turns": 100, "run_budget_seconds": 60,
         },
     }, runtime, "Play one bounded turn.")
     if control.key in json.dumps(run_config) or any(
@@ -167,14 +180,23 @@ def main() -> int:
     if run_config["HostConfig"].get("ReadonlyRootfs") is not True \
             or run_config["HostConfig"].get("CapDrop") != ["ALL"]:
         raise AssertionError("managed harness isolation regressed")
+    environment = dict(value.split("=", 1) for value in run_config["Env"])
+    if environment.get("SMACX_STRICT_SYSTEM_PROMPT") != "1" \
+            or len(environment.get("SMACX_SYSTEM_PROMPT_SHA256", "")) != 64:
+        raise AssertionError("strict provider-facing prompt guard was not enabled")
+    if not any(name.endswith("SYSTEM.md") for name in data_files):
+        raise AssertionError("strict prompt file was not seeded into managed data")
 
     old_secret_volume = runtime["secret_volume"]
     control.key = None
     manager.provision_profile(descriptor(keyed=False))
     if docker.contents[old_secret_volume]:
         raise AssertionError("reprovision retained an obsolete provider secret")
-    if "@sha256:" not in HERMES_IMAGE:
-        raise AssertionError("official Hermes runtime is not digest pinned")
+    if HERMES_IMAGE != "smacx-agent-harness:dev":
+        raise AssertionError("managed harness did not select the SMACX-owned derived image")
+    dockerfile = Path(__file__).resolve().parents[1] / "harness" / "Dockerfile"
+    if "nousresearch/hermes-agent:v2026.8.27@sha256:" not in dockerfile.read_text(encoding="utf-8"):
+        raise AssertionError("derived harness parent is not digest pinned")
     print(json.dumps({
         "event": "pass",
         "payload": {

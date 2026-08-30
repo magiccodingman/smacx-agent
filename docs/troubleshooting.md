@@ -194,7 +194,7 @@ Managed AI does not depend on the host Hermes dashboard. Restarting or killing
 ## AI repeatedly tries visual clicks
 
 That is a configuration regression. Managed runs must show toolsets
-`smacx,web`; the MCP surface contains no computer/screenshot/mouse/keyboard or
+`smacx`; the MCP surface contains no web/computer/screenshot/mouse/keyboard or
 terminal tools. Stop the run and inspect its versioned profile/container
 configuration. Do not “fix” a semantic gap by granting desktop tools.
 

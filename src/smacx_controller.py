@@ -902,16 +902,111 @@ def read_platform_memory(
 
 def read_game_reference(action: str, *, query: str = "", topic: str = "",
                         document_id: str = "", limit: int = 8,
-                        include_body: bool = False) -> dict[str, Any]:
+                        include_body: bool = False, entity_kind: str = "",
+                        entity_key: str = "", entities: list[dict[str, str]] | None = None,
+                        ruleset_id: str = "smacx") -> dict[str, Any]:
     """Read global mechanics knowledge; it contains no match-hidden state."""
     try:
         return read_reference_store(
             _store(), action, query=query, topic=topic, document_id=document_id,
             limit=limit, include_body=include_body,
             private_prefix=(f"private.{GAME_SOURCE_ID}." if GAME_SOURCE_ID else None),
+            entity_kind=entity_kind, entity_key=entity_key, entities=entities,
+            ruleset_id=ruleset_id,
         )
     except (StoreError, ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}
+
+
+def match_briefing_context(match_id: str, session_id: str) -> dict[str, Any]:
+    """Return control-plane context visible to this exact managed seat."""
+    try:
+        scope = _scope_for_match(match_id, session_id=session_id)
+        if scope is None:
+            raise StoreError("unknown_match_scope")
+        store = _store()
+        with store.transaction() as connection:
+            match = connection.execute(
+                "SELECT display_name, mode, ruleset_id, status, metadata_json FROM matches "
+                "WHERE match_id=?", (match_id,),
+            ).fetchone()
+            seat = connection.execute(
+                "SELECT seat_index, controller_kind, faction_id, faction_name, instance_id, "
+                "metadata_json FROM seat_assignments WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=?",
+                (match_id, scope.agent_id, scope.perspective_id),
+            ).fetchone()
+            worker = connection.execute(
+                "SELECT game_source_id, autostart_json FROM worker_specs WHERE instance_id=?",
+                (seat["instance_id"],),
+            ).fetchone() if seat and seat["instance_id"] else None
+            source = connection.execute(
+                "SELECT display_name, executable_sha256 FROM game_sources WHERE game_source_id=?",
+                (worker["game_source_id"],),
+            ).fetchone() if worker else None
+        if not match or not seat:
+            raise StoreError("match_briefing_context_incomplete")
+        match_metadata = json.loads(str(match["metadata_json"]))
+        requested_settings = match_metadata.get("game_settings")
+        if requested_settings is None and worker:
+            autostart = json.loads(str(worker["autostart_json"]))
+            requested_settings = autostart.get("game_settings")
+        private_prefix = f"private.{worker['game_source_id']}." if worker else None
+        return {
+            "ok": True,
+            "scope": _platform_scope_identity(scope, session_id),
+            "match": {
+                "display_name": match["display_name"], "mode": match["mode"],
+                "ruleset_id": match["ruleset_id"], "status": match["status"],
+            },
+            "seat": {
+                "seat_index": int(seat["seat_index"]),
+                "controller_kind": seat["controller_kind"],
+                "assigned_faction_id": seat["faction_id"],
+                "assigned_faction_name": seat["faction_name"],
+            },
+            "policy": {
+                key: match_metadata[key]
+                for key in (
+                    "host_controller_kind", "graphiti_enabled", "lan_profile",
+                    "scenario_id", "ranking_mode", "managed_clients_only",
+                ) if key in match_metadata
+            },
+            "requested_settings": requested_settings,
+            "game_source": ({
+                "game_source_id": worker["game_source_id"],
+                "display_name": source["display_name"] if source else None,
+                "executable_sha256": source["executable_sha256"] if source else None,
+            } if worker else None),
+            "reference_topics": store.list_reference_topics(private_prefix=private_prefix),
+        }
+    except (StoreError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def acknowledge_match_briefing(
+    match_id: str, session_id: str, briefing_hash: str,
+) -> dict[str, Any]:
+    try:
+        scope = _scope_for_match(match_id, session_id=session_id)
+        if scope is None:
+            raise StoreError("unknown_match_scope")
+        record = _store().acknowledge_match_briefing(scope, session_id, briefing_hash)
+        return {"ok": True, "acknowledgement": record}
+    except StoreError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def match_briefing_is_acknowledged(
+    match_id: str, session_id: str, briefing_hash: str,
+) -> bool:
+    try:
+        scope = _scope_for_match(match_id, session_id=session_id)
+        return bool(scope and _store().match_briefing_acknowledged(
+            scope, session_id, briefing_hash,
+        ))
+    except StoreError:
+        return False
 
 
 def _persist_chat_envelope(

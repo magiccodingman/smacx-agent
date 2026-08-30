@@ -27,6 +27,10 @@ from urllib.request import Request, urlopen
 import uuid
 
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
+from smacx_prompt import (
+    PERSONALITY_NONE, SYSTEM_PROMPT_SCHEMA, compose_player_system_prompt,
+    prompt_sha256,
+)
 
 
 CONTROL_ID = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -1405,8 +1409,11 @@ class ControlPlane:
             _require_id(agent_id, "agent_id")
         with self.store.transaction() as connection:
             rows = connection.execute(
-                "SELECT s.agent_id, s.perspective_id, s.instance_id, a.display_name AS agent_name, "
+                "SELECT s.agent_id, s.perspective_id, s.instance_id, s.seat_index, "
+                "s.faction_id, s.faction_name, a.display_name AS agent_name, "
+                "a.personality_ref, "
                 "a.status AS agent_status, m.display_name AS match_name, m.status AS match_status, "
+                "m.ruleset_id, m.metadata_json AS match_metadata_json, "
                 "w.observed_status, w.network_json FROM seat_assignments s "
                 "JOIN agents a ON a.agent_id=s.agent_id JOIN matches m ON m.match_id=s.match_id "
                 "JOIN worker_specs w ON w.instance_id=s.instance_id "
@@ -1440,17 +1447,40 @@ class ControlPlane:
         external_profile_id = "smacx-" + hashlib.sha256(
             str(seat["agent_id"]).encode("utf-8")
         ).hexdigest()[:20]
+        personality_id = str(seat.get("personality_ref") or PERSONALITY_NONE)
+        if personality_id != PERSONALITY_NONE:
+            raise ScopeViolation("personality_card_content_not_available")
+        match_metadata = json.loads(str(seat.pop("match_metadata_json")))
+        policy_keys = (
+            "host_controller_kind", "graphiti_enabled", "lan_profile",
+            "scenario_id", "ranking_mode", "managed_clients_only",
+        )
+        match_policy = {
+            key: match_metadata[key] for key in policy_keys if key in match_metadata
+        }
+        system_prompt = compose_player_system_prompt(
+            agent_name=str(seat["agent_name"]), agent_id=str(seat["agent_id"]),
+            match_id=match_id, match_name=str(seat["match_name"]),
+            perspective_id=str(seat["perspective_id"]),
+            ruleset_id=str(seat["ruleset_id"]), seat_index=int(seat["seat_index"]),
+            match_policy=match_policy, personality_id=personality_id,
+        )
+        system_hash = prompt_sha256(system_prompt)
         profile = self.configure_harness_profile(
             str(seat["agent_id"]), provider_id,
             display_name=f"{seat['agent_name']} · Hermes",
             external_profile_id=external_profile_id,
             model_id=str(model_id), reasoning_effort=reasoning_effort,
             context_length=context_length,
+            system_prompt=system_prompt,
             metadata={
                 "active_match_id": match_id,
                 "perspective_id": seat["perspective_id"],
                 "instance_id": seat["instance_id"],
                 "mcp_url": mcp_url,
+                "system_prompt_schema": SYSTEM_PROMPT_SCHEMA,
+                "system_prompt_sha256": system_hash,
+                "personality_id": personality_id,
             },
         )
         return {
@@ -1470,6 +1500,9 @@ class ControlPlane:
             "model_id": model_id,
             "context_length": context_length,
             "reasoning_effort": reasoning_effort,
+            "system_prompt_schema": SYSTEM_PROMPT_SCHEMA,
+            "system_prompt_sha256": system_hash,
+            "personality_id": personality_id,
         }
 
     def provider_api_key(self, provider_id: str) -> str | None:

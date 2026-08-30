@@ -10,11 +10,21 @@ import tempfile
 from smacx_hermes import (
     HermesAdapterError, configure_from_descriptor, configure_profile, hermes_command,
 )
+from smacx_prompt import compose_player_system_prompt, prompt_sha256
 
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="smacx-hermes-adapter-") as temporary:
         root = Path(temporary)
+        system_prompt = compose_player_system_prompt(
+            agent_name="Contract Strategist",
+            agent_id="agent-hermes-contract",
+            match_id="match-hermes-contract",
+            match_name="Hermes contract match",
+            perspective_id="perspective-hermes-contract",
+            ruleset_id="smacx",
+            seat_index=0,
+        )
         profile = configure_profile(
             hermes_root=root,
             agent_id="agent-hermes-contract",
@@ -25,10 +35,11 @@ def main() -> int:
             model_id="Qwen3.8-27B",
             reasoning_effort="low",
             context_length=65536,
+            system_prompt=system_prompt,
         )
         profile_root = Path(profile["profile_root"])
         config = json.loads((profile_root / "config.yaml").read_text(encoding="utf-8"))
-        if config["platform_toolsets"]["cli"] != ["web", "smacx"]:
+        if config["platform_toolsets"]["cli"] != ["smacx"]:
             raise AssertionError("visual, terminal, or unrelated tools entered the gameplay profile")
         if config["memory"]["memory_enabled"]:
             raise AssertionError("duplicate unscoped Hermes memory remained enabled")
@@ -36,6 +47,13 @@ def main() -> int:
             raise AssertionError("Hermes profile was not bound to its exact MCP sidecar")
         if (profile_root / ".env").stat().st_mode & 0o777 != 0o600:
             raise AssertionError("Hermes profile secret file permissions are not private")
+        if (profile_root / "SYSTEM.md").read_text(encoding="utf-8") != system_prompt \
+                or (profile_root / "SOUL.md").read_text(encoding="utf-8") != system_prompt:
+            raise AssertionError("strict system prompt was not materialized byte-for-byte")
+        if (profile_root / "workspace" / "AGENTS.md").exists():
+            raise AssertionError("managed prompt policy was duplicated into workspace instructions")
+        if profile["system_prompt_sha256"] != prompt_sha256(system_prompt):
+            raise AssertionError("profile system prompt integrity hash drifted")
         command = hermes_command(profile, query="Inspect status only.")
         if command[1:3] != ["-p", profile["profile_id"]] or "--continue" not in command:
             raise AssertionError("Hermes command did not preserve profile/match session identity")

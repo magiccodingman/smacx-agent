@@ -22,8 +22,22 @@ def snapshot(phase: str, revision: str = "r1", ready: list[dict] | None = None) 
 def main() -> int:
     original = smacx_mcp._call
     original_chat_attention = smacx_mcp.controller_chat_attention
+    original_briefing_context = smacx_mcp.controller_match_briefing_context
+    original_briefing_acknowledged = smacx_mcp.controller_match_briefing_is_acknowledged
     calls: list[tuple[str, dict]] = []
     try:
+        smacx_mcp.controller_match_briefing_context = lambda match_id, session_id: {
+            "ok": True,
+            "scope": {
+                "agent_id": "agent-test", "perspective_id": "perspective-test",
+            },
+            "match": {"display_name": "Test", "mode": "solo", "ruleset_id": "smacx"},
+            "seat": {"seat_index": 0, "controller_kind": "agent"},
+            "policy": {}, "requested_settings": None, "game_source": None,
+            "reference_topics": [],
+        }
+        smacx_mcp.controller_match_briefing_is_acknowledged = \
+            lambda match_id, session_id, briefing_hash: True
         smacx_mcp.controller_chat_attention = lambda match_id, session_id: {
             "ok": True, "messages": [], "participants": [],
         }
@@ -140,6 +154,8 @@ def main() -> int:
     finally:
         smacx_mcp._call = original
         smacx_mcp.controller_chat_attention = original_chat_attention
+        smacx_mcp.controller_match_briefing_context = original_briefing_context
+        smacx_mcp.controller_match_briefing_is_acknowledged = original_briefing_acknowledged
     print("decision frame tests passed")
     return 0
 

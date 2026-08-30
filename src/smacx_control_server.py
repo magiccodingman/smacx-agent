@@ -25,7 +25,7 @@ import hmac
 from smacx_capabilities import capability_manifest
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
-from smacx_harness_manager import HarnessManager
+from smacx_harness_manager import HERMES_IMAGE, HarnessManager
 from smacx_operations import OperationsManager, restore_backup_offline
 from smacx_reference import read_reference, seed_reference_corpus
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
@@ -1093,8 +1093,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         harness_manager = HarnessManager(
             control, worker_manager.docker, worker_manager,
-            image_ref=os.environ.get("SMACX_HERMES_IMAGE") or None
-            or "docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843",
+            image_ref=os.environ.get("SMACX_HERMES_IMAGE") or HERMES_IMAGE,
         )
     host = getattr(arguments, "host", os.environ.get("SMACX_CONTROL_HOST", "127.0.0.1"))
     port = getattr(arguments, "port", int(os.environ.get("SMACX_CONTROL_PORT", "8080")))

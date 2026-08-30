@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sqlite3
 import tempfile
 
 from smacx_reference import read_reference, seed_reference_corpus
@@ -29,6 +30,20 @@ def main() -> int:
         if not result.get("source_title") or not result.get("source_license") \
                 or not result.get("provenance") or not result.get("content_sha256"):
             raise AssertionError("search result omitted citation/provenance")
+        cited = [item for item in store.search_reference("terraforming", limit=30)
+                 if item.get("source_url")]
+        if not cited or any(
+                not item.get("archive_url") or len(str(item.get("archive_timestamp", ""))) != 14
+                or not item.get("metadata", {}).get("citation_archive", {}).get("digest")
+                for item in cited):
+            raise AssertionError("canonical citations lack verified fixed archive fallbacks")
+        with sqlite3.connect(store.path) as connection:
+            missing_archives = connection.execute(
+                "SELECT count(*) FROM reference_documents WHERE source_url IS NOT NULL "
+                "AND (archive_url IS NULL OR archive_timestamp IS NULL)"
+            ).fetchone()[0]
+        if missing_archives:
+            raise AssertionError(f"{missing_archives} canonical citations lack archive fallbacks")
         full = read_reference(store, "get", document_id=result["document_id"])
         if not full.get("document", {}).get("body"):
             raise AssertionError("reference get did not return the selected document")
@@ -38,6 +53,12 @@ def main() -> int:
         )
         if not focused["results"] or any(item["topic"] != "expansion" for item in focused["results"]):
             raise AssertionError("topic-scoped BM25 search escaped its hierarchy")
+        exact = read_reference(
+            store, "lookup", entity_kind="mechanic", entity_key="social-ratings",
+            include_body=True,
+        )
+        if exact.get("entities", [{}])[0].get("title") != "Social ratings and threshold effects":
+            raise AssertionError(f"exact typed entity lookup failed: {exact}")
         common_private = {
             "topic": "rules", "title": "Private test mechanics",
             "summary": "A private source-isolation regression.",
@@ -103,7 +124,9 @@ def main() -> int:
                 "topic_hierarchy": True,
                 "bm25_search": True,
                 "compact_then_get_protocol": True,
+                "exact_typed_entity_lookup": True,
                 "citations_and_licenses": True,
+                "verified_archive_fallbacks": True,
                 "independent_expression_boundary": True,
                 "no_proprietary_assets_bundled": True,
                 "match_hidden_state_absent": True,

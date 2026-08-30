@@ -7457,6 +7457,8 @@ std::string semantic_snapshot_response() {
         *reinterpret_cast<const CSocialCategory*>(&faction.SE_Politics);
     CSocialEffect social_effects;
     social_calc(const_cast<CSocialCategory*>(&selected), &social_effects, faction_id, false, false);
+    const int native_time_control = *MultiplayerActive
+        ? static_cast<int>(reinterpret_cast<signed char*>(0x90E8E0)[3]) : 0;
     std::ostringstream out;
     out << "{\"ok\":true,\"snapshot\":{\"match_id\":" << json_string(agent_match_id.c_str())
         << ",\"session_id\":" << json_string(agent_session_id.c_str())
@@ -7476,7 +7478,10 @@ std::string semantic_snapshot_response() {
         << ",\"ocean_coverage\":" << *MapOceanCoverage
         << ",\"erosive_forces\":" << *MapErosiveForces
         << ",\"native_life\":" << *MapNativeLifeForms
-        << ",\"cloud_cover\":" << *MapCloudCover << "},\"rules\":";
+        << ",\"cloud_cover\":" << *MapCloudCover << "},\"time_control\":{\"id\":"
+        << native_time_control << ",\"name\":"
+        << json_string(lan_time_control_name(native_time_control))
+        << "},\"rules\":";
     append_named_game_rules(out, *GameRules, *GameState);
     char scenario_id[520] = {};
     bool scenario_launch = GetEnvironmentVariableA(

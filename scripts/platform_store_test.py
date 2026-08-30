@@ -39,6 +39,15 @@ def main() -> int:
             StoreError, lambda: SmacxStore(incompatible_database),
             "unsupported_prerelease_schema_recreate_database",
         )
+        stale_canonical = Path(temporary) / "stale-canonical" / "smacx.sqlite3"
+        stale_canonical.parent.mkdir(parents=True)
+        with sqlite3.connect(stale_canonical) as connection:
+            connection.execute("CREATE TABLE installations(singleton INTEGER PRIMARY KEY)")
+            connection.execute("PRAGMA user_version=1")
+        expect_error(
+            StoreError, lambda: SmacxStore(stale_canonical),
+            "unsupported_prerelease_schema_recreate_database",
+        )
         database = Path(temporary) / "state" / "smacx.sqlite3"
         store = SmacxStore(database)
         if store.schema_version() != 1:
@@ -63,6 +72,24 @@ def main() -> int:
         beta_instance = store.register_instance(instance_id="instance-beta", scope=beta, bridge_port=48002)
         alpha_session = store.start_session(alpha, alpha_instance["instance_id"], session_id="session-alpha")
         beta_session = store.start_session(beta, beta_instance["instance_id"], session_id="session-beta")
+
+        briefing_hash = "a" * 64
+        if store.match_briefing_acknowledged(alpha, "session-alpha", briefing_hash):
+            raise AssertionError("match briefing began pre-acknowledged")
+        acknowledgement = store.acknowledge_match_briefing(
+            alpha, "session-alpha", briefing_hash,
+        )
+        if acknowledgement["briefing_hash"] != briefing_hash \
+                or not store.match_briefing_acknowledged(alpha, "session-alpha", briefing_hash):
+            raise AssertionError("exact match briefing acknowledgement was not durable")
+        if store.match_briefing_acknowledged(alpha, "session-alpha", "b" * 64) \
+                or store.match_briefing_acknowledged(beta, "session-beta", briefing_hash):
+            raise AssertionError("briefing acknowledgement crossed a hash or perspective boundary")
+        expect_error(
+            ScopeViolation,
+            lambda: store.acknowledge_match_briefing(beta, "session-alpha", briefing_hash),
+            "session_scope_mismatch",
+        )
 
         if store.graph_namespace(alpha) == store.graph_namespace(beta):
             raise AssertionError("Graph namespaces crossed perspectives")
@@ -261,10 +288,12 @@ def main() -> int:
                 "schema_version": reopened.schema_version(),
                 "concurrent_initialization_safe": True,
                 "incompatible_prerelease_schema_rejected": True,
+                "stale_same_revision_schema_rejected": True,
                 "installation_stable": True,
                 "immutable_events": True,
                 "perspective_isolation": True,
                 "session_scope_enforced": True,
+                "briefing_acknowledgement_exact_and_isolated": True,
                 "fact_history_preserved": True,
                 "claims_beliefs_relationships_versioned": True,
                 "goals_commitments_versioned": True,

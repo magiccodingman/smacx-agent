@@ -190,6 +190,15 @@ def main() -> int:
                 or descriptor["mcp_url"] != "http://127.0.0.1:48125/mcp" \
                 or descriptor["provider_requires_api_key"] is not False:
             raise AssertionError("Hermes descriptor was not scoped to the exact seat and worker")
+        managed_profile = control.get_harness_profile(descriptor["harness_profile_id"])
+        managed_prompt = managed_profile.get("system_prompt", "")
+        if descriptor.get("system_prompt_schema") != "smacx.player-system.v1" \
+                or descriptor.get("system_prompt_sha256") \
+                != managed_profile.get("metadata", {}).get("system_prompt_sha256") \
+                or "smac_match_briefing" not in managed_prompt \
+                or "Hermes Agent" in managed_prompt \
+                or descriptor.get("personality_id") != "none":
+            raise AssertionError("SMACX did not own the exact managed player system contract")
         with store.transaction() as connection:
             connection.execute("DELETE FROM worker_specs WHERE instance_id=?", (instance["instance_id"],))
             connection.execute(

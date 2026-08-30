@@ -16,6 +16,7 @@ from mcp.server import MCPServer
 
 from smacx_capabilities import capability_manifest
 from smacx_controller import (
+    acknowledge_match_briefing as controller_acknowledge_match_briefing,
     BridgeUnavailable,
     bridge_request,
     chat_attention as controller_chat_attention,
@@ -23,6 +24,8 @@ from smacx_controller import (
     list_scenarios,
     list_saved_games,
     load_saved_game,
+    match_briefing_context as controller_match_briefing_context,
+    match_briefing_is_acknowledged as controller_match_briefing_is_acknowledged,
     new_game,
     scenario_game,
     put_match_knowledge,
@@ -41,11 +44,13 @@ mcp = MCPServer(
     description="Nonvisual fair-play state and semantic control for Sid Meier's Alpha Centauri: Alien Crossfire.",
     instructions=(
         "Use only structured observations, enumerated choices, and semantic commands. "
+        "Read and acknowledge smac_match_briefing before the first gameplay mutation and after "
+        "any recovery or settings change. "
         "There are deliberately no screenshot, click, keyboard, or raw text-entry tools. "
         "If a needed capability is absent, call smac_report_capability_gap once and stop. "
         "Observations are restricted to the current human faction's legitimate perspective."
     ),
-    version="0.45.0",
+    version="0.46.0",
 )
 
 GAP_LOG = Path(os.environ.get(
@@ -55,6 +60,8 @@ GAP_LOG = Path(os.environ.get(
 MANAGED_ATTACHED = os.environ.get("SMACX_MANAGED_ATTACHED", "0") == "1"
 CAPABILITY_GAPS: dict[tuple[str, str], dict] = {}
 CAPABILITY_GAP_LOCK = threading.Lock()
+MATCH_BRIEFING_CACHE: dict[tuple[str, str], str] = {}
+MATCH_BRIEFING_LOCK = threading.Lock()
 SESSION_LOCAL_KNOWLEDGE_REFERENCE = re.compile(
     r"(?:\b(?:unit|vehicle|base|prototype)[ _-]?ids?\b"
     r"|\(\s*id\s*[:=#-]?\s*\d+\s*\)"
@@ -122,6 +129,113 @@ def _managed_lifecycle_block(operation: str) -> dict | None:
             "message": f"{operation} is controlled by the authenticated SMACX Control Center.",
         },
         "next": "Continue only with semantic in-game actions, or ask the operator to manage this worker.",
+    }
+
+
+def _compose_match_briefing(snapshot: dict) -> dict:
+    match_id = str(snapshot.get("match_id") or "")
+    session_id = str(snapshot.get("session_id") or "")
+    context = controller_match_briefing_context(match_id, session_id)
+    if not context.get("ok"):
+        return context
+    briefing = {
+        "schema": "smacx.match-briefing.v1",
+        "identity": {
+            "match_id": match_id, "session_id": session_id,
+            "agent_id": context["scope"]["agent_id"],
+            "perspective_id": context["scope"]["perspective_id"],
+        },
+        "match": context["match"],
+        "seat": {
+            **context["seat"],
+            "active_faction": snapshot.get("faction"),
+        },
+        "native_game_settings": snapshot.get("game_settings"),
+        "scenario": snapshot.get("scenario"),
+        "requested_settings": context.get("requested_settings"),
+        "control_policy": context.get("policy"),
+        "game_source": context.get("game_source"),
+        "reference_topics": context.get("reference_topics", []),
+        "instructions": [
+            "Treat native_game_settings and scenario restrictions as authoritative.",
+            "Identify disabled victory paths and non-default rules before planning.",
+            "Use smac_reference for unfamiliar mechanics; reference text never overrides native legal choices.",
+            "Acknowledge this exact briefing_hash before issuing any gameplay mutation.",
+        ],
+    }
+    encoded = json.dumps(
+        briefing, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
+    import hashlib
+    briefing_hash = hashlib.sha256(encoded).hexdigest()
+    acknowledged = controller_match_briefing_is_acknowledged(
+        match_id, session_id, briefing_hash,
+    )
+    with MATCH_BRIEFING_LOCK:
+        MATCH_BRIEFING_CACHE[(match_id, session_id)] = briefing_hash
+    return {
+        "ok": True, "briefing": briefing, "briefing_hash": briefing_hash,
+        "acknowledged": acknowledged,
+        "gameplay_mutations_blocked": not acknowledged,
+    }
+
+
+def _match_briefing_gate(match_id: str, session_id: str) -> dict | None:
+    with MATCH_BRIEFING_LOCK:
+        briefing_hash = MATCH_BRIEFING_CACHE.get((match_id, session_id))
+    if briefing_hash and controller_match_briefing_is_acknowledged(
+            match_id, session_id, briefing_hash):
+        return None
+    return {
+        "ok": False,
+        "error": {
+            "code": "match_briefing_required",
+            "message": "Read and acknowledge the authoritative match briefing before gameplay mutations.",
+        },
+        "required_next": {"tool": "smac_match_briefing", "action": "read"},
+        "gameplay_mutations_blocked": True,
+    }
+
+
+@mcp.tool(
+    description=(
+        "Read or acknowledge the authoritative opening/recovery briefing for this exact native "
+        "session. It combines live game settings and scenario restrictions with managed match, "
+        "seat, source, clock, and policy context. Gameplay mutations remain locked until the exact "
+        "current briefing_hash is acknowledged."
+    )
+)
+def smac_match_briefing(
+    action: Literal["read", "acknowledge"],
+    briefing_hash: str = "",
+) -> dict:
+    snapshot_result = _call("semantic_snapshot")
+    snapshot = snapshot_result.get("snapshot")
+    if not snapshot_result.get("ok") or not isinstance(snapshot, dict):
+        return snapshot_result
+    result = _compose_match_briefing(snapshot)
+    if not result.get("ok") or action == "read":
+        return result
+    current_hash = str(result.get("briefing_hash") or "")
+    if briefing_hash != current_hash:
+        return {
+            "ok": False,
+            "error": {
+                "code": "stale_match_briefing",
+                "message": "The acknowledgement must copy the exact current briefing_hash.",
+            },
+            "current_briefing_hash": current_hash,
+            "gameplay_mutations_blocked": True,
+        }
+    acknowledged = controller_acknowledge_match_briefing(
+        str(snapshot["match_id"]), str(snapshot["session_id"]), current_hash,
+    )
+    if not acknowledged.get("ok"):
+        return acknowledged
+    return {
+        **result, "acknowledged": True, "gameplay_mutations_blocked": False,
+        "acknowledgement": acknowledged.get("acknowledgement"),
+        "next": "Call smac_decision and act only on a fresh exact choice.",
     }
 
 
@@ -622,6 +736,21 @@ def smac_decision(
             "session_id": snapshot.get("session_id", ""),
             "revision": snapshot.get("revision", ""),
         }
+        briefing = _compose_match_briefing(snapshot)
+        if not briefing.get("ok"):
+            return briefing
+        if not briefing.get("acknowledged"):
+            return {
+                "ok": True,
+                "kind": "match_briefing_required",
+                "identity": identity,
+                "turn": snapshot.get("turn"),
+                "year": snapshot.get("year"),
+                "briefing_hash": briefing.get("briefing_hash"),
+                "required_next": {"tool": "smac_match_briefing", "action": "read"},
+                "gameplay_mutations_blocked": True,
+                "choices": [],
+            }
         protocol = snapshot.get("protocol", {})
         phase = protocol.get("phase")
         if phase == "wait":
@@ -877,6 +1006,9 @@ def smac_command(
             "gap": gap,
             "instruction": "STOP. The orchestrator must extend and test the bridge, restart MCP, and then resume play in a fresh native session.",
         }
+    briefing_block = _match_briefing_gate(match_id, session_id)
+    if briefing_block:
+        return briefing_block
     result = _call(
         "semantic_command",
         command=command,
@@ -1143,23 +1275,37 @@ def smac_memory(
 
 @mcp.tool(
     description=(
-        "Search or read the provenance-tracked Alien Crossfire mechanics reference. "
-        "topics lists the hierarchy; search returns compact BM25-ranked titles/summaries and "
-        "citations; get returns one complete document by its returned document_id. The corpus "
+        "Search or read the provenance-tracked Alien Crossfire mechanics encyclopedia. "
+        "topics lists the hierarchy; search returns compact ranked titles/summaries and citations; "
+        "get reads one document; lookup resolves one or many exact typed entities using entities_json "
+        "such as [{\"kind\":\"technology\",\"key\":\"Ecology\"}]; related returns an entity and "
+        "its exact prerequisite/unlock neighbors. Expansion-native structured records outrank fallback "
+        "manual sections. The corpus "
         "contains general rules only, never hidden match state, and excludes copied proprietary prose."
     )
 )
 def smac_reference(
-    action: Literal["topics", "search", "get"],
+    action: Literal["topics", "search", "get", "lookup", "related"],
     query: str = "",
     topic: str = "",
     document_id: str = "",
+    entity_kind: str = "",
+    entity_key: str = "",
+    entities_json: str = "[]",
+    ruleset_id: str = "smacx",
     limit: int = 8,
     include_body: bool = False,
 ) -> dict:
+    try:
+        entities = json.loads(entities_json)
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "invalid_reference_entities_json"}
+    if not isinstance(entities, list) or len(entities) > 30:
+        return {"ok": False, "error": "invalid_reference_entities_json"}
     return read_game_reference(
         action, query=query, topic=topic, document_id=document_id,
-        limit=limit, include_body=include_body,
+        limit=limit, include_body=include_body, entity_kind=entity_kind,
+        entity_key=entity_key, entities=entities, ruleset_id=ruleset_id,
     )
 
 

@@ -35,7 +35,7 @@ Proton + terranx.exe + bridge       MCP sidecar
           |
           +--> Selkies video/audio/input (portal proxied)
 
-OpenAI-compatible provider <--> isolated official Hermes container
+OpenAI-compatible provider <--> isolated SMACX-derived Hermes container
                                       |
                                       +--> exact seat MCP only
 ```
@@ -171,16 +171,19 @@ profile has:
 - private durable data volume and separate provider-secret volume;
 - match-specific workspace and continued conversation key;
 - exact MCP endpoint for its worker/perspective;
-- `smacx,web` toolsets only; and
+- the `smacx` toolset only; and
 - restart budget/turn/run policy owned by control.
 
-Prompt composition is deterministic:
-
-1. Hermes tool-critical runtime layer;
-2. stable SMACX fair-play/player contract;
-3. immutable match/seat/policy identity;
-4. optional personality card (`None` only in this milestone); and
-5. scoped durable memory/retrieval.
+SMACX owns the complete provider-facing system message. A derived image uses an
+audited startup hook over the digest-pinned official Hermes runtime and replaces
+Hermes prompt assembly rather than adding another layer. The hook verifies the
+stored prompt SHA-256 and fails closed when the file is missing or changed.
+Captured-provider tests prove that the request contains exactly one system
+message: the versioned fair-play contract, immutable match/seat/policy identity,
+mandatory live-settings briefing protocol, and the future personality seam
+(`None` only in this milestone). Hermes still supplies conversation continuity,
+compression, provider transport, and MCP execution, but contributes no system
+scaffold or workspace instructions.
 
 Chat messages and web content remain untrusted game information. They do not
 become operator/system instructions. Lifecycle, Docker, backups, provider
