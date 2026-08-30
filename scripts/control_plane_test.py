@@ -12,7 +12,7 @@ import tempfile
 import threading
 
 from smacx_control import AuthenticationError, ControlPlane, ProviderError
-from smacx_store import MemoryScope, ScopeViolation, SmacxStore
+from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 
 
 def expect(error_type, function, message: str) -> None:
@@ -66,11 +66,16 @@ def main() -> int:
         if bootstrap_token in json.dumps(bootstrap):
             raise AssertionError("bootstrap token leaked through setup metadata")
         expect(
+            InvalidRecord,
+            lambda: control.bootstrap_admin(bootstrap_token, "Short1A"),
+            "invalid_admin_password",
+        )
+        expect(
             AuthenticationError,
-            lambda: control.bootstrap_admin("wrong-token", "a sufficiently long password"),
+            lambda: control.bootstrap_admin("wrong-token", "Passw0rd"),
             "invalid_bootstrap_token",
         )
-        admin = control.bootstrap_admin(bootstrap_token, "a sufficiently long password")
+        admin = control.bootstrap_admin(bootstrap_token, "Passw0rd")
         if admin["username"] != "admin" or token_path.exists():
             raise AssertionError("bootstrap did not create admin and revoke its token")
         if control.ensure_bootstrap_token()["setup_required"]:
@@ -81,7 +86,7 @@ def main() -> int:
             "invalid_credentials",
         )
 
-        session = control.login("admin", "a sufficiently long password")
+        session = control.login("admin", "Passw0rd")
         authenticated = control.authenticate(session.token)
         if authenticated["admin_id"] != admin["admin_id"]:
             raise AssertionError("session authenticated as the wrong admin")
@@ -102,6 +107,11 @@ def main() -> int:
             )
             if not provider["has_api_key"] or "api_key" in provider:
                 raise AssertionError("provider secret was missing or exposed")
+            provider = control.configure_provider(
+                "Local Qwen", provider["base_url"], provider_id=provider["provider_id"],
+            )
+            if not provider["has_api_key"]:
+                raise AssertionError("editing without a new API key did not preserve the stored key")
             discovered = control.discover_provider(provider["provider_id"])
             contexts = {model["model_id"]: model["context_length"] for model in discovered["models"]}
             if contexts != {"qwen-test-a": 32768, "qwen-test-b": 65536}:
@@ -119,6 +129,30 @@ def main() -> int:
             single = control.discover_provider(provider["provider_id"])
             if single["default_model_id"] != "only-model":
                 raise AssertionError("a sole advertised model was not auto-selected")
+
+            disposable = control.configure_provider(
+                "Accidental endpoint", "http://unused-model-box:8000/v1",
+                api_key="disposable-provider-key",
+            )
+            with store.transaction() as connection:
+                secret = connection.execute(
+                    "SELECT api_key_secret_id FROM model_providers WHERE provider_id=?",
+                    (disposable["provider_id"],),
+                ).fetchone()
+            secret_id = str(secret["api_key_secret_id"])
+            deleted = control.delete_provider(disposable["provider_id"])
+            if not deleted["deleted"]:
+                raise AssertionError("unused provider was not deleted")
+            expect(
+                ScopeViolation, lambda: control.get_provider(disposable["provider_id"]),
+                "unknown_provider_id",
+            )
+            with store.transaction() as connection:
+                secret_status = connection.execute(
+                    "SELECT status FROM secret_refs WHERE secret_id=?", (secret_id,),
+                ).fetchone()
+            if not secret_status or secret_status["status"] != "revoked":
+                raise AssertionError("deleted provider API key was not revoked")
         finally:
             server.shutdown()
             server.server_close()
@@ -150,6 +184,10 @@ def main() -> int:
         )
         if harness["agent_id"] != agent["agent_id"] or harness["model_id"] != "only-model":
             raise AssertionError("Hermes harness profile was not scoped to its agent/provider")
+        expect(
+            StoreError, lambda: control.delete_provider(provider["provider_id"]),
+            "provider_in_use_by_harness_profile",
+        )
         provider = control.configure_provider(
             "Local Qwen", provider["base_url"], provider_id=provider["provider_id"],
             api_key="", default_model_id="only-model",

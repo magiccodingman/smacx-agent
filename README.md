@@ -134,7 +134,7 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll bootstrap-token
 ```
 
 Open <http://127.0.0.1:8080>, sign in as `admin`, enter that token, and choose
-your own password. There is no default password.
+your own password of at least eight characters. There is no default password.
 
 In **Administration**:
 
@@ -204,6 +204,11 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll admin-reset-token 
 Other members can self-register without email. Invited handles are reserved as
 case-insensitive provisional accounts; the player claims the same durable seat
 and history when they choose a password.
+
+Signed-in users can change their own password from **Your account**. Lost
+passwords still use a short-lived administrator reset ticket. Set
+`SMACX_PASSWORD_MIN_LENGTH` before `docker compose up` to raise the default
+eight-character minimum for an installation.
 
 Model provider keys are written to purpose-scoped secrets and mounted into
 Hermes at runtime. They do not appear in Docker inspect output or the portal

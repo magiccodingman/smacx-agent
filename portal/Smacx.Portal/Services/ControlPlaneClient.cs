@@ -167,23 +167,52 @@ public sealed class ControlPlaneClient(
             request.Content = new StringContent(
                 JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
         }
-        using var response = await client.SendAsync(request, cancellationToken);
-        var document = await JsonDocument.ParseAsync(
-            await response.Content.ReadAsStreamAsync(cancellationToken),
-            cancellationToken: cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            var error = document.RootElement.TryGetProperty("error", out var payload) ? payload : default;
-            var code = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var codeValue)
-                ? codeValue.GetString() ?? "control_error"
-                : "control_error";
-            var message = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var messageValue)
-                ? messageValue.GetString() ?? code
-                : code;
-            document.Dispose();
-            throw new ControlPlaneException(code, message, (int)response.StatusCode);
+            response = await client.SendAsync(request, cancellationToken);
         }
-        return document;
+        catch (HttpRequestException exception)
+        {
+            logger.LogWarning(exception, "Control service request failed for {Path}", path);
+            throw new ControlPlaneException(
+                "control_unavailable",
+                "The control service is unavailable. Check its status and try again.",
+                StatusCodes.Status503ServiceUnavailable);
+        }
+        using (response)
+        {
+            JsonDocument document;
+            try
+            {
+                document = await JsonDocument.ParseAsync(
+                    await response.Content.ReadAsStreamAsync(cancellationToken),
+                    cancellationToken: cancellationToken);
+            }
+            catch (JsonException exception)
+            {
+                logger.LogWarning(exception,
+                    "Control service returned a non-JSON response with HTTP status {StatusCode}",
+                    (int)response.StatusCode);
+                throw new ControlPlaneException(
+                    "invalid_control_response",
+                    $"The control service returned an invalid response (HTTP {(int)response.StatusCode}).",
+                    StatusCodes.Status502BadGateway);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = document.RootElement.TryGetProperty("error", out var payload) ? payload : default;
+                var code = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var codeValue)
+                    ? codeValue.GetString() ?? "control_error"
+                    : "control_error";
+                var message = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var messageValue)
+                    ? messageValue.GetString() ?? code
+                    : code;
+                document.Dispose();
+                throw new ControlPlaneException(code, message, (int)response.StatusCode);
+            }
+            return document;
+        }
     }
 
     public Task<JsonDocument> GetRawAsync(string path, CancellationToken cancellationToken = default) =>

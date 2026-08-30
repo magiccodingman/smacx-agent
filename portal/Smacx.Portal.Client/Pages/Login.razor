@@ -10,7 +10,8 @@
     else if (setup?.SetupRequired == true)
     {
         <MudTextField @bind-Value="bootstrapToken" Label="Bootstrap token" Variant="Variant.Outlined" Immediate="true" />
-        <MudTextField @bind-Value="password" Label="New administrator password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" />
+        <MudTextField @bind-Value="password" Label="New administrator password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true"
+                      HelperText="@PasswordHelp" />
         <MudTextField @bind-Value="confirmation" Label="Confirm password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" />
         <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="busy" OnClick="Bootstrap">Initialize</MudButton>
         <div class="auth-hint">Read the token on the host with <code>@setup.BootstrapCommand</code></div>
@@ -21,12 +22,19 @@
         <MudTextField @bind-Value="password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" />
         <MudCheckBox @bind-Value="remember" Label="Keep me signed in on this device" Color="Color.Primary" />
         <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="busy" OnClick="SignIn">Sign in</MudButton>
-        @if (setup?.RegistrationEnabled == true) { <div class="auth-hint">New here? <a href="register">Create a LAN account</a> · <a href="reset-password">Have a reset ticket?</a></div> }
+        <div class="auth-hint">
+            @if (setup?.RegistrationEnabled == true)
+            {
+                <span>New here? <a href="register">Create a LAN account</a> · </span>
+            }
+            <a href="reset-password">Have a reset ticket?</a>
+        </div>
     }
     @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert> }
 </section></div>
 @code {
     private PortalSetupState? setup; private string username = ""; private string password = ""; private string confirmation = ""; private string bootstrapToken = ""; private string? error; private bool remember; private bool loading = true; private bool busy;
+    private string PasswordHelp => $"At least {setup?.PasswordMinimumLength ?? 8} characters with upper, lower, and a number.";
     protected override async Task OnInitializedAsync() { setup = (await Api.GetAsync<PortalSetupState>("api/auth/setup"))?.Data; loading = false; }
     private async Task SignIn() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/login", new LoginRequest(username, password, remember)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo("/", true); else error = result.Payload?.Error?.Message ?? "Sign in failed."; }
     private async Task Bootstrap() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/bootstrap", new BootstrapRequest(bootstrapToken, password, confirmation)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo("/", true); else error = result.Payload?.Error?.Message ?? "Setup failed."; }

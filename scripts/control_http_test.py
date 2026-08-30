@@ -141,6 +141,30 @@ def main() -> int:
             if provider_body["api_key"] in json.dumps(providers):
                 raise AssertionError("provider API key leaked in list response")
 
+            status, _, duplicate = request(
+                server.server_port, "POST", "/api/v1/providers", body={
+                    "display_name": provider_body["display_name"],
+                    "base_url": "http://another-model-box:8000/v1",
+                }, cookies=cookies, csrf=cookies["smacx_csrf"],
+            )
+            if status != 400 \
+                    or duplicate["error"]["code"] != "provider_display_name_already_exists" \
+                    or "already uses" not in duplicate["error"]["message"]:
+                raise AssertionError(f"duplicate provider name was not explained: {duplicate}")
+
+            provider_id = configured["provider"]["provider_id"]
+            status, _, deleted = request(
+                server.server_port, "POST", f"/api/v1/providers/{provider_id}/delete",
+                body={}, cookies=cookies, csrf=cookies["smacx_csrf"],
+            )
+            if status != 200 or not deleted.get("deleted"):
+                raise AssertionError(f"unused provider deletion failed: {deleted}")
+            status, _, providers = request(
+                server.server_port, "GET", "/api/v1/providers", cookies=cookies,
+            )
+            if status != 200 or providers["providers"]:
+                raise AssertionError("deleted provider remained in the provider list")
+
             status, _, workers = request(
                 server.server_port, "GET", "/api/v1/workers", cookies=cookies,
             )

@@ -50,16 +50,24 @@ public sealed class PortalFlowTests : IAsyncLifetime
         var setup = await GetDataAsync<PortalSetupState>("api/auth/setup");
         Assert.True(setup.SetupRequired);
         Assert.Equal("admin", setup.DefaultAdministrator);
+        Assert.Equal(8, setup.PasswordMinimumLength);
 
         var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var bootstrapToken = (await File.ReadAllTextAsync(
             Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
         var bootstrap = await PostAsync<PortalSession>(
             "api/auth/bootstrap",
-            new BootstrapRequest(bootstrapToken, "StrongPassword123", "StrongPassword123"),
+            new BootstrapRequest(bootstrapToken, "StrongP1", "StrongP1"),
             csrf.Token);
         Assert.Equal(HttpStatusCode.OK, bootstrap.Response.StatusCode);
         Assert.True(bootstrap.Payload.Data?.User?.IsAdministrator);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var changedPassword = await PostAsync<PortalSession>(
+            "api/auth/password/change",
+            new ChangePasswordRequest("StrongP1", "Changed2", "Changed2"), csrf.Token);
+        Assert.Equal(HttpStatusCode.OK, changedPassword.Response.StatusCode);
+        Assert.True(changedPassword.Payload.Ok);
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var create = new CreateLobbyRequest(
@@ -119,6 +127,10 @@ public sealed class PortalFlowTests : IAsyncLifetime
             });
             await database.SaveChangesAsync();
         }
+        var protectedProvider = await PostAsync<System.Text.Json.JsonElement>(
+            "api/admin/providers/provider-test/delete", new { }, csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, protectedProvider.Response.StatusCode);
+        Assert.Equal("provider_in_use_by_ai_profile", protectedProvider.Payload.Error?.Code);
         var withJoin = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Equal("192.0.2.25", withJoin.NativeJoin?.HostAddress);
         Assert.Equal("GaianGuest", withJoin.NativeJoin?.Players.Single().PlayerName);
@@ -160,7 +172,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var claimed = await PostAsync<PortalSession>("api/auth/register",
-            new RegistrationRequest("guestone", "Guest One", "GuestPassword123", "GuestPassword123"),
+            new RegistrationRequest("guestone", "Guest One", "GuestA1b", "GuestA1b"),
             csrf.Token);
         Assert.Equal("GuestOne", claimed.Payload.Data?.User?.GameHandle);
         var claimedLobby = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");

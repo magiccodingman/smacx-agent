@@ -65,7 +65,9 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll bootstrap-token
 ```
 
 Open <http://127.0.0.1:8080>, use username `admin`, enter the token, and choose
-a password. The token is revoked after successful bootstrap.
+an eight-character-or-longer password. The token is revoked after successful
+bootstrap. The minimum can be raised at startup with
+`SMACX_PASSWORD_MIN_LENGTH`; values from 8 through 128 are accepted.
 
 If the original administrator password is lost, create a 30-minute reset
 ticket without deleting any data:
@@ -77,6 +79,10 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll admin-reset-token 
 Enter the printed username/token on the Reset access page and choose a new
 password. Administrators can issue the same kind of ticket for members from
 **Administration → Users** and can promote another account.
+
+Any signed-in member who knows their current password can change it directly
+from **Your account → Change password**. No reset ticket or administrator is
+needed for an ordinary password change.
 
 Registration is deliberately lightweight for a friendly LAN: no email is
 required. Usernames/game handles compare case-insensitively and use characters
@@ -138,6 +144,13 @@ Go to **Administration → Providers & AI profiles**.
 The form intentionally ships with a blank provider URL. An address entered on
 one installation is stored only in that installation's control data; the
 project does not contain a developer-specific model-server address.
+
+Configured endpoints can be edited or removed from the endpoint list. Editing
+never sends the existing API key back to the browser: leave the key field blank
+to preserve it, enter a replacement, or explicitly select its removal. Endpoint
+removal requires confirmation, revokes its managed key, and is limited to
+unused endpoints. An endpoint referenced by an AI profile or historical harness
+configuration remains protected so match history stays meaningful.
 
 The provider may be on the Docker host, another LAN host, or a home-lab model
 server reachable from the Docker network. Multiple profiles may use one model
@@ -228,6 +241,19 @@ Select the assigned lobby seat and **Play**. Selkies streams the real game with
 audio and accepts ordinary mouse, keyboard, shortcuts, text, and fullscreen.
 The transport reconnects to the same worker after a browser refresh. A user can
 leave the browser and return without changing their native faction.
+
+The managed desktop is fixed for the life of the worker (1280×800 by default,
+with an enforced minimum of 800×600). Selkies scales that desktop locally while
+preserving its aspect ratio, so narrower desktop windows, tablets, and phones do
+not change the match resolution. Landscape and fullscreen are strongly
+recommended on small touch screens because the original game UI and text remain
+desktop-sized. Remote display resizing is intentionally disabled: a browser
+resize or phone rotation must not change the shared display seen by other
+players or spectators. The stream server locks its manual resolution to the
+worker display and performs local browser scaling. A different native
+resolution can be selected through the worker environment when it is launched
+(the portal does not expose that advanced control yet), but changing it during
+a running game is not supported.
 
 Interactive stream tickets are short-lived and seat-scoped. Only the seat's
 member or an administrator can request one. Spectator tickets are always

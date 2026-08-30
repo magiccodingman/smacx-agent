@@ -39,6 +39,7 @@ USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 MODEL_ID_LIMIT = 512
 PROVIDER_RESPONSE_LIMIT = 4 * 1024 * 1024
+PASSWORD_MINIMUM_LENGTH = 8
 PASSWORD_PARAMETERS = {"algorithm": "scrypt", "n": 32768, "r": 8, "p": 1, "dklen": 32}
 
 
@@ -371,7 +372,7 @@ class ControlPlane:
     def bootstrap_admin(self, bootstrap_token: str, password: str, *, username: str = "admin") -> dict[str, Any]:
         if not USERNAME.fullmatch(username):
             raise InvalidRecord("invalid_admin_username")
-        if not isinstance(password, str) or not 12 <= len(password) <= 1024:
+        if not isinstance(password, str) or not PASSWORD_MINIMUM_LENGTH <= len(password) <= 1024:
             raise InvalidRecord("invalid_admin_password")
         with self._bootstrap_lock:
             if self.admin_exists():
@@ -526,6 +527,11 @@ class ControlPlane:
             existing = connection.execute(
                 "SELECT * FROM model_providers WHERE provider_id=?", (provider_id,),
             ).fetchone()
+            name_owner = connection.execute(
+                "SELECT provider_id FROM model_providers WHERE display_name=?", (display_name,),
+            ).fetchone()
+        if name_owner and str(name_owner["provider_id"]) != provider_id:
+            raise InvalidRecord("provider_display_name_already_exists")
         secret_id = existing["api_key_secret_id"] if existing else None
         if api_key is not None:
             if not isinstance(api_key, str) or len(api_key) > 65_536:
@@ -584,6 +590,33 @@ class ControlPlane:
                 "SELECT provider_id FROM model_providers ORDER BY display_name"
             )]
         return [self.get_provider(str(identifier)) for identifier in identifiers]
+
+    def delete_provider(self, provider_id: str) -> dict[str, Any]:
+        """Remove an unused provider and revoke its stored API key, if any.
+
+        Harness profiles are immutable historical configuration.  Refusing to
+        remove a provider they reference keeps old match and telemetry records
+        intelligible instead of leaving a dangling provider identity.
+        """
+        _require_id(provider_id, "provider_id")
+        with self.store.transaction() as connection:
+            provider = connection.execute(
+                "SELECT api_key_secret_id FROM model_providers WHERE provider_id=?",
+                (provider_id,),
+            ).fetchone()
+            if not provider:
+                raise ScopeViolation("unknown_provider_id")
+            if connection.execute(
+                "SELECT 1 FROM harness_profiles WHERE provider_id=? LIMIT 1",
+                (provider_id,),
+            ).fetchone():
+                raise StoreError("provider_in_use_by_harness_profile")
+            secret_id = provider["api_key_secret_id"]
+            connection.execute("DELETE FROM provider_models WHERE provider_id=?", (provider_id,))
+            connection.execute("DELETE FROM model_providers WHERE provider_id=?", (provider_id,))
+        if secret_id:
+            self.vault.revoke(str(secret_id))
+        return {"ok": True, "provider_id": provider_id, "deleted": True}
 
     def discover_provider(self, provider_id: str, *, timeout: float = 10.0,
                           ssl_context: ssl.SSLContext | None = None) -> dict[str, Any]:

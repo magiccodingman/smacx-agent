@@ -26,6 +26,16 @@ if (cliMode)
 {
     builder.Logging.ClearProviders();
 }
+const int defaultPasswordMinimumLength = 8;
+var passwordMinimumLength = defaultPasswordMinimumLength;
+var configuredPasswordMinimumLength = Environment.GetEnvironmentVariable("SMACX_PASSWORD_MIN_LENGTH");
+if (!string.IsNullOrWhiteSpace(configuredPasswordMinimumLength) &&
+    (!int.TryParse(configuredPasswordMinimumLength, out passwordMinimumLength) ||
+     passwordMinimumLength is < 8 or > 128))
+{
+    throw new InvalidOperationException(
+        "SMACX_PASSWORD_MIN_LENGTH must be an integer between 8 and 128.");
+}
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -120,7 +130,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
         options.SignIn.RequireConfirmedAccount = false;
-        options.Password.RequiredLength = 12;
+        options.Password.RequiredLength = passwordMinimumLength;
         options.Password.RequireDigit = true;
         options.Password.RequireLowercase = true;
         options.Password.RequireUppercase = true;

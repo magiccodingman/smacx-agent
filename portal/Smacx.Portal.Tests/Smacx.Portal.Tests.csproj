@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Smacx.Portal\Smacx.Portal.csproj" />
+    <ProjectReference Include="..\Smacx.Portal.Client\Smacx.Portal.Client.csproj" />
     <ProjectReference Include="..\Smacx.Portal.Contracts\Smacx.Portal.Contracts.csproj" />
   </ItemGroup>
 

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Smacx.Portal.Contracts;
 using Smacx.Portal.Data;
 using Smacx.Portal.Infrastructure;
@@ -18,7 +19,8 @@ public sealed partial class AuthController(
     SignInManager<ApplicationUser> signInManager,
     ApplicationDbContext database,
     BootstrapTokenStore bootstrapTokens,
-    IAntiforgery antiforgery) : ControllerBase
+    IAntiforgery antiforgery,
+    IOptions<IdentityOptions> identityOptions) : ControllerBase
 {
     private static readonly SemaphoreSlim BootstrapGate = new(1, 1);
 
@@ -40,7 +42,8 @@ public sealed partial class AuthController(
             await bootstrapTokens.IsSetupRequiredAsync(),
             registrationEnabled,
             "admin",
-            bootstrapTokens.BootstrapCommand));
+            bootstrapTokens.BootstrapCommand,
+            identityOptions.Value.Password.RequiredLength));
     }
 
     [HttpGet("session")]
@@ -277,6 +280,34 @@ public sealed partial class AuthController(
     {
         await signInManager.SignOutAsync();
         return ApiResponse<bool>.Success(true);
+    }
+
+    [HttpPost("password/change")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<PortalSession>>> ChangePassword(
+        ChangePasswordRequest request)
+    {
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            return BadRequest(ApiResponse<PortalSession>.Failure(
+                "password_confirmation_mismatch", "The password confirmation does not match."));
+        }
+        var user = await userManager.GetUserAsync(User);
+        if (user is null)
+        {
+            return Unauthorized(ApiResponse<PortalSession>.Failure(
+                "session_user_not_found", "The signed-in account no longer exists."));
+        }
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        var result = await userManager.ChangePasswordAsync(
+            user, request.CurrentPassword, request.NewPassword);
+        if (!result.Succeeded)
+        {
+            return BadRequest(ApiResponse<PortalSession>.Failure(
+                "password_change_failed", FormatIdentityErrors(result)));
+        }
+        await signInManager.RefreshSignInAsync(user);
+        return ApiResponse<PortalSession>.Success(new(true, await ToPortalUserAsync(user)));
     }
 
     private ApplicationUser NewUser(string username, string displayName)

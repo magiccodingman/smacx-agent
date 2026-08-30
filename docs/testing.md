@@ -147,6 +147,12 @@ portal layout. The portal routes use WebAssembly interactivity without
 prerender for authenticated cookie consistency; SignalR remains available for
 presence/lobby events.
 
+A fixed 1280×800 Selkies stream was also measured at 1440×900, 1024×768,
+390×844, and 844×390 browser viewports. Local scaling preserved the 16:10 game
+aspect ratio, letterboxed the unused area, and produced no horizontal or
+vertical page overflow. The worker forces manual stream resolution so the
+initial connection cannot resize the shared game desktop to the first viewer.
+
 A follow-up first-run UX run used a disposable portal database against the real
 control catalog. It verified the no-profile warning and disabled launch guard,
 the two-step endpoint/profile onboarding path, automatic selection when only

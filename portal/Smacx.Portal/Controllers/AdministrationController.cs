@@ -47,7 +47,7 @@ public sealed class AdministrationController(
     }
 
     [HttpPost("providers")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> ConfigureProvider(
+    public Task<ActionResult<ApiResponse<JsonElement?>>> ConfigureProvider(
         ProviderConfigurationRequest request) => Proxy("api/v1/providers", new
         {
             display_name = request.DisplayName,
@@ -59,17 +59,31 @@ public sealed class AdministrationController(
         }, "provider");
 
     [HttpPost("providers/{providerId}/discover")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> DiscoverProvider(string providerId) =>
+    public Task<ActionResult<ApiResponse<JsonElement?>>> DiscoverProvider(string providerId) =>
         Proxy($"api/v1/providers/{providerId}/discover", new { }, "provider");
 
     [HttpPost("providers/{providerId}/select")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> SelectProvider(
+    public Task<ActionResult<ApiResponse<JsonElement?>>> SelectProvider(
         string providerId, ProviderModelSelectionRequest request) =>
         Proxy($"api/v1/providers/{providerId}/select", new
         {
             model_id = request.ModelId,
             context_length_override = request.ContextLengthOverride,
         }, "provider");
+
+    [HttpPost("providers/{providerId}/delete")]
+    public async Task<ActionResult<ApiResponse<JsonElement?>>> DeleteProvider(string providerId)
+    {
+        var referenced = await database.PortalAiProfileVersions.AsNoTracking()
+            .AnyAsync(item => item.ProviderId == providerId, HttpContext.RequestAborted);
+        if (referenced)
+        {
+            return Conflict(ApiResponse<JsonElement?>.Failure(
+                "provider_in_use_by_ai_profile",
+                "This model endpoint is referenced by an AI player profile and must remain for historical records. Only unused endpoints can be removed."));
+        }
+        return await Proxy($"api/v1/providers/{Uri.EscapeDataString(providerId)}/delete", new { });
+    }
 
     [HttpGet("ai-profiles")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<AiProfileVersion>>>> Profiles()
@@ -142,7 +156,7 @@ public sealed class AdministrationController(
     }
 
     [HttpPost("game-sources")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> ValidateSource(GameSourceRequest request) =>
+    public Task<ActionResult<ApiResponse<JsonElement?>>> ValidateSource(GameSourceRequest request) =>
         Proxy("api/v1/game-sources/validate", new
         {
             display_name = request.DisplayName, host_path = request.HostPath,
@@ -169,32 +183,32 @@ public sealed class AdministrationController(
     }
 
     [HttpPost("runtimes")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> ImportRuntime(RuntimeImportRequest request) =>
+    public Task<ActionResult<ApiResponse<JsonElement?>>> ImportRuntime(RuntimeImportRequest request) =>
         Proxy("api/v1/runtimes/import-proton", new
         {
             display_name = request.DisplayName, source_host_path = request.SourceHostPath,
         }, "runtime");
 
     [HttpPost("graphiti")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> Graphiti([FromBody] JsonElement request) =>
+    public Task<ActionResult<ApiResponse<JsonElement?>>> Graphiti([FromBody] JsonElement request) =>
         Proxy("api/v1/graphiti", new
         {
             enabled = request.TryGetProperty("enabled", out var value) && value.GetBoolean(),
         });
 
     [HttpPost("backups")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> Backup(BackupRequest request) =>
+    public Task<ActionResult<ApiResponse<JsonElement?>>> Backup(BackupRequest request) =>
         Proxy("api/v1/backups", new
         {
             include_secrets = request.IncludeSecrets, include_workers = request.IncludeWorkers,
         }, "backup");
 
     [HttpPost("backups/{backupId}/verify")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> VerifyBackup(string backupId) =>
+    public Task<ActionResult<ApiResponse<JsonElement?>>> VerifyBackup(string backupId) =>
         Proxy($"api/v1/backups/{backupId}/verify", new { });
 
     [HttpPost("schedules")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> Schedule(ScheduleRequest request) =>
+    public Task<ActionResult<ApiResponse<JsonElement?>>> Schedule(ScheduleRequest request) =>
         Proxy("api/v1/schedules", new
         {
             display_name = request.DisplayName, operation_kind = request.OperationKind,
@@ -203,27 +217,27 @@ public sealed class AdministrationController(
         }, "schedule");
 
     [HttpPost("schedules/{scheduleId}/{action}")]
-    public Task<ActionResult<ApiResponse<JsonElement>>> ScheduleAction(string scheduleId, string action)
+    public Task<ActionResult<ApiResponse<JsonElement?>>> ScheduleAction(string scheduleId, string action)
     {
         if (action is not ("activate" or "pause" or "disable"))
-            return Task.FromResult<ActionResult<ApiResponse<JsonElement>>>(BadRequest(
-                ApiResponse<JsonElement>.Failure("invalid_schedule_action", "Invalid schedule action.")));
+            return Task.FromResult<ActionResult<ApiResponse<JsonElement?>>>(BadRequest(
+                ApiResponse<JsonElement?>.Failure("invalid_schedule_action", "Invalid schedule action.")));
         return Proxy($"api/v1/schedules/{scheduleId}/{action}", new { }, "schedule");
     }
 
-    private async Task<ActionResult<ApiResponse<JsonElement>>> Proxy(
+    private async Task<ActionResult<ApiResponse<JsonElement?>>> Proxy(
         string path, object body, string? property = null)
     {
         try
         {
             using var document = await control.PostRawAsync(path, body, HttpContext.RequestAborted);
             var value = property is null ? document.RootElement : document.RootElement.GetProperty(property);
-            return ApiResponse<JsonElement>.Success(value.Clone());
+            return ApiResponse<JsonElement?>.Success(value.Clone());
         }
         catch (ControlPlaneException exception)
         {
             return StatusCode(exception.StatusCode ?? 502,
-                ApiResponse<JsonElement>.Failure(exception.Code, exception.Message));
+                ApiResponse<JsonElement?>.Failure(exception.Code, exception.Message));
         }
     }
 
