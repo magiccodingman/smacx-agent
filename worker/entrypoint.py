@@ -443,6 +443,8 @@ def main() -> int:
                 f"--subfolder={subfolder}", "--mode=websocket",
                 "--encoder=h264enc", "--framerate=30", "--video-bitrate=5000",
                 "--audio-enabled=true", "--enable-resize=false",
+                "--is-manual-resolution-mode=true",
+                f"--manual-width={width}", f"--manual-height={height}",
             ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(1)
             stream_started = stream.poll() is None

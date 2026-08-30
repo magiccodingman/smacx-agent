@@ -962,7 +962,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             status = 429 if str(exc) == "too_many_attempts" else 401
             self._error(status, str(exc))
         elif isinstance(exc, (InvalidRecord, ScopeViolation)):
-            self._error(400, str(exc))
+            code = str(exc)
+            messages = {
+                "provider_display_name_already_exists":
+                    "A model endpoint already uses that display name. Choose a different name.",
+            }
+            self._error(400, code, messages.get(code))
         elif isinstance(exc, ProviderError):
             self._error(502, str(exc))
         elif isinstance(exc, DockerUnavailable):

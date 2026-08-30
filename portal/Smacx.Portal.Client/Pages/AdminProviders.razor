@@ -19,14 +19,23 @@ else
             <span class="panel-kicker">STEP 1</span>
             <h2>Connect a model endpoint</h2>
             <p class="section-copy">Saving the endpoint discovers its available models. It does not create a playable AI profile yet.</p>
-            <MudTextField @bind-Value="providerName" Label="Display name" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="providerName" Label="Display name" Variant="Variant.Outlined"
+                          HelperText="Use a unique label for each model endpoint."
+                          InputId="smacx-provider-label" autocomplete="off" name="smacx_provider_label"
+                          data-form-type="other" data-1p-ignore="true" data-lpignore="true" />
             <MudTextField @bind-Value="providerUrl" Label="OpenAI-compatible base URL"
                           Placeholder="http://model-host:8000/v1"
                           HelperText="Enter a URL reachable from the Docker containers. No model-server address is shipped as a default."
-                          Variant="Variant.Outlined" Immediate="true" />
+                          Variant="Variant.Outlined" Immediate="true"
+                          InputId="smacx-provider-endpoint" autocomplete="off" name="smacx_provider_endpoint"
+                          InputMode="InputMode.url" autocapitalize="none" spellcheck="false"
+                          data-form-type="other" data-1p-ignore="true" data-lpignore="true" />
             <MudTextField @bind-Value="providerKey" Label="API key (optional)"
-                          HelperText="Leave blank for an endpoint that does not require authentication. The key is stored in the control vault and never returned by the API."
-                          InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" />
+                          HelperText="Leave blank when authentication is not required. Stored in the control vault and never returned; password managers are asked to ignore this field."
+                          InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true"
+                          InputId="smacx-provider-token" autocomplete="new-password" name="smacx_provider_api_token"
+                          autocapitalize="none" spellcheck="false"
+                          data-form-type="other" data-1p-ignore="true" data-lpignore="true" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSaveProvider)"
                        OnClick="SaveProvider" StartIcon="@Icons.Material.Filled.Hub">
                 Save endpoint & discover models
@@ -237,27 +246,37 @@ else
         busy = true;
         error = null;
         notice = null;
-        var result = await Api.PostAsync<JsonElement>("api/admin/providers",
-            new ProviderConfigurationRequest(providerName, providerUrl, string.IsNullOrEmpty(providerKey) ? null : providerKey));
-        if (result.Payload?.Ok != true)
+        try
         {
-            error = result.Payload?.Error?.Message;
-        }
-        else
-        {
-            providerKey = "";
-            var id = Id(result.Payload.Data);
-            var discovered = await Api.PostAsync<JsonElement>($"api/admin/providers/{id}/discover", new { });
-            if (discovered.Payload?.Ok != true)
+            var result = await Api.PostAsync<JsonElement>("api/admin/providers",
+                new ProviderConfigurationRequest(providerName, providerUrl, string.IsNullOrEmpty(providerKey) ? null : providerKey));
+            if (result.Payload?.Ok != true)
             {
-                error = discovered.Payload?.Error?.Message;
+                error = result.Payload?.Error?.Message ?? "The endpoint could not be saved.";
             }
-            await Reload(id);
-            notice = Models.Count > 0
-                ? $"Endpoint saved and {Models.Count} model{(Models.Count == 1 ? "" : "s")} discovered. Complete step 2 to make an AI player."
-                : "Endpoint saved, but it did not advertise any models yet.";
+            else
+            {
+                providerKey = "";
+                var id = Id(result.Payload.Data);
+                var discovered = await Api.PostAsync<JsonElement>($"api/admin/providers/{id}/discover", new { });
+                if (discovered.Payload?.Ok != true)
+                {
+                    error = discovered.Payload?.Error?.Message;
+                }
+                await Reload(id);
+                notice = Models.Count > 0
+                    ? $"Endpoint saved and {Models.Count} model{(Models.Count == 1 ? "" : "s")} discovered. Complete step 2 to make an AI player."
+                    : "Endpoint saved, but it did not advertise any models yet.";
+            }
         }
-        busy = false;
+        catch (HttpRequestException)
+        {
+            error = "The portal could not reach its server. Check the service and try again.";
+        }
+        finally
+        {
+            busy = false;
+        }
     }
 
     private async Task Discover(string id)

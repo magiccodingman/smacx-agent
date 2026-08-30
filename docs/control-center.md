@@ -227,6 +227,19 @@ audio and accepts ordinary mouse, keyboard, shortcuts, text, and fullscreen.
 The transport reconnects to the same worker after a browser refresh. A user can
 leave the browser and return without changing their native faction.
 
+The managed desktop is fixed for the life of the worker (1280×800 by default,
+with an enforced minimum of 800×600). Selkies scales that desktop locally while
+preserving its aspect ratio, so narrower desktop windows, tablets, and phones do
+not change the match resolution. Landscape and fullscreen are strongly
+recommended on small touch screens because the original game UI and text remain
+desktop-sized. Remote display resizing is intentionally disabled: a browser
+resize or phone rotation must not change the shared display seen by other
+players or spectators. The stream server locks its manual resolution to the
+worker display and performs local browser scaling. A different native
+resolution can be selected through the worker environment when it is launched
+(the portal does not expose that advanced control yet), but changing it during
+a running game is not supported.
+
 Interactive stream tickets are short-lived and seat-scoped. Only the seat's
 member or an administrator can request one. Spectator tickets are always
 read-only at the worker transport—not merely disabled in JavaScript.

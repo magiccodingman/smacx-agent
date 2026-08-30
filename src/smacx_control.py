@@ -522,6 +522,11 @@ class ControlPlane:
             existing = connection.execute(
                 "SELECT * FROM model_providers WHERE provider_id=?", (provider_id,),
             ).fetchone()
+            name_owner = connection.execute(
+                "SELECT provider_id FROM model_providers WHERE display_name=?", (display_name,),
+            ).fetchone()
+        if name_owner and str(name_owner["provider_id"]) != provider_id:
+            raise InvalidRecord("provider_display_name_already_exists")
         secret_id = existing["api_key_secret_id"] if existing else None
         if api_key is not None:
             if not isinstance(api_key, str) or len(api_key) > 65_536:

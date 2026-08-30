@@ -230,6 +230,10 @@ def test_distribution_contract() -> None:
     entrypoint_source = (ROOT / "worker" / "entrypoint.py").read_text(encoding="utf-8")
     manager_source = (ROOT / "src" / "smacx_worker_manager.py").read_text(encoding="utf-8")
     assert '"fluxbox", "-rc", "/opt/smacx/fluxbox-init", "-no-toolbar"' in entrypoint_source
+    assert '"--enable-resize=false"' in entrypoint_source
+    assert '"--is-manual-resolution-mode=true"' in entrypoint_source
+    assert 'f"--manual-width={width}"' in entrypoint_source
+    assert 'f"--manual-height={height}"' in entrypoint_source
     assert 'emit("worker_stopped", reason="signal")' in entrypoint_source
     assert 'windows_process_ids("terranx.exe")' in entrypoint_source
     assert 'emit(\n                            "game_process_exited"' in entrypoint_source

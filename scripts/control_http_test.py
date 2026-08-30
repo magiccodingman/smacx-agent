@@ -141,6 +141,17 @@ def main() -> int:
             if provider_body["api_key"] in json.dumps(providers):
                 raise AssertionError("provider API key leaked in list response")
 
+            status, _, duplicate = request(
+                server.server_port, "POST", "/api/v1/providers", body={
+                    "display_name": provider_body["display_name"],
+                    "base_url": "http://another-model-box:8000/v1",
+                }, cookies=cookies, csrf=cookies["smacx_csrf"],
+            )
+            if status != 400 \
+                    or duplicate["error"]["code"] != "provider_display_name_already_exists" \
+                    or "already uses" not in duplicate["error"]["message"]:
+                raise AssertionError(f"duplicate provider name was not explained: {duplicate}")
+
             status, _, workers = request(
                 server.server_port, "GET", "/api/v1/workers", cookies=cookies,
             )
