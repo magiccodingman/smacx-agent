@@ -134,6 +134,25 @@ If the game process is healthy but the browser was suspended, reload the stream
 page. The same managed seat/worker remains assigned. If the worker crashed,
 use **Recover** only when the lobby reports a verified checkpoint.
 
+## Game is too small, clipped, or the wrong aspect ratio
+
+Open the native root **MENU**, then open the managed control rail's **Display**
+tab. **Fit browser now** is immediate and does not pause the match. Automatic
+mode recommends 800×600 for a small touch screen, 1024×768 for a tablet, or a
+larger profile for the available desktop pixels. Fullscreen landscape is the
+most readable phone layout.
+
+**Apply natively** is different: it waits for a verified stable checkpoint and
+may require connected-player approval. While waiting, keep playing; the portal
+will not restart the game in the middle of an unsafe interaction. In
+multiplayer, another native resolution request inside five minutes needs a
+separate cooldown-waiver vote. The device profile lock is local to that
+browser—turn it off if a prior monitor's preference is inappropriate.
+
+If an 800×600 worker is clipping a 1024×768 game, inspect `thinker.ini` inside
+the worker. Current images must contain `video_mode=1`, `window_width=800`, and
+`window_height=600`; rebuild the worker image if it predates managed profiles.
+
 ## Keyboard or mouse does nothing
 
 Confirm the stream page says interactive/Play rather than observer/Watch. Only
@@ -171,6 +190,20 @@ Legacy DirectPlay may not transparently continue after a native participant
 leaves. Create/use a verified checkpoint, park the match, ask every native
 participant to rejoin the restored lobby with their exact handle/faction, then
 continue. Managed browser reconnect normally does not require a native restart.
+
+## Browser player is disconnected or temporarily computer-controlled
+
+Closing or refreshing the page leaves the faction reserved. After the browser
+has been absent for 30 seconds, another connected human can propose temporary
+stock-AI control from the Session tab. The proposal does nothing until the peer
+vote and stable checkpoint both pass. When the player returns, use **Propose
+player reclaim**; the platform rehosts from another verified checkpoint and
+returns the same faction.
+
+If the player clicked the game's own Quit/Exit path and returned to the native
+main menu, the supervisor records `returned_to_menu` and recovers all managed
+seats from the latest stable checkpoint. A match with no verified checkpoint
+stops for operator review instead of discarding unsaved actions.
 
 ## AI profile will not start
 

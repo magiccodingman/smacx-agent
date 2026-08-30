@@ -12,14 +12,14 @@ network, mod, provider, or rare native state is certified.
 | Accounts | first-run token, no default password, Identity cookie sessions, admin/member roles, CLI/admin reset tickets, case-insensitive handles, provisional invited accounts | contained HTTP/database flow |
 | Lobby directory | listed/waiting/running/parked history, membership, seven seats, unranked policy, future-ranked field | .NET integration flow and Chrome |
 | Typed setup | Alien Crossfire, standard/scenario, world size, six difficulties, four planet traits, five timers, five victory paths, ten advanced rules, Do or Die | validation contracts and native solo/LAN/scenario tests |
-| Browser human play | Selkies H.264/WebRTC-style stream transport with audio/input/fullscreen/reconnect through authenticated portal proxy | real `terranx.exe` rendered in Chrome; keyboard/mouse reached the game |
+| Browser human play | Selkies stream with audio/input/fullscreen/reconnect, aspect-correct instant fit, validated 800×600–5120×1440 native catalog, touch recommendations, device-local lock, human-only native-MENU rail | real 800×600 and 1920×1080 game windows; 390×844, 844×390, 1024×768, and 1280×720 browser QA; keyboard reached the game |
 | Spectating | admin cross-seat, opt-in anonymous LAN observer deck, seat switching, worker-enforced read-only mode | real stream plus authorization/read-only checks |
 | Native human seats | exact host/session/handle/faction join details and durable account association | mixed independent native process locally tested; external physical client pending |
-| Portal/native chat | public/private recipient, player + faction attribution, sequence/deduplication, messages outside active turn | contained and native mixed-LAN tests |
+| Portal/native chat | global/private/consent-group conversations, logical fan-out delivery, participant filtering, player + faction attribution, sequence/deduplication, messages outside active turn | contained store/controller and native mixed-LAN tests |
 | Provider management | OpenAI-compatible discovery, keyed/unkeyed providers, chosen model/context | contract tests and real Qwen endpoint |
 | AI profiles | versioned model/reasoning/context/notes, deactivation, `None` personality layer | .NET/Control contracts and real managed run |
 | Managed Hermes | SMACX-derived/digest-pinned official image, isolated home/conversation, exact SMACX-owned system message, `smacx` only, provider secret volume, restart supervision | contract/secret inspection, captured provider request, and real Qwen run |
-| Match lifecycle | provision, checkpoint, race-safe park, recover, idle browser park, crash reconciliation | real native checkpoint/park/recover; live park race regression |
+| Match lifecycle | provision, mode-aware three-sample checkpoint, persisted connected-player votes, fair multi-match maintenance, race-safe park/reconfigure/recover, temporary native-AI delegation/reclaim, idle browser park, exit/crash reconciliation | real native 800×600 checkpoint/park/profile-change/recover, unexpected worker exit/reconnect, .NET quorum/cooldown tests |
 | Analytics | scoped history, turn duration, Hermes input/output/cache/reasoning/API counters, CSV, isolated read-only SQL lab | fresh-schema .NET tests and real Hermes telemetry query |
 | Knowledge | 52 original mechanics documents plus automatic structured private installation encyclopedia, exact/batch/related lookup, precedence, FTS5/BM25, canonical and archived citations | corpus/copyright guard; 672 private documents from 18 local sources on reference install |
 | Memory | events, facts, beliefs, relationships, commitments, goals, summaries, compression budgets, chat, scoped recall | contained adversarial scope/compression/retrieval tests and real Qwen writes |
@@ -81,6 +81,24 @@ Locally verified with real native processes:
 - advanced external-human-host flow where the human exclusively owns native
   Host/Configure/Start/Save/Load; and
 - five guarded random-map profiles plus typed custom rules/scenarios.
+
+## Managed human evidence
+
+The isolated Linux reference run also launched a human-only match with one
+browser seat and six stock game-controlled factions. It required no model or
+agent profile. The same match:
+
+- rendered as an exact 800×600 game/X11 window with no clipping;
+- survived a verified checkpoint, park, native-profile change, and recovery;
+- rendered again as an exact 1920×1080 game/X11 window;
+- remained aspect-correct and scroll-free in phone portrait/landscape, tablet,
+  and desktop browser viewports;
+- reconnected the same portal route after an unexpected game-worker exit; and
+- retained the saved faction at turn 1/year 2101.
+
+The profile catalog and worker bounds are contract-tested through 5120×1440.
+Those larger framebuffers are implemented but were not all rendered on the
+reference display during this run.
 
 These tests use multiple processes on one Linux host/network fixture. They do
 not substitute for the explicitly deferred physical two-computer test.

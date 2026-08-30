@@ -8,11 +8,53 @@ public sealed class PortalDatabaseInitializer(
     IServiceScopeFactory scopeFactory,
     ILogger<PortalDatabaseInitializer> logger)
 {
+    private const string CanonicalSchemaId = "smacx.portal.canonical.2026-08-managed-play";
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await database.Database.EnsureCreatedAsync(cancellationToken);
+
+        var requiredTables = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "PortalMatches", "PortalLobbySeats", "PortalLobbyMessages",
+            "PortalChatGroups", "PortalChatGroupMembers", "PortalChatDeliveries",
+            "PortalGovernanceProposals", "PortalGovernanceVotes",
+            "PortalMaintenanceOperations", "PortalStableCheckpoints",
+        };
+        var connection = database.Database.GetDbConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT name FROM sqlite_master WHERE type='table'";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                requiredTables.Remove(reader.GetString(0));
+        }
+        if (requiredTables.Count > 0)
+            throw new InvalidOperationException(
+                "The unreleased portal database does not match the canonical schema. " +
+                "Back up any development data, remove portal.sqlite3, and restart. " +
+                $"Missing: {string.Join(", ", requiredTables.Order())}.");
+
+        var requiredSeatColumns = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "ConnectionState", "LastExitKind", "LastWorkerSeenAt", "IsManagedHost",
+            "TemporaryControllerKind", "DelegationStatus", "LastBrowserSeenAt",
+        };
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA table_info('PortalLobbySeats')";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                requiredSeatColumns.Remove(reader.GetString(1));
+        }
+        if (requiredSeatColumns.Count > 0)
+            throw new InvalidOperationException(
+                "The unreleased portal database predates the canonical managed-play columns. " +
+                "Back up any development data, remove portal.sqlite3, and restart. " +
+                $"Missing: {string.Join(", ", requiredSeatColumns.Order())}.");
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in new[] { PortalRoles.Administrator, PortalRoles.Member })
@@ -38,6 +80,23 @@ public sealed class PortalDatabaseInitializer(
                 Value = "true",
             });
             await database.SaveChangesAsync(cancellationToken);
+        }
+
+        var schema = await database.PortalSettings.FindAsync(
+            ["schema.identity"], cancellationToken);
+        if (schema is null)
+        {
+            database.PortalSettings.Add(new PortalSetting
+            {
+                Key = "schema.identity", Value = CanonicalSchemaId,
+            });
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        else if (!string.Equals(schema.Value, CanonicalSchemaId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The unreleased portal database has a different canonical schema identity. " +
+                "Back up any development data, remove portal.sqlite3, and restart.");
         }
 
         logger.LogInformation("Portal canonical schema is ready");

@@ -32,6 +32,24 @@ LAN_PROFILES = {
     "tiny_citizen", "small_easy", "standard_librarian",
     "large_thinker", "huge_transcend",
 }
+NATIVE_RESOLUTION_PROFILES: dict[str, tuple[int, int]] = {
+    "800x600": (800, 600),
+    "1024x768": (1024, 768),
+    "1280x720": (1280, 720),
+    "1280x800": (1280, 800),
+    "1440x900": (1440, 900),
+    "1600x900": (1600, 900),
+    "1600x1200": (1600, 1200),
+    "1920x1080": (1920, 1080),
+    "1920x1200": (1920, 1200),
+    "2560x1080": (2560, 1080),
+    "2560x1440": (2560, 1440),
+    "2560x1600": (2560, 1600),
+    "3440x1440": (3440, 1440),
+    "3840x1600": (3840, 1600),
+    "3840x2160": (3840, 2160),
+    "5120x1440": (5120, 1440),
+}
 
 
 class WorkerManagerError(StoreError):
@@ -195,6 +213,123 @@ class WorkerManager:
             match_id=identity.get("match_id"), session_id=identity.get("session_id"),
             timeout=20.0,
         )
+
+    def human_ui_state(self, instance_id: str) -> dict[str, Any]:
+        """Read the exact native root-MENU state for a managed human seat.
+
+        This operation deliberately remains outside every MCP capability.  It
+        exists only so the portal can decorate an interactive human stream.
+        """
+        spec = self.control.get_worker_spec(instance_id)
+        network = spec.get("network", {})
+        if network.get("controller_kind") != "human" \
+                or network.get("view_mode") != "interactive":
+            raise WorkerManagerError("human_ui_state_requires_interactive_human")
+        state = self._native_request(instance_id, "human_ui_state", timeout=5.0)
+        profile_id = str(network.get("resolution_profile") or "1280x800")
+        width, height = NATIVE_RESOLUTION_PROFILES.get(profile_id, (1280, 800))
+        return {**state, "instance_id": instance_id,
+                "resolution_profile_id": profile_id,
+                "native_width": width, "native_height": height}
+
+    def portal_group_chat(
+        self, instance_id: str, *, action: str, group_id: str = "",
+        display_name: str = "", member_faction_ids: list[int] | None = None,
+        response: str = "", text: str = "",
+    ) -> dict[str, Any]:
+        """Human control-center access to the shared logical group-chat store."""
+        spec = self.control.get_worker_spec(instance_id)
+        if spec.get("network", {}).get("controller_kind") != "human":
+            raise WorkerManagerError("portal_group_chat_requires_managed_human_seat")
+        scope = MemoryScope(str(spec["match_id"]), str(spec["agent_id"]),
+                            str(spec["perspective_id"]))
+        native = self._native_request(instance_id, "semantic_chat", action="list",
+                                      after_sequence=0, timeout=20.0)
+        identity = native.get("identity")
+        participants = [item for item in native.get("participants", [])
+                        if isinstance(item, Mapping)]
+        local = next((item for item in participants if item.get("local") is True), None)
+        if not isinstance(identity, Mapping) or local is None:
+            raise WorkerManagerError("native_chat_identity_unavailable")
+        local_faction_id = int(local["faction_id"])
+        match_id = str(identity.get("match_id") or spec["match_id"])
+        session_id = str(identity.get("session_id") or "")
+        if action == "list":
+            return {"ok": True, "groups": self.store.list_chat_groups(
+                scope, local_faction_id), "participants": participants,
+                "logical_delivery": True}
+        if action == "create":
+            requested = {int(item) for item in (member_faction_ids or [])}
+            requested.add(local_faction_id)
+            selected = [item for item in participants
+                        if int(item.get("faction_id", -1)) in requested]
+            if {int(item["faction_id"]) for item in selected} != requested:
+                raise InvalidRecord("unknown_chat_group_member")
+            if any(item.get("local") is not True and
+                   item.get("private_eligible") is not True for item in selected):
+                raise InvalidRecord("chat_group_requires_mutual_commlink")
+            group = self.store.create_chat_group(
+                scope, display_name, local_faction_id,
+                [{"faction_id": int(item["faction_id"]),
+                  "display_name": item.get("player_name") or item.get("faction_name")
+                    or f"Faction {item['faction_id']}",
+                  "faction_name": item.get("faction_name")}
+                 for item in selected],
+            )
+            deliveries = []
+            for faction_id in sorted(requested - {local_faction_id}):
+                sent = self.portal_chat(
+                    instance_id, action="send", recipient_faction_id=faction_id,
+                    client_message_id=f"{group['group_id']}-invite-{faction_id}",
+                    text=(f"[SMACX group invitation: {group['display_name']}; "
+                          f"id {group['group_id']}. Accept or reject in group chat.]"),
+                )
+                deliveries.append({"recipient_faction_id": faction_id,
+                                   "delivered": bool(sent.get("ok"))})
+            return {"ok": True, "group": group, "deliveries": deliveries}
+        if action in {"respond", "leave"}:
+            desired = "left" if action == "leave" else response
+            group = self.store.respond_chat_group(
+                scope, group_id, local_faction_id, desired,
+            )
+            creator = int(group["created_by_faction_id"])
+            if creator != local_faction_id:
+                self.portal_chat(
+                    instance_id, action="send", recipient_faction_id=creator,
+                    client_message_id=(
+                        f"{group_id}-response-{local_faction_id}-{group['version']}"
+                    ),
+                    text=f"[SMACX group {group_id}: faction {local_faction_id} {desired}.]",
+                )
+            return {"ok": True, "group": group}
+        if action != "send":
+            raise InvalidRecord("invalid_group_chat_action")
+        message = self.store.begin_group_message(
+            scope, group_id, local_faction_id, text,
+        )
+        prefix = f"[Group: {message['group']['display_name']}] "
+        deliveries = []
+        for faction_id in message["recipients"]:
+            sent = self.portal_chat(
+                instance_id, action="send", recipient_faction_id=faction_id,
+                client_message_id=f"{message['logical_message_id']}-f{faction_id}",
+                text=prefix + message["content"],
+            )
+            delivered = bool(sent.get("ok") and sent.get("sent"))
+            event = sent.get("event") if isinstance(sent.get("event"), Mapping) else {}
+            self.store.complete_group_delivery(
+                message["logical_message_id"], faction_id, delivered=delivered,
+                native_message_uid=(str(event.get("client_message_id"))
+                                    if event.get("client_message_id") else None),
+            )
+            deliveries.append({"recipient_faction_id": faction_id,
+                               "status": "delivered" if delivered else "failed"})
+        return {"ok": all(item["status"] == "delivered" for item in deliveries),
+                "logical_message_id": message["logical_message_id"],
+                "group_id": group_id, "content": message["content"],
+                "deliveries": deliveries, "logical_delivery": True,
+                "native_echoes_collapsed": True, "match_id": match_id,
+                "session_id": session_id}
 
     def _name(self, kind: str, identity: str | None = None) -> str:
         suffix = hashlib.sha256((identity or uuid.uuid4().hex).encode()).hexdigest()[:16]
@@ -589,7 +724,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                          autostart: Mapping[str, Any] | None = None,
                          view_enabled: bool = False,
                          view_mode: str = "view-only",
-                         controller_kind: str = "agent") -> dict[str, Any]:
+                         controller_kind: str = "agent",
+                         resolution_profile: str = "1280x800") -> dict[str, Any]:
         self.store.require_scope(scope)
         if view_mode not in {"view-only", "interactive"}:
             raise InvalidRecord("invalid_worker_view_mode")
@@ -597,6 +733,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise InvalidRecord("invalid_worker_controller_kind")
         if controller_kind == "human" and not view_enabled:
             raise InvalidRecord("managed_human_requires_stream")
+        if resolution_profile not in NATIVE_RESOLUTION_PROFILES:
+            raise InvalidRecord("invalid_native_resolution_profile")
         source = self.control.get_game_source(game_source_id)
         runtime = self.control.get_runtime(runtime_id)
         if source["status"] != "validated" or runtime["status"] != "ready" \
@@ -665,6 +803,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "view_enabled": bool(view_enabled),
                     "view_mode": view_mode,
                     "controller_kind": controller_kind,
+                    "resolution_profile": resolution_profile,
                 },
                 view_secret_id=view_secret_id,
             )
@@ -796,6 +935,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
 
     def _worker_environment(self, spec: Mapping[str, Any], session_id: str) -> list[str]:
         autostart = spec["autostart"]
+        resolution_profile = str(
+            spec["network"].get("resolution_profile") or "1280x800"
+        )
+        if resolution_profile not in NATIVE_RESOLUTION_PROFILES:
+            raise WorkerManagerError("invalid_native_resolution_profile")
+        view_width, view_height = NATIVE_RESOLUTION_PROFILES[resolution_profile]
         values = {
             "SMACX_AGENT_TOKEN_FILE": "/run/secrets/bridge-token",
             "SMACX_AGENT_MATCH_ID": spec["match_id"],
@@ -811,7 +956,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "SMACX_VIEW_PASSWORD_FILE": "/run/secrets/view-password",
             "SMACX_VIEW_ONLY_PASSWORD_FILE": "/run/secrets/view-only-password",
             "SMACX_VIEW_MODE": str(spec["network"].get("view_mode") or "view-only"),
+            "SMACX_CONTROLLER_KIND": str(
+                spec["network"].get("controller_kind") or "agent"
+            ),
             "SMACX_STREAM_SUBFOLDER": f"/stream/{spec['instance_id']}",
+            "SMACX_VIEW_WIDTH": str(view_width),
+            "SMACX_VIEW_HEIGHT": str(view_height),
             "SMACX_AGENT_AUTOSTART": "1" if autostart["enabled"] else "0",
             "SMACX_AGENT_DIFFICULTY": str(autostart["difficulty"]),
             "SMACX_AGENT_WORLD_SIZE": str(autostart["world_size"]),
@@ -830,6 +980,91 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             values["SMACX_AGENT_LAN_SCENARIO"] = autostart["lan_scenario_id"]
         values.update(game_settings_environment(autostart["game_settings"]))
         return [f"{key}={value}" for key, value in values.items()]
+
+    def set_match_resolution(self, match_id: str, profile_id: str) -> dict[str, Any]:
+        """Set the next worker lifetime's native framebuffer profile.
+
+        Callers must checkpoint and stop the match before invoking this.  The
+        live stream is never resized out from under a native process.
+        """
+        dimensions = NATIVE_RESOLUTION_PROFILES.get(profile_id)
+        if dimensions is None:
+            raise InvalidRecord("invalid_native_resolution_profile")
+        match = self.control.get_match(match_id)
+        if match["status"] not in {"parked", "recovering", "starting"}:
+            raise WorkerManagerError("resolution_change_requires_parked_match")
+        workers: list[dict[str, Any]] = []
+        for seat in self.control.list_seats(match_id):
+            instance_id = seat.get("instance_id")
+            if not instance_id:
+                continue
+            spec = self.control.get_worker_spec(str(instance_id))
+            network = dict(spec["network"])
+            network["resolution_profile"] = profile_id
+            workers.append(self.control.update_worker_network(str(instance_id), network))
+        updated = self.control.update_match_lifecycle(
+            match_id, match["status"], metadata={
+                "native_resolution_profile": profile_id,
+                "native_resolution": {"width": dimensions[0], "height": dimensions[1]},
+            },
+        )
+        return {"ok": True, "match": updated, "profile_id": profile_id,
+                "width": dimensions[0], "height": dimensions[1],
+                "workers": len(workers)}
+
+    def set_match_seat_delegation(
+        self, match_id: str, seat_index: int, *, delegated: bool,
+    ) -> dict[str, Any]:
+        """Change who occupies a saved faction on the next safe rehost.
+
+        The running process is never mutated. An active delegation omits the
+        seat's player worker when the verified save is loaded, allowing the
+        stock game to retain that saved faction under native computer control.
+        Reclaim includes the original worker again and binds it to the same
+        saved faction through the ordinary lobby selector.
+        """
+        match = self.control.get_match(match_id)
+        if match["status"] != "parked":
+            raise WorkerManagerError("seat_delegation_requires_parked_match")
+        seat = self.control.get_seat(match_id, int(seat_index))
+        if seat["controller_kind"] != "human" or not seat.get("instance_id"):
+            raise WorkerManagerError("delegation_requires_managed_human_seat")
+        host_index = int(match.get("metadata", {}).get("managed_host_seat_index", 0))
+        if delegated and int(seat_index) == host_index:
+            raise WorkerManagerError("transfer_host_before_delegating_host")
+        updated = self.control.update_lan_seat(
+            match_id, int(seat_index), metadata={
+                "delegation_status": "active" if delegated else "none",
+                "temporary_controller_kind": "native_ai" if delegated else "none",
+                "delegation_changed_unix": time.time(),
+            },
+        )
+        return {"ok": True, "match_id": match_id, "seat": updated,
+                "delegated": delegated}
+
+    def set_match_host(self, match_id: str, seat_index: int) -> dict[str, Any]:
+        """Select the managed worker that hosts the next checkpoint rehost."""
+        match = self.control.get_match(match_id)
+        if match["status"] != "parked":
+            raise WorkerManagerError("host_transfer_requires_parked_match")
+        seat = self.control.get_seat(match_id, int(seat_index))
+        if not seat.get("instance_id") or \
+                seat.get("metadata", {}).get("delegation_status") == "active":
+            raise WorkerManagerError("new_host_requires_active_managed_seat")
+        updated = self.control.update_match_lifecycle(
+            match_id, "parked", host_instance_id=str(seat["instance_id"]),
+            metadata={"managed_host_seat_index": int(seat_index),
+                      "host_transferred_unix": time.time()},
+        )
+        for candidate in self.control.list_seats(match_id):
+            self.control.update_lan_seat(
+                match_id, int(candidate["seat_index"]), metadata={
+                    "role": "host" if int(candidate["seat_index"]) == int(seat_index)
+                    else "client",
+                },
+            )
+        return {"ok": True, "match": updated, "seat_index": int(seat_index),
+                "instance_id": seat["instance_id"]}
 
     def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
@@ -1534,7 +1769,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         seats = self.control.list_seats(match_id)
         agent_seats = [seat for seat in seats if seat["controller_kind"] == "agent"]
         human_seats = [seat for seat in seats if seat["controller_kind"] == "human"]
-        managed_seats = [seat for seat in seats if seat.get("instance_id")]
+        delegated_seats = [
+            seat for seat in seats
+            if seat.get("metadata", {}).get("delegation_status") == "active"
+        ]
+        managed_seats = [
+            seat for seat in seats
+            if seat.get("instance_id") and seat not in delegated_seats
+        ]
         external_human_seats = [seat for seat in human_seats if not seat.get("instance_id")]
         if not 2 <= len(seats) <= 7 or not managed_seats \
                 or len(agent_seats) + len(human_seats) != len(seats):
@@ -1561,12 +1803,22 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             return self.prepare_human_hosted_lan_match(
                 match_id, profile=profile, resume_ref=resume_slot, timeout=timeout,
             )
-        if managed_seats[0].get("seat_index") != 0:
-            raise WorkerManagerError("managed_hosted_lan_seat_order_invalid")
+        configured_host_index = int(match.get("metadata", {}).get(
+            "managed_host_seat_index", 0
+        ))
+        host = next(
+            (seat for seat in managed_seats
+             if int(seat["seat_index"]) == configured_host_index), None,
+        )
+        if host is None:
+            raise WorkerManagerError("managed_host_seat_unavailable")
+        # DirectPlay assigns participant indexes by join order. Keep the
+        # selected host first while preserving the durable portal seat and
+        # faction identities separately.
+        managed_seats = [host] + [seat for seat in managed_seats if seat is not host]
         external_network = self._external_lan_network() if external_human_seats else None
         if external_human_seats and match["status"] == "lobby":
             return self.finalize_external_lan_match(match_id, timeout=timeout)
-        host = seats[0]
         host_instance = str(host["instance_id"])
         if scenario_id is not None:
             host_spec = self.control.get_worker_spec(host_instance)
@@ -1603,7 +1855,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 remaining = max(30.0, deadline - time.monotonic())
                 self.start_worker(instance_id, timeout=min(remaining, 300.0))
             host_player_name = str(
-                host.get("metadata", {}).get("external_player_name") or "Semantic Host"
+                host.get("metadata", {}).get("external_player_name")
+                or self._managed_lan_player_name(int(host["seat_index"]))
             )
             hosted = self._native_request(
                 host_instance, "semantic_lan", timeout=min(140.0, max(30.0, deadline - time.monotonic())),
@@ -1805,11 +2058,16 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                             raise WorkerManagerError(
                                 f"native_lan_faction_selection_failed:{detail}"
                             )
+                    local_player_index = local.get("player_index")
+                    if not isinstance(local_player_index, int):
+                        raise WorkerManagerError(
+                            "native_lan_loaded_player_index_unavailable"
+                        )
                     resume_choices_by_seat[seat_index] = expected_choice
-                    restored_by_player[seat_index + 1] = expected_choice
+                    restored_by_player[local_player_index] = expected_choice
                     host_lobby = self._wait_native(
                         host_instance, "semantic_lan",
-                        lambda value, player_index=seat_index + 1,
+                        lambda value, player_index=local_player_index,
                         faction_choice_id=expected_choice: (
                             value.get("lifecycle") == "lobby"
                             and next(
@@ -1846,12 +2104,18 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     if isinstance(item, Mapping) and isinstance(item.get("player_index"), int)
                 }
                 mismatches: list[dict[str, Any]] = []
+                player_index_by_seat = {
+                    int(seat["seat_index"]): player_index
+                    for player_index, seat in enumerate(managed_seats, start=1)
+                }
                 for seat in managed_seats:
                     expected_faction = seat.get("faction_id")
                     expected_choice = resume_choices_by_seat.get(
                         int(seat["seat_index"])
                     )
-                    participant = participants.get(int(seat["seat_index"]) + 1, {})
+                    participant = participants.get(
+                        player_index_by_seat[int(seat["seat_index"])], {}
+                    )
                     if not isinstance(expected_faction, int) \
                             or not isinstance(expected_choice, int) \
                             or participant.get("faction_choice_id") != expected_choice \
@@ -1917,9 +2181,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                             f"native_lan_scenario_faction_selection_failed:{detail}"
                         )
                     scenario_choices_by_seat[seat_index] = choice
+                    player_index = managed_seats.index(seat) + 1
                     host_lobby = self._wait_native(
                         host_instance, "semantic_lan",
-                        lambda value, player_index=seat_index + 1,
+                        lambda value, player_index=player_index,
                         faction_choice_id=choice: (
                             value.get("lifecycle") == "lobby"
                             and next(
@@ -2071,7 +2336,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 })
             match = self.control.update_match_lifecycle(
                 match_id, "running", host_instance_id=host_instance,
-                metadata={"network_session_id": network_session_id, "participant_count": len(seats)},
+                metadata={"network_session_id": network_session_id,
+                          "participant_count": len(managed_seats) + len(external_human_seats),
+                          "delegated_native_ai_seats": [
+                              int(item["seat_index"]) for item in delegated_seats
+                          ]},
             )
             return {
                 "ok": True, "match": match, "network_session_id": network_session_id,
@@ -2403,6 +2672,18 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         match = self.control.update_match_lifecycle(match_id, "parked")
         return {"ok": True, "match": match, "workers": parked}
 
+    def complete_match(self, match_id: str) -> dict[str, Any]:
+        """Seal an already parked match as intentionally completed."""
+        match = self.control.get_match(match_id)
+        if match["status"] == "completed":
+            return {"ok": True, "match": match, "already_completed": True}
+        if match["status"] != "parked":
+            raise WorkerManagerError("match_completion_requires_parked_match")
+        completed = self.control.update_match_lifecycle(
+            match_id, "completed", metadata={"ended_by_managed_vote": True},
+        )
+        return {"ok": True, "match": completed, "already_completed": False}
+
     def checkpoint_match(self, match_id: str, *,
                          slot: str = "control_recovery") -> dict[str, Any]:
         """Create and record one verified native checkpoint for managed recovery."""
@@ -2415,9 +2696,82 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         # A browser-managed human host is just as recoverable as an agent:
         # both have an isolated worker and authenticated native bridge. Only a
         # truly external host lacks a worker we can checkpoint safely.
-        if not seats or not seats[0].get("instance_id"):
+        host_instance = match.get("host_instance_id")
+        if not isinstance(host_instance, str) or not host_instance:
+            host_index = int(match.get("metadata", {}).get("managed_host_seat_index", 0))
+            host_seat = next(
+                (item for item in seats if int(item["seat_index"]) == host_index), None,
+            )
+            host_instance = host_seat.get("instance_id") if host_seat else None
+        if not seats or not isinstance(host_instance, str) or not host_instance:
             raise WorkerManagerError("external_human_host_owns_checkpoint")
-        host_instance_id = str(seats[0]["instance_id"])
+        host_instance_id = host_instance
+        managed_instances = [
+            str(seat["instance_id"]) for seat in seats
+            if seat.get("instance_id") and
+            seat.get("metadata", {}).get("delegation_status") != "active"
+        ]
+        controller_by_instance = {
+            str(seat["instance_id"]): str(seat.get("controller_kind", "agent"))
+            for seat in seats if seat.get("instance_id")
+        }
+        stable_samples: list[dict[str, Any]] = []
+        previous_signature: tuple[tuple[str, int, int, str, str], ...] | None = None
+        for sample_index in range(3):
+            observed: list[tuple[str, int, int, str, str]] = []
+            for instance_id in managed_instances:
+                envelope = self._native_request(
+                    instance_id, "semantic_snapshot", timeout=20.0,
+                )
+                snapshot = envelope.get("snapshot")
+                if not isinstance(snapshot, Mapping):
+                    raise WorkerManagerError("checkpoint_snapshot_unavailable")
+                protocol = snapshot.get("protocol")
+                phase = protocol.get("phase") if isinstance(protocol, Mapping) else None
+                if controller_by_instance.get(instance_id) == "human":
+                    # Human workers deliberately do not expose an AI decision
+                    # protocol, so their semantic phase can be capability_gap
+                    # during perfectly ordinary play.  Gate them on the
+                    # private human UI state instead: a stable map with no
+                    # native menu, submenu, modal, or page open is safe to
+                    # serialize without interrupting an in-progress dialog.
+                    human_ui = self._native_request(
+                        instance_id, "human_ui_state", timeout=8.0,
+                    )
+                    if human_ui.get("lifecycle") != "game" or any(
+                        human_ui.get(field) is True for field in (
+                            "native_menu_visible", "modal_open", "native_page_open",
+                        )
+                    ):
+                        raise WorkerManagerError(
+                            "checkpoint_waiting_for_human_interaction"
+                        )
+                    phase = "human_idle"
+                elif phase not in {"turn", "wait"}:
+                    raise WorkerManagerError(
+                        f"checkpoint_waiting_for_quiescence:{phase or 'unknown'}"
+                    )
+                observed.append((
+                    instance_id, int(snapshot.get("turn", -1)),
+                    int(snapshot.get("year", -1)), str(phase),
+                    str(snapshot.get("revision", "")),
+                ))
+            signature = tuple(observed)
+            # Every managed peer must agree on the serialized turn/year.  A
+            # revision may differ by perspective, so compare each exact peer
+            # with itself across three packet-pump intervals.
+            if len({(row[1], row[2]) for row in observed}) != 1:
+                raise WorkerManagerError("checkpoint_peers_not_synchronized")
+            stable_samples.append({
+                "index": sample_index + 1,
+                "turn": observed[0][1], "year": observed[0][2],
+                "peers": len(observed),
+            })
+            if previous_signature is not None and signature != previous_signature:
+                raise WorkerManagerError("checkpoint_state_changed_during_quiescence")
+            previous_signature = signature
+            if sample_index < 2:
+                time.sleep(0.35)
         choices = self._native_request(
             host_instance_id, "semantic_choices", kind="game_management",
             timeout=30.0,
@@ -2444,6 +2798,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "turn": saved.get("turn"),
             "year": saved.get("year"),
             "path": saved.get("path"),
+            "quiescence_samples": stable_samples,
+            "managed_peer_count": len(managed_instances),
         }
         updated = self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_checkpoint": checkpoint,
@@ -2461,7 +2817,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
             raise WorkerManagerError("invalid_recovery_checkpoint")
         seats = self.control.list_seats(match_id)
-        if not seats or not seats[0].get("instance_id"):
+        host_index = int(match.get("metadata", {}).get("managed_host_seat_index", 0))
+        host_seat = next(
+            (item for item in seats if int(item["seat_index"]) == host_index), None,
+        )
+        if not seats or host_seat is None or not host_seat.get("instance_id"):
             raise WorkerManagerError("external_human_host_recovery_required")
         self.park_match(match_id)
         if match["mode"] == "lan":
@@ -2474,7 +2834,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 resume_slot=slot,
             )
         elif match["mode"] == "singleplayer":
-            instance_id = str(seats[0].get("instance_id") or "")
+            instance_id = str(host_seat.get("instance_id") or "")
             if not instance_id:
                 raise WorkerManagerError("managed_solo_worker_missing")
             spec = self.control.get_worker_spec(instance_id)

@@ -52,6 +52,7 @@ std::string pending_response;
 std::string auth_token;
 std::string agent_session_id;
 std::string agent_match_id;
+bool managed_human_controller = false;
 bool request_pending = false;
 bool request_in_progress = false;
 int agent_modal_service_depth = 0;
@@ -175,6 +176,7 @@ bool game_active();
 int first_owned_base(int faction_id);
 bool human_turn_actionable(int faction_id);
 BasePop* active_default_popup();
+const char* semantic_popup_label();
 std::string interaction_kind(int faction_id);
 void update_human_diplomacy_lifecycle();
 
@@ -3505,6 +3507,10 @@ bool reviewed_information_popup(const std::string& label) {
     return label.compare(0, 10, "PLANETFALL") == 0
         || label == "SIMULYOU" || label == "SIMULWHOSE"
         || label == "ALIENSARRIVE" || label == "SURPRISE"
+        // Multiplayer's turn clock raises this local, one-button notice after
+        // the shared timer has already crossed its threshold. Acknowledging it
+        // only dismisses presentation on this client.
+        || label == "TIMEWARNING"
         // The base-support routine has already disbanded the named unit before
         // this warning is shown.  NOSUPPORT therefore reports a completed
         // outcome; it does not offer the player a decision.
@@ -3845,7 +3851,7 @@ std::string interaction_kind(int faction_id) {
     if (*WinModalState || *PopupDialogState) {
         if (first_base_name_modal(faction_id)) return "first_base_name";
         if (technology_presentation_active()) return "technology_presentation";
-        if (agent_popup_label()[0]
+        if (semantic_popup_label()[0]
         && (endgame_presentation_phase.empty() || active_default_popup())) {
             return "popup";
         }
@@ -3856,7 +3862,7 @@ std::string interaction_kind(int faction_id) {
             return pending_endgame_presentation_advance
                 ? "waiting_for_engine" : "endgame_presentation";
         }
-        if (agent_popup_label()[0]) return "popup";
+        if (semantic_popup_label()[0]) return "popup";
         if (Factions[faction_id].tech_research_id < 0) {
             if (*MultiplayerActive) return "waiting_for_engine";
             return (*GameRules & RULES_BLIND_RESEARCH) ? "research_priority" : "research_choice";
@@ -4030,7 +4036,7 @@ std::string semantic_revision() {
             }
         }
     }
-    mix_text(agent_popup_label());
+    mix_text(semantic_popup_label());
     mix(static_cast<uint32_t>(pending_popup_transition ? 1 : 0));
     mix(pending_popup_generation);
     mix_text(endgame_presentation_phase.c_str());
@@ -4262,6 +4268,25 @@ BasePop* active_default_popup() {
         return reinterpret_cast<BasePop*>(key_window);
     }
     return NULL;
+}
+
+const char* semantic_popup_label() {
+    const char* active = agent_popup_label();
+    if (active[0]) return active;
+
+    // NetMsg's timed multiplayer warning executes through a transient BasePop
+    // object rather than leaving the object passed to mod_BasePop_start marked
+    // visible. Recover its engine script identifier only while that transient
+    // object is the actively executing default popup. The narrow lifetime and
+    // exact label guard prevent a closed popup from being resurrected over an
+    // unrelated modal.
+    BasePop* popup = active_default_popup();
+    const char* last_started = agent_popup_last_started_label();
+    if (popup && *BasePopExecDepth > 0 && popup == *BasePopExecCurrent
+    && !strcmp(last_started, "TIMEWARNING")) {
+        return last_started;
+    }
+    return "";
 }
 
 ListBox* popup_choice_control(BasePop* popup) {
@@ -4741,6 +4766,57 @@ std::string status_response() {
     return out.str();
 }
 
+std::string human_ui_state_response() {
+    if (!managed_human_controller) {
+        return error_response("human_ui_state_unavailable",
+            "Native MENU state is private to a managed human worker.");
+    }
+    Menu* menu = MapWin ? &MapWin->oMainMenu : NULL;
+    int visible_submenus = 0;
+    int visible_submenu_index = -1;
+    if (menu) {
+        int count = std::max(0, std::min(menu->iBaseMenuItemCount, 15));
+        for (int index = 0; index < count; ++index) {
+            CMenu* submenu = menu->aMainMenuItems[index].poSubMenu;
+            if (submenu && Win_is_visible(reinterpret_cast<Win*>(&submenu->field_0))) {
+                ++visible_submenus;
+                visible_submenu_index = index;
+            }
+        }
+    }
+    bool in_game = game_active();
+    bool modal = *WinModalState || *PopupDialogState
+        || (DiploWin && Win_is_visible(reinterpret_cast<Win*>(DiploWin)));
+    // The top-level MENU list is the main buffered menu window itself; its
+    // child CMenu windows appear only after the player selects GAME, MAP,
+    // ACTION, and so on.  Therefore the safe rail state is the visible main
+    // menu with no child submenu and no modal/native page on top of it.
+    bool native_menu_visible = menu
+        && Win_is_visible(reinterpret_cast<Win*>(&menu->oWinBuffed));
+    bool native_page_open = in_game && MapWin && !modal
+        && visible_submenus == 0
+        && Win_get_key_window()
+            != static_cast<int>(reinterpret_cast<intptr_t>(&MapWin->oMainWin.field_4));
+    bool root_menu_open = in_game && native_menu_visible
+        && visible_submenus == 0 && !modal && !native_page_open;
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.human-ui.v1\""
+        << ",\"controller_kind\":\"human\""
+        << ",\"lifecycle\":" << json_string(in_game ? "game" : "menu")
+        << ",\"root_menu_open\":" << (root_menu_open ? "true" : "false")
+        << ",\"native_menu_visible\":"
+        << (native_menu_visible ? "true" : "false")
+        << ",\"visible_submenu_count\":" << visible_submenus
+        << ",\"visible_submenu_index\":" << visible_submenu_index
+        << ",\"selected_hitbox_tag\":" << (menu ? menu->iHitBoxTagClicked : -1)
+        << ",\"modal_open\":" << (modal ? "true" : "false")
+        << ",\"native_page_open\":"
+        << (native_page_open ? "true" : "false")
+        << ",\"rail_allowed\":" << (root_menu_open ? "true" : "false")
+        << '}';
+    return out.str();
+}
+
 bool valid_chat_identifier(const std::string& value) {
     if (value.empty() || value.size() > 64) return false;
     for (size_t i = 0; i < value.size(); ++i) {
@@ -4828,9 +4904,10 @@ std::string semantic_chat_response(const std::string& request) {
         }
         bool broadcast = recipient == 0;
         if (!broadcast && (recipient < 1 || recipient >= MaxPlayerNum
-        || recipient == sender || lan_player_index_for_faction(recipient) < 1)) {
+        || recipient == sender || lan_player_index_for_faction(recipient) < 1
+        || !has_treaty(sender, recipient, DIPLO_COMMLINK))) {
             return error_response("chat_recipient_unavailable",
-                "Choose broadcast recipient_faction_id=0 or a DirectPlay participant returned by smac_chat(list).");
+                "Choose broadcast recipient_faction_id=0 or a contacted DirectPlay participant returned as private_eligible by smac_chat(list).");
         }
         int native_send_result = message_chat(
             broadcast ? 0x4E00 : 0x1E00, recipient, &text[0]);
@@ -4898,6 +4975,11 @@ std::string semantic_chat_response(const std::string& request) {
             << ",\"faction_id\":" << faction_id
             << ",\"faction_name\":"
             << json_string(MFactions[faction_id].formal_name_faction)
+            << ",\"private_eligible\":"
+            << ((faction_id == local_faction
+                || (local_faction >= 1 && local_faction < MaxPlayerNum
+                    && has_treaty(local_faction, faction_id, DIPLO_COMMLINK)))
+                ? "true" : "false")
             << ",\"local\":" << (faction_id == local_faction ? "true" : "false")
             << '}';
     }
@@ -7628,7 +7710,7 @@ std::string semantic_snapshot_response() {
         << json_string((*GameState & STATE_GAME_DONE)
             ? semantic_victory_result(*GameVictoryType) : "in_progress") << '}'
         << ",\"interaction\":{\"kind\":" << json_string(interaction_kind(faction_id).c_str())
-        << ",\"popup_label\":" << json_string(agent_popup_label())
+        << ",\"popup_label\":" << json_string(semantic_popup_label())
         << ",\"instance_id\":" << agent_popup_generation()
         << ",\"can_command\":" << (human_turn_actionable(faction_id) ? "true" : "false")
         << ",\"modal\":" << ((*WinModalState || *PopupDialogState) ? "true" : "false")
@@ -7700,6 +7782,7 @@ std::string semantic_snapshot_response() {
         << "\"respond_to_contact:accept_or_decline_ai_channel\","
         << "\"continue_diplomacy:ai_greeting\","
         << "\"respond_to_diplomatic_offer:reject_technology_or_relationship_offer\","
+        << "\"respond_to_diplomatic_offer:introduced_commlink_accept_or_reject\","
         << "\"choose_diplomacy_option:finish_ai_conversation\","
         << "\"move_unit:adjacent_safe_or_at_war_combat_v2\","
         << "\"skip_unit:native_synch_veh\","
@@ -9750,7 +9833,7 @@ std::string semantic_choices_response(const std::string& request) {
             "The submitted popup action is still crossing the native event loop. Wait and observe; do not submit the same choice again.");
     }
     if (kind == "interaction") {
-        const char* label = agent_popup_label();
+        const char* label = semantic_popup_label();
         int council_window_proposal = active_council_window_proposal();
         std::ostringstream out;
         out << "{\"ok\":true,\"match_id\":" << json_string(agent_match_id.c_str())
@@ -11129,7 +11212,7 @@ std::string semantic_command_response(const std::string& request) {
     // PLANETFALL is a local, information-only opening notice on every human
     // client. It changes no shared simulation state, but still travels through
     // the guarded semantic command path and native popup callback.
-    std::string active_label = agent_popup_label();
+    std::string active_label = semantic_popup_label();
     int multiplayer_move_tile_id = -1;
     int multiplayer_move_x = -1;
     int multiplayer_move_y = -1;
@@ -11267,6 +11350,15 @@ std::string semantic_command_response(const std::string& request) {
         && (technology_trade_label(active_label)
             || technology_demand_label(active_label)
             || relationship_offer_label(active_label))
+        && multiplayer_contact_other >= 1
+        && multiplayer_contact_other < MaxPlayerNum
+        && !is_human(multiplayer_contact_other)
+        && active_default_popup();
+    bool validated_multiplayer_introduced_commlink_response =
+        command == "respond_to_diplomatic_offer"
+        && (field_string(request, "response") == "accept"
+            || field_string(request, "response") == "reject")
+        && introduced_commlink_offer_mode(active_label) >= 0
         && multiplayer_contact_other >= 1
         && multiplayer_contact_other < MaxPlayerNum
         && !is_human(multiplayer_contact_other)
@@ -11424,6 +11516,7 @@ std::string semantic_command_response(const std::string& request) {
         || validated_multiplayer_contact_response
         || validated_multiplayer_ai_greeting
         || validated_multiplayer_reject_ai_technology_trade
+        || validated_multiplayer_introduced_commlink_response
         || validated_multiplayer_finish_ai_diplomacy
         || validated_multiplayer_queue_append
         || validated_multiplayer_queue_remove
@@ -12071,7 +12164,7 @@ std::string semantic_command_response(const std::string& request) {
             "\"response\":") + json_string(response.c_str()) + '}';
     }
     if (command == "acknowledge_popup") {
-        std::string label = agent_popup_label();
+        std::string label = semantic_popup_label();
         if (!reviewed_information_popup(label) && !popup_information_only()
         && !narrative_intro_popup(label)) {
             return error_response("unsupported_popup", "This popup has no reviewed semantic choice. Report a capability gap.");
@@ -12488,7 +12581,7 @@ std::string semantic_command_response(const std::string& request) {
         return error_response("not_council_ballot", "No reviewed Planetary Council ballot is active.");
     }
     if (command == "respond_to_diplomatic_offer") {
-        std::string label = agent_popup_label();
+        std::string label = semantic_popup_label();
         std::string response = field_string(request, "response");
         bool counter = response == "counter";
         bool tech_trade = technology_trade_label(label);
@@ -15146,6 +15239,7 @@ std::string execute_request(const std::string& request) {
     apply_deferred_semantics();
     std::string op = field_string(request, "op");
     if (op == "ping" || op == "status") return status_response();
+    if (op == "human_ui_state") return human_ui_state_response();
     if (op == "observe") return observe_response();
     if (op == "list_bases") return bases_response();
     if (op == "list_units") return units_response();
@@ -15567,6 +15661,10 @@ void agent_bridge_start_once(HWND hwnd) {
     char match_id[128] = {};
     GetEnvironmentVariableA("SMACX_AGENT_SESSION_ID", session_id, sizeof(session_id));
     GetEnvironmentVariableA("SMACX_AGENT_MATCH_ID", match_id, sizeof(match_id));
+    char controller_kind[16] = {};
+    GetEnvironmentVariableA("SMACX_CONTROLLER_KIND", controller_kind,
+        sizeof(controller_kind));
+    managed_human_controller = !strcmp(controller_kind, "human");
     agent_session_id = session_id[0] ? session_id : "unmanaged-session";
     agent_match_id = match_id[0] ? match_id : "unmanaged-match";
     InitializeCriticalSection(&request_lock);

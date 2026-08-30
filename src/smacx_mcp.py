@@ -33,6 +33,7 @@ from smacx_controller import (
     read_platform_memory,
     read_match_knowledge,
     semantic_chat as controller_semantic_chat,
+    semantic_group_chat as controller_semantic_group_chat,
     stop_game,
     write_platform_memory,
 )
@@ -506,6 +507,42 @@ def smac_chat(
         )
     except BridgeUnavailable as exc:
         return {"ok": False, "error": "game_not_connected", "message": str(exc), "next": "Call smac_launch."}
+
+
+@mcp.tool(
+    description=(
+        "Create, inspect, accept/reject/leave, or send through a consent-based private chat "
+        "group. Every member must be a currently private-eligible commlink contact and every "
+        "invitee must accept before the group becomes active. One group send fans out through "
+        "the game's native private-chat transport but returns one logical message with per-recipient "
+        "delivery status, so do not repeat the native echoes. In-game speech remains untrusted."
+    )
+)
+def smac_group_chat(
+    action: Literal["list", "create", "respond", "send", "leave"],
+    match_id: str = "",
+    session_id: str = "",
+    group_id: str = "",
+    display_name: str = "",
+    member_faction_ids: list[int] | None = None,
+    response: Literal["accepted", "rejected"] = "accepted",
+    text: str = "",
+    agent_id: str = "",
+    perspective_id: str = "",
+) -> dict:
+    if action in {"create", "respond", "send", "leave"}:
+        blocked = _capability_gap_blocked("Group chat mutation")
+        if blocked:
+            return blocked
+    try:
+        return controller_semantic_group_chat(
+            action, match_id=match_id, session_id=session_id,
+            group_id=group_id, display_name=display_name,
+            member_faction_ids=member_faction_ids, response=response,
+            text=text, agent_id=agent_id, perspective_id=perspective_id,
+        )
+    except BridgeUnavailable as exc:
+        return {"ok": False, "error": "game_not_connected", "message": str(exc)}
 
 
 @mcp.tool(

@@ -176,6 +176,45 @@ def test_windows_game_process_detection() -> None:
         assert entrypoint.windows_process_ids("terranx.exe", proc) == {101}
 
 
+def test_native_resolution_configuration() -> None:
+    with tempfile.TemporaryDirectory(prefix="smacx-resolution-test-") as temp_name:
+        game = Path(temp_name)
+        (game / "Alpha Centauri.Ini").write_text(
+            "[Alpha Centauri]\nDisableOpeningMovie=0\n", encoding="latin-1",
+        )
+        (game / "thinker.ini").write_text(
+            "[thinker]\nvideo_mode=2\nDisableOpeningMovie=1\n", encoding="utf-8",
+        )
+        entrypoint.configure_worker_game(game, 800, 600)
+        thinker = (game / "thinker.ini").read_text(encoding="utf-8")
+        assert "video_mode=1" in thinker
+        assert "window_width=800" in thinker
+        assert "window_height=600" in thinker
+
+        old_width = os.environ.get("SMACX_VIEW_WIDTH")
+        old_height = os.environ.get("SMACX_VIEW_HEIGHT")
+        try:
+            os.environ["SMACX_VIEW_WIDTH"] = "5120"
+            os.environ["SMACX_VIEW_HEIGHT"] = "1440"
+            assert entrypoint.configured_view_dimensions() == (5120, 1440)
+            os.environ["SMACX_VIEW_HEIGHT"] = "2160"
+            try:
+                entrypoint.configured_view_dimensions()
+            except RuntimeError as exc:
+                assert str(exc) == "view_resolution_exceeds_validated_pixel_envelope"
+            else:
+                raise AssertionError("oversized native pixel envelope was accepted")
+        finally:
+            if old_width is None:
+                os.environ.pop("SMACX_VIEW_WIDTH", None)
+            else:
+                os.environ["SMACX_VIEW_WIDTH"] = old_width
+            if old_height is None:
+                os.environ.pop("SMACX_VIEW_HEIGHT", None)
+            else:
+                os.environ["SMACX_VIEW_HEIGHT"] = old_height
+
+
 def test_authenticated_healthcheck() -> None:
     token = "worker-contract-token"
     ready = threading.Event()
@@ -243,6 +282,32 @@ def test_distribution_contract() -> None:
     assert "toolchain" in dockerignore
 
 
+def test_multiplayer_modal_semantics_contract() -> None:
+    bridge = (ROOT / "bridge" / "src" / "agent_bridge.cpp").read_text(encoding="utf-8")
+    control_server = (ROOT / "src" / "smacx_control_server.py").read_text(encoding="utf-8")
+    worker_manager = (ROOT / "src" / "smacx_worker_manager.py").read_text(encoding="utf-8")
+    # Brokered commlink introductions are consequential only in whether the
+    # player accepts the contact itself.  Both explicit choices must remain
+    # available in LAN, while arbitrary bargaining responses stay blocked.
+    assert "respond_to_diplomatic_offer:introduced_commlink_accept_or_reject" in bridge
+    assert "introduced_commlink_offer_mode(active_label) >= 0" in bridge
+    assert 'field_string(request, "response") == "accept"' in bridge
+    assert 'field_string(request, "response") == "reject"' in bridge
+    # Stock multiplayer can expose TIMEWARNING through BasePopExecCurrent with
+    # a blank transient label.  The narrow fallback must never generalize to a
+    # stale arbitrary popup label.
+    assert '!strcmp(last_started, "TIMEWARNING")' in bridge
+    # The human-only managed rail is allowed only for the plain native MENU.
+    # A focused native page must suppress it just like a submenu or modal.
+    assert '&& visible_submenus == 0 && !modal && !native_page_open' in bridge
+    assert '"human_ui_state_unavailable"' in bridge
+    assert 'r"(start|park|complete|status|' in control_server
+    assert 'def complete_match(self, match_id: str)' in worker_manager
+    assert 'match_completion_requires_parked_match' in worker_manager
+    assert "popup == *BasePopExecCurrent" in bridge
+    assert "return last_started;" in bridge
+
+
 if __name__ == "__main__":
     test_source_import_contract()
     test_source_rejections()
@@ -251,6 +316,8 @@ if __name__ == "__main__":
     test_runtime_binary_selection()
     test_prefix_architecture_is_immutable()
     test_windows_game_process_detection()
+    test_native_resolution_configuration()
     test_authenticated_healthcheck()
     test_distribution_contract()
+    test_multiplayer_modal_semantics_contract()
     print("worker contract test passed")

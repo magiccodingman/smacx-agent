@@ -377,19 +377,43 @@ public sealed class LobbiesController(
     [AllowAnonymous]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<LobbyMessage>>>> Messages(string matchId)
     {
-        if (!await database.PortalMatches.AsNoTracking().AnyAsync(
-                match => match.MatchId == matchId && match.IsListed, HttpContext.RequestAborted))
+        var profile = await database.PortalMatches.AsNoTracking().SingleOrDefaultAsync(
+            match => match.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null)
         {
             return NotFound(ApiResponse<IReadOnlyList<LobbyMessage>>.Failure(
                 "lobby_not_found", "The lobby was not found."));
         }
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var member = userId is not null && await database.PortalMatchMembers.AsNoTracking()
+            .AnyAsync(item => item.MatchId == matchId && item.UserId == userId &&
+                item.LeftAt == null, HttpContext.RequestAborted);
+        if (!member && !User.IsInRole("Administrator") &&
+            !(profile.IsListed && profile.AllowAnonymousSpectators)) return Forbid();
+        var localFaction = member ? await database.PortalLobbySeats.AsNoTracking()
+            .Where(item => item.MatchId == matchId && item.UserId == userId)
+            .Select(item => item.FactionId).SingleOrDefaultAsync(HttpContext.RequestAborted) : null;
+        var groupIds = localFaction is not null
+            ? await database.PortalChatGroupMembers.AsNoTracking()
+                .Where(item => item.FactionId == localFaction && item.Status == "accepted")
+                .Select(item => item.GroupId).ToArrayAsync(HttpContext.RequestAborted)
+            : [];
         var messages = await database.PortalLobbyMessages.AsNoTracking()
             .Where(message => message.MatchId == matchId)
             .OrderByDescending(message => message.CreatedAt)
             .Take(200)
             .OrderBy(message => message.CreatedAt)
             .ToArrayAsync(HttpContext.RequestAborted);
-        return ApiResponse<IReadOnlyList<LobbyMessage>>.Success(messages.Select(ToMessage).ToArray());
+        var visible = messages.Where(message => message.Channel == "global" || member && (
+            message.UserId == userId ||
+            message.Channel == "private" && message.RecipientFactionId == localFaction ||
+            message.Channel == "group" && message.ConversationId is not null &&
+                groupIds.Contains(message.ConversationId))).ToArray();
+        var ids = visible.Select(item => item.Id).ToArray();
+        var deliveryRows = await database.PortalChatDeliveries.AsNoTracking()
+            .Where(item => ids.Contains(item.MessageId)).ToArrayAsync(HttpContext.RequestAborted);
+        return ApiResponse<IReadOnlyList<LobbyMessage>>.Success(visible.Select(message =>
+            ToMessage(message, deliveryRows.Where(item => item.MessageId == message.Id))).ToArray());
     }
 
     [HttpPost("{matchId}/messages")]
@@ -403,21 +427,31 @@ public sealed class LobbiesController(
             return Unauthorized(ApiResponse<LobbyMessage>.Failure("authentication_required", "Sign in to chat."));
         }
         var content = request.Content.Trim();
-        if (content.Length is < 1 or > 1000 || content.Any(character => char.IsControl(character) && character != '\n'))
+        if (content.Length is < 1 or > 240 || content.Any(character => character < 0x20 || character > 0x7e))
         {
             return BadRequest(ApiResponse<LobbyMessage>.Failure(
-                "invalid_message", "Messages must contain 1–1000 printable characters."));
+                "invalid_message", "Messages must contain 1–240 printable ASCII characters."));
         }
-        if (!await database.PortalMatches.AnyAsync(
-                match => match.MatchId == matchId && match.IsListed, HttpContext.RequestAborted))
+        var profile = await database.PortalMatches.SingleOrDefaultAsync(
+            match => match.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null)
         {
             return NotFound(ApiResponse<LobbyMessage>.Failure("lobby_not_found", "The lobby was not found."));
         }
+        if (!await database.PortalMatchMembers.AsNoTracking().AnyAsync(item =>
+                item.MatchId == matchId && item.UserId == user.Id && item.LeftAt == null,
+                HttpContext.RequestAborted)) return Forbid();
+        if (request.Channel is not ("global" or "private" or "group"))
+            return BadRequest(ApiResponse<LobbyMessage>.Failure(
+                "invalid_chat_channel", "Choose global, private, or group chat."));
         if (request.RecipientFactionId is < 0 or > 7)
         {
             return BadRequest(ApiResponse<LobbyMessage>.Failure(
                 "invalid_chat_recipient", "Choose everyone or a known faction."));
         }
+        if (request.Channel == "private" && request.RecipientFactionId == 0)
+            return BadRequest(ApiResponse<LobbyMessage>.Failure(
+                "private_recipient_required", "Choose one contacted faction."));
         var entity = new PortalLobbyMessage
         {
             MatchId = matchId,
@@ -426,15 +460,52 @@ public sealed class LobbiesController(
             Content = content,
             DeliveredToGame = false,
             NativeMessageUid = $"portal:{Guid.NewGuid():N}:to:{request.RecipientFactionId}",
+            Channel = request.Channel,
+            ConversationId = request.ConversationId,
+            RecipientFactionId = request.RecipientFactionId,
         };
         database.PortalLobbyMessages.Add(entity);
-        var profile = await database.PortalMatches.AsNoTracking().SingleAsync(
-            match => match.MatchId == matchId, HttpContext.RequestAborted);
         var managedSeat = await database.PortalLobbySeats.AsNoTracking().SingleOrDefaultAsync(
             seat => seat.MatchId == matchId && seat.UserId == user.Id &&
                 seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
                 seat.ControlInstanceId != null, HttpContext.RequestAborted);
-        if (profile.Status == "running" && managedSeat?.ControlInstanceId is not null)
+        entity.SenderFactionId = managedSeat?.FactionId;
+        if (request.Channel == "group")
+        {
+            if (profile.Status != "running" || managedSeat?.ControlInstanceId is null ||
+                string.IsNullOrWhiteSpace(request.ConversationId))
+                return Conflict(ApiResponse<LobbyMessage>.Failure(
+                    "managed_group_chat_unavailable",
+                    "Group chat requires this player's running browser-managed seat."));
+            try
+            {
+                using var sent = await control.PostRawAsync(
+                    $"api/v1/workers/{managedSeat.ControlInstanceId}/group-chat", new
+                    {
+                        action = "send", group_id = request.ConversationId, text = content,
+                    }, HttpContext.RequestAborted);
+                entity.LogicalMessageId = sent.RootElement.GetProperty(
+                    "logical_message_id").GetString();
+                entity.ConversationName = await database.PortalChatGroups.AsNoTracking()
+                    .Where(item => item.GroupId == request.ConversationId)
+                    .Select(item => item.DisplayName).SingleOrDefaultAsync(HttpContext.RequestAborted);
+                foreach (var delivery in sent.RootElement.GetProperty("deliveries").EnumerateArray())
+                    database.PortalChatDeliveries.Add(new PortalChatDelivery
+                    {
+                        MessageId = entity.Id,
+                        RecipientFactionId = delivery.GetProperty("recipient_faction_id").GetInt32(),
+                        Status = delivery.GetProperty("status").GetString() ?? "failed",
+                        DeliveredAt = delivery.GetProperty("status").GetString() == "delivered"
+                            ? DateTimeOffset.UtcNow : null,
+                    });
+                entity.DeliveredToGame = sent.RootElement.GetProperty("ok").GetBoolean();
+            }
+            catch (ControlPlaneException exception)
+            {
+                return Conflict(ApiResponse<LobbyMessage>.Failure(exception.Code, exception.Message));
+            }
+        }
+        else if (profile.Status == "running" && managedSeat?.ControlInstanceId is not null)
         {
             try
             {
@@ -442,7 +513,8 @@ public sealed class LobbiesController(
                     $"api/v1/workers/{managedSeat.ControlInstanceId}/chat", new
                     {
                         action = "send", text = content,
-                        recipient_faction_id = request.RecipientFactionId,
+                        recipient_faction_id = request.Channel == "global"
+                            ? 0 : request.RecipientFactionId,
                         client_message_id = entity.Id,
                     }, HttpContext.RequestAborted);
                 entity.DeliveredToGame = delivered.RootElement.TryGetProperty("sent", out var sent)
@@ -455,10 +527,206 @@ public sealed class LobbiesController(
             }
         }
         await database.SaveChangesAsync(HttpContext.RequestAborted);
-        var message = ToMessage(entity);
+        var storedDeliveries = await database.PortalChatDeliveries.AsNoTracking()
+            .Where(item => item.MessageId == entity.Id).ToArrayAsync(HttpContext.RequestAborted);
+        var message = ToMessage(entity, storedDeliveries);
+        // Never push a private/group body through the broad lobby SignalR
+        // group. Each client refetches through the authorization-filtered API.
         await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
-            "LobbyMessage", message, HttpContext.RequestAborted);
+            "LobbyChanged", matchId, HttpContext.RequestAborted);
         return ApiResponse<LobbyMessage>.Success(message);
+    }
+
+    [HttpGet("{matchId}/chat-groups")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ChatConversation>>>> ChatGroups(
+        string matchId)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+        var seat = await ManagedHumanSeatAsync(matchId, user.Id);
+        if (seat?.ControlInstanceId is null)
+            return Conflict(ApiResponse<IReadOnlyList<ChatConversation>>.Failure(
+                "managed_group_chat_unavailable",
+                "Group chat requires a running browser-managed player seat."));
+        try
+        {
+            using var document = await control.PostRawAsync(
+                $"api/v1/workers/{seat.ControlInstanceId}/group-chat",
+                new { action = "list" }, HttpContext.RequestAborted);
+            var groups = new List<ChatConversation>();
+            foreach (var group in document.RootElement.GetProperty("groups").EnumerateArray())
+            {
+                await MirrorGroupAsync(matchId, user.Id, group);
+                groups.Add(MapConversation(matchId, group, seat.FactionId));
+            }
+            await database.SaveChangesAsync(HttpContext.RequestAborted);
+            return ApiResponse<IReadOnlyList<ChatConversation>>.Success(groups);
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<IReadOnlyList<ChatConversation>>.Failure(
+                    exception.Code, exception.Message));
+        }
+    }
+
+    [HttpGet("{matchId}/chat-participants")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ChatParticipant>>>> ChatParticipants(
+        string matchId)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+        var seat = await ManagedHumanSeatAsync(matchId, user.Id);
+        if (seat?.ControlInstanceId is null)
+            return Conflict(ApiResponse<IReadOnlyList<ChatParticipant>>.Failure(
+                "managed_chat_unavailable",
+                "Native chat requires a running browser-managed player seat."));
+        try
+        {
+            using var document = await control.PostRawAsync(
+                $"api/v1/workers/{seat.ControlInstanceId}/group-chat",
+                new { action = "list" }, HttpContext.RequestAborted);
+            var participants = document.RootElement.GetProperty("participants")
+                .EnumerateArray().Select(item =>
+                {
+                    var factionId = item.GetProperty("faction_id").GetInt32();
+                    var playerName = item.TryGetProperty("player_name", out var player) &&
+                        player.ValueKind == JsonValueKind.String ? player.GetString() : null;
+                    var factionName = item.TryGetProperty("faction_name", out var faction) &&
+                        faction.ValueKind == JsonValueKind.String ? faction.GetString() : null;
+                    return new ChatParticipant(
+                        $"faction:{factionId}", playerName ?? factionName ?? $"Faction {factionId}",
+                        factionId, factionName, "available",
+                        item.TryGetProperty("local", out var local) && local.ValueKind == JsonValueKind.True,
+                        item.TryGetProperty("private_eligible", out var eligible) &&
+                            eligible.ValueKind == JsonValueKind.True);
+                }).ToArray();
+            return ApiResponse<IReadOnlyList<ChatParticipant>>.Success(participants);
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<IReadOnlyList<ChatParticipant>>.Failure(
+                    exception.Code, exception.Message));
+        }
+    }
+
+    [HttpPost("{matchId}/chat-groups")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<ChatConversation>>> CreateChatGroup(
+        string matchId, CreateChatGroupRequest request)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+        var seat = await ManagedHumanSeatAsync(matchId, user.Id);
+        if (seat?.ControlInstanceId is null)
+            return Conflict(ApiResponse<ChatConversation>.Failure(
+                "managed_group_chat_unavailable",
+                "Group chat requires a running browser-managed player seat."));
+        try
+        {
+            using var document = await control.PostRawAsync(
+                $"api/v1/workers/{seat.ControlInstanceId}/group-chat", new
+                {
+                    action = "create", display_name = request.DisplayName,
+                    member_faction_ids = request.MemberFactionIds,
+                }, HttpContext.RequestAborted);
+            var group = document.RootElement.GetProperty("group");
+            await MirrorGroupAsync(matchId, user.Id, group);
+            await database.SaveChangesAsync(HttpContext.RequestAborted);
+            var conversation = MapConversation(matchId, group, seat.FactionId);
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                "ChatGroupsChanged", matchId, HttpContext.RequestAborted);
+            return ApiResponse<ChatConversation>.Success(conversation);
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<ChatConversation>.Failure(exception.Code, exception.Message));
+        }
+    }
+
+    [HttpPost("{matchId}/chat-groups/{groupId}/respond")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<ChatConversation>>> RespondChatGroup(
+        string matchId, string groupId, RespondChatGroupRequest request)
+    {
+        if (request.Response is not ("accepted" or "rejected" or "left"))
+            return BadRequest(ApiResponse<ChatConversation>.Failure(
+                "invalid_group_response", "Choose accepted, rejected, or left."));
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+        var seat = await ManagedHumanSeatAsync(matchId, user.Id);
+        if (seat?.ControlInstanceId is null)
+            return Conflict(ApiResponse<ChatConversation>.Failure(
+                "managed_group_chat_unavailable",
+                "Group chat requires a running browser-managed player seat."));
+        try
+        {
+            using var document = await control.PostRawAsync(
+                $"api/v1/workers/{seat.ControlInstanceId}/group-chat", new
+                {
+                    action = request.Response == "left" ? "leave" : "respond",
+                    group_id = groupId, response = request.Response,
+                }, HttpContext.RequestAborted);
+            var group = document.RootElement.GetProperty("group");
+            await MirrorGroupAsync(matchId, user.Id, group);
+            await database.SaveChangesAsync(HttpContext.RequestAborted);
+            var conversation = MapConversation(matchId, group, seat.FactionId);
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                "ChatGroupsChanged", matchId, HttpContext.RequestAborted);
+            return ApiResponse<ChatConversation>.Success(conversation);
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<ChatConversation>.Failure(exception.Code, exception.Message));
+        }
+    }
+
+    [HttpGet("{matchId}/human-ui/{seatIndex:int}")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<HumanUiState>>> HumanUi(
+        string matchId, int seatIndex)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return Unauthorized();
+        var seat = await database.PortalLobbySeats.AsNoTracking().SingleOrDefaultAsync(
+            item => item.MatchId == matchId && item.SeatIndex == seatIndex,
+            HttpContext.RequestAborted);
+        if (seat is null) return NotFound();
+        // Administrative observation remains read-only. The native MENU rail
+        // is available only to the human who actually owns this seat.
+        if (seat.UserId != userId || seat.ControllerKind != "human" ||
+            seat.JoinMode != "browser" || seat.ControlInstanceId is null) return Forbid();
+        try
+        {
+            using var document = await control.PostRawAsync(
+                $"api/v1/workers/{seat.ControlInstanceId}/human-ui", new { },
+                HttpContext.RequestAborted);
+            var root = document.RootElement;
+            var rootMenu = root.GetProperty("root_menu_open").GetBoolean();
+            var modal = root.GetProperty("modal_open").GetBoolean();
+            var menuDepth = root.GetProperty("visible_submenu_count").GetInt32();
+            var profileId = root.GetProperty("resolution_profile_id").GetString()
+                ?? ResolutionProfiles.DesktopDefault;
+            var result = new HumanUiState(
+                matchId, seat.ControlInstanceId,
+                rootMenu ? "root_menu" : root.GetProperty("lifecycle").GetString() ?? "unknown",
+                rootMenu, menuDepth, modal, null, null,
+                HashCode.Combine(rootMenu, modal, menuDepth,
+                    root.GetProperty("selected_hitbox_tag").GetInt32()),
+                profileId, root.GetProperty("native_width").GetInt32(),
+                root.GetProperty("native_height").GetInt32(), true);
+            return ApiResponse<HumanUiState>.Success(result);
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<HumanUiState>.Failure(exception.Code, exception.Message));
+        }
     }
 
     private async Task<(int Status, string Code, string Message)?> MaterializeAsync(
@@ -478,6 +746,8 @@ public sealed class LobbiesController(
         var managedHumans = humans.Where(seat => seat.JoinMode == "browser").ToArray();
         var externalHumans = humans.Where(seat => seat.JoinMode == "native").ToArray();
         var networkSeatCount = agents.Length + humans.Length;
+        foreach (var candidate in seats) candidate.IsManagedHost = false;
+        assigned[0].IsManagedHost = true;
         if (networkSeatCount == 1)
         {
             var only = assigned.Single(item => item.ControllerKind is "agent" or "human");
@@ -616,7 +886,9 @@ public sealed class LobbiesController(
                 seat.SeatIndex, seat.ControllerKind, seat.AgentId, seat.PlayerHandle,
                 seat.FactionId, seat.FactionName, seat.Status,
                 seat.ControlInstanceId is not null, seat.ControlInstanceId, seat.JoinMode,
-                canControl, canSpectate, canJoin);
+                canControl, canSpectate, canJoin, seat.ConnectionState,
+                seat.DelegationStatus, seat.TemporaryControllerKind,
+                seat.LastBrowserSeenAt, seat.IsManagedHost);
         }).ToArray();
         var nativeJoin = await ReadNativeJoinAsync(profile.MatchId);
         return new LobbyDetails(
@@ -639,14 +911,95 @@ public sealed class LobbiesController(
         catch (JsonException) { return null; }
     }
 
-    private static LobbyMessage ToMessage(PortalLobbyMessage message)
+    private async Task<PortalLobbySeat?> ManagedHumanSeatAsync(string matchId, string userId) =>
+        await database.PortalLobbySeats.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.MatchId == matchId && item.UserId == userId &&
+            item.ControllerKind == "human" && item.JoinMode == "browser" &&
+            item.ControlInstanceId != null, HttpContext.RequestAborted);
+
+    private async Task MirrorGroupAsync(string matchId, string userId, JsonElement group)
+    {
+        var groupId = group.GetProperty("group_id").GetString()!;
+        var row = await database.PortalChatGroups.SingleOrDefaultAsync(
+            item => item.GroupId == groupId, HttpContext.RequestAborted);
+        if (row is null)
+        {
+            row = new PortalChatGroup
+            {
+                GroupId = groupId, MatchId = matchId, CreatedByUserId = userId,
+                CreatedAt = DateTimeOffset.UtcNow,
+            };
+            database.PortalChatGroups.Add(row);
+        }
+        row.DisplayName = group.GetProperty("display_name").GetString() ?? "Group";
+        row.Status = group.GetProperty("status").GetString() ?? "inviting";
+        row.Version = group.TryGetProperty("version", out var version) ? version.GetInt32() : 1;
+        row.UpdatedAt = DateTimeOffset.UtcNow;
+        foreach (var member in group.GetProperty("members").EnumerateArray())
+        {
+            var factionId = member.GetProperty("faction_id").GetInt32();
+            var actorKey = $"faction:{factionId}";
+            var existing = await database.PortalChatGroupMembers.SingleOrDefaultAsync(
+                item => item.GroupId == groupId && item.ActorKey == actorKey,
+                HttpContext.RequestAborted);
+            if (existing is null)
+            {
+                existing = new PortalChatGroupMember
+                {
+                    GroupId = groupId, ActorKey = actorKey, FactionId = factionId,
+                };
+                database.PortalChatGroupMembers.Add(existing);
+            }
+            existing.DisplayName = member.GetProperty("display_name").GetString()
+                ?? $"Faction {factionId}";
+            existing.FactionName = member.TryGetProperty("faction_name", out var faction) &&
+                faction.ValueKind == JsonValueKind.String ? faction.GetString() : null;
+            existing.Status = member.GetProperty("status").GetString() ?? "invited";
+            var portalSeat = await database.PortalLobbySeats.AsNoTracking().SingleOrDefaultAsync(
+                item => item.MatchId == matchId && item.FactionId == factionId,
+                HttpContext.RequestAborted);
+            existing.UserId = portalSeat?.UserId;
+        }
+    }
+
+    private static ChatConversation MapConversation(
+        string matchId, JsonElement group, int? localFactionId)
+    {
+        var members = group.GetProperty("members").EnumerateArray().Select(member =>
+        {
+            var factionId = member.GetProperty("faction_id").GetInt32();
+            return new ChatParticipant(
+                $"faction:{factionId}",
+                member.GetProperty("display_name").GetString() ?? $"Faction {factionId}",
+                factionId,
+                member.TryGetProperty("faction_name", out var faction) &&
+                    faction.ValueKind == JsonValueKind.String ? faction.GetString() : null,
+                member.GetProperty("status").GetString() ?? "invited",
+                localFactionId == factionId, true);
+        }).ToArray();
+        return new ChatConversation(
+            group.GetProperty("group_id").GetString()!, matchId, "group",
+            group.GetProperty("display_name").GetString() ?? "Group", members, 0,
+            DateTimeOffset.FromUnixTimeMilliseconds((long)(
+                group.GetProperty("updated_unix").GetDouble() * 1000)));
+    }
+
+    private static LobbyMessage ToMessage(
+        PortalLobbyMessage message,
+        IEnumerable<PortalChatDelivery>? deliveries = null)
     {
         var marker = message.NativeMessageUid ?? string.Empty;
-        var sender = MarkerFaction(marker, ":from:");
-        var recipient = MarkerFaction(marker, ":to:") ?? 0;
+        var sender = message.SenderFactionId ?? MarkerFaction(marker, ":from:");
+        var recipient = message.RecipientFactionId != 0
+            ? message.RecipientFactionId : MarkerFaction(marker, ":to:") ?? 0;
         return new LobbyMessage(
             message.Id, message.MatchId, message.SenderHandle, message.Content,
-            message.DeliveredToGame, sender, recipient, message.CreatedAt);
+            message.DeliveredToGame, sender, recipient, message.CreatedAt,
+            message.Channel, message.ConversationId, message.ConversationName,
+            message.LogicalMessageId ?? message.Id,
+            deliveries?.Select(item => new ChatDelivery(
+                item.RecipientFactionId, item.RecipientHandle, item.Status,
+                item.NativeMessageUid)).ToArray());
     }
 
     private static int? MarkerFaction(string value, string marker)

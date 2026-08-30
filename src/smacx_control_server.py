@@ -36,16 +36,25 @@ MAX_REQUEST_BODY = 1024 * 1024
 SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
 PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select|delete)$")
-WORKER_PATH = re.compile(r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/(start|park|status|spectator|chat)$")
+WORKER_PATH = re.compile(
+    r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/"
+    r"(start|park|status|spectator|chat|group-chat|human-ui)$"
+)
 MATCH_PATH = re.compile(
     r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/"
-    r"(start|park|status|discover-external-host|join-external-host|finalize-external-host)$"
+    r"(start|park|complete|status|discover-external-host|join-external-host|finalize-external-host)$"
 )
 MATCH_DETAIL_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})$")
 MATCH_STATUS_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/status$")
 SCHEDULE_PATH = re.compile(r"^/api/v1/schedules/([A-Za-z0-9_-]{8,96})/(activate|pause|disable)$")
 BACKUP_PATH = re.compile(r"^/api/v1/backups/([A-Za-z0-9_-]{8,96})/verify$")
 RECOVERY_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(checkpoint|recover)$")
+RESOLUTION_PATH = re.compile(
+    r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/resolution$"
+)
+MATCH_CONTROLLER_PATH = re.compile(
+    r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(seat-controller|host-seat)$"
+)
 HARNESS_RUN_PATH = re.compile(
     r"^/api/v1/harness-runs/([A-Za-z0-9_-]{8,96})/(start|stop|status|telemetry)$"
 )
@@ -791,6 +800,41 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, result)
                 return
+            resolution_match = RESOLUTION_PATH.fullmatch(path)
+            if resolution_match:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id = resolution_match.group(1)
+                result = manager.set_match_resolution(
+                    match_id, str(body.get("profile_id", "")),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "match.resolution", "match", match_id,
+                    "success", {"profile_id": result["profile_id"]},
+                    self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            controller_match = MATCH_CONTROLLER_PATH.fullmatch(path)
+            if controller_match:
+                auth = self._authorize_mutation()
+                manager = self._manager()
+                body = self._body()
+                match_id, action = controller_match.groups()
+                seat_index = int(body.get("seat_index", -1))
+                if action == "host-seat":
+                    result = manager.set_match_host(match_id, seat_index)
+                else:
+                    result = manager.set_match_seat_delegation(
+                        match_id, seat_index, delegated=body.get("delegated") is True,
+                    )
+                self.server.control.audit(
+                    auth["admin_id"], f"match.{action}", "match", match_id,
+                    "success", {"seat_index": seat_index}, self.client_address[0],
+                )
+                self._json(200, result)
+                return
             match = PROVIDER_PATH.fullmatch(path)
             if match:
                 auth = self._authorize_mutation()
@@ -847,6 +891,18 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                                            if body.get("client_message_id") else None),
                         after_sequence=int(body.get("after_sequence", 0)),
                     )
+                elif action == "human-ui":
+                    result = manager.human_ui_state(instance_id)
+                elif action == "group-chat":
+                    result = manager.portal_group_chat(
+                        instance_id, action=str(body.get("action", "list")),
+                        group_id=str(body.get("group_id", "")),
+                        display_name=str(body.get("display_name", "")),
+                        member_faction_ids=[int(item) for item in body.get(
+                            "member_faction_ids", [])],
+                        response=str(body.get("response", "")),
+                        text=str(body.get("text", "")),
+                    )
                 else:
                     result = manager.worker_status(instance_id)
                 self.server.control.audit(
@@ -896,6 +952,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         }:
                             self._harness_manager().stop_run(str(run["run_id"]))
                     result = manager.park_match(match_id)
+                elif action == "complete":
+                    result = manager.complete_match(match_id)
                 elif action == "status":
                     result = manager.lan_match_status(match_id)
                 elif action == "discover-external-host":

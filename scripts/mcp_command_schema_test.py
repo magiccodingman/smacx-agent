@@ -19,7 +19,11 @@ def main() -> int:
         return {"ok": False, "error": {"code": "fixture_complete"}}
 
     original_call = smacx_mcp._call
+    original_gap = smacx_mcp._pending_capability_gap
+    original_briefing_gate = smacx_mcp._match_briefing_gate
     smacx_mcp._call = fake_call
+    smacx_mcp._pending_capability_gap = lambda: None
+    smacx_mcp._match_briefing_gate = lambda _match_id, _session_id: None
     try:
         signature = inspect.signature(smacx_mcp.smac_command)
         choice_signature = inspect.signature(smacx_mcp.smac_choices)
@@ -122,6 +126,8 @@ def main() -> int:
         )
     finally:
         smacx_mcp._call = original_call
+        smacx_mcp._pending_capability_gap = original_gap
+        smacx_mcp._match_briefing_gate = original_briefing_gate
 
     payload = captured.get("payload", {})
     if captured.get("method") != "semantic_command":

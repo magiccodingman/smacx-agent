@@ -1178,6 +1178,128 @@ def semantic_chat(
     return result
 
 
+def semantic_group_chat(
+    action: str, *, match_id: str = "", session_id: str = "",
+    group_id: str = "", display_name: str = "",
+    member_faction_ids: list[int] | None = None, response: str = "",
+    text: str = "", agent_id: str = "", perspective_id: str = "",
+) -> dict[str, Any]:
+    """Manage consent groups while delivering every message over native chat."""
+    if action not in {"list", "create", "respond", "send", "leave"}:
+        return {"ok": False, "error": "invalid_group_chat_action"}
+    native = semantic_chat(
+        "list", match_id=match_id, session_id=session_id,
+        agent_id=agent_id, perspective_id=perspective_id, acknowledge=False,
+    )
+    if not native.get("ok"):
+        return native
+    identity = native.get("identity")
+    if not isinstance(identity, dict):
+        return {"ok": False, "error": "native_chat_identity_unavailable"}
+    match_id = str(identity.get("match_id") or match_id)
+    session_id = str(identity.get("session_id") or session_id)
+    participants = [item for item in native.get("participants", [])
+                    if isinstance(item, dict)]
+    local = next((item for item in participants if item.get("local") is True), None)
+    if local is None:
+        return {"ok": False, "error": "local_chat_faction_unavailable"}
+    local_faction_id = int(local["faction_id"])
+    try:
+        scope = _scope_for_match(
+            match_id, session_id=session_id, agent_id=agent_id or None,
+            perspective_id=perspective_id or None, create_legacy_session=True,
+        )
+        if scope is None:
+            raise StoreError("unknown_match_scope")
+        store = _store()
+        if action == "list":
+            return {"ok": True, "groups": store.list_chat_groups(
+                scope, local_faction_id), "participants": participants,
+                "logical_delivery": True, "untrusted_in_game_speech": True}
+        if action == "create":
+            requested = {int(value) for value in (member_faction_ids or [])}
+            requested.add(local_faction_id)
+            selected = [item for item in participants
+                        if int(item.get("faction_id", -1)) in requested]
+            if {int(item["faction_id"]) for item in selected} != requested:
+                raise InvalidRecord("unknown_chat_group_member")
+            if any(item.get("local") is not True and
+                   item.get("private_eligible") is not True for item in selected):
+                raise InvalidRecord("chat_group_requires_mutual_commlink")
+            group = store.create_chat_group(
+                scope, display_name, local_faction_id,
+                [{"faction_id": int(item["faction_id"]),
+                  "display_name": item.get("player_name") or item.get("faction_name")
+                      or f"Faction {item['faction_id']}",
+                  "faction_name": item.get("faction_name")}
+                 for item in selected],
+            )
+            deliveries = []
+            for faction_id in sorted(requested - {local_faction_id}):
+                invitation = semantic_chat(
+                    "send", match_id=match_id, session_id=session_id,
+                    client_message_id=f"{group['group_id']}-invite-{faction_id}",
+                    text=(f"[SMACX group invitation: {group['display_name']}; "
+                          f"id {group['group_id']}. Use group chat respond to accept or reject.]"),
+                    recipient_faction_id=faction_id, agent_id=agent_id,
+                    perspective_id=perspective_id, acknowledge=False,
+                )
+                deliveries.append({"recipient_faction_id": faction_id,
+                                   "delivered": bool(invitation.get("ok"))})
+            return {"ok": True, "group": group, "deliveries": deliveries,
+                    "logical_delivery": True}
+        if action in {"respond", "leave"}:
+            desired = "left" if action == "leave" else response
+            if desired not in {"accepted", "rejected", "left"}:
+                raise InvalidRecord("invalid_chat_group_response")
+            group = store.respond_chat_group(
+                scope, group_id, local_faction_id, desired,
+            )
+            creator = int(group["created_by_faction_id"])
+            delivery = None
+            if creator != local_faction_id:
+                delivery = semantic_chat(
+                    "send", match_id=match_id, session_id=session_id,
+                    client_message_id=f"{group_id}-response-{local_faction_id}-{group['version']}",
+                    text=f"[SMACX group {group_id}: faction {local_faction_id} {desired}.]",
+                    recipient_faction_id=creator, agent_id=agent_id,
+                    perspective_id=perspective_id, acknowledge=False,
+                )
+            return {"ok": True, "group": group,
+                    "native_notice_delivered": delivery is None or bool(delivery.get("ok"))}
+        message = store.begin_group_message(
+            scope, group_id, local_faction_id, text,
+            turn=native.get("turn"), year=native.get("year"),
+        )
+        deliveries = []
+        prefix = f"[Group: {message['group']['display_name']}] "
+        for faction_id in message["recipients"]:
+            sent = semantic_chat(
+                "send", match_id=match_id, session_id=session_id,
+                client_message_id=f"{message['logical_message_id']}-f{faction_id}",
+                text=prefix + message["content"], recipient_faction_id=faction_id,
+                agent_id=agent_id, perspective_id=perspective_id,
+                acknowledge=False,
+            )
+            delivered = bool(sent.get("ok") and sent.get("sent"))
+            event = sent.get("event") if isinstance(sent.get("event"), dict) else {}
+            store.complete_group_delivery(
+                message["logical_message_id"], faction_id,
+                delivered=delivered,
+                native_message_uid=(str(event.get("client_message_id"))
+                                    if event.get("client_message_id") else None),
+            )
+            deliveries.append({"recipient_faction_id": faction_id,
+                               "status": "delivered" if delivered else "failed"})
+        return {"ok": all(item["status"] == "delivered" for item in deliveries),
+                "logical_message_id": message["logical_message_id"],
+                "group_id": group_id, "content": message["content"],
+                "deliveries": deliveries, "logical_delivery": True,
+                "native_echoes_collapsed": True}
+    except (StoreError, ValueError, TypeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def chat_attention(
     match_id: str,
     session_id: str,
