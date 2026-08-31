@@ -17,6 +17,7 @@ python3 -m compileall -q src worker scripts
 PYTHONPATH=src python3 scripts/control_plane_test.py
 PYTHONPATH=src python3 scripts/control_http_test.py
 PYTHONPATH=src python3 scripts/worker_contract_test.py
+python3 scripts/save_retention_live_test.py
 PYTHONPATH=src python3 scripts/hermes_adapter_test.py
 PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
@@ -315,6 +316,21 @@ Native crash recovery is accepted only at a bridge-verified checkpoint. Backup
 verification checks SQLite integrity, manifests, hashes, secret archive policy,
 and worker/Hermes volume archives. Test-owned resources are selected by exact
 installation labels and cleaned afterward.
+
+The installation-local image and compact-save path have opt-in Docker proofs:
+
+```bash
+SMACX_GAME_SOURCE=/absolute/path/to/game \
+  PYTHONPATH=src python3 scripts/prepared_worker_live_test.py
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/game \
+  PYTHONPATH=src python3 scripts/worker_manager_live_test.py
+python3 scripts/save_retention_live_test.py
+```
+
+They verify full game-tree fingerprinting and cache reuse, a real semantic
+opening followed by park/resume, absence of host game/runtime mounts, a
+disposable per-seat copy-on-write root, bounded checkpoint retention, zstd
+archives, and newest-checkpoint final preservation.
 
 The portal park-race regression is specifically:
 

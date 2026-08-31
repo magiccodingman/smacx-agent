@@ -324,6 +324,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, self._operations().status())
                 return
+            if path == "/api/v1/storage-policy":
+                self._authentication()
+                self._json(200, self.server.control.storage_policy())
+                return
             if path == "/api/v1/schedules":
                 self._authentication()
                 self._json(200, {"ok": True, "schedules": self._operations().list_schedules()})
@@ -701,6 +705,20 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, result)
                 return
+            if path == "/api/v1/storage-policy":
+                auth = self._authorize_mutation()
+                body = self._body()
+                result = self.server.control.set_storage_policy(
+                    recent_checkpoints=int(body.get("recent_checkpoints", 10)),
+                    milestone_interval=int(body.get("milestone_interval", 25)),
+                    retain_full_turn_history=body.get("retain_full_turn_history") is True,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "storage.configure", "installation", None,
+                    "success", result, self.client_address[0],
+                )
+                self._json(200, result)
+                return
             if path == "/api/v1/graphiti/rebuild":
                 auth = self._authorize_mutation()
                 body = self._body()
@@ -965,6 +983,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                             self._harness_manager().stop_run(str(run["run_id"]))
                     result = manager.park_match(match_id)
                 elif action == "complete":
+                    # Native victory detection can mark the match completed
+                    # before the portal observes it. Retiring that campaign
+                    # must still stop autonomous callers before releasing its
+                    # worker volumes and preserving the final checkpoint.
+                    for run in self.server.control.list_harness_runs():
+                        if run.get("match_id") == match_id and run.get("status") in {
+                            "queued", "starting", "running", "restarting",
+                        }:
+                            self._harness_manager().stop_run(str(run["run_id"]))
                     result = manager.complete_match(match_id)
                 elif action == "status":
                     result = manager.lan_match_status(match_id)
@@ -1190,8 +1217,15 @@ def main(argv: list[str] | None = None) -> int:
                 item for item in control.list_game_sources()
                 if item.get("host_path") == configured_game_source
             ), None)
-            if known_source is None:
-                worker_manager.validate_game_source(configured_game_source)
+            # Re-hash on service startup so changed game/mod files select a new
+            # prepared image instead of silently reusing a stale legal-source
+            # layer. The stable source id keeps lobbies and history intact.
+            worker_manager.validate_game_source(
+                configured_game_source,
+                display_name=str(known_source.get("display_name", "Alien Crossfire"))
+                    if known_source else "Alien Crossfire",
+                game_source_id=str(known_source["game_source_id"]) if known_source else None,
+            )
         elif os.environ.get("SMACX_REQUIRE_GAME_SOURCE", "1") == "1":
             raise SystemExit("SMACX_GAME_SOURCE must point to a directory containing terranx.exe")
         harness_manager = HarnessManager(

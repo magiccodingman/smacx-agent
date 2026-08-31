@@ -255,6 +255,16 @@ portal status=parking
 The `parking` claim suppresses the supervisor's normal “ensure agent is
 running” behavior. If the native save is currently illegal, the transaction
 fails before worker teardown, records `park_failed`, and returns to running.
+
+Compatibility storage is layered rather than cloned per seat. The first seat
+for a game/source fingerprint creates one installation-local prepared Docker
+image containing the imported game, semantic bridge, GE-Proton prefix, and
+DirectPlay registration. Docker shares those immutable layers across every
+seat. Per-seat containers supply isolated copy-on-write runtime state, while a
+small named volume retains native saves. Parking prunes and zstd-compresses that
+volume; completion moves one final verified save into the persistent control
+archive before releasing the seat volume. See [Runtime and campaign
+storage](storage-lifecycle.md).
 The control API independently stops harness callers for direct API park users.
 
 Recovery always assigns fresh native session/revision identities, loads the

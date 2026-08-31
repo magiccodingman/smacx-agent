@@ -119,10 +119,10 @@ def main() -> int:
             if discovered["default_model_id"] is not None:
                 raise AssertionError("multiple models were silently auto-selected")
             selected = control.select_provider_model(
-                provider["provider_id"], "qwen-test-b", context_length_override=49152,
+                provider["provider_id"], "qwen-test-b", context_length_override=65536,
             )
             if selected["default_model_id"] != "qwen-test-b" \
-                    or selected["context_length_override"] != 49152:
+                    or selected["context_length_override"] != 65536:
                 raise AssertionError("explicit provider selection was not stored")
 
             ModelsHandler.models = [{"id": "only-model", "max_context_length": 131072}]
@@ -177,6 +177,16 @@ def main() -> int:
         if control.status()["counts"]["matches"] != 0:
             raise AssertionError("invalid solo match left an orphaned match")
         agent = control.create_agent("Test agent")
+        expect(
+            InvalidRecord,
+            lambda: control.configure_harness_profile(
+                agent["agent_id"], provider["provider_id"],
+                display_name="Undersized Hermes profile",
+                external_profile_id="smacx-undersized-agent", reasoning_effort="low",
+                context_length=65_535,
+            ),
+            "invalid_context_length",
+        )
         harness = control.configure_harness_profile(
             agent["agent_id"], provider["provider_id"], display_name="Test Hermes profile",
             external_profile_id="smacx-test-agent", reasoning_effort="low",
@@ -184,6 +194,20 @@ def main() -> int:
         )
         if harness["agent_id"] != agent["agent_id"] or harness["model_id"] != "only-model":
             raise AssertionError("Hermes harness profile was not scoped to its agent/provider")
+        if harness["context_length"] != 65_536:
+            raise AssertionError("automatic context did not resolve to the configured provider limit")
+        storage = control.storage_policy()
+        if storage["recent_checkpoints"] != 10 or storage["milestone_interval"] != 25 \
+                or storage["retain_full_turn_history"] is not False:
+            raise AssertionError("default save retention policy changed unexpectedly")
+        updated_storage = control.set_storage_policy(
+            recent_checkpoints=14, milestone_interval=50,
+            retain_full_turn_history=True,
+        )
+        if updated_storage["recent_checkpoints"] != 14 \
+                or updated_storage["milestone_interval"] != 50 \
+                or updated_storage["retain_full_turn_history"] is not True:
+            raise AssertionError("save retention policy was not persisted")
         expect(
             StoreError, lambda: control.delete_provider(provider["provider_id"]),
             "provider_in_use_by_harness_profile",
@@ -315,6 +339,8 @@ def main() -> int:
                 "solo_match_orphan_guard": True,
                 "unstarted_match_rollback": True,
                 "isolated_harness_profile": True,
+                "automatic_context_and_minimum": True,
+                "storage_policy": True,
                 "exact_hermes_descriptor": True,
                 "managed_lan_identity_contract": True,
                 "native_progress_mirror": True,
