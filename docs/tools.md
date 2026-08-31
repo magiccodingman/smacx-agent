@@ -20,12 +20,11 @@
 - `smac_lan(...)` — inspect, host, discover, join, configure, ready, and start the validated native DirectPlay LAN lifecycle.
 - `smac_saves(action, match_id, slot)` — list or load match-scoped save slots. Stop the current game before load.
 - `smac_knowledge(action, match_id, ...)` — list/get/history or record durable match facts in the authoritative scoped SQLite store. Writes require the active `session_id` and current snapshot `revision`; corrections retain audit history and the former JSON ledger is only a compatibility mirror. Session-local unit/base/prototype engine IDs are rejected.
-- `smac_memory(...)` — retrieve the bounded working set, scoped FTS5/BM25 search, batched recall, chat/events, structured projection histories, or optional Graphiti projection status. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.
-- `smac_reference(action, ...)` — list mechanics topics, run compact FTS5/BM25
-  search with canonical/archive citations, fetch a document, resolve one or a
-  batch of exact typed entities, or retrieve prerequisite/unlock relations.
-  Expansion-native private records outrank fallback prose. This corpus contains
-  no match state and never overrides fresh native choices.
+- `smac_memory(...)` — retrieve the bounded working set, scoped FTS5/BM25 search, batched recall, chat/events, structured projection histories, optional Graphiti status, or an exact-scope `graph_recall`. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.
+- `smac_reference(action, ...)` — list local mechanics collections, perform
+  weighted semantic search, fetch one selected document, or issue focused
+  named-mechanic/related searches. Evidence is token-bounded; runtime-acquired
+  content contains no match state and never overrides fresh native choices.
 - `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
 - `smac_report_capability_gap(...)` — record one missing semantic capability, deduplicate repeated reports for that session, and latch commands plus launch/new/load. Only a developer MCP restart followed by a fresh session after bridge development can resume play.
 - `smac_stop()` — terminate only this project's isolated game processes; MCP stays running.

@@ -27,7 +27,7 @@ from smacx_control import AuthenticationError, ControlPlane, ProviderError
 from smacx_docker import DockerClient, DockerError, DockerUnavailable
 from smacx_harness_manager import HERMES_IMAGE, HarnessManager
 from smacx_operations import OperationsManager, restore_backup_offline
-from smacx_reference import read_reference, seed_reference_corpus
+from smacx_reference import read_reference
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
 from smacx_worker_manager import LAN_PROFILES, WorkerManager, WorkerManagerError
 
@@ -320,6 +320,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, self.server.control.graphiti_status())
                 return
+            if path == "/api/v1/embeddings":
+                self._authentication()
+                self._json(200, {"ok": True, "configuration": self.server.control.embedding_configuration()})
+                return
             if path == "/api/v1/operations/status":
                 self._authentication()
                 self._json(200, self._operations().status())
@@ -339,6 +343,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/reference/topics":
                 self._authentication()
                 self._json(200, read_reference(self.server.control.store, "topics"))
+                return
+            if path == "/api/v1/reference/status":
+                self._authentication()
+                self._json(200, read_reference(self.server.control.store, "status"))
                 return
             if path == "/api/v1/reference/search":
                 self._authentication()
@@ -698,12 +706,32 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 body = self._body()
                 if not isinstance(body.get("enabled"), bool):
                     raise InvalidRecord("invalid_graphiti_enabled")
-                result = self.server.control.set_graphiti_enabled(body["enabled"])
+                result = self.server.control.set_graphiti_enabled(
+                    body["enabled"],
+                    profile=body.get("profile") if isinstance(body.get("profile"), dict) else None,
+                )
                 self.server.control.audit(
                     auth["admin_id"], "graphiti.configure", "installation", None,
                     "success", {"enabled": body["enabled"]}, self.client_address[0],
                 )
                 self._json(200, result)
+                return
+            if path == "/api/v1/embeddings":
+                auth = self._authorize_mutation()
+                body = self._body()
+                result = self.server.control.set_embedding_configuration(
+                    mode=str(body.get("mode", "")),
+                    provider_id=str(body["provider_id"]) if body.get("provider_id") else None,
+                    model_id=str(body["model_id"]) if body.get("model_id") else None,
+                    dimensions=int(body["dimensions"]) if body.get("dimensions") is not None else None,
+                    space_id=str(body["space_id"]) if body.get("space_id") else None,
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "embeddings.configure", "installation", None,
+                    "success", {key: value for key, value in result.items() if key != "api_key"},
+                    self.client_address[0],
+                )
+                self._json(200, {"ok": True, "configuration": result})
                 return
             if path == "/api/v1/storage-policy":
                 auth = self._authorize_mutation()
@@ -1103,11 +1131,6 @@ def build_control(data_root: Path) -> ControlPlane:
     database = Path(os.environ.get("SMACX_DB_PATH", data_root / "smacx.sqlite3"))
     secret_root = Path(os.environ.get("SMACX_SECRET_ROOT", data_root / "secrets"))
     store = SmacxStore(database)
-    corpus = Path(os.environ.get(
-        "SMACX_REFERENCE_CORPUS",
-        Path(__file__).resolve().parents[1] / "knowledge" / "core.json",
-    ))
-    seed_reference_corpus(store, corpus)
     control = ControlPlane(store, secret_root)
     control.ensure_graphiti_setting(
         default_enabled=os.environ.get("SMACX_GRAPHITI_DEFAULT_ENABLED", "0") == "1",

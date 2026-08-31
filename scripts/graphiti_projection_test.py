@@ -29,6 +29,9 @@ class FakeSink:
         self.cleared.append(group_id)
         self.episodes = [episode for episode in self.episodes if episode.group_id != group_id]
 
+    async def search(self, _group_id: str, _query: str, _limit: int) -> list[dict]:
+        return []
+
     async def close(self) -> None:
         return None
 
@@ -74,6 +77,10 @@ async def exercise() -> dict:
             ),
         ]
         store.append_event(
+            alpha, "unit.moved", {"unit": 12, "tile": 44},
+            turn=2, year=2102, search_text="Routine scout movement", importance=20,
+        )
+        store.append_event(
             beta,
             "strategy.secret",
             {"intent": "attack Alpha"},
@@ -92,7 +99,7 @@ async def exercise() -> dict:
 
         sink.fail_on_call = None
         resumed = await projector.run_once(alpha, limit=10)
-        if not resumed.get("ok") or resumed.get("projected") != 2:
+        if not resumed.get("ok") or resumed.get("projected") != 2 or resumed.get("skipped") != 1:
             raise AssertionError(f"projection did not resume: {resumed}")
         if len(sink.episodes) != 3:
             raise AssertionError("projected event count is wrong")
@@ -111,7 +118,7 @@ async def exercise() -> dict:
             raise AssertionError("episode UUID is not replay-stable")
 
         rebuilt = await projector.rebuild(alpha, limit=2)
-        if not rebuilt.get("ok") or rebuilt.get("projected") != 3 \
+        if not rebuilt.get("ok") or rebuilt.get("projected") != 3 or rebuilt.get("skipped") != 1 \
                 or sink.cleared != [alpha_namespace] or len(sink.episodes) != 3:
             raise AssertionError(f"isolated rebuild failed: {rebuilt} / {sink.cleared}")
         if store.projection_cursor(beta, projector.projector_name).get("status") != "new":
@@ -124,6 +131,7 @@ async def exercise() -> dict:
             "stable_episode_ids": True,
             "group_rebuild_isolated": True,
             "sqlite_remains_authoritative": True,
+            "routine_events_excluded": True,
         }
 
 

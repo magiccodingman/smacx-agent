@@ -112,7 +112,7 @@ RUN python3 -m venv /opt/selkies-venv \
 
 ENV PATH="/opt/selkies-venv/bin:${PATH}"
 COPY worker/entrypoint.py worker/healthcheck.py worker/inspect_source.py \
-    worker/extract_reference.py worker/list_scenarios.py worker/compact_saves.py worker/alsa-null.conf \
+    worker/list_scenarios.py worker/compact_saves.py worker/alsa-null.conf \
     worker/fluxbox-init worker/fluxbox-overlay worker/thinker.ini \
     worker/modmenu.txt /opt/smacx/
 

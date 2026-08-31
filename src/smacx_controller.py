@@ -951,7 +951,7 @@ def match_briefing_context(match_id: str, session_id: str) -> dict[str, Any]:
         if requested_settings is None and worker:
             autostart = json.loads(str(worker["autostart_json"]))
             requested_settings = autostart.get("game_settings")
-        private_prefix = f"private.{worker['game_source_id']}." if worker else None
+        reference = read_reference_store(store, "topics")
         return {
             "ok": True,
             "scope": _platform_scope_identity(scope, session_id),
@@ -978,7 +978,8 @@ def match_briefing_context(match_id: str, session_id: str) -> dict[str, Any]:
                 "display_name": source["display_name"] if source else None,
                 "executable_sha256": source["executable_sha256"] if source else None,
             } if worker else None),
-            "reference_topics": store.list_reference_topics(private_prefix=private_prefix),
+            "reference_topics": reference.get("topics", []) if reference.get("ok") else [],
+            "reference_status": "ready" if reference.get("ok") else "unavailable",
         }
     except (StoreError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return {"ok": False, "error": str(exc)}

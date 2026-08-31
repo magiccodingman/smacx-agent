@@ -32,13 +32,14 @@ public sealed class AdministrationController(
             var profiles = await Read("api/v1/harness-profiles", "harness_profiles");
             var runs = await Read("api/v1/harness-runs", "harness_runs");
             var graphiti = await Read("api/v1/graphiti");
+            var knowledge = await Read("api/v1/reference/status");
             var workers = await Read("api/v1/workers");
             var operations = await Read("api/v1/operations/status");
             var storage = await Read("api/v1/storage-policy");
             var schedules = await Read("api/v1/schedules", "schedules");
             var backups = await Read("api/v1/backups", "backups");
             return ApiResponse<AdminSnapshot>.Success(new(
-                providers, agents, profiles, runs, graphiti, workers,
+                providers, agents, profiles, runs, graphiti, knowledge, workers,
                 operations, storage, schedules, backups));
         }
         catch (ControlPlaneException exception)
@@ -245,11 +246,38 @@ public sealed class AdministrationController(
         }, "runtime");
 
     [HttpPost("graphiti")]
-    public Task<ActionResult<ApiResponse<JsonElement?>>> Graphiti([FromBody] JsonElement request) =>
-        Proxy("api/v1/graphiti", new
+    public async Task<ActionResult<ApiResponse<JsonElement?>>> Graphiti(GraphitiConfigurationRequest request)
+    {
+        object? profile = null;
+        if (!string.IsNullOrWhiteSpace(request.ProfileVersionId))
         {
-            enabled = request.TryGetProperty("enabled", out var value) && value.GetBoolean(),
-        });
+            var item = await database.PortalAiProfileVersions.AsNoTracking().FirstOrDefaultAsync(
+                candidate => candidate.ProfileVersionId == request.ProfileVersionId,
+                HttpContext.RequestAborted);
+            if (item is null || !item.Active)
+                return BadRequest(ApiResponse<JsonElement?>.Failure(
+                    "invalid_graphiti_profile", "Choose an active AI profile for Graphiti extraction."));
+            profile = new
+            {
+                profile_version_id = item.ProfileVersionId,
+                display_name = item.DisplayName,
+                provider_id = item.ProviderId,
+                model_id = item.ModelId,
+                reasoning_effort = item.ReasoningEffort,
+                generation_settings = JsonSerializer.Deserialize<JsonElement>(item.GenerationSettingsJson),
+            };
+        }
+        return await Proxy("api/v1/graphiti", new { enabled = request.Enabled, profile });
+    }
+
+    [HttpPost("embeddings")]
+    public Task<ActionResult<ApiResponse<JsonElement?>>> Embeddings(EmbeddingConfigurationRequest request) =>
+        Proxy("api/v1/embeddings", new
+        {
+            mode = request.Mode, provider_id = request.ProviderId,
+            model_id = request.ModelId, dimensions = request.Dimensions,
+            space_id = request.SpaceId,
+        }, "configuration");
 
     [HttpPost("backups")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> Backup(BackupRequest request) =>
@@ -318,24 +346,27 @@ public sealed class AdministrationController(
         generation = generation.Preset switch
         {
             "provider-default" => new ModelGenerationSettings(),
-            "qwen38-thinking" => new ModelGenerationSettings(
-                "qwen38-thinking", 1.0, 0.95, 20, 0.0, 0.0, null, 1.0,
-                generation.MaxOutputTokens, generation.Seed, true, true),
-            "qwen38-instruct" => new ModelGenerationSettings(
-                "qwen38-instruct", 0.7, 0.80, 20, 0.0, 1.5, null, 1.0,
-                generation.MaxOutputTokens, generation.Seed, false, null),
+            "qwen38-instant" => Qwen("qwen38-instant", false, generation),
+            "qwen38-low" => Qwen("qwen38-low", true, generation),
+            "qwen38-medium" => Qwen("qwen38-medium", true, generation),
+            "qwen38-xhigh" => Qwen("qwen38-xhigh", true, generation),
+            // Pre-release compatibility aliases. New UI never writes them.
+            "qwen38-thinking" => Qwen("qwen38-low", true, generation),
+            "qwen38-instruct" => Qwen("qwen38-instant", false, generation),
             "custom" => generation,
             _ => throw new ArgumentException(
-                "Choose Provider defaults, Qwen3.8 thinking, Qwen3.8 non-thinking, or Custom."),
+                "Choose Provider defaults, a Qwen3.8 template, or Custom."),
         };
         if (generation.Preset.StartsWith("qwen38-", StringComparison.Ordinal) &&
             !modelId.Contains("qwen3.8", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The Qwen3.8 presets can only be used with a Qwen3.8 model.");
-        if (generation.Preset == "qwen38-thinking" &&
-            reasoningEffort is not ("low" or "medium" or "xhigh"))
-            throw new ArgumentException("Qwen3.8 thinking officially supports low, medium, or xhigh reasoning.");
-        if (generation.Preset == "qwen38-instruct" && reasoningEffort != "none")
-            throw new ArgumentException("Qwen3.8 non-thinking requires reasoning effort None.");
+        var expectedReasoning = generation.Preset switch
+        {
+            "qwen38-instant" => "none", "qwen38-low" => "low",
+            "qwen38-medium" => "medium", "qwen38-xhigh" => "xhigh", _ => null,
+        };
+        if (expectedReasoning is not null && reasoningEffort != expectedReasoning)
+            throw new ArgumentException($"{generation.Preset} requires reasoning effort {expectedReasoning}.");
         Range(generation.Temperature, 0, 2, "Temperature");
         Range(generation.TopP, 0, 1, "Top P");
         Range(generation.MinP, 0, 1, "Min P");
@@ -346,7 +377,48 @@ public sealed class AdministrationController(
             throw new ArgumentException("Top K must be between 0 and 100,000.");
         if (generation.MaxOutputTokens is < 1 or > 262_144)
             throw new ArgumentException("Maximum output tokens must be between 1 and 262,144.");
+        ValidateExtraParameters(generation.ExtraParameters);
         return generation;
+    }
+
+    private static ModelGenerationSettings Qwen(
+        string preset, bool thinking, ModelGenerationSettings requested)
+    {
+        var extras = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+        {
+            ["top_k"] = JsonSerializer.SerializeToElement(20),
+            ["min_p"] = JsonSerializer.SerializeToElement(0.0),
+            ["repetition_penalty"] = JsonSerializer.SerializeToElement(1.0),
+            ["chat_template_kwargs"] = JsonSerializer.SerializeToElement(new Dictionary<string, bool>
+            {
+                ["enable_thinking"] = thinking,
+                ["preserve_thinking"] = false,
+            }),
+        };
+        return new ModelGenerationSettings(
+            preset, thinking ? 1.0 : 0.7, thinking ? 0.95 : 0.80,
+            null, null, thinking ? 0.0 : 1.5, null, null,
+            requested.MaxOutputTokens, requested.Seed, thinking, false, extras);
+    }
+
+    private static void ValidateExtraParameters(
+        IReadOnlyDictionary<string, JsonElement>? parameters)
+    {
+        if (parameters is null) return;
+        if (parameters.Count > 64) throw new ArgumentException("At most 64 custom request parameters are allowed.");
+        var reserved = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "model", "messages", "stream", "tools", "tool_choice", "reasoning_effort",
+            "temperature", "top_p", "presence_penalty", "frequency_penalty", "max_tokens", "seed",
+        };
+        foreach (var (key, value) in parameters)
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z][A-Za-z0-9_.-]{0,127}$") || reserved.Contains(key))
+                throw new ArgumentException($"Custom request parameter '{key}' is invalid or reserved.");
+            if (value.ValueKind is JsonValueKind.Undefined) throw new ArgumentException($"Custom request parameter '{key}' has no JSON value.");
+        }
+        if (JsonSerializer.Serialize(parameters).Length > 32_768)
+            throw new ArgumentException("Custom request parameters are too large.");
     }
 
     private static void Range(double? value, double minimum, double maximum, string label)

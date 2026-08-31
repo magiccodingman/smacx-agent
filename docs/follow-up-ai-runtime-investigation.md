@@ -17,6 +17,23 @@ performance changes are measured rather than guessed.
 - Why did Hermes compression take roughly 251–278 seconds per agent?
 - How effective was provider prefix caching, and did concurrent agents contend?
 
+## Baseline corrections completed before retest
+
+- Qwen3.8 instant/low/medium/xhigh templates now use official sampling values,
+  explicit current-turn thinking selection, and `preserve_thinking=false`.
+- Historical reasoning is no longer carried forward by default.
+- Arbitrary provider parameters are JSON-typed and validated instead of being
+  hardcoded as Qwen fields in the generic profile path.
+- Blank context uses the discovered advertised value; manual contexts are
+  clamped to the advertised maximum and Hermes's 65,536-token minimum.
+- The provider-facing system message is the exact hashed project contract,
+  replacing rather than appending Hermes's general system prompt.
+- Static rules use bounded SemanticKnowledge evidence and Graphiti ingests only
+  curated asynchronous political memory.
+
+The remaining questions require a fresh controlled run; do not compare the old
+four-million-token trace as though it used this baseline.
+
 ## Required telemetry
 
 Capture request-level time to first token, prefill and decode tokens/second,

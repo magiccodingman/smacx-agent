@@ -1,128 +1,102 @@
-# Alien Crossfire mechanics encyclopedia
+# Local Alien Crossfire rules library
 
-SMACX Agent gives each managed player a local, provenance-tracked mechanics
-encyclopedia. It is general game knowledge, never current match memory: it
-cannot contain an unseen faction, private opponent state, unexplored map data,
-save internals, or chat that was not delivered to that seat.
+SMACX Agent builds a private mechanics library on the operator's machine. The
+repository and container images contain only acquisition metadata and parser
+code; they do not contain the game's manual, Datalinks text, wiki prose, game
+binaries, strategy guides, or generated embeddings.
 
-The encyclopedia has two complementary layers:
+## First run and refresh
 
-1. A distributable, independently written 52-document handbook explains the
-   major mechanics and authority rules without build orders, walkthroughs,
-   exploits, scenario solutions, or advice about how to win.
-2. First validation of an operator's legal Alien Crossfire installation builds
-   a much larger private index inside that installation's SQLite namespace.
-   The reference Steam copy currently produces 672 documents from 18 approved
-   sources. Counts are descriptive test evidence, not a protocol constant.
+The `knowledge-service` starts automatically with the normal Compose stack. On
+its first enabled run it:
 
-The private build is automatic. Registering or revalidating a game installation
-runs the extractor in an isolated container with a read-only source mount and no
-network. It replaces only that source's prior private namespace. No separate
-wiki download, embedding service, or operator command is required.
+1. reads approved mechanics files from the operator-mounted Alien Crossfire
+   directory;
+2. fetches the explicit pages in `knowledge/sources.json`, trying the canonical
+   address first and its fixed Internet Archive snapshot second;
+3. removes site navigation, tables of contents, editing chrome, URLs, reference
+   markers, and sections labelled as strategies, walkthroughs, tips, cheats,
+   exploits, recommendations, or opening moves;
+4. converts useful headings and body content to clean Markdown in a private
+   volume;
+5. synchronizes topical snapshots through `SemanticKnowledge.NET`, deleting
+   documents removed by a successful later snapshot; and
+6. creates compact searchable embeddings without writing acquired content into
+   the repository or an image.
 
-## Structured private records
+A parser revision, source-manifest change, successful daily source refresh, or
+administrator-forced refresh causes re-evaluation. Transient loss of one web
+source does not delete its last good private snapshot. Manifest removals and
+renames are handled by snapshot synchronization rather than an accumulating
+append-only dump.
 
-The extractor reads the expansion-native `alphax.txt` rules data before any
-fallback prose and generates exact typed entities with stable normalized keys.
-The reference installation yields:
+The built-in first build can take several minutes because it downloads and
+initializes the ONNX model and embeds the complete local rules set. Model files,
+cleaned content, SQLite metadata, and vectors persist in the
+`smacx-knowledge-data` Docker volume; subsequent starts normally reuse them.
 
-- 87 technologies with prerequisite and reverse-unlock relations;
-- 110 facilities, orbital assets, and Secret Projects;
-- 29 special abilities, 26 weapons/modules, 14 defenses, 9 chassis, 4 reactors,
-  23 predefined units, and morale records;
-- all 14 original and Alien Crossfire faction mechanical headers;
-- 15 social models plus every named rating band;
-- Council proposals, difficulty levels, multiplayer clocks, world sizes,
-  resource records, and terraforming orders; and
-- 190 bounded expansion Datalinks/concepts and manual-rules fallback sections.
+## One embedding runtime
 
-Expansion-native entity records have source priority 300, expansion help has
-priority 200, and manual fallback has priority 100. The base-game duplicates
-`alpha.txt`, `help.txt`, and `concepts.txt` are deliberately omitted from this
-Alien Crossfire ruleset, so a base-game record cannot accidentally outrank or
-contradict its expansion counterpart.
+The default is the CPU-oriented
+`magiccodingman/Jasper-Token-Compression-600M-ONNX-INT8` runtime supplied by
+`OnnxTextEmbeddings.NET`. Exactly one model instance is registered:
 
-Entity metadata contains readable native fields, aliases, prerequisites, and
-typed relations. Technology relations are bidirectional: a technology can
-return what it requires and the facilities, components, orders, models, units,
-or proposals it unlocks. Exact lookup therefore avoids spending context on
-anonymous fixed-size chunks.
+- `SemanticKnowledge.NET` receives its native multi-chunk document embeddings;
+- Graphiti calls the service's internal OpenAI-compatible `/v1/embeddings`
+  facade and receives one combined vector per normal API input.
 
-## Agent retrieval protocol
+This avoids loading duplicate copies of the same large model. The admin can
+instead select an external OpenAI-compatible embedding model and must provide
+its exact vector dimensions and a stable embedding-space ID. A space/model
+change restarts the knowledge service cleanly and makes SemanticKnowledge
+revalidate/rebuild its vectors. Disabling embeddings also disables semantic
+rules and Graphiti; gameplay's authoritative SQLite memory remains available.
 
-`smac_reference` supports five actions:
+The Jasper model supports long inputs, but retrieval documents are deliberately
+chunked around 768 tokens to avoid weak long-tail facts and to give the model
+precise evidence. SemanticKnowledge retains the chunk array. Only Graphiti's
+single-vector compatibility facade combines chunks.
 
-1. `topics` returns the hierarchy, document counts, and structured entity
-   counts.
-2. `search` performs compact FTS5/BM25 retrieval. It first requires all query
-   terms and falls back to any-term search only when the strict query is empty.
-   Exact titles and higher-priority expansion sources rank first.
-3. `get` returns one complete document by `document_id`.
-4. `lookup` resolves one entity or a batch of up to 30 `{kind,key}` pairs. This
-   is the preferred path when the entity is known.
-5. `related` returns an exact entity together with its prerequisite/unlock
-   neighborhood.
+## Agent retrieval
 
-Example calls:
+`smac_reference` exposes a small, bounded surface:
 
-```text
-smac_reference(action="lookup", entity_kind="technology", entity_key="ecology", include_body=true)
-smac_reference(action="related", entity_kind="technology", entity_key="ecology")
-smac_reference(action="lookup", entities_json='[{"kind":"faction","key":"angels"},{"kind":"ability","key":"clean-reactor"}]')
-```
+- `topics` lists organized collections and document counts;
+- `search` uses weighted semantic routing and retrieval;
+- `get` returns one selected document;
+- `lookup` and `related` translate named-mechanic requests into focused semantic
+  searches for compatibility with existing agents.
 
-The current native state and enumerated legal choices always override the
-encyclopedia. The mandatory `smac_match_briefing` tells a managed player which
-non-default settings and scenario restrictions apply before it plans.
+Compact search returns ranked titles and descriptions. `include_body=true`
+returns a bounded evidence pack rather than an unbounded corpus dump. Current
+native state and enumerated legal choices always override general rules.
 
-## Included and excluded local sources
+The system prompt requires every managed player to read and acknowledge the
+match briefing before mutating a game. That briefing carries actual victory
+conditions, non-default rules, scenario restrictions, faction, clock, and host
+policy so static mechanics knowledge cannot make the agent assume defaults.
 
-The private allowlist is intentionally narrow: the manual's rules chapters and
-rules/options appendices; Alien Crossfire Datalinks and concepts; expansion
-numeric rules; and the mechanical headers of fourteen faction records.
+## Copyright boundary
 
-The extractor excludes `Script.txt`, scenario directories, tutorial and tips
-sections, editor/customization material, faction dialogue and story prose,
-walkthroughs, and guides. It does not index the web. Extracted text stays in the
-operator's private SQLite volume and is not copied into an image, repository,
-release archive, or public API response.
+The application does not include or distribute Sid Meier's Alpha Centauri,
+Alien Crossfire, their data files, or acquired reference content. Reference
+material is fetched or read locally into a private persistent volume at runtime.
+Only source addresses, archive fallbacks, hashes, status, and parser code are
+part of this project.
 
-## Copyright and citation boundary
+## Operations and verification
 
-The repository does **not** contain or translate the game manual, Datalinks
-text, `Script.txt`, `alpha.txt`/`alphax.txt`, faction prose, wiki page dumps,
-images, or extracted assets. `knowledge/core.json` uses original project
-wording about mechanics. The copyright audit fails on eight or more consecutive
-normalized words shared with a supplied proprietary source and emits hashes and
-overlap lengths only—never source passages.
+The Operations page reports the rules service, embedding mode, corpus refresh,
+and Graphiti status. It also lets an administrator choose local, external, or
+disabled embeddings and select Graphiti's independent extraction profile.
 
-Online pages are citations used to cross-check facts, not corpus input.
-`knowledge/sources.json` records each canonical citation plus a fixed Internet
-Archive snapshot, timestamp, and CDX digest verified as a captured HTTP 200 on
-2026-08-29. These are durability fallbacks; startup never depends on either the
-canonical site or the archive. StrategyWiki expression is not copied or adapted.
-
-Copyright protects source expression rather than the underlying mechanics and
-facts. This conservative engineering boundary is not legal advice.
-
-## Rebuild and verification
-
-Control Center idempotently seeds the authored handbook at startup. This
-unreleased project retains one canonical schema and no migration chain; delete
-pre-release data volumes when the canonical schema changes.
+Useful contained checks:
 
 ```bash
-PYTHONPATH=src python3 -m smacx_reference \
-  --database /tmp/smacx-reference.sqlite3 --query "Treaty Pact trust"
+dotnet build knowledge_service/Smacx.KnowledgeService/Smacx.KnowledgeService.csproj -c Release
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
-PYTHONPATH=src python3 scripts/private_reference_test.py \
-  --game-source "/path/to/legal/game" --live-docker
-python3 scripts/reference_copyright_audit.py \
-  --source "/path/to/legal/game/Manual.pdf" \
-  --source "/path/to/legal/game/helpx.txt" \
-  --source "/path/to/legal/game/alphax.txt"
+docker compose build knowledge-service
 ```
 
-SQLite FTS5 is the authoritative retrieval path and requires no embeddings.
-Optional Graphiti remains a perspective-scoped projection of dynamic match
-memory; it is not used for static rules documents.
+The service endpoints are internal to the Compose network. The public portal
+proxies only authenticated, bounded search/read operations.

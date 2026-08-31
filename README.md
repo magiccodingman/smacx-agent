@@ -217,9 +217,12 @@ clicking fallback.
 
 Before playing, an agent must read and acknowledge the actual match briefing:
 its faction, scenario, timer, victory conditions, custom rules, and other
-relevant settings. A local Alien Crossfire mechanics encyclopedia gives it the
-rules and exact installed-game data it needs without feeding it walkthroughs,
-cheese strategies, or hidden match information.
+relevant settings. On first run, a private SemanticKnowledge mechanics
+encyclopedia builds from the operator's installation and explicit public
+sources, with fixed Wayback fallbacks. Weighted semantic retrieval gives the
+agent focused rules evidence without feeding it walkthroughs, cheese
+strategies, or hidden match information—and acquired prose never enters the
+repository or a distributed image.
 
 ## Diplomacy with a memory longer than one prompt
 
@@ -236,10 +239,13 @@ Those memories are isolated by match, player, perspective, and native session.
 One faction cannot inherit another faction's secrets, and a new campaign does
 not begin with grudges from the last one.
 
-For installations that want to push further, optional Graphiti and Neo4j add a
-temporal knowledge graph over that political history. SQLite remains the
-authoritative memory, so the game keeps working when the experimental graph or
-embedding service is unavailable. Graphiti is an enhancement, not a new point
+For installations that want to push further, optional Graphiti and FalkorDB add a
+temporal knowledge graph over that political history. Routine unit motion is
+not dumped into it: curated diplomacy, chat, commitments, beliefs, incidents,
+and important history are projected asynchronously, then recalled only within
+the exact match/player perspective. SemanticKnowledge and Graphiti share one
+configurable embedding runtime instead of loading duplicate models. SQLite
+remains authoritative, so Graphiti is an enhancement rather than a new point
 of failure.
 
 ## Watch the game—or the experiment

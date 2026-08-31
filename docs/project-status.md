@@ -16,14 +16,14 @@ network, mod, provider, or rare native state is certified.
 | Spectating | admin cross-seat, opt-in anonymous LAN observer deck, seat switching, worker-enforced read-only mode | real stream plus authorization/read-only checks |
 | Native human seats | exact host/session/handle/faction join details and durable account association | mixed independent native process locally tested; external physical client pending |
 | Portal/native chat | global/private/consent-group conversations, logical fan-out delivery, participant filtering, player + faction attribution, sequence/deduplication, messages outside active turn | contained store/controller and native mixed-LAN tests |
-| Provider management | OpenAI-compatible discovery, keyed/unkeyed providers, chosen model/context | contract tests and real Qwen endpoint |
-| AI profiles | versioned model/reasoning/context/notes, deactivation, `None` personality layer | .NET/Control contracts and real managed run |
+| Provider management | OpenAI-compatible discovery, keyed/unkeyed providers, chosen model/context, generic sampling controls, typed custom request parameters, and import/export | contract tests, browser form QA, and real Qwen endpoint |
+| AI profiles | versioned model/reasoning/context/notes, deactivation, provider-neutral custom settings, official Qwen3.8 templates, and per-seat personality selection | .NET/Control contracts and real managed run |
 | Managed Hermes | SMACX-derived/digest-pinned official image, isolated home/conversation, exact SMACX-owned system message, `smacx` only, provider secret volume, restart supervision | contract/secret inspection, captured provider request, and real Qwen run |
 | Match lifecycle | provision, mode-aware three-sample checkpoint, persisted connected-player votes, fair multi-match maintenance, race-safe park/reconfigure/recover, temporary native-AI delegation/reclaim, explicit browser presence states, ten-minute never-connected/all-away park, exit/crash reconciliation | real native 800×600 checkpoint/park/profile-change/recover, unexpected worker exit/reconnect, .NET quorum/cooldown/lease tests |
 | Analytics | scoped history, turn duration, Hermes input/output/cache/reasoning/API counters, CSV, isolated read-only SQL lab | fresh-schema .NET tests and real Hermes telemetry query |
-| Knowledge | 52 original mechanics documents plus automatic structured private installation encyclopedia, exact/batch/related lookup, precedence, FTS5/BM25, canonical and archived citations | corpus/copyright guard; 672 private documents from 18 local sources on reference install |
+| Knowledge | automatic runtime-only installed-game and canonical/Wayback acquisition, cleaned Markdown snapshot synchronization, SemanticKnowledge weighted search, one shared local or configurable external embedding space | real 530-document/12-source build with zero warnings, one 2,048-dimension ONNX instance, contained HTTP contract, live portal search/read, and Docker build |
 | Memory | events, facts, beliefs, relationships, commitments, goals, summaries, compression budgets, chat, scoped recall | contained adversarial scope/compression/retrieval tests and real Qwen writes |
-| Graphiti | optional Neo4j temporal derivative, projection cursor/rebuild/isolation | contract and backend live test; disabled when endpoints are incompatible |
+| Graphiti | optional curated FalkorDB temporal derivative, separate extraction profile, asynchronous ingestion, bounded exact-scope recall, deterministic projection/rebuild/isolation | contracts plus live Qwen extraction → shared ONNX embedding → isolated Falkor graph → semantic recall → exact cleanup |
 | Operations | schedules, immutable runs, worker/MCP/Hermes reconciliation, online/volume backups, offline restore guard | contract tests, native recovery, verified live backup |
 | Multiple concurrent seats/matches | separate workers/displays/streams/MCP/sessions/volumes/perspectives | two managed clients plus independent native client locally; capacity-dependent |
 
@@ -40,9 +40,13 @@ Hermes container with only the `smacx` toolset. It:
 - handled stale-revision guards by re-observing; and
 - was stopped, checkpointed, and parked without screenshot/click fallback.
 
-Hermes recorded one durable session, 97 provider calls, 5,785,165 input tokens,
-38,224 output tokens, and 21,743 reasoning tokens. These figures are evidence
-of the current prompting/context economics, not a performance target.
+That pre-overhaul Hermes session recorded 97 provider calls, 5,785,165 input
+tokens, 38,224 output tokens, and 21,743 reasoning tokens. Those abnormal input
+economics and observed malformed-call retries are an investigation record, not
+current performance certification. New Qwen3.8 templates explicitly disable
+historical `preserve_thinking`, use project-owned provider-neutral generation
+settings, and require a fresh short/long-run comparison before claims about
+turn latency, token efficiency, or decision quality are updated.
 
 ## Native gameplay coverage
 
@@ -105,21 +109,18 @@ not substitute for the explicitly deferred physical two-computer test.
 
 ## Knowledge/copyright boundary
 
-The repository ships 52 independently written mechanics documents. It
-ships no installed manual pages, help database extraction, strategy guide,
-scenario solution, or copied wiki corpus. The reference guard compared shipped
-text against local `Manual.pdf`, `helpx.txt`, and `alphax.txt` and found no
-eight-word copied sequence under its normalization.
+The repository ships no manual pages, Datalinks extraction, strategy guide,
+scenario solution, copied wiki prose, generated Markdown corpus, or embeddings.
+It contains only acquisition metadata, fixed canonical/Internet Archive
+addresses, parser code, and retrieval contracts.
 
-The optional extractor operates only after the operator validates a game
-source. On the reference legal copy it produced 672 private searchable
-documents from 18 sources, including exact structured entities and relations,
-with guides excluded. That database stays in the
-operator's control volume and is not part of source/image artifacts.
-
-Canonical web citations also carry fixed Internet Archive snapshot URLs,
-timestamps, and verified CDX digests. They are citation fallbacks only; neither
-website is read during startup or private extraction.
+At runtime, the separate knowledge service reads the operator's mounted game
+files and fetches the explicitly configured factual pages, using the fixed
+archive address when a canonical page is unavailable. On the reference legal
+copy it built 530 private searchable documents from 12 local/web sources with
+strategy sections excluded and no acquisition warnings. Cleaned content,
+source hashes, SemanticKnowledge metadata, and compact vectors remain in the
+private persistent knowledge volume and are not copied into source or images.
 
 ## Canonical pre-release schemas
 
@@ -151,7 +152,6 @@ must not call them certified until the physical environments are exercised.
 
 - public Internet hosting, matchmaking, or binary distribution;
 - ranked ratings/anti-cheat policy (all matches are unranked);
-- authored personality cards or faction personas (`None` only);
 - strategy/cheese guides or scenario walkthroughs;
 - screenshot/mouse/keyboard fallback tools for AI seats.
 

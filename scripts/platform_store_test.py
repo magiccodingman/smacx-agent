@@ -93,7 +93,7 @@ def main() -> int:
 
         if store.graph_namespace(alpha) == store.graph_namespace(beta):
             raise AssertionError("Graph namespaces crossed perspectives")
-        if not store.graph_namespace(alpha).startswith(f"smacx:{installation_id}:match-foundation:"):
+        if not store.graph_namespace(alpha).startswith("smacx_") or len(store.graph_namespace(alpha)) != 54:
             raise AssertionError("Graph namespace was not installation scoped")
 
         alpha_event = store.append_event(

@@ -1,5 +1,5 @@
 .portal-main { min-height: 100vh; }
-.portal-content { width: min(1480px, 100%); margin: 0 auto; padding: 96px 28px 56px; }
+.portal-content { box-sizing:border-box; width: min(1480px, 100%); margin: 0 auto; padding: 96px 28px 56px; }
 #blazor-error-ui { color-scheme: dark; background: #4a1722; bottom: 0; box-shadow: 0 -8px 32px #0008; box-sizing: border-box; display: none; left: 0; padding: .9rem 1.5rem; position: fixed; width: 100%; z-index: 99999; }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 1rem; }
 @media (max-width: 600px) { .portal-content { padding: 82px 16px 40px; } }

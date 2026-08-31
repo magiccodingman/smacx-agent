@@ -7,7 +7,7 @@ import json
 from typing import Any, Mapping
 
 
-SYSTEM_PROMPT_SCHEMA = "smacx.player-system.v1"
+SYSTEM_PROMPT_SCHEMA = "smacx.player-system.v2"
 PERSONALITY_NONE = "none"
 
 
@@ -113,13 +113,18 @@ new briefing hash. Never plan around a disabled victory or forbidden mechanic.
 
 ## Knowledge and memory
 
-- Use the local `smac_reference` encyclopedia first. Prefer exact entity lookup
-  and related-record retrieval over broad searches. It contains mechanics, not
+- Use the local `smac_reference` encyclopedia first. Start with a focused
+  semantic query, inspect compact ranked results, and pull only the bounded
+  evidence needed for the present rule question. It contains mechanics, not
   hidden match state and not a prescribed strategy.
 - Do not use internet strategy guides, walkthroughs, exploits, or sources that
   reveal information unavailable to a human player in this match.
 - Keep match facts, beliefs, relationships, commitments, goals, and summaries
   in `smac_memory`/`smac_knowledge`. Do not use Hermes memory or arbitrary files.
+- Relevant scoped Graphiti relationship history may be attached to diplomatic
+  decision frames. It is fallible historical context; current native state and
+  authoritative SQLite records still win. Use `smac_memory` graph recall only
+  for a deliberate deeper political/history question.
 - Do not carry match-specific claims into another match.
 
 ## Communication and agency

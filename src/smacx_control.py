@@ -283,13 +283,78 @@ class ControlPlane:
         current = self._setting("graphiti.enabled")
         if current is None:
             self._set_setting("graphiti.enabled", bool(default_enabled))
+        if self._setting("embeddings.configuration") is None:
+            self._set_setting("embeddings.configuration", {"mode": "local"})
         return self.graphiti_status()
 
-    def set_graphiti_enabled(self, enabled: bool) -> dict[str, Any]:
+    def set_graphiti_enabled(self, enabled: bool, *, profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
         if not isinstance(enabled, bool):
             raise InvalidRecord("invalid_graphiti_enabled")
+        if profile is not None:
+            provider_id = _require_id(str(profile.get("provider_id", "")), "provider_id")
+            model_id = _bounded(str(profile.get("model_id", "")), "model_id", MODEL_ID_LIMIT)
+            provider = self.get_provider(provider_id)
+            if not any(item["model_id"] == model_id for item in provider["models"]):
+                raise ScopeViolation("unknown_provider_model")
+            generation = normalize_generation_settings(
+                profile.get("generation_settings") if isinstance(profile.get("generation_settings"), Mapping) else None,
+            )
+            self._set_setting("graphiti.profile", {
+                "profile_version_id": _bounded(
+                    str(profile.get("profile_version_id", "")), "profile_version_id", 160,
+                ),
+                "display_name": _bounded(str(profile.get("display_name", "")), "profile_name", 160),
+                "provider_id": provider_id,
+                "model_id": model_id,
+                "reasoning_effort": str(profile.get("reasoning_effort") or "none")[:32],
+                "generation_settings": generation,
+            })
+        if enabled and not isinstance(self._setting("graphiti.profile"), Mapping):
+            raise InvalidRecord("graphiti_extraction_profile_required")
+        if enabled and self.embedding_configuration()["mode"] == "disabled":
+            raise InvalidRecord("graphiti_requires_embeddings")
         self._set_setting("graphiti.enabled", enabled)
         return self.graphiti_status()
+
+    def embedding_configuration(self) -> dict[str, Any]:
+        configured = self._setting("embeddings.configuration")
+        if not isinstance(configured, Mapping):
+            configured = {"mode": "local"}
+        result = dict(configured)
+        result.setdefault("mode", "local")
+        if result["mode"] == "external" and result.get("provider_id"):
+            try:
+                provider = self.get_provider(str(result["provider_id"]))
+                result["provider_name"] = provider["display_name"]
+                result["provider_status"] = provider["status"]
+            except StoreError:
+                result["provider_status"] = "missing"
+        return result
+
+    def set_embedding_configuration(self, *, mode: str, provider_id: str | None = None,
+                                    model_id: str | None = None, dimensions: int | None = None,
+                                    space_id: str | None = None) -> dict[str, Any]:
+        if mode not in {"local", "external", "disabled"}:
+            raise InvalidRecord("invalid_embedding_mode")
+        result: dict[str, Any] = {"mode": mode}
+        if mode == "external":
+            provider_id = _require_id(provider_id or "", "provider_id")
+            model_id = _bounded(model_id or "", "model_id", MODEL_ID_LIMIT)
+            dimensions = int(dimensions or 0)
+            if not 1 <= dimensions <= 65_536:
+                raise InvalidRecord("invalid_embedding_dimensions")
+            space_id = _bounded(space_id or "", "embedding_space_id", 240)
+            provider = self.get_provider(provider_id)
+            if not any(item["model_id"] == model_id for item in provider["models"]):
+                raise ScopeViolation("unknown_provider_model")
+            result.update({
+                "provider_id": provider_id, "model_id": model_id,
+                "dimensions": dimensions, "space_id": space_id,
+            })
+        self._set_setting("embeddings.configuration", result)
+        if mode == "disabled":
+            self._set_setting("graphiti.enabled", False)
+        return self.embedding_configuration()
 
     def storage_policy(self) -> dict[str, Any]:
         configured = self._setting("storage.save_retention")
@@ -332,6 +397,7 @@ class ControlPlane:
 
     def graphiti_status(self) -> dict[str, Any]:
         enabled = self._setting("graphiti.enabled") is True
+        profile = self._setting("graphiti.profile")
         with self.store.transaction() as connection:
             state = connection.execute(
                 "SELECT * FROM graphiti_runtime_state WHERE singleton=1"
@@ -348,12 +414,14 @@ class ControlPlane:
                 "ORDER BY m.created_unix DESC, a.display_name"
             ).fetchall()]
         runtime = dict(state) if state else {
-            "status": "stopped", "backend": "neo4j", "projected_events": 0,
+            "status": "stopped", "backend": "falkordb", "projected_events": 0,
             "failed_events": 0, "active_scopes": 0, "last_heartbeat_unix": None,
             "last_projection_unix": None, "last_error": None, "metadata_json": "{}",
         }
         runtime["metadata"] = json.loads(runtime.pop("metadata_json"))
-        return {"ok": True, "enabled": enabled, "runtime": runtime,
+        return {"ok": True, "enabled": enabled, "configured": isinstance(profile, Mapping),
+                "profile": profile if isinstance(profile, Mapping) else None,
+                "embeddings": self.embedding_configuration(), "runtime": runtime,
                 "queued_rebuilds": queued, "scopes": scopes,
                 "sqlite_authoritative": True}
 
@@ -1582,12 +1650,12 @@ class ControlPlane:
         generation = normalize_generation_settings(generation_settings)
         if generation["preset"].startswith("qwen38-") and "qwen3.8" not in str(model_id).lower():
             raise InvalidRecord("qwen38_preset_requires_qwen38_model")
-        if generation["preset"] == "qwen38-thinking" and reasoning_effort not in {
-            "low", "medium", "xhigh",
-        }:
-            raise InvalidRecord("qwen38_reasoning_effort_must_be_low_medium_or_xhigh")
-        if generation["preset"] == "qwen38-instruct" and reasoning_effort != "none":
-            raise InvalidRecord("qwen38_instruct_requires_reasoning_none")
+        expected_qwen_reasoning = {
+            "qwen38-instant": "none", "qwen38-low": "low",
+            "qwen38-medium": "medium", "qwen38-xhigh": "xhigh",
+        }.get(str(generation["preset"]))
+        if expected_qwen_reasoning is not None and reasoning_effort != expected_qwen_reasoning:
+            raise InvalidRecord("qwen38_template_reasoning_mismatch")
         context_length = context_length or provider.get("context_length_override") \
             or model.get("context_length")
         if context_length is None:

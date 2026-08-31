@@ -11,11 +11,13 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import hashlib
 import os
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 import uuid
 
+from smacx_generation import normalize_generation_settings, openai_extra_body
 from smacx_store import MemoryScope, SmacxStore
 
 
@@ -52,10 +54,105 @@ class GraphEpisode:
     custom_extraction_instructions: str
 
 
+@dataclass(frozen=True)
+class GraphitiRuntimeConfig:
+    fingerprint: str
+    profile_version_id: str
+    display_name: str
+    llm_base_url: str
+    llm_api_key: str
+    llm_model: str
+    reasoning_effort: str
+    generation_settings: Mapping[str, Any]
+    embed_base_url: str
+    embed_api_key: str
+    embed_model: str
+    embed_dim: int
+
+
+def _setting(store: SmacxStore, key: str) -> Any | None:
+    with store.transaction() as connection:
+        row = connection.execute(
+            "SELECT value_json FROM control_settings WHERE setting_key=?", (key,),
+        ).fetchone()
+    return json.loads(row["value_json"]) if row else None
+
+
+def _provider(store: SmacxStore, provider_id: str) -> tuple[dict[str, Any], str]:
+    with store.transaction() as connection:
+        row = connection.execute(
+            "SELECT * FROM model_providers WHERE provider_id=?", (provider_id,),
+        ).fetchone()
+        if not row:
+            raise RuntimeError("graphiti_provider_missing")
+        secret = None
+        if row["api_key_secret_id"]:
+            secret = connection.execute(
+                "SELECT * FROM secret_refs WHERE secret_id=? AND status='active'",
+                (row["api_key_secret_id"],),
+            ).fetchone()
+    api_key = "local"
+    if secret:
+        root = Path(os.environ.get("SMACX_SECRET_ROOT", store.path.parent / "secrets")).resolve()
+        path = (root / str(secret["relative_path"])).resolve()
+        if path.parent != root or not path.is_file() or path.is_symlink():
+            raise RuntimeError("graphiti_provider_secret_unavailable")
+        api_key = path.read_text(encoding="utf-8").strip()
+        if hashlib.sha256(api_key.encode()).hexdigest() != secret["fingerprint"]:
+            raise RuntimeError("graphiti_provider_secret_integrity_failure")
+    return dict(row), api_key
+
+
+def load_runtime_config(store: SmacxStore) -> GraphitiRuntimeConfig:
+    profile = _setting(store, "graphiti.profile")
+    if not isinstance(profile, Mapping):
+        raise RuntimeError("graphiti_extraction_profile_required")
+    provider, api_key = _provider(store, str(profile.get("provider_id", "")))
+    embedding = _setting(store, "embeddings.configuration")
+    if not isinstance(embedding, Mapping):
+        embedding = {"mode": "local"}
+    mode = str(embedding.get("mode", "local"))
+    if mode == "disabled":
+        raise RuntimeError("graphiti_requires_embeddings")
+    if mode == "external":
+        embed_provider, embed_key = _provider(store, str(embedding.get("provider_id", "")))
+        embed_base = str(embed_provider["base_url"])
+        embed_model = str(embedding.get("model_id", ""))
+        embed_dim = int(embedding.get("dimensions", 0))
+    else:
+        embed_base = os.environ.get("SMACX_GRAPHITI_EMBED_BASE_URL", "http://knowledge-service:8090/v1")
+        embed_model = os.environ.get("SMACX_GRAPHITI_EMBED_MODEL", "smacx-local-embeddings")
+        embed_dim = int(os.environ.get("SMACX_GRAPHITI_EMBED_DIM", "2048"))
+        embed_key = "local"
+    generation = normalize_generation_settings(
+        profile.get("generation_settings") if isinstance(profile.get("generation_settings"), Mapping) else None,
+    )
+    public = {
+        "profile": dict(profile), "provider_url": provider["base_url"],
+        "embedding": dict(embedding), "embed_base": embed_base,
+    }
+    fingerprint = hashlib.sha256(json.dumps(
+        public, sort_keys=True, separators=(",", ":"),
+    ).encode()).hexdigest()
+    return GraphitiRuntimeConfig(
+        fingerprint=fingerprint,
+        profile_version_id=str(profile.get("profile_version_id", "")),
+        display_name=str(profile.get("display_name", "Graphiti extraction")),
+        llm_base_url=str(provider["base_url"]), llm_api_key=api_key,
+        llm_model=str(profile.get("model_id", "")),
+        reasoning_effort=str(profile.get("reasoning_effort", "none")),
+        generation_settings=generation,
+        embed_base_url=embed_base, embed_api_key=embed_key,
+        embed_model=embed_model, embed_dim=embed_dim,
+    )
+
+
 class GraphitiSink(Protocol):
     async def add_episode(self, episode: GraphEpisode) -> None: ...
 
     async def clear_group(self, group_id: str) -> None: ...
+
+    async def search(self, group_id: str, query: str, limit: int) -> list[dict[str, Any]]: ...
 
     async def close(self) -> None: ...
 
@@ -63,19 +160,21 @@ class GraphitiSink(Protocol):
 class GraphitiCoreSink:
     """Direct graphiti-core adapter; no unauthenticated Graphiti HTTP surface."""
 
-    def __init__(self, client: Any, episode_type: Any, clear_data: Any) -> None:
+    def __init__(self, client: Any, episode_type: Any, clear_data: Any,
+                 *, fingerprint: str = "environment") -> None:
         self._client = client
         self._episode_type = episode_type
         self._clear_data = clear_data
+        self.fingerprint = fingerprint
 
     @classmethod
     async def from_environment(cls) -> "GraphitiCoreSink":
-        """Create the optional client from explicit OpenAI-compatible/Neo4j settings."""
+        """Create the optional client from explicit OpenAI-compatible/FalkorDB settings."""
         required = {
-            "SMACX_GRAPHITI_NEO4J_URI": os.environ.get("SMACX_GRAPHITI_NEO4J_URI", ""),
-            "SMACX_GRAPHITI_NEO4J_USER": os.environ.get("SMACX_GRAPHITI_NEO4J_USER", ""),
-            "SMACX_GRAPHITI_NEO4J_PASSWORD": _environment_secret(
-                "SMACX_GRAPHITI_NEO4J_PASSWORD",
+            "SMACX_GRAPHITI_FALKORDB_HOST": os.environ.get("SMACX_GRAPHITI_FALKORDB_HOST", ""),
+            "SMACX_GRAPHITI_FALKORDB_PORT": os.environ.get("SMACX_GRAPHITI_FALKORDB_PORT", "6379"),
+            "SMACX_GRAPHITI_FALKORDB_PASSWORD": _environment_secret(
+                "SMACX_GRAPHITI_FALKORDB_PASSWORD",
             ),
             "SMACX_GRAPHITI_LLM_BASE_URL": os.environ.get("SMACX_GRAPHITI_LLM_BASE_URL", ""),
             "SMACX_GRAPHITI_LLM_MODEL": os.environ.get("SMACX_GRAPHITI_LLM_MODEL", ""),
@@ -89,6 +188,7 @@ class GraphitiCoreSink:
         try:
             from graphiti_core import Graphiti
             from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
+            from graphiti_core.driver.falkordb_driver import FalkorDriver
             from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
             from graphiti_core.llm_client.config import LLMConfig
             from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
@@ -115,9 +215,12 @@ class GraphitiCoreSink:
             structured_output_mode=structured_output_mode,
         )
         client = Graphiti(
-            required["SMACX_GRAPHITI_NEO4J_URI"],
-            required["SMACX_GRAPHITI_NEO4J_USER"],
-            required["SMACX_GRAPHITI_NEO4J_PASSWORD"],
+            graph_driver=FalkorDriver(
+                host=required["SMACX_GRAPHITI_FALKORDB_HOST"],
+                port=int(required["SMACX_GRAPHITI_FALKORDB_PORT"]),
+                password=required["SMACX_GRAPHITI_FALKORDB_PASSWORD"],
+                database="smacx_root",
+            ),
             llm_client=llm_client,
             embedder=OpenAIEmbedder(config=OpenAIEmbedderConfig(
                 api_key=embed_api_key,
@@ -131,7 +234,115 @@ class GraphitiCoreSink:
         await client.build_indices_and_constraints()
         return cls(client, EpisodeType, clear_data)
 
+    @classmethod
+    async def from_config(cls, config: GraphitiRuntimeConfig) -> "GraphitiCoreSink":
+        try:
+            import openai
+            from graphiti_core import Graphiti
+            from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
+            from graphiti_core.driver.falkordb_driver import FalkorDriver
+            from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+            from graphiti_core.llm_client.config import DEFAULT_MAX_TOKENS, LLMConfig, ModelSize
+            from graphiti_core.llm_client.errors import EmptyResponseError, RateLimitError
+            from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient, DEFAULT_MODEL
+            from graphiti_core.nodes import EpisodeType
+            from graphiti_core.utils.maintenance.graph_data_operations import clear_data
+        except ImportError as exc:
+            raise RuntimeError("graphiti_core_not_installed") from exc
+
+        body = openai_extra_body(config.generation_settings)
+        temperature = float(body.pop("temperature", 0.0))
+        maximum = int(body.pop("max_tokens", 16_384))
+        if config.reasoning_effort not in {"", "none"}:
+            body["reasoning_effort"] = config.reasoning_effort
+
+        class SmacxGraphitiClient(OpenAIGenericClient):
+            async def _generate_response(self, messages, response_model=None,
+                                         max_tokens=DEFAULT_MAX_TOKENS,
+                                         model_size=ModelSize.medium):
+                formatted = []
+                for message in messages:
+                    message.content = self._clean_input(message.content)
+                    if message.role in {"user", "system"}:
+                        formatted.append({"role": message.role, "content": message.content})
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=self.model or DEFAULT_MODEL, messages=formatted,
+                        temperature=self.temperature, max_tokens=max_tokens,
+                        response_format=self._build_response_format(response_model),
+                        extra_body=body or None,
+                    )
+                    content = response.choices[0].message.content or ""
+                    if not content:
+                        raise EmptyResponseError("LLM returned an empty response")
+                    return json.loads(self._strip_code_fences(content))
+                except openai.RateLimitError as exc:
+                    raise RateLimitError from exc
+
+        llm_config = LLMConfig(
+            api_key=config.llm_api_key, model=config.llm_model,
+            small_model=config.llm_model, base_url=config.llm_base_url,
+            temperature=temperature, max_tokens=maximum,
+        )
+        structured_output_mode = os.environ.get("SMACX_GRAPHITI_STRUCTURED_OUTPUT_MODE", "json_schema")
+        if structured_output_mode not in {"json_schema", "json_object"}:
+            raise RuntimeError("invalid_graphiti_structured_output_mode")
+        llm_client = SmacxGraphitiClient(
+            config=llm_config, max_tokens=maximum,
+            structured_output_mode=structured_output_mode,
+        )
+        if os.environ.get("SMACX_GRAPHITI_DATABASE_PROVIDER", "falkordb") != "falkordb":
+            raise RuntimeError("unsupported_graphiti_database_provider")
+        client = Graphiti(
+            graph_driver=FalkorDriver(
+                host=os.environ.get("SMACX_GRAPHITI_FALKORDB_HOST", "graphiti-db"),
+                port=int(os.environ.get("SMACX_GRAPHITI_FALKORDB_PORT", "6379")),
+                password=_environment_secret("SMACX_GRAPHITI_FALKORDB_PASSWORD"),
+                database="smacx_root",
+            ),
+            llm_client=llm_client,
+            embedder=OpenAIEmbedder(config=OpenAIEmbedderConfig(
+                api_key=config.embed_api_key, embedding_model=config.embed_model,
+                embedding_dim=config.embed_dim, base_url=config.embed_base_url,
+            )),
+            cross_encoder=OpenAIRerankerClient(client=llm_client.client, config=llm_config),
+            max_coroutines=max(1, min(int(os.environ.get("SMACX_GRAPHITI_CONCURRENCY", "2")), 16)),
+        )
+        await client.build_indices_and_constraints()
+        return cls(client, EpisodeType, clear_data, fingerprint=config.fingerprint)
+
     async def add_episode(self, episode: GraphEpisode) -> None:
+        # graphiti-core 0.29 treats an explicit UUID as an update target. Seed
+        # the deterministic episode first, while retaining prior episodes for
+        # temporal extraction, and mark completion in the scoped Falkor graph.
+        from graphiti_core.nodes import EpisodicNode
+
+        driver = self._client.driver.clone(database=episode.group_id)
+        records, _, _ = await driver.execute_query(
+            "MATCH (e:Episodic {uuid: $uuid}) "
+            "RETURN coalesce(e.smacx_projection_complete, false) AS complete",
+            uuid=episode.episode_uuid,
+        )
+        if records and records[0].get("complete") is True:
+            return
+        previous = await self._client.retrieve_episodes(
+            episode.reference_time,
+            group_ids=[episode.group_id],
+            source=self._episode_type.json,
+            driver=driver,
+        )
+        previous_uuids = [item.uuid for item in previous if item.uuid != episode.episode_uuid]
+        if not records:
+            await EpisodicNode(
+                uuid=episode.episode_uuid,
+                name=episode.name,
+                group_id=episode.group_id,
+                labels=[],
+                source=self._episode_type.json,
+                content=episode.body,
+                source_description=episode.source_description,
+                valid_at=episode.reference_time,
+            ).save(driver)
         await self._client.add_episode(
             name=episode.name,
             episode_body=episode.body,
@@ -143,10 +354,42 @@ class GraphitiCoreSink:
             update_communities=False,
             custom_extraction_instructions=episode.custom_extraction_instructions,
             saga="match-history",
+            previous_episode_uuids=previous_uuids,
+        )
+        await driver.execute_query(
+            "MATCH (e:Episodic {uuid: $uuid}) SET e.smacx_projection_complete = true",
+            uuid=episode.episode_uuid,
         )
 
     async def clear_group(self, group_id: str) -> None:
-        await self._clear_data(self._client.driver, group_ids=[group_id])
+        # A fair-play scope is a complete Falkor graph, not merely a label
+        # filter in a shared graph. Delete its key as well as its contents so
+        # rebuilds and eventual retention cleanup do not accumulate thousands
+        # of empty graph names.
+        # Do not clone here: FalkorDriver clones schedule index creation, which
+        # could recreate an empty graph immediately after GRAPH.DELETE.
+        driver = self._client.driver
+        init_task = getattr(driver, "_init_task", None)
+        if init_task is not None and not init_task.done():
+            await init_task
+        graph_names = await driver.client.list_graphs()
+        if group_id in graph_names:
+            await driver.client.select_graph(group_id).delete()
+
+    async def search(self, group_id: str, query: str, limit: int) -> list[dict[str, Any]]:
+        edges = await self._client.search(
+            query=query, group_ids=[group_id], num_results=min(max(limit, 1), 20),
+        )
+        result = []
+        for edge in edges:
+            result.append({
+                "fact": str(getattr(edge, "fact", ""))[:4000],
+                "name": str(getattr(edge, "name", ""))[:300],
+                "created_at": str(getattr(edge, "created_at", "")),
+                "valid_at": str(getattr(edge, "valid_at", "")),
+                "invalid_at": str(getattr(edge, "invalid_at", "")),
+            })
+        return result
 
     async def close(self) -> None:
         await self._client.close()
@@ -163,6 +406,31 @@ class GraphitiProjector:
         self.store = store
         self.sink = sink
         self.projector_name = projector_name
+
+    @staticmethod
+    def should_project(event: Mapping[str, Any]) -> bool:
+        """Keep Graphiti political/strategic instead of mirroring the event log.
+
+        SQLite retains every authoritative event. The graph receives only durable
+        social history, beliefs, commitments, goals, summaries, and unusually
+        important strategic/lifecycle incidents. Routine unit orders and raw
+        engine observations never become LLM-extracted episodes.
+        """
+        event_type = str(event.get("event_type") or "")
+        if event_type.startswith((
+            "chat.", "memory.relationship_", "memory.commitment_",
+            "memory.goal_", "memory.belief_", "memory.summary_",
+            "diplomacy.", "council.", "incident.", "recovery.",
+        )):
+            return True
+        if event_type == "memory.fact_recorded":
+            payload = event.get("payload")
+            category = str(payload.get("category") if isinstance(payload, Mapping) else "")
+            return category in {
+                "diplomacy", "politics", "promise", "betrayal", "threat",
+                "alliance", "history", "strategy", "territory",
+            }
+        return event_type.startswith("lifecycle.") and int(event.get("importance") or 0) >= 70
 
     def episode_for_event(self, scope: MemoryScope, event: Mapping[str, Any]) -> GraphEpisode:
         namespace = self.store.graph_namespace(scope)
@@ -200,7 +468,14 @@ class GraphitiProjector:
     async def run_once(self, scope: MemoryScope, *, limit: int = 50) -> dict[str, Any]:
         events = self.store.events_after_projection_cursor(scope, self.projector_name, limit=limit)
         projected = 0
+        skipped = 0
         for event in events:
+            if not self.should_project(event):
+                self.store.advance_projection_cursor(
+                    scope, self.projector_name, event, status="ready", last_error=None,
+                )
+                skipped += 1
+                continue
             episode = self.episode_for_event(scope, event)
             try:
                 await self.sink.add_episode(episode)
@@ -216,6 +491,7 @@ class GraphitiProjector:
                     "ok": False,
                     "error": "graphiti_projection_failed",
                     "projected": projected,
+                    "skipped": skipped,
                     "failed_event_id": event["event_id"],
                     "cursor": cursor,
                     "sqlite_authoritative": True,
@@ -227,6 +503,7 @@ class GraphitiProjector:
         return {
             "ok": True,
             "projected": projected,
+            "skipped": skipped,
             "remaining_hint": len(events) == min(max(limit, 1), 500),
             "cursor": self.store.projection_cursor(scope, self.projector_name),
             "namespace": self.store.graph_namespace(scope),
@@ -238,13 +515,25 @@ class GraphitiProjector:
         await self.sink.clear_group(namespace)
         self.store.reset_projection_cursor(scope, self.projector_name)
         projected = 0
+        skipped = 0
         while True:
             result = await self.run_once(scope, limit=limit)
             projected += int(result.get("projected", 0))
+            skipped += int(result.get("skipped", 0))
             if not result.get("ok"):
-                return {**result, "projected": projected, "rebuild": True}
+                return {
+                    **result,
+                    "projected": projected,
+                    "skipped": skipped,
+                    "rebuild": True,
+                }
             if not result.get("remaining_hint"):
-                return {**result, "projected": projected, "rebuild": True}
+                return {
+                    **result,
+                    "projected": projected,
+                    "skipped": skipped,
+                    "rebuild": True,
+                }
 
 
 async def _main_async(arguments: argparse.Namespace) -> int:

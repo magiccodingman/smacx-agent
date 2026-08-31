@@ -23,6 +23,13 @@ public sealed class CatalogController(
             var sources = await control.ListGameSourcesAsync(HttpContext.RequestAborted);
             var runtimes = await control.ListRuntimesAsync(HttpContext.RequestAborted);
             var agents = await control.ListAgentsAsync(HttpContext.RequestAborted);
+            using var providersDocument = await control.GetRawAsync("api/v1/providers", HttpContext.RequestAborted);
+            var readyModels = providersDocument.RootElement.GetProperty("providers").EnumerateArray()
+                .Where(provider => provider.GetProperty("status").GetString() == "healthy")
+                .SelectMany(provider => provider.GetProperty("models").EnumerateArray().Select(model => (
+                    ProviderId: provider.GetProperty("provider_id").GetString()!,
+                    ModelId: model.GetProperty("model_id").GetString()!)))
+                .ToHashSet();
             var activeProfiles = await database.PortalAiProfileVersions.AsNoTracking()
                 .Where(item => item.Active)
                 .OrderBy(item => item.DisplayName)
@@ -32,7 +39,7 @@ public sealed class CatalogController(
             return ApiResponse<LobbyCatalog>.Success(new(
                 sources.Select(item => new CatalogItem(item.Id, item.DisplayName, item.Status)).ToArray(),
                 runtimes.Select(item => new CatalogItem(item.Id, item.DisplayName, item.Status)).ToArray(),
-                activeProfiles.Select(item => new CatalogItem(
+                activeProfiles.Where(item => readyModels.Contains((item.ProviderId, item.ModelId))).Select(item => new CatalogItem(
                     item.AgentId, $"{item.DisplayName} v{item.Version} · {item.ModelId} · {item.ReasoningEffort}",
                     agentStatus.GetValueOrDefault(item.AgentId, "configured"))).ToArray(),
                 true));

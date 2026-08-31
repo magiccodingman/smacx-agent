@@ -1,7 +1,9 @@
 @page "/admin/providers"
 @attribute [Authorize(Roles = "Administrator")]
 @inject Services.PortalApiClient Api
+@inject IJSRuntime Js
 @using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
 
 <PageTitle>AI providers · SMACX Agent</PageTitle>
 <PageHeader Kicker="AGENT INFRASTRUCTURE"
@@ -14,7 +16,12 @@
 }
 else
 {
-    <div class="form-grid">
+    @if (providerEditorOpen || profileEditorOpen)
+    {
+    <div class="editor-modal-backdrop" role="presentation">
+      <div class="editor-modal-card" role="dialog" aria-modal="true">
+      @if (providerEditorOpen)
+      {
         <section class="surface-panel form-panel" id="endpoint-editor">
             <span class="panel-kicker">STEP 1</span>
             <h2>@(IsEditingProvider ? "Edit model endpoint" : "Connect a model endpoint")</h2>
@@ -46,17 +53,16 @@ else
                 <MudCheckBox @bind-Value="removeProviderKey" Label="Remove the currently stored API key" Color="Color.Warning" />
             }
             <div class="form-actions endpoint-editor-actions">
-                @if (IsEditingProvider)
-                {
-                    <MudButton Variant="Variant.Text" Disabled="busy" OnClick="ResetProviderForm">Cancel edit</MudButton>
-                }
+                <MudButton Variant="Variant.Text" Disabled="busy" OnClick="CloseProviderEditor">Cancel</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSaveProvider)"
                            OnClick="SaveProvider" StartIcon="@Icons.Material.Filled.Hub">
                     @(IsEditingProvider ? "Save changes & discover models" : "Save endpoint & discover models")
                 </MudButton>
             </div>
         </section>
-
+      }
+      @if (profileEditorOpen)
+      {
         <section class="surface-panel form-panel">
             <span class="panel-kicker">STEP 2</span>
             <h2>@(profileStableId is null ? "Create an AI player profile" : $"Create version {profileBaseVersion + 1} of {profileName}")</h2>
@@ -66,7 +72,7 @@ else
             {
                 <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="setup-callout">
                     Existing matches keep their original immutable profile version. This creates a new lobby-selectable version with the settings below.
-                    <div class="setup-callout-actions"><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => CancelProfileVersion()">Cancel new version</MudButton></div>
+                    <div class="setup-callout-actions"><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CloseProfileEditor">Cancel new version</MudButton></div>
                 </MudAlert>
             }
 
@@ -101,7 +107,7 @@ else
                 }
                 else
                 {
-                    <MudSelect T="string" Value="selectedModel" ValueChanged="ModelChanged" Label="Model" Variant="Variant.Outlined">
+                    <MudSelect T="string" Value="@selectedModel" ValueChanged="ModelChanged" Label="Model" Variant="Variant.Outlined">
                         @foreach (var model in Models)
                         {
                             <MudSelectItem Value="@Id(model, "model_id")">@Text(model, "display_name")</MudSelectItem>
@@ -123,13 +129,15 @@ else
                 </div>
                 <span class="field-help flush">@ContextHelp</span>
 
-                <MudSelect T="string" Value="generationPreset" ValueChanged="GenerationPresetChanged"
+                <MudSelect T="string" Value="@generationPreset" ValueChanged="GenerationPresetChanged"
                            Label="Generation preset" Variant="Variant.Outlined">
                     <MudSelectItem T="string" Value="@("provider-default")">Provider defaults · widest compatibility</MudSelectItem>
                     @if (IsQwen38)
                     {
-                        <MudSelectItem T="string" Value="@("qwen38-thinking")">Qwen3.8 thinking · official recommendation</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("qwen38-instruct")">Qwen3.8 non-thinking · official recommendation</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("qwen38-instant")">Qwen3.8 Instant · thinking disabled</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("qwen38-low")">Qwen3.8 Low · efficient reasoning</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("qwen38-medium")">Qwen3.8 Medium · balanced reasoning</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("qwen38-xhigh")">Qwen3.8 XHigh · deepest reasoning</MudSelectItem>
                     }
                     <MudSelectItem T="string" Value="@("custom")">Custom sampling controls</MudSelectItem>
                 </MudSelect>
@@ -153,33 +161,55 @@ else
                             </div>
                             @if (generationPreset == "custom")
                             {
-                                <div class="field-pair generation-fields">
-                                    <MudSelect T="string" @bind-Value="thinkingMode" Label="Thinking template" Variant="Variant.Outlined">
-                                        <MudSelectItem T="string" Value="@("default")">Provider default</MudSelectItem><MudSelectItem T="string" Value="@("enabled")">Enabled</MudSelectItem><MudSelectItem T="string" Value="@("disabled")">Disabled</MudSelectItem>
-                                    </MudSelect>
-                                    <MudSelect T="string" @bind-Value="preserveMode" Label="Preserve thinking" Variant="Variant.Outlined">
-                                        <MudSelectItem T="string" Value="@("default")">Provider default</MudSelectItem><MudSelectItem T="string" Value="@("enabled")">Enabled</MudSelectItem><MudSelectItem T="string" Value="@("disabled")">Disabled</MudSelectItem>
-                                    </MudSelect>
+                                <div class="custom-parameter-editor">
+                                    <div class="panel-heading"><div><strong>Additional request parameters</strong><small>Values are JSON: use true, 20, "text", arrays, or objects.</small></div><MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddExtraParameter">Add parameter</MudButton></div>
+                                    @foreach (var parameter in extraParameters)
+                                    {
+                                        <div class="custom-parameter-row">
+                                            <MudTextField @bind-Value="parameter.Key" Label="Key" Variant="Variant.Outlined" Immediate="true" />
+                                            <MudTextField @bind-Value="parameter.Value" Label="JSON value" Variant="Variant.Outlined" Immediate="true" />
+                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Color="Color.Error" OnClick="@(() => RemoveExtraParameter(parameter))" aria-label="Remove parameter" />
+                                        </div>
+                                    }
                                 </div>
                             }
-                            <span class="field-help flush">Blank custom fields are omitted. Temperature, Top P, presence/frequency penalty, maximum tokens, and seed follow common OpenAI-compatible request shapes. Top K, Min P, repetition penalty, and thinking-template controls are server extensions; use them only when your endpoint supports them.</span>
+                            <span class="field-help flush">Blank common fields are omitted. Chat-template controls and any other server-specific extension belong in the JSON-typed additional parameters above.</span>
                         </MudExpansionPanel>
                     </MudExpansionPanels>
                 }
                 <MudTextField @bind-Value="profileNotes" Label="Operator note (optional)" Lines="2" Variant="Variant.Outlined" />
                 <span class="field-help flush">Faction and personality are chosen independently for each AI seat when a lobby is created; they are not properties of the reusable model profile.</span>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanCreateProfile)"
+                <div class="profile-portability">
+                    <div>
+                        <strong>Portable profile template</strong>
+                        <span>Import or export model settings without copying endpoint IDs, API keys, agent IDs, or match history.</span>
+                    </div>
+                    <div class="endpoint-actions">
+                        <label class="mud-button-root mud-button mud-button-text mud-button-text-primary mud-button-text-size-small profile-import-button">
+                            <span class="mud-button-label">Import JSON</span>
+                            <InputFile OnChange="ImportProfileTemplate" accept="application/json,.json" />
+                        </label>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Download" OnClick="ExportProfileTemplate">
+                            Export JSON
+                        </MudButton>
+                    </div>
+                </div>
+                <div class="form-actions"><MudButton Variant="Variant.Text" OnClick="CloseProfileEditor" Disabled="busy">Cancel</MudButton><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanCreateProfile)"
                            OnClick="CreateProfile" StartIcon="@Icons.Material.Filled.SmartToy">
                     @(profileStableId is null ? "Create playable AI profile" : $"Create version {profileBaseVersion + 1}")
-                </MudButton>
+                </MudButton></div>
             }
         </section>
+      }
+      </div>
     </div>
+    }
 
     <section class="surface-panel admin-list-panel mt-4">
         <div class="panel-heading">
             <div><span class="panel-kicker">CONFIGURED ENDPOINTS</span><h2>Model endpoints</h2></div>
-            <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Reload" aria-label="Refresh endpoints" />
+            <div class="endpoint-actions"><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenProviderEditor">New endpoint</MudButton><MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Reload" aria-label="Refresh endpoints" /></div>
         </div>
         @if (Providers.Count == 0)
         {
@@ -221,6 +251,7 @@ else
     <section class="surface-panel admin-list-panel mt-4">
         <div class="panel-heading">
             <div><span class="panel-kicker">LOBBY-READY CONFIGURATION</span><h2>AI player profiles</h2></div>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Disabled="@(Providers.Count==0)" OnClick="OpenProfileEditor">New AI profile</MudButton>
         </div>
         @if (profiles.Count == 0)
         {
@@ -238,7 +269,7 @@ else
                     <small>@profile.ModelId · @profile.ReasoningEffort reasoning · @GenerationLabel(profile.Generation) · @GameplayContext(profile.ContextLength) gameplay context</small>
                 </div>
                 <span>@(profile.Active ? "active" : "inactive")</span>
-                <span>Personality: None</span>
+                <span>Faction/personality chosen per seat</span>
                 @if (profile.Active)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => BeginProfileVersion(profile)">New version</MudButton>
@@ -263,6 +294,8 @@ else
     private List<AiProfileVersion> profiles = [];
     private bool loading = true;
     private bool busy;
+    private bool providerEditorOpen;
+    private bool profileEditorOpen;
     private string? error;
     private string? notice;
     private string providerName = "Local model server";
@@ -293,6 +326,7 @@ else
     private int? seed;
     private string thinkingMode = "default";
     private string preserveMode = "default";
+    private readonly List<ExtraParameterDraft> extraParameters = [];
 
     private readonly string[] reasoningValues = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
     private readonly string[] qwenReasoningValues = ["low", "medium", "xhigh"];
@@ -315,7 +349,7 @@ else
         && !string.IsNullOrWhiteSpace(selectedProvider)
         && !string.IsNullOrWhiteSpace(selectedModel);
     private bool IsQwen38 => selectedModel.Contains("qwen3.8", StringComparison.OrdinalIgnoreCase);
-    private bool IsOfficialPreset => generationPreset is "qwen38-thinking" or "qwen38-instruct";
+    private bool IsOfficialPreset => generationPreset.StartsWith("qwen38-", StringComparison.Ordinal);
     private int? SelectedModelContextMaximum
     {
         get
@@ -336,18 +370,24 @@ else
     private string ContextHelp => SelectedModelContextMaximum is { } maximum
         ? $"Automatic is recommended and will use the model's advertised {maximum:N0}-token context. A manual value must be between 65,536 and {maximum:N0}."
         : "Automatic is recommended and uses the context advertised by the endpoint. Enter at least 65,536 only when you intentionally want a smaller working context.";
-    private IEnumerable<string> AvailableReasoning => generationPreset == "qwen38-instruct"
-        ? ["none"] : IsQwen38 ? qwenReasoningValues : reasoningValues;
+    private IEnumerable<string> AvailableReasoning => generationPreset switch
+    {
+        "qwen38-instant" => ["none"], "qwen38-low" => ["low"],
+        "qwen38-medium" => ["medium"], "qwen38-xhigh" => ["xhigh"],
+        _ => reasoningValues,
+    };
     private string GenerationHelp => generationPreset switch
     {
-        "qwen38-thinking" => "Official Qwen3.8 thinking sampling. Choose low, medium, or xhigh reasoning independently; xhigh is Qwen's default.",
-        "qwen38-instruct" => "Official Qwen3.8 direct-answer sampling with thinking disabled and reasoning set to None.",
+        "qwen38-instant" => "Official Qwen3.8 non-thinking sampling. Historical reasoning is explicitly discarded.",
+        "qwen38-low" => "Official Qwen3.8 thinking sampling with low reasoning and preserved thinking disabled.",
+        "qwen38-medium" => "Official Qwen3.8 thinking sampling with medium reasoning and preserved thinking disabled.",
+        "qwen38-xhigh" => "Official Qwen3.8 thinking sampling with xhigh reasoning and preserved thinking disabled.",
         "custom" => "Only the values you enter are sent. Unsupported extension fields may be rejected by the model server.",
         _ => "No sampling fields are sent, so Hermes and the endpoint choose compatible model defaults.",
     };
-    private string GenerationSummary => generationPreset == "qwen38-thinking"
-        ? "temperature 1.0 · top-p 0.95 · top-k 20 · min-p 0 · presence 0 · repetition 1 · preserve thinking"
-        : generationPreset == "qwen38-instruct"
+    private string GenerationSummary => generationPreset is "qwen38-low" or "qwen38-medium" or "qwen38-xhigh"
+        ? "temperature 1.0 · top-p 0.95 · top-k 20 · min-p 0 · presence 0 · repetition 1 · preserved thinking disabled"
+        : generationPreset == "qwen38-instant"
             ? "temperature 0.7 · top-p 0.80 · top-k 20 · min-p 0 · presence 1.5 · repetition 1 · thinking disabled"
             : "Custom values are versioned with this AI profile and replayed on every Hermes run.";
 
@@ -416,6 +456,7 @@ else
                     ? $"Endpoint {(providerId is null ? "saved" : "updated")} and {Models.Count} model{(Models.Count == 1 ? "" : "s")} discovered. Complete step 2 to make an AI player."
                     : $"Endpoint {(providerId is null ? "saved" : "updated")}, but it did not advertise any models yet.";
                 ResetProviderForm();
+                providerEditorOpen = false;
             }
         }
         catch (HttpRequestException)
@@ -430,6 +471,8 @@ else
 
     private void EditProvider(JsonElement provider)
     {
+        providerEditorOpen = true;
+        profileEditorOpen = false;
         editingProviderId = Id(provider);
         providerName = Text(provider, "display_name");
         providerUrl = Text(provider, "base_url");
@@ -439,7 +482,7 @@ else
         pendingDeleteId = null;
         pendingDeleteName = null;
         error = null;
-        notice = $"Editing {providerName} in step 1.";
+        notice = null;
     }
 
     private void ResetProviderForm()
@@ -450,6 +493,28 @@ else
         providerName = "Local model server";
         providerUrl = "";
         providerKey = "";
+    }
+
+    private void OpenProviderEditor()
+    {
+        ResetProviderForm(); providerEditorOpen = true; profileEditorOpen = false;
+        error = null; notice = null;
+    }
+
+    private void CloseProviderEditor()
+    {
+        providerEditorOpen = false; ResetProviderForm(); error = null;
+    }
+
+    private void OpenProfileEditor()
+    {
+        CancelProfileVersion(); profileEditorOpen = true; providerEditorOpen = false;
+        error = null; notice = null;
+    }
+
+    private void CloseProfileEditor()
+    {
+        profileEditorOpen = false; CancelProfileVersion(); error = null;
     }
 
     private void BeginRemoveProvider(JsonElement provider)
@@ -521,11 +586,14 @@ else
         busy = true;
         error = null;
         notice = null;
+        ModelGenerationSettings generation;
+        try { generation = BuildGeneration(); }
+        catch (InvalidOperationException exception) { error = exception.Message; busy = false; return; }
         var result = await Api.PostAsync<AiProfileVersion>("api/admin/ai-profiles",
             new AiProfileVersionRequest(profileName, selectedProvider, selectedModel, reasoning, contextLength,
                 string.IsNullOrWhiteSpace(profileNotes) ? null : profileNotes,
                 StableProfileId: profileStableId,
-                Generation: BuildGeneration()));
+                Generation: generation));
         if (result.Payload?.Ok != true)
         {
             error = result.Payload?.Error?.Message;
@@ -536,8 +604,76 @@ else
             CancelProfileVersion(resetFields: false);
             await Reload(selectedProvider);
             notice = $"{createdVersion.DisplayName} v{createdVersion.Version} is now available in new lobbies as an AI player.";
+            profileEditorOpen = false;
         }
         busy = false;
+    }
+
+    private async Task ExportProfileTemplate()
+    {
+        ModelGenerationSettings generation;
+        try { generation = BuildGeneration(); }
+        catch (InvalidOperationException exception) { error = exception.Message; return; }
+        var template = new PortableProfileTemplate(
+            1, profileName.Trim(), selectedModel, reasoning, contextLength,
+            string.IsNullOrWhiteSpace(profileNotes) ? null : profileNotes.Trim(), generation);
+        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            WriteIndented = true,
+        });
+        var module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/profile-portability.js");
+        await module.InvokeVoidAsync("downloadJson", SafeFileName(profileName) + ".smacx-ai-profile.json", json);
+        await module.DisposeAsync();
+        notice = "Portable AI profile template downloaded. It contains no API key or installation-specific IDs.";
+        error = null;
+    }
+
+    private async Task ImportProfileTemplate(InputFileChangeEventArgs args)
+    {
+        error = null;
+        notice = null;
+        try
+        {
+            await using var stream = args.File.OpenReadStream(256 * 1024);
+            var template = await JsonSerializer.DeserializeAsync<PortableProfileTemplate>(stream,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            if (template is null || template.SchemaVersion != 1)
+                throw new InvalidOperationException("This is not a supported SMACX AI profile template.");
+            if (string.IsNullOrWhiteSpace(template.DisplayName) || string.IsNullOrWhiteSpace(template.ModelId))
+                throw new InvalidOperationException("The profile template must include a display name and model ID.");
+            if (template.ContextLength is > 0 and < 65536)
+                throw new InvalidOperationException("Imported gameplay context must be automatic or at least 65,536 tokens.");
+
+            profileName = template.DisplayName.Trim();
+            profileNotes = template.Notes ?? "";
+            reasoning = template.ReasoningEffort;
+            contextLength = template.ContextLength;
+            ApplyGeneration(template.Generation ?? new ModelGenerationSettings());
+            if (Models.Any(model => Id(model, "model_id") == template.ModelId))
+            {
+                selectedModel = template.ModelId;
+                if (SelectedModelContextMaximum is { } maximum && contextLength > maximum)
+                    contextLength = maximum;
+                notice = $"Imported settings for {template.ModelId}. Review them, then create the profile.";
+            }
+            else
+            {
+                selectedModel = "";
+                error = $"The selected endpoint does not advertise '{template.ModelId}'. Choose an endpoint that has that model, or select a compatible discovered model before creating the profile.";
+            }
+        }
+        catch (JsonException)
+        {
+            error = "The selected file is not valid profile JSON.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            error = exception.Message;
+        }
+        catch (IOException)
+        {
+            error = "The profile file could not be read or is larger than 256 KiB.";
+        }
     }
 
     private async Task Deactivate(string id)
@@ -553,7 +689,7 @@ else
     private void ProviderChanged(string value)
     {
         selectedProvider = value;
-        ModelChanged(Models.FirstOrDefault().ValueKind == JsonValueKind.Object
+        ModelChanged(Models.Count == 1 && Models[0].ValueKind == JsonValueKind.Object
             ? Id(Models[0], "model_id")
             : "");
     }
@@ -563,11 +699,13 @@ else
         selectedModel = value;
         contextLength = null;
         reasoning = IsQwen38 ? "low" : "none";
-        GenerationPresetChanged(IsQwen38 ? "qwen38-thinking" : "provider-default");
+        GenerationPresetChanged(IsQwen38 ? "qwen38-low" : "provider-default");
     }
 
     private void BeginProfileVersion(AiProfileVersion profile)
     {
+        profileEditorOpen = true;
+        providerEditorOpen = false;
         profileStableId = profile.StableProfileId;
         profileBaseVersion = profile.Version;
         profileName = profile.DisplayName;
@@ -578,7 +716,7 @@ else
         profileNotes = profile.Notes ?? "";
         ApplyGeneration(profile.Generation);
         error = null;
-        notice = $"Editing settings for a new version of {profile.DisplayName}.";
+        notice = null;
     }
 
     private void CancelProfileVersion(bool resetFields = true)
@@ -606,6 +744,10 @@ else
         seed = generation.Seed;
         thinkingMode = generation.EnableThinking is null ? "default" : generation.EnableThinking.Value ? "enabled" : "disabled";
         preserveMode = generation.PreserveThinking is null ? "default" : generation.PreserveThinking.Value ? "enabled" : "disabled";
+        extraParameters.Clear();
+        if (generation.ExtraParameters is not null)
+            extraParameters.AddRange(generation.ExtraParameters.Select(item =>
+                new ExtraParameterDraft(item.Key, item.Value.GetRawText())));
     }
 
     private void GenerationPresetChanged(string value)
@@ -614,26 +756,45 @@ else
         temperature = topP = minP = presencePenalty = frequencyPenalty = repetitionPenalty = null;
         topK = null;
         thinkingMode = preserveMode = "default";
-        if (value == "qwen38-thinking")
+        extraParameters.Clear();
+        if (value is "qwen38-low" or "qwen38-medium" or "qwen38-xhigh")
         {
             temperature = 1.0; topP = 0.95; topK = 20; minP = 0.0;
             presencePenalty = 0.0; repetitionPenalty = 1.0;
-            thinkingMode = preserveMode = "enabled";
-            if (reasoning is not ("low" or "medium" or "xhigh")) reasoning = "xhigh";
+            thinkingMode = "enabled"; preserveMode = "disabled";
+            reasoning = value[7..];
         }
-        else if (value == "qwen38-instruct")
+        else if (value == "qwen38-instant")
         {
             temperature = 0.7; topP = 0.80; topK = 20; minP = 0.0;
             presencePenalty = 1.5; repetitionPenalty = 1.0;
-            thinkingMode = "disabled"; reasoning = "none";
+            thinkingMode = "disabled"; preserveMode = "disabled"; reasoning = "none";
         }
     }
 
-    private ModelGenerationSettings BuildGeneration() => new(
-        generationPreset, temperature, topP, topK, minP, presencePenalty,
-        frequencyPenalty, repetitionPenalty, maxOutputTokens, seed,
-        thinkingMode == "default" ? null : thinkingMode == "enabled",
-        preserveMode == "default" ? null : preserveMode == "enabled");
+    private ModelGenerationSettings BuildGeneration()
+    {
+        Dictionary<string, JsonElement>? extras = null;
+        if (generationPreset == "custom")
+        {
+            extras = new(StringComparer.Ordinal);
+            foreach (var item in extraParameters.Where(item => !string.IsNullOrWhiteSpace(item.Key)))
+            {
+                var key = item.Key.Trim();
+                if (extras.ContainsKey(key)) throw new InvalidOperationException($"Custom parameter '{key}' appears more than once.");
+                try { extras.Add(key, JsonDocument.Parse(item.Value).RootElement.Clone()); }
+                catch (JsonException) { throw new InvalidOperationException($"{item.Key} must contain a valid JSON value."); }
+            }
+        }
+        return new ModelGenerationSettings(
+            generationPreset, temperature, topP, topK, minP, presencePenalty,
+            frequencyPenalty, repetitionPenalty, maxOutputTokens, seed,
+            thinkingMode == "default" ? null : thinkingMode == "enabled",
+            preserveMode == "default" ? null : preserveMode == "enabled", extras);
+    }
+
+    private void AddExtraParameter() => extraParameters.Add(new("", "true"));
+    private void RemoveExtraParameter(ExtraParameterDraft item) => extraParameters.Remove(item);
 
     private static string Id(JsonElement item, string name = "provider_id") =>
         item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value)
@@ -649,9 +810,26 @@ else
         : "automatic";
     private static string GenerationLabel(ModelGenerationSettings generation) => generation.Preset switch
     {
-        "qwen38-thinking" => "Qwen3.8 thinking preset",
-        "qwen38-instruct" => "Qwen3.8 non-thinking preset",
+        "qwen38-instant" => "Qwen3.8 Instant template",
+        "qwen38-low" => "Qwen3.8 Low template",
+        "qwen38-medium" => "Qwen3.8 Medium template",
+        "qwen38-xhigh" => "Qwen3.8 XHigh template",
         "custom" => "custom sampling",
         _ => "provider sampling defaults",
     };
+    private static string SafeFileName(string value)
+    {
+        var safe = string.Concat(value.Trim().Select(character =>
+            char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '-'));
+        return string.IsNullOrWhiteSpace(safe) ? "smacx-player" : safe.Trim('-');
+    }
+    private sealed record PortableProfileTemplate(
+        int SchemaVersion, string DisplayName, string ModelId,
+        string ReasoningEffort, int? ContextLength, string? Notes,
+        ModelGenerationSettings? Generation);
+    private sealed class ExtraParameterDraft(string key, string value)
+    {
+        public string Key { get; set; } = key;
+        public string Value { get; set; } = value;
+    }
 }

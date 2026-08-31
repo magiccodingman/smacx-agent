@@ -31,9 +31,6 @@ def main() -> int:
     ), None)
     if game_source is None:
         game_source = manager.validate_game_source(arguments.game_source)
-    else:
-        imported = manager.import_private_game_reference(game_source["game_source_id"])
-        game_source["private_reference"] = imported
     runtime = next((
         item for item in control.list_runtimes()
         if item.get("source_path") == str(Path(arguments.proton_source).resolve())
