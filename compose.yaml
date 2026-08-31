@@ -16,10 +16,11 @@ services:
       SMACX_DOCKER_SOCKET: /var/run/docker.sock
       SMACX_DOCKER_NETWORK: ${SMACX_DOCKER_NETWORK:-smacx-agent_default}
       SMACX_WORKER_IMAGE: smacx-agent-worker:dev
+      SMACX_GAME_SOURCE: ${SMACX_GAME_SOURCE:?Set SMACX_GAME_SOURCE to the directory containing terranx.exe}
+      SMACX_REQUIRE_GAME_SOURCE: "1"
       SMACX_MCP_IMAGE: smacx-agent-control:dev
       SMACX_HERMES_IMAGE: ${SMACX_HERMES_IMAGE:-smacx-agent-harness:dev}
       SMACX_CONTROL_DATA_VOLUME: smacx-agent_smacx-control-data
-      SMACX_DIRECTX_REDIST_HOST: ${SMACX_DIRECTX_REDIST:-}
       SMACX_VIEW_PUBLISH_IP: ${SMACX_VIEW_PUBLISH_IP:-127.0.0.1}
     expose:
       - "8081"

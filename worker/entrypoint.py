@@ -268,7 +268,7 @@ def install_directplay(environment: dict[str, str], worker_root: Path) -> bool:
     if marker.is_file():
         return True
     redist = Path(os.environ.get(
-        "SMACX_DIRECTX_REDIST", "/redist/directx_feb2010_redist.exe",
+        "SMACX_DIRECTX_REDIST", "/opt/smacx/redist/directx_feb2010_redist.exe",
     ))
     if not redist.is_file():
         if os.environ.get("SMACX_REQUIRE_DIRECTPLAY", "0") == "1":

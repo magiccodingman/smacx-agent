@@ -258,6 +258,18 @@ public sealed class PortalMaintenanceCoordinator(
         var match = await database.PortalMatches.SingleAsync(
             item => item.MatchId == proposal.MatchId, cancellationToken);
         match.Status = matchStatus; match.LastError = null; match.UpdatedAt = DateTimeOffset.UtcNow;
+        if (matchStatus is "parked" or "completed")
+        {
+            var managedSeats = await database.PortalLobbySeats
+                .Where(item => item.MatchId == proposal.MatchId && item.ControlInstanceId != null)
+                .ToArrayAsync(cancellationToken);
+            foreach (var seat in managedSeats)
+            {
+                seat.ConnectionState = matchStatus == "completed" ? "retired" : "worker_stopped";
+                seat.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+        }
+        if (matchStatus == "completed") match.IsListed = false;
         database.PortalMatchEvents.Add(new PortalMatchEvent
         {
             MatchId = proposal.MatchId, EventType = "maintenance_completed", Summary = summary,

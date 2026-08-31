@@ -1,9 +1,110 @@
 @page "/history"
 @attribute [Authorize]
 @inject Services.PortalApiClient Api
-<PageTitle>History · SMACX Agent</PageTitle>
-<PageHeader Kicker="MISSION ARCHIVE" Title="Match history" Description="Return to waiting or interrupted games and review campaigns tied to your LAN identity." />
-@if(loading){<MudProgressLinear Indeterminate="true" Color="Color.Primary"/>}
-else if(items.Count==0){<div class="empty-state surface-panel"><div class="empty-orbit"><MudIcon Icon="@Icons.Material.Filled.History"/></div><h2>Your archive is empty</h2><p>Games you join—and checkpoints that can be resumed—will be collected here.</p><MudButton Href="lobbies/new" Variant="Variant.Outlined" Color="Color.Primary">Start a campaign</MudButton></div>}
-else{<div class="history-list">@foreach(var item in items){<a class="surface-panel history-row" href="@($"lobbies/{item.MatchId}")"><span class="history-icon"><MudIcon Icon="@(item.CanResume?Icons.Material.Filled.RestartAlt:Icons.Material.Filled.Public)"/></span><span><strong>@item.DisplayName</strong><small>@item.Mode · @item.RankingMode · updated @item.UpdatedAt.ToLocalTime().ToString("g")</small></span><span>Turn @(item.CurrentTurn?.ToString()??"—")<small>@(item.CurrentYear?.ToString()??"year unknown")</small></span><span class="lobby-state @item.Status">@item.Status</span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>}</div>}
-@code{private IReadOnlyList<MatchHistoryItem> items=[];private bool loading=true;protected override async Task OnInitializedAsync(){items=(await Api.GetAsync<IReadOnlyList<MatchHistoryItem>>("api/reports/history"))?.Data??[];loading=false;}}
+
+<PageTitle>Campaigns · SMACX Agent</PageTitle>
+<PageHeader Kicker="CAMPAIGN LIBRARY" Title="Your Alpha Centauri history"
+            Description="Return to a live campaign, resume a verified checkpoint, or revisit completed games without losing their model settings, events, outcomes, and analytics.">
+    <MudButton Href="lobbies/new" Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add">New campaign</MudButton>
+</PageHeader>
+
+@if (loading && page is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <div class="history-summary-grid">
+        <button class="surface-panel history-summary @(statusFilter=="all"?"selected":"")" @onclick="@(()=>SetFilter("all"))"><strong>@(page?.Total ?? 0)</strong><span>All campaigns</span></button>
+        <button class="surface-panel history-summary @(statusFilter=="active"?"selected":"")" @onclick="@(()=>SetFilter("active"))"><strong>@(page?.Active ?? 0)</strong><span>Active now</span></button>
+        <button class="surface-panel history-summary @(statusFilter=="parked"?"selected":"")" @onclick="@(()=>SetFilter("parked"))"><strong>@(page?.Recoverable ?? 0)</strong><span>Ready to resume</span></button>
+        <button class="surface-panel history-summary @(statusFilter=="completed"?"selected":"")" @onclick="@(()=>SetFilter("completed"))"><strong>@(page?.Completed ?? 0)</strong><span>Completed</span></button>
+    </div>
+
+    <section class="surface-panel history-browser">
+        <div class="history-toolbar">
+            <MudTextField T="string" @bind-Value="search" Immediate="true" Label="Find a campaign"
+                          Placeholder="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          OnKeyDown="SearchKey" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="Search" Disabled="loading">Search</MudButton>
+        </div>
+        <p class="section-copy">Park keeps a campaign playable and releases its workers. End moves it to completed history; the historical record remains but cannot be resumed.</p>
+
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert>
+        }
+        else if (items.Count == 0)
+        {
+            <div class="empty-state compact">
+                <MudIcon Icon="@Icons.Material.Filled.History" />
+                <strong>@(string.IsNullOrWhiteSpace(search) && statusFilter=="all" ? "Your campaign library is empty" : "No campaigns match")</strong>
+                <span>Try another filter, or launch a new game.</span>
+            </div>
+        }
+        else
+        {
+            <div class="history-list">
+                @foreach (var item in items)
+                {
+                    <a class="history-row" href="@($"lobbies/{item.MatchId}")">
+                        <span class="history-icon"><MudIcon Icon="@HistoryIcon(item)" /></span>
+                        <span class="history-primary"><strong>@item.DisplayName</strong><small>@HistoryDescription(item)</small></span>
+                        <span class="history-progress"><strong>Turn @(item.CurrentTurn?.ToString() ?? "—")</strong><small>@(item.CurrentYear is null ? "Year unknown" : $"M.Y. {item.CurrentYear}")</small></span>
+                        <span class="lobby-state @item.Status">@StatusLabel(item.Status)</span>
+                        <span class="history-action">@(item.CanResume ? "Resume" : item.Status == "completed" ? "Review" : "Manage") <MudIcon Icon="@Icons.Material.Filled.ChevronRight" /></span>
+                    </a>
+                }
+            </div>
+            @if (items.Count < (page?.FilteredTotal ?? 0))
+            {
+                <div class="history-load-more"><MudButton Variant="Variant.Outlined" Disabled="loading" OnClick="LoadMore">Load older campaigns</MudButton></div>
+            }
+        }
+    </section>
+}
+
+@code {
+    private MatchHistoryPage? page;
+    private readonly List<MatchHistoryItem> items = [];
+    private bool loading = true;
+    private string statusFilter = "all";
+    private string search = "";
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => await Load(reset: true);
+
+    private async Task Load(bool reset)
+    {
+        loading = true; error = null;
+        if (reset) items.Clear();
+        var offset = reset ? 0 : items.Count;
+        var path = $"api/reports/history/page?offset={offset}&limit=24&status={statusFilter}&query={Uri.EscapeDataString(search.Trim())}";
+        var response = await Api.GetAsync<MatchHistoryPage>(path);
+        if (response?.Ok == true && response.Data is not null)
+        {
+            page = response.Data;
+            items.AddRange(response.Data.Items);
+        }
+        else error = response?.Error?.Message ?? "Campaign history could not be loaded.";
+        loading = false;
+    }
+
+    private async Task SetFilter(string value) { statusFilter = value; await Load(reset: true); }
+    private Task Search() => Load(reset: true);
+    private Task LoadMore() => Load(reset: false);
+    private async Task SearchKey(KeyboardEventArgs args) { if (args.Key == "Enter") await Search(); }
+    private static string HistoryIcon(MatchHistoryItem item) => item.CanResume
+        ? Icons.Material.Filled.RestartAlt : item.Status == "completed"
+            ? Icons.Material.Filled.EmojiEvents : Icons.Material.Filled.Public;
+    private static string StatusLabel(string status) => status switch
+    {
+        "running" => "IN PROGRESS", "parked" => "READY TO RESUME",
+        "completed" => "COMPLETED", "waiting" => "STAGING", "error" => "RECOVERY NEEDED",
+        _ => status.ToUpperInvariant(),
+    };
+    private static string HistoryDescription(MatchHistoryItem item) =>
+        $"{item.Mode} · {item.RankingMode} · updated {item.UpdatedAt.ToLocalTime():g}";
+}

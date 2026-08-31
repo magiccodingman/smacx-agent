@@ -10,8 +10,14 @@ fi
 SMACX_DOCKER_GID=$(stat -c '%g' "$docker_socket")
 export SMACX_DOCKER_GID
 
+: "${SMACX_GAME_SOURCE:?Set SMACX_GAME_SOURCE to the directory containing terranx.exe}"
+if [ ! -f "$SMACX_GAME_SOURCE/terranx.exe" ]; then
+    echo "SMACX_GAME_SOURCE does not contain terranx.exe: $SMACX_GAME_SOURCE" >&2
+    exit 2
+fi
+
 services="control-api control-center"
-# Native/Proton and Blazor AOT-style optimization are memory-intensive build
+# Proton sealing and Blazor AOT-style optimization are memory-intensive build
 # phases. Keep first-run builds deterministic on small home-lab hosts instead
 # of letting Compose build all images concurrently.
 COMPOSE_PARALLEL_LIMIT=${COMPOSE_PARALLEL_LIMIT:-1}

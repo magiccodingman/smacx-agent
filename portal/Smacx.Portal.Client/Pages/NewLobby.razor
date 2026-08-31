@@ -3,10 +3,9 @@
 @inject Services.PortalApiClient Api
 @inject NavigationManager Navigation
 
-<PageTitle>New lobby · SMACX Agent</PageTitle>
-<PageHeader Kicker="MISSION CONFIGURATION"
-            Title="Create a match"
-            Description="Configure the native game, decide who plays, then either save a waiting lobby or launch it immediately." />
+<PageTitle>Create lobby · SMACX Agent</PageTitle>
+<PageHeader Kicker="NEW CAMPAIGN" Title="Create a lobby"
+ Description="Choose the world and fill the seven seats. You can review everything in the staging room before the native match starts." />
 
 @if (loading)
 {
@@ -14,507 +13,159 @@
 }
 else
 {
-    <div class="form-grid">
-        <div class="form-column">
-        <section class="surface-panel form-panel">
-            <h2>Match identity</h2>
-            <p class="section-copy">This name appears in the private LAN lobby directory.</p>
-            <MudTextField @bind-Value="name" Label="Lobby name" Variant="Variant.Outlined" Immediate="true" />
-            <MudTextField Value="@("Alien Crossfire")" Label="Game" Variant="Variant.Outlined" Disabled="true" />
-            <MudSelect T="string" @bind-Value="mode" Label="Start mode" Variant="Variant.Outlined">
-                <MudSelectItem Value="@("standard")">New standard game</MudSelectItem>
-                <MudSelectItem Value="@("scenario")">Installed scenario</MudSelectItem>
-            </MudSelect>
-            @if (mode == "scenario")
-            {
-                <MudSelect T="string" @bind-Value="scenarioId" Label="Scenario" Variant="Variant.Outlined">
-                    @foreach (var scenario in scenarios)
-                    {
-                        <MudSelectItem Value="@scenario.Id">@scenario.DisplayName</MudSelectItem>
-                    }
-                </MudSelect>
-                @if (scenarios.Count == 0)
-                {
-                    <span class="field-help flush">No safe .SC scenarios were found in the selected installation.</span>
-                }
-            }
-        </section>
+    <section class="readiness-strip @(PlatformReady ? "ready" : "blocked")">
+        <MudIcon Icon="@(PlatformReady ? Icons.Material.Filled.Verified : Icons.Material.Filled.ErrorOutline)" />
+        <div><strong>@(PlatformReady ? "Game platform ready" : "Game platform is not ready")</strong><span>@ReadinessMessage</span></div>
+    </section>
 
-        <section class="surface-panel form-panel">
-            <h2>Planet & difficulty</h2>
-            <p class="section-copy">These are exact native setup values, not visual menu automation.</p>
-            <div class="field-pair">
-                <MudSelect T="string" @bind-Value="worldSize" Label="Planet size" Variant="Variant.Outlined">
-                    @foreach (var value in worldSizes)
-                    {
-                        <MudSelectItem Value="@value.Id">@value.Name</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudSelect T="string" @bind-Value="difficulty" Label="Difficulty" Variant="Variant.Outlined">
-                    @foreach (var value in difficulties)
-                    {
-                        <MudSelectItem Value="@value.Id">@value.Name</MudSelectItem>
-                    }
-                </MudSelect>
-            </div>
-            <MudSelect T="int" @bind-Value="timeControl" Label="Multiplayer turn clock" Variant="Variant.Outlined">
-                <MudSelectItem Value="0">None</MudSelectItem>
-                <MudSelectItem Value="1">Tight</MudSelectItem>
-                <MudSelectItem Value="2">Standard</MudSelectItem>
-                <MudSelectItem Value="3">Moderate</MudSelectItem>
-                <MudSelectItem Value="4">Loose</MudSelectItem>
-            </MudSelect>
-            <div class="native-setting-grid">
-                <MudSelect T="int" @bind-Value="ocean" Label="Ocean" Variant="Variant.Outlined">@TraitItems()</MudSelect>
-                <MudSelect T="int" @bind-Value="erosion" Label="Erosive forces" Variant="Variant.Outlined">@TraitItems()</MudSelect>
-                <MudSelect T="int" @bind-Value="nativeLife" Label="Native life" Variant="Variant.Outlined">@TraitItems()</MudSelect>
-                <MudSelect T="int" @bind-Value="clouds" Label="Cloud cover" Variant="Variant.Outlined">@TraitItems()</MudSelect>
-            </div>
-        </section>
-
-        <section class="surface-panel form-panel">
-            <h2>Players & host</h2>
-            <p class="section-copy">An AI host is the recommended managed path. It launches first and owns the native network session.</p>
-            <MudSelect T="string" @bind-Value="hostController" Label="Who hosts the native game?" Variant="Variant.Outlined">
-                <MudSelectItem Value="@("agent")">First selected AI profile (recommended)</MudSelectItem>
-                <MudSelectItem Value="@("human")">My managed human seat (advanced)</MudSelectItem>
-            </MudSelect>
-            <span class="field-help flush">Human hosting remains available for compatibility, but agent hosting gives the supervisor the cleanest recovery and reconnect path.</span>
-
-            @if (hostController == "agent")
-            {
-                <MudSwitch @bind-Value="ownerPlays" Color="Color.Primary">Add me as a human player</MudSwitch>
-            }
-
-            @if (catalog?.Agents.Count == 0)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="setup-callout">
-                    <strong>No AI player profiles exist yet.</strong><br />
-                    An agent-hosted lobby needs an administrator to connect a model endpoint and create a profile first.
-                    <AuthorizeView Roles="Administrator">
-                        <div class="setup-callout-actions">
-                            <MudButton Href="admin/providers" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small">
-                                Configure AI profiles
-                            </MudButton>
-                        </div>
-                    </AuthorizeView>
-                </MudAlert>
-            }
-            else
-            {
-                <div class="agent-profile-picker" role="group" aria-label="AI player profiles">
-                    @foreach (var agent in catalog?.Agents ?? [])
-                    {
-                        var selected = agentSeats.Any(item => item.AgentId == agent.Id);
-                        <button type="button"
-                                class="agent-profile-choice @(selected ? "selected" : null)"
-                                aria-pressed="@selected.ToString().ToLowerInvariant()"
-                                @onclick="@(() => ToggleAgent(agent.Id))">
-                            <MudIcon Icon="@(selected ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.RadioButtonUnchecked)" />
-                            <span>
-                                <strong>@agent.DisplayName</strong>
-                                <small>@(selected ? "Selected as an AI player" : "Select this profile")</small>
-                            </span>
-                        </button>
-                    }
+    <div class="setup-flow-grid">
+        <div class="setup-main">
+            <section class="surface-panel form-panel compact-form-panel">
+                <span class="step-label">STEP 1</span><h2>Campaign</h2>
+                <p class="section-copy">Give the lobby a recognizable name and choose how Planet begins.</p>
+                <MudTextField @bind-Value="name" Label="Lobby name" Variant="Variant.Outlined" Immediate="true" MaxLength="160" />
+                <div class="field-pair">
+                    <MudSelect T="string" @bind-Value="mode" Label="Start from" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("standard")">A new random world</MudSelectItem>
+                        <MudSelectItem Value="@("scenario")">An installed scenario</MudSelectItem>
+                    </MudSelect>
+                    <MudSelect T="string" @bind-Value="worldSize" Label="Planet size" Variant="Variant.Outlined">
+                        @foreach (var value in worldSizes) { <MudSelectItem Value="@value.Id">@value.Name</MudSelectItem> }
+                    </MudSelect>
                 </div>
-                <span class="field-help flush">Each selected profile becomes one independent AI player. The first selected profile hosts when AI hosting is chosen.</span>
+                @if (mode == "scenario")
+                {
+                    <MudSelect T="string" @bind-Value="scenarioId" Label="Scenario" Variant="Variant.Outlined">
+                        @foreach (var scenario in scenarios) { <MudSelectItem Value="@scenario.Id">@scenario.DisplayName</MudSelectItem> }
+                    </MudSelect>
+                    @if (scenarios.Count == 0) { <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">This installation did not expose a compatible scenario file.</MudAlert> }
+                }
+                <MudSelect T="string" @bind-Value="difficulty" Label="Difficulty" Variant="Variant.Outlined">
+                    @foreach (var value in difficulties) { <MudSelectItem Value="@value.Id">@value.Name</MudSelectItem> }
+                </MudSelect>
+            </section>
+
+            <section class="surface-panel form-panel compact-form-panel">
+                <div class="section-title-row"><div><span class="step-label">STEP 2</span><h2>Players</h2></div><span class="seat-count @(HasValidSeatCount ? null : "invalid")">@AssignedSeatCount / 7 assigned</span></div>
+                <p class="section-copy">Every entry occupies one faction. The same AI profile may run several independent players.</p>
+                <div class="owner-seat-option"><MudSwitch @bind-Value="ownerPlays" Color="Color.Primary">Add me as a player</MudSwitch><span>Leave this off for an unattended AI simulation. You can still watch as an administrator.</span></div>
+                @if (ownerPlays)
+                {
+                    <MudSelect T="string" @bind-Value="humanJoinMode" Label="How I will play" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("browser")">In this browser (recommended)</MudSelectItem>
+                        <MudSelectItem Value="@("native")">From my own game client</MudSelectItem>
+                    </MudSelect>
+                }
+
+                <div class="seat-section-heading">
+                    <div><strong>AI players</strong><span>Model-driven players with semantic game control.</span></div>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add"
+                               Disabled="@(catalog?.Agents.Count == 0 || AssignedSeatCount >= 7)" OnClick="AddAgent">Add AI</MudButton>
+                </div>
+                @if (catalog?.Agents.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="setup-callout">No AI profiles are configured. You can create a human-and-bot lobby now, or an administrator can add a model under <strong>Models &amp; AI profiles</strong>.</MudAlert>
+                }
                 @foreach (var seat in agentSeats)
                 {
-                    var profile = catalog!.Agents.Single(item => item.Id == seat.AgentId);
-                    var personality = PersonalityOptions(seat)
-                        .FirstOrDefault(item => item.Id == seat.PersonalityId);
+                    var seatNumber = agentSeats.IndexOf(seat) + 1;
+                    var personality = PersonalityOptions(seat).FirstOrDefault(item => item.Id == seat.PersonalityId);
                     <div class="agent-seat-editor">
-                        <div class="agent-seat-heading">
-                            <div>
-                                <span class="panel-kicker">AI PLAYER @(agentSeats.IndexOf(seat) + 1)</span>
-                                <strong>@profile.DisplayName</strong>
-                            </div>
-                            @if (hostController == "agent" && agentSeats.IndexOf(seat) == 0)
-                            {
-                                <span class="host-badge">NATIVE HOST</span>
-                            }
-                        </div>
+                        <div class="agent-seat-heading"><div><span class="panel-kicker">AI SEAT @seatNumber</span><strong>@ProfileName(seat.AgentId)</strong></div><div class="seat-heading-actions">@if (seatNumber == 1) { <span class="host-badge">AUTO HOST</span> }<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => RemoveAgent(seat))" aria-label="Remove AI seat" /></div></div>
+                        <MudSelect T="string" Value="@seat.AgentId" ValueChanged="@((string value) => seat.AgentId = value)" Label="AI profile" Variant="Variant.Outlined">
+                            @foreach (var profile in catalog?.Agents ?? []) { <MudSelectItem Value="@profile.Id">@profile.DisplayName</MudSelectItem> }
+                        </MudSelect>
                         <div class="field-pair">
-                            <MudSelect T="string" Value="@seat.FactionId"
-                                       ValueChanged="@((string value) => SetFaction(seat, value))"
-                                       Label="Faction" Variant="Variant.Outlined">
-                                <MudSelectItem Value="@FactionCatalog.Random">Random at launch</MudSelectItem>
-                                @foreach (var faction in factionPersonalities?.Factions ?? [])
-                                {
-                                    <MudSelectItem Value="@faction.Id" Disabled="@FactionInUseByAnotherSeat(faction.Id, seat)">
-                                        @faction.FactionName · @faction.LeaderName
-                                    </MudSelectItem>
-                                }
+                            <MudSelect T="string" Value="@seat.FactionId" ValueChanged="@((string value) => SetFaction(seat, value))" Label="Faction" Variant="Variant.Outlined">
+                                <MudSelectItem Value="@FactionCatalog.Random">Random at start</MudSelectItem>
+                                @foreach (var faction in factionPersonalities?.Factions ?? []) { <MudSelectItem Value="@faction.Id" Disabled="@FactionInUseByAnotherSeat(faction.Id, seat)">@faction.FactionName · @faction.LeaderName</MudSelectItem> }
                             </MudSelect>
-                            <MudSelect T="string" Value="@seat.PersonalityId"
-                                       ValueChanged="@((string value) => seat.PersonalityId = value)"
-                                       Label="Personality" Variant="Variant.Outlined">
-                                @foreach (var option in PersonalityOptions(seat))
-                                {
-                                    <MudSelectItem Value="@option.Id">@option.DisplayName</MudSelectItem>
-                                }
+                            <MudSelect T="string" Value="@seat.PersonalityId" ValueChanged="@((string value) => seat.PersonalityId = value)" Label="Personality" Variant="Variant.Outlined">
+                                @foreach (var option in PersonalityOptions(seat)) { <MudSelectItem Value="@option.Id">@PersonalityLabel(option)</MudSelectItem> }
                             </MudSelect>
                         </div>
-                        <p class="personality-description">@(personality?.Description ?? "Choose how this leader interprets the match.")</p>
-                        @if (seat.FactionId == FactionCatalog.Random)
-                        {
-                            <small>Faction, faction-leader name, and personality resolve once at launch and remain locked for this match.</small>
-                        }
-                        else
-                        {
-                            var faction = FactionCatalog.Find(seat.FactionId);
-                            <small>In game and chat, this AI appears as <strong>@faction?.LeaderName</strong>.</small>
-                        }
+                        <p class="personality-description">@(personality?.Description ?? "Standard follows the selected faction leader's authored character; None adds no character card.")</p>
                     </div>
                 }
-            }
 
-            <MudSelect T="string" @bind-Value="humanJoinMode" Label="Human player mode" Variant="Variant.Outlined">
-                <MudSelectItem Value="@("browser")">Play in browser (recommended)</MudSelectItem>
-                <MudSelectItem Value="@("native")">Join from a separate game client</MudSelectItem>
-            </MudSelect>
-            <MudTextField @bind-Value="humanHandles" Label="Reserve seats for public display names (optional)"
-                          HelperText="Comma-separated. This reserves seats; it does not send a notification. Existing or future accounts claim them case-insensitively."
-                          Variant="Variant.Outlined" Immediate="true" />
-            <MudNumericField T="int" @bind-Value="nativeBotCount" Label="Reserve stock computer opponents (optional)"
-                             Min="0" Max="6" Variant="Variant.Outlined" />
-            <span class="field-help flush">Reserve bots only to prevent those seats being claimed while a lobby waits. Any seat still open when the game launches also becomes a stock game-controlled faction.</span>
-            <span class="field-help flush">@AssignedSeatCount of 7 seats are currently reserved. Unreserved seats remain joinable until launch.</span>
-            @if (!HasValidSeatCount)
-            {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">Reduce the selected AI players, human display names, or reserved stock opponents to seven total seats.</MudAlert>
-            }
-        </section>
-        </div>
+                <MudNumericField T="int" @bind-Value="nativeBotCount" Label="Pre-fill stock computer seats" Min="0" Max="6" Variant="Variant.Outlined"
+                                 HelperText="Optional. Any seat still open when you press Start match also becomes a game-controlled computer player." />
+                <MudTextField @bind-Value="humanHandles" Label="Reserve seats for friends (optional)" HelperText="Comma-separated public display names. Friends claim these seats when they join the lobby." Variant="Variant.Outlined" Immediate="true" />
+                @if (!HasValidSeatCount) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">A match has seven faction seats. Remove @(AssignedSeatCount - 7) player(s) before continuing.</MudAlert> }
+            </section>
 
-        <div class="form-column">
-        <section class="surface-panel form-panel">
-            <h2>Game runtime</h2>
-            <p class="section-copy">The validated installation and compatibility runtime are selected automatically.</p>
-            @if (catalog?.GameSources.Count == 0 || catalog?.Runtimes.Count == 0)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
-                    A validated game installation and Proton runtime are required before this lobby can be saved or launched.
-                </MudAlert>
-            }
-            else if (catalog?.GameSources.Count == 1 && catalog.Runtimes.Count == 1)
-            {
-                <div class="runtime-summary">
-                    <MudIcon Icon="@Icons.Material.Filled.Verified" />
-                    <div>
-                        <strong>@catalog.GameSources[0].DisplayName</strong>
-                        <span>@catalog.Runtimes[0].DisplayName · automatically selected</span>
-                    </div>
-                </div>
-            }
-            else
-            {
+            <section class="surface-panel form-panel compact-form-panel">
+                <span class="step-label">STEP 3 · OPTIONAL</span><h2>Advanced rules</h2>
+                <p class="section-copy">The defaults create an ordinary unranked Alien Crossfire game.</p>
                 <MudExpansionPanels Elevation="0" Class="rule-panels">
-                    <MudExpansionPanel Text="Advanced: choose installation and runtime">
-                        <MudSelect T="string" Value="@sourceId" ValueChanged="SourceChanged"
-                                   Label="Game installation" Variant="Variant.Outlined">
-                            @foreach (var source in catalog?.GameSources ?? [])
-                            {
-                                <MudSelectItem Value="@source.Id">@source.DisplayName</MudSelectItem>
-                            }
-                        </MudSelect>
-                        <MudSelect T="string" @bind-Value="runtimeId" Label="Wine / Proton runtime" Variant="Variant.Outlined">
-                            @foreach (var runtime in catalog?.Runtimes ?? [])
-                            {
-                                <MudSelectItem Value="@runtime.Id">@runtime.DisplayName</MudSelectItem>
-                            }
-                        </MudSelect>
-                        <span class="field-help flush">Multiple choices appear only for different validated game installs, mods, patches, or Proton versions.</span>
+                    <MudExpansionPanel Text="World generation & turn clock">
+                        <MudSelect T="int" @bind-Value="timeControl" Label="Multiplayer turn clock" Variant="Variant.Outlined"><MudSelectItem Value="0">None</MudSelectItem><MudSelectItem Value="1">Tight</MudSelectItem><MudSelectItem Value="2">Standard</MudSelectItem><MudSelectItem Value="3">Moderate</MudSelectItem><MudSelectItem Value="4">Loose</MudSelectItem></MudSelect>
+                        <div class="native-setting-grid"><MudSelect T="int" @bind-Value="ocean" Label="Ocean" Variant="Variant.Outlined">@TraitItems()</MudSelect><MudSelect T="int" @bind-Value="erosion" Label="Erosive forces" Variant="Variant.Outlined">@TraitItems()</MudSelect><MudSelect T="int" @bind-Value="nativeLife" Label="Native life" Variant="Variant.Outlined">@TraitItems()</MudSelect><MudSelect T="int" @bind-Value="clouds" Label="Cloud cover" Variant="Variant.Outlined">@TraitItems()</MudSelect></div>
+                    </MudExpansionPanel>
+                    <MudExpansionPanel Text="Victory conditions & game rules">
+                        <MudSwitch @bind-Value="doOrDie" Color="Color.Primary">Do or die / no cooperative victory</MudSwitch>
+                        <div class="rule-grid">@RuleSwitch("Transcendence victory", "victory_transcendence")@RuleSwitch("Conquest victory", "victory_conquest")@RuleSwitch("Diplomatic victory", "victory_diplomatic")@RuleSwitch("Economic victory", "victory_economic")@RuleSwitch("Cooperative victory", "victory_cooperative")@RuleSwitch("Look first", "look_first")@RuleSwitch("Tech stagnation", "tech_stagnation")@RuleSwitch("Spoils of war", "spoils_of_war")@RuleSwitch("Blind research", "blind_research")@RuleSwitch("Intense rivalry", "intense_rivalry")@RuleSwitch("Unity survey", "unity_survey")@RuleSwitch("Unity scattering", "unity_scattering")@RuleSwitch("Random events", "random_events")@RuleSwitch("Time warp", "time_warp")@RuleSwitch("Ironman", "ironman")</div>
+                    </MudExpansionPanel>
+                    <MudExpansionPanel Text="Access & agent memory">
+                        <div class="policy-option"><MudSwitch @bind-Value="anonymousSpectators" Color="Color.Primary">Allow anonymous spectators</MudSwitch><span class="field-help">People on this trusted LAN may watch without an account. Off by default; administrators can always observe.</span></div>
+                        <div class="policy-option"><MudSwitch @bind-Value="managedOnly" Color="Color.Primary">Browser players only</MudSwitch><span class="field-help">Disallow separate native clients for consistent reconnects and spectator isolation.</span></div>
+                        <div class="policy-option"><MudSwitch @bind-Value="graphiti" Color="Color.Primary">Graphiti relationship memory</MudSwitch><span class="field-help">Project selected per-match memories into the optional relationship graph. SQLite remains authoritative.</span></div>
                     </MudExpansionPanel>
                 </MudExpansionPanels>
-            }
-            @if (catalog?.ControlConnected == false)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-3">
-                    Game control is offline. Existing configuration remains visible, but launching is unavailable.
-                </MudAlert>
-            }
-        </section>
-
-        <section class="surface-panel form-panel">
-            <h2>Victory & game rules</h2>
-            <p class="section-copy">Defaults preserve ordinary Alien Crossfire play. Expand only when customizing.</p>
-            <MudSwitch @bind-Value="doOrDie" Color="Color.Primary">Do or die / no cooperative victory</MudSwitch>
-            <MudExpansionPanels Elevation="0" Class="rule-panels">
-                <MudExpansionPanel Text="Victory conditions">
-                    <div class="rule-grid">
-                        @RuleSwitch("Transcendence", "victory_transcendence")
-                        @RuleSwitch("Conquest", "victory_conquest")
-                        @RuleSwitch("Diplomatic", "victory_diplomatic")
-                        @RuleSwitch("Economic", "victory_economic")
-                        @RuleSwitch("Cooperative", "victory_cooperative")
-                    </div>
-                </MudExpansionPanel>
-                <MudExpansionPanel Text="Advanced rules">
-                    <div class="rule-grid">
-                        @RuleSwitch("Look first", "look_first")
-                        @RuleSwitch("Tech stagnation", "tech_stagnation")
-                        @RuleSwitch("Spoils of war", "spoils_of_war")
-                        @RuleSwitch("Blind research", "blind_research")
-                        @RuleSwitch("Intense rivalry", "intense_rivalry")
-                        @RuleSwitch("Unity survey", "unity_survey")
-                        @RuleSwitch("Unity scattering", "unity_scattering")
-                        @RuleSwitch("Random events", "random_events")
-                        @RuleSwitch("Time warp", "time_warp")
-                        @RuleSwitch("Ironman", "ironman")
-                    </div>
-                </MudExpansionPanel>
-            </MudExpansionPanels>
-        </section>
-
-        <section class="surface-panel form-panel">
-            <h2>Access, memory & policy</h2>
-            <p class="section-copy">Trusted-LAN defaults with explicit observation and memory controls.</p>
-            <div class="policy-option">
-                <MudSwitch @bind-Value="anonymousSpectators" Color="Color.Primary">Allow anonymous spectators</MudSwitch>
-                <span class="field-help">Anyone who can reach this LAN portal may watch without signing in. Off by default; administrators can always cross-seat spectate.</span>
-            </div>
-            <div class="policy-option">
-                <MudSwitch @bind-Value="managedOnly" Color="Color.Primary">Managed browser players only</MudSwitch>
-                <span class="field-help">Blocks separate native game clients. Every human seat must use a portal-managed browser worker, giving the most consistent binaries, reconnects, and spectator isolation.</span>
-            </div>
-            <div class="policy-option">
-                <MudSwitch @bind-Value="graphiti" Color="Color.Primary">Enable optional Graphiti projection</MudSwitch>
-                <span class="field-help">Projects selected match memories into Graphiti for relationship recall. SQLite remains authoritative, and disabling this does not disable normal match notes or state.</span>
-            </div>
-            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-3">
-                All current matches are unranked. Ranked policy has schema support only and is not selectable yet.
-            </MudAlert>
-        </section>
+            </section>
         </div>
-    </div>
 
-    @if (!string.IsNullOrEmpty(error))
-    {
-        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>
-    }
-
-    <div class="launch-explainer">
-        <div class="launch-choice">
-            <strong>Save without starting</strong>
-            <span>Creates a waiting lobby in the portal. No game process starts and nothing is advertised by the native game yet.</span>
-        </div>
-        <div class="launch-choice">
-            <strong>Launch game now</strong>
-            <span>Creates the lobby, provisions the selected players, starts the native game, and begins advertising the joinable session immediately.</span>
-        </div>
-    </div>
-    <div class="form-actions">
-        <MudButton Href="lobbies" Variant="Variant.Text">Cancel</MudButton>
-        <MudButton Variant="Variant.Outlined" Disabled="@(busy || !CanSaveLobby)" OnClick="() => Create(false)">
-            Save without starting
-        </MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
-                   StartIcon="@Icons.Material.Filled.RocketLaunch"
-                   Disabled="@(busy || !CanLaunch)" OnClick="() => Create(true)">
-            Launch game now
-        </MudButton>
+        <aside class="setup-summary surface-panel">
+            <span class="panel-kicker">STAGING PREVIEW</span><h2>Seven faction seats</h2><p>You can invite and rearrange people from the waiting lobby before starting.</p>
+            <div class="seat-preview-list">
+                @for (var index = 0; index < 7; index++)
+                {
+                    var preview = SeatPreview.ElementAt(index);
+                    <div class="seat-preview @preview.Kind"><span>@(index + 1)</span><MudIcon Icon="@SeatIcon(preview.Kind)" /><div><strong>@preview.Name</strong><small>@preview.Detail</small></div></div>
+                }
+            </div>
+            <div class="host-summary"><MudIcon Icon="@Icons.Material.Filled.Hub" /><span><strong>Host: automatic</strong>@HostSummary</span></div>
+            <div class="summary-checks">@SummaryCheck(!string.IsNullOrWhiteSpace(name), "Lobby name")@SummaryCheck(HasRequiredScenario, "Starting world")@SummaryCheck(HasRequiredPlayers && HasValidSeatCount, "Player seats")@SummaryCheck(PlatformReady, "Docker game platform")</div>
+            @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-3">@error</MudAlert> }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" StartIcon="@Icons.Material.Filled.Groups" Disabled="@(busy || !CanCreate)" OnClick="Create">@(busy ? "Creating…" : "Create waiting lobby")</MudButton>
+            <MudButton Href="lobbies" Variant="Variant.Text" FullWidth="true">Cancel</MudButton>
+            <small class="creation-note">No game process starts yet. The next screen is your staging room, where the owner reviews seats and presses <strong>Start match</strong>.</small>
+        </aside>
     </div>
 }
 
 @code {
-    private LobbyCatalog? catalog;
-    private FactionPersonalityCatalog? factionPersonalities;
-    private IReadOnlyList<ScenarioCatalogItem> scenarios = [];
-    private string name = "New mission";
-    private string gameProfile = "alien-crossfire";
-    private string mode = "standard";
-    private string worldSize = "small";
-    private string difficulty = "talent";
-    private string hostController = "agent";
-    private string humanJoinMode = "browser";
-    private string humanHandles = "";
-    private string sourceId = "";
-    private string runtimeId = "";
-    private string scenarioId = "";
-    private List<AgentSeatDraft> agentSeats = [];
-    private IReadOnlyCollection<string> agentIds => agentSeats.Select(item => item.AgentId).ToArray();
-    private bool ownerPlays = true;
-    private bool doOrDie;
-    private bool anonymousSpectators;
-    private bool managedOnly;
-    private bool graphiti = true;
-    private bool loading = true;
-    private bool busy;
-    private int nativeBotCount;
-    private int timeControl = 2;
-    private int ocean = 1;
-    private int erosion = 1;
-    private int nativeLife = 1;
-    private int clouds = 1;
-    private string? error;
-
-    private bool HasRequiredPlayers => hostController != "agent" || agentSeats.Count > 0;
-    private bool HasRequiredRuntime => !string.IsNullOrWhiteSpace(sourceId) && !string.IsNullOrWhiteSpace(runtimeId);
-    private bool HasRequiredScenario => mode != "scenario" || !string.IsNullOrWhiteSpace(scenarioId);
+    private LobbyCatalog? catalog; private FactionPersonalityCatalog? factionPersonalities; private IReadOnlyList<ScenarioCatalogItem> scenarios = [];
+    private string name = "New campaign", gameProfile = "alien-crossfire", mode = "standard", worldSize = "small", difficulty = "talent";
+    private string humanJoinMode = "browser", humanHandles = "", sourceId = "", runtimeId = "", scenarioId = "";
+    private readonly List<AgentSeatDraft> agentSeats = [];
+    private bool ownerPlays = true, doOrDie, anonymousSpectators, managedOnly, graphiti = true, loading = true, busy;
+    private int nativeBotCount, timeControl = 2, ocean = 1, erosion = 1, nativeLife = 1, clouds = 1; private string? error;
+    private bool PlatformReady => catalog?.ControlConnected == true && catalog.GameSources.Count > 0 && catalog.Runtimes.Count > 0;
+    private string ReadinessMessage => catalog?.ControlConnected != true ? "The control service is offline." : catalog.GameSources.Count == 0 ? "The game directory configured at Docker startup could not be validated." : catalog.Runtimes.Count == 0 ? "The Docker-managed compatibility runtime is unavailable." : "Alien Crossfire, Wine, DirectPlay, streaming, and semantic control passed startup readiness.";
     private string[] ReservedHumanHandles => humanHandles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private int AssignedSeatCount => (hostController == "human" || ownerPlays ? 1 : 0) + agentSeats.Count + ReservedHumanHandles.Length + nativeBotCount;
-    private bool HasValidSeatCount => AssignedSeatCount is >= 1 and <= 7;
-    private bool CanSaveLobby => !string.IsNullOrWhiteSpace(name) && HasRequiredPlayers && HasRequiredRuntime && HasRequiredScenario && HasValidSeatCount;
-    private bool CanLaunch => CanSaveLobby && catalog?.ControlConnected == true;
-
-    private readonly (string Id, string Name)[] worldSizes =
-        [("tiny", "Tiny"), ("small", "Small"), ("standard", "Standard"), ("large", "Large"), ("huge", "Huge")];
-    private readonly (string Id, string Name)[] difficulties =
-        [("citizen", "Citizen"), ("specialist", "Specialist"), ("talent", "Talent"), ("librarian", "Librarian"), ("thinker", "Thinker"), ("transcend", "Transcend")];
-    private readonly Dictionary<string, bool> rules = new()
-    {
-        ["victory_transcendence"] = true,
-        ["victory_conquest"] = true,
-        ["victory_diplomatic"] = true,
-        ["victory_economic"] = true,
-        ["victory_cooperative"] = true,
-        ["look_first"] = false,
-        ["tech_stagnation"] = false,
-        ["spoils_of_war"] = true,
-        ["blind_research"] = true,
-        ["intense_rivalry"] = false,
-        ["unity_survey"] = false,
-        ["unity_scattering"] = false,
-        ["random_events"] = true,
-        ["time_warp"] = false,
-        ["ironman"] = false,
-    };
-
-    protected override async Task OnInitializedAsync()
-    {
-        catalog = (await Api.GetAsync<LobbyCatalog>("api/catalog/lobby"))?.Data;
-        factionPersonalities = (await Api.GetAsync<FactionPersonalityCatalog>(
-            "api/catalog/factions-personalities"))?.Data;
-        sourceId = catalog?.GameSources.FirstOrDefault()?.Id ?? "";
-        runtimeId = catalog?.Runtimes.FirstOrDefault()?.Id ?? "";
-        if (catalog?.Agents.Count == 1)
-        {
-            agentSeats.Add(new(catalog.Agents[0].Id));
-        }
-        await LoadScenarios();
-        loading = false;
-    }
-
-    private async Task SourceChanged(string value)
-    {
-        sourceId = value;
-        await LoadScenarios();
-    }
-
-    private void ToggleAgent(string agentId)
-    {
-        var selected = agentSeats.SingleOrDefault(item => item.AgentId == agentId);
-        if (selected is not null) agentSeats.Remove(selected);
-        else agentSeats.Add(new(agentId));
-    }
-
-    private async Task LoadScenarios()
-    {
-        if (string.IsNullOrEmpty(sourceId))
-        {
-            scenarios = [];
-            return;
-        }
-        try
-        {
-            scenarios = (await Api.GetAsync<IReadOnlyList<ScenarioCatalogItem>>($"api/catalog/scenarios/{sourceId}"))?.Data ?? [];
-            scenarioId = scenarios.FirstOrDefault()?.Id ?? "";
-        }
-        catch
-        {
-            scenarios = [];
-        }
-    }
-
-    private async Task Create(bool start)
-    {
-        if (!CanSaveLobby || start && !CanLaunch)
-        {
-            error = hostController == "agent" && agentSeats.Count == 0
-                ? "Choose at least one AI player profile, or configure one in Administration → Models & AI profiles."
-                : "Complete the required player, game, scenario, and runtime choices before continuing.";
-            return;
-        }
-
-        busy = true;
-        error = null;
-        rules["victory_cooperative"] = !doOrDie && rules["victory_cooperative"];
-        var humans = ReservedHumanHandles;
-        var request = new CreateLobbyRequest(
-            name, sourceId, runtimeId, gameProfile, mode, worldSize, difficulty,
-            true, doOrDie, anonymousSpectators, managedOnly, graphiti, "none",
-            agentIds.ToArray(), humans, hostController, ownerPlays, nativeBotCount,
-            difficulty, start, "unranked", humanJoinMode, timeControl, ocean, erosion,
-            nativeLife, clouds, new Dictionary<string, bool>(rules),
-            mode == "scenario" ? scenarioId : null, null,
-            agentSeats.Select(item => new AgentSeatRequest(
-                item.AgentId, item.FactionId, item.PersonalityId)).ToArray());
-        var result = await Api.PostAsync<LobbyDetails>("api/lobbies", request);
-        busy = false;
-        if (result.Payload?.Ok == true)
-        {
-            Navigation.NavigateTo($"lobbies/{result.Payload.Data!.MatchId}");
-        }
-        else
-        {
-            error = result.Payload?.Error?.Message ?? "Lobby creation failed.";
-        }
-    }
-
-    private RenderFragment TraitItems() => builder =>
-    {
-        var labels = new[] { "Low", "Average", "High" };
-        for (var index = 0; index < labels.Length; index++)
-        {
-            var sequence = index;
-            var value = index;
-            var label = labels[index];
-            builder.OpenComponent<MudSelectItem<int>>(sequence);
-            builder.AddAttribute(sequence + 10, "Value", value);
-            builder.AddAttribute(sequence + 20, "ChildContent",
-                (RenderFragment)(content => content.AddContent(0, label)));
-            builder.CloseComponent();
-        }
-    };
-
-    private RenderFragment RuleSwitch(string label, string key) => builder =>
-    {
-        builder.OpenComponent<MudSwitch<bool>>(0);
-        builder.AddAttribute(1, "Value", rules[key]);
-        builder.AddAttribute(2, "ValueChanged", EventCallback.Factory.Create<bool>(this, value => rules[key] = value));
-        builder.AddAttribute(3, "Color", Color.Primary);
-        builder.AddAttribute(4, "ChildContent", (RenderFragment)(content => content.AddContent(0, label)));
-        builder.CloseComponent();
-    };
-
-    private void SetFaction(AgentSeatDraft seat, string factionId)
-    {
-        seat.FactionId = factionId;
-        if (factionId == FactionCatalog.Random && seat.PersonalityId is not ("none" or "standard" or "random"))
-            seat.PersonalityId = "standard";
-    }
-
-    private bool FactionInUseByAnotherSeat(string factionId, AgentSeatDraft current) =>
-        agentSeats.Any(item => !ReferenceEquals(item, current) && item.FactionId == factionId);
-
-    private IReadOnlyList<PersonalityCatalogItem> PersonalityOptions(AgentSeatDraft seat)
-    {
-        if (seat.FactionId == FactionCatalog.Random)
-            return (factionPersonalities?.PersonalityModes ?? [])
-                .Where(item => item.Id is "none" or "standard" or "random").ToArray();
-        var specific = (factionPersonalities?.BuiltInCards ?? [])
-            .Where(item => item.FactionId == seat.FactionId).ToList();
-        specific.AddRange((factionPersonalities?.PersonalityModes ?? [])
-            .Where(item => item.Id is "random" or "none"));
-        return specific;
-    }
-
-    private sealed class AgentSeatDraft(string agentId)
-    {
-        public string AgentId { get; } = agentId;
-        public string FactionId { get; set; } = FactionCatalog.Random;
-        public string PersonalityId { get; set; } = "standard";
-    }
+    private int AssignedSeatCount => (ownerPlays ? 1 : 0) + agentSeats.Count + ReservedHumanHandles.Length + nativeBotCount;
+    private bool HasValidSeatCount => AssignedSeatCount is >= 1 and <= 7; private bool HasRequiredPlayers => ownerPlays || agentSeats.Count > 0;
+    private bool HasRequiredScenario => mode != "scenario" || !string.IsNullOrWhiteSpace(scenarioId); private bool CanCreate => PlatformReady && !string.IsNullOrWhiteSpace(name) && HasRequiredPlayers && HasRequiredScenario && HasValidSeatCount;
+    private string HostController => agentSeats.Count > 0 ? "agent" : "human";
+    private string HostSummary => agentSeats.Count > 0 ? "The first AI seat owns the native session for reliable unattended recovery." : "Your managed browser seat owns the native session.";
+    private IEnumerable<SeatPreviewItem> SeatPreview { get { if (agentSeats.Count > 0) { foreach (var seat in agentSeats) yield return new("agent", ProfileName(seat.AgentId), FactionSummary(seat)); if (ownerPlays) yield return new("human", "You", humanJoinMode == "browser" ? "Browser player" : "Separate game client"); } else if (ownerPlays) yield return new("human", "You", "Managed native host"); foreach (var handle in ReservedHumanHandles) yield return new("human", handle, "Reserved human seat"); for (var i = 0; i < nativeBotCount; i++) yield return new("native", $"Stock computer {i + 1}", "Game-controlled player"); for (var i = AssignedSeatCount; i < 7; i++) yield return new("open", "Open seat", "Available in staging"); } }
+    private readonly (string Id, string Name)[] worldSizes = [("tiny", "Tiny"), ("small", "Small"), ("standard", "Standard"), ("large", "Large"), ("huge", "Huge")];
+    private readonly (string Id, string Name)[] difficulties = [("citizen", "Citizen"), ("specialist", "Specialist"), ("talent", "Talent"), ("librarian", "Librarian"), ("thinker", "Thinker"), ("transcend", "Transcend")];
+    private readonly Dictionary<string, bool> rules = new() { ["victory_transcendence"] = true, ["victory_conquest"] = true, ["victory_diplomatic"] = true, ["victory_economic"] = true, ["victory_cooperative"] = true, ["look_first"] = false, ["tech_stagnation"] = false, ["spoils_of_war"] = true, ["blind_research"] = true, ["intense_rivalry"] = false, ["unity_survey"] = false, ["unity_scattering"] = false, ["random_events"] = true, ["time_warp"] = false, ["ironman"] = false };
+    protected override async Task OnInitializedAsync() { catalog = (await Api.GetAsync<LobbyCatalog>("api/catalog/lobby"))?.Data; factionPersonalities = (await Api.GetAsync<FactionPersonalityCatalog>("api/catalog/factions-personalities"))?.Data; sourceId = catalog?.GameSources.FirstOrDefault()?.Id ?? ""; runtimeId = catalog?.Runtimes.FirstOrDefault(item => item.Id == "runtime-bundled-proton")?.Id ?? catalog?.Runtimes.FirstOrDefault()?.Id ?? ""; if (catalog?.Agents.Count > 0) agentSeats.Add(new(catalog.Agents[0].Id)); await LoadScenarios(); loading = false; }
+    private void AddAgent() { if (catalog?.Agents.FirstOrDefault() is { } profile && AssignedSeatCount < 7) agentSeats.Add(new(profile.Id)); } private void RemoveAgent(AgentSeatDraft seat) => agentSeats.Remove(seat);
+    private string ProfileName(string id) => catalog?.Agents.FirstOrDefault(item => item.Id == id)?.DisplayName ?? "AI profile"; private string FactionSummary(AgentSeatDraft seat) => seat.FactionId == FactionCatalog.Random ? "Random faction" : FactionCatalog.Find(seat.FactionId)?.FactionName ?? "Random faction";
+    private static string SeatIcon(string kind) => kind switch { "agent" => Icons.Material.Filled.SmartToy, "human" => Icons.Material.Filled.Person, "native" => Icons.Material.Filled.Computer, _ => Icons.Material.Filled.Add };
+    private static string PersonalityLabel(PersonalityCatalogItem item) => item.Id == "standard" && !item.DisplayName.StartsWith("Standard", StringComparison.OrdinalIgnoreCase) ? $"Standard — {item.DisplayName}" : item.DisplayName;
+    private async Task LoadScenarios() { if (string.IsNullOrEmpty(sourceId)) { scenarios = []; return; } try { scenarios = (await Api.GetAsync<IReadOnlyList<ScenarioCatalogItem>>($"api/catalog/scenarios/{sourceId}"))?.Data ?? []; scenarioId = scenarios.FirstOrDefault()?.Id ?? ""; } catch { scenarios = []; } }
+    private async Task Create() { if (!CanCreate) { error = "Complete the highlighted readiness items before creating this lobby."; return; } busy = true; error = null; rules["victory_cooperative"] = !doOrDie && rules["victory_cooperative"]; var request = new CreateLobbyRequest(name, sourceId, runtimeId, gameProfile, mode, worldSize, difficulty, true, doOrDie, anonymousSpectators, managedOnly, graphiti, "none", agentSeats.Select(item => item.AgentId).ToArray(), ReservedHumanHandles, HostController, ownerPlays, nativeBotCount, difficulty, false, "unranked", humanJoinMode, timeControl, ocean, erosion, nativeLife, clouds, new Dictionary<string, bool>(rules), mode == "scenario" ? scenarioId : null, null, agentSeats.Select(item => new AgentSeatRequest(item.AgentId, item.FactionId, item.PersonalityId)).ToArray()); var result = await Api.PostAsync<LobbyDetails>("api/lobbies", request); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo($"lobbies/{result.Payload.Data!.MatchId}"); else error = result.Payload?.Error?.Message ?? "Lobby creation failed."; }
+    private RenderFragment TraitItems() => builder => { var labels = new[] { "Low", "Average", "High" }; for (var i = 0; i < labels.Length; i++) { var sequence = i; var value = i; var label = labels[i]; builder.OpenComponent<MudSelectItem<int>>(sequence); builder.AddAttribute(sequence + 10, "Value", value); builder.AddAttribute(sequence + 20, "ChildContent", (RenderFragment)(content => content.AddContent(0, label))); builder.CloseComponent(); } };
+    private RenderFragment RuleSwitch(string label, string key) => builder => { builder.OpenComponent<MudSwitch<bool>>(0); builder.AddAttribute(1, "Value", rules[key]); builder.AddAttribute(2, "ValueChanged", EventCallback.Factory.Create<bool>(this, value => rules[key] = value)); builder.AddAttribute(3, "Color", Color.Primary); builder.AddAttribute(4, "ChildContent", (RenderFragment)(content => content.AddContent(0, label))); builder.CloseComponent(); };
+    private RenderFragment SummaryCheck(bool ready, string label) => builder => { builder.OpenElement(0, "div"); builder.AddAttribute(1, "class", ready ? "ready" : "blocked"); builder.OpenComponent<MudIcon>(2); builder.AddAttribute(3, "Icon", ready ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.RadioButtonUnchecked); builder.CloseComponent(); builder.AddContent(4, label); builder.CloseElement(); };
+    private void SetFaction(AgentSeatDraft seat, string factionId) { seat.FactionId = factionId; if (factionId == FactionCatalog.Random && seat.PersonalityId is not ("none" or "standard" or "random")) seat.PersonalityId = "standard"; }
+    private bool FactionInUseByAnotherSeat(string factionId, AgentSeatDraft current) => agentSeats.Any(item => !ReferenceEquals(item, current) && item.FactionId == factionId);
+    private IReadOnlyList<PersonalityCatalogItem> PersonalityOptions(AgentSeatDraft seat) { if (seat.FactionId == FactionCatalog.Random) return (factionPersonalities?.PersonalityModes ?? []).Where(item => item.Id is "none" or "standard" or "random").ToArray(); var specific = (factionPersonalities?.BuiltInCards ?? []).Where(item => item.FactionId == seat.FactionId).ToList(); specific.AddRange((factionPersonalities?.PersonalityModes ?? []).Where(item => item.Id is "random" or "none")); return specific; }
+    private sealed class AgentSeatDraft(string agentId) { public string AgentId { get; set; } = agentId; public string FactionId { get; set; } = FactionCatalog.Random; public string PersonalityId { get; set; } = "standard"; }
+    private sealed record SeatPreviewItem(string Kind, string Name, string Detail);
 }

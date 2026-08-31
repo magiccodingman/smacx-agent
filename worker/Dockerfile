@@ -36,6 +36,45 @@ COPY --from=selkies-web-build /src/selkies/src ./src
 COPY --from=selkies-web-build /src/selkies/README.md /src/selkies/pyproject.toml ./
 RUN python3 -m build --wheel
 
+# SMACX multiplayer depends on the legacy DirectPlay components in Microsoft's
+# DirectX end-user redistributable. Microsoft removed this legacy download from
+# its live CDN, so fetch the archived original Microsoft URL used by Winetricks
+# and pin its exact digest. The project never vendors the binary, and operators
+# do not have to hunt down a second runtime asset by hand.
+FROM debian:trixie-slim AS directx-runtime
+ARG DIRECTX_URL=https://web.archive.org/web/20100205000000id_/https://download.microsoft.com/download/E/E/1/EE17FF74-6C45-4575-9CF4-7FC2597ACD18/directx_feb2010_redist.exe
+ARG DIRECTX_SHA256=f6d191e89a963d7cca34f169d30f49eab99c1ed3bb92da73ec43617caaa1e93f
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && install -d /opt/directx \
+    && curl --fail --location --retry 3 --retry-all-errors \
+        --connect-timeout 15 --max-time 300 \
+        --output /opt/directx/directx_feb2010_redist.exe "${DIRECTX_URL}" \
+    && printf '%s  %s\n' "${DIRECTX_SHA256}" /opt/directx/directx_feb2010_redist.exe \
+        | sha256sum -c - \
+    && rm -rf /var/lib/apt/lists/*
+
+# GE-Proton is an open-source compatibility distribution published as a
+# versioned GitHub release by its upstream maintainer. Seal one verified build
+# into the worker image so an operator supplies only the legal game directory;
+# Steam, a host Wine prefix, and a host Proton installation are not runtime
+# dependencies. GE-Proton10-34 is deliberately pinned because its native
+# bridge, DirectPlay, save/recovery, and semantic opening were certified here.
+FROM debian:trixie-slim AS proton-runtime
+ARG PROTON_URL=https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton10-34/GE-Proton10-34.tar.gz
+ARG PROTON_SHA512=9fd0b2cfbd501c0b5c892239c392c7283a029b5e5d5a77d3f85b0ce190d555456241a18eebca16b53f094b403499201c13550a3f0b9b365e1a5eb5737cbb7303
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && install -d /opt/proton /tmp/proton \
+    && curl --fail --location --retry 3 --retry-all-errors \
+        --connect-timeout 15 --max-time 600 --output /tmp/proton.tar.gz "${PROTON_URL}" \
+    && printf '%s  %s\n' "${PROTON_SHA512}" /tmp/proton.tar.gz | sha512sum -c - \
+    && tar -xzf /tmp/proton.tar.gz -C /opt/proton --strip-components=1 \
+    && test -f /opt/proton/proton \
+    && test -f /opt/proton/files/bin/wine \
+    && test -f /opt/proton/files/bin/wineserver \
+    && rm -rf /tmp/proton /tmp/proton.tar.gz /var/lib/apt/lists/*
+
 FROM debian:trixie-slim AS worker
 
 RUN dpkg --add-architecture i386 \
@@ -50,6 +89,15 @@ RUN dpkg --add-architecture i386 \
 
 COPY --from=bridge-build /build/thinker.dll /opt/smacx/bridge/thinker.dll
 COPY --from=bridge-build /build/thinker.exe /opt/smacx/bridge/thinker.exe
+COPY --from=directx-runtime /opt/directx/directx_feb2010_redist.exe /opt/smacx/redist/directx_feb2010_redist.exe
+# The compatibility runtime comes from the verified upstream release stage;
+# no game worker mounts a host Proton tree.
+COPY --from=proton-runtime /opt/proton /opt/proton
+RUN test -f /opt/proton/proton \
+    && test -f /opt/proton/files/bin/wine \
+    && test -f /opt/proton/files/bin/wineserver \
+    && sed -i 's|self.dist_lock = FileLock(self.path("dist.lock"), timeout=-1)|self.dist_lock = FileLock(os.environ.get("SMACX_PROTON_DIST_LOCK", self.path("dist.lock")), timeout=-1)|' /opt/proton/proton \
+    && grep -Fq 'SMACX_PROTON_DIST_LOCK' /opt/proton/proton
 COPY --from=selkies-web-build /src/selkies/LICENSE /opt/smacx/licenses/selkies-MPL-2.0.txt
 COPY --from=selkies-python-build /src/selkies/dist/*.whl /tmp/selkies/
 RUN python3 -m venv /opt/selkies-venv \

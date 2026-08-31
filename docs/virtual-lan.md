@@ -28,7 +28,7 @@ Start the durable router and Control Center:
 ```bash
 export SMACX_LAN_NETWORK=smacx-player-lan
 export SMACX_PLAYER_LAN_SUBNET=192.168.1.0/24
-export SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe
+export SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri"
 ./scripts/tailscale-player-lan-up.sh
 ```
 

@@ -205,6 +205,7 @@ class HarnessManager:
                 provider_base_url=str(internal["provider_base_url"]),
                 model_id=str(internal["model_id"]),
                 reasoning_effort=str(internal["reasoning_effort"]),
+                generation_settings=internal.get("generation_settings"),
                 profile_id=str(internal["external_profile_id"]),
                 context_length=internal.get("context_length"),
                 provider_api_key_env=(
@@ -233,6 +234,7 @@ class HarnessManager:
                 "agent_id": internal["agent_id"], "match_id": internal["match_id"],
                 "profile_id": internal["external_profile_id"],
                 "provider_id": internal["provider_id"],
+                "generation_settings": internal.get("generation_settings"),
                 "provider_secret_injected": bool(api_key),
                 "mcp_url": internal["mcp_url"],
                 "strict_system_prompt": True,
@@ -497,6 +499,21 @@ print(json.dumps(result,separators=(',',':')))
             if run["status"] not in {"queued", "starting", "running", "restarting"}:
                 continue
             checked += 1
+            # A process restart must never resurrect autonomous callers for a
+            # dormant campaign. Match lifecycle outranks a stale run's
+            # desired_status bit; the portal can explicitly create a fresh run
+            # only after recovery returns the native match to running.
+            try:
+                match_status = self.control.get_match(str(run["match_id"]))["status"]
+            except ScopeViolation:
+                match_status = "missing"
+            if match_status != "running":
+                self.control.update_harness_run(
+                    str(run["run_id"]), desired_status="stopped",
+                )
+                self.stop_run(str(run["run_id"]))
+                stopped += 1
+                continue
             if run["desired_status"] == "stopped":
                 self.stop_run(str(run["run_id"]))
                 stopped += 1

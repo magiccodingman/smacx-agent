@@ -276,7 +276,10 @@ def test_distribution_contract() -> None:
     assert 'emit("worker_stopped", reason="signal")' in entrypoint_source
     assert 'windows_process_ids("terranx.exe")' in entrypoint_source
     assert 'emit(\n                            "game_process_exited"' in entrypoint_source
-    assert '"Target": "/proton",\n             "ReadOnly": True' in manager_source
+    assert 'runtime["storage_kind"] == "docker-volume"' in manager_source
+    assert 'runtime["storage_kind"] != "image"' in manager_source
+    assert '"directplay_bundled": True' in manager_source
+    assert "directx_feb2010_redist.exe" in dockerfile
     assert "SMACX_PROTON_DIST_LOCK" in manager_source
     assert "runtime" in dockerignore
     assert "toolchain" in dockerignore
@@ -304,6 +307,9 @@ def test_multiplayer_modal_semantics_contract() -> None:
     assert 'r"(start|park|complete|status|' in control_server
     assert 'def complete_match(self, match_id: str)' in worker_manager
     assert 'match_completion_requires_parked_match' in worker_manager
+    harness_manager = (ROOT / "src" / "smacx_harness_manager.py").read_text(encoding="utf-8")
+    assert 'if match_status != "running":' in harness_manager
+    assert 'desired_status="stopped"' in harness_manager
     assert "popup == *BasePopExecCurrent" in bridge
     assert "return last_started;" in bridge
 

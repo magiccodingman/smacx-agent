@@ -29,11 +29,7 @@ def bridge_call(port: int, token: str, operation: str) -> dict:
 
 
 def main() -> int:
-    required = {
-        "game": os.environ.get("SMACX_TEST_GAME_SOURCE"),
-        "proton": os.environ.get("SMACX_TEST_PROTON_SOURCE"),
-        "directx": os.environ.get("SMACX_TEST_DIRECTX_REDIST"),
-    }
+    required = {"game": os.environ.get("SMACX_TEST_GAME_SOURCE")}
     missing = [name for name, value in required.items() if not value]
     if missing:
         print(json.dumps({"event": "skip", "reason": "missing_live_assets", "missing": missing}))
@@ -46,12 +42,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="smacx-worker-manager-") as temporary:
         root = Path(temporary)
         control = ControlPlane(SmacxStore(root / "state.sqlite3"), root / "secrets")
-        manager = WorkerManager(
-            control, docker, directx_redist_host_path=required["directx"],
-        )
+        manager = WorkerManager(control, docker)
         try:
             source = manager.validate_game_source(required["game"], display_name="Live legal source")
-            runtime = manager.import_proton(required["proton"], display_name="Live managed Proton")
+            runtime = manager.ensure_bundled_runtime()
             control.store.ensure_agent("agent-manager-live", "Manager Live Agent")
             created = control.create_solo_match(
                 "Manager live match", "agent-manager-live",
@@ -83,8 +77,8 @@ def main() -> int:
                 (mount for mount in container.get("Mounts", []) if mount.get("Destination") == "/proton"),
                 None,
             )
-            if not proton_mount or proton_mount.get("RW") is not False:
-                raise AssertionError("managed Proton runtime was writable in a game worker")
+            if proton_mount is not None:
+                raise AssertionError("image-bundled Wine unexpectedly mounted a host Proton runtime")
             access = manager.spectator_access(worker["instance_id"])
             if access.get("mode") != "view-only" or len(access.get("password", "")) < 12 \
                     or not isinstance(access.get("host_port"), int):
@@ -119,8 +113,8 @@ def main() -> int:
                 "event": "pass",
                 "payload": {
                     "source_validated_in_container": True,
-                    "proton_private_copy_manifested": True,
-                    "proton_worker_mount_read_only": True,
+                    "wine_runtime_bundled_in_worker_image": True,
+                    "no_host_proton_mount": True,
                     "secret_transferred_without_environment": True,
                     "worker_read_only_root": True,
                     "view_only_spectator": True,
@@ -147,13 +141,6 @@ def main() -> int:
                         docker.remove_volume(name)
                     except Exception:
                         pass
-            if manager and runtime:
-                try:
-                    volume = docker.inspect_volume(runtime["storage_ref"])
-                    docker.require_owned(volume, manager.installation_id, purpose="proton-runtime")
-                    docker.remove_volume(runtime["storage_ref"])
-                except Exception:
-                    pass
     return 0
 
 
