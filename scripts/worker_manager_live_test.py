@@ -73,6 +73,13 @@ def main() -> int:
                 }, separators=(",", ":")))
                 raise
             container = docker.inspect_container(first["container_id"])
+            if container.get("Config", {}).get("Image") == manager.worker_image:
+                raise AssertionError("worker did not use its source-fingerprinted prepared image")
+            if container.get("HostConfig", {}).get("ReadonlyRootfs") is not False:
+                raise AssertionError("prepared worker did not receive a disposable writable CoW root")
+            if any(mount.get("Destination") == "/game-source"
+                   for mount in container.get("Mounts", [])):
+                raise AssertionError("prepared worker unexpectedly mounted the host game source")
             proton_mount = next(
                 (mount for mount in container.get("Mounts", []) if mount.get("Destination") == "/proton"),
                 None,
@@ -116,7 +123,9 @@ def main() -> int:
                     "wine_runtime_bundled_in_worker_image": True,
                     "no_host_proton_mount": True,
                     "secret_transferred_without_environment": True,
-                    "worker_read_only_root": True,
+                    "source_fingerprinted_prepared_image": True,
+                    "no_host_game_mount": True,
+                    "disposable_worker_cow_root": True,
                     "view_only_spectator": True,
                     "spectator_secret_not_in_environment": True,
                     "first_session_semantic_opening": True,

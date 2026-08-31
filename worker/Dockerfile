@@ -80,12 +80,12 @@ FROM debian:trixie-slim AS worker
 RUN dpkg --add-architecture i386 \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        cabextract ca-certificates fluxbox novnc poppler-utils procps python3 socat tini \
+        cabextract ca-certificates fluxbox novnc poppler-utils procps python3 socat tini zstd \
         python3-pip python3-venv pulseaudio websockify wine wine32:i386 wine64 \
         x11-utils x11vnc xvfb \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin smacx \
-    && install -d -o smacx -g smacx /var/lib/smacx /run/smacx
+    && install -d -o smacx -g smacx /var/lib/smacx /run/smacx /opt/smacx/prepared
 
 COPY --from=bridge-build /build/thinker.dll /opt/smacx/bridge/thinker.dll
 COPY --from=bridge-build /build/thinker.exe /opt/smacx/bridge/thinker.exe
@@ -112,7 +112,7 @@ RUN python3 -m venv /opt/selkies-venv \
 
 ENV PATH="/opt/selkies-venv/bin:${PATH}"
 COPY worker/entrypoint.py worker/healthcheck.py worker/inspect_source.py \
-    worker/extract_reference.py worker/list_scenarios.py worker/alsa-null.conf \
+    worker/extract_reference.py worker/list_scenarios.py worker/compact_saves.py worker/alsa-null.conf \
     worker/fluxbox-init worker/fluxbox-overlay worker/thinker.ini \
     worker/modmenu.txt /opt/smacx/
 

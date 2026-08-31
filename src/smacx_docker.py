@@ -60,7 +60,8 @@ class DockerClient:
 
     def _request(self, method: str, path: str, *, payload: Any | None = None,
                  raw_body: bytes | None = None, content_type: str = "application/json",
-                 expected: tuple[int, ...] = (200, 201, 204)) -> tuple[int, bytes]:
+                 expected: tuple[int, ...] = (200, 201, 204),
+                 timeout: float | None = None) -> tuple[int, bytes]:
         if raw_body is not None and payload is not None:
             raise DockerError("conflicting_docker_request_body")
         body = raw_body
@@ -69,7 +70,8 @@ class DockerClient:
         headers = {"Host": "docker"}
         if body is not None:
             headers.update({"Content-Type": content_type, "Content-Length": str(len(body))})
-        connection = UnixHTTPConnection(self.socket_path, self.timeout)
+        request_timeout = self.timeout if timeout is None else min(max(float(timeout), 1.0), 900.0)
+        connection = UnixHTTPConnection(self.socket_path, request_timeout)
         try:
             connection.request(method, path, body=body, headers=headers)
             response = connection.getresponse()
@@ -97,8 +99,9 @@ class DockerClient:
         return response.status, data
 
     def _json(self, method: str, path: str, *, payload: Any | None = None,
-              expected: tuple[int, ...] = (200, 201)) -> Any:
-        _, data = self._request(method, path, payload=payload, expected=expected)
+              expected: tuple[int, ...] = (200, 201),
+              timeout: float | None = None) -> Any:
+        _, data = self._request(method, path, payload=payload, expected=expected, timeout=timeout)
         if not data:
             return None
         try:
@@ -121,6 +124,31 @@ class DockerClient:
         if not isinstance(value, dict):
             raise DockerError("invalid_docker_image_response")
         return value
+
+    def commit_container(self, identifier: str, repository: str, tag: str,
+                         *, labels: Mapping[str, str] | None = None) -> str:
+        """Commit one stopped preparation container as an installation-local image.
+
+        The image is never pushed. Docker's content-addressed layers allow all
+        game seats to share the prepared game and Wine prefix while retaining
+        an isolated copy-on-write container layer.
+        """
+        query = urlencode({
+            "container": identifier, "repo": repository, "tag": tag,
+            "pause": "false",
+        })
+        payload: dict[str, Any] = {}
+        if labels:
+            payload["Labels"] = dict(labels)
+        # A prepared image includes a complete game tree and initialized Proton
+        # prefix.  Docker may need materially longer than an ordinary control
+        # request to persist that layer on slower disks.
+        value = self._json(
+            "POST", f"/commit?{query}", payload=payload, expected=(201,), timeout=600.0,
+        )
+        if not isinstance(value, dict) or not isinstance(value.get("Id"), str):
+            raise DockerError("invalid_docker_commit_response")
+        return value["Id"]
 
     def create_volume(self, name: str, labels: Mapping[str, str]) -> dict[str, Any]:
         value = self._json("POST", "/volumes/create", payload={"Name": name, "Labels": dict(labels)})

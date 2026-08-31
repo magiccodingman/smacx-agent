@@ -117,10 +117,11 @@ else
                             <MudSelectItem Value="@value">@value</MudSelectItem>
                         }
                     </MudSelect>
-                    <MudNumericField T="int?" @bind-Value="contextLength" Label="Gameplay context budget"
-                                     Variant="Variant.Outlined" Min="1024" Max="65536" />
+                    <MudNumericField T="int?" @bind-Value="contextLength" Label="Gameplay context budget (optional)"
+                                     Placeholder="Automatic" Variant="Variant.Outlined" Min="65536"
+                                     Max="@SelectedModelContextMaximum" Clearable="true" />
                 </div>
-                <span class="field-help flush">65,536 is the long-running default. Hermes compacts before this fills, while durable game facts, goals, relationships, and chat remain in match-scoped MCP memory rather than the transcript.</span>
+                <span class="field-help flush">@ContextHelp</span>
 
                 <MudSelect T="string" Value="generationPreset" ValueChanged="GenerationPresetChanged"
                            Label="Generation preset" Variant="Variant.Outlined">
@@ -280,7 +281,7 @@ else
     private string reasoning = "low";
     private string generationPreset = "provider-default";
     private string profileNotes = "";
-    private int? contextLength = 65_536;
+    private int? contextLength;
     private double? temperature;
     private double? topP;
     private int? topK;
@@ -315,6 +316,26 @@ else
         && !string.IsNullOrWhiteSpace(selectedModel);
     private bool IsQwen38 => selectedModel.Contains("qwen3.8", StringComparison.OrdinalIgnoreCase);
     private bool IsOfficialPreset => generationPreset is "qwen38-thinking" or "qwen38-instruct";
+    private int? SelectedModelContextMaximum
+    {
+        get
+        {
+            var provider = Providers.FirstOrDefault(item => Id(item) == selectedProvider);
+            if (provider.ValueKind == JsonValueKind.Object &&
+                provider.TryGetProperty("context_length_override", out var configured) &&
+                configured.ValueKind == JsonValueKind.Number)
+                return configured.GetInt32();
+            var model = Models.FirstOrDefault(item => Id(item, "model_id") == selectedModel);
+            return model.ValueKind == JsonValueKind.Object &&
+                model.TryGetProperty("context_length", out var advertised) &&
+                advertised.ValueKind == JsonValueKind.Number
+                    ? advertised.GetInt32()
+                    : null;
+        }
+    }
+    private string ContextHelp => SelectedModelContextMaximum is { } maximum
+        ? $"Automatic is recommended and will use the model's advertised {maximum:N0}-token context. A manual value must be between 65,536 and {maximum:N0}."
+        : "Automatic is recommended and uses the context advertised by the endpoint. Enter at least 65,536 only when you intentionally want a smaller working context.";
     private IEnumerable<string> AvailableReasoning => generationPreset == "qwen38-instruct"
         ? ["none"] : IsQwen38 ? qwenReasoningValues : reasoningValues;
     private string GenerationHelp => generationPreset switch
@@ -540,6 +561,7 @@ else
     private void ModelChanged(string value)
     {
         selectedModel = value;
+        contextLength = null;
         reasoning = IsQwen38 ? "low" : "none";
         GenerationPresetChanged(IsQwen38 ? "qwen38-thinking" : "provider-default");
     }
@@ -552,7 +574,7 @@ else
         selectedProvider = profile.ProviderId;
         selectedModel = profile.ModelId;
         reasoning = profile.ReasoningEffort;
-        contextLength = profile.ContextLength ?? 65_536;
+        contextLength = profile.ContextLength;
         profileNotes = profile.Notes ?? "";
         ApplyGeneration(profile.Generation);
         error = null;
@@ -566,7 +588,7 @@ else
         if (!resetFields) return;
         profileName = "SMACX player";
         profileNotes = "";
-        contextLength = 65_536;
+        contextLength = null;
         ProviderChanged(selectedProvider);
     }
 
@@ -622,7 +644,9 @@ else
         item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value)
             ? value.ToString()
             : "";
-    private static string GameplayContext(int? configured) => Math.Min(configured ?? 65_536, 65_536).ToString("N0");
+    private static string GameplayContext(int? configured) => configured is { } value
+        ? value.ToString("N0")
+        : "automatic";
     private static string GenerationLabel(ModelGenerationSettings generation) => generation.Preset switch
     {
         "qwen38-thinking" => "Qwen3.8 thinking preset",

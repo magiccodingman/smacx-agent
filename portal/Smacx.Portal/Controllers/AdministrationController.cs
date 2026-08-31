@@ -15,6 +15,7 @@ public sealed class AdministrationController(
     ApplicationDbContext database,
     ControlPlaneClient control) : ControllerBase
 {
+    private const int HermesMinimumContextLength = 65_536;
     [HttpGet("snapshot")]
     public async Task<ActionResult<ApiResponse<AdminSnapshot>>> Snapshot()
     {
@@ -33,11 +34,12 @@ public sealed class AdministrationController(
             var graphiti = await Read("api/v1/graphiti");
             var workers = await Read("api/v1/workers");
             var operations = await Read("api/v1/operations/status");
+            var storage = await Read("api/v1/storage-policy");
             var schedules = await Read("api/v1/schedules", "schedules");
             var backups = await Read("api/v1/backups", "backups");
             return ApiResponse<AdminSnapshot>.Success(new(
                 providers, agents, profiles, runs, graphiti, workers,
-                operations, schedules, backups));
+                operations, storage, schedules, backups));
         }
         catch (ControlPlaneException exception)
         {
@@ -101,9 +103,44 @@ public sealed class AdministrationController(
         if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 160 ||
             string.IsNullOrWhiteSpace(request.ProviderId) || string.IsNullOrWhiteSpace(request.ModelId) ||
             request.ReasoningEffort is not ("none" or "minimal" or "low" or "medium" or "high" or "xhigh" or "max" or "ultra") ||
-            request.ContextLength is not null and (< 1024 or > 65_536))
+            request.ContextLength is not null and < HermesMinimumContextLength)
             return BadRequest(ApiResponse<AiProfileVersion>.Failure(
-                "invalid_ai_profile", "Check the profile name, provider, model, reasoning, and gameplay context budget (1,024–65,536)."));
+                "invalid_ai_profile", $"Check the profile name, provider, model, and reasoning. A manual context budget must be at least {HermesMinimumContextLength:N0} tokens; leave it blank to use the model's advertised context."));
+        int? advertisedContext;
+        try
+        {
+            using var providers = await control.GetRawAsync("api/v1/providers", HttpContext.RequestAborted);
+            var provider = providers.RootElement.GetProperty("providers").EnumerateArray()
+                .FirstOrDefault(item => item.GetProperty("provider_id").GetString() == request.ProviderId);
+            if (provider.ValueKind != JsonValueKind.Object)
+                return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+                    "unknown_provider", "Choose a configured model endpoint."));
+            var model = provider.GetProperty("models").EnumerateArray()
+                .FirstOrDefault(item => item.GetProperty("model_id").GetString() == request.ModelId);
+            if (model.ValueKind != JsonValueKind.Object)
+                return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+                    "unknown_provider_model", "Choose a model currently advertised by this endpoint."));
+            advertisedContext = provider.TryGetProperty("context_length_override", out var providerOverride) &&
+                providerOverride.ValueKind == JsonValueKind.Number
+                    ? providerOverride.GetInt32()
+                    : model.TryGetProperty("context_length", out var advertised) &&
+                        advertised.ValueKind == JsonValueKind.Number
+                            ? advertised.GetInt32()
+                            : null;
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<AiProfileVersion>.Failure(exception.Code, exception.Message));
+        }
+        if (request.ContextLength is { } manual && advertisedContext is { } maximum && manual > maximum)
+            return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+                "context_length_exceeds_model_limit",
+                $"This endpoint advertises a {maximum:N0}-token context for the selected model. Leave the field blank to use it automatically, or enter a value between {HermesMinimumContextLength:N0} and {maximum:N0}."));
+        if (request.ContextLength is null && advertisedContext is { } automatic && automatic < HermesMinimumContextLength)
+            return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+                "model_context_below_hermes_minimum",
+                $"This endpoint advertises only {automatic:N0} tokens. Managed Hermes agents require at least {HermesMinimumContextLength:N0}."));
         ModelGenerationSettings generation;
         try
         {
@@ -220,6 +257,15 @@ public sealed class AdministrationController(
         {
             include_secrets = request.IncludeSecrets, include_workers = request.IncludeWorkers,
         }, "backup");
+
+    [HttpPost("storage-policy")]
+    public Task<ActionResult<ApiResponse<JsonElement?>>> StoragePolicy(StoragePolicyRequest request) =>
+        Proxy("api/v1/storage-policy", new
+        {
+            recent_checkpoints = request.RecentCheckpoints,
+            milestone_interval = request.MilestoneInterval,
+            retain_full_turn_history = request.RetainFullTurnHistory,
+        });
 
     [HttpPost("backups/{backupId}/verify")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> VerifyBackup(string backupId) =>

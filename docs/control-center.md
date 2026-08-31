@@ -445,6 +445,17 @@ Hermes worker; terminal seat state is repaired to `worker_stopped` or
 `retired` before it is shown again. Large per-seat Wine prefixes and ephemeral
 worker secrets are released only for completed campaigns, never parked ones.
 
+The **Operations & recovery** page controls native-save retention. Automatic
+defaults keep ten recent saves, periodic milestones, and the verified recovery
+slot. Parked saves are zstd-compressed. Completing a campaign preserves one
+final verified save in the persistent control archive before releasing its
+worker volumes; analytics and semantic history are retained independently.
+
+AI profile context is automatic by default. The selected model's advertised
+context is used unchanged and recorded by the control plane. A manual value
+must satisfy Hermes' 65,536-token minimum and may not exceed the endpoint's
+advertised model limit. The portal never silently reduces it.
+
 ## 11. Analytics and reports
 
 The Analytics page scopes ordinary users to matches they joined; administrators

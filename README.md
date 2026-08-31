@@ -123,6 +123,13 @@ active, resumable, and completed games, park an AI simulation for later, or end
 it permanently while retaining the political history, outcomes, telemetry,
 and model configuration that made the campaign unique.
 
+It does this without cloning a complete Windows desktop for every parked seat.
+One installation-local prepared game and Proton layer is shared by concurrent
+players; active seats keep isolated copy-on-write state, parked saves are
+zstd-compressed under an administrator-controlled retention policy, and a
+completed campaign keeps one final verified checkpoint beside its history and
+analytics.
+
 If a browser refreshes, reconnect it. A second tab opens safely as a viewer;
 it must explicitly take control, and doing so immediately revokes the old
 tab's input stream. Browser back/close receives a leave warning, while the

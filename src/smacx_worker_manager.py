@@ -174,6 +174,94 @@ class WorkerManager:
             },
         )
 
+    def ensure_prepared_worker_image(self, game_source_id: str) -> str:
+        """Return the installation-local image shared by every seat.
+
+        Preparation imports the operator's game once and initializes one
+        DirectPlay-ready Proton prefix once. The resulting image stays local
+        to this Docker Engine and is content-addressed by source and worker
+        image fingerprints; no game files are placed in project artifacts.
+        """
+        source = self.control.get_game_source(game_source_id)
+        base = self.docker.inspect_image(self.worker_image)
+        base_id = str(base.get("Id") or "").removeprefix("sha256:")
+        source_hash = str(
+            source.get("metadata", {}).get("source_tree_sha256")
+            or source.get("executable_sha256") or ""
+        )
+        if not re.fullmatch(r"[a-f0-9]{64}", base_id) or \
+                not re.fullmatch(r"[a-f0-9]{64}", source_hash):
+            raise WorkerManagerError("prepared_image_fingerprint_unavailable")
+        repository = "smacx-agent-prepared"
+        tag = f"{self.resource_prefix.removeprefix('smacx-')}-{source_hash[:12]}-{base_id[:12]}"
+        image_ref = f"{repository}:{tag}"
+        # Minimal contract-test doubles intentionally model only the original
+        # Docker surface. Production always uses DockerClient.
+        if not hasattr(self.docker, "commit_container"):
+            return self.worker_image
+        try:
+            existing = self.docker.inspect_image(image_ref)
+            self.docker.require_owned(
+                existing, self.installation_id, purpose="prepared-worker-image",
+            )
+            return image_ref
+        except DockerNotFound:
+            pass
+        name = self._name("prepare", f"{source_hash}-{base_id}")
+        identifier: str | None = None
+        try:
+            identifier = self.docker.create_container(name, {
+                "Image": self.worker_image,
+                "Env": [
+                    "SMACX_PREPARE_BASE=1",
+                    "SMACX_GAME_SOURCE=/game-source",
+                    "SMACX_PROTON_BIN=/opt/proton/proton",
+                    "SMACX_REQUIRE_DIRECTPLAY=1",
+                ],
+                "Tty": True,
+                "Labels": self._labels("prepared-image-builder", **{
+                    "io.smacx.game-source": game_source_id,
+                    "io.smacx.source-sha256": source_hash,
+                    "io.smacx.base-image": base_id,
+                }),
+                "HostConfig": {
+                    "NetworkMode": "none", "ReadonlyRootfs": False,
+                    "CapDrop": ["ALL"],
+                    "SecurityOpt": ["no-new-privileges"],
+                    "Tmpfs": {
+                        "/tmp": "rw,nosuid,nodev,size=512m,mode=1777",
+                        "/run": "rw,nosuid,nodev,size=32m,mode=0755",
+                    },
+                    "Mounts": [{
+                        "Type": "bind", "Source": str(source["host_path"]),
+                        "Target": "/game-source", "ReadOnly": True,
+                        "BindOptions": {"Propagation": "rprivate"},
+                    }],
+                },
+            })
+            self.docker.start_container(identifier)
+            stopped = self.docker.wait_container(identifier, timeout=600.0)
+            exit_code = int(stopped.get("State", {}).get("ExitCode", -1))
+            if exit_code:
+                logs = _clean_log(self.docker.container_logs(identifier, tail=200))[-4000:]
+                raise WorkerManagerError(f"prepared_image_build_failed:{exit_code}:{logs}")
+            self.docker.commit_container(
+                identifier, repository, tag,
+                labels=self._labels("prepared-worker-image", **{
+                    "io.smacx.game-source": game_source_id,
+                    "io.smacx.source-sha256": source_hash,
+                    "io.smacx.base-image": base_id,
+                }),
+            )
+            committed = self.docker.inspect_image(image_ref)
+            self.docker.require_owned(
+                committed, self.installation_id, purpose="prepared-worker-image",
+            )
+            return image_ref
+        finally:
+            if identifier:
+                self._cleanup_container(identifier, "prepared-image-builder")
+
     def _native_request(self, instance_id: str, operation: str, *,
                         timeout: float = 8.0, **arguments: Any) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
@@ -404,7 +492,8 @@ class WorkerManager:
         except DockerNotFound:
             return
 
-    def validate_game_source(self, host_path: str, *, display_name: str = "Alien Crossfire") -> dict[str, Any]:
+    def validate_game_source(self, host_path: str, *, display_name: str = "Alien Crossfire",
+                             game_source_id: str | None = None) -> dict[str, Any]:
         host_path = _host_path(host_path, "game_source_host_path")
         self.docker.inspect_image(self.worker_image)
         name = self._name("inspect")
@@ -442,7 +531,11 @@ class WorkerManager:
                 raise WorkerManagerError("invalid_game_source_probe_response")
             registered = self.control.register_game_source(
                 display_name, host_path, str(source["terranx_sha256"]),
-                metadata={"validated_by": "container", "worker_image": self.worker_image},
+                game_source_id=game_source_id,
+                metadata={
+                    "validated_by": "container", "worker_image": self.worker_image,
+                    "source_tree_sha256": str(source["source_tree_sha256"]),
+                },
             )
         finally:
             self._cleanup_container(identifier, "game-source-inspector")
@@ -455,6 +548,7 @@ class WorkerManager:
             game_source_id=str(registered["game_source_id"]),
             metadata={
                 "validated_by": "container", "worker_image": self.worker_image,
+                "source_tree_sha256": registered["metadata"]["source_tree_sha256"],
                 "private_reference": reference,
                 "scenario_count": len(scenario_catalog["scenarios"]),
             },
@@ -807,6 +901,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         elif runtime["storage_ref"] != self.worker_image:
             raise WorkerManagerError("worker_runtime_image_mismatch")
         self.docker.inspect_image(self.worker_image)
+        prepared_image = self.ensure_prepared_worker_image(game_source_id)
         instance_id = _new_id("instance")
         container_name = self._name("worker", instance_id)
         data_volume = self._name("data", instance_id)
@@ -850,7 +945,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 metadata={"container_name": container_name, "managed": True},
             )
             worker = self.control.put_worker_spec(
-                instance_id, game_source_id, runtime_id, self.worker_image,
+                instance_id, game_source_id, runtime_id, prepared_image,
                 container_name, data_volume, bridge_secret_id,
                 autostart=normalized_autostart,
                 network={
@@ -1003,6 +1098,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         view_bitrate = stream_bitrate_kbps(view_width, view_height)
         runtime = self.control.get_runtime(spec["runtime_id"])
         values = {
+            # Prepared images inherit their builder environment from Docker's
+            # commit operation. Every gameplay container must explicitly leave
+            # preparation mode even when its image was produced that way.
+            "SMACX_PREPARE_BASE": "0",
             "SMACX_AGENT_TOKEN_FILE": "/run/secrets/bridge-token",
             "SMACX_AGENT_MATCH_ID": spec["match_id"],
             "SMACX_AGENT_SESSION_ID": session_id,
@@ -1150,13 +1249,17 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         scope = MemoryScope(spec["match_id"], spec["agent_id"], spec["perspective_id"])
         self.store.start_session(scope, instance_id, session_id=session_id,
                                  metadata={"container_name": spec["container_name"]})
+        prepared_image = spec["image_ref"] != self.worker_image
         mounts = [
-            {"Type": "bind", "Source": source["host_path"], "Target": "/game-source",
-             "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"}},
             {"Type": "volume", "Source": spec["data_volume"], "Target": "/var/lib/smacx"},
             {"Type": "volume", "Source": spec["network"]["secret_volume"],
              "Target": "/run/secrets", "ReadOnly": True},
         ]
+        if not prepared_image:
+            mounts.insert(0, {
+                "Type": "bind", "Source": source["host_path"], "Target": "/game-source",
+                "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"},
+            })
         if runtime["storage_kind"] == "docker-volume":
             resource = self.docker.inspect_volume(runtime["storage_ref"])
             self.docker.require_owned(resource, self.installation_id, purpose="proton-runtime")
@@ -1164,7 +1267,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "Type": "volume", "Source": runtime["storage_ref"], "Target": "/proton",
                 "ReadOnly": True,
             })
-        elif runtime["storage_kind"] != "image" or runtime["storage_ref"] != spec["image_ref"]:
+        elif runtime["storage_kind"] != "image" or runtime["storage_ref"] != self.worker_image:
             raise WorkerManagerError("worker_runtime_image_mismatch")
         if self.directx_redist_host_path:
             mounts.append({
@@ -1196,7 +1299,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "ExposedPorts": exposed_ports,
             "HostConfig": {
                 "NetworkMode": self.network_name or "bridge",
-                "ReadonlyRootfs": True,
+                # Prepared workers use Docker's private copy-on-write layer
+                # for disposable Wine/registry changes. Campaign saves remain
+                # in the separately mounted managed volume.
+                "ReadonlyRootfs": not prepared_image,
                 "CapDrop": ["ALL"],
                 "SecurityOpt": ["no-new-privileges"],
                 "Tmpfs": {
@@ -2904,29 +3010,39 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
     def complete_match(self, match_id: str) -> dict[str, Any]:
         """Seal an already parked match as intentionally completed."""
         match = self.control.get_match(match_id)
-        if match["status"] == "completed":
-            return {"ok": True, "match": match, "already_completed": True}
-        if match["status"] != "parked":
+        already_completed = match["status"] == "completed"
+        if match["status"] not in {"parked", "completed"}:
             raise WorkerManagerError("match_completion_requires_parked_match")
-        completed = self.control.update_match_lifecycle(
+        completed = match if already_completed else self.control.update_match_lifecycle(
             match_id, "completed", metadata={"ended_by_managed_vote": True},
         )
         released = []
         release_errors = []
-        for seat in self.control.list_seats(match_id):
+        seats = self.control.list_seats(match_id)
+        managed = [seat for seat in seats if isinstance(seat.get("instance_id"), str)]
+        configured_host = int(match.get("metadata", {}).get("managed_host_seat_index", 0))
+        archive_seat = next(
+            (int(seat["seat_index"]) for seat in managed
+             if int(seat["seat_index"]) == configured_host),
+            int(managed[0]["seat_index"]) if managed else -1,
+        )
+        for seat in seats:
             instance_id = seat.get("instance_id")
             if not isinstance(instance_id, str):
                 continue
             try:
-                released.append(self.retire_completed_worker(instance_id))
+                released.append(self.retire_completed_worker(
+                    instance_id,
+                    preserve_final=int(seat["seat_index"]) == archive_seat,
+                ))
             except Exception as exc:
                 release_errors.append({"instance_id": instance_id, "error": str(exc)[:300]})
         return {
-            "ok": True, "match": completed, "already_completed": False,
+            "ok": True, "match": completed, "already_completed": already_completed,
             "released_workers": released, "release_errors": release_errors,
         }
 
-    def retire_completed_worker(self, instance_id: str) -> dict[str, Any]:
+    def retire_completed_worker(self, instance_id: str, *, preserve_final: bool = False) -> dict[str, Any]:
         """Release a completed seat's bulky Wine prefix and ephemeral secrets.
 
         Match metadata, semantic memory, events, metrics, and Hermes telemetry
@@ -2934,8 +3050,15 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         reachable after the campaign is non-resumable.
         """
         spec = self.control.get_worker_spec(instance_id)
+        if spec.get("observed_status") == "retired":
+            return {
+                "instance_id": instance_id, "status": "retired",
+                "removed_volumes": [], "final_archive": None,
+                "already_retired": True,
+            }
         self.park_worker(instance_id)
         spec = self.control.get_worker_spec(instance_id)
+        final_archive = self.compact_worker_state(instance_id, completed=preserve_final)
         removed: list[str] = []
         for volume, purpose in (
             (spec["data_volume"], "worker-data"),
@@ -2965,7 +3088,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )
         return {
             "instance_id": instance_id, "status": updated["observed_status"],
-            "removed_volumes": removed,
+            "removed_volumes": removed, "final_archive": final_archive,
         }
 
     def checkpoint_match(self, match_id: str, *,
@@ -3413,6 +3536,56 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "internal_base_url": f"http://{spec['container_name']}:6080",
         }
 
+    def compact_worker_state(self, instance_id: str, *, completed: bool = False) -> dict[str, Any]:
+        """Prune and zstd-compress a stopped seat's durable native saves."""
+        if not hasattr(self.docker, "commit_container"):
+            return {"ok": True, "skipped": "legacy_docker_test_double",
+                    "final_preserved": False}
+        spec = self.control.get_worker_spec(instance_id)
+        volume = self.docker.inspect_volume(spec["data_volume"])
+        self.docker.require_owned(volume, self.installation_id, purpose="worker-data")
+        policy = self.control.storage_policy()
+        name = self._name("compact", f"{instance_id}-{uuid.uuid4().hex}")
+        mounts = [{"Type": "volume", "Source": spec["data_volume"], "Target": "/state"}]
+        preserve_final = completed and bool(self.control_data_volume)
+        if preserve_final:
+            self.docker.inspect_volume(str(self.control_data_volume))
+            mounts.append({"Type": "volume", "Source": self.control_data_volume,
+                           "Target": "/control"})
+        identifier = self.docker.create_container(name, {
+            "Image": self.worker_image,
+            "Entrypoint": ["python3", "/opt/smacx/compact_saves.py"],
+            "Cmd": [], "Tty": True,
+            "Env": [
+                f"SMACX_MATCH_ID={spec['match_id']}", f"SMACX_INSTANCE_ID={instance_id}",
+                f"SMACX_RECENT_SAVES={policy['recent_checkpoints']}",
+                f"SMACX_MILESTONE_INTERVAL={policy['milestone_interval']}",
+                "SMACX_RETAIN_FULL_HISTORY=" + ("1" if policy["retain_full_turn_history"] else "0"),
+                "SMACX_COMPLETED_MATCH=" + ("1" if preserve_final else "0"),
+            ],
+            "Labels": self._labels("worker-state-compactor", **{
+                "io.smacx.instance": instance_id, "io.smacx.match": str(spec["match_id"]),
+            }),
+            "HostConfig": {
+                "NetworkMode": "none", "ReadonlyRootfs": True, "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=64m,mode=1777"}, "Mounts": mounts,
+            },
+        })
+        try:
+            self.docker.start_container(identifier)
+            stopped = self.docker.wait_container(identifier, timeout=180.0)
+            logs = _clean_log(self.docker.container_logs(identifier, tail=40))
+            if int(stopped.get("State", {}).get("ExitCode", -1)):
+                raise WorkerManagerError(f"worker_state_compaction_failed:{logs[-1800:]}")
+            result = self._last_json(logs)
+            if result.get("ok") is not True:
+                raise WorkerManagerError("worker_state_compaction_invalid_result")
+            result["final_preserved"] = preserve_final
+            return result
+        finally:
+            self._cleanup_container(identifier, "worker-state-compactor")
+
     def park_worker(self, instance_id: str) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         self.stop_mcp_sidecar(instance_id)
@@ -3425,6 +3598,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             self.docker.remove_container(spec["container_name"])
         except DockerNotFound:
             pass
+        archive = self.compact_worker_state(instance_id)
         with self.store.transaction() as connection:
             session = connection.execute(
                 "SELECT session_id FROM sessions WHERE instance_id=? AND status='running' "
@@ -3443,4 +3617,5 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             instance_id, desired_status="parked", observed_status="parked", last_error="",
             bridge_host=None, bridge_port=None, instance_status="available",
         )
-        return {"ok": True, "instance_id": instance_id, "status": updated["observed_status"]}
+        return {"ok": True, "instance_id": instance_id, "status": updated["observed_status"],
+                "save_archive": archive}

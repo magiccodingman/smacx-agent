@@ -112,7 +112,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
     for value, field in ((mcp_url, "mcp_url"), (provider_base_url, "provider_base_url")):
         if not isinstance(value, str) or not value.startswith(("http://", "https://")) or len(value) > 4096:
             raise HermesAdapterError(f"invalid_{field}")
-    if context_length is not None and not 1024 <= int(context_length) <= 16_777_216:
+    if context_length is not None and not 65_536 <= int(context_length) <= 16_777_216:
         raise HermesAdapterError("invalid_context_length")
     if provider_api_key_env is not None and not re.fullmatch(
             r"[A-Z][A-Z0-9_]{2,127}", provider_api_key_env):

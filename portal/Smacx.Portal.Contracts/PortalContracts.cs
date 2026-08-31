@@ -357,6 +357,10 @@ public sealed record ScheduleRequest(
     string DisplayName, string OperationKind, string TargetKind,
     string? TargetId, int IntervalSeconds);
 public sealed record BackupRequest(bool IncludeSecrets = true, bool IncludeWorkers = true);
+public sealed record StoragePolicyRequest(
+    int RecentCheckpoints = 10,
+    int MilestoneInterval = 25,
+    bool RetainFullTurnHistory = false);
 
 public sealed record AdminSnapshot(
     System.Text.Json.JsonElement Providers,
@@ -366,6 +370,7 @@ public sealed record AdminSnapshot(
     System.Text.Json.JsonElement Graphiti,
     System.Text.Json.JsonElement Workers,
     System.Text.Json.JsonElement Operations,
+    System.Text.Json.JsonElement Storage,
     System.Text.Json.JsonElement Schedules,
     System.Text.Json.JsonElement Backups);
 

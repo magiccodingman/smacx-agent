@@ -388,7 +388,98 @@ def stop_all(*_: Any) -> None:
             process.terminate()
 
 
+def prepare_immutable_base() -> int:
+    """Prepare one installation-local Docker image layer.
+
+    The manager commits this stopped container and never pushes the resulting
+    image. Every seat then shares these bytes through Docker's ordinary image
+    layer store, while its running container receives an isolated copy-on-write
+    view and its native saves live in the small durable worker volume.
+    """
+    source = Path(os.environ.get("SMACX_GAME_SOURCE", "/game-source"))
+    source_identity = validate_source(source)
+    prepared = Path("/opt/smacx/prepared")
+    game = prepared / "game"
+    if prepared.exists():
+        for child in prepared.iterdir():
+            if child.name == ".keep":
+                continue
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink(missing_ok=True)
+    prepared.mkdir(parents=True, exist_ok=True)
+    import_game(source, game, source_identity)
+    overlay_bridge(game)
+    configure_worker_game(game, 1280, 800)
+
+    # Personal saves from the operator's source tree are never baked into the
+    # shared layer. Workers see this stable absolute link backed by their own
+    # small managed state volume.
+    saves = game / "saves"
+    if saves.is_dir() and not saves.is_symlink():
+        shutil.rmtree(saves)
+    else:
+        saves.unlink(missing_ok=True)
+    saves.symlink_to("/var/lib/smacx/game/saves", target_is_directory=True)
+
+    home = prepared / "home"
+    compatdata = prepared / "compatdata"
+    home.mkdir(parents=True, exist_ok=True)
+    compatdata.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment.update({
+        "HOME": str(home),
+        "WINEARCH": "win64",
+        "WINEPREFIX": str(compatdata / "pfx"),
+        "WINEDLLOVERRIDES": "mscoree,mshtml=",
+        "STEAM_COMPAT_CLIENT_INSTALL_PATH": str(prepared / "steam-client"),
+        "STEAM_COMPAT_DATA_PATH": str(compatdata),
+        "STEAM_COMPAT_APP_ID": os.environ.get("SMACX_STEAM_APP_ID", "2204130"),
+        "SteamAppId": os.environ.get("SMACX_STEAM_APP_ID", "2204130"),
+        "SteamGameId": os.environ.get("SMACX_STEAM_APP_ID", "2204130"),
+        "SMACX_PROTON_BIN": os.environ.get("SMACX_PROTON_BIN", "/opt/proton/proton"),
+        "SMACX_PROTON_DIST_LOCK": "/tmp/smacx-proton-dist.lock",
+        "SMACX_REQUIRE_DIRECTPLAY": "1",
+    })
+    (prepared / "steam-client").mkdir(parents=True, exist_ok=True)
+    initialize_wine(environment, prepared)
+    directplay = install_directplay(environment, prepared)
+    manifest = {
+        "schema": "smacx.prepared-worker.v1",
+        "source": source_identity,
+        "runtime": "proton",
+        "directplay_ready": directplay,
+        "created_unix": time.time(),
+    }
+    (prepared / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8",
+    )
+    emit("prepared_base_ready", source=source_identity, directplay_ready=directplay)
+    return 0
+
+
+def hydrate_compressed_saves(worker_root: Path) -> int:
+    restored = 0
+    saves = worker_root / "game" / "saves"
+    saves.mkdir(parents=True, exist_ok=True)
+    for archived in saves.rglob("*.sav.zst"):
+        target = archived.with_suffix("")
+        completed = subprocess.run(
+            ["zstd", "-q", "-f", "-d", str(archived), "-o", str(target)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE, check=False,
+        )
+        if completed.returncode:
+            raise RuntimeError(f"save_archive_restore_failed:{archived.name}")
+        archived.unlink()
+        restored += 1
+    return restored
+
+
 def main() -> int:
+    if os.environ.get("SMACX_PREPARE_BASE") == "1":
+        return prepare_immutable_base()
     match_id = require_identity("SMACX_AGENT_MATCH_ID")
     session_id = require_identity("SMACX_AGENT_SESSION_ID")
     agent_id = require_identity("SMACX_AGENT_ID")
@@ -401,9 +492,20 @@ def main() -> int:
     worker_home = worker_root / "home"
     worker_home.mkdir(parents=True, exist_ok=True)
     source = Path(os.environ.get("SMACX_GAME_SOURCE", "/game-source"))
-    game = worker_root / "game"
-    source_identity = validate_source(source)
-    import_game(source, game, source_identity)
+    prepared = Path("/opt/smacx/prepared")
+    prepared_manifest = prepared / "manifest.json"
+    if prepared_manifest.is_file():
+        manifest = json.loads(prepared_manifest.read_text(encoding="utf-8"))
+        source_identity = manifest["source"]
+        game = prepared / "game"
+        runtime_state_root = prepared
+        restored_saves = hydrate_compressed_saves(worker_root)
+        emit("worker_state_hydrated", restored_saves=restored_saves)
+    else:
+        game = worker_root / "game"
+        source_identity = validate_source(source)
+        import_game(source, game, source_identity)
+        runtime_state_root = worker_root
     overlay_bridge(game)
     width, height = configured_view_dimensions()
     configure_worker_game(game, width, height)
@@ -423,7 +525,7 @@ def main() -> int:
         "SMACX_AGENT_TOKEN": token,
     })
     if proton_binary(environment):
-        compatdata = worker_root / "compatdata"
+        compatdata = runtime_state_root / "compatdata"
         compatdata.mkdir(parents=True, exist_ok=True)
         (worker_root / "steam-client").mkdir(parents=True, exist_ok=True)
         environment.update({
@@ -519,8 +621,8 @@ def main() -> int:
             ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             stream_backend = "novnc"
 
-    initialize_wine(environment, worker_root)
-    directplay = install_directplay(environment, worker_root)
+    initialize_wine(environment, runtime_state_root)
+    directplay = install_directplay(environment, runtime_state_root)
     proxy_port = int(os.environ.get("SMACX_BRIDGE_PROXY_PORT", "47814"))
     ready_marker = Path(os.environ.get(
         "SMACX_READY_MARKER", "/tmp/smacx/bridge-ready",

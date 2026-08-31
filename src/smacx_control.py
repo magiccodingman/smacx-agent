@@ -39,6 +39,7 @@ CONTROL_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 MODEL_ID_LIMIT = 512
+HERMES_MINIMUM_CONTEXT_LENGTH = 65_536
 PROVIDER_RESPONSE_LIMIT = 4 * 1024 * 1024
 PASSWORD_MINIMUM_LENGTH = 8
 PASSWORD_PARAMETERS = {"algorithm": "scrypt", "n": 32768, "r": 8, "p": 1, "dklen": 32}
@@ -289,6 +290,45 @@ class ControlPlane:
             raise InvalidRecord("invalid_graphiti_enabled")
         self._set_setting("graphiti.enabled", enabled)
         return self.graphiti_status()
+
+    def storage_policy(self) -> dict[str, Any]:
+        configured = self._setting("storage.save_retention")
+        if not isinstance(configured, Mapping):
+            configured = {}
+        campaign_root = self.store.path.parent / "campaigns"
+        archive_files = [item for item in campaign_root.rglob("*") if item.is_file()] \
+            if campaign_root.is_dir() else []
+        final_saves = [item for item in archive_files if item.name.endswith(".sav.zst")]
+        return {
+            "ok": True,
+            "recent_checkpoints": int(configured.get("recent_checkpoints", 10)),
+            "milestone_interval": int(configured.get("milestone_interval", 25)),
+            "retain_full_turn_history": configured.get("retain_full_turn_history") is True,
+            "compression": "zstd",
+            "completed_match_saves": 1,
+            "completed_archive_files": len(archive_files),
+            "completed_archive_saves": len(final_saves),
+            "completed_campaigns": len({item.parents[1] for item in final_saves}),
+            "completed_archive_bytes": sum(item.stat().st_size for item in archive_files),
+        }
+
+    def set_storage_policy(self, *, recent_checkpoints: int,
+                           milestone_interval: int,
+                           retain_full_turn_history: bool) -> dict[str, Any]:
+        recent = int(recent_checkpoints)
+        milestone = int(milestone_interval)
+        if not 1 <= recent <= 250:
+            raise InvalidRecord("invalid_recent_checkpoint_retention")
+        if not 0 <= milestone <= 10_000:
+            raise InvalidRecord("invalid_milestone_interval")
+        if not isinstance(retain_full_turn_history, bool):
+            raise InvalidRecord("invalid_full_turn_history_setting")
+        self._set_setting("storage.save_retention", {
+            "recent_checkpoints": recent,
+            "milestone_interval": milestone,
+            "retain_full_turn_history": retain_full_turn_history,
+        })
+        return self.storage_policy()
 
     def graphiti_status(self) -> dict[str, Any]:
         enabled = self._setting("graphiti.enabled") is True
@@ -1430,7 +1470,7 @@ class ControlPlane:
             raise InvalidRecord("invalid_external_profile_id")
         if reasoning_effort not in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
             raise InvalidRecord("invalid_reasoning_effort")
-        if context_length is not None and not 1024 <= int(context_length) <= 16_777_216:
+        if context_length is not None and not HERMES_MINIMUM_CONTEXT_LENGTH <= int(context_length) <= 16_777_216:
             raise InvalidRecord("invalid_context_length")
         if workspace_path is not None and (not Path(workspace_path).is_absolute() or len(workspace_path) > 4096):
             raise InvalidRecord("invalid_workspace_path")
@@ -1446,6 +1486,15 @@ class ControlPlane:
             raise ScopeViolation("harness_model_not_selected")
         effective_context = context_length or provider.get("context_length_override") \
             or selected_metadata.get("context_length")
+        if effective_context is None:
+            raise InvalidRecord("provider_context_length_unavailable")
+        if int(effective_context) < HERMES_MINIMUM_CONTEXT_LENGTH:
+            raise InvalidRecord("model_context_below_hermes_minimum")
+        advertised_context = provider.get("context_length_override") \
+            or selected_metadata.get("context_length")
+        if context_length is not None and advertised_context is not None \
+                and int(context_length) > int(advertised_context):
+            raise InvalidRecord("context_length_exceeds_model_limit")
         with self.store.transaction() as connection:
             if not connection.execute(
                 "SELECT 1 FROM agents WHERE agent_id=? AND status='active'", (agent_id,),
@@ -1541,6 +1590,14 @@ class ControlPlane:
             raise InvalidRecord("qwen38_instruct_requires_reasoning_none")
         context_length = context_length or provider.get("context_length_override") \
             or model.get("context_length")
+        if context_length is None:
+            raise InvalidRecord("provider_context_length_unavailable")
+        if int(context_length) < HERMES_MINIMUM_CONTEXT_LENGTH:
+            raise InvalidRecord("model_context_below_hermes_minimum")
+        advertised_context = provider.get("context_length_override") \
+            or model.get("context_length")
+        if advertised_context is not None and int(context_length) > int(advertised_context):
+            raise InvalidRecord("context_length_exceeds_model_limit")
         external_profile_id = "smacx-" + hashlib.sha256(
             str(seat["agent_id"]).encode("utf-8")
         ).hexdigest()[:20]

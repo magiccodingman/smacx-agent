@@ -413,6 +413,20 @@ public sealed class PortalMatchSupervisor(
                 }
             }
             await database.SaveChangesAsync(cancellationToken);
+            if (previousStatus != "completed" && match.Status == "completed")
+            {
+                // A native final-score screen changes the control lifecycle
+                // before the portal sees it. Complete is idempotent and stops
+                // autonomous callers before it releases bulky worker state.
+                using (await control.PostRawAsync(
+                    $"api/v1/matches/{match.MatchId}/complete", new { }, cancellationToken)) { }
+                foreach (var seat in seats.Where(item => item.ControlInstanceId is not null))
+                {
+                    seat.ConnectionState = "retired";
+                    seat.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                await database.SaveChangesAsync(cancellationToken);
+            }
             if (match.Status == "running")
             {
                 if (nativeSessionLost)
@@ -617,15 +631,10 @@ public sealed class PortalMatchSupervisor(
                     agent_id = runtimeAgentId,
                     provider_id = profile.ProviderId,
                     model_id = profile.ModelId,
-                    // Long campaigns retain political/game knowledge in the
-                    // match-scoped MCP store. Let Hermes compact a bounded
-                    // working conversation early instead of asking a local
-                    // model to summarize a 200k-token transcript every eight
-                    // turns. Existing pre-release profiles above the ceiling
-                    // remain readable and are safely capped at launch.
-                    context_length = profile.ContextLength is { } configured
-                        ? (int?)Math.Min(configured, 65_536)
-                        : null,
+                    // Null deliberately means provider-advertised automatic.
+                    // The control plane resolves and records the exact value;
+                    // never silently cap a profile selected by the operator.
+                    context_length = profile.ContextLength,
                     reasoning_effort = profile.ReasoningEffort,
                     generation_settings = GenerationPayload(profile.GenerationSettingsJson),
                     run_budget_seconds = 86_400,
