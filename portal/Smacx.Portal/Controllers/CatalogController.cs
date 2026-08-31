@@ -10,7 +10,10 @@ namespace Smacx.Portal.Controllers;
 [ApiController]
 [Route("api/catalog")]
 [Authorize]
-public sealed class CatalogController(ControlPlaneClient control, ApplicationDbContext database) : ControllerBase
+public sealed class CatalogController(
+    ControlPlaneClient control,
+    ApplicationDbContext database,
+    PersonalityCardLibrary personalityCards) : ControllerBase
 {
     [HttpGet("lobby")]
     public async Task<ActionResult<ApiResponse<LobbyCatalog>>> Lobby()
@@ -42,6 +45,17 @@ public sealed class CatalogController(ControlPlaneClient control, ApplicationDbC
         {
             return ApiResponse<LobbyCatalog>.Success(new([], [], [], false, "control_unavailable"));
         }
+    }
+
+    [HttpGet("factions-personalities")]
+    public ActionResult<ApiResponse<FactionPersonalityCatalog>> FactionsAndPersonalities()
+    {
+        var builtIns = FactionCatalog.All.SelectMany(faction =>
+            personalityCards.ForFaction(faction.Id).Select(card =>
+                new PersonalityCatalogItem(card.Kind, card.Kind, card.DisplayName,
+                    card.Description, faction.Id))).ToArray();
+        return ApiResponse<FactionPersonalityCatalog>.Success(new(
+            FactionCatalog.All, BuiltInPersonalityCatalog.Modes, builtIns));
     }
 
     [HttpGet("scenarios/{gameSourceId}")]

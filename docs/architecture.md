@@ -65,8 +65,8 @@ The portal is the only ordinary browser/LAN entry point and the only writer of
 its canonical pre-release SQLite schema:
 
 - ASP.NET Core Identity users/roles/password-reset grants;
-- case-insensitive game handles, provisional invited identities, and
-  collision-proof match-local DirectPlay aliases;
+- case-insensitive public display names, provisional invited identities, and
+  collision-safe DirectPlay participant binding;
 - lobby drafts, browser membership, UI policy, stream presence/tickets;
 - versioned provider-facing AI profile metadata; and
 - public history/analytics projections, including evidence-backed per-seat

@@ -14,7 +14,15 @@
             <Authorized Context="auth">
                 <div class="profile-avatar">@((auth.User.Identity?.Name ?? "?")[0].ToString().ToUpperInvariant())</div>
                 <h2>@auth.User.Identity?.Name</h2>
-                <p class="section-copy">Authenticated LAN member</p>
+                <p class="section-copy">Your username is private login identity. Your public display name is what people see in lobbies, games, and chat.</p>
+                <MudTextField @bind-Value="displayName" Label="Public display name"
+                              Variant="Variant.Outlined" Immediate="true" MaxLength="31" Counter="31" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Disabled="@(busy || string.IsNullOrWhiteSpace(displayName))"
+                           StartIcon="@Icons.Material.Filled.Badge" OnClick="SaveDisplayName">
+                    Save display name
+                </MudButton>
+                <span class="field-help flush mt-3">Changes apply to new lobbies. Active matches keep their snapshotted player identity so history and reconnects remain stable. Faction-leader names are reserved for AI players.</span>
                 <MudButton Variant="Variant.Outlined" Color="Color.Error"
                            StartIcon="@Icons.Material.Filled.Logout" OnClick="Logout">
                     Sign out
@@ -57,6 +65,7 @@
     private string currentPassword = "";
     private string newPassword = "";
     private string confirmation = "";
+    private string displayName = "";
     private string? notice;
     private string? error;
     private bool busy;
@@ -72,6 +81,8 @@
     {
         passwordMinimumLength = (await Api.GetAsync<PortalSetupState>("api/auth/setup"))
             ?.Data?.PasswordMinimumLength ?? 8;
+        displayName = (await Api.GetAsync<PortalSession>("api/auth/session"))
+            ?.Data?.User?.DisplayName ?? "";
     }
 
     private async Task ChangePassword()
@@ -100,5 +111,21 @@
     {
         await Api.PostAsync<bool>("api/auth/logout", new { });
         Navigation.NavigateTo("/", true);
+    }
+
+    private async Task SaveDisplayName()
+    {
+        busy = true;
+        error = null;
+        notice = null;
+        var result = await Api.PostAsync<PortalSession>("api/auth/display-name",
+            new UpdateDisplayNameRequest(displayName));
+        busy = false;
+        if (result.Payload?.Ok == true)
+        {
+            displayName = result.Payload.Data!.User!.DisplayName;
+            notice = "Your public display name was updated for future lobbies.";
+        }
+        else error = result.Payload?.Error?.Message ?? "The display name could not be changed.";
     }
 }

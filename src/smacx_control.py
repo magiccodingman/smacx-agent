@@ -1059,6 +1059,7 @@ class ControlPlane:
         return {"match": match, "perspective": perspective}
 
     def create_lan_match(self, display_name: str, agent_ids: list[str], *,
+                         agent_seats: list[Mapping[str, Any]] | None = None,
                          human_player_names: list[str] | None = None,
                          managed_human_player_names: list[str] | None = None,
                          host_controller_kind: str = "agent",
@@ -1070,6 +1071,38 @@ class ControlPlane:
         display_name = _bounded(display_name, "match_name", 160)
         human_player_names = list(human_player_names or [])
         managed_human_player_names = list(managed_human_player_names or [])
+        agent_seats = list(agent_seats or [])
+        if agent_seats:
+            parsed_agent_ids = [str(item.get("agent_id") or "") for item in agent_seats]
+            if parsed_agent_ids != agent_ids:
+                raise InvalidRecord("lan_agent_seat_order_mismatch")
+            for item in agent_seats:
+                player_name = item.get("player_name")
+                choice = item.get("faction_choice_id")
+                personality_id = item.get("personality_id", PERSONALITY_NONE)
+                personality_prompt = item.get("personality_prompt")
+                personality_hash = item.get("personality_prompt_sha256")
+                if not isinstance(player_name, str) or not 1 <= len(player_name) <= 31 \
+                        or any(ord(character) < 32 or ord(character) > 126 for character in player_name):
+                    raise InvalidRecord("invalid_lan_agent_player_name")
+                if not isinstance(choice, int) or not 0 <= choice <= 13:
+                    raise InvalidRecord("invalid_lan_agent_faction_choice")
+                faction_name = item.get("faction_name")
+                if not isinstance(faction_name, str) or not 1 <= len(faction_name) <= 63:
+                    raise InvalidRecord("invalid_lan_agent_faction_name")
+                if not isinstance(personality_id, str) or not 1 <= len(personality_id) <= 96:
+                    raise InvalidRecord("invalid_lan_personality_id")
+                if personality_prompt is not None and (
+                        not isinstance(personality_prompt, str)
+                        or len(personality_prompt) > 32768):
+                    raise InvalidRecord("invalid_lan_personality_prompt")
+                if personality_id != PERSONALITY_NONE and not isinstance(personality_prompt, str):
+                    raise InvalidRecord("lan_personality_prompt_required")
+                if personality_prompt is not None and (
+                        not isinstance(personality_hash, str)
+                        or not SHA256.fullmatch(personality_hash)
+                        or prompt_sha256(personality_prompt) != personality_hash):
+                    raise InvalidRecord("invalid_lan_personality_prompt_hash")
         if host_controller_kind not in {"agent", "human"}:
             raise InvalidRecord("invalid_lan_host_controller_kind")
         if not isinstance(agent_ids, list) or len(agent_ids) > 7:
@@ -1096,14 +1129,17 @@ class ControlPlane:
             raise InvalidRecord("lan_requires_two_to_seven_total_seats")
         if len(set(agent_ids)) != len(agent_ids):
             raise InvalidRecord("duplicate_lan_agent")
-        if len(set(all_human_names)) != len(all_human_names):
+        normalized_human_names = {name.casefold() for name in all_human_names}
+        if len(normalized_human_names) != len(all_human_names):
             raise InvalidRecord("duplicate_lan_human_player_name")
         first_agent_seat = 0 if host_controller_kind == "agent" else 1
         reserved_names = {
-            "Semantic Host" if seat_index == 0 else f"Semantic Agent {seat_index + 1}"
-            for seat_index in range(first_agent_seat, first_agent_seat + len(agent_ids))
+            str(agent_seats[offset]["player_name"]) if agent_seats else
+            ("Semantic Host" if seat_index == 0 else f"Semantic Agent {seat_index + 1}")
+            for offset, seat_index in enumerate(
+                range(first_agent_seat, first_agent_seat + len(agent_ids)))
         }
-        if reserved_names.intersection(all_human_names):
+        if {name.casefold() for name in reserved_names}.intersection(normalized_human_names):
             raise InvalidRecord("reserved_lan_human_player_name")
         for agent_id in agent_ids:
             _require_id(agent_id, "agent_id")
@@ -1149,9 +1185,13 @@ class ControlPlane:
                 seats.append(self.get_seat(match["match_id"], 0))
             for offset, agent_id in enumerate(agent_ids):
                 seat_index = first_agent_seat + offset
+                requested = dict(agent_seats[offset]) if agent_seats else {}
                 perspective = self.store.create_perspective(
                     match["match_id"], agent_id, controller_kind="agent",
-                    metadata={"seat_index": seat_index, "native_faction_pending": True},
+                    metadata={"seat_index": seat_index, "native_faction_pending": True,
+                              "requested_faction_key": requested.get("faction_key"),
+                              "requested_faction_name": requested.get("faction_name"),
+                              "requested_faction_choice_id": requested.get("faction_choice_id")},
                 )
                 now = time.time()
                 with self.store.transaction() as connection:
@@ -1160,7 +1200,18 @@ class ControlPlane:
                         "agent_id, perspective_id, status, metadata_json, created_unix, updated_unix) "
                         "VALUES (?, ?, ?, 'agent', ?, ?, 'assigned', ?, ?, ?)",
                         (_new_id("seat"), match["match_id"], seat_index, agent_id,
-                         perspective["perspective_id"], _json({"role": "host" if seat_index == 0 else "client"}),
+                         perspective["perspective_id"], _json({
+                             "role": "host" if seat_index == 0 else "client",
+                             "player_name": requested.get("player_name"),
+                             "leader_name": requested.get("leader_name"),
+                             "requested_faction_key": requested.get("faction_key"),
+                             "requested_faction_name": requested.get("faction_name"),
+                             "requested_faction_choice_id": requested.get("faction_choice_id"),
+                             "personality_id": requested.get("personality_id", "none"),
+                             "personality_name": requested.get("personality_name"),
+                             "personality_prompt": requested.get("personality_prompt"),
+                             "personality_prompt_sha256": requested.get("personality_prompt_sha256"),
+                         }),
                          now, now),
                     )
                 seats.append(self.get_seat(match["match_id"], seat_index))
@@ -1444,7 +1495,7 @@ class ControlPlane:
             rows = connection.execute(
                 "SELECT s.agent_id, s.perspective_id, s.instance_id, s.seat_index, "
                 "s.faction_id, s.faction_name, a.display_name AS agent_name, "
-                "a.personality_ref, "
+                "a.personality_ref, s.metadata_json AS seat_metadata_json, "
                 "a.status AS agent_status, m.display_name AS match_name, m.status AS match_status, "
                 "m.ruleset_id, m.metadata_json AS match_metadata_json, "
                 "w.observed_status, w.network_json FROM seat_assignments s "
@@ -1480,8 +1531,30 @@ class ControlPlane:
         external_profile_id = "smacx-" + hashlib.sha256(
             str(seat["agent_id"]).encode("utf-8")
         ).hexdigest()[:20]
-        personality_id = str(seat.get("personality_ref") or PERSONALITY_NONE)
-        if personality_id != PERSONALITY_NONE:
+        seat_metadata = json.loads(str(seat.pop("seat_metadata_json")))
+        requested_choice = seat_metadata.get("requested_faction_choice_id")
+        observed_choice = seat_metadata.get("native_new_game_faction_choice_id")
+        loaded_choice = seat_metadata.get("native_loaded_faction_choice_id")
+        scenario_choice = seat_metadata.get("native_scenario_faction_choice_id")
+        if isinstance(requested_choice, int) \
+                and not isinstance(loaded_choice, int) \
+                and not isinstance(scenario_choice, int) \
+                and (not isinstance(observed_choice, int)
+                     or observed_choice != requested_choice):
+            raise ScopeViolation("native_faction_identity_does_not_match_resolved_agent")
+        requested_faction_name = seat_metadata.get("requested_faction_name")
+        observed_faction_name = seat.get("faction_name")
+        if isinstance(requested_faction_name, str) \
+                and (not isinstance(observed_faction_name, str)
+                     or requested_faction_name.strip().casefold()
+                     != observed_faction_name.strip().casefold()):
+            raise ScopeViolation("native_faction_identity_does_not_match_resolved_agent")
+        personality_id = str(
+            seat_metadata.get("personality_id") or seat.get("personality_ref")
+            or PERSONALITY_NONE
+        )
+        personality_prompt = seat_metadata.get("personality_prompt")
+        if personality_id != PERSONALITY_NONE and not isinstance(personality_prompt, str):
             raise ScopeViolation("personality_card_content_not_available")
         match_metadata = json.loads(str(seat.pop("match_metadata_json")))
         policy_keys = (
@@ -1491,12 +1564,22 @@ class ControlPlane:
         match_policy = {
             key: match_metadata[key] for key in policy_keys if key in match_metadata
         }
+        match_policy.update({
+            "public_leader_identity": seat_metadata.get("player_name"),
+            "requested_faction_key": seat_metadata.get("requested_faction_key"),
+            "requested_faction_name": seat_metadata.get("requested_faction_name"),
+            "requested_faction_choice_id": seat_metadata.get("requested_faction_choice_id"),
+            "personality_name": seat_metadata.get("personality_name"),
+        })
+        public_agent_name = str(seat_metadata.get("player_name") or seat["agent_name"])
         system_prompt = compose_player_system_prompt(
-            agent_name=str(seat["agent_name"]), agent_id=str(seat["agent_id"]),
+            agent_name=public_agent_name, agent_id=str(seat["agent_id"]),
             match_id=match_id, match_name=str(seat["match_name"]),
             perspective_id=str(seat["perspective_id"]),
             ruleset_id=str(seat["ruleset_id"]), seat_index=int(seat["seat_index"]),
             match_policy=match_policy, personality_id=personality_id,
+            personality_prompt=(str(personality_prompt)
+                                if isinstance(personality_prompt, str) else None),
         )
         system_hash = prompt_sha256(system_prompt)
         profile = self.configure_harness_profile(
@@ -1521,7 +1604,7 @@ class ControlPlane:
             "harness_profile_id": profile["harness_profile_id"],
             "external_profile_id": external_profile_id,
             "agent_id": seat["agent_id"],
-            "agent_name": seat["agent_name"],
+            "agent_name": public_agent_name,
             "match_id": match_id,
             "match_name": seat["match_name"],
             "perspective_id": seat["perspective_id"],

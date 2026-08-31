@@ -139,7 +139,7 @@ local faction's current, fair-play contact list. A player cannot type an
 uncontacted faction ID into the API and bypass the native contact rule.
 
 Incoming native messages are polled independently of whose turn it is and are
-deduplicated by worker/sequence/sender. The sender's player handle and faction
+deduplicated by worker/sequence/sender. The sender's public display name and faction
 are kept distinct when both are known.
 
 ### Consent groups
@@ -257,26 +257,29 @@ an open modal are not discarded merely because a browser left.
 
 ## Identity collision rules
 
-Portal account handles are globally case-insensitive. Invitations reserve
-provisional accounts, so registering the invited name later claims the same
-seat and history. A lobby rejects duplicate invited handles and rejects
-inviting its owner a second time. A signed-in account cannot claim a seat
-reserved for another handle.
+Public display names are globally case-insensitive. The private sign-in
+username may differ. Invitations reserve provisional accounts by display name,
+so registering the invited name later claims the same seat and history. A lobby
+rejects duplicate invited names and rejects inviting its owner a second time. A
+signed-in account cannot claim a seat reserved for another display name. The 14
+faction-leader names are reserved for managed agents so a human or anonymous
+native participant cannot impersonate one.
 
-At launch, every human seat receives a deterministic, match-local DirectPlay
-alias derived from its canonical portal handle, seat, and match. The alias is
-bounded to the game's 31-character limit and is collision-checked against every
-other seat and managed worker. It is transport identity only: portal chat,
-history, analytics, group membership, and AI memory resolve the faction back to
-the canonical account handle. The exact alias is shown only where a direct
-native client needs it to join.
+The exact public display name is also the normal DirectPlay name. It is bounded
+to the game's 31-character limit and collision-checked against every other seat
+and managed worker. A deterministic suffix remains a defensive internal
+fallback for malformed legacy data; ordinary users never need to understand or
+type a transport-only alias.
 
 Direct/native lobby finalization compares the observed DirectPlay participant
-set to the issued aliases. Duplicate, canonical-only, or unexpected names block
-start instead of impersonating a browser account. An invited player may join
-natively with the lobby's exact alias before creating a password and claim that
-provisional account later; an arbitrary unreserved native name is never
-silently merged with somebody else's identity.
+set case-insensitively to the reserved display names. The earliest correctly
+named participant keeps the seat. A later duplicate, a faction-leader
+impersonator, or an unreserved name is rejected rather than silently merged
+with somebody else's identity. In an agent-hosted lobby the semantic native
+host removes the invalid participant and the portal reports why. In a
+human-hosted lobby the mismatch blocks start because the managed process cannot
+exercise host authority. An invited player may join natively before creating a
+password and claim that provisional account later.
 
 ## Spectators and human-only games
 

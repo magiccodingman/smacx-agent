@@ -246,7 +246,7 @@ public sealed class ControlPlaneClient(
             item.GetProperty("seat_index").GetInt32(),
             item.GetProperty("controller_kind").GetString()!,
             item.TryGetProperty("agent_id", out var agent) && agent.ValueKind == JsonValueKind.String ? agent.GetString() : null,
-            MetadataString("external_player_name"),
+            MetadataString("external_player_name") ?? MetadataString("player_name"),
             item.TryGetProperty("faction_id", out var factionId) && factionId.ValueKind == JsonValueKind.Number
                 ? factionId.GetInt32() : null,
             item.TryGetProperty("faction_name", out var faction) && faction.ValueKind == JsonValueKind.String ? faction.GetString() : null,

@@ -1302,7 +1302,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         }
 
     @staticmethod
-    def _managed_lan_player_name(seat_index: int) -> str:
+    def _managed_lan_player_name(seat_index: int,
+                                 seat: Mapping[str, Any] | None = None) -> str:
+        metadata = seat.get("metadata", {}) if isinstance(seat, Mapping) else {}
+        configured = metadata.get("player_name") if isinstance(metadata, Mapping) else None
+        if isinstance(configured, str) and configured:
+            return configured
         return "Semantic Host" if seat_index == 0 else f"Semantic Agent {seat_index + 1}"
 
     @staticmethod
@@ -1314,6 +1319,77 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if address.version != 4 or address.is_unspecified or address.is_multicast:
             raise InvalidRecord("invalid_external_lan_host_address")
         return str(address)
+
+    @staticmethod
+    def _lan_name_key(value: str) -> str:
+        return value.strip().casefold()
+
+    def _remove_unassigned_native_participants(
+            self, match_id: str, host_instance: str,
+            host_lobby: Mapping[str, Any], expected_names: set[str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Remove late native joins that cannot map to one exact portal seat.
+
+        Managed participants join before the lobby is advertised.  For a
+        case-insensitive duplicate, the earliest DirectPlay index therefore
+        keeps the seat and every later conflicting participant is removed.
+        Unknown names are also removed because external seats are explicitly
+        reserved by public display name.
+        """
+        expected_keys = {self._lan_name_key(name) for name in expected_names}
+        rejected: list[dict[str, Any]] = []
+        current = dict(host_lobby)
+        while True:
+            participants = [
+                dict(item) for item in current.get("lobby", {}).get("participants", [])
+                if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+                and isinstance(item.get("player_index"), int)
+            ]
+            seen: set[str] = set()
+            target: dict[str, Any] | None = None
+            reason = ""
+            for participant in sorted(participants, key=lambda item: int(item["player_index"])):
+                key = self._lan_name_key(str(participant["name"]))
+                if key not in expected_keys:
+                    target, reason = participant, "unreserved_display_name"
+                    break
+                if key in seen:
+                    target, reason = participant, "display_name_already_present"
+                    break
+                seen.add(key)
+            if target is None:
+                return current, rejected
+            identity = current["identity"]
+            removed = self._native_request(
+                host_instance, "semantic_lan", action="drop_player",
+                player_index=int(target["player_index"]),
+                expected_player_name=str(target["name"]),
+                match_id=identity["match_id"], session_id=identity["session_id"],
+                expected_lobby_revision=current["lobby"]["revision"],
+                client_operation_id=self._lan_operation_id(
+                    match_id,
+                    f"reject-native-name-{target.get('player_id', target['player_index'])}",
+                    int(target["player_index"]),
+                ),
+            )
+            if not removed.get("ok"):
+                detail = json.dumps(removed, separators=(",", ":"))[:1200]
+                raise WorkerManagerError(f"native_lan_participant_removal_failed:{detail}")
+            rejected.append({
+                "player_name": str(target["name"]),
+                "reason": reason,
+                "message": (
+                    "That public display name is already in use in this lobby."
+                    if reason == "display_name_already_present" else
+                    "That public display name does not have a reserved native seat in this lobby."
+                ),
+            })
+            current = self._wait_native(
+                host_instance, "semantic_lan",
+                lambda value, prior=len(participants): (
+                    value.get("lifecycle") == "lobby" and
+                    value.get("lobby", {}).get("participant_count") == prior - 1
+                ), timeout=20, context="native_name_conflict_removed", action="status",
+            )
 
     def _human_hosted_lan_context(self, match_id: str) -> tuple[dict[str, Any],
                                                                   list[dict[str, Any]],
@@ -1466,7 +1542,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 joined = self._native_request(
                     instance_id, "semantic_lan", action="join",
                     network_session_id=network_session_id,
-                    player_name=self._managed_lan_player_name(seat_index),
+                    player_name=self._managed_lan_player_name(seat_index, seat),
                     host_address=address,
                     client_operation_id=self._lan_operation_id(
                         match_id, "external_host_join", seat_index,
@@ -1488,7 +1564,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 str(seat["metadata"]["external_player_name"])
                 for seat in human_seats
             } | {
-                self._managed_lan_player_name(int(seat["seat_index"]))
+                self._managed_lan_player_name(int(seat["seat_index"]), seat)
                 for seat in agent_seats
             }
             first_instance = str(agent_seats[0]["instance_id"])
@@ -1503,11 +1579,17 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 if isinstance(item, Mapping) and isinstance(item.get("name"), str)
             ]
             observed_names = [str(item["name"]) for item in participants]
-            unexpected = sorted(set(observed_names) - expected_names)
-            if len(observed_names) != len(set(observed_names)) or unexpected:
+            observed_keys = [self._lan_name_key(name) for name in observed_names]
+            expected_keys = {self._lan_name_key(name) for name in expected_names}
+            unexpected = sorted(
+                name for name in observed_names
+                if self._lan_name_key(name) not in expected_keys
+            )
+            if len(observed_keys) != len(set(observed_keys)) or unexpected:
                 detail = json.dumps({
                     "duplicate_names": sorted(
-                        name for name in set(observed_names) if observed_names.count(name) > 1
+                        name for name in set(observed_names)
+                        if observed_keys.count(self._lan_name_key(name)) > 1
                     ),
                     "unexpected_players": unexpected,
                 }, separators=(",", ":"))[:1200]
@@ -1516,7 +1598,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 )
             host_name = str(seats[0]["metadata"]["external_player_name"])
             host_participant = next(
-                (item for item in participants if item["name"] == host_name), None,
+                (item for item in participants
+                 if self._lan_name_key(str(item["name"])) == self._lan_name_key(host_name)),
+                None,
             )
             if not host_participant or host_participant.get("host") is not True:
                 raise WorkerManagerError("human_lan_host_identity_mismatch")
@@ -1576,10 +1660,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         "native_role": "client",
                     },
                 )
-            by_name = {str(item["name"]): item for item in participants}
+            by_name = {self._lan_name_key(str(item["name"])): item for item in participants}
             for seat in human_seats:
                 player_name = str(seat["metadata"]["external_player_name"])
-                participant = by_name.get(player_name)
+                participant = by_name.get(self._lan_name_key(player_name))
                 if participant and isinstance(participant.get("faction_id"), int):
                     self.control.update_lan_seat(
                         match_id, int(seat["seat_index"]),
@@ -1642,11 +1726,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 dict(item) for item in first.get("lobby", {}).get("participants", [])
                 if isinstance(item, Mapping) and isinstance(item.get("name"), str)
             ]
-            by_name = {str(item["name"]): item for item in participants}
+            by_name = {
+                self._lan_name_key(str(item["name"])): item for item in participants
+            }
             blockers: list[dict[str, Any]] = []
             for seat in human_seats[1:]:
                 name = str(seat["metadata"]["external_player_name"])
-                participant = by_name.get(name)
+                participant = by_name.get(self._lan_name_key(name))
                 if participant is None:
                     blockers.append({"player_name": name, "reason": "not_joined"})
                 elif participant.get("ready") is not True:
@@ -1726,20 +1812,23 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             dict(item) for item in chat.get("participants", [])
             if isinstance(item, Mapping) and isinstance(item.get("player_name"), str)
         ]
-        by_name = {str(item["player_name"]): item for item in participants}
+        by_name = {
+            self._lan_name_key(str(item["player_name"])): item for item in participants
+        }
         expected_names = {
             str(seat["metadata"]["external_player_name"]) for seat in human_seats
         } | {
-            self._managed_lan_player_name(int(seat["seat_index"])) for seat in agent_seats
+            self._managed_lan_player_name(int(seat["seat_index"]), seat) for seat in agent_seats
         }
-        if set(by_name) != expected_names:
+        expected_keys = {self._lan_name_key(name) for name in expected_names}
+        if set(by_name) != expected_keys:
             detail = json.dumps({
                 "expected": sorted(expected_names), "observed": sorted(by_name),
             }, separators=(",", ":"))[:1200]
             raise WorkerManagerError(f"external_lan_participant_identity_mismatch:{detail}")
         for seat in human_seats:
             name = str(seat["metadata"]["external_player_name"])
-            participant = by_name[name]
+            participant = by_name[self._lan_name_key(name)]
             faction_id = participant.get("faction_id")
             if not isinstance(faction_id, int):
                 raise WorkerManagerError("human_lan_faction_identity_missing")
@@ -1889,7 +1978,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 self.start_worker(instance_id, timeout=min(remaining, 300.0))
             host_player_name = str(
                 host.get("metadata", {}).get("external_player_name")
-                or self._managed_lan_player_name(int(host["seat_index"]))
+                or self._managed_lan_player_name(int(host["seat_index"]), host)
             )
             hosted = self._native_request(
                 host_instance, "semantic_lan", timeout=min(140.0, max(30.0, deadline - time.monotonic())),
@@ -1962,7 +2051,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     raise WorkerManagerError("native_lan_exact_session_not_discovered")
                 player_name = str(
                     seat.get("metadata", {}).get("external_player_name")
-                    or f"Semantic Agent {seat_index + 1}"
+                    or self._managed_lan_player_name(seat_index, seat)
                 )
                 joined = self._native_request(
                     instance_id, "semantic_lan", timeout=140, action="join",
@@ -1990,6 +2079,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
             resume_choices_by_seat: dict[int, int] = {}
             scenario_choices_by_seat: dict[int, int] = {}
+            new_game_choices_by_seat: dict[int, int] = {}
             if resume_slot is None and scenario_id is None:
                 identity = host_lobby["identity"]
                 configured = self._native_request(
@@ -2012,6 +2102,55 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     ), timeout=45, context="host_configured_lobby",
                     action="status",
                 )
+                for seat in agent_seats:
+                    seat_index = int(seat["seat_index"])
+                    choice = seat.get("metadata", {}).get("requested_faction_choice_id")
+                    if not isinstance(choice, int):
+                        raise WorkerManagerError("managed_agent_faction_choice_missing")
+                    instance_id = str(seat["instance_id"])
+                    lobby = self._wait_native(
+                        instance_id, "semantic_lan",
+                        lambda value, expected=network_session_id: (
+                            value.get("lifecycle") == "lobby"
+                            and value.get("identity", {}).get("network_session_id") == expected
+                            and value.get("lobby", {}).get("game_type") == "new_game"
+                        ), timeout=45, context=f"seat_{seat_index}_new_game_faction_lobby",
+                        action="status",
+                    )
+                    local = next(
+                        (item for item in lobby.get("lobby", {}).get("participants", [])
+                         if isinstance(item, Mapping) and item.get("local") is True), {},
+                    )
+                    if local.get("faction_choice_id") != choice:
+                        selected = self._native_request(
+                            instance_id, "semantic_lan", action="select_faction",
+                            faction_choice_id=choice,
+                            match_id=lobby["identity"]["match_id"],
+                            session_id=lobby["identity"]["session_id"],
+                            expected_lobby_revision=lobby["lobby"]["revision"],
+                            client_operation_id=self._lan_operation_id(
+                                match_id, "new-game-faction", seat_index,
+                            ),
+                        )
+                        if not selected.get("ok"):
+                            detail = json.dumps(selected, separators=(",", ":"))[:1200]
+                            raise WorkerManagerError(
+                                f"native_lan_new_game_faction_selection_failed:{detail}"
+                            )
+                    new_game_choices_by_seat[seat_index] = choice
+                    host_lobby = self._wait_native(
+                        host_instance, "semantic_lan",
+                        lambda value, choice=choice: (
+                            value.get("lifecycle") == "lobby"
+                            and any(
+                                isinstance(item, Mapping)
+                                and item.get("faction_choice_id") == choice
+                                for item in value.get("lobby", {}).get("participants", [])
+                            )
+                        ), timeout=45,
+                        context=f"host_observed_new_game_faction_{seat_index}",
+                        action="status",
+                    )
             elif resume_slot is not None:
                 restored_by_player: dict[int, int] = {}
                 for seat in managed_seats:
@@ -2345,7 +2484,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 faction = snapshot["snapshot"]["faction"]
                 seat_index = int(seat["seat_index"])
                 faction_choice_id = resume_choices_by_seat.get(
-                    seat_index, scenario_choices_by_seat.get(seat_index)
+                    seat_index, scenario_choices_by_seat.get(
+                        seat_index, new_game_choices_by_seat.get(seat_index))
                 )
                 seat_metadata = {
                     "network_session_id": network_session_id,
@@ -2354,7 +2494,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 if isinstance(faction_choice_id, int):
                     seat_metadata[
                         "native_loaded_faction_choice_id" if resume_slot is not None
-                        else "native_scenario_faction_choice_id"
+                        else "native_scenario_faction_choice_id" if scenario_id is not None
+                        else "native_new_game_faction_choice_id"
                     ] = faction_choice_id
                 self.control.update_lan_seat(
                     match_id, int(seat["seat_index"]),
@@ -2414,6 +2555,20 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         expected_session = match["metadata"].get("network_session_id")
         if host_lobby.get("identity", {}).get("network_session_id") != expected_session:
             raise WorkerManagerError("external_lan_network_session_changed")
+        expected_managed_names = {
+            str(seat.get("metadata", {}).get("external_player_name") or (
+                self._managed_lan_player_name(int(seat["seat_index"]), seat)
+            ))
+            for seat in managed_seats
+        }
+        expected_human_names = {
+            str(seat["metadata"].get("external_player_name") or "")
+            for seat in human_seats
+        }
+        expected_names = expected_managed_names | expected_human_names
+        host_lobby, rejected_players = self._remove_unassigned_native_participants(
+            match_id, host_instance, host_lobby, expected_names,
+        )
         raw_participants = host_lobby.get("lobby", {}).get("participants", [])
         participants = [
             dict(item) for item in raw_participants
@@ -2423,22 +2578,15 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         duplicate_names: set[str] = set()
         for participant in participants:
             name = str(participant["name"])
-            if name in by_name:
+            key = self._lan_name_key(name)
+            if key in by_name:
                 duplicate_names.add(name)
-            by_name[name] = participant
-        expected_managed_names = {
-            str(seat.get("metadata", {}).get("external_player_name") or (
-                "Semantic Host" if int(seat["seat_index"]) == 0
-                else f"Semantic Agent {int(seat['seat_index']) + 1}"
-            ))
-            for seat in managed_seats
-        }
-        expected_human_names = {
-            str(seat["metadata"].get("external_player_name") or "")
-            for seat in human_seats
-        }
-        expected_names = expected_managed_names | expected_human_names
-        unexpected = sorted(set(by_name) - expected_names)
+            by_name[key] = participant
+        expected_keys = {self._lan_name_key(name) for name in expected_names}
+        unexpected = sorted(
+            str(item["name"]) for item in participants
+            if self._lan_name_key(str(item["name"])) not in expected_keys
+        )
         if duplicate_names or unexpected:
             detail = json.dumps({
                 "duplicate_names": sorted(duplicate_names),
@@ -2451,7 +2599,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         blockers: list[dict[str, Any]] = []
         for seat in human_seats:
             player_name = str(seat["metadata"].get("external_player_name") or "")
-            participant = by_name.get(player_name)
+            participant = by_name.get(self._lan_name_key(player_name))
             state = {
                 "seat_index": int(seat["seat_index"]),
                 "player_name": player_name,
@@ -2504,6 +2652,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "session_name": external.get("session_name"),
                     "human_players": human_state,
                     "blockers": blockers,
+                    "rejected_players": rejected_players,
                 },
                 "pixels_or_ui_input_used": False,
             }
@@ -2511,7 +2660,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         participants_by_name = by_name
         for seat in human_seats:
             player_name = str(seat["metadata"]["external_player_name"])
-            participant = participants_by_name[player_name]
+            participant = participants_by_name[self._lan_name_key(player_name)]
             self.control.update_lan_seat(
                 match_id, int(seat["seat_index"]),
                 faction_id=int(participant["faction_id"]),

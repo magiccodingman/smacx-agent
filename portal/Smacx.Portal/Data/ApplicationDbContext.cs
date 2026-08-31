@@ -43,10 +43,13 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         builder.Entity<ApplicationUser>(entity =>
         {
-            entity.Property(user => user.DisplayName).HasMaxLength(80);
+            entity.Property(user => user.DisplayName).HasMaxLength(31);
+            entity.Property(user => user.NormalizedDisplayName).HasMaxLength(31);
             entity.Property(user => user.GameHandle).HasMaxLength(31);
             entity.Property(user => user.NormalizedGameHandle).HasMaxLength(31);
             entity.HasIndex(user => user.NormalizedGameHandle).IsUnique();
+            entity.HasIndex(user => user.NormalizedDisplayName).IsUnique()
+                .HasFilter("NormalizedDisplayName <> ''");
         });
 
         builder.Entity<PortalSetting>(entity =>
@@ -150,6 +153,13 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(seat => seat.PlayerHandle).HasMaxLength(31);
             entity.Property(seat => seat.FactionName).HasMaxLength(80);
             entity.Property(seat => seat.PersonalityCardId).HasMaxLength(96);
+            entity.Property(seat => seat.RequestedFactionId).HasMaxLength(40);
+            entity.Property(seat => seat.ResolvedFactionKey).HasMaxLength(40);
+            entity.Property(seat => seat.LeaderName).HasMaxLength(80);
+            entity.Property(seat => seat.RequestedPersonalityId).HasMaxLength(96);
+            entity.Property(seat => seat.PersonalityName).HasMaxLength(160);
+            entity.Property(seat => seat.PersonalityPrompt).HasMaxLength(32768);
+            entity.Property(seat => seat.PersonalityPromptSha256).HasMaxLength(64);
             entity.Property(seat => seat.Status).HasMaxLength(24);
             entity.Property(seat => seat.JoinMode).HasMaxLength(24);
             entity.Property(seat => seat.ControlInstanceId).HasMaxLength(96);
@@ -419,6 +429,13 @@ public sealed class PortalLobbySeat
     public int? FactionId { get; set; }
     public string? FactionName { get; set; }
     public string PersonalityCardId { get; set; } = "none";
+    public string RequestedFactionId { get; set; } = "random";
+    public string? ResolvedFactionKey { get; set; }
+    public string? LeaderName { get; set; }
+    public string RequestedPersonalityId { get; set; } = "standard";
+    public string? PersonalityName { get; set; }
+    public string? PersonalityPrompt { get; set; }
+    public string? PersonalityPromptSha256 { get; set; }
     public string Status { get; set; } = "open";
     public string JoinMode { get; set; } = "browser";
     public string? ControlInstanceId { get; set; }

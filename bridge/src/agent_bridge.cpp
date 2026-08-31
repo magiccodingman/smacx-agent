@@ -5119,7 +5119,7 @@ bool lan_faction_choice_selectable(int choice_id) {
         return false;
     }
     int game_type = *reinterpret_cast<int*>(0x90E778);
-    if (game_type == 2 || game_type == 3) {
+    if (game_type == 0 || game_type == 2 || game_type == 3) {
         for (int index = 1; index <= lan_player_count(); ++index) {
             if (static_cast<signed char>(lan_setup_record(index)[3]) == choice_id) {
                 return false;
@@ -5388,10 +5388,15 @@ void append_lan_lobby_state(std::ostringstream& out) {
         const unsigned char* setup = lan_setup_record(index);
         char name[32] = {};
         memcpy(name, lan_player_name(index), 31);
+        const char* directplay_name = Net_get_player_name(
+            NetState, lan_player_id(index));
         int faction_choice = static_cast<signed char>(setup[3]);
         int required_faction_choice = lan_required_faction_choice(index);
         out << "{\"player_index\":" << index
+            << ",\"player_id\":" << lan_player_id(index)
             << ",\"name\":" << json_string(name)
+            << ",\"directplay_name\":"
+            << json_string(directplay_name ? directplay_name : "")
             << ",\"local\":" << (index == local_index ? "true" : "false")
             << ",\"host\":" << (index == host_index ? "true" : "false")
             << ",\"ready\":" << (lan_player_ready(index) ? "true" : "false")
@@ -5429,12 +5434,13 @@ void append_lan_lobby_state(std::ostringstream& out) {
         int local_choice = static_cast<signed char>(lan_setup_record(local_index)[3]);
         int local_faction = lan_player_faction(local_index);
         int required_choice = lan_required_faction_choice(local_index);
-        if ((*reinterpret_cast<int*>(0x90E778) == 2
+        if ((*reinterpret_cast<int*>(0x90E778) == 0
+            || *reinterpret_cast<int*>(0x90E778) == 2
             || *reinterpret_cast<int*>(0x90E778) == 3)
         && !lan_player_ready(local_index)
         && (*reinterpret_cast<int*>(0x90E778) == 2 || local_faction >= 1)
         && local_choice < 0
-        && (*reinterpret_cast<int*>(0x90E778) == 2 || required_choice >= 0)) {
+        && (*reinterpret_cast<int*>(0x90E778) != 3 || required_choice >= 0)) {
             out << "{\"action\":\"select_faction\",\"parameters\":{"
                    "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":[";
             if (*reinterpret_cast<int*>(0x90E778) == 3) {
@@ -5483,12 +5489,13 @@ void append_lan_lobby_state(std::ostringstream& out) {
             ? static_cast<signed char>(lan_setup_record(local_index)[3]) : -1;
         int local_faction = lan_player_faction(local_index);
         int required_choice = lan_required_faction_choice(local_index);
-        if ((*reinterpret_cast<int*>(0x90E778) == 2
+        if ((*reinterpret_cast<int*>(0x90E778) == 0
+            || *reinterpret_cast<int*>(0x90E778) == 2
             || *reinterpret_cast<int*>(0x90E778) == 3)
         && !lan_player_ready(local_index)
         && (*reinterpret_cast<int*>(0x90E778) == 2 || local_faction >= 1)
         && local_choice < 0
-        && (*reinterpret_cast<int*>(0x90E778) == 2 || required_choice >= 0)) {
+        && (*reinterpret_cast<int*>(0x90E778) != 3 || required_choice >= 0)) {
             if (action_comma) out << ',';
             out << "{\"action\":\"select_faction\",\"parameters\":{"
                    "\"faction_choice_id\":{\"type\":\"integer\",\"enum\":[";
@@ -5523,6 +5530,23 @@ void append_lan_lobby_state(std::ostringstream& out) {
             out << "]}},"
                    "\"requires\":[\"match_id\",\"session_id\","
                    "\"expected_lobby_revision\",\"client_operation_id\"]}";
+            action_comma = true;
+        }
+        if (count > 1) {
+            if (action_comma) out << ',';
+            out << "{\"action\":\"drop_player\",\"parameters\":{"
+                   "\"player_index\":{\"type\":\"integer\",\"enum\":[";
+            bool player_comma = false;
+            for (int index = 1; index <= count; ++index) {
+                if (index == host_index) continue;
+                if (player_comma) out << ',';
+                out << index;
+                player_comma = true;
+            }
+            out << "]},\"expected_player_name\":{\"type\":\"string\","
+                   "\"minLength\":1,\"maxLength\":31}},\"requires\":["
+                   "\"match_id\",\"session_id\",\"expected_lobby_revision\","
+                   "\"client_operation_id\"]}";
             action_comma = true;
         }
         if (every_client_ready) {
@@ -6020,7 +6044,7 @@ bool test_fixture) {
         return semantic_lan_join_response(request, test_fixture);
     }
     if (action == "load_save" || action == "load_scenario"
-    || action == "select_faction" || action == "configure"
+    || action == "select_faction" || action == "drop_player" || action == "configure"
     || action == "set_ready" || action == "start") {
         if (!native_lan_lobby_active() || lan_test_lobby_pending) {
             return error_response("lan_lobby_action_unavailable",
@@ -6069,7 +6093,22 @@ bool test_fixture) {
             return error_response("lan_lobby_identity_unavailable",
                 "The native lobby has not assigned stable local and host participants yet.");
         }
-        if (action == "load_save" || action == "load_scenario") {
+        if (action == "drop_player") {
+            if (!local_host) {
+                return error_response("lan_drop_player_host_only",
+                    "Only the native session host can remove a lobby participant.");
+            }
+            int target_index = field_int(request, "player_index", -1);
+            std::string expected_name = field_string(request, "expected_player_name");
+            if (target_index < 1 || target_index > count || target_index == host_index) {
+                return error_response("invalid_lan_drop_target",
+                    "player_index must identify one current non-host lobby participant.");
+            }
+            if (expected_name != lan_player_name(target_index)) {
+                return error_response("stale_lan_drop_target",
+                    "The guarded participant name changed; read fresh lobby state before removal.");
+            }
+        } else if (action == "load_save" || action == "load_scenario") {
             if (!local_host) {
                 return error_response("lan_load_host_only",
                     "Only the native session host can load a multiplayer campaign or scenario.");
@@ -6108,9 +6147,9 @@ bool test_fixture) {
             }
         } else if (action == "select_faction") {
             int game_type = *reinterpret_cast<int*>(0x90E778);
-            if (game_type != 2 && game_type != 3) {
-                return error_response("lan_faction_selection_requires_load",
-                    "Guarded faction selection is available only in a loaded multiplayer campaign or scenario lobby.");
+            if (game_type != 0 && game_type != 2 && game_type != 3) {
+                return error_response("lan_faction_selection_unavailable",
+                    "Guarded faction selection is unavailable in this native lobby type.");
             }
             if (lan_player_ready(local_index)) {
                 return error_response("lan_faction_selection_requires_unready",
@@ -6219,6 +6258,29 @@ bool test_fixture) {
                         "Every joined client must report ready before the host can start.");
                 }
             }
+        }
+
+        if (action == "drop_player") {
+            int target_index = field_int(request, "player_index", -1);
+            std::string expected_name = field_string(request, "expected_player_name");
+            uint32_t target_player_id = lan_player_id(target_index);
+            // The second native flag is the no-confirmation path. Passing zero
+            // opens SMACX's blocking "drop player?" dialog, which cannot be
+            // part of a semantic host operation.
+            int native_result = target_player_id
+                ? Net_drop_player(NetState, target_player_id, 1) : 0;
+            if (!native_result) {
+                return error_response("native_lan_drop_player_failed",
+                    "The native lobby did not remove the guarded participant.");
+            }
+            pump_native_network_packets();
+            lan_lobby_operation_id = client_operation_id;
+            lan_lobby_operation_action = action;
+            return std::string("{\"ok\":true,\"duplicate\":false,"
+                "\"action\":\"drop_player\",\"player_index\":")
+                + std::to_string(target_index) + ",\"player_name\":"
+                + json_string(expected_name.c_str())
+                + ",\"pixels_or_ui_input_used\":false}";
         }
 
         if (action == "load_save" || action == "load_scenario") {
@@ -6413,7 +6475,7 @@ bool test_fixture) {
     }
     if (!test_fixture && action != "host") {
         return error_response("invalid_lan_action",
-            "Use action=status, host, discover, join, load_save, configure, set_ready, or start as permitted by the current legal_actions.");
+            "Use action=status, host, discover, join, load_save, select_faction, drop_player, configure, set_ready, or start as permitted by the current legal_actions.");
     }
     std::string client_operation_id = field_string(
         request, "client_operation_id");

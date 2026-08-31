@@ -4,8 +4,8 @@
 <PageTitle>Create account · SMACX Agent</PageTitle>
 <div class="auth-stage"><section class="auth-card">
     <div class="auth-sigil">+</div><span class="panel-kicker">JOIN THE NETWORK</span><h1>Create a LAN identity</h1>
-    <p>Your username is also your default in-game handle. Accounts stay on this control center.</p>
-    <MudTextField @bind-Value="username" Label="Username / game handle" Variant="Variant.Outlined" Immediate="true" /><MudTextField @bind-Value="displayName" Label="Display name" Variant="Variant.Outlined" Immediate="true" />
+    <p>Your username is only for signing in. Your public display name appears in lobbies, games, and chat and can be changed later.</p>
+    <MudTextField @bind-Value="username" Label="Username" Variant="Variant.Outlined" Immediate="true" /><MudTextField @bind-Value="displayName" Label="Public display name" Variant="Variant.Outlined" Immediate="true" MaxLength="31" Counter="31" />
     <MudTextField @bind-Value="password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" HelperText="@PasswordHelp" /><MudTextField @bind-Value="confirmation" Label="Confirm password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" />
     <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="busy" OnClick="CreateAccount">Create account</MudButton><div class="auth-hint">Already registered? <a href="login">Sign in</a></div>
     @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert> }

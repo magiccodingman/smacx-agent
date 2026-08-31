@@ -25,4 +25,10 @@
     <ProjectReference Include="..\Smacx.Portal.Contracts\Smacx.Portal.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\docs\personality-cards.md" Link="personality-cards.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

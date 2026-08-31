@@ -6,6 +6,8 @@ public class ApplicationUser : IdentityUser
 {
     public string DisplayName { get; set; } = string.Empty;
 
+    public string NormalizedDisplayName { get; set; } = string.Empty;
+
     public string GameHandle { get; set; } = string.Empty;
 
     public string NormalizedGameHandle { get; set; } = string.Empty;

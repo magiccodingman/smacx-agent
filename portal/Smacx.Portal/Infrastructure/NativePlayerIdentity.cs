@@ -6,14 +6,18 @@ namespace Smacx.Portal.Infrastructure;
 public static class NativePlayerIdentity
 {
     /// <summary>
-    /// Allocates an exact, match-local DirectPlay name while preserving the
-    /// durable account handle outside the native transport.
+    /// Uses the public display name as the DirectPlay name whenever possible.
+    /// A deterministic suffix is only a defensive fallback for an already
+    /// occupied transport name; normal portal validation prevents that case.
     /// </summary>
     public static string AllocateAlias(
         string matchId, int seatIndex, string canonicalHandle,
         ISet<string> occupiedNames)
     {
         var handle = canonicalHandle.Trim();
+        if (handle.Length <= 31 && handle.All(character => character is >= ' ' and <= '~') &&
+            occupiedNames.Add(handle))
+            return handle;
         for (var attempt = 0; attempt < 256; attempt++)
         {
             var digest = SHA256.HashData(Encoding.UTF8.GetBytes(

@@ -250,6 +250,23 @@ def main() -> int:
             raise AssertionError("unstarted match rollback failed")
 
         second_agent = control.create_agent("Second LAN agent")
+        expect(
+            InvalidRecord,
+            lambda: control.create_lan_match(
+                "Tampered personality", [agent["agent_id"]],
+                agent_seats=[{
+                    "agent_id": agent["agent_id"],
+                    "player_name": "Lady Deirdre Skye",
+                    "faction_key": "gaians",
+                    "faction_name": "Gaia's Stepdaughters",
+                    "faction_choice_id": 0,
+                    "personality_id": "builtin:gaians:standard:v1",
+                    "personality_prompt": "tampered",
+                    "personality_prompt_sha256": "0" * 64,
+                }],
+            ),
+            "invalid_lan_personality_prompt_hash",
+        )
         lan = control.create_lan_match(
             "Managed LAN contract", [agent["agent_id"], second_agent["agent_id"]],
         )
