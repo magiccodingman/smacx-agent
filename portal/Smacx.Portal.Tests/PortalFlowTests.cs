@@ -45,6 +45,17 @@ public sealed class PortalFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ProtectedPagesUseOwnedLoginAndLegacyIdentityRoutesAreAbsent()
+    {
+        using var challenge = await client!.GetAsync("/lobbies/new");
+        Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
+        Assert.Equal("/login?ReturnUrl=%2Flobbies%2Fnew", challenge.Headers.Location?.PathAndQuery);
+
+        using var legacy = await client.GetAsync("/Account/Login");
+        Assert.Equal(HttpStatusCode.NotFound, legacy.StatusCode);
+    }
+
+    [Fact]
     public async Task BootstrapAuthAndStagedLobbyFlowUsesCanonicalSchema()
     {
         var setup = await GetDataAsync<PortalSetupState>("api/auth/setup");
