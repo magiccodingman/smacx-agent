@@ -46,7 +46,7 @@ and [Chrome's manifest requirements](https://developer.chrome.com/docs/lighthous
 ## What is and is not installed
 
 The browser installs only the SMACX Agent web identity. The host still owns the
-legal game source, Proton runtime, workers, saves, and stream encoding. An
+legal game source, Docker-managed compatibility stack, workers, saves, and stream encoding. An
 installed client has the same authorization as the corresponding browser
 session and must reconnect to the same host to play.
 

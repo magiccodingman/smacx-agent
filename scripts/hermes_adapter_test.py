@@ -58,6 +58,25 @@ def main() -> int:
         if command[1:3] != ["-p", profile["profile_id"]] or "--continue" not in command:
             raise AssertionError("Hermes command did not preserve profile/match session identity")
 
+        for effort in ("none", "low", "medium", "high", "xhigh"):
+            effort_profile = configure_profile(
+                hermes_root=root, agent_id=f"agent-reasoning-{effort}-contract",
+                agent_name=f"{effort} reasoning player",
+                match_id=f"match-reasoning-{effort}-contract",
+                mcp_url="http://127.0.0.1:48126/mcp",
+                provider_base_url="http://model-box:8000/v1", model_id="generic-model",
+                reasoning_effort=effort,
+                profile_id=f"smacx-reasoning-{effort}",
+            )
+            effort_config = json.loads((
+                Path(effort_profile["profile_root"]) / "config.yaml"
+            ).read_text(encoding="utf-8"))
+            if effort_config["agent"]["reasoning_effort"] != effort:
+                raise AssertionError(f"{effort} reasoning did not reach Hermes config")
+            effort_command = hermes_command(effort_profile, query="Inspect status only.")
+            if effort_command[effort_command.index("--reasoning") + 1] != effort:
+                raise AssertionError(f"{effort} reasoning did not reach Hermes CLI")
+
         descriptor_profile = configure_from_descriptor({
             "schema": "smacx.hermes-descriptor.v1",
             "agent_id": "agent-descriptor-contract",
@@ -70,6 +89,7 @@ def main() -> int:
             "reasoning_effort": "low",
             "external_profile_id": "smacx-descriptor-contract",
             "context_length": 65536,
+            "generation_settings": {"preset": "qwen38-thinking"},
         }, hermes_root=root)
         if descriptor_profile["profile_id"] != "smacx-descriptor-contract":
             raise AssertionError("Control descriptor did not preserve external profile identity")
@@ -100,6 +120,8 @@ def main() -> int:
                 "profile_reassignment_blocked": True,
                 "low_reasoning_default": True,
                 "control_descriptor_supported": True,
+                "reasoning_ladder_reaches_hermes": True,
+                "generation_settings_supported": True,
             },
         }, separators=(",", ":")))
     return 0

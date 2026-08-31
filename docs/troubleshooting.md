@@ -93,29 +93,33 @@ not download or repair the game.
 The source is mounted read-only. If a mod changes files, validate it as a new
 source so fingerprints and private mechanics knowledge remain distinct.
 
-## Proton import fails
+## Compatibility image build fails
 
-Point at the root of a complete Proton distribution, not a running Steam prefix.
-The manager copies it to an installation-owned writable volume because Proton
-uses `dist.lock` and mutates prefix state. Ensure the source has enough readable
-files and Docker has disk space:
+The worker image downloads checksum-pinned GE-Proton and DirectPlay assets from
+their upstream locations. No host Proton import is required. If the build
+cannot fetch or verify either asset, confirm outbound HTTPS, available disk,
+and that a filtering proxy is not replacing downloads:
 
 ```bash
 docker system df
 df -h
 ```
 
-Do not mount Steam's live Proton runtime read-write into workers.
+Never bypass a digest mismatch or mount Steam's live Proton runtime read-write
+into workers. A changed upstream artifact requires a reviewed pin update and
+the live compatibility suite.
 
 ## LAN hosting returns to the main menu
 
-DirectPlay is missing or not registered in the isolated prefix. Confirm the
-startup environment points at the official February 2010 redistributable and
-re-import/recreate the affected worker runtime through the portal. The project
-verifies the archived redistributable before installing its 32-bit components.
+DirectPlay is missing or not registered in the isolated prefix. Rebuild the
+worker with the normal launcher and inspect the failed seat's logs. The image
+verifies the archived original Microsoft redistributable before installing its
+32-bit components, and the worker must report `directplay_ready` before native
+hosting begins.
 
-Stock Debian Wine is only a diagnostic fallback; the reference game stalled at
-the Firaxis presentation screen there. Use imported Proton.
+Stock Debian Wine is only a diagnostic fallback; it launches the game but the
+semantic bridge does not complete its authenticated opening. Use the sealed
+GE-Proton runtime selected by the platform.
 
 ## Browser stream is blank or reconnecting
 
@@ -208,6 +212,21 @@ Legacy DirectPlay may not transparently continue after a native participant
 leaves. Create/use a verified checkpoint, park the match, ask every native
 participant to rejoin the restored lobby with their exact handle/faction, then
 continue. Managed browser reconnect normally does not require a native restart.
+
+## A parked/completed campaign appears active after a restart
+
+Run the current images and allow the portal supervisor one startup cycle:
+
+```bash
+./scripts/control-center-up.sh
+docker compose logs --tail=150 control-api control-center
+```
+
+The supervisor reconciles durable portal state into the control plane and
+stops stale Hermes/game workers. Do not manually launch an old harness run or
+delete the portal/control volumes. A parked campaign should show
+`worker_stopped` and remain resumable; a completed campaign should show
+`retired` and remain review-only in the Campaign Library.
 
 ## Browser player is disconnected or temporarily computer-controlled
 

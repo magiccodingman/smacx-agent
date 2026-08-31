@@ -17,6 +17,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
+from smacx_generation import normalize_generation_settings, openai_extra_body
+
 
 IDENTITY = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
 PROFILE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -92,6 +94,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
                       model_id: str, reasoning_effort: str = "low",
                       profile_id: str | None = None,
                       context_length: int | None = None,
+                      generation_settings: dict[str, Any] | None = None,
                       provider_api_key_env: str | None = None,
                       runtime_hermes_root: Path | None = None,
                       system_prompt: str | None = None) -> dict[str, Any]:
@@ -144,6 +147,17 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
     if not isinstance(rules, str) or not rules.strip() or len(rules) > 65_536:
         raise HermesAdapterError("invalid_system_prompt")
     system_prompt_hash = hashlib.sha256(rules.encode("utf-8")).hexdigest()
+    generation = normalize_generation_settings(generation_settings)
+    generation_body = openai_extra_body(generation)
+    custom_provider: dict[str, Any] = {
+        "name": model_id.strip(),
+        "base_url": provider_base_url.rstrip("/"),
+        "model": model_id.strip(),
+        "models": {model_id.strip(): {}},
+        "models_discovered": True,
+    }
+    if generation_body:
+        custom_provider["extra_body"] = generation_body
     config: dict[str, Any] = {
         "_config_version": 39,
         "model": {
@@ -151,13 +165,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "provider": "custom",
             "base_url": provider_base_url.rstrip("/"),
         },
-        "custom_providers": [{
-            "name": model_id.strip(),
-            "base_url": provider_base_url.rstrip("/"),
-            "model": model_id.strip(),
-            "models": {model_id.strip(): {}},
-            "models_discovered": True,
-        }],
+        "custom_providers": [custom_provider],
         "agent": {"max_turns": "none", "reasoning_effort": reasoning_effort},
         "compression": {
             "enabled": True,
@@ -188,6 +196,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "active_match_id": match_id,
         "mcp_url": mcp_url,
         "system_prompt_sha256": system_prompt_hash,
+        "generation_settings": generation,
     })
     (profile_root / ".env").touch(mode=0o600, exist_ok=True)
     os.chmod(profile_root / ".env", 0o600)
@@ -205,6 +214,7 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "reasoning_effort": reasoning_effort,
         "mcp_url": mcp_url,
         "system_prompt_sha256": system_prompt_hash,
+        "generation_settings": generation,
     }
 
 
@@ -224,6 +234,7 @@ def configure_from_descriptor(descriptor: dict[str, Any], *, hermes_root: Path) 
         reasoning_effort=str(descriptor.get("reasoning_effort", "low")),
         profile_id=str(descriptor.get("external_profile_id", "")),
         context_length=descriptor.get("context_length"),
+        generation_settings=descriptor.get("generation_settings"),
     )
 
 

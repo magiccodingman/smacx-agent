@@ -14,19 +14,20 @@ Prerequisites:
 
 - Docker Engine with Compose v2;
 - the current account can run `docker ps` without `sudo`;
-- a legal Alien Crossfire installation directory containing `terranx.exe`;
-- a Proton distribution directory; and
-- `directx_feb2010_redist.exe` for native DirectPlay.
+- a legal Alien Crossfire installation directory containing `terranx.exe`; and
+- outbound access to the pinned upstream release URLs during the first worker
+  image build.
 
 ```bash
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
   ./scripts/control-center-up.sh
 ```
 
-The script checks the Docker socket, adds its actual group ID to the private
-control container, serializes memory-intensive image builds, builds the worker
-and portal images, builds the SMACX prompt-owned image from the digest-pinned
-official Hermes runtime, and starts two persistent
+The script checks the game directory and Docker socket, adds the socket's
+actual group ID to the private control container, serializes memory-intensive
+image builds, seals checksum-pinned GE-Proton and DirectPlay into the worker,
+builds the portal and SMACX prompt-owned image from the digest-pinned official
+Hermes runtime, validates the game inside that worker, and starts two persistent
 services:
 
 - `control-api`: private native/Docker authority, not host-published;
@@ -100,7 +101,7 @@ portal:
 
 ```bash
 SMACX_PORTAL_PUBLISH=0.0.0.0:8080 \
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
   ./scripts/control-center-up.sh
 ```
 
@@ -119,24 +120,30 @@ offer reliable PWA installation; ordinary HTTP browsing continues to work but
 is not treated as installable. See [installable-app.md](installable-app.md) for
 the prompt fallback, manifest, icon, and no-offline-cache boundaries.
 
-## 4. Register the game and Proton
+## 4. Managed game platform
 
-Go to **Administration → Game runtime**.
+The ordinary deployment has one host input: `SMACX_GAME_SOURCE`. The startup
+script rejects a directory without `terranx.exe`; after containers start, the
+control plane validates the executable as a Windows PE file inside the worker,
+records its checksum and private mechanics index, and mounts the source
+read-only into every disposable seat.
 
-1. Enter an absolute host path for the installed game and select **Validate**.
-   The control plane rejects symlinks, missing/non-PE executables, and unsafe
-   sources, records checksums, and mounts the source read-only.
-2. Enter an absolute Proton distribution path and select **Import runtime**.
-   Proton is copied into an installation-owned volume because its runtime lock
-   and prefix behavior require a private writable copy.
+**Administration → Game platform** is deliberately read-only. It reports the
+validated legal-copy fingerprint, private knowledge-build state, sealed worker
+image, GE-Proton/DirectPlay readiness, and source path used at startup. Lobby
+creators never choose paths or runtimes, and a half-configured portal cannot be
+used to create a match.
 
-The managed worker builds its own prefix, installs the local DirectPlay
-redistributable, injects the bridge, and keeps game saves in a durable volume.
-Neither the game nor the redistributable enters the repository or project
-images.
+The worker image downloads GE-Proton10-34 from its upstream GitHub release and
+the original Microsoft February 2010 DirectX redistributable from a fixed
+Internet Archive capture. Both URLs and cryptographic digests are pinned in
+`worker/Dockerfile`. The build fails closed on a mismatch. Each managed seat
+then receives an isolated prefix, bridge, save volume, and stream; neither the
+game source nor a writable compatibility tree is copied from another seat.
 
-The Steam installation used during development is accepted directly; Steam
-does not need to be running while managed workers use their private copy.
+The proprietary game and its extracted reference material never enter the
+repository or a distributed project artifact. Steam does not need to run after
+the source directory exists.
 
 ## 5. Configure model providers and AI profiles
 
@@ -148,9 +155,9 @@ Go to **Administration → Providers & AI profiles**.
 3. Choose **Save endpoint & discover models**. Saving a provider does not yet
    create a lobby player.
 4. Select a discovered model and create a named, versioned **AI player
-   profile** with reasoning effort, optional context override, and experiment
-   notes. The profile—not the raw endpoint—is what appears in the lobby seat
-   picker.
+   profile** with reasoning effort, a generation preset or explicit sampling
+   controls, optional context override, and experiment notes. The profile—not
+   the raw endpoint—is what appears in the lobby seat picker.
 
 The form intentionally ships with a blank provider URL. An address entered on
 one installation is stored only in that installation's control data; the
@@ -165,8 +172,35 @@ configuration remains protected so match history stays meaningful.
 
 The provider may be on the Docker host, another LAN host, or a home-lab model
 server reachable from the Docker network. Multiple profiles may use one model
-with different reasoning/context settings. Old versions can be deactivated but
-are not deleted, preserving historical reports.
+with different reasoning, sampling, and context settings. Choose **New
+version** to revise a profile: existing matches keep the immutable version they
+started with. Creating the successor retires earlier active versions in that
+profile family from new-lobby pickers without deleting them, preserving every
+historical match and report. Use separate named profile families when several
+sampling/reasoning configurations should remain selectable for an A/B run.
+
+**Provider defaults** is the compatibility-first generation preset. It sends
+no sampling override and lets the endpoint choose appropriate defaults. Custom
+profiles may set temperature, top-p, presence/frequency penalties, maximum
+output tokens, and seed, plus server extensions such as top-k, min-p,
+repetition penalty, and thinking-template flags. Blank values are omitted;
+extension fields should only be enabled when that OpenAI-compatible endpoint
+supports them.
+
+Qwen3.8 models expose two convenience presets based on the project's official
+recommendations: thinking (temperature 1.0, top-p 0.95, top-k 20, min-p 0,
+presence penalty 0, repetition penalty 1) and non-thinking (temperature 0.7,
+top-p 0.8, top-k 20, min-p 0, presence penalty 1.5, repetition penalty 1).
+Qwen3.8 thinking profiles offer the documented `low`, `medium`, and `xhigh`
+reasoning levels; non-thinking uses `none`. Other models retain Hermes's wider
+reasoning menu, and Hermes/provider routing may omit an unsupported level.
+See the [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/README.md)
+for the upstream recommendations.
+
+The default gameplay context budget is 65,536 tokens even when a provider
+advertises more. This leaves predictable room for compaction during indefinite
+campaigns; durable facts, goals, relationships, and chat live in match-scoped
+MCP memory instead of depending on an ever-growing transcript.
 
 Provider keys are held in the control vault, copied into a purpose-specific
 read-only volume, and read by a tiny Hermes launcher. They are absent from
@@ -210,28 +244,24 @@ drive setup menus with clicks. Scenarios use a catalog built from the validated
 game source and their native faction restrictions.
 
 Every current match is recorded as `unranked`; attempts to create `ranked`
-matches are rejected. Personality storage is present but only `None` can be
-selected until authored cards are designed separately.
+matches are rejected. Each AI seat independently selects a faction and
+Standard, Random, None, or one of that leader's authored personality variants.
 
 ### Who should host?
 
-For the normal experience, let the first selected AI profile own the native
-host:
+Hosting is automatic. If the table contains an AI, the first AI seat owns the
+native session, including when the same profile is assigned to several seats.
+Each seat still receives a distinct runtime identity, perspective, worker,
+MCP, Hermes workspace, and memory scope. Without an AI, the first managed
+browser human hosts. This gives the supervisor reliable save, park, recovery,
+reconnect, and stream authority without asking a lobby creator to understand a
+1999 network topology.
 
-- choose **First selected AI profile (recommended)** for an AI-hosted lobby,
-  optionally adding yourself as a separate human player;
-- choose **My managed human seat (advanced)** only when a browser human should
-  control native seat zero.
-
-This gives the supervisor reliable save, park, recovery, reconnect, and stream
-authority. Human-hosted sessions remain an advanced supported path, but
-the agent-hosted managed path is simpler and more recoverable.
-
-**Save without starting** creates only a durable waiting lobby. It does not
-start a game process or advertise a native session. **Launch game now** creates
-the lobby, provisions its managed players, starts the game, and begins native
-session advertising immediately. Merely opening the New lobby page does
-nothing.
+**Create waiting lobby** writes only a durable staging room. It does not start
+a game process or advertise a native session. The staging page shows all seven
+seats and lets the owner change a seat between open, reserved human, AI, and
+stock computer. **Start match** is the single action that provisions managed
+players and begins native session advertising.
 
 Reserved public display names are case-insensitive seat reservations; they do not
 send notifications. A matching existing or future local account claims the
@@ -239,10 +269,9 @@ reserved seat. Reserving stock computer opponents is also optional: it prevents
 those seats being claimed while a lobby waits. Every seat still open at launch
 becomes a stock game-controlled faction automatically.
 
-When only one validated game installation and one Proton runtime exist, the
-portal selects and summarizes them automatically. Selection controls appear
-only when an administrator has configured alternatives such as another patch,
-mod, installation, or Proton version.
+Game-source and compatibility-runtime IDs remain recorded internally for
+recovery and audit history, but are not ordinary lobby controls. The startup
+contract owns one validated game directory and one sealed compatibility stack.
 
 ## 7. Human play modes
 
@@ -300,7 +329,7 @@ docker network create -d macvlan \
 
 SMACX_LAN_NETWORK=smacx-player-lan \
 SMACX_PLAYER_LAN_SUBNET=192.168.1.0/24 \
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
   ./scripts/control-center-up.sh
 ```
 
@@ -396,6 +425,26 @@ If every human seat is a managed browser seat and all of them remain absent for
 the idle window, the supervisor applies the same checkpoint-first park. It does
 not auto-park AI-only simulations or infer presence for direct clients.
 
+AI-only campaigns continue unattended by design. Their owner or an
+administrator can open the lobby detail page at any time to **Save
+checkpoint**, **Park for later**, or **End campaign**. Park is reversible and
+retains the verified save, seat assignments, AI conversations, semantic
+memory, and analytics. End is available only after parking, is deliberately
+irreversible, releases the large disposable game prefix plus runtime secrets,
+and keeps the campaign record, events, outcomes, metrics, chat, durable
+knowledge, and compact Hermes conversation evidence for history and reports.
+
+The Campaign Library is paginated and searchable, with active, resumable, and
+completed filters. Completed games disappear from the public lobby directory
+but remain visible to participants and administrators. This keeps years of
+campaigns navigable without loading the full archive into every browser.
+
+Portal and control-plane lifecycle states are reconciled after a service or
+host restart. A parked or completed campaign cannot silently revive a game or
+Hermes worker; terminal seat state is repaired to `worker_stopped` or
+`retired` before it is shown again. Large per-seat Wine prefixes and ephemeral
+worker secrets are released only for completed campaigns, never parked ones.
+
 ## 11. Analytics and reports
 
 The Analytics page scopes ordinary users to matches they joined; administrators
@@ -403,7 +452,7 @@ see the installation. It records:
 
 - completed/active/recoverable matches and recovery evidence;
 - per-turn duration excluding errored turns;
-- model/provider/reasoning/profile version;
+- model/provider/reasoning/generation preset/profile version;
 - Hermes input, output, cache-read, cache-write, reasoning tokens, and API
   calls; and
 - native per-seat completion, victory type, and classified win/loss outcomes.
@@ -470,7 +519,7 @@ Start them again with the normal script so Docker socket permissions and images
 are validated:
 
 ```bash
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
   ./scripts/control-center-up.sh
 ```
 

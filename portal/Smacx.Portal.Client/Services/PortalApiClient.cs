@@ -31,7 +31,25 @@ public sealed class PortalApiClient(HttpClient http)
                     csrf?.Error?.Message ?? "The portal could not prepare a secure request. Refresh and try again."), 0);
             }
         }
-        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        return await SendAsync<T>(HttpMethod.Post, path, body, cancellationToken);
+    }
+
+    public Task<(ApiResponse<T>? Payload, int StatusCode)> PutAsync<T>(
+        string path, object body, CancellationToken cancellationToken = default) =>
+        SendAsync<T>(HttpMethod.Put, path, body, cancellationToken);
+
+    private async Task<(ApiResponse<T>? Payload, int StatusCode)> SendAsync<T>(
+        HttpMethod method, string path, object body, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(csrfToken))
+        {
+            var csrf = await GetAsync<CsrfTokenResponse>("api/auth/csrf", cancellationToken);
+            csrfToken = csrf?.Data?.Token;
+            if (csrf?.Ok != true || string.IsNullOrWhiteSpace(csrfToken))
+                return (ApiResponse<T>.Failure(csrf?.Error?.Code ?? "csrf_unavailable",
+                    csrf?.Error?.Message ?? "The portal could not prepare a secure request. Refresh and try again."), 0);
+        }
+        using var request = new HttpRequestMessage(method, path)
         {
             Content = JsonContent.Create(body, options: Json),
         };

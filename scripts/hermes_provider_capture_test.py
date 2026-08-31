@@ -27,7 +27,7 @@ def main() -> int:
 
         def do_GET(self) -> None:  # noqa: N802
             payload = {"object": "list", "data": [{
-                "id": "capture-model", "object": "model", "owned_by": "contract",
+                "id": "Qwen/Qwen3.8-27B", "object": "model", "owned_by": "contract",
             }]}
             data = json.dumps(payload).encode()
             self.send_response(200)
@@ -42,7 +42,7 @@ def main() -> int:
             captured.append({"path": self.path, "request": request})
             payload = {
                 "id": "capture-response", "object": "chat.completion",
-                "created": 0, "model": "capture-model",
+                "created": 0, "model": "Qwen/Qwen3.8-27B",
                 "choices": [{
                     "index": 0,
                     "message": {"role": "assistant", "content": "capture complete"},
@@ -53,7 +53,7 @@ def main() -> int:
             if request.get("stream"):
                 events = [{
                     "id": "capture-response", "object": "chat.completion.chunk",
-                    "created": 0, "model": "capture-model",
+                    "created": 0, "model": "Qwen/Qwen3.8-27B",
                     "choices": [{
                         "index": 0,
                         "delta": {"role": "assistant", "content": "capture complete"},
@@ -61,7 +61,7 @@ def main() -> int:
                     }],
                 }, {
                     "id": "capture-response", "object": "chat.completion.chunk",
-                    "created": 0, "model": "capture-model",
+                    "created": 0, "model": "Qwen/Qwen3.8-27B",
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
                 }]
@@ -83,61 +83,92 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="smacx-hermes-capture-") as temporary:
             root = Path(temporary)
-            prompt = compose_player_system_prompt(
-                agent_name="Provider Capture Player", agent_id="agent-provider-capture",
-                match_id="match-provider-capture", match_name="Provider capture",
-                perspective_id="perspective-provider-capture", ruleset_id="smacx",
-                seat_index=0,
-            )
-            profile = configure_profile(
-                hermes_root=root, runtime_hermes_root=Path("/opt/data"),
-                agent_id="agent-provider-capture", agent_name="Provider Capture Player",
-                match_id="match-provider-capture", mcp_url="http://127.0.0.1:9/mcp",
-                provider_base_url=f"http://127.0.0.1:{server.server_port}/v1",
-                model_id="capture-model", profile_id="smacx-provider-capture",
-                reasoning_effort="none", system_prompt=prompt,
-            )
-            config_path = root / "profiles" / profile["profile_id"] / "config.yaml"
-            config = json.loads(config_path.read_text(encoding="utf-8"))
-            config["platform_toolsets"]["cli"] = []
-            config["mcp_servers"] = {}
-            config["display"]["streaming"] = False
-            config_path.write_text(json.dumps(config), encoding="utf-8")
-            prompt_path = f"/opt/data/profiles/{profile['profile_id']}/SYSTEM.md"
-            command = [
-                "docker", "run", "--rm", "--network", "host",
-                "--user", f"{os.getuid()}:{os.getgid()}",
-                "-v", f"{root}:/opt/data",
-                "-e", "HOME=/opt/data", "-e", "HERMES_HOME=/opt/data",
-                "-e", "SMACX_STRICT_SYSTEM_PROMPT=1",
-                "-e", f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
-                "-e", f"SMACX_SYSTEM_PROMPT_SHA256={prompt_sha256(prompt)}",
-                "--entrypoint", "/opt/hermes/.venv/bin/hermes", IMAGE,
-                "-p", profile["profile_id"], "chat", "--continue", "match-provider-capture",
-                "--create-if-missing", "--in", profile["workspace"], "--reasoning", "none",
-                "--max-turns", "1", "--query", "Start signal only.", "--quiet",
-            ]
-            completed = subprocess.run(
-                command, text=True, capture_output=True, timeout=90, check=False,
-            )
-            if completed.returncode != 0:
-                raise AssertionError(
-                    f"derived Hermes capture failed ({completed.returncode}):\n"
-                    f"stdout={completed.stdout}\nstderr={completed.stderr}"
+            for reasoning_effort in ("low", "medium", "high"):
+                suffix = reasoning_effort
+                agent_id = f"agent-provider-capture-{suffix}"
+                match_id = f"match-provider-capture-{suffix}"
+                profile_id = f"smacx-provider-capture-{suffix}"
+                prompt = compose_player_system_prompt(
+                    agent_name="Provider Capture Player", agent_id=agent_id,
+                    match_id=match_id, match_name="Provider capture",
+                    perspective_id=f"perspective-provider-capture-{suffix}", ruleset_id="smacx",
+                    seat_index=0,
                 )
-            requests = [item["request"] for item in captured
-                        if item["path"].endswith("/chat/completions")]
-            if len(requests) != 1:
-                raise AssertionError(f"expected one provider request, captured={captured}")
-            messages = requests[0].get("messages")
-            systems = [item.get("content") for item in messages or []
-                       if item.get("role") == "system"]
-            if systems != [prompt]:
-                raise AssertionError(f"provider system message was not exact: {systems}")
-            serialized = json.dumps(requests[0])
-            for forbidden in ("Hermes Agent", "FORBIDDEN UPSTREAM ADDITION", "AGENTS.md"):
-                if forbidden in serialized:
-                    raise AssertionError(f"upstream prompt material reached provider: {forbidden}")
+                profile = configure_profile(
+                    hermes_root=root, runtime_hermes_root=Path("/opt/data"),
+                    agent_id=agent_id, agent_name="Provider Capture Player",
+                    match_id=match_id, mcp_url="http://127.0.0.1:9/mcp",
+                    provider_base_url=f"http://127.0.0.1:{server.server_port}/v1",
+                    model_id="Qwen/Qwen3.8-27B", profile_id=profile_id,
+                    reasoning_effort=reasoning_effort, system_prompt=prompt,
+                    generation_settings={"preset": "qwen38-thinking"},
+                )
+                config_path = root / "profiles" / profile["profile_id"] / "config.yaml"
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                config["platform_toolsets"]["cli"] = []
+                config["mcp_servers"] = {}
+                config["display"]["streaming"] = False
+                config_path.write_text(json.dumps(config), encoding="utf-8")
+                prompt_path = f"/opt/data/profiles/{profile['profile_id']}/SYSTEM.md"
+                before = len(captured)
+                command = [
+                    "docker", "run", "--rm", "--network", "host",
+                    "--user", f"{os.getuid()}:{os.getgid()}",
+                    "-v", f"{root}:/opt/data",
+                    "-e", "HOME=/opt/data", "-e", "HERMES_HOME=/opt/data",
+                    "-e", "SMACX_STRICT_SYSTEM_PROMPT=1",
+                    "-e", f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
+                    "-e", f"SMACX_SYSTEM_PROMPT_SHA256={prompt_sha256(prompt)}",
+                    "--entrypoint", "/opt/hermes/.venv/bin/hermes", IMAGE,
+                    "-p", profile["profile_id"], "chat", "--continue", match_id,
+                    "--create-if-missing", "--in", profile["workspace"],
+                    "--reasoning", reasoning_effort,
+                    "--max-turns", "1", "--query", "Start signal only.", "--quiet",
+                ]
+                completed = subprocess.run(
+                    command, text=True, capture_output=True, timeout=90, check=False,
+                )
+                if completed.returncode != 0:
+                    raise AssertionError(
+                        f"derived Hermes capture failed ({completed.returncode}):\n"
+                        f"stdout={completed.stdout}\nstderr={completed.stderr}"
+                    )
+                requests = [item["request"] for item in captured[before:]
+                            if item["path"].endswith("/chat/completions")]
+                if len(requests) != 1:
+                    raise AssertionError(f"expected one provider request, captured={captured[before:]}")
+                request = requests[0]
+                messages = request.get("messages")
+                systems = [item.get("content") for item in messages or []
+                           if item.get("role") == "system"]
+                if systems != [prompt]:
+                    raise AssertionError(f"provider system message was not exact: {systems}")
+                serialized = json.dumps(request)
+                for forbidden in ("Hermes Agent", "FORBIDDEN UPSTREAM ADDITION", "AGENTS.md"):
+                    if forbidden in serialized:
+                        raise AssertionError(f"upstream prompt material reached provider: {forbidden}")
+                expected_generation = {
+                    "temperature": 1.0, "top_p": 0.95, "top_k": 20,
+                    "min_p": 0.0, "presence_penalty": 0.0,
+                    "repetition_penalty": 1.0,
+                    "chat_template_kwargs": {
+                        "enable_thinking": True, "preserve_thinking": True,
+                    },
+                }
+                for key, expected in expected_generation.items():
+                    if request.get(key) != expected:
+                        raise AssertionError(
+                            f"generation setting {key} did not reach provider: {request}"
+                        )
+                reasoning = request.get("reasoning_effort")
+                nested_reasoning = request.get("reasoning")
+                if reasoning != reasoning_effort and not (
+                    isinstance(nested_reasoning, dict) and
+                    nested_reasoning.get("effort") == reasoning_effort
+                ):
+                    raise AssertionError(
+                        f"{reasoning_effort} reasoning did not reach provider: {request}"
+                    )
     finally:
         server.shutdown()
         server.server_close()
@@ -149,6 +180,8 @@ def main() -> int:
             "provider_request_captured": True,
             "exact_single_system_message": True,
             "upstream_scaffold_absent": True,
+            "generation_settings_reached_provider": True,
+            "low_medium_high_reasoning_reached_provider": True,
         },
     }, separators=(",", ":")))
     return 0

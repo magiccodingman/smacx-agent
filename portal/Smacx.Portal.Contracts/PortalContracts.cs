@@ -87,6 +87,14 @@ public sealed record CreateLobbyRequest(
 
 public sealed record JoinLobbyRequest(int SeatIndex, string JoinMode = "browser");
 
+public sealed record UpdateLobbySeatRequest(
+    string ControllerKind,
+    string? AgentId = null,
+    string? PlayerHandle = null,
+    string JoinMode = "browser",
+    string FactionId = "random",
+    string PersonalityId = "standard");
+
 public sealed record MatchLifecycleRequest(string Action, string? Slot = null);
 
 public sealed record ControllerLeaseRequest(string PlayInstanceId);
@@ -279,6 +287,9 @@ public sealed record MatchHistoryItem(
     string MatchId, string DisplayName, string Status, string Mode,
     int? CurrentTurn, int? CurrentYear, string RankingMode,
     bool CanResume, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record MatchHistoryPage(
+    IReadOnlyList<MatchHistoryItem> Items, int Total, int FilteredTotal, int Active,
+    int Recoverable, int Completed, int Offset, int Limit);
 
 public sealed record AnalyticsSummary(
     int CompletedMatches, int ActiveMatches, int RecoverableMatches,
@@ -289,6 +300,7 @@ public sealed record AnalyticsSummary(
 
 public sealed record AnalyticsProfileRow(
     string ProfileName, string Provider, string Model, string ReasoningEffort,
+    string GenerationPreset,
     int Matches, int ClassifiedOutcomes, int Wins, double? WinRate, double? MedianTurnSeconds,
     long PromptTokens, long CompletionTokens, long CacheReadTokens,
     long CacheWriteTokens, long ReasoningTokens, long ApiCalls);
@@ -314,12 +326,29 @@ public sealed record ProviderModelSelectionRequest(string ModelId, int? ContextL
 public sealed record AiProfileVersionRequest(
     string DisplayName, string ProviderId, string ModelId,
     string ReasoningEffort = "low", int? ContextLength = null,
-    string? Notes = null, string? StableProfileId = null);
+    string? Notes = null, string? StableProfileId = null,
+    ModelGenerationSettings? Generation = null);
+
+public sealed record ModelGenerationSettings(
+    string Preset = "provider-default",
+    double? Temperature = null,
+    double? TopP = null,
+    int? TopK = null,
+    double? MinP = null,
+    double? PresencePenalty = null,
+    double? FrequencyPenalty = null,
+    double? RepetitionPenalty = null,
+    int? MaxOutputTokens = null,
+    int? Seed = null,
+    bool? EnableThinking = null,
+    bool? PreserveThinking = null);
+
 public sealed record AiProfileVersion(
     string ProfileVersionId, string StableProfileId, int Version,
     string DisplayName, string AgentId, string ProviderId, string ModelId,
     string ReasoningEffort, int? ContextLength, string? Notes,
-    bool Active, string PersonalityCardId, DateTimeOffset CreatedAt);
+    bool Active, string PersonalityCardId, DateTimeOffset CreatedAt,
+    ModelGenerationSettings Generation);
 
 public sealed record GameSourceRequest(string DisplayName, string HostPath);
 public sealed record RuntimeImportRequest(string DisplayName, string SourceHostPath);

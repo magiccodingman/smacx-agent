@@ -631,6 +631,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     reasoning_effort=str(body.get("reasoning_effort", "low")),
                     model_id=(str(body["model_id"]) if body.get("model_id") else None),
                     context_length=body.get("context_length"),
+                    generation_settings=(body.get("generation_settings")
+                                         if isinstance(body.get("generation_settings"), dict)
+                                         else None),
                 )
                 self.server.control.audit(
                     auth["admin_id"], "harness.prepare_hermes", "match", match_id,
@@ -666,6 +669,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     reasoning_effort=str(body.get("reasoning_effort", "low")),
                     model_id=(str(body["model_id"]) if body.get("model_id") else None),
                     context_length=body.get("context_length"),
+                    generation_settings=(body.get("generation_settings")
+                                         if isinstance(body.get("generation_settings"), dict)
+                                         else None),
                 )
                 run = self._harness_manager().create_run(
                     descriptor,
@@ -1174,6 +1180,20 @@ def main(argv: list[str] | None = None) -> int:
             directx_redist_host_path=os.environ.get("SMACX_DIRECTX_REDIST_HOST") or None,
             view_publish_ip=os.environ.get("SMACX_VIEW_PUBLISH_IP", "127.0.0.1"),
         )
+        # Ordinary operation has one compatibility stack owned by Docker.  A
+        # user supplies only their legal Alien Crossfire directory; startup
+        # validates it and records both assets idempotently before serving UI.
+        worker_manager.ensure_bundled_runtime()
+        configured_game_source = os.environ.get("SMACX_GAME_SOURCE")
+        if configured_game_source:
+            known_source = next((
+                item for item in control.list_game_sources()
+                if item.get("host_path") == configured_game_source
+            ), None)
+            if known_source is None:
+                worker_manager.validate_game_source(configured_game_source)
+        elif os.environ.get("SMACX_REQUIRE_GAME_SOURCE", "1") == "1":
+            raise SystemExit("SMACX_GAME_SOURCE must point to a directory containing terranx.exe")
         harness_manager = HarnessManager(
             control, worker_manager.docker, worker_manager,
             image_ref=os.environ.get("SMACX_HERMES_IMAGE") or HERMES_IMAGE,

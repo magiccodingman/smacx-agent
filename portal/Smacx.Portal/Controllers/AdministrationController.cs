@@ -101,9 +101,19 @@ public sealed class AdministrationController(
         if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 160 ||
             string.IsNullOrWhiteSpace(request.ProviderId) || string.IsNullOrWhiteSpace(request.ModelId) ||
             request.ReasoningEffort is not ("none" or "minimal" or "low" or "medium" or "high" or "xhigh" or "max" or "ultra") ||
-            request.ContextLength is not null and (< 1024 or > 16_777_216))
+            request.ContextLength is not null and (< 1024 or > 65_536))
             return BadRequest(ApiResponse<AiProfileVersion>.Failure(
-                "invalid_ai_profile", "Check the profile name, provider, model, reasoning, and context limit."));
+                "invalid_ai_profile", "Check the profile name, provider, model, reasoning, and gameplay context budget (1,024–65,536)."));
+        ModelGenerationSettings generation;
+        try
+        {
+            generation = NormalizeGeneration(request.Generation, request.ModelId, request.ReasoningEffort);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+                "invalid_generation_settings", exception.Message));
+        }
         var stableId = request.StableProfileId ?? $"profile-{Guid.NewGuid():N}";
         var latest = await database.PortalAiProfileVersions
             .Where(item => item.StableProfileId == stableId)
@@ -137,9 +147,17 @@ public sealed class AdministrationController(
             ModelId = request.ModelId.Trim(),
             ReasoningEffort = request.ReasoningEffort,
             ContextLength = request.ContextLength,
+            GenerationSettingsJson = JsonSerializer.Serialize(generation),
             Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
             PersonalityCardId = "none",
         };
+        if (latest is not null)
+        {
+            var superseded = await database.PortalAiProfileVersions
+                .Where(item => item.StableProfileId == stableId && item.Active)
+                .ToArrayAsync(HttpContext.RequestAborted);
+            foreach (var item in superseded) item.Active = false;
+        }
         database.PortalAiProfileVersions.Add(entity);
         await database.SaveChangesAsync(HttpContext.RequestAborted);
         return CreatedAtAction(nameof(Profiles), ApiResponse<AiProfileVersion>.Success(ToContract(entity)));
@@ -244,5 +262,62 @@ public sealed class AdministrationController(
     private static AiProfileVersion ToContract(PortalAiProfileVersion item) => new(
         item.ProfileVersionId, item.StableProfileId, item.Version, item.DisplayName,
         item.AgentId, item.ProviderId, item.ModelId, item.ReasoningEffort,
-        item.ContextLength, item.Notes, item.Active, item.PersonalityCardId, item.CreatedAt);
+        item.ContextLength, item.Notes, item.Active, item.PersonalityCardId, item.CreatedAt,
+        ParseGeneration(item.GenerationSettingsJson));
+
+    private static ModelGenerationSettings NormalizeGeneration(
+        ModelGenerationSettings? requested, string modelId, string reasoningEffort)
+    {
+        var generation = requested ?? new ModelGenerationSettings();
+        generation = generation.Preset switch
+        {
+            "provider-default" => new ModelGenerationSettings(),
+            "qwen38-thinking" => new ModelGenerationSettings(
+                "qwen38-thinking", 1.0, 0.95, 20, 0.0, 0.0, null, 1.0,
+                generation.MaxOutputTokens, generation.Seed, true, true),
+            "qwen38-instruct" => new ModelGenerationSettings(
+                "qwen38-instruct", 0.7, 0.80, 20, 0.0, 1.5, null, 1.0,
+                generation.MaxOutputTokens, generation.Seed, false, null),
+            "custom" => generation,
+            _ => throw new ArgumentException(
+                "Choose Provider defaults, Qwen3.8 thinking, Qwen3.8 non-thinking, or Custom."),
+        };
+        if (generation.Preset.StartsWith("qwen38-", StringComparison.Ordinal) &&
+            !modelId.Contains("qwen3.8", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("The Qwen3.8 presets can only be used with a Qwen3.8 model.");
+        if (generation.Preset == "qwen38-thinking" &&
+            reasoningEffort is not ("low" or "medium" or "xhigh"))
+            throw new ArgumentException("Qwen3.8 thinking officially supports low, medium, or xhigh reasoning.");
+        if (generation.Preset == "qwen38-instruct" && reasoningEffort != "none")
+            throw new ArgumentException("Qwen3.8 non-thinking requires reasoning effort None.");
+        Range(generation.Temperature, 0, 2, "Temperature");
+        Range(generation.TopP, 0, 1, "Top P");
+        Range(generation.MinP, 0, 1, "Min P");
+        Range(generation.PresencePenalty, -2, 2, "Presence penalty");
+        Range(generation.FrequencyPenalty, -2, 2, "Frequency penalty");
+        Range(generation.RepetitionPenalty, 0.01, 2, "Repetition penalty");
+        if (generation.TopK is < 0 or > 100_000)
+            throw new ArgumentException("Top K must be between 0 and 100,000.");
+        if (generation.MaxOutputTokens is < 1 or > 262_144)
+            throw new ArgumentException("Maximum output tokens must be between 1 and 262,144.");
+        return generation;
+    }
+
+    private static void Range(double? value, double minimum, double maximum, string label)
+    {
+        if (value is not null && (!double.IsFinite(value.Value) || value < minimum || value > maximum))
+            throw new ArgumentException($"{label} must be between {minimum} and {maximum}.");
+    }
+
+    private static ModelGenerationSettings ParseGeneration(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<ModelGenerationSettings>(json) ?? new();
+        }
+        catch (JsonException)
+        {
+            return new();
+        }
+    }
 }

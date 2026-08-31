@@ -8,7 +8,7 @@ public sealed class PortalDatabaseInitializer(
     IServiceScopeFactory scopeFactory,
     ILogger<PortalDatabaseInitializer> logger)
 {
-    private const string CanonicalSchemaId = "smacx.portal.canonical.2026-08-faction-personality";
+    private const string CanonicalSchemaId = "smacx.portal.canonical.2026-08-managed-platform";
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -73,6 +73,22 @@ public sealed class PortalDatabaseInitializer(
         if (requiredUserColumns.Count > 0)
             throw new InvalidOperationException(
                 "The unreleased portal database predates public display-name identity. " +
+                "Back up any development data, remove portal.sqlite3, and restart.");
+
+        var requiredProfileColumns = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "GenerationSettingsJson",
+        };
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA table_info('PortalAiProfileVersions')";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                requiredProfileColumns.Remove(reader.GetString(1));
+        }
+        if (requiredProfileColumns.Count > 0)
+            throw new InvalidOperationException(
+                "The unreleased portal database predates versioned model generation settings. " +
                 "Back up any development data, remove portal.sqlite3, and restart.");
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();

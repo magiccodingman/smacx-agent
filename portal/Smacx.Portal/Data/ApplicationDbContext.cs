@@ -190,6 +190,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(item => item.ProviderId).HasMaxLength(96);
             entity.Property(item => item.ModelId).HasMaxLength(512);
             entity.Property(item => item.ReasoningEffort).HasMaxLength(16);
+            entity.Property(item => item.GenerationSettingsJson).HasMaxLength(4096);
             entity.Property(item => item.Notes).HasMaxLength(2000);
             entity.Property(item => item.PersonalityCardId).HasMaxLength(96);
             entity.Property(item => item.CreatedAt).HasConversion<long>();
@@ -466,6 +467,7 @@ public sealed class PortalAiProfileVersion
     public string ModelId { get; set; } = string.Empty;
     public string ReasoningEffort { get; set; } = "low";
     public int? ContextLength { get; set; }
+    public string GenerationSettingsJson { get; set; } = "{}";
     public string? Notes { get; set; }
     public bool Active { get; set; } = true;
     public string PersonalityCardId { get; set; } = "none";

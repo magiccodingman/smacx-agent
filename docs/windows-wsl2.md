@@ -17,26 +17,22 @@ Point source validation at a legal game directory. A Windows Steam/GOG path is
 visible under `/mnt/c`, but copying the installed directory into WSL's ext4
 filesystem gives more predictable permissions and I/O. The platform mounts
 the source read-only and stages a private worker copy; it never ships the game.
-Supply Microsoft's DirectX June 2010 redistributable separately for each clean
-worker prefix.
-
 Run the preflight before setup:
 
 ```bash
 python3 scripts/platform_preflight.py --require-wsl2 \
-  --game-path /mnt/c/Program\ Files\ \(x86\)/Steam/steamapps/common/Alpha\ Centauri \
-  --directx-redist /mnt/c/Users/YOU/Downloads/directx_Jun2010_redist.exe
+  --game-path /mnt/c/Program\ Files\ \(x86\)/Steam/steamapps/common/Alpha\ Centauri
 ```
 
 It checks WSL2, a Linux Docker engine, Compose v2, x86-64, `/dev/net/tun`, the
-legal executable, and an actual read-only Docker bind of that path. It changes
-no game files.
+legal executable, and an actual read-only Docker bind of that path. GE-Proton
+and the verified DirectPlay redistributable are built into the worker image. It
+changes no game files.
 
 Then run `scripts/control-center-up.sh` for solo or same-host AI games. Visit
 `http://localhost:8080`, use the one-time token printed by the bootstrap
-instructions, register the legal source and imported Proton runtime, configure
-the model endpoint, create agents, and leave the Control Center running across
-games.
+instructions, configure an optional model endpoint, create AI profiles if
+wanted, and leave the Control Center running across games.
 
 ## Human and remote multiplayer
 

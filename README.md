@@ -118,6 +118,11 @@ accounts, lobby history, active and parked matches, player associations, saves,
 chat, AI profiles, and analytics in one place. Run separate matches for friends
 or experiments without repeatedly rebuilding or taking the platform down.
 
+Its Campaign Library stays useful as that collection grows: search and filter
+active, resumable, and completed games, park an AI simulation for later, or end
+it permanently while retaining the political history, outcomes, telemetry,
+and model configuration that made the campaign unique.
+
 If a browser refreshes, reconnect it. A second tab opens safely as a viewer;
 it must explicitly take control, and doing so immediately revokes the old
 tab's input stream. Browser back/close receives a leave warning, while the
@@ -238,7 +243,8 @@ opt into anonymous LAN spectating, with read-only enforcement at the stream
 transport rather than a decorative disabled button.
 
 The same Control Center makes SMACX Agent useful as an AI game laboratory.
-Keep multiple named versions of a model profile, vary reasoning or context,
+Keep immutable named versions of a model profile, vary reasoning, official or
+custom sampling, output limits, and context,
 run unattended matches, and compare:
 
 - match outcomes and victory types;
@@ -265,21 +271,26 @@ deal? Was it strong, merely expensive, or—most importantly—fun to play with?
 | **Watch** | Admin seat switching, AI observation, opt-in anonymous spectator deck, worker-enforced read-only streams |
 | **Continue** | Connected-player votes, stable-boundary checkpoints, safe temporary bot delegation/reclaim, crash reconciliation, faction restoration |
 | **Remember** | Chat history and scoped AI facts, beliefs, relationships, promises, goals, and summaries |
-| **Experiment** | Versioned model profiles, telemetry, outcomes, analytics, CSV, and constrained SQL reports |
+| **Experiment** | Immutable model profiles with reasoning and sampling controls, telemetry, outcomes, analytics, CSV, and constrained SQL reports |
 
 ## Bring your copy and open the table
 
 The managed host currently targets Linux with Docker Engine and Compose. You
 also need:
 
-- an existing Alien Crossfire directory containing `terranx.exe`;
-- a Proton distribution directory; and
-- the February 2010 DirectX redistributable used to prepare native DirectPlay.
+- an existing Alien Crossfire directory containing `terranx.exe`; and
+- Docker Engine with Compose v2.
+
+The worker image fetches checksum-pinned, open-source GE-Proton and the
+archived original Microsoft DirectX redistributable during its reproducible
+build. They are sealed into the container image; Steam, Wine, Proton, prefixes,
+and DirectPlay never need to be configured through the website or installed
+for each player.
 
 Start the persistent platform:
 
 ```bash
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
   ./scripts/control-center-up.sh
 ```
 
@@ -289,13 +300,15 @@ Read the one-time administrator token:
 docker compose exec -T control-center dotnet Smacx.Portal.dll bootstrap-token
 ```
 
-Open <http://127.0.0.1:8080>, finish the one-time administrator setup, register
-the game and Proton locations, and create a lobby. Publish the portal to a
-trusted household LAN when other devices should join:
+Open <http://127.0.0.1:8080>, finish the one-time administrator setup, and
+create a lobby. The configured game source is validated automatically at
+startup and the portal shows the complete managed stack as one readiness
+check. Publish the portal to a trusted household LAN when other devices should
+join:
 
 ```bash
 SMACX_PORTAL_PUBLISH=0.0.0.0:8080 \
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
   ./scripts/control-center-up.sh
 ```
 

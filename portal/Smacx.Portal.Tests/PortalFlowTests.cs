@@ -119,6 +119,8 @@ public sealed class PortalFlowTests : IAsyncLifetime
                 ProfileVersionId = "profile-version-test", StableProfileId = "profile-test",
                 Version = 1, DisplayName = "Test Qwen", AgentId = "agent-test",
                 ProviderId = "provider-test", ModelId = "model-test", ReasoningEffort = "low",
+                GenerationSettingsJson = System.Text.Json.JsonSerializer.Serialize(
+                    new ModelGenerationSettings("custom", Temperature: 0.8, TopP: 0.9)),
             });
             var agentSeat = database.PortalLobbySeats.Single(item =>
                 item.MatchId == matchId && item.SeatIndex == 2);
@@ -153,6 +155,26 @@ public sealed class PortalFlowTests : IAsyncLifetime
             "api/admin/providers/provider-test/delete", new { }, csrf.Token);
         Assert.Equal(HttpStatusCode.Conflict, protectedProvider.Response.StatusCode);
         Assert.Equal("provider_in_use_by_ai_profile", protectedProvider.Payload.Error?.Code);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var editedSeat = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/3",
+            new UpdateLobbySeatRequest("agent", "agent-test", null, "browser", "random", "standard"),
+            csrf.Token);
+        Assert.Equal(HttpStatusCode.OK, editedSeat.Response.StatusCode);
+        Assert.Equal("agent-test", editedSeat.Payload.Data?.Seats[3].AgentId);
+        var repeatedProfile = create with
+        {
+            DisplayName = "Repeated profile seats",
+            HostController = "agent",
+            OwnerPlays = false,
+            InvitedHumanHandles = [],
+            AgentIds = ["agent-test", "agent-test"],
+            AgentSeats = [new("agent-test"), new("agent-test")],
+        };
+        var repeatedCreated = await PostAsync<LobbyDetails>("api/lobbies", repeatedProfile, csrf.Token);
+        Assert.Equal(HttpStatusCode.Created, repeatedCreated.Response.StatusCode);
+        Assert.Equal(2, repeatedCreated.Payload.Data?.Seats.Count(item => item.AgentId == "agent-test"));
         var withJoin = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Equal("192.0.2.25", withJoin.NativeJoin?.HostAddress);
         Assert.Equal("GaianGuest", withJoin.NativeJoin?.Players.Single().PlayerName);
@@ -169,11 +191,17 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal(1, profileAnalytics.ClassifiedOutcomes);
         Assert.Equal(1, profileAnalytics.Wins);
         Assert.Equal(1, profileAnalytics.WinRate);
+        Assert.Equal("custom", profileAnalytics.GenerationPreset);
+
+        var historyPage = await GetDataAsync<MatchHistoryPage>(
+            "api/reports/history/page?status=active&query=Planetfall&limit=1");
+        Assert.Equal(1, historyPage.FilteredTotal);
+        Assert.Single(historyPage.Items);
+        Assert.Equal(matchId, historyPage.Items[0].MatchId);
 
         var publicLobbies = await GetDataAsync<IReadOnlyList<PublicLobbySummary>>("api/lobbies");
-        Assert.Single(publicLobbies);
-        Assert.Equal("Test Planetfall", publicLobbies[0].DisplayName);
-        Assert.Equal(3, publicLobbies[0].SeatCount);
+        var publicTestLobby = Assert.Single(publicLobbies, item => item.DisplayName == "Test Planetfall");
+        Assert.Equal(4, publicTestLobby.SeatCount);
 
         var ranked = create with { DisplayName = "Ranked", RankingMode = "ranked" };
         var rejected = await PostAsync<LobbyDetails>("api/lobbies", ranked, csrf.Token);
@@ -202,6 +230,13 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Contains("PortalLobbySeats", tables);
         Assert.DoesNotContain("__EFMigrationsHistory", tables);
 
+        await using var columnsCommand = connection.CreateCommand();
+        columnsCommand.CommandText = "PRAGMA table_info('PortalAiProfileVersions')";
+        var columns = new List<string>();
+        await using var columnsReader = await columnsCommand.ExecuteReaderAsync();
+        while (await columnsReader.ReadAsync()) columns.Add(columnsReader.GetString(1));
+        Assert.Contains("GenerationSettingsJson", columns);
+
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var claimed = await PostAsync<PortalSession>("api/auth/register",
             new RegistrationRequest("guestone", "GuestOne", "GuestA1b", "GuestA1b"),
@@ -225,6 +260,20 @@ public sealed class PortalFlowTests : IAsyncLifetime
         string path, object body, string csrfToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(body),
+        };
+        request.Headers.Add("X-CSRF-TOKEN", csrfToken);
+        var response = await client!.SendAsync(request);
+        var payload = await response.Content.ReadFromJsonAsync<ApiResponse<T>>();
+        Assert.NotNull(payload);
+        return (response, payload);
+    }
+
+    private async Task<(HttpResponseMessage Response, ApiResponse<T> Payload)> PutAsync<T>(
+        string path, object body, string csrfToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, path)
         {
             Content = JsonContent.Create(body),
         };

@@ -145,8 +145,34 @@ class WorkerManager:
             "mcp_image": self.mcp_image,
             "network_name": self.network_name,
             "managed_mcp_configured": bool(self.control_data_volume),
-            "directplay_source_configured": bool(self.directx_redist_host_path),
+            "directplay_source_configured": True,
         }
+
+    def ensure_bundled_runtime(self) -> dict[str, Any]:
+        """Register the compatibility stack already sealed in the worker image.
+
+        Runtime selection is an implementation detail of this installation,
+        not a lobby setting.  The stable record preserves fingerprints in
+        match history while allowing an image rebuild to refresh the digest.
+        """
+        image = self.docker.inspect_image(self.worker_image)
+        image_id = str(image.get("Id") or "")
+        fingerprint = image_id.removeprefix("sha256:")
+        if not re.fullmatch(r"[a-f0-9]{64}", fingerprint):
+            raise WorkerManagerError("worker_image_fingerprint_unavailable")
+        return self.control.register_runtime(
+            "Docker-managed GE-Proton + DirectPlay", "image", self.worker_image,
+            runtime_id="runtime-bundled-proton", runtime_kind="proton",
+            content_fingerprint=fingerprint, status="ready",
+            metadata={
+                "managed": True,
+                "bundled_in_worker_image": True,
+                "directplay_bundled": True,
+                "proton_source": "digest-pinned-upstream-release",
+                "proton_distribution": "GE-Proton10-34",
+                "operator_selectable": False,
+            },
+        )
 
     def _native_request(self, instance_id: str, operation: str, *,
                         timeout: float = 8.0, **arguments: Any) -> dict[str, Any]:
@@ -765,7 +791,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         source = self.control.get_game_source(game_source_id)
         runtime = self.control.get_runtime(runtime_id)
         if source["status"] != "validated" or runtime["status"] != "ready" \
-                or runtime["storage_kind"] != "docker-volume":
+                or runtime["storage_kind"] not in {"docker-volume", "image"}:
             raise WorkerManagerError("worker_assets_not_ready")
         normalized_autostart = self._autostart(autostart)
         scenario_id = normalized_autostart.get("scenario_id")
@@ -775,8 +801,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     item.get("scenario_id") for item in catalog.get("scenarios", [])
                     if isinstance(item, Mapping)}:
                 raise InvalidRecord("unknown_worker_scenario_id")
-        runtime_volume = self.docker.inspect_volume(runtime["storage_ref"])
-        self.docker.require_owned(runtime_volume, self.installation_id, purpose="proton-runtime")
+        if runtime["storage_kind"] == "docker-volume":
+            runtime_volume = self.docker.inspect_volume(runtime["storage_ref"])
+            self.docker.require_owned(runtime_volume, self.installation_id, purpose="proton-runtime")
+        elif runtime["storage_ref"] != self.worker_image:
+            raise WorkerManagerError("worker_runtime_image_mismatch")
         self.docker.inspect_image(self.worker_image)
         instance_id = _new_id("instance")
         container_name = self._name("worker", instance_id)
@@ -972,6 +1001,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise WorkerManagerError("invalid_native_resolution_profile")
         view_width, view_height = NATIVE_RESOLUTION_PROFILES[resolution_profile]
         view_bitrate = stream_bitrate_kbps(view_width, view_height)
+        runtime = self.control.get_runtime(spec["runtime_id"])
         values = {
             "SMACX_AGENT_TOKEN_FILE": "/run/secrets/bridge-token",
             "SMACX_AGENT_MATCH_ID": spec["match_id"],
@@ -979,10 +1009,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "SMACX_AGENT_ID": spec["agent_id"],
             "SMACX_PERSPECTIVE_ID": spec["perspective_id"],
             "SMACX_INSTANCE_ID": spec["instance_id"],
-            "SMACX_PROTON_BIN": "/proton/proton",
-            "SMACX_PROTON_DIST_LOCK": "/tmp/smacx-proton-dist.lock",
             "SMACX_WINEARCH": "win64",
-            "SMACX_REQUIRE_DIRECTPLAY": "1" if self.directx_redist_host_path else "0",
+            "SMACX_REQUIRE_DIRECTPLAY": "1",
             "SMACX_VIEW_ENABLE": "1" if spec["network"].get("view_enabled") else "0",
             "SMACX_VIEW_PASSWORD_FILE": "/run/secrets/view-password",
             "SMACX_VIEW_ONLY_PASSWORD_FILE": "/run/secrets/view-only-password",
@@ -1004,6 +1032,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "SMACX_AGENT_TUTORIAL_UI": "1" if autostart["tutorial_ui"] else "0",
             "SMACX_BRIDGE_START_TIMEOUT": "180",
         }
+        if runtime["runtime_kind"] == "proton":
+            values["SMACX_PROTON_BIN"] = (
+                "/proton/proton"
+                if runtime["storage_kind"] == "docker-volume"
+                else "/opt/proton/proton"
+            )
+            values["SMACX_PROTON_DIST_LOCK"] = "/tmp/smacx-proton-dist.lock"
         if isinstance(autostart.get("startup_save"), str):
             values["SMACX_AGENT_STARTUP_SAVE"] = autostart["startup_save"]
         if isinstance(autostart.get("scenario_id"), str):
@@ -1108,7 +1143,6 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         for volume_name, purpose in (
             (spec["data_volume"], "worker-data"),
             (spec["network"]["secret_volume"], "worker-secret"),
-            (runtime["storage_ref"], "proton-runtime"),
         ):
             resource = self.docker.inspect_volume(volume_name)
             self.docker.require_owned(resource, self.installation_id, purpose=purpose)
@@ -1119,12 +1153,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         mounts = [
             {"Type": "bind", "Source": source["host_path"], "Target": "/game-source",
              "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"}},
-            {"Type": "volume", "Source": runtime["storage_ref"], "Target": "/proton",
-             "ReadOnly": True},
             {"Type": "volume", "Source": spec["data_volume"], "Target": "/var/lib/smacx"},
             {"Type": "volume", "Source": spec["network"]["secret_volume"],
              "Target": "/run/secrets", "ReadOnly": True},
         ]
+        if runtime["storage_kind"] == "docker-volume":
+            resource = self.docker.inspect_volume(runtime["storage_ref"])
+            self.docker.require_owned(resource, self.installation_id, purpose="proton-runtime")
+            mounts.insert(1, {
+                "Type": "volume", "Source": runtime["storage_ref"], "Target": "/proton",
+                "ReadOnly": True,
+            })
+        elif runtime["storage_kind"] != "image" or runtime["storage_ref"] != spec["image_ref"]:
+            raise WorkerManagerError("worker_runtime_image_mismatch")
         if self.directx_redist_host_path:
             mounts.append({
                 "Type": "bind", "Source": self.directx_redist_host_path,
@@ -2870,7 +2911,62 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         completed = self.control.update_match_lifecycle(
             match_id, "completed", metadata={"ended_by_managed_vote": True},
         )
-        return {"ok": True, "match": completed, "already_completed": False}
+        released = []
+        release_errors = []
+        for seat in self.control.list_seats(match_id):
+            instance_id = seat.get("instance_id")
+            if not isinstance(instance_id, str):
+                continue
+            try:
+                released.append(self.retire_completed_worker(instance_id))
+            except Exception as exc:
+                release_errors.append({"instance_id": instance_id, "error": str(exc)[:300]})
+        return {
+            "ok": True, "match": completed, "already_completed": False,
+            "released_workers": released, "release_errors": release_errors,
+        }
+
+    def retire_completed_worker(self, instance_id: str) -> dict[str, Any]:
+        """Release a completed seat's bulky Wine prefix and ephemeral secrets.
+
+        Match metadata, semantic memory, events, metrics, and Hermes telemetry
+        stay in their durable stores. This operation is intentionally only
+        reachable after the campaign is non-resumable.
+        """
+        spec = self.control.get_worker_spec(instance_id)
+        self.park_worker(instance_id)
+        spec = self.control.get_worker_spec(instance_id)
+        removed: list[str] = []
+        for volume, purpose in (
+            (spec["data_volume"], "worker-data"),
+            (spec["network"].get("secret_volume"), "worker-secret"),
+        ):
+            if not isinstance(volume, str) or not volume:
+                continue
+            try:
+                resource = self.docker.inspect_volume(volume)
+                self.docker.require_owned(resource, self.installation_id, purpose=purpose)
+                self.docker.remove_volume(volume)
+                removed.append(volume)
+            except DockerNotFound:
+                pass
+        self.control.vault.revoke(str(spec["bridge_secret_id"]))
+        if spec.get("view_secret_id"):
+            self.control.vault.revoke(str(spec["view_secret_id"]))
+        network = dict(spec["network"])
+        network.update({
+            "storage_released": True, "secret_volume": None,
+            "mcp_status": "retired", "view_status": "retired",
+        })
+        self.control.update_worker_network(instance_id, network)
+        updated = self.control.update_worker_observation(
+            instance_id, desired_status="retired", observed_status="retired",
+            last_error="", bridge_host=None, bridge_port=None, instance_status="retired",
+        )
+        return {
+            "instance_id": instance_id, "status": updated["observed_status"],
+            "removed_volumes": removed,
+        }
 
     def checkpoint_match(self, match_id: str, *,
                          slot: str = "control_recovery") -> dict[str, Any]:
@@ -3013,12 +3109,24 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise WorkerManagerError("external_human_host_recovery_required")
         self.park_match(match_id)
         if match["mode"] == "lan":
+            # A fresh typed/custom lobby records the descriptive profile as
+            # `custom`, but a recovery loads an already-serialized native save
+            # and therefore must not reapply map settings. start_lan_match
+            # still requires one certified bootstrap profile for its menu-free
+            # recovery path; use the neutral small profile when the recorded
+            # fresh-game label is not one of those bootstrap profiles.
+            recorded_profile = str(match.get("metadata", {}).get(
+                "lan_profile", "small_easy"
+            ))
+            recovery_profile = (
+                recorded_profile if recorded_profile in LAN_PROFILES else "small_easy"
+            )
             result = self.start_lan_match(
                 match_id,
                 session_name=str(match.get("metadata", {}).get(
                     "lan_session_name", "SMACX Managed LAN"
                 )),
-                profile=str(match.get("metadata", {}).get("lan_profile", "small_easy")),
+                profile=recovery_profile,
                 resume_slot=slot,
             )
         elif match["mode"] == "singleplayer":

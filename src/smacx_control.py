@@ -31,6 +31,7 @@ from smacx_prompt import (
     PERSONALITY_NONE, SYSTEM_PROMPT_SCHEMA, compose_player_system_prompt,
     prompt_sha256,
 )
+from smacx_generation import normalize_generation_settings
 
 
 CONTROL_ID = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -1127,8 +1128,6 @@ class ControlPlane:
             raise InvalidRecord("invalid_lan_human_player_name")
         if not 2 <= len(agent_ids) + len(all_human_names) <= 7:
             raise InvalidRecord("lan_requires_two_to_seven_total_seats")
-        if len(set(agent_ids)) != len(agent_ids):
-            raise InvalidRecord("duplicate_lan_agent")
         normalized_human_names = {name.casefold() for name in all_human_names}
         if len(normalized_human_names) != len(all_human_names):
             raise InvalidRecord("duplicate_lan_human_player_name")
@@ -1418,6 +1417,7 @@ class ControlPlane:
                                   model_id: str | None = None,
                                   reasoning_effort: str = "low",
                                   context_length: int | None = None,
+                                  generation_settings: Mapping[str, Any] | None = None,
                                   workspace_path: str | None = None,
                                   system_prompt: str = "",
                                   harness_profile_id: str | None = None,
@@ -1436,6 +1436,7 @@ class ControlPlane:
             raise InvalidRecord("invalid_workspace_path")
         if not isinstance(system_prompt, str) or len(system_prompt) > 65_536:
             raise InvalidRecord("invalid_system_prompt")
+        generation = normalize_generation_settings(generation_settings)
         provider = self.get_provider(provider_id)
         selected_model = model_id or provider.get("default_model_id")
         selected_metadata = next(
@@ -1471,7 +1472,9 @@ class ControlPlane:
                 "status='configured', metadata_json=excluded.metadata_json, "
                 "external_profile_id=excluded.external_profile_id, updated_unix=excluded.updated_unix",
                 (identifier, display_name, provider_id, selected_model, reasoning_effort,
-                 effective_context, workspace_path, system_prompt, _json(metadata), now, now,
+                 effective_context, workspace_path, system_prompt, _json({
+                     **dict(metadata or {}), "generation_settings": generation,
+                 }), now, now,
                  agent_id, external_profile_id),
             )
         return self.get_harness_profile(identifier)
@@ -1480,7 +1483,8 @@ class ControlPlane:
                                agent_id: str | None = None,
                                reasoning_effort: str = "low",
                                model_id: str | None = None,
-                               context_length: int | None = None) -> dict[str, Any]:
+                               context_length: int | None = None,
+                               generation_settings: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Resolve one match seat to its exact provider, worker, and MCP endpoint.
 
         The returned descriptor is intentionally secret-free.  A host adapter
@@ -1526,6 +1530,15 @@ class ControlPlane:
         )
         if not model_id or not model:
             raise ScopeViolation("harness_model_not_selected")
+        generation = normalize_generation_settings(generation_settings)
+        if generation["preset"].startswith("qwen38-") and "qwen3.8" not in str(model_id).lower():
+            raise InvalidRecord("qwen38_preset_requires_qwen38_model")
+        if generation["preset"] == "qwen38-thinking" and reasoning_effort not in {
+            "low", "medium", "xhigh",
+        }:
+            raise InvalidRecord("qwen38_reasoning_effort_must_be_low_medium_or_xhigh")
+        if generation["preset"] == "qwen38-instruct" and reasoning_effort != "none":
+            raise InvalidRecord("qwen38_instruct_requires_reasoning_none")
         context_length = context_length or provider.get("context_length_override") \
             or model.get("context_length")
         external_profile_id = "smacx-" + hashlib.sha256(
@@ -1588,6 +1601,7 @@ class ControlPlane:
             external_profile_id=external_profile_id,
             model_id=str(model_id), reasoning_effort=reasoning_effort,
             context_length=context_length,
+            generation_settings=generation,
             system_prompt=system_prompt,
             metadata={
                 "active_match_id": match_id,
@@ -1597,6 +1611,7 @@ class ControlPlane:
                 "system_prompt_schema": SYSTEM_PROMPT_SCHEMA,
                 "system_prompt_sha256": system_hash,
                 "personality_id": personality_id,
+                "generation_settings": generation,
             },
         )
         return {
@@ -1616,6 +1631,7 @@ class ControlPlane:
             "model_id": model_id,
             "context_length": context_length,
             "reasoning_effort": reasoning_effort,
+            "generation_settings": generation,
             "system_prompt_schema": SYSTEM_PROMPT_SCHEMA,
             "system_prompt_sha256": system_hash,
             "personality_id": personality_id,

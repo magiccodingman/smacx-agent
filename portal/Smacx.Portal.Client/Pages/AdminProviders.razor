@@ -59,8 +59,16 @@ else
 
         <section class="surface-panel form-panel">
             <span class="panel-kicker">STEP 2</span>
-            <h2>Create an AI player profile</h2>
+            <h2>@(profileStableId is null ? "Create an AI player profile" : $"Create version {profileBaseVersion + 1} of {profileName}")</h2>
             <p class="section-copy">This named profile is what appears in the lobby’s AI-player picker. Each version preserves its historical model settings.</p>
+
+            @if (profileStableId is not null)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="setup-callout">
+                    Existing matches keep their original immutable profile version. This creates a new lobby-selectable version with the settings below.
+                    <div class="setup-callout-actions"><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => CancelProfileVersion()">Cancel new version</MudButton></div>
+                </MudAlert>
+            }
 
             @if (Providers.Count == 0)
             {
@@ -93,7 +101,7 @@ else
                 }
                 else
                 {
-                    <MudSelect T="string" @bind-Value="selectedModel" Label="Model" Variant="Variant.Outlined">
+                    <MudSelect T="string" Value="selectedModel" ValueChanged="ModelChanged" Label="Model" Variant="Variant.Outlined">
                         @foreach (var model in Models)
                         {
                             <MudSelectItem Value="@Id(model, "model_id")">@Text(model, "display_name")</MudSelectItem>
@@ -102,21 +110,66 @@ else
                 }
 
                 <div class="field-pair">
-                    <MudSelect T="string" @bind-Value="reasoning" Label="Reasoning effort" Variant="Variant.Outlined">
-                        @foreach (var value in reasoningValues)
+                    <MudSelect T="string" @bind-Value="reasoning" Label="Reasoning effort" Variant="Variant.Outlined"
+                               HelperText="Passed to Hermes and routed according to the selected model/provider.">
+                        @foreach (var value in AvailableReasoning)
                         {
                             <MudSelectItem Value="@value">@value</MudSelectItem>
                         }
                     </MudSelect>
-                    <MudNumericField T="int?" @bind-Value="contextLength" Label="Context override (optional)"
-                                     Variant="Variant.Outlined" Min="1024" Max="16777216" />
+                    <MudNumericField T="int?" @bind-Value="contextLength" Label="Gameplay context budget"
+                                     Variant="Variant.Outlined" Min="1024" Max="65536" />
                 </div>
-                <span class="field-help flush">Leave context blank to use the model endpoint’s advertised limit.</span>
+                <span class="field-help flush">65,536 is the long-running default. Hermes compacts before this fills, while durable game facts, goals, relationships, and chat remain in match-scoped MCP memory rather than the transcript.</span>
+
+                <MudSelect T="string" Value="generationPreset" ValueChanged="GenerationPresetChanged"
+                           Label="Generation preset" Variant="Variant.Outlined">
+                    <MudSelectItem T="string" Value="@("provider-default")">Provider defaults · widest compatibility</MudSelectItem>
+                    @if (IsQwen38)
+                    {
+                        <MudSelectItem T="string" Value="@("qwen38-thinking")">Qwen3.8 thinking · official recommendation</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("qwen38-instruct")">Qwen3.8 non-thinking · official recommendation</MudSelectItem>
+                    }
+                    <MudSelectItem T="string" Value="@("custom")">Custom sampling controls</MudSelectItem>
+                </MudSelect>
+                <span class="field-help flush">@GenerationHelp</span>
+
+                @if (generationPreset != "provider-default")
+                {
+                    <MudExpansionPanels Class="generation-panel">
+                        <MudExpansionPanel Text="Sampling and output controls" Expanded="@(generationPreset == "custom")">
+                            <div class="generation-summary">@GenerationSummary</div>
+                            <div class="field-pair generation-fields">
+                                <MudNumericField T="double?" @bind-Value="temperature" Label="Temperature" Variant="Variant.Outlined" Min="0" Max="2" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="double?" @bind-Value="topP" Label="Top P" Variant="Variant.Outlined" Min="0" Max="1" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="int?" @bind-Value="topK" Label="Top K" Variant="Variant.Outlined" Min="0" Max="100000" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="double?" @bind-Value="minP" Label="Min P" Variant="Variant.Outlined" Min="0" Max="1" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="double?" @bind-Value="presencePenalty" Label="Presence penalty" Variant="Variant.Outlined" Min="-2" Max="2" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="double?" @bind-Value="frequencyPenalty" Label="Frequency penalty" Variant="Variant.Outlined" Min="-2" Max="2" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="double?" @bind-Value="repetitionPenalty" Label="Repetition penalty" Variant="Variant.Outlined" Min="0.01" Max="2" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="int?" @bind-Value="maxOutputTokens" Label="Maximum output tokens (optional)" Variant="Variant.Outlined" Min="1" Max="262144" />
+                                <MudNumericField T="int?" @bind-Value="seed" Label="Seed (optional)" Variant="Variant.Outlined" />
+                            </div>
+                            @if (generationPreset == "custom")
+                            {
+                                <div class="field-pair generation-fields">
+                                    <MudSelect T="string" @bind-Value="thinkingMode" Label="Thinking template" Variant="Variant.Outlined">
+                                        <MudSelectItem T="string" Value="@("default")">Provider default</MudSelectItem><MudSelectItem T="string" Value="@("enabled")">Enabled</MudSelectItem><MudSelectItem T="string" Value="@("disabled")">Disabled</MudSelectItem>
+                                    </MudSelect>
+                                    <MudSelect T="string" @bind-Value="preserveMode" Label="Preserve thinking" Variant="Variant.Outlined">
+                                        <MudSelectItem T="string" Value="@("default")">Provider default</MudSelectItem><MudSelectItem T="string" Value="@("enabled")">Enabled</MudSelectItem><MudSelectItem T="string" Value="@("disabled")">Disabled</MudSelectItem>
+                                    </MudSelect>
+                                </div>
+                            }
+                            <span class="field-help flush">Blank custom fields are omitted. Temperature, Top P, presence/frequency penalty, maximum tokens, and seed follow common OpenAI-compatible request shapes. Top K, Min P, repetition penalty, and thinking-template controls are server extensions; use them only when your endpoint supports them.</span>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
                 <MudTextField @bind-Value="profileNotes" Label="Operator note (optional)" Lines="2" Variant="Variant.Outlined" />
                 <span class="field-help flush">Faction and personality are chosen independently for each AI seat when a lobby is created; they are not properties of the reusable model profile.</span>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanCreateProfile)"
                            OnClick="CreateProfile" StartIcon="@Icons.Material.Filled.SmartToy">
-                    Create playable AI profile
+                    @(profileStableId is null ? "Create playable AI profile" : $"Create version {profileBaseVersion + 1}")
                 </MudButton>
             }
         </section>
@@ -181,12 +234,13 @@ else
             <div class="admin-list-row">
                 <div>
                     <strong>@profile.DisplayName <span class="version-chip">v@(profile.Version)</span></strong>
-                    <small>@profile.ModelId · @profile.ReasoningEffort reasoning · @(profile.ContextLength?.ToString("N0") ?? "provider context")</small>
+                    <small>@profile.ModelId · @profile.ReasoningEffort reasoning · @GenerationLabel(profile.Generation) · @GameplayContext(profile.ContextLength) gameplay context</small>
                 </div>
                 <span>@(profile.Active ? "active" : "inactive")</span>
                 <span>Personality: None</span>
                 @if (profile.Active)
                 {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => BeginProfileVersion(profile)">New version</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="() => Deactivate(profile.ProfileVersionId)">Deactivate</MudButton>
                 }
             </div>
@@ -219,13 +273,28 @@ else
     private string? pendingDeleteId;
     private string? pendingDeleteName;
     private string profileName = "SMACX player";
+    private string? profileStableId;
+    private int profileBaseVersion;
     private string selectedProvider = "";
     private string selectedModel = "";
     private string reasoning = "low";
+    private string generationPreset = "provider-default";
     private string profileNotes = "";
-    private int? contextLength;
+    private int? contextLength = 65_536;
+    private double? temperature;
+    private double? topP;
+    private int? topK;
+    private double? minP;
+    private double? presencePenalty;
+    private double? frequencyPenalty;
+    private double? repetitionPenalty;
+    private int? maxOutputTokens;
+    private int? seed;
+    private string thinkingMode = "default";
+    private string preserveMode = "default";
 
     private readonly string[] reasoningValues = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+    private readonly string[] qwenReasoningValues = ["low", "medium", "xhigh"];
     private List<JsonElement> Providers => snapshot is null ? [] : snapshot.Providers.EnumerateArray().ToList();
     private List<JsonElement> Models => Providers.FirstOrDefault(provider => Id(provider) == selectedProvider) is var provider
         && provider.ValueKind == JsonValueKind.Object
@@ -244,6 +313,22 @@ else
         && !string.IsNullOrWhiteSpace(profileName)
         && !string.IsNullOrWhiteSpace(selectedProvider)
         && !string.IsNullOrWhiteSpace(selectedModel);
+    private bool IsQwen38 => selectedModel.Contains("qwen3.8", StringComparison.OrdinalIgnoreCase);
+    private bool IsOfficialPreset => generationPreset is "qwen38-thinking" or "qwen38-instruct";
+    private IEnumerable<string> AvailableReasoning => generationPreset == "qwen38-instruct"
+        ? ["none"] : IsQwen38 ? qwenReasoningValues : reasoningValues;
+    private string GenerationHelp => generationPreset switch
+    {
+        "qwen38-thinking" => "Official Qwen3.8 thinking sampling. Choose low, medium, or xhigh reasoning independently; xhigh is Qwen's default.",
+        "qwen38-instruct" => "Official Qwen3.8 direct-answer sampling with thinking disabled and reasoning set to None.",
+        "custom" => "Only the values you enter are sent. Unsupported extension fields may be rejected by the model server.",
+        _ => "No sampling fields are sent, so Hermes and the endpoint choose compatible model defaults.",
+    };
+    private string GenerationSummary => generationPreset == "qwen38-thinking"
+        ? "temperature 1.0 · top-p 0.95 · top-k 20 · min-p 0 · presence 0 · repetition 1 · preserve thinking"
+        : generationPreset == "qwen38-instruct"
+            ? "temperature 0.7 · top-p 0.80 · top-k 20 · min-p 0 · presence 1.5 · repetition 1 · thinking disabled"
+            : "Custom values are versioned with this AI profile and replayed on every Hermes run.";
 
     protected override async Task OnInitializedAsync() => await Reload();
 
@@ -417,15 +502,19 @@ else
         notice = null;
         var result = await Api.PostAsync<AiProfileVersion>("api/admin/ai-profiles",
             new AiProfileVersionRequest(profileName, selectedProvider, selectedModel, reasoning, contextLength,
-                string.IsNullOrWhiteSpace(profileNotes) ? null : profileNotes));
+                string.IsNullOrWhiteSpace(profileNotes) ? null : profileNotes,
+                StableProfileId: profileStableId,
+                Generation: BuildGeneration()));
         if (result.Payload?.Ok != true)
         {
             error = result.Payload?.Error?.Message;
         }
         else
         {
+            var createdVersion = result.Payload.Data!;
+            CancelProfileVersion(resetFields: false);
             await Reload(selectedProvider);
-            notice = $"{result.Payload.Data!.DisplayName} is now available in new lobbies as an AI player.";
+            notice = $"{createdVersion.DisplayName} v{createdVersion.Version} is now available in new lobbies as an AI player.";
         }
         busy = false;
     }
@@ -443,10 +532,86 @@ else
     private void ProviderChanged(string value)
     {
         selectedProvider = value;
-        selectedModel = Models.FirstOrDefault().ValueKind == JsonValueKind.Object
+        ModelChanged(Models.FirstOrDefault().ValueKind == JsonValueKind.Object
             ? Id(Models[0], "model_id")
-            : "";
+            : "");
     }
+
+    private void ModelChanged(string value)
+    {
+        selectedModel = value;
+        reasoning = IsQwen38 ? "low" : "none";
+        GenerationPresetChanged(IsQwen38 ? "qwen38-thinking" : "provider-default");
+    }
+
+    private void BeginProfileVersion(AiProfileVersion profile)
+    {
+        profileStableId = profile.StableProfileId;
+        profileBaseVersion = profile.Version;
+        profileName = profile.DisplayName;
+        selectedProvider = profile.ProviderId;
+        selectedModel = profile.ModelId;
+        reasoning = profile.ReasoningEffort;
+        contextLength = profile.ContextLength ?? 65_536;
+        profileNotes = profile.Notes ?? "";
+        ApplyGeneration(profile.Generation);
+        error = null;
+        notice = $"Editing settings for a new version of {profile.DisplayName}.";
+    }
+
+    private void CancelProfileVersion(bool resetFields = true)
+    {
+        profileStableId = null;
+        profileBaseVersion = 0;
+        if (!resetFields) return;
+        profileName = "SMACX player";
+        profileNotes = "";
+        contextLength = 65_536;
+        ProviderChanged(selectedProvider);
+    }
+
+    private void ApplyGeneration(ModelGenerationSettings generation)
+    {
+        generationPreset = generation.Preset;
+        temperature = generation.Temperature;
+        topP = generation.TopP;
+        topK = generation.TopK;
+        minP = generation.MinP;
+        presencePenalty = generation.PresencePenalty;
+        frequencyPenalty = generation.FrequencyPenalty;
+        repetitionPenalty = generation.RepetitionPenalty;
+        maxOutputTokens = generation.MaxOutputTokens;
+        seed = generation.Seed;
+        thinkingMode = generation.EnableThinking is null ? "default" : generation.EnableThinking.Value ? "enabled" : "disabled";
+        preserveMode = generation.PreserveThinking is null ? "default" : generation.PreserveThinking.Value ? "enabled" : "disabled";
+    }
+
+    private void GenerationPresetChanged(string value)
+    {
+        generationPreset = value;
+        temperature = topP = minP = presencePenalty = frequencyPenalty = repetitionPenalty = null;
+        topK = null;
+        thinkingMode = preserveMode = "default";
+        if (value == "qwen38-thinking")
+        {
+            temperature = 1.0; topP = 0.95; topK = 20; minP = 0.0;
+            presencePenalty = 0.0; repetitionPenalty = 1.0;
+            thinkingMode = preserveMode = "enabled";
+            if (reasoning is not ("low" or "medium" or "xhigh")) reasoning = "xhigh";
+        }
+        else if (value == "qwen38-instruct")
+        {
+            temperature = 0.7; topP = 0.80; topK = 20; minP = 0.0;
+            presencePenalty = 1.5; repetitionPenalty = 1.0;
+            thinkingMode = "disabled"; reasoning = "none";
+        }
+    }
+
+    private ModelGenerationSettings BuildGeneration() => new(
+        generationPreset, temperature, topP, topK, minP, presencePenalty,
+        frequencyPenalty, repetitionPenalty, maxOutputTokens, seed,
+        thinkingMode == "default" ? null : thinkingMode == "enabled",
+        preserveMode == "default" ? null : preserveMode == "enabled");
 
     private static string Id(JsonElement item, string name = "provider_id") =>
         item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value)
@@ -457,4 +622,12 @@ else
         item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value)
             ? value.ToString()
             : "";
+    private static string GameplayContext(int? configured) => Math.Min(configured ?? 65_536, 65_536).ToString("N0");
+    private static string GenerationLabel(ModelGenerationSettings generation) => generation.Preset switch
+    {
+        "qwen38-thinking" => "Qwen3.8 thinking preset",
+        "qwen38-instruct" => "Qwen3.8 non-thinking preset",
+        "custom" => "custom sampling",
+        _ => "provider sampling defaults",
+    };
 }

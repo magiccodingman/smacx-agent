@@ -4759,10 +4759,10 @@ std::string status_response() {
         << ",\"turn\":" << (in_game ? *CurrentTurn : -1)
         << ",\"current_vehicle_id\":" << (in_game ? fair_current_vehicle(faction_id) : -1)
         << ",\"faction_id\":" << (has_faction ? faction_id : -1) << "},"
-        << "\"multiplayer_semantics\":{\"policy\":\"fail_closed\","
-        << "\"gameplay_commands_validated\":[],"
-        << "\"gameplay_mutations_allowed\":false,"
-        << "\"reason\":\"Commands are enabled one at a time only after two-client state-synchronization regression.\"}}";
+        << "\"multiplayer_semantics\":{\"policy\":\"fail_closed_allowlist\","
+        << "\"gameplay_commands_validated\":[\"see semantic_snapshot.multiplayer_semantics.validated_commands\"],"
+        << "\"gameplay_mutations_allowed\":" << (in_game ? "true" : "false") << ','
+        << "\"reason\":\"Validated semantic commands are available when their fresh decision-frame choices permit them; unlisted command families remain fail-closed. This is a static capability policy, not a state-synchronization error.\"}}";
     return out.str();
 }
 

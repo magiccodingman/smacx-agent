@@ -93,7 +93,7 @@ or image.
 Use the normal serialized launcher:
 
 ```bash
-SMACX_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
+SMACX_GAME_SOURCE=/absolute/path/to/legal/game \
   ./scripts/control-center-up.sh
 docker compose ps
 curl --fail http://127.0.0.1:8080/healthz
@@ -125,7 +125,10 @@ PYTHONPATH=src python3 scripts/hermes_provider_capture_test.py
 
 The capture test runs the real derived Hermes image against a local
 OpenAI-compatible recorder and asserts one exact SMACX-owned system message,
-with no Hermes scaffold or workspace rule content.
+with no Hermes scaffold or workspace rule content. It also proves the chosen
+reasoning effort and whitelisted sampling payload reach the final provider
+request. `hermes_adapter_test.py` covers Hermes's full generic reasoning ladder;
+the portal narrows Qwen3.8 to its documented low/medium/xhigh choices.
 
 ## Browser portal test
 

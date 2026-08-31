@@ -18,6 +18,9 @@ public sealed class PortalMatchSupervisor(
     StreamPresenceTracker presence,
     ILogger<PortalMatchSupervisor> logger) : BackgroundService
 {
+    private int dormantReconcileOffset;
+    private bool dormantReconciled;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await RequeueInterruptedAsync(stoppingToken);
@@ -62,6 +65,7 @@ public sealed class PortalMatchSupervisor(
         await using var scope = scopes.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var control = scope.ServiceProvider.GetRequiredService<ControlPlaneClient>();
+        await ReconcileDormantMatchesAsync(database, control, cancellationToken);
         var match = await database.PortalMatches
             .OrderBy(item => item.UpdatedAt)
             .FirstOrDefaultAsync(item => item.Status == "provisioning", cancellationToken);
@@ -80,6 +84,67 @@ public sealed class PortalMatchSupervisor(
             await SynchronizeAsync(database, control, item, cancellationToken);
         }
         await AutoParkIdleBrowserMatchesAsync(database, control, cancellationToken);
+    }
+
+    private async Task ReconcileDormantMatchesAsync(
+        ApplicationDbContext database, ControlPlaneClient control,
+        CancellationToken cancellationToken)
+    {
+        if (dormantReconciled) return;
+        var dormant = await database.PortalMatches.AsNoTracking()
+            .Where(item => item.Status == "parked" || item.Status == "completed")
+            .OrderBy(item => item.MatchId).Skip(dormantReconcileOffset).Take(20)
+            .ToArrayAsync(cancellationToken);
+        if (dormant.Length == 0)
+        {
+            dormantReconciled = true;
+            return;
+        }
+        var processed = 0;
+        foreach (var match in dormant)
+        {
+            try
+            {
+                var observed = await control.GetMatchAsync(match.MatchId, cancellationToken);
+                var status = observed.Match.Status;
+                if (status != match.Status)
+                {
+                    if (status != "parked" && status != "completed")
+                    {
+                        using var parked = await control.PostRawAsync(
+                            $"api/v1/matches/{match.MatchId}/park", new { }, cancellationToken);
+                        status = "parked";
+                    }
+                    if (match.Status == "completed" && status != "completed")
+                    {
+                        using var completed = await control.PostRawAsync(
+                            $"api/v1/matches/{match.MatchId}/complete", new { }, cancellationToken);
+                    }
+                    logger.LogInformation(
+                        "Reconciled dormant portal campaign {MatchId} to {Status}",
+                        match.MatchId, match.Status);
+                }
+                var managedSeats = await database.PortalLobbySeats
+                    .Where(item => item.MatchId == match.MatchId && item.ControlInstanceId != null)
+                    .ToArrayAsync(cancellationToken);
+                foreach (var seat in managedSeats)
+                {
+                    seat.ConnectionState = match.Status == "completed" ? "retired" : "worker_stopped";
+                    seat.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                if (managedSeats.Length > 0)
+                    await database.SaveChangesAsync(cancellationToken);
+                processed++;
+            }
+            catch (ControlPlaneException exception)
+            {
+                logger.LogWarning(exception,
+                    "Dormant campaign reconciliation deferred for {MatchId}", match.MatchId);
+                dormantReconcileOffset += processed;
+                return;
+            }
+        }
+        dormantReconcileOffset += dormant.Length;
     }
 
     private async Task AutoParkIdleBrowserMatchesAsync(
@@ -323,12 +388,17 @@ public sealed class PortalMatchSupervisor(
                     CreatedAt = now,
                 });
                 foreach (var seat in seats.Where(item =>
-                             item.ControllerKind == "agent" && item.AgentId != null))
+                             item.ControllerKind == "agent" && item.AgentId != null &&
+                             item.ControlInstanceId != null))
                 {
                     var metric = new PortalTurnMetric
                     {
                         MatchId = match.MatchId,
-                        AgentId = seat.AgentId!,
+                        // A reusable profile may occupy several seats. The
+                        // worker instance is the durable player identity for
+                        // this run; ProfileVersionId remains the aggregation
+                        // key used for model analytics.
+                        AgentId = seat.ControlInstanceId!,
                         ProfileVersionId = seat.AiProfileVersionId,
                         Turn = match.CurrentTurn.Value,
                         DurationSeconds = previousEvent is null ? null :
@@ -338,7 +408,7 @@ public sealed class PortalMatchSupervisor(
                     };
                     database.PortalTurnMetrics.Add(metric);
                     await PopulateTelemetryAsync(
-                        database, control, match.MatchId, seat.AgentId!, metric,
+                        database, control, match.MatchId, seat.ControlInstanceId!, metric,
                         cancellationToken);
                 }
             }
@@ -465,7 +535,7 @@ public sealed class PortalMatchSupervisor(
 
     private async Task PopulateTelemetryAsync(
         ApplicationDbContext database, ControlPlaneClient control,
-        string matchId, string agentId, PortalTurnMetric metric,
+        string matchId, string instanceId, PortalTurnMetric metric,
         CancellationToken cancellationToken)
     {
         try
@@ -474,7 +544,7 @@ public sealed class PortalMatchSupervisor(
                 "api/v1/harness-runs", cancellationToken);
             var run = runsDocument.RootElement.GetProperty("harness_runs").EnumerateArray()
                 .Where(item => item.GetProperty("match_id").GetString() == matchId &&
-                    item.GetProperty("agent_id").GetString() == agentId)
+                    item.GetProperty("instance_id").GetString() == instanceId)
                 .OrderByDescending(item => item.GetProperty("created_unix").GetDouble())
                 .FirstOrDefault();
             if (run.ValueKind != JsonValueKind.Object) return;
@@ -485,7 +555,7 @@ public sealed class PortalMatchSupervisor(
                 new { }, cancellationToken);
             var telemetry = response.RootElement.GetProperty("result").GetProperty("telemetry");
             var prior = await database.PortalTurnMetrics.AsNoTracking()
-                .Where(item => item.MatchId == matchId && item.AgentId == agentId)
+                .Where(item => item.MatchId == matchId && item.AgentId == instanceId)
                 .ToArrayAsync(cancellationToken);
             static long Value(JsonElement item, string name) =>
                 item.TryGetProperty(name, out var value) && value.TryGetInt64(out var parsed)
@@ -506,8 +576,8 @@ public sealed class PortalMatchSupervisor(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogDebug(exception,
-                "Hermes telemetry is temporarily unavailable for {MatchId}/{AgentId}",
-                matchId, agentId);
+                "Hermes telemetry is temporarily unavailable for {MatchId}/{InstanceId}",
+                matchId, instanceId);
         }
     }
 
@@ -517,14 +587,19 @@ public sealed class PortalMatchSupervisor(
     {
         using var runsDocument = await control.GetRawAsync("api/v1/harness-runs", cancellationToken);
         var runs = runsDocument.RootElement.GetProperty("harness_runs").EnumerateArray().ToArray();
+        var controlMatch = await control.GetMatchAsync(match.MatchId, cancellationToken);
         var seats = await database.PortalLobbySeats.AsNoTracking()
             .Where(item => item.MatchId == match.MatchId && item.ControllerKind == "agent")
             .ToArrayAsync(cancellationToken);
         foreach (var seat in seats)
         {
-            if (seat.AgentId is null || runs.Any(run =>
+            var runtimeSeat = controlMatch.Seats.SingleOrDefault(item =>
+                item.InstanceId == seat.ControlInstanceId);
+            var runtimeAgentId = runtimeSeat?.AgentId;
+            if (seat.AgentId is null || seat.ControlInstanceId is null ||
+                string.IsNullOrWhiteSpace(runtimeAgentId) || runs.Any(run =>
                     run.GetProperty("match_id").GetString() == match.MatchId &&
-                    run.GetProperty("agent_id").GetString() == seat.AgentId &&
+                    run.GetProperty("instance_id").GetString() == seat.ControlInstanceId &&
                     run.GetProperty("status").GetString() is "queued" or "starting" or "running" or "restarting"))
                 continue;
             var profile = await database.PortalAiProfileVersions.AsNoTracking()
@@ -539,11 +614,20 @@ public sealed class PortalMatchSupervisor(
                 using var started = await control.PostRawAsync("api/v1/harness-runs", new
                 {
                     match_id = match.MatchId,
-                    agent_id = seat.AgentId,
+                    agent_id = runtimeAgentId,
                     provider_id = profile.ProviderId,
                     model_id = profile.ModelId,
-                    context_length = profile.ContextLength,
+                    // Long campaigns retain political/game knowledge in the
+                    // match-scoped MCP store. Let Hermes compact a bounded
+                    // working conversation early instead of asking a local
+                    // model to summarize a 200k-token transcript every eight
+                    // turns. Existing pre-release profiles above the ceiling
+                    // remain readable and are safely capped at launch.
+                    context_length = profile.ContextLength is { } configured
+                        ? (int?)Math.Min(configured, 65_536)
+                        : null,
                     reasoning_effort = profile.ReasoningEffort,
+                    generation_settings = GenerationPayload(profile.GenerationSettingsJson),
                     run_budget_seconds = 86_400,
                     max_turns = 5_000,
                     restart_limit = 1_000,
@@ -552,7 +636,7 @@ public sealed class PortalMatchSupervisor(
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {
                     MatchId = match.MatchId, EventType = "agent_started",
-                    Summary = $"Started {profile.DisplayName} v{profile.Version} ({profile.ModelId}, {profile.ReasoningEffort}).",
+                    Summary = $"Started {profile.DisplayName} v{profile.Version} ({profile.ModelId}, {profile.ReasoningEffort}, {GenerationPreset(profile.GenerationSettingsJson)}).",
                 });
                 await database.SaveChangesAsync(cancellationToken);
             }
@@ -560,6 +644,35 @@ public sealed class PortalMatchSupervisor(
             {
                 // Another supervisor cycle won the idempotent start race.
             }
+        }
+    }
+
+    private static string GenerationPreset(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty("Preset", out var pascal)
+                ? pascal.GetString() ?? "provider-default"
+                : document.RootElement.TryGetProperty("preset", out var camel)
+                    ? camel.GetString() ?? "provider-default"
+                    : "provider-default";
+        }
+        catch (JsonException)
+        {
+            return "provider-default";
+        }
+    }
+
+    private static object GenerationPayload(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<object>(json) ?? new { preset = "provider-default" };
+        }
+        catch (JsonException)
+        {
+            return new { preset = "provider-default" };
         }
     }
 
