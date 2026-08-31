@@ -84,6 +84,16 @@ public sealed class PortalFlowTests : IAsyncLifetime
         var matchId = created.Payload.Data!.MatchId;
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var reservedLeader = await PostAsync<PortalSession>(
+            "api/auth/display-name", new UpdateDisplayNameRequest("LADY DEIRDRE SKYE"), csrf.Token);
+        Assert.Equal(HttpStatusCode.BadRequest, reservedLeader.Response.StatusCode);
+        Assert.Equal("reserved_faction_leader_name", reservedLeader.Payload.Error?.Code);
+        var invitedName = await PostAsync<PortalSession>(
+            "api/auth/display-name", new UpdateDisplayNameRequest("guestone"), csrf.Token);
+        Assert.Equal(HttpStatusCode.BadRequest, invitedName.Response.StatusCode);
+        Assert.Equal("display_name_unavailable", invitedName.Payload.Error?.Code);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var privateMessage = await PostAsync<LobbyMessage>(
             $"api/lobbies/{matchId}/messages",
             new SendLobbyMessageRequest("A private diplomatic test", 3, "private"), csrf.Token);
@@ -183,9 +193,10 @@ public sealed class PortalFlowTests : IAsyncLifetime
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var claimed = await PostAsync<PortalSession>("api/auth/register",
-            new RegistrationRequest("guestone", "Guest One", "GuestA1b", "GuestA1b"),
+            new RegistrationRequest("guestone", "GuestOne", "GuestA1b", "GuestA1b"),
             csrf.Token);
         Assert.Equal("GuestOne", claimed.Payload.Data?.User?.GameHandle);
+        Assert.Equal("GuestOne", claimed.Payload.Data?.User?.DisplayName);
         var claimedLobby = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Contains(claimedLobby.Seats,
             seat => seat.PlayerHandle == "GuestOne" && seat.CanControl);

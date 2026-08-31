@@ -15,6 +15,7 @@
 else
 {
     <div class="form-grid">
+        <div class="form-column">
         <section class="surface-panel form-panel">
             <h2>Match identity</h2>
             <p class="section-copy">This name appears in the private LAN lobby directory.</p>
@@ -104,7 +105,7 @@ else
                 <div class="agent-profile-picker" role="group" aria-label="AI player profiles">
                     @foreach (var agent in catalog?.Agents ?? [])
                     {
-                        var selected = agentIds.Contains(agent.Id);
+                        var selected = agentSeats.Any(item => item.AgentId == agent.Id);
                         <button type="button"
                                 class="agent-profile-choice @(selected ? "selected" : null)"
                                 aria-pressed="@selected.ToString().ToLowerInvariant()"
@@ -118,13 +119,62 @@ else
                     }
                 </div>
                 <span class="field-help flush">Each selected profile becomes one independent AI player. The first selected profile hosts when AI hosting is chosen.</span>
+                @foreach (var seat in agentSeats)
+                {
+                    var profile = catalog!.Agents.Single(item => item.Id == seat.AgentId);
+                    var personality = PersonalityOptions(seat)
+                        .FirstOrDefault(item => item.Id == seat.PersonalityId);
+                    <div class="agent-seat-editor">
+                        <div class="agent-seat-heading">
+                            <div>
+                                <span class="panel-kicker">AI PLAYER @(agentSeats.IndexOf(seat) + 1)</span>
+                                <strong>@profile.DisplayName</strong>
+                            </div>
+                            @if (hostController == "agent" && agentSeats.IndexOf(seat) == 0)
+                            {
+                                <span class="host-badge">NATIVE HOST</span>
+                            }
+                        </div>
+                        <div class="field-pair">
+                            <MudSelect T="string" Value="@seat.FactionId"
+                                       ValueChanged="@((string value) => SetFaction(seat, value))"
+                                       Label="Faction" Variant="Variant.Outlined">
+                                <MudSelectItem Value="@FactionCatalog.Random">Random at launch</MudSelectItem>
+                                @foreach (var faction in factionPersonalities?.Factions ?? [])
+                                {
+                                    <MudSelectItem Value="@faction.Id" Disabled="@FactionInUseByAnotherSeat(faction.Id, seat)">
+                                        @faction.FactionName · @faction.LeaderName
+                                    </MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudSelect T="string" Value="@seat.PersonalityId"
+                                       ValueChanged="@((string value) => seat.PersonalityId = value)"
+                                       Label="Personality" Variant="Variant.Outlined">
+                                @foreach (var option in PersonalityOptions(seat))
+                                {
+                                    <MudSelectItem Value="@option.Id">@option.DisplayName</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </div>
+                        <p class="personality-description">@(personality?.Description ?? "Choose how this leader interprets the match.")</p>
+                        @if (seat.FactionId == FactionCatalog.Random)
+                        {
+                            <small>Faction, faction-leader name, and personality resolve once at launch and remain locked for this match.</small>
+                        }
+                        else
+                        {
+                            var faction = FactionCatalog.Find(seat.FactionId);
+                            <small>In game and chat, this AI appears as <strong>@faction?.LeaderName</strong>.</small>
+                        }
+                    </div>
+                }
             }
 
             <MudSelect T="string" @bind-Value="humanJoinMode" Label="Human player mode" Variant="Variant.Outlined">
                 <MudSelectItem Value="@("browser")">Play in browser (recommended)</MudSelectItem>
                 <MudSelectItem Value="@("native")">Join from a separate game client</MudSelectItem>
             </MudSelect>
-            <MudTextField @bind-Value="humanHandles" Label="Reserve seats for player handles (optional)"
+            <MudTextField @bind-Value="humanHandles" Label="Reserve seats for public display names (optional)"
                           HelperText="Comma-separated. This reserves seats; it does not send a notification. Existing or future accounts claim them case-insensitively."
                           Variant="Variant.Outlined" Immediate="true" />
             <MudNumericField T="int" @bind-Value="nativeBotCount" Label="Reserve stock computer opponents (optional)"
@@ -133,10 +183,12 @@ else
             <span class="field-help flush">@AssignedSeatCount of 7 seats are currently reserved. Unreserved seats remain joinable until launch.</span>
             @if (!HasValidSeatCount)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">Reduce the selected AI players, human handles, or reserved stock opponents to seven total seats.</MudAlert>
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">Reduce the selected AI players, human display names, or reserved stock opponents to seven total seats.</MudAlert>
             }
         </section>
+        </div>
 
+        <div class="form-column">
         <section class="surface-panel form-panel">
             <h2>Game runtime</h2>
             <p class="section-copy">The validated installation and compatibility runtime are selected automatically.</p>
@@ -231,16 +283,11 @@ else
                 <MudSwitch @bind-Value="graphiti" Color="Color.Primary">Enable optional Graphiti projection</MudSwitch>
                 <span class="field-help">Projects selected match memories into Graphiti for relationship recall. SQLite remains authoritative, and disabling this does not disable normal match notes or state.</span>
             </div>
-            <div class="policy-option">
-                <MudSelect T="string" Value="@("none")" Label="Personality card" Variant="Variant.Outlined" Disabled="true">
-                    <MudSelectItem Value="@("none")">None</MudSelectItem>
-                </MudSelect>
-                <span class="field-help">Personality-card storage is ready, but authored cards are intentionally deferred. No personality layer is added in this release.</span>
-            </div>
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-3">
                 All current matches are unranked. Ranked policy has schema support only and is not selectable yet.
             </MudAlert>
         </section>
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(error))
@@ -273,6 +320,7 @@ else
 
 @code {
     private LobbyCatalog? catalog;
+    private FactionPersonalityCatalog? factionPersonalities;
     private IReadOnlyList<ScenarioCatalogItem> scenarios = [];
     private string name = "New mission";
     private string gameProfile = "alien-crossfire";
@@ -285,7 +333,8 @@ else
     private string sourceId = "";
     private string runtimeId = "";
     private string scenarioId = "";
-    private IReadOnlyCollection<string> agentIds = [];
+    private List<AgentSeatDraft> agentSeats = [];
+    private IReadOnlyCollection<string> agentIds => agentSeats.Select(item => item.AgentId).ToArray();
     private bool ownerPlays = true;
     private bool doOrDie;
     private bool anonymousSpectators;
@@ -301,11 +350,11 @@ else
     private int clouds = 1;
     private string? error;
 
-    private bool HasRequiredPlayers => hostController != "agent" || agentIds.Count > 0;
+    private bool HasRequiredPlayers => hostController != "agent" || agentSeats.Count > 0;
     private bool HasRequiredRuntime => !string.IsNullOrWhiteSpace(sourceId) && !string.IsNullOrWhiteSpace(runtimeId);
     private bool HasRequiredScenario => mode != "scenario" || !string.IsNullOrWhiteSpace(scenarioId);
     private string[] ReservedHumanHandles => humanHandles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private int AssignedSeatCount => (hostController == "human" || ownerPlays ? 1 : 0) + agentIds.Count + ReservedHumanHandles.Length + nativeBotCount;
+    private int AssignedSeatCount => (hostController == "human" || ownerPlays ? 1 : 0) + agentSeats.Count + ReservedHumanHandles.Length + nativeBotCount;
     private bool HasValidSeatCount => AssignedSeatCount is >= 1 and <= 7;
     private bool CanSaveLobby => !string.IsNullOrWhiteSpace(name) && HasRequiredPlayers && HasRequiredRuntime && HasRequiredScenario && HasValidSeatCount;
     private bool CanLaunch => CanSaveLobby && catalog?.ControlConnected == true;
@@ -336,11 +385,13 @@ else
     protected override async Task OnInitializedAsync()
     {
         catalog = (await Api.GetAsync<LobbyCatalog>("api/catalog/lobby"))?.Data;
+        factionPersonalities = (await Api.GetAsync<FactionPersonalityCatalog>(
+            "api/catalog/factions-personalities"))?.Data;
         sourceId = catalog?.GameSources.FirstOrDefault()?.Id ?? "";
         runtimeId = catalog?.Runtimes.FirstOrDefault()?.Id ?? "";
         if (catalog?.Agents.Count == 1)
         {
-            agentIds = [catalog.Agents[0].Id];
+            agentSeats.Add(new(catalog.Agents[0].Id));
         }
         await LoadScenarios();
         loading = false;
@@ -354,12 +405,9 @@ else
 
     private void ToggleAgent(string agentId)
     {
-        var selected = agentIds.ToList();
-        if (!selected.Remove(agentId))
-        {
-            selected.Add(agentId);
-        }
-        agentIds = selected;
+        var selected = agentSeats.SingleOrDefault(item => item.AgentId == agentId);
+        if (selected is not null) agentSeats.Remove(selected);
+        else agentSeats.Add(new(agentId));
     }
 
     private async Task LoadScenarios()
@@ -384,7 +432,7 @@ else
     {
         if (!CanSaveLobby || start && !CanLaunch)
         {
-            error = hostController == "agent" && agentIds.Count == 0
+            error = hostController == "agent" && agentSeats.Count == 0
                 ? "Choose at least one AI player profile, or configure one in Administration → Models & AI profiles."
                 : "Complete the required player, game, scenario, and runtime choices before continuing.";
             return;
@@ -400,7 +448,9 @@ else
             agentIds.ToArray(), humans, hostController, ownerPlays, nativeBotCount,
             difficulty, start, "unranked", humanJoinMode, timeControl, ocean, erosion,
             nativeLife, clouds, new Dictionary<string, bool>(rules),
-            mode == "scenario" ? scenarioId : null, null);
+            mode == "scenario" ? scenarioId : null, null,
+            agentSeats.Select(item => new AgentSeatRequest(
+                item.AgentId, item.FactionId, item.PersonalityId)).ToArray());
         var result = await Api.PostAsync<LobbyDetails>("api/lobbies", request);
         busy = false;
         if (result.Payload?.Ok == true)
@@ -438,4 +488,33 @@ else
         builder.AddAttribute(4, "ChildContent", (RenderFragment)(content => content.AddContent(0, label)));
         builder.CloseComponent();
     };
+
+    private void SetFaction(AgentSeatDraft seat, string factionId)
+    {
+        seat.FactionId = factionId;
+        if (factionId == FactionCatalog.Random && seat.PersonalityId is not ("none" or "standard" or "random"))
+            seat.PersonalityId = "standard";
+    }
+
+    private bool FactionInUseByAnotherSeat(string factionId, AgentSeatDraft current) =>
+        agentSeats.Any(item => !ReferenceEquals(item, current) && item.FactionId == factionId);
+
+    private IReadOnlyList<PersonalityCatalogItem> PersonalityOptions(AgentSeatDraft seat)
+    {
+        if (seat.FactionId == FactionCatalog.Random)
+            return (factionPersonalities?.PersonalityModes ?? [])
+                .Where(item => item.Id is "none" or "standard" or "random").ToArray();
+        var specific = (factionPersonalities?.BuiltInCards ?? [])
+            .Where(item => item.FactionId == seat.FactionId).ToList();
+        specific.AddRange((factionPersonalities?.PersonalityModes ?? [])
+            .Where(item => item.Id is "random" or "none"));
+        return specific;
+    }
+
+    private sealed class AgentSeatDraft(string agentId)
+    {
+        public string AgentId { get; } = agentId;
+        public string FactionId { get; set; } = FactionCatalog.Random;
+        public string PersonalityId { get; set; } = "standard";
+    }
 }

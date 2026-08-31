@@ -6,6 +6,7 @@ COPY global.json Directory.Build.props Directory.Packages.props Smacx.Agent.slnx
 COPY portal/Smacx.Portal.Contracts/ portal/Smacx.Portal.Contracts/
 COPY portal/Smacx.Portal.Client/ portal/Smacx.Portal.Client/
 COPY portal/Smacx.Portal/ portal/Smacx.Portal/
+COPY docs/personality-cards.md docs/personality-cards.md
 RUN dotnet restore portal/Smacx.Portal/Smacx.Portal.csproj
 RUN dotnet publish portal/Smacx.Portal/Smacx.Portal.csproj -c Release --no-restore -o /out
 

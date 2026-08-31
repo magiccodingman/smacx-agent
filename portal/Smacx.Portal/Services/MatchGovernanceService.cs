@@ -88,7 +88,7 @@ public sealed class MatchGovernanceService(
             MatchId = match.MatchId,
             Kind = request.Kind,
             RequestedByUserId = requester.Id,
-            RequestedByHandle = requester.GameHandle,
+            RequestedByHandle = requester.DisplayName,
             Title = copy.Title,
             Description = copy.Description,
             PayloadJson = request.PayloadJson,
@@ -104,8 +104,8 @@ public sealed class MatchGovernanceService(
             MatchId = match.MatchId,
             EventType = "governance_proposal",
             Summary = eligible.Count == 0
-                ? $"{requester.GameHandle}'s {copy.Title} request requires no peer vote."
-                : $"{requester.GameHandle} opened a vote: {copy.Title}.",
+                ? $"{requester.DisplayName}'s {copy.Title} request requires no peer vote."
+                : $"{requester.DisplayName} opened a vote: {copy.Title}.",
             DetailsJson = JsonSerializer.Serialize(new
             {
                 proposal.ProposalId, proposal.Kind, EligibleVoters = eligible.Count,

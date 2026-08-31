@@ -57,13 +57,13 @@ fullscreen, and reconnect support.
   5120×1440, while instant CSS fitting preserves the game aspect ratio at any
   browser size. Landscape fullscreen is the sweet spot on small screens.
 - Use your own native game client when that is what you prefer. The lobby gives
-  you the exact host, session, handle, and faction details.
-- Keep one durable player handle and campaign history whether you prefer the
+  you the exact host, session, public display name, and faction details.
+- Keep one durable public display name and campaign history whether you prefer the
   managed browser path or a traditional native seat.
 
 Your wife does not need to learn Wine prefixes to join from the next room. Your
 friend does not need your carefully tuned Linux setup. They open the LAN site,
-claim their handle, and take their seat.
+claim their display name, and take their seat.
 
 <p align="center">
   <img src="docs/images/browser-gameplay-mobile-landscape.jpg" alt="Alien Crossfire fitted into an 844 by 390 phone landscape viewport" width="72%">
@@ -149,7 +149,7 @@ in artificial intelligence to use SMACX Agent.
 As a modern human game host it already gives you:
 
 - one responsive lobby directory for standard, custom, and scenario games;
-- lightweight private-LAN accounts with durable, case-insensitive game handles;
+- lightweight private-LAN accounts with durable, case-insensitive public display names;
 - browser play that removes per-player game installation and compatibility
   setup;
 - installable desktop/mobile command deck with a guided cross-browser PWA
@@ -175,6 +175,20 @@ Connect any OpenAI-compatible model endpoint and turn a discovered model into a
 named, versioned player profile. The platform starts and supervises the agent
 for its assigned seat; there is no separate host Hermes dashboard to install or
 babysit.
+
+Every AI seat can choose its own faction and personality. Standard preserves
+the faction's canonical worldview; Friendly, Aggressive, and Extreme explore
+recognizable variations; Random locks one variant for that match; and None
+leaves temperament entirely to the model. The built-in library contains 56
+authored personalities across all fourteen original and Alien Crossfire
+factions.
+
+The model profile stays backstage. At the table the AI appears as the faction
+leader it actually plays—Lady Deirdre Skye, Chairman Sheng-ji Yang, Datajack
+Sinder Roze, Conqueror Marr, and the rest—in the lobby, native game, chat,
+history, and spectator tooling. Factions are selected through the native game
+semantically, duplicate assignments are prevented, and the final running
+faction is verified before the personality-bearing agent is allowed to start.
 
 These players do not aim a vision model at screenshots and hope it clicks the
 right pixel. A native bridge inside the real game gives each model structured

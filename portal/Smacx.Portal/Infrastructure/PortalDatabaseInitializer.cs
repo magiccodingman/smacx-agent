@@ -8,7 +8,7 @@ public sealed class PortalDatabaseInitializer(
     IServiceScopeFactory scopeFactory,
     ILogger<PortalDatabaseInitializer> logger)
 {
-    private const string CanonicalSchemaId = "smacx.portal.canonical.2026-08-managed-play";
+    private const string CanonicalSchemaId = "smacx.portal.canonical.2026-08-faction-personality";
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -42,6 +42,9 @@ public sealed class PortalDatabaseInitializer(
         {
             "ConnectionState", "LastExitKind", "LastWorkerSeenAt", "IsManagedHost",
             "TemporaryControllerKind", "DelegationStatus", "LastBrowserSeenAt",
+            "RequestedFactionId", "ResolvedFactionKey", "LeaderName",
+            "RequestedPersonalityId", "PersonalityName", "PersonalityPrompt",
+            "PersonalityPromptSha256",
         };
         await using (var command = connection.CreateCommand())
         {
@@ -55,6 +58,22 @@ public sealed class PortalDatabaseInitializer(
                 "The unreleased portal database predates the canonical managed-play columns. " +
                 "Back up any development data, remove portal.sqlite3, and restart. " +
                 $"Missing: {string.Join(", ", requiredSeatColumns.Order())}.");
+
+        var requiredUserColumns = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "NormalizedDisplayName",
+        };
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA table_info('AspNetUsers')";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                requiredUserColumns.Remove(reader.GetString(1));
+        }
+        if (requiredUserColumns.Count > 0)
+            throw new InvalidOperationException(
+                "The unreleased portal database predates public display-name identity. " +
+                "Back up any development data, remove portal.sqlite3, and restart.");
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in new[] { PortalRoles.Administrator, PortalRoles.Member })

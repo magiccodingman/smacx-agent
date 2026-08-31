@@ -5,7 +5,16 @@ namespace Smacx.Portal.Tests;
 public sealed class NativePlayerIdentityTests
 {
     [Fact]
-    public void NativeAliasIsBoundedStableAndDoesNotReplaceCanonicalHandle()
+    public void PublicDisplayNameIsTheNativeIdentityWhenAvailable()
+    {
+        var alias = NativePlayerIdentity.AllocateAlias(
+            "match-one", 2, "Alice", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Equal("Alice", alias);
+    }
+
+    [Fact]
+    public void OccupiedDisplayNameGetsABoundedStableFallback()
     {
         var occupied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {

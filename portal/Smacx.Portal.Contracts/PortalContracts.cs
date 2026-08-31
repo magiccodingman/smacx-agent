@@ -82,7 +82,8 @@ public sealed record CreateLobbyRequest(
     int CloudCover = 1,
     IReadOnlyDictionary<string, bool>? RuleOptions = null,
     string? ScenarioId = null,
-    string? ResumeSlot = null);
+    string? ResumeSlot = null,
+    IReadOnlyList<AgentSeatRequest>? AgentSeats = null);
 
 public sealed record JoinLobbyRequest(int SeatIndex, string JoinMode = "browser");
 
@@ -114,7 +115,16 @@ public sealed record LobbySeatSummary(
     string DelegationStatus = "none",
     string TemporaryControllerKind = "none",
     DateTimeOffset? LastBrowserSeenAt = null,
-    bool IsManagedHost = false);
+    bool IsManagedHost = false,
+    string RequestedFactionId = "random",
+    string? ResolvedFactionKey = null,
+    string RequestedPersonalityId = "standard",
+    string? PersonalityName = null);
+
+public sealed record FactionPersonalityCatalog(
+    IReadOnlyList<FactionCatalogItem> Factions,
+    IReadOnlyList<PersonalityCatalogItem> PersonalityModes,
+    IReadOnlyList<PersonalityCatalogItem> BuiltInCards);
 
 public sealed record LobbyDetails(
     string MatchId,

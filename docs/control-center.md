@@ -85,10 +85,13 @@ from **Your account → Change password**. No reset ticket or administrator is
 needed for an ordinary password change.
 
 Registration is deliberately lightweight for a friendly LAN: no email is
-required. Usernames/game handles compare case-insensitively and use characters
-accepted by the native game. Inviting a handle to a lobby reserves a
-passwordless provisional account; registering that handle later claims the
-existing seat and history.
+required. The username is the private sign-in identity; the public display name
+is what other humans and agents see in lobbies, chat, history, and the native
+game. Both compare case-insensitively. Public display names use characters
+accepted by the native game, must be unique, and may be changed from **Your
+account** while the old name is not reserved by an unfinished match. Inviting a
+display name to a lobby reserves a passwordless provisional account;
+registering that display name later claims the existing seat and history.
 
 ## 3. Publish on a trusted LAN
 
@@ -230,7 +233,7 @@ the lobby, provisions its managed players, starts the game, and begins native
 session advertising immediately. Merely opening the New lobby page does
 nothing.
 
-Reserved player handles are case-insensitive seat reservations; they do not
+Reserved public display names are case-insensitive seat reservations; they do not
 send notifications. A matching existing or future local account claims the
 reserved seat. Reserving stock computer opponents is also optional: it prevents
 those seats being claimed while a lobby waits. Every seat still open at launch
@@ -276,12 +279,14 @@ read-only at the worker transport—not merely disabled in JavaScript.
 
 ### Direct/native game client
 
-The lobby page shows the exact host address, native session name/ID, assigned
-match-local native alias, seat, and recorded faction. Launch the user's own
-Alien Crossfire client, choose TCP/IP multiplayer, and join with that exact
-alias. The portal keeps the account's normal game handle for chat, history,
-analytics, and memory; the alias exists only to make DirectPlay seat binding
-unambiguous and collision-proof.
+The lobby page shows the exact host address, native session name/ID, required
+public display name, seat, and recorded faction. Launch the user's own Alien
+Crossfire client, choose TCP/IP multiplayer, and join with that exact display
+name. DirectPlay participants are matched case-insensitively. An unexpected
+name, a faction-leader name reserved for an agent, or a later duplicate cannot
+take somebody else's portal seat. In an agent-hosted lobby the native host
+removes that participant and reports the rejection; a human-hosted lobby blocks
+finalization because the managed process does not own the native host.
 
 Direct clients require workers on a network reachable from the physical LAN.
 Create a macvlan/ipvlan network appropriate for the host, then publish it to the
@@ -321,7 +326,7 @@ to everyone, privately message a currently contacted faction, or create a named
 private group. Every invited group member must accept before it becomes active.
 The native transport receives one private copy per group recipient, while the
 portal and AI memory preserve one logical message with per-recipient delivery
-status. Native chat is imported with both player handle and faction name, even
+status. Native chat is imported with both public display name and faction name, even
 when it arrives outside the local player's turn.
 
 Private/group bodies are returned only to their authorized participants;

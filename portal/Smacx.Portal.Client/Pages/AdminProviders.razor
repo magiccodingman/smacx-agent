@@ -113,10 +113,7 @@ else
                 </div>
                 <span class="field-help flush">Leave context blank to use the model endpoint’s advertised limit.</span>
                 <MudTextField @bind-Value="profileNotes" Label="Operator note (optional)" Lines="2" Variant="Variant.Outlined" />
-                <MudSelect T="string" Value="@("none")" Label="Personality card" Variant="Variant.Outlined" Disabled="true">
-                    <MudSelectItem Value="@("none")">None</MudSelectItem>
-                </MudSelect>
-                <span class="field-help flush">Personality cards are intentionally deferred. Every current profile uses the neutral None layer.</span>
+                <span class="field-help flush">Faction and personality are chosen independently for each AI seat when a lobby is created; they are not properties of the reusable model profile.</span>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanCreateProfile)"
                            OnClick="CreateProfile" StartIcon="@Icons.Material.Filled.SmartToy">
                     Create playable AI profile

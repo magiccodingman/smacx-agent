@@ -39,6 +39,16 @@ class ContractManager(WorkerManager):
         if operation == "semantic_lan" and arguments.get("action") == "start":
             self.start_calls += 1
             return {"ok": True}
+        if operation == "semantic_lan" and arguments.get("action") == "drop_player":
+            player_index = arguments["player_index"]
+            participants = self.host_lobby["lobby"]["participants"]
+            self.host_lobby["lobby"]["participants"] = [
+                item for item in participants if item["player_index"] != player_index
+            ]
+            self.host_lobby["lobby"]["revision"] = (
+                f"lobby-contract-drop-{player_index}"
+            )
+            return {"ok": True, "dropped_player_index": player_index}
         if operation == "semantic_snapshot":
             return {"ok": True, "snapshot": {
                 "turn": 42, "year": 2142,
@@ -54,7 +64,13 @@ class ContractManager(WorkerManager):
         return {"running": True, "health": "healthy", "instance_id": instance_id}
 
     def _wait_native(self, instance_id: str, operation: str, predicate, **arguments):
-        if operation == "semantic_lan":
+        if operation == "semantic_lan" \
+                and arguments.get("context") == "native_name_conflict_removed":
+            self.host_lobby["lobby"]["participant_count"] = len(
+                self.host_lobby["lobby"]["participants"]
+            )
+            value = self.host_lobby
+        elif operation == "semantic_lan":
             value = {"ok": True, "lifecycle": "game"}
         elif operation == "semantic_snapshot":
             value = {"ok": True, "snapshot": {"faction": {"id": 1, "name": "Gaians"}}}
@@ -154,14 +170,15 @@ def main() -> int:
         manager.host_lobby["lobby"]["participants"].append(
             participant("Mallory", 3, 3, ready=True)
         )
-        try:
-            manager.finalize_external_lan_match(scope.match_id)
-        except WorkerManagerError as exc:
-            if "external_lan_participant_identity_mismatch" not in str(exc):
-                raise
-        else:
-            raise AssertionError("unexpected external participant was accepted")
-        manager.host_lobby["lobby"]["participants"].pop()
+        removed = manager.finalize_external_lan_match(scope.match_id)
+        rejected_players = removed["external_join"].get("rejected_players", [])
+        if not removed.get("awaiting_external_humans") \
+                or len(rejected_players) != 1 \
+                or rejected_players[0]["player_name"] != "Mallory" \
+                or rejected_players[0]["reason"] != "unreserved_display_name" \
+                or any(item["name"] == "Mallory" for item in
+                       manager.host_lobby["lobby"]["participants"]):
+            raise AssertionError("unexpected external participant was not removed safely")
 
         control.update_lan_seat(scope.match_id, 1, faction_id=3)
         external["resume_slot"] = "checkpoint"
@@ -219,7 +236,7 @@ def main() -> int:
                 "agent_hosted_external_client_path": True,
                 "human_has_no_agent_perspective": True,
                 "exact_player_names": True,
-                "unexpected_player_rejected": True,
+                "unexpected_player_removed_by_native_host": True,
                 "readiness_guarded": True,
                 "saved_faction_guarded": True,
                 "native_outcome_mirrored": True,

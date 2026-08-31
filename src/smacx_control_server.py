@@ -517,6 +517,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 agent_ids = body.get("agent_ids")
                 if not isinstance(agent_ids, list) or not all(isinstance(item, str) for item in agent_ids):
                     raise InvalidRecord("invalid_lan_agent_ids")
+                agent_seats = body.get("agent_seats")
+                if agent_seats is not None and (
+                        not isinstance(agent_seats, list)
+                        or not all(isinstance(item, dict) for item in agent_seats)):
+                    raise InvalidRecord("invalid_lan_agent_seats")
                 human_player_names = body.get("human_player_names", [])
                 if not isinstance(human_player_names, list) \
                         or not all(isinstance(item, str) for item in human_player_names):
@@ -536,6 +541,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     human_host_name=(str(body["human_host_name"])
                                      if body.get("human_host_name") is not None else None),
                     human_host_managed=body.get("human_host_managed") is True,
+                    agent_seats=(list(agent_seats) if agent_seats is not None else None),
                     match_id=(str(body["match_id"])
                               if body.get("match_id") is not None else None),
                     metadata={

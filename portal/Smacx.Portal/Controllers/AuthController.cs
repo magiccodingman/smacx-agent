@@ -135,17 +135,38 @@ public sealed partial class AuthController(
                 "invalid_username",
                 "Use 3–31 letters, numbers, periods, underscores, or hyphens; begin with a letter or number."));
         }
-        if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 80)
+        var user = await userManager.FindByNameAsync(request.Username);
+        if (user is null)
+        {
+            var requestedDisplay = NormalizeDisplayName(request.DisplayName);
+            user = await database.Users.SingleOrDefaultAsync(item =>
+                item.IsProvisional && item.NormalizedDisplayName == requestedDisplay,
+                HttpContext.RequestAborted);
+        }
+        if (user is { IsProvisional: true } &&
+            user.NormalizedDisplayName != NormalizeDisplayName(request.DisplayName))
+            return Conflict(ApiResponse<PortalSession>.Failure(
+                "invitation_display_name_mismatch",
+                "Claim this invited seat with its reserved public display name."));
+        var displayValidation = await ValidateDisplayNameAsync(
+            request.DisplayName, user is { IsProvisional: true } ? user.Id : null);
+        if (displayValidation is not null)
         {
             return BadRequest(ApiResponse<PortalSession>.Failure(
-                "invalid_display_name", "Display names must contain 1–80 characters."));
+                displayValidation.Value.Code, displayValidation.Value.Message));
         }
 
-        var user = await userManager.FindByNameAsync(request.Username);
         IdentityResult result;
         if (user is { IsProvisional: true })
         {
+            var renamed = await userManager.SetUserNameAsync(user, request.Username);
+            if (!renamed.Succeeded)
+                return Conflict(ApiResponse<PortalSession>.Failure(
+                    "username_unavailable", FormatIdentityErrors(renamed)));
             user.DisplayName = request.DisplayName.Trim();
+            user.NormalizedDisplayName = NormalizeDisplayName(request.DisplayName);
+            user.GameHandle = request.DisplayName.Trim();
+            user.NormalizedGameHandle = userManager.NormalizeName(request.DisplayName)!;
             user.IsProvisional = false;
             user.UpdatedAt = DateTimeOffset.UtcNow;
             result = await userManager.AddPasswordAsync(user, request.Password);
@@ -159,7 +180,7 @@ public sealed partial class AuthController(
         else
         {
             return Conflict(ApiResponse<PortalSession>.Failure(
-                "username_unavailable", "That LAN game handle already has an account."));
+                "username_unavailable", "That sign-in username already has an account."));
         }
         if (!result.Succeeded)
         {
@@ -176,9 +197,9 @@ public sealed partial class AuthController(
         }
 
         // A lobby invitation can arrive from the native game before this LAN
-        // account exists.  Claim every still-unclaimed seat with the same game
-        // handle so reconnects and history attach to one durable identity.
-        var normalizedHandle = user.NormalizedGameHandle;
+        // account exists. Claim every still-unclaimed seat with the same public
+        // display name so reconnects and history attach to one durable identity.
+        var normalizedHandle = user.NormalizedDisplayName;
         var invitedSeats = await database.PortalLobbySeats
             .Where(seat => seat.UserId == null && seat.ControllerKind == "human" &&
                 seat.PlayerHandle != null && seat.PlayerHandle.ToUpper() == normalizedHandle)
@@ -282,6 +303,32 @@ public sealed partial class AuthController(
         return ApiResponse<bool>.Success(true);
     }
 
+    [HttpPost("display-name")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<PortalSession>>> UpdateDisplayName(
+        UpdateDisplayNameRequest request)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null)
+            return Unauthorized(ApiResponse<PortalSession>.Failure(
+                "session_user_not_found", "The signed-in account no longer exists."));
+        var validation = await ValidateDisplayNameAsync(request.DisplayName, user.Id);
+        if (validation is not null)
+            return BadRequest(ApiResponse<PortalSession>.Failure(
+                validation.Value.Code, validation.Value.Message));
+        user.DisplayName = request.DisplayName.Trim();
+        user.NormalizedDisplayName = NormalizeDisplayName(request.DisplayName);
+        user.GameHandle = request.DisplayName.Trim();
+        user.NormalizedGameHandle = userManager.NormalizeName(request.DisplayName)!;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        var result = await userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<PortalSession>.Failure(
+                "display_name_update_failed", FormatIdentityErrors(result)));
+        await signInManager.RefreshSignInAsync(user);
+        return ApiResponse<PortalSession>.Success(new(true, await ToPortalUserAsync(user)));
+    }
+
     [HttpPost("password/change")]
     [Authorize]
     public async Task<ActionResult<ApiResponse<PortalSession>>> ChangePassword(
@@ -312,11 +359,12 @@ public sealed partial class AuthController(
 
     private ApplicationUser NewUser(string username, string displayName)
     {
-        var gameHandle = username.Trim();
+        var gameHandle = displayName.Trim();
         return new ApplicationUser
         {
-            UserName = gameHandle,
+            UserName = username.Trim(),
             DisplayName = displayName,
+            NormalizedDisplayName = NormalizeDisplayName(displayName),
             GameHandle = gameHandle,
             NormalizedGameHandle = userManager.NormalizeName(gameHandle)!,
             EmailConfirmed = true,
@@ -350,6 +398,34 @@ public sealed partial class AuthController(
 
     private static string FormatIdentityErrors(IdentityResult result) =>
         string.Join(" ", result.Errors.Select(error => error.Description));
+
+    private async Task<(string Code, string Message)?> ValidateDisplayNameAsync(
+        string? value, string? currentUserId = null)
+    {
+        var displayName = value?.Trim() ?? string.Empty;
+        if (displayName.Length is < 1 or > 31 || displayName.Any(character => character < 32 || character > 126))
+            return ("invalid_display_name", "Public display names must contain 1–31 printable ASCII characters for DirectPlay compatibility.");
+        if (FactionCatalog.IsReservedLeaderName(displayName))
+            return ("reserved_faction_leader_name", "That name is reserved for an AI faction leader.");
+        var normalized = NormalizeDisplayName(displayName);
+        if (await database.Users.AsNoTracking().AnyAsync(
+                item => item.NormalizedDisplayName == normalized && item.Id != currentUserId,
+                HttpContext.RequestAborted))
+            return ("display_name_unavailable", "Another LAN player already uses that public display name.");
+        if (await database.PortalLobbySeats.AsNoTracking()
+                .Join(database.PortalMatches.AsNoTracking(), seat => seat.MatchId,
+                    match => match.MatchId, (seat, match) => new { Seat = seat, Match = match })
+                .AnyAsync(item => item.Seat.ControllerKind == "human" &&
+                    item.Seat.UserId != currentUserId && item.Seat.PlayerHandle != null &&
+                    item.Seat.PlayerHandle.ToUpper() == normalized &&
+                    item.Match.Status != "completed" && item.Match.Status != "deleted",
+                    HttpContext.RequestAborted))
+            return ("display_name_reserved_by_match",
+                "That public display name is reserved by an unfinished match.");
+        return null;
+    }
+
+    private static string NormalizeDisplayName(string value) => value.Trim().ToUpperInvariant();
 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9_.-]{2,30}$", RegexOptions.CultureInvariant)]
     private static partial Regex ValidUsername();
