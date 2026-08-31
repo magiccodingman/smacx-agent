@@ -84,7 +84,6 @@ builder.Services.AddScoped(serviceProvider =>
 builder.Services.AddScoped<PortalApiClient>();
 
 builder.Services.AddCascadingAuthenticationState();
-builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 
 builder.Services.AddAuthentication(options =>
@@ -96,6 +95,8 @@ builder.Services.AddAuthentication(options =>
     {
         options.ApplicationCookie!.Configure(cookie =>
         {
+            cookie.LoginPath = "/login";
+            cookie.AccessDeniedPath = "/access-denied";
             cookie.Cookie.Name = "smacx.portal.session";
             cookie.Cookie.HttpOnly = true;
             cookie.Cookie.SameSite = SameSiteMode.Strict;
@@ -149,7 +150,6 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 builder.Services.AddScoped<BootstrapTokenStore>();
 builder.Services.AddSingleton<PortalDatabaseInitializer>();
 

@@ -33,9 +33,25 @@
     @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert> }
 </section></div>
 @code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
     private PortalSetupState? setup; private string username = ""; private string password = ""; private string confirmation = ""; private string bootstrapToken = ""; private string? error; private bool remember; private bool loading = true; private bool busy;
     private string PasswordHelp => $"At least {setup?.PasswordMinimumLength ?? 8} characters with upper, lower, and a number.";
     protected override async Task OnInitializedAsync() { setup = (await Api.GetAsync<PortalSetupState>("api/auth/setup"))?.Data; loading = false; }
-    private async Task SignIn() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/login", new LoginRequest(username, password, remember)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo("/", true); else error = result.Payload?.Error?.Message ?? "Sign in failed."; }
-    private async Task Bootstrap() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/bootstrap", new BootstrapRequest(bootstrapToken, password, confirmation)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo("/", true); else error = result.Payload?.Error?.Message ?? "Setup failed."; }
+    private async Task SignIn() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/login", new LoginRequest(username, password, remember)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo(SafeReturnDestination(), true); else error = result.Payload?.Error?.Message ?? "Sign in failed."; }
+    private async Task Bootstrap() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/bootstrap", new BootstrapRequest(bootstrapToken, password, confirmation)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo(SafeReturnDestination(), true); else error = result.Payload?.Error?.Message ?? "Setup failed."; }
+
+    private string SafeReturnDestination()
+    {
+        if (string.IsNullOrWhiteSpace(ReturnUrl) ||
+            !ReturnUrl.StartsWith("/", StringComparison.Ordinal) ||
+            ReturnUrl.StartsWith("//", StringComparison.Ordinal) ||
+            ReturnUrl.Contains('\\') ||
+            !Uri.TryCreate(ReturnUrl, UriKind.Relative, out _))
+        {
+            return "/";
+        }
+        return ReturnUrl;
+    }
 }
