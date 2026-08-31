@@ -1,6 +1,31 @@
 name: smacx-agent
 
 services:
+  knowledge-service:
+    build:
+      context: .
+      dockerfile: knowledge_service/Smacx.KnowledgeService/Dockerfile
+    image: smacx-agent-knowledge:dev
+    restart: unless-stopped
+    environment:
+      SMACX_KNOWLEDGE_DATA: /var/lib/smacx-knowledge
+      SMACX_GAME_SOURCE: /game-source
+      SMACX_EMBEDDINGS_ENABLED: ${SMACX_EMBEDDINGS_ENABLED:-1}
+    expose:
+      - "8090"
+    volumes:
+      - smacx-knowledge-data:/var/lib/smacx-knowledge
+      - smacx-control-data:/var/lib/smacx-control:ro
+      - ${SMACX_GAME_SOURCE:?Set SMACX_GAME_SOURCE to the directory containing terranx.exe}:/game-source:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s
+
   control-api:
     build:
       context: .
@@ -22,6 +47,7 @@ services:
       SMACX_HERMES_IMAGE: ${SMACX_HERMES_IMAGE:-smacx-agent-harness:dev}
       SMACX_CONTROL_DATA_VOLUME: smacx-agent_smacx-control-data
       SMACX_VIEW_PUBLISH_IP: ${SMACX_VIEW_PUBLISH_IP:-127.0.0.1}
+      SMACX_REFERENCE_URL: http://knowledge-service:8090
     expose:
       - "8081"
     volumes:
@@ -38,6 +64,9 @@ services:
     cap_drop:
       - ALL
     stop_grace_period: 15s
+    depends_on:
+      knowledge-service:
+        condition: service_started
 
   control-center:
     build:
@@ -93,21 +122,25 @@ services:
   # neither service is published on the host. SQLite remains authoritative.
   graphiti-db:
     profiles: ["graphiti"]
-    image: ${SMACX_NEO4J_IMAGE:-neo4j:2026.07.1-community@sha256:dbc377fb9cd8fe8dabc19d3041b197d5ca0ef8bae514cea175b8df265e5b7a76}
+    image: ${SMACX_FALKORDB_IMAGE:-falkordb/falkordb-server:v4.20.4@sha256:c1e97472fc8d6d00c33708771b667cd592ff7488b0e8b7d43345e0611859e75d}
     restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export REDIS_ARGS="--requirepass $$(cat /run/secrets/falkordb_password) --appendonly yes --appendfsync everysec"
+        exec /var/lib/falkordb/bin/run.sh
     environment:
-      NEO4J_AUTH_FILE: /run/secrets/neo4j_auth
-      NEO4J_server_memory_heap_initial__size: 256m
-      NEO4J_server_memory_heap_max__size: 512m
-      NEO4J_server_memory_pagecache_size: 256m
+      BROWSER: "0"
+      FALKORDB_ARGS: "THREAD_COUNT 4 TIMEOUT_MAX 30000 TIMEOUT_DEFAULT 10000 CACHE_SIZE 50"
     secrets:
-      - neo4j_auth
+      - falkordb_password
     volumes:
-      - smacx-graphiti-data:/data
+      - smacx-falkordb-data:/var/lib/falkordb/data
     networks:
       - graphiti-internal
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -a neo4j://127.0.0.1:7687 -u neo4j -p \"$$(sed 's#^[^/]*/##' /run/secrets/neo4j_auth)\" 'RETURN 1' >/dev/null"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$(cat /run/secrets/falkordb_password)\" ping | grep -qx PONG"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -125,25 +158,30 @@ services:
     depends_on:
       graphiti-db:
         condition: service_healthy
+      knowledge-service:
+        condition: service_started
     environment:
-      SMACX_GRAPHITI_NEO4J_URI: bolt://graphiti-db:7687
-      SMACX_GRAPHITI_NEO4J_USER: neo4j
-      SMACX_GRAPHITI_NEO4J_PASSWORD_FILE: /run/secrets/neo4j_password
-      SMACX_GRAPHITI_LLM_BASE_URL: ${SMACX_GRAPHITI_LLM_BASE_URL:-}
-      SMACX_GRAPHITI_LLM_API_KEY_FILE: /run/secrets/graphiti_llm_api_key
-      SMACX_GRAPHITI_LLM_MODEL: ${SMACX_GRAPHITI_LLM_MODEL:-}
-      SMACX_GRAPHITI_SMALL_MODEL: ${SMACX_GRAPHITI_SMALL_MODEL:-}
-      SMACX_GRAPHITI_EMBED_BASE_URL: ${SMACX_GRAPHITI_EMBED_BASE_URL:-}
-      SMACX_GRAPHITI_EMBED_API_KEY_FILE: /run/secrets/graphiti_embed_api_key
-      SMACX_GRAPHITI_EMBED_MODEL: ${SMACX_GRAPHITI_EMBED_MODEL:-}
-      SMACX_GRAPHITI_EMBED_DIM: ${SMACX_GRAPHITI_EMBED_DIM:-}
+      SMACX_GRAPHITI_DATABASE_PROVIDER: falkordb
+      SMACX_GRAPHITI_FALKORDB_HOST: graphiti-db
+      SMACX_GRAPHITI_FALKORDB_PORT: 6379
+      SMACX_GRAPHITI_FALKORDB_PASSWORD_FILE: /run/secrets/falkordb_password
+      SMACX_GRAPHITI_EMBED_BASE_URL: ${SMACX_GRAPHITI_EMBED_BASE_URL:-http://knowledge-service:8090/v1}
+      SMACX_GRAPHITI_EMBED_MODEL: ${SMACX_GRAPHITI_EMBED_MODEL:-smacx-local-embeddings}
+      SMACX_GRAPHITI_EMBED_DIM: ${SMACX_GRAPHITI_EMBED_DIM:-2048}
       SMACX_GRAPHITI_STRUCTURED_OUTPUT_MODE: ${SMACX_GRAPHITI_STRUCTURED_OUTPUT_MODE:-json_schema}
+      SMACX_GRAPHITI_RECALL_PORT: 8091
+      SMACX_SECRET_ROOT: /var/lib/smacx/secrets
+    expose:
+      - "8091"
     secrets:
-      - neo4j_password
-      - graphiti_llm_api_key
-      - graphiti_embed_api_key
+      - falkordb_password
     volumes:
       - smacx-control-data:/var/lib/smacx
+    # Compose mounts local secret files with their host ownership. Grant the
+    # non-root projector only the source file's group instead of making the
+    # password world-readable or running the service as root.
+    group_add:
+      - "${SMACX_GRAPHITI_SECRET_GID:-1000}"
     networks:
       - default
       - graphiti-internal
@@ -164,18 +202,13 @@ services:
 volumes:
   smacx-control-data:
   smacx-portal-data:
-  smacx-graphiti-data:
+  smacx-falkordb-data:
+  smacx-knowledge-data:
 
 networks:
   graphiti-internal:
     internal: true
 
 secrets:
-  neo4j_auth:
-    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/neo4j_auth
-  neo4j_password:
-    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/neo4j_password
-  graphiti_llm_api_key:
-    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/llm_api_key
-  graphiti_embed_api_key:
-    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/embed_api_key
+  falkordb_password:
+    file: ${SMACX_GRAPHITI_SECRET_DIR:-./runtime/graphiti-secrets}/falkordb_password

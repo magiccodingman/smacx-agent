@@ -40,7 +40,7 @@ OpenAI-compatible provider <--> isolated SMACX-derived Hermes container
                                       +--> exact seat MCP only
 ```
 
-Optional Graphiti/Neo4j reads committed authoritative events through a cursor
+Optional Graphiti/FalkorDB reads committed authoritative events through a cursor
 and writes only a derived temporal graph. It is never on the gameplay authority
 path.
 
@@ -181,8 +181,8 @@ Hermes prompt assembly rather than adding another layer. The hook verifies the
 stored prompt SHA-256 and fails closed when the file is missing or changed.
 Captured-provider tests prove that the request contains exactly one system
 message: the versioned fair-play contract, immutable match/seat/policy identity,
-mandatory live-settings briefing protocol, and the future personality seam
-(`None` only in this milestone). Hermes still supplies conversation continuity,
+mandatory live-settings briefing protocol, and the match's resolved authored
+personality card appended last. Hermes still supplies conversation continuity,
 compression, provider transport, and MCP execution, but contributes no system
 scaffold or workspace instructions.
 
@@ -298,36 +298,41 @@ Authoritative memory separates:
 - active/completed/abandoned goals; and
 - bounded summaries/compression records.
 
-FTS5/BM25 retrieval is scoped and supports multiple records. Write budgets and
+FTS5/BM25 retrieval of dynamic match memory is scoped and supports multiple records. Write budgets and
 summary replacement prevent unbounded context growth without erasing the raw
 event history.
 
 ## Knowledge system
 
-The shipped `knowledge/core.json` contains short independently written
-mechanics primers with topic/section/title/keywords/provenance. It excludes
-strategy guides and scenario solutions. The control plane builds a searchable
-Markdown-like document index with FTS5/BM25.
+The separate .NET knowledge service acquires an explicit set of rules sources
+at runtime, cleans them to heading/body Markdown, and atomically synchronizes
+topical snapshots through SemanticKnowledge.NET. Installed Alien Crossfire
+mechanics files come from the read-only game mount; canonical web pages fall
+back to fixed Internet Archive captures. Acquired text and vectors remain in a
+private persistent volume and never enter source, images, or release artifacts.
 
-An optional private extractor reads documentation from the validated game
-source, extracts PDF/TXT/HTML/help text inside an operator-owned volume, stores
-source hashes, and never copies the resulting documents into source or images.
-Retrieval remains bound to the exact game-source fingerprint so mods/install
-variants do not contaminate another match.
+One configurable embedding space serves both SemanticKnowledge and Graphiti.
+The default registers one ONNX model instance. SemanticKnowledge retains its
+multi-chunk vectors; an internal OpenAI-compatible facade combines chunks into
+one vector only for Graphiti. External embeddings are an advanced alternative,
+and changing their stable space ID triggers revalidation/rebuild.
 
 ## Graphiti
 
 Graphiti is a derived temporal projection:
 
 ```text
-authoritative SQLite event cursor
+curated authoritative SQLite event cursor
   -> projector validates installation/match/agent/perspective
   -> Graphiti episodes
-  -> isolated Neo4j namespace
+  -> isolated FalkorDB graph
 ```
 
-Projection may lag, be rebuilt, or be deleted. Gameplay and scoped BM25 memory
-continue. Graphiti cannot create facts in SQLite or broaden a perspective.
+Projection includes only durable chat/political/relationship/commitment/goal/
+belief/summary history; routine moves and raw reasoning are skipped. Projection
+may lag, be rebuilt, or be deleted. Relevant recall is bounded and fail-open.
+Gameplay and scoped SQLite/BM25 memory continue. Graphiti cannot create facts
+in SQLite or broaden a perspective.
 
 ## Analytics
 
@@ -381,7 +386,8 @@ to one to avoid native/Blazor optimization exhausting home-lab memory.
   designed/contract-tested but await external certification.
 - The service is LAN-only, not Internet matchmaking/hosting.
 - All matches are unranked.
-- Personality schema/injection exists; authored cards do not.
+- The authored personality library is deliberately finite and selected per AI
+  seat; adding arbitrary user-authored cards is outside the current UI.
 - Unknown game states remain fail-closed instead of invoking pixels.
 
 See [ADR 0001](adr/0001-identities-and-authoritative-memory.md), [ADR

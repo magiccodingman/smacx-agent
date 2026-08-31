@@ -330,8 +330,10 @@ read-only. A persistent telemetry helper is a regression.
 
 ## Graphiti is unavailable
 
-This is nonfatal. SQLite and FTS5/BM25 remain authoritative. Confirm compatible
-chat and embedding endpoints before:
+This is nonfatal. SQLite and scoped FTS5/BM25 match memory remain authoritative.
+Choose an active extraction AI profile under Operations; keep the default
+shared local embedding runtime or configure one compatible external embedding
+space before:
 
 ```bash
 ./scripts/graphiti-up.sh

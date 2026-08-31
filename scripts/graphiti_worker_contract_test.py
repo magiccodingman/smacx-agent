@@ -9,7 +9,7 @@ from pathlib import Path
 import tempfile
 
 from smacx_control import ControlPlane
-from smacx_graphiti import _environment_secret
+from smacx_graphiti import _environment_secret, load_runtime_config
 from smacx_graphiti_worker import _enabled, _scopes, _state
 from smacx_store import ScopeViolation, SmacxStore
 
@@ -65,7 +65,25 @@ def main() -> int:
         finally:
             os.environ.pop("CONTAINED_GRAPHITI_KEY_FILE", None)
 
-        control.set_graphiti_enabled(True)
+        provider = control.configure_provider("Graph extraction", "http://model.test/v1")
+        with store.transaction() as connection:
+            connection.execute(
+                "INSERT INTO provider_models(provider_id,model_id,display_name,context_length,"
+                "capabilities_json,raw_metadata_json,discovered_unix) VALUES(?,?,?,?,?,?,0)",
+                (provider["provider_id"], "extract-model", "Extract model", 65536, "{}", "{}"),
+            )
+        control.set_graphiti_enabled(True, profile={
+            "profile_version_id": "profile-version-graph-001",
+            "display_name": "Graph extraction",
+            "provider_id": provider["provider_id"], "model_id": "extract-model",
+            "reasoning_effort": "none",
+            "generation_settings": {"preset": "provider-default"},
+        })
+        runtime_config = load_runtime_config(store)
+        if runtime_config.llm_model != "extract-model" \
+                or runtime_config.embed_model != "smacx-local-embeddings" \
+                or runtime_config.embed_dim != 2048:
+            raise AssertionError("Graphiti did not resolve its selected profile and shared embedding endpoint")
         if not _enabled(store):
             raise AssertionError("Control Center enable policy was not persisted")
 
@@ -75,6 +93,7 @@ def main() -> int:
             "cross_scope_rejected": True,
             "failure_isolated_and_observable": True,
             "file_secret_supported": True,
+            "extraction_profile_required": True,
             "canonical_schema_revision": store.schema_version(),
         }}, separators=(",", ":")))
     return 0

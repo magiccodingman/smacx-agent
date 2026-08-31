@@ -6,16 +6,17 @@ is delivered as vertical, independently testable milestones.
 1. **Durable foundation** — installation/match/agent/perspective/instance/session
    identities, one canonical pre-release SQLite schema, immutable events,
    structured memory, chat history, and scoped full-text retrieval.
-2. **Runtime integration** — migrate the controller's manifests and knowledge
-   ledger into SQLite while retaining guarded legacy import and the existing
-   MCP contract. A project-authored, citation-bearing rules corpus now adds
-   global FTS5/BM25 mechanics lookup without importing proprietary game text.
-3. **Memory projection** — the optional Graphiti adapter, derived namespaces,
+2. **Runtime integration** — controller manifests and player knowledge use the
+   canonical scoped SQLite store. A private runtime-built SemanticKnowledge
+   corpus supplies organized mechanics retrieval from the operator's game and
+   explicit canonical/Wayback sources without shipping acquired prose or
+   vectors. The retired in-database reference index and extractor are gone.
+3. **Memory projection** — optional Graphiti/FalkorDB uses derived namespaces,
    replay cursors, failure isolation, adversarial cross-scope leakage tests,
-   digest-pinned Compose packaging, Control Center health/config/rebuild,
-   scheduling, file-secret injection, and real Neo4j failure-isolation test are
-   implemented. It remains default-off because the reference Qwen endpoint has
-   no compatible embedding API and decision-quality benefit is not established.
+   curated asynchronous political episodes, deterministic bounded recall, and
+   an independently selected extraction profile. It shares one configurable
+   embedding runtime with SemanticKnowledge and remains fail-open to the
+   authoritative scoped SQLite memory.
 4. **Linux game worker** — user-supplied game import, private Wine/Proton
    prefix, semantic bridge, virtual display, health protocol, and Selkies
    interactive/read-only browser stream.

@@ -19,6 +19,7 @@ PYTHONPATH=src python3 scripts/control_http_test.py
 PYTHONPATH=src python3 scripts/worker_contract_test.py
 python3 scripts/save_retention_live_test.py
 PYTHONPATH=src python3 scripts/hermes_adapter_test.py
+PYTHONPATH=src python3 scripts/generation_settings_test.py
 PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
@@ -53,41 +54,36 @@ docker run --rm --network none \
   smacx-agent-control:dev /repo/scripts/match_briefing_contract_test.py
 ```
 
-## Knowledge and copyright guard
+## Runtime knowledge boundary
 
-The distributable corpus test verifies 52 unique original documents, hierarchy,
-exact entity lookup, metadata/content hashes, fixed archive fallbacks, guide
-exclusions, and BM25 retrieval:
+The contained client contract verifies authenticated service health, collection
+hierarchy, compact search, bounded semantic evidence, and selected-document
+retrieval without downloading or committing source content:
 
 ```bash
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
-PYTHONPATH=src python3 scripts/knowledge_reference_guard_test.py
+dotnet build knowledge_service/Smacx.KnowledgeService/Smacx.KnowledgeService.csproj -c Release
+docker compose build knowledge-service
 ```
 
-Private extraction runs against an operator-owned installation:
+A live first-run test uses an operator-owned game mount. It must report one
+shared ONNX model instance, successful canonical-or-Wayback acquisition,
+snapshot synchronization, sub-second steady semantic search, and no acquired
+content in the image/repository. Source files and cleaned pages remain in the
+private `smacx-knowledge-data` volume.
 
-```bash
-PYTHONPATH=src python3 scripts/private_reference_test.py \
-  --game-source /absolute/path/to/legal/game
-```
+The 2026-08-31 reference run synchronized 530 documents from 12 sources into
+seven topical collections with no source warnings. It reported exactly one
+local ONNX model instance, 2,048 dimensions, and successful public portal
+topic/search/document flows at a 390×844 viewport. A parser-revision refresh
+updated Windows-1252 punctuation and removed native `$LINK`, brace, and caret
+renderer tokens without distributing the resulting content.
 
-On the reference installation it produced 672 private documents from 18
-allowlisted sources, including 87 technologies and all 14 faction headers, and
-excluded guides/scenarios/tutorial narrative.
-
-The copyright regression compares normalized sequences without emitting source
-passages:
-
-```bash
-python3 scripts/reference_copyright_audit.py \
-  --source /absolute/path/to/legal/game/Manual.pdf \
-  --source /absolute/path/to/legal/game/helpx.txt \
-  --source /absolute/path/to/legal/game/alphax.txt
-```
-
-The reference run found no shipped sequence of eight or more normalized source
-words. Source files and extracted chunks are never copied into the repository
-or image.
+The optional Graphiti live contract used the configured Qwen endpoint and the
+same internal embedding facade to extract and recall one synthetic treaty fact
+inside a temporary Falkor graph. Repeating the same deterministic episode did
+not duplicate it; cleanup removed that graph and the test-only extraction
+profile was removed afterward, leaving Graphiti disabled by default.
 
 ## Build and container integration
 
@@ -350,7 +346,7 @@ PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 ```
 
 Contract tests cover namespace isolation, cursor idempotency, rebuild, and
-fail-open-to-SQLite behavior. A backend-live test verifies Neo4j/Graphiti only
+fail-open-to-SQLite behavior. A backend-live test verifies FalkorDB/Graphiti only
 when compatible chat and embedding endpoints are configured.
 
 ## External certification checklist

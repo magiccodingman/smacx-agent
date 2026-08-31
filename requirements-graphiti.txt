@@ -1,5 +1,5 @@
 # Optional temporal-graph projection. Core SMACX control and SQLite memory do not require it.
-graphiti-core==0.29.3
+graphiti-core[falkordb]==0.29.3
 # graphiti-core currently imports the original httpx/openai interfaces; prevent
 # an unconstrained resolver from selecting the incompatible OpenAI 3.x line.
 openai>=1.91.0,<2

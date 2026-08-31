@@ -341,7 +341,8 @@ public sealed record ModelGenerationSettings(
     int? MaxOutputTokens = null,
     int? Seed = null,
     bool? EnableThinking = null,
-    bool? PreserveThinking = null);
+    bool? PreserveThinking = null,
+    IReadOnlyDictionary<string, System.Text.Json.JsonElement>? ExtraParameters = null);
 
 public sealed record AiProfileVersion(
     string ProfileVersionId, string StableProfileId, int Version,
@@ -361,6 +362,10 @@ public sealed record StoragePolicyRequest(
     int RecentCheckpoints = 10,
     int MilestoneInterval = 25,
     bool RetainFullTurnHistory = false);
+public sealed record GraphitiConfigurationRequest(bool Enabled, string? ProfileVersionId = null);
+public sealed record EmbeddingConfigurationRequest(
+    string Mode, string? ProviderId = null, string? ModelId = null,
+    int? Dimensions = null, string? SpaceId = null);
 
 public sealed record AdminSnapshot(
     System.Text.Json.JsonElement Providers,
@@ -368,6 +373,7 @@ public sealed record AdminSnapshot(
     System.Text.Json.JsonElement HarnessProfiles,
     System.Text.Json.JsonElement HarnessRuns,
     System.Text.Json.JsonElement Graphiti,
+    System.Text.Json.JsonElement Knowledge,
     System.Text.Json.JsonElement Workers,
     System.Text.Json.JsonElement Operations,
     System.Text.Json.JsonElement Storage,

@@ -101,7 +101,7 @@ def main() -> int:
                 mode="lan",
                 start_session=True,
             )
-            if context["identity"]["graph_namespace"].count(":") != 4:
+            if not context["identity"]["graph_namespace"].startswith("smacx_"):
                 raise AssertionError("platform identity omitted isolated graph namespace")
 
             chat = controller.semantic_chat("list", match_id=match_id, session_id=session_id)

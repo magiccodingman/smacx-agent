@@ -26,6 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Smacx.Portal.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="..\..\docs\personality-cards.md" Link="personality-cards.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

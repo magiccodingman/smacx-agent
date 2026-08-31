@@ -12,35 +12,33 @@ SMACX_DOCKER_GID="$(stat -c '%g' "${docker_socket}")"
 export SMACX_DOCKER_GID
 export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 
-required=(neo4j_auth neo4j_password llm_api_key embed_api_key)
+install -d -m 700 "${secret_dir}"
+if [[ ! -e "${secret_dir}/falkordb_password" ]]; then
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "OpenSSL is required to initialize the local FalkorDB password." >&2
+    exit 2
+  fi
+  graphiti_password="$(openssl rand -hex 32)"
+  umask 077
+  printf '%s\n' "${graphiti_password}" > "${secret_dir}/falkordb_password"
+  unset graphiti_password
+  echo "Initialized private Graphiti database credentials in ${secret_dir}."
+fi
+
+required=(falkordb_password)
 for name in "${required[@]}"; do
   path="${secret_dir}/${name}"
   if [[ ! -f "${path}" || -L "${path}" || ! -s "${path}" ]]; then
     echo "Missing non-empty regular secret file: ${path}" >&2
     exit 2
   fi
-  chmod 600 "${path}"
+  chmod 640 "${path}"
 done
-
-if [[ "$(head -n 1 "${secret_dir}/neo4j_auth")" != neo4j/* ]]; then
-  echo "neo4j_auth must contain neo4j/<password>." >&2
-  exit 2
-fi
-if [[ "$(cut -d/ -f2- "${secret_dir}/neo4j_auth")" != "$(cat "${secret_dir}/neo4j_password")" ]]; then
-  echo "neo4j_auth and neo4j_password do not contain the same password." >&2
-  exit 2
-fi
-
-for variable in SMACX_GRAPHITI_LLM_BASE_URL SMACX_GRAPHITI_LLM_MODEL \
-  SMACX_GRAPHITI_EMBED_BASE_URL SMACX_GRAPHITI_EMBED_MODEL SMACX_GRAPHITI_EMBED_DIM; do
-  if [[ -z "${!variable:-}" ]]; then
-    echo "Required environment variable is unset: ${variable}" >&2
-    exit 2
-  fi
-done
+SMACX_GRAPHITI_SECRET_GID="$(stat -c '%g' "${secret_dir}/falkordb_password")"
+export SMACX_GRAPHITI_SECRET_GID
 
 export SMACX_GRAPHITI_SECRET_DIR="${secret_dir}"
 docker compose -f "${repo_root}/compose.yaml" --profile graphiti up -d --build \
-  control-api control-center graphiti-db graphiti-projector
+  knowledge-service control-api control-center graphiti-db graphiti-projector
 docker compose -f "${repo_root}/compose.yaml" --profile graphiti ps \
-  control-api control-center graphiti-db graphiti-projector
+  knowledge-service control-api control-center graphiti-db graphiti-projector

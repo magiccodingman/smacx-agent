@@ -1,6 +1,8 @@
 @implements IDisposable
 @inject NavigationManager Navigation
 @inject Services.PortalApiClient Api
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@using System.Text.Json
 
 <MudAppBar Elevation="0" Class="portal-appbar">
     <MudIconButton Icon="@Icons.Material.Filled.Menu" OnClick="ToggleRequested" Class="menu-button" />
@@ -10,6 +12,14 @@
     </div>
     <MudSpacer />
     <div class="network-pill"><span></span> LAN ONLY</div>
+    <AuthorizeView Roles="Administrator">
+        <MudBadge Content="@warnings.Count" Color="@(warnings.Count>0?Color.Warning:Color.Success)" Overlap="true" Visible="true">
+            <MudMenu Icon="@Icons.Material.Filled.Notifications" AriaLabel="System notices" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                @if(warnings.Count==0){<MudMenuItem Icon="@Icons.Material.Filled.CheckCircle">All configured systems look ready</MudMenuItem>}
+                @foreach(var warning in warnings){<MudMenuItem Href="@warning.Href" Icon="@Icons.Material.Filled.WarningAmber">@warning.Message</MudMenuItem>}
+            </MudMenu>
+        </MudBadge>
+    </AuthorizeView>
     <AuthorizeView>
         <Authorized Context="auth">
             <MudMenu Label="@auth.User.Identity?.Name" Variant="Variant.Text"
@@ -30,12 +40,35 @@
 @code {
     [Parameter] public EventCallback ToggleRequested { get; set; }
 
-    protected override void OnInitialized() => Navigation.LocationChanged += LocationChanged;
+    private readonly List<SystemWarning> warnings=[];
+    protected override async Task OnInitializedAsync(){Navigation.LocationChanged += LocationChanged;await RefreshWarnings();}
+    private async Task RefreshWarnings()
+    {
+        var auth=await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if(auth.User.Identity?.IsAuthenticated!=true||!auth.User.IsInRole("Administrator"))return;
+        try
+        {
+            var snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;
+            var profiles=(await Api.GetAsync<IReadOnlyList<AiProfileVersion>>("api/admin/ai-profiles"))?.Data??[];
+            warnings.Clear();
+            if(snapshot is null)return;
+            if(snapshot.Providers.ValueKind!=JsonValueKind.Array||snapshot.Providers.GetArrayLength()==0)warnings.Add(new("No model endpoint is configured","admin/providers"));
+            else foreach(var provider in snapshot.Providers.EnumerateArray())if(Text(provider,"status") is "unreachable" or "disabled")warnings.Add(new($"Model endpoint {Text(provider,"display_name")} is {Text(provider,"status")}","admin/providers"));
+            if(!profiles.Any(item=>item.Active))warnings.Add(new("No active AI player profile is available","admin/providers"));
+            if(snapshot.Graphiti.TryGetProperty("embeddings",out var embeddings)&&Text(embeddings,"mode")=="disabled")warnings.Add(new("Semantic rules and Graphiti are disabled","admin/operations"));
+            else if(!snapshot.Knowledge.TryGetProperty("ok",out var knowledgeReady)||knowledgeReady.ValueKind!=JsonValueKind.True)warnings.Add(new("The semantic rules library is unavailable","admin/operations"));
+            if(!snapshot.Graphiti.TryGetProperty("configured",out var configured)||configured.ValueKind!=JsonValueKind.True)warnings.Add(new("Graphiti has no extraction profile and remains optional/off","admin/operations"));
+            else if(snapshot.Graphiti.TryGetProperty("enabled",out var enabled)&&enabled.ValueKind==JsonValueKind.True&&snapshot.Graphiti.TryGetProperty("runtime",out var runtime)&&Text(runtime,"status") is "degraded" or "stopped")warnings.Add(new($"Graphiti runtime is {Text(runtime,"status")}","admin/operations"));
+        }
+        catch{ }
+    }
     private async Task Logout()
     {
         await Api.PostAsync<bool>("api/auth/logout", new { });
         Navigation.NavigateTo("login", forceLoad: true);
     }
-    private void LocationChanged(object? sender, LocationChangedEventArgs args) => InvokeAsync(StateHasChanged);
+    private void LocationChanged(object? sender, LocationChangedEventArgs args) => _=InvokeAsync(async()=>{await RefreshWarnings();StateHasChanged();});
+    private static string Text(JsonElement item,string name)=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)?value.ToString():"";
+    private sealed record SystemWarning(string Message,string Href);
     public void Dispose() => Navigation.LocationChanged -= LocationChanged;
 }

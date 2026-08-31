@@ -541,7 +541,6 @@ class WorkerManager:
             self._cleanup_container(identifier, "game-source-inspector")
         if registered is None:
             raise WorkerManagerError("game_source_registration_failed")
-        reference = self.import_private_game_reference(registered["game_source_id"])
         scenario_catalog = self.list_scenarios(registered["game_source_id"])
         updated = self.control.register_game_source(
             display_name, host_path, str(registered["executable_sha256"]),
@@ -549,11 +548,16 @@ class WorkerManager:
             metadata={
                 "validated_by": "container", "worker_image": self.worker_image,
                 "source_tree_sha256": registered["metadata"]["source_tree_sha256"],
-                "private_reference": reference,
+                "reference_knowledge": {
+                    "status": "managed-by-knowledge-service",
+                    "distributed": False,
+                },
                 "scenario_count": len(scenario_catalog["scenarios"]),
             },
         )
-        updated["private_reference"] = reference
+        updated["reference_knowledge"] = {
+            "status": "managed-by-knowledge-service", "distributed": False,
+        }
         updated["scenario_catalog"] = scenario_catalog
         return updated
 
@@ -593,148 +597,6 @@ class WorkerManager:
             return payload
         finally:
             self._cleanup_container(identifier, "scenario-catalog")
-
-    def import_private_game_reference(self, game_source_id: str) -> dict[str, Any]:
-        """Build a local-only mechanics index from an operator's legal source."""
-        source = self.control.get_game_source(game_source_id)
-        host_path = _host_path(str(source["host_path"]), "game_source_host_path")
-        self.docker.inspect_image(self.worker_image)
-        name = self._name("reference", game_source_id)
-        identifier = self.docker.create_container(name, {
-            "Image": self.worker_image,
-            "Entrypoint": ["python3", "/opt/smacx/extract_reference.py"],
-            "Cmd": [],
-            "Tty": True,
-            "Labels": self._labels(
-                "game-reference-extractor", **{"io.smacx.game-source": game_source_id},
-            ),
-            "HostConfig": {
-                "NetworkMode": "none",
-                "ReadonlyRootfs": True,
-                "CapDrop": ["ALL"],
-                "SecurityOpt": ["no-new-privileges"],
-                "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=128m,mode=1777"},
-                "Mounts": [{
-                    "Type": "bind", "Source": host_path, "Target": "/game-source",
-                    "ReadOnly": True, "BindOptions": {"Propagation": "rprivate"},
-                }],
-            },
-        })
-        try:
-            self.docker.start_container(identifier)
-            finished = self.docker.wait_container(identifier, timeout=300)
-            logs = self.docker.container_logs(identifier, tail=1000)
-            if finished.get("State", {}).get("ExitCode") != 0:
-                raise WorkerManagerError("private_reference_extraction_failed")
-            manifest: dict[str, Any] | None = None
-            complete: dict[str, Any] | None = None
-            documents: list[dict[str, Any]] = []
-            for line in logs.splitlines():
-                try:
-                    item = json.loads(line.strip())
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(item, dict):
-                    continue
-                if item.get("type") == "manifest":
-                    manifest = item
-                elif item.get("type") == "complete":
-                    complete = item
-                elif item.get("type") == "document":
-                    documents.append(item)
-            if not manifest or manifest.get("schema") != "smacx.private-reference.v2" \
-                    or manifest.get("policy") != "mechanics_only_no_guides" \
-                    or manifest.get("ruleset_id") != "smacx" \
-                    or manifest.get("precedence") != [
-                        "structured-alien-crossfire", "expansion-datalinks", "manual-rules",
-                    ] \
-                    or manifest.get("terranx_sha256") != source["executable_sha256"]:
-                raise WorkerManagerError("invalid_private_reference_manifest")
-            if not complete or complete.get("documents") != len(documents) \
-                    or not 1 <= len(documents) <= 900:
-                raise WorkerManagerError("incomplete_private_reference_extract")
-            required_entity_kinds = {
-                "technology", "facility", "weapon", "defense", "ability", "faction",
-                "social-model", "council-proposal", "time-control", "difficulty",
-            }
-            counts = complete.get("entity_counts")
-            if not isinstance(counts, dict) or not required_entity_kinds.issubset(counts) \
-                    or any(not isinstance(counts[key], int) or counts[key] < 1
-                           for key in required_entity_kinds):
-                raise WorkerManagerError("incomplete_private_reference_entities")
-            validated: list[dict[str, Any]] = []
-            for item in documents:
-                source_name = str(item.get("source_name", ""))
-                source_hash = str(item.get("source_sha256", ""))
-                topic = str(item.get("topic", ""))
-                body = str(item.get("body", ""))
-                document_kind = str(item.get("document_kind", ""))
-                source_priority = item.get("source_priority")
-                title = str(item.get("title", ""))
-                summary = str(item.get("summary", ""))
-                metadata = item.get("metadata")
-                if not re.fullmatch(r"[A-Za-z0-9_. -]{1,80}", source_name) \
-                        or not re.fullmatch(r"[a-f0-9]{64}", source_hash) \
-                        or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", topic) \
-                        or document_kind not in {"entity", "section"} \
-                        or not isinstance(source_priority, int) or not 0 <= source_priority <= 1000 \
-                        or not 1 <= len(title) <= 240 or not 1 <= len(summary) <= 1200 \
-                        or not isinstance(metadata, dict) or not 40 <= len(body) <= 65_536 \
-                        or (document_kind == "section" and len(body) < 80):
-                    raise WorkerManagerError("invalid_private_reference_document")
-                entity_kind = item.get("entity_kind")
-                entity_key = item.get("entity_key")
-                section_index = item.get("section_index")
-                section_count = item.get("section_count")
-                if document_kind == "entity":
-                    if not isinstance(entity_kind, str) or not re.fullmatch(
-                            r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", entity_kind) \
-                            or not isinstance(entity_key, str) or not re.fullmatch(
-                                r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", entity_key):
-                        raise WorkerManagerError("invalid_private_reference_entity")
-                    identity = f"entity:{entity_kind}:{entity_key}:{source_hash}"
-                else:
-                    if not isinstance(section_index, int) or not isinstance(section_count, int) \
-                            or not 0 <= section_index < section_count <= 900:
-                        raise WorkerManagerError("invalid_private_reference_section")
-                    identity = f"section:{source_name}:{source_hash}:{section_index}"
-                document_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
-                validated.append({
-                    "document_id": f"private.{game_source_id}.{document_hash}",
-                    "topic": topic,
-                    "title": title, "summary": summary,
-                    "body": body,
-                    "tags": tuple(filter(None, (
-                        "private", "legal-copy", "mechanics", "smacx", topic,
-                        str(entity_kind or "section"),
-                    ))),
-                    "entity_kind": entity_kind, "entity_key": entity_key,
-                    "ruleset_id": "smacx", "source_priority": source_priority,
-                    "metadata": metadata,
-                    "source_title": source_name,
-                    "source_license": (
-                        "Operator-supplied proprietary source; private runtime retrieval only; not distributed"
-                    ),
-                    "provenance": (
-                        "Generated locally from a validated legal game source. Excluded from the repository "
-                        "and restricted to mechanics-only files; scripts, guides, and scenarios are omitted."
-                    ),
-                })
-            prefix = f"private.{game_source_id}."
-            removed = self.store.delete_reference_documents(prefix)
-            for document in validated:
-                self.store.upsert_reference_document(**document)
-            return {
-                "status": "ready", "policy": "mechanics_only_no_guides",
-                "sources": int(complete.get("sources", 0)),
-                "documents": len(validated), "replaced": removed,
-                "entity_counts": counts,
-                "ruleset_id": "smacx",
-                "precedence": manifest["precedence"],
-                "distributed": False,
-            }
-        finally:
-            self._cleanup_container(identifier, "game-reference-extractor")
 
     def import_proton(self, source_host_path: str, *, display_name: str = "Managed Proton") -> dict[str, Any]:
         source_host_path = _host_path(source_host_path, "proton_source_path")
@@ -3362,8 +3224,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "SMACX_RUNTIME_ROOT=/worker-state",
                 "SMACX_GAME_PATH=/worker-state/game",
                 "SMACX_LEGACY_KNOWLEDGE_ROOT=/worker-state/legacy-knowledge",
+                f"SMACX_REFERENCE_URL={os.environ.get('SMACX_REFERENCE_URL', 'http://knowledge-service:8090')}",
+                f"SMACX_GRAPHITI_RECALL_URL={os.environ.get('SMACX_GRAPHITI_RECALL_URL', 'http://graphiti-projector:8091')}",
                 "SMACX_CAPABILITY_GAP_LOG=/var/lib/smacx/capability-gaps.jsonl",
                 f"SMACX_AGENT_ID={spec['agent_id']}",
+                f"SMACX_PERSPECTIVE_ID={spec['perspective_id']}",
                 f"SMACX_GAME_SOURCE_ID={spec['game_source_id']}",
             ],
             "Tty": True,

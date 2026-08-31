@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/knowledge/">
+    <Project Path="knowledge_service/Smacx.KnowledgeService/Smacx.KnowledgeService.csproj" />
+  </Folder>
   <Folder Name="/portal/">
     <Project Path="portal/Smacx.Portal.Client/Smacx.Portal.Client.csproj" />
     <Project Path="portal/Smacx.Portal.Contracts/Smacx.Portal.Contracts.csproj" />

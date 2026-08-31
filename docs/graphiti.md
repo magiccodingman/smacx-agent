@@ -1,105 +1,117 @@
-# Optional Graphiti projection
+# Optional Graphiti political memory
 
-Graphiti is a derived temporal index, never the SMACX Agent source of truth.
-The authoritative event stream, chat ledger, facts, beliefs, relationships,
-commitments, goals, and summaries remain in SQLite. Gameplay and SQLite recall
-continue if Graphiti, Neo4j, an embedding endpoint, or an extraction model is
-stopped or unhealthy.
+Graphiti with FalkorDB is a derived temporal relationship index. It is never the source of
+truth. The complete scoped event ledger, chat, facts, beliefs, relationships,
+commitments, goals, and summaries remain in SQLite, and gameplay continues if
+Graphiti, FalkorDB, embeddings, or its extraction model is unavailable.
 
-## Delivered integration
+## What is projected
 
-The optional `graphiti` Compose profile provides:
+The projector intentionally does **not** mirror the event stream. It queues only
+durable social and strategic material:
 
-- a digest-pinned Neo4j Community container with no published host ports;
-- an internal `graphiti-core==0.29.3` projector with a read-only root,
-  all Linux capabilities dropped, and bounded per-perspective work;
-- Docker file secrets for Neo4j, the extraction model, and embeddings;
-- durable health, failure counts, and exact-scope rebuild requests in the
-  canonical pre-release SQLite schema;
-- enable/disable, health, and exact-perspective rebuild controls in the
-  authenticated Control Center; and
-- deterministic replay and adversarial scope-isolation regressions.
+- delivered global/private/group chat;
+- diplomacy, Council activity, incidents, recovery history, and high-importance
+  lifecycle events;
+- relationship, commitment, goal, belief, and summary updates; and
+- explicitly categorized political, promise, betrayal, threat, alliance,
+  history, strategy, or territory facts.
 
-New lobbies prefer Graphiti by default, but projection remains inert until an
-administrator configures both compatible endpoints, starts the optional stack,
-and the projector reports healthy. A chat endpoint that returns
-404 for `/embeddings` is not sufficient. The current reference Qwen deployment
-has that limitation, so SQLite/BM25 is the correct production path there.
+Routine unit moves, raw snapshots, tool calls, wiki retrievals, and private
+reasoning are skipped while their SQLite cursor still advances. Writes happen
+asynchronously in the projector and never delay the gameplay agent.
 
-## Fair-play isolation
+## Recall behavior
 
-Every episode group is derived internally as:
+Every group is derived internally from the exact
+`(installation, match, agent, perspective)` identity. Neither a model nor a
+caller may supply a wider namespace. The MCP automatically performs a small,
+bounded recall only when new chat or a diplomatic/interaction decision makes
+history relevant. The explicit `smac_memory(action="graph_recall", query=...)`
+path exists for a deliberate deeper political question.
 
-```text
-smacx:{installation_id}:{match_id}:{agent_id}:{perspective_id}
-```
+Recall waits because its answer is needed, but it has strict time/result limits
+and fails open. SQLite and fresh native state remain authoritative. Graph facts
+are labelled as fallible historical context.
 
-The agent cannot supply or widen this namespace. The projector reads only
-events already constrained to that exact scope. Stable UUIDv5 episode IDs make
-retries deterministic. A cursor advances only after `add_episode` succeeds;
-errors are recorded without skipping the failed event. Rebuild clears only the
-selected derived group and replays immutable SQLite events.
+## Models and embeddings
 
-Chat is tagged as untrusted in-game speech. Extraction instructions distinguish
-observations, player claims, and the agent's own beliefs and prohibit hidden
-state inference. Graphiti has no agent-facing HTTP or MCP write surface.
+Graphiti is disabled until an administrator selects an independent extraction
+AI profile under **Operations & recovery**. A fast non-thinking profile is
+normally enough. Changing that profile reloads the projector without touching a
+gameplay seat or carrying over the previous provider secret.
 
-## Configure secrets
+Graphiti uses the installation's one shared embedding configuration:
 
-Create a private directory outside version control (the default path is
-`runtime/graphiti-secrets`) containing four non-empty mode-0600 files:
+- by default, the local knowledge service exposes one combined 2,048-dimension
+  vector through an internal OpenAI-compatible endpoint while
+  SemanticKnowledge retains native multi-chunk embeddings;
+- an administrator may instead select an external embedding provider/model,
+  exact dimension, and stable embedding-space ID; or
+- disabling embeddings disables Graphiti and semantic rules together.
 
-```text
-neo4j_auth       neo4j/a-long-random-password
-neo4j_password   a-long-random-password
-llm_api_key      extraction-provider-key-or-local
-embed_api_key    embedding-provider-key-or-local
-```
+Provider keys stay in the Control Center vault. The projector reads its selected
+profile and secret from the read-only control volume; endpoint metadata and keys
+are no longer duplicated in Compose environment variables.
 
-`neo4j_auth` uses the official Neo4j `username/password` file format;
-`neo4j_password` contains only the matching password for the projector. Secret
-values are not placed in Compose environment variables, container commands,
-the browser, or the database.
+## Start the optional backend
 
-Export endpoint metadata, then start the optional profile:
+Run:
 
 ```bash
-export SMACX_GRAPHITI_LLM_BASE_URL=http://model-host:8000/v1
-export SMACX_GRAPHITI_LLM_MODEL=structured-output-model
-export SMACX_GRAPHITI_EMBED_BASE_URL=http://embedding-host:8000/v1
-export SMACX_GRAPHITI_EMBED_MODEL=embedding-model
-export SMACX_GRAPHITI_EMBED_DIM=1024
 ./scripts/graphiti-up.sh
 ```
 
-Set `SMACX_GRAPHITI_SECRET_DIR` if the files are elsewhere. The script validates
-the four secret files and matching Neo4j credentials before starting anything.
-It leaves the ordinary Control Center up. Enable projection globally only after
-the projector is healthy. The per-match checkbox can still disable projection
-for an experiment without changing the global service.
+On first start the script generates a private random FalkorDB credential in
+the ignored `runtime/graphiti-secrets` directory with restrictive owner/group
+permissions. The projector receives only that file's host group and remains a
+non-root container.
+Set `SMACX_GRAPHITI_SECRET_DIR` to keep those files elsewhere. If an existing
+deployment loses its credential, restore that file alongside the
+persistent graph volume rather than generating an unrelated replacement.
 
-## Evaluation result
+FalkorDB and the recall endpoint have no published host ports. In the portal:
 
-The packaged stack was built and exercised against the real pinned Neo4j image.
-Neo4j and the disabled projector reached healthy state with no published ports;
-container inspection confirmed secret paths rather than values. A deliberate
-event projection to unavailable model endpoints made only the projector
-`degraded`, retained the SQLite event, and exposed the failure through health
-state. This proves deployment and failure isolation, not decision-quality gain.
+1. create or choose a dedicated AI profile;
+2. open **Administration → Operations & recovery**;
+3. save it as the Graphiti extraction profile; and
+4. enable the installation-wide projector.
 
-Graphiti quality still depends on the selected structured-output and embedding
-models. Keep it optional and compare recall/evaluation results before enabling
-it by default for a deployment. See the [official Graphiti repository](https://github.com/getzep/graphiti)
-and [Neo4j Docker secrets documentation](https://neo4j.com/docs/operations-manual/current/docker/docker-compose-standalone/).
+Each lobby may still opt out.
+
+FalkorDB is server-only, internal to the Compose network, and persistent. Its
+native multi-graph routing gives each exact SMACX fair-play scope a different
+graph instead of relying on model-supplied filters inside a shared graph.
+
+## Failure, rebuild, and retention
+
+Stable UUIDv5 episode IDs make retries deterministic. The cursor advances only
+after a selected episode succeeds; an extraction error remains replayable.
+Rebuild clears one exact derived group and replays its selected SQLite events.
+Runtime heartbeat, projected/failure counts, selected profile, and
+embedding mode are visible in the portal.
+
+Historical Graphiti group and Hermes conversation retention/garbage collection
+is intentionally deferred. It is tracked as future operations work; current
+match/event telemetry is small and should not be discarded implicitly.
 
 ## Tests
 
 ```bash
-PYTHONPATH=src python scripts/graphiti_projection_test.py
-PYTHONPATH=src python scripts/graphiti_worker_contract_test.py
+PYTHONPATH=src python3 scripts/graphiti_projection_test.py
+PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
+docker compose build graphiti-projector
 ```
 
-The first verifies event isolation, deterministic IDs, failure-safe cursoring,
-resume, and group-local rebuild. The second verifies fail-inert service policy,
-Control Center state, exact-scope rebuild guards, observable failure isolation,
-file-secret loading, and canonical schema revision 1.
+The tests cover perspective isolation, curated-event exclusion, failure-safe
+cursors, deterministic IDs, exact-group rebuild, required extraction profile,
+shared embedding resolution, and observable fail-open behavior.
+
+The reference live contract additionally projected one synthetic diplomacy
+episode twice, proved that its deterministic UUID produced one episode,
+recalled the extracted treaty fact through the shared 2,048-dimension ONNX
+facade, preserved its in-game validity year, and removed only that temporary
+scope graph afterward. No full gameplay claim depends on this synthetic test.
+
+See the [Graphiti project](https://github.com/getzep/graphiti) and
+[FalkorDB Docker documentation](https://docs.falkordb.com/operations/docker).

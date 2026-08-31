@@ -179,28 +179,40 @@ profile family from new-lobby pickers without deleting them, preserving every
 historical match and report. Use separate named profile families when several
 sampling/reasoning configurations should remain selectable for an A/B run.
 
+The profile editor can also export or import a portable JSON template. The
+template contains the model ID, reasoning, context, generation settings, and
+operator note; it deliberately excludes endpoint IDs, API keys, agent IDs, and
+history. Import it after choosing an endpoint on the new installation. The UI
+only preselects the model when that endpoint actually advertises the same model
+ID.
+
 **Provider defaults** is the compatibility-first generation preset. It sends
 no sampling override and lets the endpoint choose appropriate defaults. Custom
-profiles may set temperature, top-p, presence/frequency penalties, maximum
-output tokens, and seed, plus server extensions such as top-k, min-p,
-repetition penalty, and thinking-template flags. Blank values are omitted;
-extension fields should only be enabled when that OpenAI-compatible endpoint
-supports them.
+profiles may set temperature, top-p, top-k, min-p, presence/frequency/repetition
+penalties, maximum output tokens, and seed. Additional rows accept JSON-typed
+provider extensions—including nested chat-template arguments—without baking a
+specific model family into the generic request path. Blank values are omitted;
+extensions should only be enabled when that OpenAI-compatible endpoint supports
+them.
 
 Qwen3.8 models expose two convenience presets based on the project's official
 recommendations: thinking (temperature 1.0, top-p 0.95, top-k 20, min-p 0,
 presence penalty 0, repetition penalty 1) and non-thinking (temperature 0.7,
 top-p 0.8, top-k 20, min-p 0, presence penalty 1.5, repetition penalty 1).
-Qwen3.8 thinking profiles offer the documented `low`, `medium`, and `xhigh`
-reasoning levels; non-thinking uses `none`. Other models retain Hermes's wider
+Qwen3.8 presets are exposed as Instant, Low, Medium, and XHigh. Instant disables
+thinking and uses `none`; the others explicitly select their corresponding
+level. Every built-in Qwen3.8 preset sets `preserve_thinking=false`, so old
+reasoning traces do not balloon later prompts while the current tool loop still
+retains its active reasoning state. Other models retain Hermes's wider
 reasoning menu, and Hermes/provider routing may omit an unsupported level.
 See the [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/README.md)
 for the upstream recommendations.
 
-The default gameplay context budget is 65,536 tokens even when a provider
-advertises more. This leaves predictable room for compaction during indefinite
-campaigns; durable facts, goals, relationships, and chat live in match-scoped
-MCP memory instead of depending on an ever-growing transcript.
+The default gameplay context is **Automatic** and uses the selected model's
+advertised context length. A manual override must be at least 65,536 tokens and
+cannot exceed the advertised maximum. Durable facts, goals, relationships, and
+chat live in match-scoped MCP memory instead of depending on an ever-growing
+transcript.
 
 Provider keys are held in the control vault, copied into a purpose-specific
 read-only volume, and read by a tiny Hermes launcher. They are absent from
@@ -215,7 +227,8 @@ AI seats use:
 - an integrity-checked, SMACX-owned complete provider system prompt;
 - immutable match identity and policy;
 - a mandatory native-settings briefing and exact acknowledgement gate;
-- the optional personality layer (`None` is the only current value); and
+- the lobby-selected faction personality layer (Standard, Random, None, or one
+  of four authored variants for that leader); and
 - scoped match memory.
 
 The managed path does not use or interfere with a host `hermes dashboard`.
@@ -365,7 +378,8 @@ the exact consent and delivery model.
 
 An AI is prompted to treat chat as communication from other players, not as
 higher-priority instructions. It may agree, refuse, investigate, ally, feud,
-trade, or betray according to its own game state and future personality layer.
+trade, or betray according to its own game state and resolved personality
+layer; a `None` seat still remains an autonomous game player.
 Facts, beliefs, suspicions, relationship scores, commitments, and goals remain
 separate memory records.
 
@@ -482,14 +496,14 @@ secret tables are never attached.
 ## 12. Graphiti
 
 SQLite remains authoritative. Graphiti is an optional derived temporal
-projection and can be toggled per match. Start it only after configuring a
-compatible chat-completions model and embedding endpoint:
+projection and can be toggled per match. Select a separate active extraction
+AI profile and the shared embedding mode on the Operations page, then start:
 
 ```bash
 ./scripts/graphiti-up.sh
 ```
 
-If Graphiti is disabled or unavailable, gameplay, FTS5/BM25 memory, chat,
+If Graphiti is disabled or unavailable, gameplay, scoped SQLite/FTS memory, chat,
 checkpointing, and recovery continue normally. Projection namespaces include
 installation + match + agent + perspective, preventing cross-agent/game mixing.
 See [graphiti.md](graphiti.md).
@@ -541,7 +555,7 @@ to recreate; named platform volumes are the durable system.
 ## Security summary
 
 - Portal: the only ordinary host/LAN HTTP entry point.
-- Control API, Docker socket, MCP endpoints, Graphiti/Neo4j, bridge tokens, and
+- Control API, Docker socket, MCP endpoints, Graphiti/FalkorDB, bridge tokens, and
   stream credentials: private.
 - Blazor client authorization: convenience only; controllers enforce every
   account/role/seat policy server-side.

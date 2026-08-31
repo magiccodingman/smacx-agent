@@ -16,8 +16,7 @@ public sealed class KnowledgeController(ControlPlaneClient control) : Controller
         try
         {
             using var document = await control.GetRawAsync("api/v1/reference/topics", HttpContext.RequestAborted);
-            var topics = document.RootElement.GetProperty("topics").EnumerateArray().Select(item => new KnowledgeTopic(
-                item.GetProperty("topic").GetString()!, item.GetProperty("document_count").GetInt32())).ToArray();
+            var topics = document.RootElement.GetProperty("topics").EnumerateArray().Select(MapTopic).ToArray();
             return ApiResponse<IReadOnlyList<KnowledgeTopic>>.Success(topics);
         }
         catch (ControlPlaneException exception)
@@ -63,12 +62,28 @@ public sealed class KnowledgeController(ControlPlaneClient control) : Controller
         }
     }
 
-    private static KnowledgeResult Map(System.Text.Json.JsonElement item, bool includeBody = false) => new(
+    internal static KnowledgeTopic MapTopic(System.Text.Json.JsonElement item) => new(
+        item.GetProperty("title").GetString()!, item.GetProperty("document_count").GetInt32());
+
+    internal static KnowledgeResult Map(System.Text.Json.JsonElement item, bool includeBody = false) => new(
         item.GetProperty("document_id").GetString()!, item.GetProperty("topic").GetString()!,
-        item.GetProperty("title").GetString()!, item.GetProperty("summary").GetString()!,
-        (item.TryGetProperty("tags", out var tags) ? tags.GetString() ?? "" : "")
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries),
-        item.TryGetProperty("provenance", out var provenance) ? provenance.GetString() ?? "" : "",
-        item.TryGetProperty("source_license", out var license) ? license.GetString() ?? "" : "",
+        item.GetProperty("title").GetString()!, item.GetProperty("description").GetString() ?? "",
+        ReadTags(item),
+        item.TryGetProperty("source", out var source) ? source.GetString() ?? "" : "",
+        "Built locally from operator-configured sources; not distributed with SMACX Agent.",
         includeBody && item.TryGetProperty("body", out var body) ? body.GetString() : null);
+
+    internal static string[] ReadTags(System.Text.Json.JsonElement item)
+    {
+        if (!item.TryGetProperty("tags", out var tags)) return [];
+        return tags.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.Array => tags.EnumerateArray()
+                .Select(value => value.GetString()).Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!).ToArray(),
+            System.Text.Json.JsonValueKind.String => (tags.GetString() ?? "")
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries),
+            _ => [],
+        };
+    }
 }

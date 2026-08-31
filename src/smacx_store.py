@@ -480,54 +480,6 @@ CREATE TRIGGER search_documents_au AFTER UPDATE ON search_documents BEGIN
     VALUES (new.rowid, new.title, new.body, new.tags);
 END;
 
-CREATE TABLE reference_documents (
-    document_id TEXT PRIMARY KEY,
-    topic TEXT NOT NULL,
-    entity_kind TEXT,
-    entity_key TEXT,
-    ruleset_id TEXT NOT NULL DEFAULT 'smacx',
-    source_priority INTEGER NOT NULL DEFAULT 0,
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    body TEXT NOT NULL,
-    tags TEXT NOT NULL DEFAULT '',
-    source_url TEXT,
-    archive_url TEXT,
-    archive_timestamp TEXT,
-    source_title TEXT,
-    source_license TEXT NOT NULL,
-    provenance TEXT NOT NULL,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    content_sha256 TEXT NOT NULL,
-    updated_unix REAL NOT NULL
-);
-CREATE INDEX reference_documents_topic ON reference_documents(topic, title);
-CREATE INDEX reference_documents_entity
-    ON reference_documents(ruleset_id, entity_kind, entity_key, source_priority DESC);
-CREATE VIRTUAL TABLE reference_fts USING fts5(
-    title,
-    summary,
-    body,
-    tags,
-    content='reference_documents',
-    content_rowid='rowid',
-    tokenize='porter unicode61 remove_diacritics 2'
-);
-CREATE TRIGGER reference_documents_ai AFTER INSERT ON reference_documents BEGIN
-    INSERT INTO reference_fts(rowid, title, summary, body, tags)
-    VALUES (new.rowid, new.title, new.summary, new.body, new.tags);
-END;
-CREATE TRIGGER reference_documents_ad AFTER DELETE ON reference_documents BEGIN
-    INSERT INTO reference_fts(reference_fts, rowid, title, summary, body, tags)
-    VALUES ('delete', old.rowid, old.title, old.summary, old.body, old.tags);
-END;
-CREATE TRIGGER reference_documents_au AFTER UPDATE ON reference_documents BEGIN
-    INSERT INTO reference_fts(reference_fts, rowid, title, summary, body, tags)
-    VALUES ('delete', old.rowid, old.title, old.summary, old.body, old.tags);
-    INSERT INTO reference_fts(rowid, title, summary, body, tags)
-    VALUES (new.rowid, new.title, new.summary, new.body, new.tags);
-END;
-
 CREATE TABLE match_briefing_acknowledgements (
     match_id TEXT NOT NULL REFERENCES matches(match_id),
     agent_id TEXT NOT NULL REFERENCES agents(agent_id),
@@ -785,7 +737,7 @@ CREATE TABLE harness_runtime_specs (
 CREATE TABLE graphiti_runtime_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton=1),
     status TEXT NOT NULL CHECK (status IN ('stopped','starting','ready','degraded','disabled')),
-    backend TEXT NOT NULL DEFAULT 'neo4j',
+    backend TEXT NOT NULL DEFAULT 'falkordb',
     projected_events INTEGER NOT NULL DEFAULT 0,
     failed_events INTEGER NOT NULL DEFAULT 0,
     active_scopes INTEGER NOT NULL DEFAULT 0,
@@ -1049,7 +1001,13 @@ class SmacxStore:
 
     def graph_namespace(self, scope: MemoryScope) -> str:
         self.require_scope(scope)
-        return ":".join(("smacx", self.installation_id(), scope.match_id, scope.agent_id, scope.perspective_id))
+        # FalkorDB graph names use a conservative portable character set. Keep
+        # the exact fair-play tuple authoritative in SQLite and expose only its
+        # deterministic, non-reversible namespace to the derived graph.
+        material = "\x1f".join((
+            self.installation_id(), scope.match_id, scope.agent_id, scope.perspective_id,
+        ))
+        return "smacx_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:48]
 
     def ensure_agent(
         self,
@@ -2705,115 +2663,6 @@ class SmacxStore:
             "truncated": truncated,
         }
 
-    def upsert_reference_document(
-        self, document_id: str, *, topic: str, title: str, summary: str, body: str,
-        tags: Sequence[str] = (), source_url: str | None = None,
-        archive_url: str | None = None, archive_timestamp: str | None = None,
-        source_title: str | None = None, source_license: str,
-        provenance: str, entity_kind: str | None = None,
-        entity_key: str | None = None, ruleset_id: str = "smacx",
-        source_priority: int = 0, metadata: Mapping[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Store one globally readable rules reference with explicit provenance."""
-        document_id = _require_key(document_id, "reference_document_id")
-        topic = _require_key(topic, "reference_topic")
-        title = _bounded_text(title, "reference_title", 240)
-        summary = _bounded_text(summary, "reference_summary", 1200)
-        body = _bounded_text(body, "reference_body", 65_536)
-        source_license = _bounded_text(source_license, "reference_license", 160)
-        provenance = _bounded_text(provenance, "reference_provenance", 500)
-        for value, field in ((source_url, "source_url"), (archive_url, "archive_url")):
-            if value is not None and (
-                    len(value) > 4096 or not value.startswith(("https://", "http://"))):
-                raise InvalidRecord(f"invalid_reference_{field}")
-        if archive_url is not None and not archive_url.startswith("https://web.archive.org/web/"):
-            raise InvalidRecord("invalid_reference_archive_url")
-        if archive_timestamp is not None and not re.fullmatch(r"[0-9]{14}", archive_timestamp):
-            raise InvalidRecord("invalid_reference_archive_timestamp")
-        if source_title is not None:
-            source_title = _bounded_text(source_title, "reference_source_title", 300)
-        if entity_kind is not None:
-            entity_kind = _require_key(entity_kind, "reference_entity_kind")
-        if entity_key is not None:
-            entity_key = _require_key(entity_key, "reference_entity_key")
-        if (entity_kind is None) != (entity_key is None):
-            raise InvalidRecord("incomplete_reference_entity")
-        ruleset_id = _require_key(ruleset_id, "reference_ruleset_id")
-        source_priority = int(source_priority)
-        if not 0 <= source_priority <= 1000:
-            raise InvalidRecord("invalid_reference_source_priority")
-        normalized_metadata = dict(metadata or {})
-        metadata_json = _json(normalized_metadata)
-        if len(metadata_json) > 32_768:
-            raise InvalidRecord("reference_metadata_too_large")
-        normalized_tags = sorted({
-            _require_key(str(value), "reference_tag") for value in tags
-        })
-        content_sha256 = hashlib.sha256(
-            json.dumps({
-                "topic": topic, "title": title, "summary": summary, "body": body,
-                "tags": normalized_tags, "source_url": source_url,
-                "archive_url": archive_url, "archive_timestamp": archive_timestamp,
-                "source_title": source_title, "source_license": source_license,
-                "provenance": provenance, "entity_kind": entity_kind,
-                "entity_key": entity_key, "ruleset_id": ruleset_id,
-                "source_priority": source_priority, "metadata": normalized_metadata,
-            }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-        now = time.time()
-        with self.transaction() as connection:
-            connection.execute(
-                "INSERT INTO reference_documents(document_id, topic, entity_kind, entity_key, "
-                "ruleset_id, source_priority, title, summary, body, tags, source_url, archive_url, "
-                "archive_timestamp, source_title, source_license, provenance, metadata_json, "
-                "content_sha256, updated_unix) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "?, ?, ?, ?, ?) ON CONFLICT(document_id) DO UPDATE SET topic=excluded.topic, "
-                "entity_kind=excluded.entity_kind, entity_key=excluded.entity_key, "
-                "ruleset_id=excluded.ruleset_id, source_priority=excluded.source_priority, "
-                "title=excluded.title, summary=excluded.summary, "
-                "body=excluded.body, tags=excluded.tags, source_url=excluded.source_url, "
-                "archive_url=excluded.archive_url, archive_timestamp=excluded.archive_timestamp, "
-                "source_title=excluded.source_title, source_license=excluded.source_license, "
-                "provenance=excluded.provenance, metadata_json=excluded.metadata_json, "
-                "content_sha256=excluded.content_sha256, "
-                "updated_unix=excluded.updated_unix",
-                (document_id, topic, entity_kind, entity_key, ruleset_id, source_priority,
-                 title, summary, body, " ".join(normalized_tags), source_url, archive_url,
-                 archive_timestamp, source_title, source_license, provenance, metadata_json,
-                 content_sha256, now),
-            )
-        return self.get_reference_document(
-            document_id,
-            private_prefix=(document_id if document_id.startswith("private.") else None),
-        )
-
-    def get_reference_document(self, document_id: str, *,
-                               private_prefix: str | None = None) -> dict[str, Any]:
-        document_id = _require_key(document_id, "reference_document_id")
-        if document_id.startswith("private.") \
-                and (private_prefix is None or not document_id.startswith(private_prefix)):
-            raise ScopeViolation("unknown_reference_document")
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM reference_documents WHERE document_id=?", (document_id,),
-            ).fetchone()
-        if not row:
-            raise ScopeViolation("unknown_reference_document")
-        result = dict(row)
-        result["metadata"] = json.loads(result.pop("metadata_json"))
-        return result
-
-    def delete_reference_documents(self, document_id_prefix: str) -> int:
-        """Replace one generated private-source namespace without a migration."""
-        prefix = _require_key(document_id_prefix, "reference_document_prefix")
-        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        with self.transaction() as connection:
-            cursor = connection.execute(
-                "DELETE FROM reference_documents WHERE document_id LIKE ? ESCAPE '\\'",
-                (escaped + "%",),
-            )
-        return int(cursor.rowcount)
-
     def acknowledge_match_briefing(
         self, scope: MemoryScope, session_id: str, briefing_hash: str,
     ) -> dict[str, Any]:
@@ -2857,105 +2706,6 @@ class SmacxStore:
                  session_id, briefing_hash),
             ).fetchone()
         return row is not None
-
-    def list_reference_topics(self, *,
-                              private_prefix: str | None = None) -> list[dict[str, Any]]:
-        clauses = ["document_id NOT LIKE 'private.%'"]
-        parameters: list[Any] = []
-        if private_prefix is not None:
-            prefix = _require_key(private_prefix, "reference_document_prefix")
-            escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            clauses.append("document_id LIKE ? ESCAPE '\\'")
-            parameters.append(escaped + "%")
-        with self._connect() as connection:
-            return [dict(row) for row in connection.execute(
-                "SELECT topic, count(*) AS document_count, "
-                "sum(CASE WHEN entity_kind IS NOT NULL THEN 1 ELSE 0 END) AS entity_count "
-                "FROM reference_documents "
-                "WHERE (" + " OR ".join(clauses) + ") GROUP BY topic ORDER BY topic",
-                parameters,
-            ).fetchall()]
-
-    def search_reference(self, query: str, *, topic: str | None = None,
-                         limit: int = 8, include_body: bool = False,
-                         private_prefix: str | None = None) -> list[dict[str, Any]]:
-        terms = re.findall(r"[\w'-]+", query, flags=re.UNICODE)
-        if not terms:
-            raise InvalidRecord("empty_reference_query")
-        all_terms = " AND ".join('"' + term.replace('"', '""') + '"' for term in terms[:16])
-        clauses = ["reference_fts MATCH ?"]
-        parameters: list[Any] = [all_terms]
-        visibility = ["d.document_id NOT LIKE 'private.%'"]
-        if private_prefix is not None:
-            prefix = _require_key(private_prefix, "reference_document_prefix")
-            escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            visibility.append("d.document_id LIKE ? ESCAPE '\\'")
-            parameters.append(escaped + "%")
-        clauses.append("(" + " OR ".join(visibility) + ")")
-        if topic:
-            clauses.append("d.topic=?")
-            parameters.append(_require_key(topic, "reference_topic"))
-        parameters.append(min(max(int(limit), 1), 30))
-        body_column = "d.body," if include_body else ""
-        with self._connect() as connection:
-            statement = (
-                "SELECT d.document_id, d.topic, d.title, d.summary, " + body_column
-                + " d.tags, d.entity_kind, d.entity_key, d.ruleset_id, d.source_priority, "
-                "d.source_url, d.archive_url, d.archive_timestamp, d.source_title, "
-                "d.source_license, d.provenance, d.metadata_json, d.content_sha256, "
-                "bm25(reference_fts, 5.0, 3.0, 1.0, 2.0) AS rank "
-                "FROM reference_fts JOIN reference_documents d ON d.rowid=reference_fts.rowid "
-                "WHERE " + " AND ".join(clauses) + " ORDER BY "
-                "CASE WHEN lower(d.title)=lower(?) THEN 0 ELSE 1 END, "
-                "d.source_priority DESC, rank, d.title LIMIT ?"
-            )
-            query_parameters = [*parameters[:-1], query.strip(), parameters[-1]]
-            rows = connection.execute(statement, query_parameters).fetchall()
-            if not rows and len(terms) > 1:
-                query_parameters[0] = " OR ".join(
-                    '"' + term.replace('"', '""') + '"' for term in terms[:16]
-                )
-                rows = connection.execute(statement, query_parameters).fetchall()
-        results = []
-        for row in rows:
-            result = dict(row)
-            result["metadata"] = json.loads(result.pop("metadata_json"))
-            results.append(result)
-        return results
-
-    def lookup_reference_entities(
-        self, entities: Sequence[tuple[str, str]], *, ruleset_id: str = "smacx",
-        private_prefix: str | None = None, include_body: bool = True,
-    ) -> list[dict[str, Any]]:
-        """Resolve exact normalized entities with expansion-first precedence."""
-        if not entities or len(entities) > 30:
-            raise InvalidRecord("invalid_reference_entity_batch")
-        ruleset_id = _require_key(ruleset_id, "reference_ruleset_id")
-        visibility = ["document_id NOT LIKE 'private.%'"]
-        parameters: list[Any] = [ruleset_id]
-        if private_prefix is not None:
-            prefix = _require_key(private_prefix, "reference_document_prefix")
-            escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            visibility.append("document_id LIKE ? ESCAPE '\\'")
-            parameters.append(escaped + "%")
-        matches: list[dict[str, Any]] = []
-        with self._connect() as connection:
-            for kind, key in entities:
-                kind = _require_key(kind, "reference_entity_kind")
-                key = _require_key(key, "reference_entity_key")
-                row = connection.execute(
-                    "SELECT * FROM reference_documents WHERE ruleset_id=? AND (" +
-                    " OR ".join(visibility) + ") AND entity_kind=? AND lower(entity_key)=lower(?) "
-                    "ORDER BY source_priority DESC, updated_unix DESC LIMIT 1",
-                    [*parameters, kind, key],
-                ).fetchone()
-                if row:
-                    result = dict(row)
-                    result["metadata"] = json.loads(result.pop("metadata_json"))
-                    if not include_body:
-                        result.pop("body", None)
-                    matches.append(result)
-        return matches
 
     def list_projection_records(
         self,

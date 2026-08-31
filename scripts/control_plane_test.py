@@ -254,7 +254,7 @@ def main() -> int:
             raise AssertionError("Hermes descriptor was not scoped to the exact seat and worker")
         managed_profile = control.get_harness_profile(descriptor["harness_profile_id"])
         managed_prompt = managed_profile.get("system_prompt", "")
-        if descriptor.get("system_prompt_schema") != "smacx.player-system.v1" \
+        if descriptor.get("system_prompt_schema") != "smacx.player-system.v2" \
                 or descriptor.get("system_prompt_sha256") \
                 != managed_profile.get("metadata", {}).get("system_prompt_sha256") \
                 or "smac_match_briefing" not in managed_prompt \
