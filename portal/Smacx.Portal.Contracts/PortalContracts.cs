@@ -120,7 +120,8 @@ public sealed record LobbySeatSummary(
     string? ResolvedFactionKey = null,
     string RequestedPersonalityId = "standard",
     string? PersonalityName = null,
-    bool CanLeave = false);
+    bool CanLeave = false,
+    DateTimeOffset? StagingPresenceExpiresAt = null);
 
 public sealed record FactionPersonalityCatalog(
     IReadOnlyList<FactionCatalogItem> Factions,

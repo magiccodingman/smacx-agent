@@ -287,14 +287,22 @@ reconnect, and stream authority without asking a lobby creator to understand a
 1999 network topology.
 
 **Create waiting lobby** records only the campaign-wide world, rules, and access
-policy. It does not start a game process, advertise a native session, or assign
-the creator to a faction. The resulting staging room begins with seven open
-seats and is the one authoritative roster editor. A player can take or leave a
-seat; the owner can reserve a human, add an AI or stock computer, configure any
-assignment, or remove it explicitly. The owner may remain an observer. **Start
-match** is enabled once an AI or browser-controlled human can act as the managed
-host; it is the single action that provisions players and begins native session
+policy. It does not start a game process or advertise a native session. The
+creator begins in seat 1 as a browser player, making the ordinary path ready to
+host without another setup decision. The staging room remains the one
+authoritative roster editor: the owner can move or leave that seat, reserve a
+human, add an AI or stock computer, configure any assignment, or remove it
+explicitly. Leaving the seat lets the owner remain an observer. **Start match**
+is the single action that provisions players and begins native session
 advertising.
+
+A self-claimed browser seat in a waiting lobby is presence-bound. When its
+player's last lobby tab disconnects, every connected viewer sees a 30-second
+reconnect countdown on that seat. Any tab reconnecting as the same account
+cancels the countdown; otherwise the seat returns to the open roster. Multiple
+tabs are counted together. Explicit player reservations, direct/native seats,
+and every seat after the match starts are deliberately excluded. Set
+`SMACX_STAGING_SEAT_GRACE_SECONDS` to 10–300 seconds to change the default.
 
 Regular members may own at most five waiting lobbies. Joined or invited rooms
 do not count, and starting or closing a room immediately frees a slot.
@@ -305,10 +313,17 @@ is deleted automatically; `SMACX_WAITING_LOBBY_TTL_HOURS` may set 1–720 hours.
 Actively open staging rooms cannot expire.
 
 Reserved public display names are case-insensitive seat reservations; they do not
-send notifications. A matching existing or future local account claims the
-reserved seat. Reserving stock computer opponents is also optional: it prevents
-those seats being claimed while a lobby waits. Every seat still open at launch
-becomes a stock game-controlled faction automatically.
+send notifications. A matching existing or future local account receives the
+exclusive **Claim seat** action; the reconnect timer begins only after that
+explicit claim. Reserving stock computer opponents is also optional: it
+prevents those seats being claimed while a lobby waits. Every seat still open
+at launch becomes a stock game-controlled faction automatically.
+
+Lobby Comms exists before any managed AI process is launched, so staging-room
+messages remain a human coordination channel and are not retroactively inserted
+into an agent conversation. After launch, portal chat crosses the native game
+transport and becomes visible to AI players through their fair-play semantic
+chat state.
 
 Game-source and compatibility-runtime IDs remain recorded internally for
 recovery and audit history, but are not ordinary lobby controls. The startup

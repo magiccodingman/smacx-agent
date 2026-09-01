@@ -126,6 +126,12 @@ accounts, lobby history, active and parked matches, player associations, saves,
 chat, AI profiles, and analytics in one place. Run separate matches for friends
 or experiments without repeatedly rebuilding or taking the platform down.
 
+Staging behaves like a modern room rather than a dead reservation list. The
+creator begins in a playable seat, can step out to observe, and gets a visible
+30-second reconnect window if their last lobby tab disappears. Multiple tabs
+are understood, abandoned seats reopen automatically, and invited or
+traditional native-client seats remain deliberately reserved.
+
 Its Campaign Library stays useful as that collection grows: search and filter
 active, resumable, and completed games, park an AI simulation for later, or end
 it permanently while retaining the political history, outcomes, telemetry,

@@ -92,19 +92,19 @@ else
         </div>
 
         <aside class="setup-summary surface-panel">
-            <span class="panel-kicker">NEXT: STAGING</span><h2>Seven open seats</h2><p>After creating the room, take a seat, reserve friends, and add AI or stock computers from one shared roster.</p>
-            <div class="seat-preview-list">
-                @for (var index = 0; index < 7; index++)
-                {
-                    <div class="seat-preview open"><span>@(index + 1)</span><MudIcon Icon="@Icons.Material.Filled.Add" /><div><strong>Open seat</strong><small>Assigned in staging</small></div></div>
-                }
+            <span class="panel-kicker">NEXT: STAGING</span><h2>Your seat is ready</h2>
+            <p>Creating the room places you in seat 1. Nothing launches until you review the roster and press <strong>Start match</strong>.</p>
+            <div class="staging-next-list">
+                <div><MudIcon Icon="@Icons.Material.Filled.EventSeat" /><span><strong>Move or observe</strong><small>Move to another open seat or leave yours to watch an AI-only game.</small></span></div>
+                <div><MudIcon Icon="@Icons.Material.Filled.Groups" /><span><strong>Build the roster</strong><small>Add AI, stock opponents, and reserved human players in one place.</small></span></div>
+                <div><MudIcon Icon="@Icons.Material.Filled.Public" /><span><strong>Choose every faction</strong><small>Keep Random or configure factions and AI personalities before launch.</small></span></div>
             </div>
             <div class="host-summary"><MudIcon Icon="@Icons.Material.Filled.Hub" /><span><strong>Host selected at launch</strong>The first AI seat is preferred; otherwise a browser player hosts.</span></div>
             <div class="summary-checks">@SummaryCheck(!string.IsNullOrWhiteSpace(name), "Lobby name")@SummaryCheck(HasRequiredScenario, "Starting world")@SummaryCheck(catalog?.WaitingLobbies.CanCreate == true, "Waiting-lobby slot")@SummaryCheck(PlatformReady, "Docker game platform")</div>
             @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-3">@error</MudAlert> }
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" StartIcon="@Icons.Material.Filled.Groups" Disabled="@(busy || !CanCreate)" OnClick="Create">@(busy ? "Creating…" : "Create waiting lobby")</MudButton>
             <MudButton Href="lobbies" Variant="Variant.Text" FullWidth="true">Cancel</MudButton>
-            <small class="creation-note">No game process starts yet. The next screen is the authoritative staging room for every human, AI, bot, faction, and personality assignment.</small>
+            <small class="creation-note">Your seat is held while this lobby page is open. If the last tab disconnects before launch, a 30-second reconnect window protects it before it becomes available again.</small>
         </aside>
     </div>
 }

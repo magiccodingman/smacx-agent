@@ -23,6 +23,8 @@ public sealed class LobbiesController(
     ControlPlaneClient control,
     IHubContext<LobbyHub> lobbyHub,
     StreamPresenceTracker presence,
+    WaitingLobbyPresenceTracker waitingPresence,
+    WaitingLobbyPolicy waitingLobbyPolicy,
     PersonalityCardLibrary personalityCards) : ControllerBase
 {
     private static readonly SemaphoreSlim WaitingLobbyCreationGate = new(1, 1);
@@ -198,6 +200,7 @@ public sealed class LobbiesController(
             {
                 MatchId = matchId,
                 UserId = user.Id,
+                SeatIndex = 0,
                 Role = "owner",
                 JoinMode = "browser",
                 JoinedAt = now,
@@ -208,8 +211,13 @@ public sealed class LobbiesController(
                 {
                     MatchId = matchId,
                     SeatIndex = seatIndex,
-                    ControllerKind = "open",
-                    Status = "open",
+                    ControllerKind = seatIndex == 0 ? "human" : "open",
+                    UserId = seatIndex == 0 ? user.Id : null,
+                    PlayerHandle = seatIndex == 0 ? user.DisplayName : null,
+                    JoinMode = "browser",
+                    Status = seatIndex == 0 ? "ready" : "open",
+                    ConnectionState = seatIndex == 0 ? "reconnecting" : "unknown",
+                    LastBrowserSeenAt = seatIndex == 0 ? now : null,
                     UpdatedAt = now,
                 });
             }
@@ -259,15 +267,17 @@ public sealed class LobbiesController(
             !seat.PlayerHandle.Equals(user.DisplayName, StringComparison.OrdinalIgnoreCase))
             return Conflict(ApiResponse<LobbyDetails>.Failure(
                 "seat_unavailable", "That seat is no longer available to this player."));
-        var old = await database.PortalLobbySeats.SingleOrDefaultAsync(
-            item => item.MatchId == matchId && item.UserId == user.Id && item.SeatIndex != request.SeatIndex,
-            HttpContext.RequestAborted);
-        if (old is not null)
-        {
-            ResetSeatToOpen(old);
-        }
+        var oldSeats = await database.PortalLobbySeats.Where(
+            item => item.MatchId == matchId && item.UserId == user.Id &&
+                item.SeatIndex != request.SeatIndex)
+            .ToArrayAsync(HttpContext.RequestAborted);
+        foreach (var old in oldSeats) WaitingLobbySeatLifecycle.ResetToOpen(old);
         seat.ControllerKind = "human"; seat.UserId = user.Id; seat.PlayerHandle = user.DisplayName;
         seat.JoinMode = request.JoinMode; seat.Status = "ready"; seat.UpdatedAt = DateTimeOffset.UtcNow;
+        seat.ConnectionState = request.JoinMode == "browser" &&
+            waitingPresence.IsUserActive(matchId, user.Id) ? "connected" :
+            request.JoinMode == "browser" ? "reconnecting" : "unknown";
+        seat.LastBrowserSeenAt = request.JoinMode == "browser" ? DateTimeOffset.UtcNow : null;
         var member = await database.PortalMatchMembers.SingleOrDefaultAsync(
             item => item.MatchId == matchId && item.UserId == user.Id, HttpContext.RequestAborted);
         if (member is null)
@@ -308,7 +318,7 @@ public sealed class LobbiesController(
             return Conflict(ApiResponse<LobbyDetails>.Failure(
                 "seat_not_owned", "You do not occupy that human seat."));
 
-        ResetSeatToOpen(seat);
+        WaitingLobbySeatLifecycle.ResetToOpen(seat);
         var member = await database.PortalMatchMembers.SingleOrDefaultAsync(
             item => item.MatchId == matchId && item.UserId == user.Id,
             HttpContext.RequestAborted);
@@ -393,7 +403,7 @@ public sealed class LobbiesController(
                 "faction_already_reserved",
                 "Another human, AI, or stock computer seat already reserves that faction."));
         var oldUserId = seat.UserId;
-        ResetSeatToOpen(seat);
+        WaitingLobbySeatLifecycle.ResetToOpen(seat);
         seat.ControllerKind = request.ControllerKind;
 
         if (request.ControllerKind == "agent")
@@ -423,6 +433,8 @@ public sealed class LobbiesController(
             var current = await userManager.GetUserAsync(User);
             var handle = string.IsNullOrWhiteSpace(request.PlayerHandle)
                 ? current?.DisplayName ?? "" : request.PlayerHandle.Trim();
+            var claimsCurrentUser = current is not null &&
+                current.DisplayName.Equals(handle, StringComparison.OrdinalIgnoreCase);
             if (handle.Length is < 1 or > 31 || handle.Any(character => character < 32 || character > 126))
                 return BadRequest(ApiResponse<LobbyDetails>.Failure(
                     "invalid_player_handle", "Public display names must contain 1–31 printable characters."));
@@ -431,14 +443,30 @@ public sealed class LobbiesController(
                     "Faction-leader names are reserved for AI players."));
             if (await database.PortalLobbySeats.AsNoTracking().AnyAsync(item =>
                     item.MatchId == matchId && item.SeatIndex != seatIndex && item.PlayerHandle != null &&
-                    item.PlayerHandle.ToUpper() == handle.ToUpper(), HttpContext.RequestAborted))
+                    item.PlayerHandle.ToUpper() == handle.ToUpper() &&
+                    (!claimsCurrentUser || item.UserId != current!.Id), HttpContext.RequestAborted))
                 return Conflict(ApiResponse<LobbyDetails>.Failure(
                     "display_name_in_use", "That public display name already occupies another seat."));
-            var player = current is not null && current.DisplayName.Equals(handle, StringComparison.OrdinalIgnoreCase)
-                ? current : await EnsureLobbyUserAsync(handle);
+            var player = claimsCurrentUser
+                ? current! : await EnsureLobbyUserAsync(handle);
+            if (claimsCurrentUser)
+            {
+                var previousSeats = await database.PortalLobbySeats.Where(item =>
+                    item.MatchId == matchId && item.SeatIndex != seatIndex &&
+                    item.UserId == player.Id).ToArrayAsync(HttpContext.RequestAborted);
+                foreach (var previousSeat in previousSeats)
+                    WaitingLobbySeatLifecycle.ResetToOpen(previousSeat);
+            }
             seat.UserId = player.Id; seat.PlayerHandle = player.DisplayName;
             seat.RequestedFactionId = requestedFactionId;
-            seat.JoinMode = request.JoinMode; seat.Status = player.IsProvisional ? "invited" : "ready";
+            seat.JoinMode = request.JoinMode;
+            seat.Status = claimsCurrentUser ? "ready" : player.IsProvisional ? "invited" : "reserved";
+            if (claimsCurrentUser && request.JoinMode == "browser")
+            {
+                seat.ConnectionState = waitingPresence.IsUserActive(matchId, player.Id)
+                    ? "connected" : "reconnecting";
+                seat.LastBrowserSeenAt = DateTimeOffset.UtcNow;
+            }
             var member = await database.PortalMatchMembers.SingleOrDefaultAsync(
                 item => item.MatchId == matchId && item.UserId == player.Id, HttpContext.RequestAborted);
             if (member is null) database.PortalMatchMembers.Add(new PortalMatchMember {
@@ -1225,13 +1253,23 @@ public sealed class LobbiesController(
             var live = profile.Status == "running";
             var canControl = profile.Status is not ("parked" or "completed") &&
                 userId is not null && seat.UserId == userId
-                && seat.ControllerKind == "human" && seat.JoinMode == "browser";
+                && seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
+                seat.Status == "ready";
             var canSpectate = live && seat.ControlInstanceId is not null
                 && (canControl || administrator || profile.AllowAnonymousSpectators);
             var canJoin = profile.Status == "waiting" && userId is not null &&
-                seat.ControllerKind == "open";
+                (seat.ControllerKind == "open" || seat.ControllerKind == "human" &&
+                    seat.JoinMode == "browser" && seat.UserId == userId &&
+                    seat.Status is "reserved" or "invited");
             var canLeave = profile.Status == "waiting" && userId is not null &&
-                seat.ControllerKind == "human" && seat.UserId == userId;
+                seat.ControllerKind == "human" && seat.UserId == userId &&
+                seat.Status == "ready";
+            var stagingPresenceExpiresAt = profile.Status == "waiting" &&
+                seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
+                seat.Status == "ready" && seat.ConnectionState == "reconnecting" &&
+                seat.LastBrowserSeenAt is not null
+                    ? seat.LastBrowserSeenAt.Value + waitingLobbyPolicy.SeatReconnectGrace
+                    : (DateTimeOffset?)null;
             return new LobbySeatSummary(
                 seat.SeatIndex, seat.ControllerKind, seat.AgentId, seat.PlayerHandle,
                 seat.FactionId, seat.FactionName, seat.Status,
@@ -1240,7 +1278,8 @@ public sealed class LobbiesController(
                 seat.DelegationStatus, seat.TemporaryControllerKind,
                 seat.LastBrowserSeenAt, seat.IsManagedHost,
                 seat.RequestedFactionId, seat.ResolvedFactionKey,
-                seat.RequestedPersonalityId, seat.PersonalityName, canLeave);
+                seat.RequestedPersonalityId, seat.PersonalityName, canLeave,
+                stagingPresenceExpiresAt);
         }).ToArray();
         var nativeJoin = await ReadNativeJoinAsync(profile.MatchId);
         var incident = await ReadCapabilityIncidentAsync(profile.MatchId);
@@ -1522,29 +1561,6 @@ public sealed class LobbiesController(
         return userId is not null && await database.PortalMatchMembers.AsNoTracking().AnyAsync(
             item => item.MatchId == matchId && item.UserId == userId,
             HttpContext.RequestAborted);
-    }
-
-    private static void ResetSeatToOpen(PortalLobbySeat seat)
-    {
-        seat.ControllerKind = "open";
-        seat.AgentId = null;
-        seat.AiProfileId = null;
-        seat.UserId = null;
-        seat.PlayerHandle = null;
-        seat.JoinMode = "browser";
-        seat.RequestedFactionId = FactionCatalog.Random;
-        seat.ResolvedFactionKey = null;
-        seat.LeaderName = null;
-        seat.RequestedPersonalityId = "standard";
-        seat.PersonalityCardId = "none";
-        seat.PersonalityName = null;
-        seat.PersonalityPrompt = null;
-        seat.PersonalityPromptSha256 = null;
-        seat.FactionId = null;
-        seat.FactionName = null;
-        seat.ControlInstanceId = null;
-        seat.Status = "open";
-        seat.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     private async Task RemoveOrphanedProvisionalUsersAsync(IEnumerable<string> candidateIds)

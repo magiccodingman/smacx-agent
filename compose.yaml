@@ -83,6 +83,7 @@ services:
       SMACX_PORTAL_DATA: /var/lib/smacx-portal
       SMACX_PASSWORD_MIN_LENGTH: ${SMACX_PASSWORD_MIN_LENGTH:-8}
       SMACX_WAITING_LOBBY_TTL_HOURS: ${SMACX_WAITING_LOBBY_TTL_HOURS:-24}
+      SMACX_STAGING_SEAT_GRACE_SECONDS: ${SMACX_STAGING_SEAT_GRACE_SECONDS:-30}
     ports:
       # Host-local by default. Bind to a trusted private LAN explicitly, e.g.
       # SMACX_PORTAL_PUBLISH=0.0.0.0:8080.
