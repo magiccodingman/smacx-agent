@@ -576,29 +576,9 @@ class OperationsManager:
 
     def _incident(self, instance_id: str, kind: str, status: str,
                   details: Mapping[str, Any]) -> dict[str, Any]:
-        spec = self.control.get_worker_spec(instance_id)
-        now = time.time()
-        with self.store.transaction() as connection:
-            row = connection.execute(
-                "SELECT incident_id FROM supervision_incidents WHERE instance_id=? "
-                "AND incident_kind=? AND status IN ('open','operator_required') "
-                "ORDER BY first_seen_unix DESC LIMIT 1", (instance_id, kind),
-            ).fetchone()
-            if row:
-                incident_id = str(row["incident_id"])
-                connection.execute(
-                    "UPDATE supervision_incidents SET status=?, details_json=?, last_seen_unix=? "
-                    "WHERE incident_id=?", (status, _json(details), now, incident_id),
-                )
-            else:
-                incident_id = _new_id("incident")
-                connection.execute(
-                    "INSERT INTO supervision_incidents(incident_id, match_id, instance_id, "
-                    "incident_kind, status, details_json, first_seen_unix, last_seen_unix) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (incident_id, spec["match_id"], instance_id, kind, status, _json(details), now, now),
-                )
-        return {"incident_id": incident_id, "status": status}
+        return self.control.record_supervision_incident(
+            instance_id, kind, status, details,
+        )
 
     def reconcile_once(self) -> dict[str, Any]:
         with self._operation_lock:

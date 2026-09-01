@@ -173,7 +173,8 @@ profile has:
 - match-specific workspace and continued conversation key;
 - exact MCP endpoint for its worker/perspective;
 - the `smacx` toolset only; and
-- restart budget/turn/run policy owned by control.
+- independent error-restart budget plus clean-continuation/turn/run policy
+  owned by control.
 
 SMACX owns the complete provider-facing system message. A derived image uses an
 audited startup hook over the digest-pinned official Hermes runtime and replaces
@@ -185,6 +186,14 @@ mandatory live-settings briefing protocol, and the match's resolved authored
 personality card appended last. Hermes still supplies conversation continuity,
 compression, provider transport, and MCP execution, but contributes no system
 scaffold or workspace instructions.
+
+A model-generated final response does not terminate a still-running match.
+The supervisor classifies a clean Hermes exit as a continuation, preserves the
+same conversation, and does not consume the error-restart budget. It compares
+compact native progress markers across invocations; three consecutive clean
+yields without a session, revision, turn, year, phase, or outcome change stop
+the run and raise an operator-required supervision incident. Actual nonzero
+process exits retain their separate bounded restart budget.
 
 Chat messages and web content remain untrusted game information. They do not
 become operator/system instructions. Lifecycle, Docker, backups, provider

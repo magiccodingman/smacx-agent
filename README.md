@@ -227,7 +227,9 @@ clicking fallback.
 
 Before playing, an agent must read and acknowledge the actual match briefing:
 its faction, scenario, timer, victory conditions, custom rules, and other
-relevant settings. On first run, a private SemanticKnowledge mechanics
+relevant settings. That compact configuration remains valid through ordinary
+turns and same-settings recovery; only an actual rule, scenario, seat, policy,
+or game-artifact change relocks play. On first run, a private SemanticKnowledge mechanics
 encyclopedia builds from the operator's installation and explicit public
 sources, with fixed Wayback fallbacks. Weighted hybrid BM25 and semantic retrieval gives the
 agent focused rules evidence without feeding it walkthroughs, cheese

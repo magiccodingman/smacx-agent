@@ -9,7 +9,11 @@
 - `smac_match_briefing(action, briefing_hash)` — read the authoritative live
   faction/difficulty/map/victory/rules/clock/scenario/seat briefing, then
   acknowledge its exact hash. Decisions and gameplay mutations remain locked
-  until the current process session's hash is acknowledged.
+  until the current configuration is acknowledged. Turn state never
+  participates in the hash. Same-configuration process recovery returns one
+  compact resume notice; a real configuration change returns a field-path
+  delta and relocks play. Acknowledgement is compact and never echoes the full
+  briefing.
 - `smac_snapshot()` — compact fair-play turn state, current ready-unit references, protocol phase, current guard, latest deferred-action status, and latest publicly displayed Council result.
 - `smac_decision(..., detail="compact")` — preferred action-ordered loop: a revision-stable player-state headline plus the exact active interaction, selected ready unit choices, wait/gap directive, or game-management choices. It retries assembly if state changes between observation and enumeration. Compact is the default and avoids replaying the comprehensive snapshot on every unit; use `detail="full"` only for one decision that genuinely needs the complete turn document. Set `finish_ready_units=true` only after deliberately deciding every remaining unit is finished; this returns the exact guarded skip-all/game-management frame and conflicts with selecting one `unit_id`.
 - `smac_list(kind, ...)` — bases, units, factions, technologies, or known/visible tiles.

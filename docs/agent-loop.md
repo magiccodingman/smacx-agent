@@ -2,23 +2,31 @@
 
 SMACX Agent uses an explicit state machine and optimistic concurrency. The model does not send a stream of keys or clicks.
 
-Before this loop is available, the player must call
-`smac_match_briefing(action="read")`. The briefing combines the exact live
-faction, difficulty, generated map, victory toggles, advanced rules,
-multiplayer clock, scenario restrictions, match policy, and legal-copy source
-identity. The player reviews unfamiliar non-default mechanics through
-`smac_reference`, then acknowledges the exact returned hash. `smac_decision`
-returns no choices and every `smac_command` is rejected until that hash is
-acknowledged. A recovery or native settings change creates a different hash and
-locks mutations again. Acknowledgements are isolated by match, agent,
-perspective, and process `session_id`.
+Before this loop is available in a new match, the player calls
+`smac_match_briefing(action="read")`. The versioned configuration contract
+combines the exact faction, difficulty, generated map, victory toggles,
+advanced rules, multiplayer clock, scenario restrictions, match policy, and
+game-artifact fingerprint. The player reviews unfamiliar non-default mechanics
+through `smac_reference`, then acknowledges the exact returned hash.
+`smac_decision` returns no choices and every `smac_command` is rejected until
+that configuration is acknowledged.
+
+The hash deliberately excludes resources, bases, units, ready-unit count,
+turn/year, diplomacy, match lifecycle, reference-catalog prose, and other
+runtime state. Those facts belong in fresh decision/event surfaces. A changed
+rule, faction/seat, scenario, policy, ruleset, or executable fingerprint
+produces a field-path delta and relocks mutation. Recovering the same
+configuration into a new process keeps the durable acknowledgement and emits
+one compact resume notice; the rotated `session_id` and `revision` still reject
+every stale engine command. The opening read is complete, while acknowledgement
+returns only its hash/status instead of echoing the contract.
 
 The three guard values have different lifetimes:
 
 | Value | Meaning | When it changes | What an old value prevents |
 | --- | --- | --- | --- |
 | `match_id` | Durable identity of one playthrough and its knowledge/save namespace | Only when starting a genuinely new match | Acting on or writing notes into the wrong game |
-| `session_id` | Identity of one running game process | Every fresh launch or reload | Reusing engine objects or commands from a prior process |
+| `session_id` | Identity of one running game process | Every fresh launch or reload | Reusing engine objects or commands from a prior process; it does not by itself invalidate an unchanged configuration acknowledgement |
 | `revision` | Fingerprint of the current fair-play decision state | Whenever action-relevant public/owned state changes | Replaying a choice after the board, modal, resources, or turn phase changed |
 
 Object IDs are session-local observations, not durable knowledge keys. A snapshot's `ready_unit_refs` provides the current actionable unit IDs, names, opaque tile IDs, and compact roles at that exact revision; request `unit_actions` with one of those IDs rather than guessing. A `tile_id` is not an encoded planning coordinate: never do arithmetic on it or infer neighbors from it. Re-list bases, units, factions, tiles, and choices after every mutation that can create, consume, capture, reorder, or destroy an engine object.
