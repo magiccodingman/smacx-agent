@@ -1,9 +1,18 @@
 # Faction identities and personality cards
 
-SMACX Agent resolves every AI seat into a durable in-game identity before its
-native DirectPlay participant is created. The selected model profile remains
-the technical implementation behind the seat; the public player is the leader
-of the faction it controls.
+SMACX Agent resolves every occupied seat into a durable, unique faction before
+its native game is created. Humans, autonomous agents, and stock computer
+players may each reserve one of the fourteen official factions or leave the
+choice on Random. Random is resolved once from the factions not already
+reserved, then remains locked for that campaign.
+
+For a fresh standard game, the resulting seven-seat roster is authoritative
+below the portal: managed humans and agents claim their exact native selector
+rows, direct native humans must choose their reserved row before the host may
+start, and SMACX's computer-faction allocator is restricted to the reserved
+stock-computer remainder. In a one-player managed game the same ordered roster
+is installed before native Quick Start, so computer choices are not merely UI
+labels.
 
 Public DirectPlay names use the game's printable-ASCII transport spelling.
 Accordingly, the Spartan public identity is **Colonel Corazon Santiago** while
@@ -17,10 +26,11 @@ implementation identifiers and are not presented as player names.
 
 ## Lobby flow
 
-Each selected AI profile has its own controls:
+Every occupied seat has a **Faction** control in its staging Configure panel.
+It offers one of the fourteen official SMAC/Alien Crossfire factions or Random,
+and a specific faction cannot be reserved by any other human, AI, or stock
+computer seat. AI seats additionally have their own controls:
 
-- **Faction** — one of the fourteen official SMAC/Alien Crossfire factions, or
-  Random. A specific faction cannot be assigned to two AI seats.
 - **Personality** — Standard by default, None, Random, or one of the selected
   faction's Friendly, Aggressive, and Extreme authored variants.
 

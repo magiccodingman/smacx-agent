@@ -353,6 +353,25 @@ public sealed class LobbiesController(
             HttpContext.RequestAborted);
         if (seat is null) return NotFound(ApiResponse<LobbyDetails>.Failure(
             "seat_not_found", "That faction seat was not found."));
+        var suppliedFactionId = string.IsNullOrWhiteSpace(request.FactionId)
+            ? FactionCatalog.Random : request.FactionId;
+        var requestedFaction = request.ControllerKind == "open"
+            ? null : FactionCatalog.Find(suppliedFactionId);
+        var requestedFactionId = request.ControllerKind == "open" ||
+            suppliedFactionId.Equals(FactionCatalog.Random, StringComparison.OrdinalIgnoreCase)
+                ? FactionCatalog.Random : requestedFaction?.Id ?? suppliedFactionId;
+        if (requestedFactionId != FactionCatalog.Random && requestedFaction is null)
+            return BadRequest(ApiResponse<LobbyDetails>.Failure(
+                "invalid_seat_faction", "Choose Random or one official faction."));
+        if (requestedFactionId != FactionCatalog.Random &&
+            await database.PortalLobbySeats.AsNoTracking().AnyAsync(
+                item => item.MatchId == matchId && item.SeatIndex != seatIndex &&
+                    item.ControllerKind != "open" &&
+                    item.RequestedFactionId == requestedFactionId,
+                HttpContext.RequestAborted))
+            return Conflict(ApiResponse<LobbyDetails>.Failure(
+                "faction_already_reserved",
+                "Another human, AI, or stock computer seat already reserves that faction."));
         var oldUserId = seat.UserId;
         seat.ControllerKind = request.ControllerKind;
         seat.AgentId = null; seat.AiProfileId = null; seat.UserId = null;
@@ -372,22 +391,13 @@ public sealed class LobbiesController(
                 .FirstOrDefaultAsync(HttpContext.RequestAborted);
             if (aiProfile is null) return BadRequest(ApiResponse<LobbyDetails>.Failure(
                 "unknown_ai_profile", "That AI profile is not active."));
-            if (request.FactionId != FactionCatalog.Random && FactionCatalog.Find(request.FactionId) is null)
-                return BadRequest(ApiResponse<LobbyDetails>.Failure(
-                    "invalid_agent_faction", "Choose Random or one official faction."));
             if (BuiltInPersonalityCatalog.FindMode(request.PersonalityId) is null ||
-                request.FactionId == FactionCatalog.Random && request.PersonalityId is not ("none" or "standard" or "random"))
+                requestedFactionId == FactionCatalog.Random && request.PersonalityId is not ("none" or "standard" or "random"))
                 return BadRequest(ApiResponse<LobbyDetails>.Failure(
                     "invalid_agent_personality", "Choose a personality compatible with this faction selection."));
-            if (request.FactionId != FactionCatalog.Random && await database.PortalLobbySeats.AsNoTracking().AnyAsync(
-                    item => item.MatchId == matchId && item.SeatIndex != seatIndex &&
-                        item.ControllerKind == "agent" && item.RequestedFactionId == request.FactionId,
-                    HttpContext.RequestAborted))
-                return Conflict(ApiResponse<LobbyDetails>.Failure(
-                    "duplicate_agent_faction", "Another AI seat already reserves that faction."));
-            var faction = FactionCatalog.Find(request.FactionId);
+            var faction = FactionCatalog.Find(requestedFactionId);
             seat.AgentId = aiProfile.AgentId; seat.AiProfileId = aiProfile.ProfileId;
-            seat.RequestedFactionId = request.FactionId;
+            seat.RequestedFactionId = requestedFactionId;
             seat.RequestedPersonalityId = request.PersonalityId;
             seat.PlayerHandle = faction?.LeaderName ?? "Random faction AI";
             seat.LeaderName = faction?.LeaderName; seat.Status = "assigned";
@@ -413,6 +423,7 @@ public sealed class LobbiesController(
             var player = current is not null && current.DisplayName.Equals(handle, StringComparison.OrdinalIgnoreCase)
                 ? current : await EnsureLobbyUserAsync(handle);
             seat.UserId = player.Id; seat.PlayerHandle = player.DisplayName;
+            seat.RequestedFactionId = requestedFactionId;
             seat.JoinMode = request.JoinMode; seat.Status = player.IsProvisional ? "invited" : "ready";
             var member = await database.PortalMatchMembers.SingleOrDefaultAsync(
                 item => item.MatchId == matchId && item.UserId == player.Id, HttpContext.RequestAborted);
@@ -424,7 +435,9 @@ public sealed class LobbiesController(
         }
         else if (request.ControllerKind == "native")
         {
-            seat.PlayerHandle = $"Stock computer {seatIndex + 1}"; seat.Status = "assigned";
+            seat.PlayerHandle = $"Stock computer {seatIndex + 1}";
+            seat.RequestedFactionId = requestedFactionId;
+            seat.Status = "assigned";
         }
         else seat.Status = "open";
 
@@ -961,8 +974,19 @@ public sealed class LobbiesController(
     {
         var seats = await database.PortalLobbySeats.Where(seat => seat.MatchId == profile.MatchId)
             .OrderBy(seat => seat.SeatIndex).ToArrayAsync(cancellationToken);
-        ResolveAgentSeats(profile.MatchId, seats);
+        try
+        {
+            ResolveFactionSeats(profile.MatchId, seats);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return (409, "invalid_faction_roster", exception.Message);
+        }
         await database.SaveChangesAsync(cancellationToken);
+        var factionRoster = seats.OrderBy(seat => seat.SeatIndex)
+            .Select(seat => FactionCatalog.Find(seat.ResolvedFactionKey)
+                ?? throw new InvalidOperationException("A resolved faction is missing from the catalog."))
+            .ToArray();
         var assigned = seats.Where(seat => seat.ControllerKind != "open").ToArray();
         if (assigned.Length is < 1 or > 7)
         {
@@ -1009,7 +1033,8 @@ public sealed class LobbiesController(
                     controller_kind = only.ControllerKind,
                     agent_id = only.AgentId,
                     human_player_name = only.PlayerHandle,
-                    faction_id = 1,
+                    faction_id = only.SeatIndex + 1,
+                    faction_name = FactionCatalog.Find(only.ResolvedFactionKey)?.FactionName,
                     game_source_id = profile.GameSourceId,
                     runtime_id = profile.RuntimeId,
                     view_enabled = true,
@@ -1021,7 +1046,8 @@ public sealed class LobbiesController(
                             ? DifficultyId(difficulty) : 2,
                         world_size = settings["WorldSize"].GetString() is { } world
                             ? WorldSizeId(world) : 1,
-                        faction_id = 1,
+                        faction_id = only.SeatIndex + 1,
+                        faction_roster = factionRoster.Select(item => item.NativeChoiceId).ToArray(),
                         blind_research = true,
                         initial_research_priority = 0,
                         narrative_ui = false,
@@ -1106,6 +1132,16 @@ public sealed class LobbiesController(
                         personality_name = seat.PersonalityName,
                         personality_prompt = seat.PersonalityPrompt,
                         personality_prompt_sha256 = seat.PersonalityPromptSha256,
+                    }).ToArray(),
+                faction_roster_choice_ids = factionRoster
+                    .Select(item => item.NativeChoiceId).ToArray(),
+                human_seat_preferences = humans
+                    .Select(seat => new
+                    {
+                        player_name = humanAliases[seat.SeatIndex],
+                        faction_key = seat.ResolvedFactionKey,
+                        faction_choice_id = FactionCatalog.Find(seat.ResolvedFactionKey)?.NativeChoiceId,
+                        faction_name = FactionCatalog.Find(seat.ResolvedFactionKey)?.FactionName,
                     }).ToArray(),
                 human_player_names = externalHumans
                     .Where(seat => seat != humanHost)
@@ -1241,14 +1277,20 @@ public sealed class LobbiesController(
         }
     }
 
-    private void ResolveAgentSeats(string matchId, IReadOnlyList<PortalLobbySeat> seats)
+    private void ResolveFactionSeats(string matchId, IReadOnlyList<PortalLobbySeat> seats)
     {
         var agents = seats.Where(item => item.ControllerKind == "agent")
             .OrderBy(item => item.SeatIndex).ToArray();
-        var used = new HashSet<string>(
-            agents.Where(item => item.RequestedFactionId != FactionCatalog.Random)
-                .Select(item => item.RequestedFactionId), StringComparer.OrdinalIgnoreCase);
-        foreach (var seat in agents)
+        var explicitFactions = seats
+            .Where(item => item.ControllerKind != "open" &&
+                item.RequestedFactionId != FactionCatalog.Random)
+            .Select(item => item.RequestedFactionId).ToArray();
+        if (explicitFactions.Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
+            explicitFactions.Length)
+            throw new InvalidOperationException(
+                "Each human, AI, and stock computer seat must use a different specific faction.");
+        var used = new HashSet<string>(explicitFactions, StringComparer.OrdinalIgnoreCase);
+        foreach (var seat in seats.OrderBy(item => item.SeatIndex))
         {
             var faction = FactionCatalog.Find(seat.ResolvedFactionKey);
             if (faction is null)
@@ -1256,7 +1298,7 @@ public sealed class LobbiesController(
                 if (seat.RequestedFactionId == FactionCatalog.Random)
                 {
                     var available = FactionCatalog.All.Where(item => !used.Contains(item.Id)).ToArray();
-                    if (available.Length == 0) throw new InvalidOperationException("No unique faction remains for this AI seat.");
+                    if (available.Length == 0) throw new InvalidOperationException("No unique faction remains for this seat.");
                     var digest = System.Security.Cryptography.SHA256.HashData(
                         System.Text.Encoding.UTF8.GetBytes($"{matchId}:{seat.SeatIndex}:faction-v1"));
                     faction = available[digest[0] % available.Length];
@@ -1264,11 +1306,14 @@ public sealed class LobbiesController(
                 else
                 {
                     faction = FactionCatalog.Find(seat.RequestedFactionId)
-                        ?? throw new InvalidOperationException("The requested AI faction no longer exists.");
+                        ?? throw new InvalidOperationException("The requested faction no longer exists.");
                 }
                 seat.ResolvedFactionKey = faction.Id;
             }
             used.Add(faction.Id);
+            seat.FactionName = faction.FactionName;
+            seat.UpdatedAt = DateTimeOffset.UtcNow;
+            if (seat.ControllerKind != "agent") continue;
             seat.LeaderName = faction.LeaderName;
             seat.PlayerHandle = faction.LeaderName;
             var card = personalityCards.Resolve(
@@ -1277,7 +1322,6 @@ public sealed class LobbiesController(
             seat.PersonalityName = card?.DisplayName;
             seat.PersonalityPrompt = card?.Prompt;
             seat.PersonalityPromptSha256 = card?.Sha256;
-            seat.UpdatedAt = DateTimeOffset.UtcNow;
         }
         var leaderNames = agents.Select(item => item.PlayerHandle!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);

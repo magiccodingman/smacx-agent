@@ -897,6 +897,46 @@ int __cdecl read_factions() {
     if (!faction_pool.size()) {
         return true;
     }
+    // A managed match may lock the complete seven-faction roster. Choice
+    // identifiers use the same stable order as faction_pool (the seven SMAC
+    // factions followed by the seven Alien Crossfire factions).
+    char managed_roster[128] = {};
+    if (GetEnvironmentVariableA(
+            "SMACX_AGENT_FACTION_ROSTER", managed_roster,
+            sizeof(managed_roster))) {
+        int choices[MaxPlayerNum - 1] = {};
+        uint32_t used = 0;
+        char* cursor = managed_roster;
+        bool valid = true;
+        for (int slot = 0; slot < MaxPlayerNum - 1; ++slot) {
+            char* end = NULL;
+            long choice = strtol(cursor, &end, 10);
+            if (end == cursor || choice < 0
+            || static_cast<size_t>(choice) >= faction_pool.size()
+            || used & (1u << choice)) {
+                valid = false;
+                break;
+            }
+            choices[slot] = static_cast<int>(choice);
+            used |= 1u << choice;
+            if (slot < MaxPlayerNum - 2) {
+                if (*end != ',') { valid = false; break; }
+                cursor = end + 1;
+            } else if (*end != '\0') {
+                valid = false;
+            }
+        }
+        if (valid) {
+            for (int slot = 1; slot < MaxPlayerNum; ++slot) {
+                const auto& selected = faction_pool[choices[slot - 1]];
+                strcpy_n(MFactions[slot].filename, 24, selected.first.c_str());
+                strcpy_n(MFactions[slot].search_key, 24, selected.second.c_str());
+            }
+            debug("agent managed faction roster mask=%08x\n", used);
+        } else {
+            debug("agent managed faction roster invalid: %s\n", managed_roster);
+        }
+    }
     for (int i = 1; i < MaxPlayerNum; i++) { // Skip MFactions[0] used for native units
         if (!strcmp(MFactions[i].filename, "JENN282")) {
             size_t pick = pick_random_faction(i);
@@ -1619,6 +1659,5 @@ void __cdecl prefs_use() {
     *GameMorePreferences = AlphaIniPrefs->more_preferences;
     *GameWarnings = AlphaIniPrefs->announce;
 }
-
 
 

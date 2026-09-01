@@ -300,6 +300,54 @@ def main() -> int:
             raise AssertionError("LAN seats did not receive distinct ordered perspectives")
         if any(seat["match_id"] != lan["match"]["match_id"] for seat in lan["seats"]):
             raise AssertionError("LAN seats escaped their shared durable match")
+        faction_roster = list(range(7))
+        reserved = control.create_lan_match(
+            "Reserved faction contract", [agent["agent_id"]],
+            agent_seats=[{
+                "agent_id": agent["agent_id"],
+                "player_name": "Lady Deirdre Skye",
+                "faction_key": "gaians",
+                "faction_name": "Gaia's Stepdaughters",
+                "faction_choice_id": 0,
+                "personality_id": "none",
+            }],
+            managed_human_player_names=["Alice"],
+            human_seat_preferences=[{
+                "player_name": "Alice",
+                "faction_key": "hive",
+                "faction_name": "Human Hive",
+                "faction_choice_id": 1,
+            }],
+            faction_roster_choice_ids=faction_roster,
+        )
+        reserved_human = next(
+            seat for seat in reserved["seats"]
+            if seat["controller_kind"] == "human"
+        )
+        reserved_match = control.get_match(reserved["match"]["match_id"])
+        if reserved_match["metadata"].get("faction_roster_choice_ids") != faction_roster \
+                or reserved_human["metadata"].get("requested_faction_choice_id") != 1:
+            raise AssertionError("all-seat faction reservations were not preserved")
+        expect(
+            InvalidRecord,
+            lambda: control.create_lan_match(
+                "Duplicate faction contract", [agent["agent_id"]],
+                agent_seats=[{
+                    "agent_id": agent["agent_id"],
+                    "player_name": "Lady Deirdre Skye",
+                    "faction_key": "gaians",
+                    "faction_name": "Gaia's Stepdaughters",
+                    "faction_choice_id": 0,
+                    "personality_id": "none",
+                }],
+                managed_human_player_names=["Alice"],
+                human_seat_preferences=[{
+                    "player_name": "Alice", "faction_choice_id": 0,
+                }],
+                faction_roster_choice_ids=faction_roster,
+            ),
+            "duplicate_lan_faction_reservation",
+        )
         progressed = control.record_match_progress(lan["match"]["match_id"], 9, 2109)
         if progressed["last_turn"] != 9 or progressed["last_year"] != 2109:
             raise AssertionError("public native turn/year progress was not persisted")

@@ -814,7 +814,14 @@ public sealed class PortalMatchSupervisor(
                 item.GetProperty("seat_index").GetInt32(),
                 item.GetProperty("player_name").GetString() ?? "Player",
                 item.TryGetProperty("expected_faction_id", out var faction) &&
-                    faction.ValueKind == JsonValueKind.Number ? faction.GetInt32() : null)).ToArray()
+                    faction.ValueKind == JsonValueKind.Number ? faction.GetInt32() : null,
+                item.TryGetProperty("expected_faction_key", out var factionKey) &&
+                    factionKey.ValueKind == JsonValueKind.String ? factionKey.GetString() : null,
+                item.TryGetProperty("expected_faction_name", out var factionName) &&
+                    factionName.ValueKind == JsonValueKind.String ? factionName.GetString() : null,
+                item.TryGetProperty("expected_faction_choice_id", out var factionChoice) &&
+                    factionChoice.ValueKind == JsonValueKind.Number
+                        ? factionChoice.GetInt32() : null)).ToArray()
             : [];
         var details = new NativeJoinDetails(
             externalJoin.TryGetProperty("host_address", out var host) ? host.GetString() ?? "" : "",
