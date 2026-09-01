@@ -194,7 +194,7 @@ seat.
 ## Then add players that have something to say
 
 Connect any OpenAI-compatible model endpoint and turn a discovered model into a
-named, versioned player profile. The platform starts and supervises the agent
+named player profile. The platform starts and supervises the agent
 for its assigned seat; there is no separate host Hermes dashboard to install or
 babysit.
 
@@ -266,15 +266,15 @@ opt into anonymous LAN spectating, with read-only enforcement at the stream
 transport rather than a decorative disabled button.
 
 The same Control Center makes SMACX Agent useful as an AI game laboratory.
-Keep immutable named versions of a model profile, vary reasoning, official or
-custom sampling, output limits, and context,
+Create durable named model identities, vary reasoning, official or custom
+sampling, output limits, and context,
 run unattended matches, and compare:
 
 - match outcomes and victory types;
 - turn duration and errors;
 - provider calls;
 - input, output, cache, and reasoning tokens; and
-- results by durable model/profile version.
+- results by durable AI profile.
 
 Use the built-in reports, CSV export, or the constrained read-only SQL lab.
 Watch the screen when a model surprises you, inspect its scoped game records,

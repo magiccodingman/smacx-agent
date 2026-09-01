@@ -73,7 +73,7 @@ def main() -> int:
                 (provider["provider_id"], "extract-model", "Extract model", 65536, "{}", "{}"),
             )
         control.set_graphiti_enabled(True, profile={
-            "profile_version_id": "profile-version-graph-001",
+            "profile_id": "profile-graph-001",
             "display_name": "Graph extraction",
             "provider_id": provider["provider_id"], "model_id": "extract-model",
             "reasoning_effort": "none",

@@ -17,7 +17,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<PortalLobbySeat> PortalLobbySeats => Set<PortalLobbySeat>();
 
-    public DbSet<PortalAiProfileVersion> PortalAiProfileVersions => Set<PortalAiProfileVersion>();
+    public DbSet<PortalAiProfile> PortalAiProfiles => Set<PortalAiProfile>();
 
     public DbSet<PortalMatchEvent> PortalMatchEvents => Set<PortalMatchEvent>();
 
@@ -163,7 +163,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(seat => seat.Status).HasMaxLength(24);
             entity.Property(seat => seat.JoinMode).HasMaxLength(24);
             entity.Property(seat => seat.ControlInstanceId).HasMaxLength(96);
-            entity.Property(seat => seat.AiProfileVersionId).HasMaxLength(96);
+            entity.Property(seat => seat.AiProfileId).HasMaxLength(96);
             entity.Property(seat => seat.OutcomeResult).HasMaxLength(16);
             entity.Property(seat => seat.VictoryType).HasMaxLength(64);
             entity.Property(seat => seat.TemporaryControllerKind).HasMaxLength(24);
@@ -180,12 +180,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        builder.Entity<PortalAiProfileVersion>(entity =>
+        builder.Entity<PortalAiProfile>(entity =>
         {
-            entity.HasKey(item => item.ProfileVersionId);
-            entity.Property(item => item.ProfileVersionId).HasMaxLength(96);
-            entity.Property(item => item.StableProfileId).HasMaxLength(96);
+            entity.HasKey(item => item.ProfileId);
+            entity.Property(item => item.ProfileId).HasMaxLength(96);
             entity.Property(item => item.DisplayName).HasMaxLength(160);
+            entity.Property(item => item.NormalizedDisplayName).HasMaxLength(160);
             entity.Property(item => item.AgentId).HasMaxLength(96);
             entity.Property(item => item.ProviderId).HasMaxLength(96);
             entity.Property(item => item.ModelId).HasMaxLength(512);
@@ -194,7 +194,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(item => item.Notes).HasMaxLength(2000);
             entity.Property(item => item.PersonalityCardId).HasMaxLength(96);
             entity.Property(item => item.CreatedAt).HasConversion<long>();
-            entity.HasIndex(item => new { item.StableProfileId, item.Version }).IsUnique();
+            entity.Property(item => item.UpdatedAt).HasConversion<long>();
+            entity.HasIndex(item => item.NormalizedDisplayName).IsUnique();
             entity.HasIndex(item => new { item.Active, item.DisplayName });
         });
 
@@ -216,7 +217,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.HasKey(item => item.Id);
             entity.Property(item => item.MatchId).HasMaxLength(96);
             entity.Property(item => item.AgentId).HasMaxLength(96);
-            entity.Property(item => item.ProfileVersionId).HasMaxLength(96);
+            entity.Property(item => item.ProfileId).HasMaxLength(96);
             entity.Property(item => item.StartedAt).HasConversion<long>();
             entity.Property(item => item.CompletedAt).HasConversion<long?>();
             entity.HasIndex(item => new { item.MatchId, item.AgentId, item.Turn }).IsUnique();
@@ -440,7 +441,7 @@ public sealed class PortalLobbySeat
     public string Status { get; set; } = "open";
     public string JoinMode { get; set; } = "browser";
     public string? ControlInstanceId { get; set; }
-    public string? AiProfileVersionId { get; set; }
+    public string? AiProfileId { get; set; }
     public string? OutcomeResult { get; set; }
     public string? VictoryType { get; set; }
     public bool OutcomeFinalized { get; set; }
@@ -456,12 +457,11 @@ public sealed class PortalLobbySeat
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-public sealed class PortalAiProfileVersion
+public sealed class PortalAiProfile
 {
-    public string ProfileVersionId { get; set; } = $"profile-version-{Guid.NewGuid():N}";
-    public string StableProfileId { get; set; } = $"profile-{Guid.NewGuid():N}";
-    public int Version { get; set; } = 1;
+    public string ProfileId { get; set; } = $"profile-{Guid.NewGuid():N}";
     public string DisplayName { get; set; } = string.Empty;
+    public string NormalizedDisplayName { get; set; } = string.Empty;
     public string AgentId { get; set; } = string.Empty;
     public string ProviderId { get; set; } = string.Empty;
     public string ModelId { get; set; } = string.Empty;
@@ -472,6 +472,7 @@ public sealed class PortalAiProfileVersion
     public bool Active { get; set; } = true;
     public string PersonalityCardId { get; set; } = "none";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class PortalMatchEvent
@@ -489,7 +490,7 @@ public sealed class PortalTurnMetric
     public string Id { get; set; } = $"turn-metric-{Guid.NewGuid():N}";
     public string MatchId { get; set; } = string.Empty;
     public string AgentId { get; set; } = string.Empty;
-    public string? ProfileVersionId { get; set; }
+    public string? ProfileId { get; set; }
     public int Turn { get; set; }
     public double? DurationSeconds { get; set; }
     public long PromptTokens { get; set; }

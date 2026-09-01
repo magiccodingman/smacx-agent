@@ -1027,7 +1027,18 @@ class SmacxStore:
             if row:
                 if row["installation_id"] != installation_id:
                     raise ScopeViolation("agent_belongs_to_another_installation")
-                return dict(row)
+                metadata_json = _json(metadata) if metadata is not None else None
+                connection.execute(
+                    "UPDATE agents SET display_name = ?, "
+                    "profile_ref = COALESCE(?, profile_ref), "
+                    "personality_ref = COALESCE(?, personality_ref), "
+                    "metadata_json = COALESCE(?, metadata_json), updated_unix = ? "
+                    "WHERE agent_id = ?",
+                    (display_name, profile_ref, personality_ref, metadata_json, now, agent_id),
+                )
+                return dict(connection.execute(
+                    "SELECT * FROM agents WHERE agent_id = ?", (agent_id,)
+                ).fetchone())
             connection.execute(
                 "INSERT INTO agents(agent_id, installation_id, display_name, profile_ref, personality_ref, "
                 "metadata_json, created_unix, updated_unix) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

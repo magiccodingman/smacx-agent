@@ -65,16 +65,8 @@ else
       {
         <section class="surface-panel form-panel">
             <span class="panel-kicker">STEP 2</span>
-            <h2>@(profileStableId is null ? "Create an AI player profile" : $"Create version {profileBaseVersion + 1} of {profileName}")</h2>
-            <p class="section-copy">This named profile is what appears in the lobby’s AI-player picker. Each version preserves its historical model settings.</p>
-
-            @if (profileStableId is not null)
-            {
-                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="setup-callout">
-                    Existing matches keep their original immutable profile version. This creates a new lobby-selectable version with the settings below.
-                    <div class="setup-callout-actions"><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CloseProfileEditor">Cancel new version</MudButton></div>
-                </MudAlert>
-            }
+            <h2>@(editingProfileId is null ? "Create an AI player profile" : $"Edit {profileName}")</h2>
+            <p class="section-copy">This named profile appears in the lobby’s AI-player picker and owns its analytics history. Editing it keeps that identity intact.</p>
 
             @if (Providers.Count == 0)
             {
@@ -84,7 +76,8 @@ else
             }
             else
             {
-                <MudTextField @bind-Value="profileName" Label="Profile name" Variant="Variant.Outlined" Immediate="true" />
+                <MudTextField @bind-Value="profileName" Label="Profile name" Variant="Variant.Outlined" Immediate="true"
+                              HelperText="Names are unique across active and inactive profiles because this identity owns its complete analytics history." />
                 <MudSelect T="string" Value="@selectedProvider" Label="Model endpoint"
                            Variant="Variant.Outlined" ValueChanged="ProviderChanged">
                     @foreach (var provider in Providers)
@@ -197,7 +190,7 @@ else
                 </div>
                 <div class="form-actions"><MudButton Variant="Variant.Text" OnClick="CloseProfileEditor" Disabled="busy">Cancel</MudButton><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanCreateProfile)"
                            OnClick="CreateProfile" StartIcon="@Icons.Material.Filled.SmartToy">
-                    @(profileStableId is null ? "Create playable AI profile" : $"Create version {profileBaseVersion + 1}")
+                    @(editingProfileId is null ? "Create playable AI profile" : "Save profile")
                 </MudButton></div>
             }
         </section>
@@ -248,10 +241,51 @@ else
         }
     </section>
 
+    <section class="surface-panel admin-list-panel mt-4 semantic-embedding-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="panel-kicker">SHARED SEMANTIC SERVICE</span>
+                <h2>Text embeddings</h2>
+                <p class="section-copy">One embedding space powers both the Datalinks rules library and optional Graphiti memory. The built-in CPU model is recommended and loaded only once.</p>
+            </div>
+        </div>
+        <div class="embedding-settings-grid">
+            <MudSelect T="string" @bind-Value="embeddingMode" Label="Embedding runtime" Variant="Variant.Outlined">
+                <MudSelectItem Value="@("local")">Built-in CPU model · recommended</MudSelectItem>
+                <MudSelectItem Value="@("external")">External OpenAI-compatible endpoint</MudSelectItem>
+                <MudSelectItem Value="@("disabled")">Disabled · disables semantic rules and Graphiti</MudSelectItem>
+            </MudSelect>
+            @if (embeddingMode == "external")
+            {
+                <MudSelect T="string" Value="@embeddingProviderId" ValueChanged="EmbeddingProviderChanged" Label="Embedding endpoint" Variant="Variant.Outlined">
+                    @foreach (var provider in Providers)
+                    {
+                        <MudSelectItem Value="@Id(provider)">@Text(provider, "display_name")</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudSelect T="string" @bind-Value="embeddingModelId" Label="Embedding model" Variant="Variant.Outlined">
+                    @foreach (var model in EmbeddingModels)
+                    {
+                        <MudSelectItem Value="@Id(model, "model_id")">@Text(model, "display_name")</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudNumericField T="int?" @bind-Value="embeddingDimensions" Label="Vector dimensions" Min="1" Max="65536" Variant="Variant.Outlined" HelperText="Must exactly match the selected embedding model." />
+                <MudTextField @bind-Value="embeddingSpaceId" Label="Embedding space ID" Variant="Variant.Outlined" HelperText="Change this when model weights or vector semantics change so the corpus is rebuilt safely." />
+            }
+        </div>
+        <div class="form-actions embedding-actions">
+            <span class="field-help flush">Switching embedding spaces safely rebuilds the rules index and Graphiti projection. Docker startup configuration is not required.</span>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveEmbeddings" Disabled="@(!CanSaveEmbeddings || busy)">Save embedding runtime</MudButton>
+        </div>
+    </section>
+
     <section class="surface-panel admin-list-panel mt-4">
         <div class="panel-heading">
             <div><span class="panel-kicker">LOBBY-READY CONFIGURATION</span><h2>AI player profiles</h2></div>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Disabled="@(Providers.Count==0)" OnClick="OpenProfileEditor">New AI profile</MudButton>
+            <div class="endpoint-actions">
+                <MudSwitch @bind-Value="showInactiveProfiles" Color="Color.Primary">Show inactive</MudSwitch>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Disabled="@(Providers.Count==0)" OnClick="OpenProfileEditor">New AI profile</MudButton>
+            </div>
         </div>
         @if (profiles.Count == 0)
         {
@@ -261,20 +295,34 @@ else
                 <span>Discover a model, then complete step 2. A model endpoint alone cannot occupy a lobby seat.</span>
             </div>
         }
-        @foreach (var profile in profiles)
+        else if (!VisibleProfiles.Any())
+        {
+            <div class="empty-state compact">
+                <MudIcon Icon="@Icons.Material.Filled.VisibilityOff" />
+                <strong>No active profiles</strong>
+                <span>Turn on Show inactive to review or reactivate a previous AI identity and its connected analytics.</span>
+            </div>
+        }
+        @foreach (var profile in VisibleProfiles)
         {
             <div class="admin-list-row">
                 <div>
-                    <strong>@profile.DisplayName <span class="version-chip">v@(profile.Version)</span></strong>
+                    <strong>@profile.DisplayName</strong>
                     <small>@profile.ModelId · @profile.ReasoningEffort reasoning · @GenerationLabel(profile.Generation) · @GameplayContext(profile.ContextLength) gameplay context</small>
                 </div>
-                <span>@(profile.Active ? "active" : "inactive")</span>
+                <span class="status-badge">@(profile.Active ? "active" : "inactive")</span>
                 <span>Faction/personality chosen per seat</span>
-                @if (profile.Active)
-                {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => BeginProfileVersion(profile)">New version</MudButton>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="() => Deactivate(profile.ProfileVersionId)">Deactivate</MudButton>
-                }
+                <div class="endpoint-actions">
+                    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Edit" OnClick="() => EditProfile(profile)">Edit</MudButton>
+                    @if (profile.Active)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="() => SetProfileActive(profile.ProfileId, false)">Deactivate</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => SetProfileActive(profile.ProfileId, true)">Reactivate</MudButton>
+                    }
+                </div>
             </div>
         }
     </section>
@@ -291,7 +339,7 @@ else
 
 @code {
     private AdminSnapshot? snapshot;
-    private List<AiProfileVersion> profiles = [];
+    private List<AiProfile> profiles = [];
     private bool loading = true;
     private bool busy;
     private bool providerEditorOpen;
@@ -306,9 +354,14 @@ else
     private bool removeProviderKey;
     private string? pendingDeleteId;
     private string? pendingDeleteName;
+    private string embeddingMode = "local";
+    private string? embeddingProviderId;
+    private string? embeddingModelId;
+    private string? embeddingSpaceId;
+    private int? embeddingDimensions;
     private string profileName = "SMACX player";
-    private string? profileStableId;
-    private int profileBaseVersion;
+    private string? editingProfileId;
+    private bool showInactiveProfiles;
     private string selectedProvider = "";
     private string selectedModel = "";
     private string reasoning = "low";
@@ -331,6 +384,16 @@ else
     private readonly string[] reasoningValues = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
     private readonly string[] qwenReasoningValues = ["low", "medium", "xhigh"];
     private List<JsonElement> Providers => snapshot is null ? [] : snapshot.Providers.EnumerateArray().ToList();
+    private IEnumerable<AiProfile> VisibleProfiles => profiles.Where(profile => profile.Active || showInactiveProfiles);
+    private IEnumerable<JsonElement> EmbeddingModels => string.IsNullOrWhiteSpace(embeddingProviderId)
+        ? []
+        : Providers.Where(item => Id(item) == embeddingProviderId)
+            .SelectMany(item => item.TryGetProperty("models", out var models) ? models.EnumerateArray() : [])
+            .ToArray();
+    private bool CanSaveEmbeddings => embeddingMode != "external" ||
+        (!string.IsNullOrWhiteSpace(embeddingProviderId) &&
+         !string.IsNullOrWhiteSpace(embeddingModelId) &&
+         embeddingDimensions > 0 && !string.IsNullOrWhiteSpace(embeddingSpaceId));
     private List<JsonElement> Models => Providers.FirstOrDefault(provider => Id(provider) == selectedProvider) is var provider
         && provider.ValueKind == JsonValueKind.Object
         && provider.TryGetProperty("models", out var models)
@@ -389,7 +452,7 @@ else
         ? "temperature 1.0 · top-p 0.95 · top-k 20 · min-p 0 · presence 0 · repetition 1 · preserved thinking disabled"
         : generationPreset == "qwen38-instant"
             ? "temperature 0.7 · top-p 0.80 · top-k 20 · min-p 0 · presence 1.5 · repetition 1 · thinking disabled"
-            : "Custom values are versioned with this AI profile and replayed on every Hermes run.";
+            : "Custom values are saved with this AI profile and replayed on every Hermes run.";
 
     protected override async Task OnInitializedAsync() => await Reload();
 
@@ -402,7 +465,16 @@ else
         try
         {
             snapshot = (await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;
-            profiles = ((await Api.GetAsync<IReadOnlyList<AiProfileVersion>>("api/admin/ai-profiles"))?.Data ?? []).ToList();
+            profiles = ((await Api.GetAsync<IReadOnlyList<AiProfile>>("api/admin/ai-profiles"))?.Data ?? []).ToList();
+            if (snapshot is not null && snapshot.Graphiti.TryGetProperty("embeddings", out var embeddings) && embeddings.ValueKind == JsonValueKind.Object)
+            {
+                embeddingMode = Text(embeddings, "mode");
+                if (string.IsNullOrWhiteSpace(embeddingMode)) embeddingMode = "local";
+                embeddingProviderId = TextOrNull(embeddings, "provider_id");
+                embeddingModelId = TextOrNull(embeddings, "model_id");
+                embeddingDimensions = embeddings.TryGetProperty("dimensions", out var dimensions) && dimensions.TryGetInt32(out var number) && number > 0 ? number : null;
+                embeddingSpaceId = TextOrNull(embeddings, "space_id");
+            }
             var candidate = preferredProvider ?? selectedProvider;
             selectedProvider = Providers.Any(provider => Id(provider) == candidate)
                 ? candidate
@@ -508,13 +580,13 @@ else
 
     private void OpenProfileEditor()
     {
-        CancelProfileVersion(); profileEditorOpen = true; providerEditorOpen = false;
+        ResetProfileForm(); profileEditorOpen = true; providerEditorOpen = false;
         error = null; notice = null;
     }
 
     private void CloseProfileEditor()
     {
-        profileEditorOpen = false; CancelProfileVersion(); error = null;
+        profileEditorOpen = false; ResetProfileForm(); error = null;
     }
 
     private void BeginRemoveProvider(JsonElement provider)
@@ -576,6 +648,30 @@ else
         busy = false;
     }
 
+    private Task EmbeddingProviderChanged(string value)
+    {
+        embeddingProviderId = value;
+        var models = EmbeddingModels.ToArray();
+        embeddingModelId = models.Length == 1 ? Id(models[0], "model_id") : null;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveEmbeddings()
+    {
+        busy = true;
+        error = null;
+        notice = null;
+        var result = await Api.PostAsync<JsonElement>("api/admin/embeddings",
+            new EmbeddingConfigurationRequest(embeddingMode, embeddingProviderId, embeddingModelId,
+                embeddingDimensions, embeddingSpaceId));
+        if (result.Payload?.Ok == true)
+            notice = "Embedding runtime saved. Semantic services will rebuild safely if the embedding space changed.";
+        else
+            error = result.Payload?.Error?.Message ?? "The embedding runtime could not be saved.";
+        await Reload(selectedProvider);
+        busy = false;
+    }
+
     private async Task CreateProfile()
     {
         if (!CanCreateProfile)
@@ -589,10 +685,10 @@ else
         ModelGenerationSettings generation;
         try { generation = BuildGeneration(); }
         catch (InvalidOperationException exception) { error = exception.Message; busy = false; return; }
-        var result = await Api.PostAsync<AiProfileVersion>("api/admin/ai-profiles",
-            new AiProfileVersionRequest(profileName, selectedProvider, selectedModel, reasoning, contextLength,
+        var result = await Api.PostAsync<AiProfile>("api/admin/ai-profiles",
+            new AiProfileRequest(profileName, selectedProvider, selectedModel, reasoning, contextLength,
                 string.IsNullOrWhiteSpace(profileNotes) ? null : profileNotes,
-                StableProfileId: profileStableId,
+                ProfileId: editingProfileId,
                 Generation: generation));
         if (result.Payload?.Ok != true)
         {
@@ -600,10 +696,10 @@ else
         }
         else
         {
-            var createdVersion = result.Payload.Data!;
-            CancelProfileVersion(resetFields: false);
+            var savedProfile = result.Payload.Data!;
+            ResetProfileForm(resetFields: false);
             await Reload(selectedProvider);
-            notice = $"{createdVersion.DisplayName} v{createdVersion.Version} is now available in new lobbies as an AI player.";
+            notice = $"{savedProfile.DisplayName} was saved and is available in new lobbies as an AI player.";
             profileEditorOpen = false;
         }
         busy = false;
@@ -676,12 +772,15 @@ else
         }
     }
 
-    private async Task Deactivate(string id)
+    private async Task SetProfileActive(string id, bool active)
     {
         busy = true;
         error = null;
-        var result = await Api.PostAsync<AiProfileVersion>($"api/admin/ai-profiles/{id}/deactivate", new { });
+        notice = null;
+        var action = active ? "reactivate" : "deactivate";
+        var result = await Api.PostAsync<AiProfile>($"api/admin/ai-profiles/{id}/{action}", new { });
         if (result.Payload?.Ok != true) error = result.Payload?.Error?.Message;
+        else notice = $"{result.Payload.Data!.DisplayName} is now {(active ? "active" : "inactive")}.";
         await Reload(selectedProvider);
         busy = false;
     }
@@ -702,12 +801,11 @@ else
         GenerationPresetChanged(IsQwen38 ? "qwen38-low" : "provider-default");
     }
 
-    private void BeginProfileVersion(AiProfileVersion profile)
+    private void EditProfile(AiProfile profile)
     {
         profileEditorOpen = true;
         providerEditorOpen = false;
-        profileStableId = profile.StableProfileId;
-        profileBaseVersion = profile.Version;
+        editingProfileId = profile.ProfileId;
         profileName = profile.DisplayName;
         selectedProvider = profile.ProviderId;
         selectedModel = profile.ModelId;
@@ -719,10 +817,9 @@ else
         notice = null;
     }
 
-    private void CancelProfileVersion(bool resetFields = true)
+    private void ResetProfileForm(bool resetFields = true)
     {
-        profileStableId = null;
-        profileBaseVersion = 0;
+        editingProfileId = null;
         if (!resetFields) return;
         profileName = "SMACX player";
         profileNotes = "";
@@ -805,6 +902,11 @@ else
         item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value)
             ? value.ToString()
             : "";
+    private static string? TextOrNull(JsonElement item, string name)
+    {
+        var value = Text(item, name);
+        return string.IsNullOrWhiteSpace(value) || value == "null" ? null : value;
+    }
     private static string GameplayContext(int? configured) => configured is { } value
         ? value.ToString("N0")
         : "automatic";

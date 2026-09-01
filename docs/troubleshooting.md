@@ -275,7 +275,7 @@ Managed AI does not depend on the host Hermes dashboard. Restarting or killing
 
 That is a configuration regression. Managed runs must show toolsets
 `smacx`; the MCP surface contains no web/computer/screenshot/mouse/keyboard or
-terminal tools. Stop the run and inspect its versioned profile/container
+terminal tools. Stop the run and inspect its assigned profile/container
 configuration. Do not “fix” a semantic gap by granting desktop tools.
 
 For the legacy host-local development MCP only, start a fresh Hermes
@@ -319,7 +319,7 @@ factions become authoritative after native lobby/game binding.
 
 ## Analytics show zero tokens
 
-Token telemetry begins when a versioned managed Hermes profile advances an
+Token telemetry begins when a managed Hermes profile advances an
 observed turn. It is not estimated for stock bots, pure humans, or legacy
 external harnesses. Check for `harness.telemetry` in control logs and verify the
 Hermes data volume still exists.
@@ -331,9 +331,9 @@ read-only. A persistent telemetry helper is a regression.
 ## Graphiti is unavailable
 
 This is nonfatal. SQLite and scoped FTS5/BM25 match memory remain authoritative.
-Choose an active extraction AI profile under Operations; keep the default
-shared local embedding runtime or configure one compatible external embedding
-space before:
+Choose an active extraction AI profile under Operations; under **Models & AI
+profiles**, keep the default shared local embedding runtime or configure one
+compatible external embedding space before:
 
 ```bash
 ./scripts/graphiti-up.sh

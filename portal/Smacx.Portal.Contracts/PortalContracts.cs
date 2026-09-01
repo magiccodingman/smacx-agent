@@ -331,10 +331,10 @@ public sealed record ProviderConfigurationRequest(
     int? ContextLengthOverride = null);
 public sealed record ProviderModelSelectionRequest(string ModelId, int? ContextLengthOverride = null);
 
-public sealed record AiProfileVersionRequest(
+public sealed record AiProfileRequest(
     string DisplayName, string ProviderId, string ModelId,
     string ReasoningEffort = "low", int? ContextLength = null,
-    string? Notes = null, string? StableProfileId = null,
+    string? Notes = null, string? ProfileId = null,
     ModelGenerationSettings? Generation = null);
 
 public sealed record ModelGenerationSettings(
@@ -352,11 +352,11 @@ public sealed record ModelGenerationSettings(
     bool? PreserveThinking = null,
     IReadOnlyDictionary<string, System.Text.Json.JsonElement>? ExtraParameters = null);
 
-public sealed record AiProfileVersion(
-    string ProfileVersionId, string StableProfileId, int Version,
+public sealed record AiProfile(
+    string ProfileId,
     string DisplayName, string AgentId, string ProviderId, string ModelId,
     string ReasoningEffort, int? ContextLength, string? Notes,
-    bool Active, string PersonalityCardId, DateTimeOffset CreatedAt,
+    bool Active, string PersonalityCardId, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
     ModelGenerationSettings Generation);
 
 public sealed record GameSourceRequest(string DisplayName, string HostPath);
@@ -370,7 +370,7 @@ public sealed record StoragePolicyRequest(
     int RecentCheckpoints = 10,
     int MilestoneInterval = 25,
     bool RetainFullTurnHistory = false);
-public sealed record GraphitiConfigurationRequest(bool Enabled, string? ProfileVersionId = null);
+public sealed record GraphitiConfigurationRequest(bool Enabled, string? ProfileId = null);
 public sealed record EmbeddingConfigurationRequest(
     string Mode, string? ProviderId = null, string? ModelId = null,
     int? Dimensions = null, string? SpaceId = null);

@@ -107,9 +107,9 @@ public sealed partial class ReportsController(ApplicationDbContext database) : C
         var turns = await database.PortalTurnMetrics.AsNoTracking()
             .Where(item => visibleIds.Contains(item.MatchId))
             .ToArrayAsync(HttpContext.RequestAborted);
-        var profiles = await database.PortalAiProfileVersions.AsNoTracking().ToArrayAsync(HttpContext.RequestAborted);
+        var profiles = await database.PortalAiProfiles.AsNoTracking().ToArrayAsync(HttpContext.RequestAborted);
         var profileSeats = await database.PortalLobbySeats.AsNoTracking()
-            .Where(item => item.AiProfileVersionId != null && visibleIds.Contains(item.MatchId))
+            .Where(item => item.AiProfileId != null && visibleIds.Contains(item.MatchId))
             .ToArrayAsync(HttpContext.RequestAborted);
         var completed = matches.Count(item => item.Status == "completed");
         var recoverable = matches.Count(item => item.Status is "parked" or "error");
@@ -121,15 +121,15 @@ public sealed partial class ReportsController(ApplicationDbContext database) : C
             HttpContext.RequestAborted);
         var rows = profiles.Select(profile =>
         {
-            var profileTurns = turns.Where(item => item.ProfileVersionId == profile.ProfileVersionId).ToArray();
-            var seats = profileSeats.Where(item => item.AiProfileVersionId == profile.ProfileVersionId).ToArray();
+            var profileTurns = turns.Where(item => item.ProfileId == profile.ProfileId).ToArray();
+            var seats = profileSeats.Where(item => item.AiProfileId == profile.ProfileId).ToArray();
             var profileMatches = seats.Select(item => item.MatchId)
                 .Concat(profileTurns.Select(item => item.MatchId)).Distinct().Count();
             var outcomes = seats.Where(item => item.OutcomeFinalized &&
                 item.OutcomeResult is "win" or "loss").ToArray();
             var wins = outcomes.Count(item => item.OutcomeResult == "win");
             return new AnalyticsProfileRow(
-                $"{profile.DisplayName} v{profile.Version}", profile.ProviderId, profile.ModelId,
+                profile.DisplayName, profile.ProviderId, profile.ModelId,
                 profile.ReasoningEffort, GenerationPreset(profile.GenerationSettingsJson),
                 profileMatches, outcomes.Length, wins,
                 outcomes.Length == 0 ? null : (double)wins / outcomes.Length,
@@ -179,15 +179,15 @@ public sealed partial class ReportsController(ApplicationDbContext database) : C
                 "unsafe_report_query", "Use one read-only SELECT against matches, turn_metrics, or ai_profiles."));
         await using var report = new SqliteConnection("Data Source=:memory:");
         await report.OpenAsync(HttpContext.RequestAborted);
-        await ExecuteAsync(report, "CREATE TABLE matches(match_id TEXT, display_name TEXT, status TEXT, mode TEXT, current_turn INTEGER, current_year INTEGER, ranking_mode TEXT, created_at TEXT, updated_at TEXT); CREATE TABLE turn_metrics(match_id TEXT, agent_id TEXT, profile_version_id TEXT, turn INTEGER, duration_seconds REAL, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER, api_calls INTEGER, errored INTEGER); CREATE TABLE ai_profiles(profile_version_id TEXT, stable_profile_id TEXT, version INTEGER, display_name TEXT, provider_id TEXT, model_id TEXT, reasoning_effort TEXT, generation_preset TEXT, generation_settings_json TEXT, context_length INTEGER, active INTEGER); CREATE TABLE ai_outcomes(match_id TEXT, seat_index INTEGER, profile_version_id TEXT, result TEXT, victory_type TEXT, finalized INTEGER);");
+        await ExecuteAsync(report, "CREATE TABLE matches(match_id TEXT, display_name TEXT, status TEXT, mode TEXT, current_turn INTEGER, current_year INTEGER, ranking_mode TEXT, created_at TEXT, updated_at TEXT); CREATE TABLE turn_metrics(match_id TEXT, agent_id TEXT, profile_id TEXT, turn INTEGER, duration_seconds REAL, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER, api_calls INTEGER, errored INTEGER); CREATE TABLE ai_profiles(profile_id TEXT, display_name TEXT, provider_id TEXT, model_id TEXT, reasoning_effort TEXT, generation_preset TEXT, generation_settings_json TEXT, context_length INTEGER, active INTEGER); CREATE TABLE ai_outcomes(match_id TEXT, seat_index INTEGER, profile_id TEXT, result TEXT, victory_type TEXT, finalized INTEGER);");
         foreach (var item in await database.PortalMatches.AsNoTracking().ToArrayAsync(HttpContext.RequestAborted))
             await InsertAsync(report, "INSERT INTO matches VALUES($a,$b,$c,$d,$e,$f,$g,$h,$i)", item.MatchId,item.DisplayName,item.Status,item.Mode,item.CurrentTurn,item.CurrentYear,item.RankingMode,item.CreatedAt.ToString("O"),item.UpdatedAt.ToString("O"));
         foreach (var item in await database.PortalTurnMetrics.AsNoTracking().ToArrayAsync(HttpContext.RequestAborted))
-            await InsertAsync(report, "INSERT INTO turn_metrics VALUES($a,$b,$c,$d,$e,$f,$g,$h,$i,$j,$k,$l)", item.MatchId,item.AgentId,item.ProfileVersionId,item.Turn,item.DurationSeconds,item.PromptTokens,item.CompletionTokens,item.CacheReadTokens,item.CacheWriteTokens,item.ReasoningTokens,item.ApiCalls,item.Errored?1:0);
-        foreach (var item in await database.PortalAiProfileVersions.AsNoTracking().ToArrayAsync(HttpContext.RequestAborted))
-            await InsertAsync(report, "INSERT INTO ai_profiles VALUES($a,$b,$c,$d,$e,$f,$g,$h,$i,$j,$k)", item.ProfileVersionId,item.StableProfileId,item.Version,item.DisplayName,item.ProviderId,item.ModelId,item.ReasoningEffort,GenerationPreset(item.GenerationSettingsJson),item.GenerationSettingsJson,item.ContextLength,item.Active?1:0);
-        foreach (var item in await database.PortalLobbySeats.AsNoTracking().Where(item => item.AiProfileVersionId != null).ToArrayAsync(HttpContext.RequestAborted))
-            await InsertAsync(report, "INSERT INTO ai_outcomes VALUES($a,$b,$c,$d,$e,$f)", item.MatchId,item.SeatIndex,item.AiProfileVersionId,item.OutcomeResult,item.VictoryType,item.OutcomeFinalized?1:0);
+            await InsertAsync(report, "INSERT INTO turn_metrics VALUES($a,$b,$c,$d,$e,$f,$g,$h,$i,$j,$k,$l)", item.MatchId,item.AgentId,item.ProfileId,item.Turn,item.DurationSeconds,item.PromptTokens,item.CompletionTokens,item.CacheReadTokens,item.CacheWriteTokens,item.ReasoningTokens,item.ApiCalls,item.Errored?1:0);
+        foreach (var item in await database.PortalAiProfiles.AsNoTracking().ToArrayAsync(HttpContext.RequestAborted))
+            await InsertAsync(report, "INSERT INTO ai_profiles VALUES($a,$b,$c,$d,$e,$f,$g,$h,$i)", item.ProfileId,item.DisplayName,item.ProviderId,item.ModelId,item.ReasoningEffort,GenerationPreset(item.GenerationSettingsJson),item.GenerationSettingsJson,item.ContextLength,item.Active?1:0);
+        foreach (var item in await database.PortalLobbySeats.AsNoTracking().Where(item => item.AiProfileId != null).ToArrayAsync(HttpContext.RequestAborted))
+            await InsertAsync(report, "INSERT INTO ai_outcomes VALUES($a,$b,$c,$d,$e,$f)", item.MatchId,item.SeatIndex,item.AiProfileId,item.OutcomeResult,item.VictoryType,item.OutcomeFinalized?1:0);
         await using var command = report.CreateCommand(); command.CommandText = sql; command.CommandTimeout = 5;
         var rows = new List<IReadOnlyList<object?>>(); var columns = new List<string>();
         await using var reader = await command.ExecuteReaderAsync(HttpContext.RequestAborted);

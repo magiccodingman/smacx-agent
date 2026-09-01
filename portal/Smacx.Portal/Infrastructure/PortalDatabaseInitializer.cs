@@ -8,7 +8,7 @@ public sealed class PortalDatabaseInitializer(
     IServiceScopeFactory scopeFactory,
     ILogger<PortalDatabaseInitializer> logger)
 {
-    private const string CanonicalSchemaId = "smacx.portal.canonical.2026-08-managed-platform";
+    private const string CanonicalSchemaId = "smacx.portal.canonical.2026-08-stable-ai-profiles";
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -22,6 +22,7 @@ public sealed class PortalDatabaseInitializer(
             "PortalChatGroups", "PortalChatGroupMembers", "PortalChatDeliveries",
             "PortalGovernanceProposals", "PortalGovernanceVotes",
             "PortalMaintenanceOperations", "PortalStableCheckpoints",
+            "PortalAiProfiles",
         };
         var connection = database.Database.GetDbConnection();
         await connection.OpenAsync(cancellationToken);
@@ -44,7 +45,7 @@ public sealed class PortalDatabaseInitializer(
             "TemporaryControllerKind", "DelegationStatus", "LastBrowserSeenAt",
             "RequestedFactionId", "ResolvedFactionKey", "LeaderName",
             "RequestedPersonalityId", "PersonalityName", "PersonalityPrompt",
-            "PersonalityPromptSha256",
+            "PersonalityPromptSha256", "AiProfileId",
         };
         await using (var command = connection.CreateCommand())
         {
@@ -77,18 +78,18 @@ public sealed class PortalDatabaseInitializer(
 
         var requiredProfileColumns = new HashSet<string>(StringComparer.Ordinal)
         {
-            "GenerationSettingsJson",
+            "GenerationSettingsJson", "NormalizedDisplayName", "UpdatedAt",
         };
         await using (var command = connection.CreateCommand())
         {
-            command.CommandText = "PRAGMA table_info('PortalAiProfileVersions')";
+            command.CommandText = "PRAGMA table_info('PortalAiProfiles')";
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
                 requiredProfileColumns.Remove(reader.GetString(1));
         }
         if (requiredProfileColumns.Count > 0)
             throw new InvalidOperationException(
-                "The unreleased portal database predates versioned model generation settings. " +
+                "The unreleased portal database predates stable editable AI profiles. " +
                 "Back up any development data, remove portal.sqlite3, and restart.");
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();

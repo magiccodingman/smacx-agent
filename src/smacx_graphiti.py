@@ -57,7 +57,7 @@ class GraphEpisode:
 @dataclass(frozen=True)
 class GraphitiRuntimeConfig:
     fingerprint: str
-    profile_version_id: str
+    profile_id: str
     display_name: str
     llm_base_url: str
     llm_api_key: str
@@ -136,7 +136,7 @@ def load_runtime_config(store: SmacxStore) -> GraphitiRuntimeConfig:
     ).encode()).hexdigest()
     return GraphitiRuntimeConfig(
         fingerprint=fingerprint,
-        profile_version_id=str(profile.get("profile_version_id", "")),
+        profile_id=str(profile.get("profile_id", "")),
         display_name=str(profile.get("display_name", "Graphiti extraction")),
         llm_base_url=str(provider["base_url"]), llm_api_key=api_key,
         llm_model=str(profile.get("model_id", "")),

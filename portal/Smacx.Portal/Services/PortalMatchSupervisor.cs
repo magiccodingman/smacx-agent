@@ -396,10 +396,10 @@ public sealed class PortalMatchSupervisor(
                         MatchId = match.MatchId,
                         // A reusable profile may occupy several seats. The
                         // worker instance is the durable player identity for
-                        // this run; ProfileVersionId remains the aggregation
+                        // this run; ProfileId remains the aggregation
                         // key used for model analytics.
                         AgentId = seat.ControlInstanceId!,
-                        ProfileVersionId = seat.AiProfileVersionId,
+                        ProfileId = seat.AiProfileId,
                         Turn = match.CurrentTurn.Value,
                         DurationSeconds = previousEvent is null ? null :
                             Math.Max(0, (now - previousEvent.CreatedAt).TotalSeconds),
@@ -616,11 +616,11 @@ public sealed class PortalMatchSupervisor(
                     run.GetProperty("instance_id").GetString() == seat.ControlInstanceId &&
                     run.GetProperty("status").GetString() is "queued" or "starting" or "running" or "restarting"))
                 continue;
-            var profile = await database.PortalAiProfileVersions.AsNoTracking()
+            var profile = await database.PortalAiProfiles.AsNoTracking()
                 .SingleOrDefaultAsync(item => item.AgentId == seat.AgentId, cancellationToken);
             if (profile is null)
             {
-                logger.LogWarning("Agent seat {AgentId} has no versioned portal profile; automatic Hermes launch skipped", seat.AgentId);
+                logger.LogWarning("Agent seat {AgentId} has no portal profile; automatic Hermes launch skipped", seat.AgentId);
                 continue;
             }
             try
@@ -645,7 +645,7 @@ public sealed class PortalMatchSupervisor(
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {
                     MatchId = match.MatchId, EventType = "agent_started",
-                    Summary = $"Started {profile.DisplayName} v{profile.Version} ({profile.ModelId}, {profile.ReasoningEffort}, {GenerationPreset(profile.GenerationSettingsJson)}).",
+                    Summary = $"Started {profile.DisplayName} ({profile.ModelId}, {profile.ReasoningEffort}, {GenerationPreset(profile.GenerationSettingsJson)}).",
                 });
                 await database.SaveChangesAsync(cancellationToken);
             }

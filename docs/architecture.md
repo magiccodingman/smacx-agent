@@ -68,7 +68,7 @@ its canonical pre-release SQLite schema:
 - case-insensitive public display names, provisional invited identities, and
   collision-safe DirectPlay participant binding;
 - lobby drafts, browser membership, UI policy, stream presence/tickets;
-- versioned provider-facing AI profile metadata; and
+- stable, uniquely named provider-facing AI profiles with reversible deactivation; and
 - public history/analytics projections, including evidence-backed per-seat
   native outcomes.
 
@@ -351,7 +351,7 @@ Hermes remains authoritative for provider usage. On an observed new turn, a
 short-lived helper with no network and a read-only mount queries the exact
 profile's `sessions` table. The portal stores nonnegative deltas for input,
 output, cache-read, cache-write, reasoning tokens, and API calls under the
-match/agent/profile version/turn. This avoids estimates and keeps the Hermes
+match/agent/profile/turn. This avoids estimates and keeps the Hermes
 filesystem private.
 
 Reports use the portal projection. The administrator SQL lab populates a new

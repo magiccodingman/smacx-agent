@@ -300,8 +300,8 @@ class ControlPlane:
                 profile.get("generation_settings") if isinstance(profile.get("generation_settings"), Mapping) else None,
             )
             self._set_setting("graphiti.profile", {
-                "profile_version_id": _bounded(
-                    str(profile.get("profile_version_id", "")), "profile_version_id", 160,
+                "profile_id": _bounded(
+                    str(profile.get("profile_id", "")), "profile_id", 160,
                 ),
                 "display_name": _bounded(str(profile.get("display_name", "")), "profile_name", 160),
                 "provider_id": provider_id,

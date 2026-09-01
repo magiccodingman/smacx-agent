@@ -477,7 +477,7 @@ see the installation. It records:
 
 - completed/active/recoverable matches and recovery evidence;
 - per-turn duration excluding errored turns;
-- model/provider/reasoning/generation preset/profile version;
+- model/provider/reasoning/generation preset/profile identity;
 - Hermes input, output, cache-read, cache-write, reasoning tokens, and API
   calls; and
 - native per-seat completion, victory type, and classified win/loss outcomes.
@@ -496,8 +496,9 @@ secret tables are never attached.
 ## 12. Graphiti
 
 SQLite remains authoritative. Graphiti is an optional derived temporal
-projection and can be toggled per match. Select a separate active extraction
-AI profile and the shared embedding mode on the Operations page, then start:
+projection and can be toggled per match. Configure the shared embedding mode
+under **Models & AI profiles**, select a separate active extraction profile
+on the Operations page, then start:
 
 ```bash
 ./scripts/graphiti-up.sh
