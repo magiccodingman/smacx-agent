@@ -113,6 +113,11 @@ def main() -> int:
                 )
                 config_path = root / "profiles" / profile["profile_id"] / "config.yaml"
                 config = json.loads(config_path.read_text(encoding="utf-8"))
+                if config.get("platform_toolsets", {}).get("cli") != ["smacx"] or \
+                        config.get("mcp_servers", {}).get("smacx") != {
+                            "url": "http://127.0.0.1:9/mcp", "enabled": True,
+                        }:
+                    raise AssertionError(f"managed gameplay tool boundary drifted: {config}")
                 config["platform_toolsets"]["cli"] = []
                 config["mcp_servers"] = {}
                 config["display"]["streaming"] = False
@@ -131,7 +136,10 @@ def main() -> int:
                     "-p", profile["profile_id"], "chat", "--continue", match_id,
                     "--create-if-missing", "--in", profile["workspace"],
                     "--reasoning", reasoning_effort,
-                    "--max-turns", "1", "--query", "Start signal only.", "--quiet",
+                    "--max-turns", "1", "--query",
+                    "Begin or resume this managed match now. Follow the system contract's opening "
+                    "briefing protocol, then continue autonomous play until the operator stops the run "
+                    "or a semantic capability gap is reported.", "--quiet",
                 ]
                 completed = subprocess.run(
                     command, text=True, capture_output=True, timeout=90, check=False,
@@ -190,6 +198,7 @@ def main() -> int:
             "upstream_scaffold_absent": True,
             "generation_settings_reached_provider": True,
             "low_medium_high_reasoning_reached_provider": True,
+            "managed_gameplay_prompt_and_tool_boundary": True,
         },
     }, separators=(",", ":")))
     return 0

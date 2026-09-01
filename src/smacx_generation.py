@@ -53,6 +53,9 @@ _RESERVED = {
     "temperature", "top_p", "presence_penalty", "frequency_penalty", "max_tokens", "seed",
 }
 _MAX_EXTRA_JSON = 32_768
+REASONING_EFFORTS = {
+    "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+}
 
 
 def _number(value: Any, name: str, minimum: float, maximum: float) -> float:
@@ -185,3 +188,17 @@ def openai_extra_body(settings: Mapping[str, Any] | None) -> dict[str, Any]:
         body["max_tokens"] = normalized["max_output_tokens"]
     body.update(normalized.get("extra_parameters", {}))
     return body
+
+
+def direct_reasoning_parameters(reasoning_effort: str | None) -> dict[str, str]:
+    """Translate the shared profile intent for direct chat-completion callers.
+
+    Hermes receives this intent through its own CLI/config adapter. Services
+    that call an OpenAI-compatible endpoint directly (provider probes and
+    Graphiti) use the provider's top-level ``reasoning_effort`` field. ``none``
+    deliberately omits the field rather than inventing provider semantics.
+    """
+    effort = str(reasoning_effort or "none").strip().lower()
+    if effort not in REASONING_EFFORTS:
+        raise GenerationSettingsError("invalid_reasoning_effort")
+    return {} if effort == "none" else {"reasoning_effort": effort}

@@ -155,7 +155,7 @@ Go to **Administration → Providers & AI profiles**.
 3. Choose **Save endpoint & discover models**. Saving a provider does not yet
    create a lobby player.
 4. Select a discovered model and create a named **AI player profile** with a
-   starting template, explicit sampling/request parameters, Hermes reasoning
+   starting template, explicit sampling/request parameters, reasoning intent
    controls, optional context override, and experiment notes. The profile—not
    the raw endpoint—is what appears in the lobby seat picker.
 
@@ -207,8 +207,10 @@ Qwen3.8 template visibly adds `chat_template_kwargs` with
 `preserve_thinking=false`, so old
 reasoning traces do not balloon later prompts while the current tool loop still
 retains its active reasoning state. Operators may edit or remove any template
-value. Hermes reasoning remains a separate advanced control because its adapter
-may serialize reasoning differently from model-specific JSON parameters.
+value. Reasoning remains a separate advanced control because gameplay and direct
+services serialize the same intent differently: Hermes owns the gameplay
+adapter, while Graphiti sends top-level `reasoning_effort`. Model-specific chat
+template controls remain explicit JSON parameters.
 See the [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/README.md)
 for the upstream recommendations.
 
@@ -511,7 +513,9 @@ SQLite remains authoritative. Graphiti is an optional derived temporal
 projection and can be toggled per match. Configure the shared embedding mode
 under **Models & AI profiles**, then select a separate active extraction
 profile on the Operations page. Selecting it enables Graphiti immediately;
-turning Graphiti off clears the selection. Then start:
+editing it synchronizes the projector automatically; and turning Graphiti off
+clears the selection. The page's structured-extraction test performs a real
+non-mutating Graphiti-format request and records whether it succeeded. Then start:
 
 ```bash
 ./scripts/graphiti-up.sh

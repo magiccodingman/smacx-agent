@@ -73,6 +73,7 @@ builder.Services.AddSingleton<PersonalityCardLibrary>();
 builder.Services.AddSingleton<DatalinksMarkdownRenderer>();
 builder.Services.AddHostedService<PortalMatchSupervisor>();
 builder.Services.AddHostedService<PortalMaintenanceCoordinator>();
+builder.Services.AddHostedService<GraphitiProfileReconciler>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped(serviceProvider =>
 {

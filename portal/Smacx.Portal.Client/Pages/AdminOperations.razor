@@ -24,12 +24,22 @@ else if (snapshot is not null)
    <section class="surface-panel form-panel">
     <h2>Optional Graphiti memory</h2>
     <p class="section-copy">Graphiti turns selected political and strategic events into a scoped temporal relationship graph. SQLite remains authoritative; routine moves and raw reasoning are never ingested.</p>
-    <MudSelect T="string" Value="@graphitiProfileId" ValueChanged="GraphitiProfileChanged" Label="Extraction AI profile" Variant="Variant.Outlined" Disabled="busy" HelperText="Selecting a profile enables Graphiti immediately. A fast non-thinking profile is usually sufficient and is independent of gameplay seats.">
-     @foreach(var profile in profiles.Where(item=>item.Active)){<MudSelectItem Value="@profile.ProfileId">@profile.DisplayName · @profile.ModelId</MudSelectItem>}
+    <MudSelect T="string" Value="@graphitiProfileId" ValueChanged="GraphitiProfileChanged" Label="Extraction AI profile" Variant="Variant.Outlined" Disabled="busy" HelperText="Selecting a profile enables Graphiti immediately. It is independent of the AI profiles occupying gameplay seats.">
+     @foreach(var profile in profiles.Where(item=>item.Active)){<MudSelectItem Value="@profile.ProfileId">@profile.DisplayName · @profile.ModelId · @profile.ReasoningEffort</MudSelectItem>}
     </MudSelect>
     <MudSwitch T="bool" Value="@GraphitiEnabled" ValueChanged="GraphitiEnabledChanged" Color="Color.Primary" Disabled="@(busy || (!GraphitiEnabled && string.IsNullOrWhiteSpace(graphitiProfileId)))">Enable Graphiti memory</MudSwitch>
     @if(string.IsNullOrWhiteSpace(graphitiProfileId) && GraphitiEnabled){<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">The saved extraction profile is no longer available. Turn Graphiti off to clear it, then select an active profile to enable it again.</MudAlert>}
     else if(string.IsNullOrWhiteSpace(graphitiProfileId)){<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">Graphiti stays disabled until an extraction profile is selected. Gameplay memory continues normally in scoped SQLite.</MudAlert>}
+    else if(SelectedGraphitiProfile is { } selected)
+    {
+     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+      <strong>Effective extraction:</strong> @selected.DisplayName uses @selected.ModelId with <strong>@selected.ReasoningEffort</strong> reasoning. Profile edits are synchronized automatically.
+     </MudAlert>
+     <div class="form-actions">
+      <span class="field-help flush">@GraphitiProbeDescription</span>
+      <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(!GraphitiEnabled || busy)" OnClick="ProbeGraphiti" StartIcon="@Icons.Material.Filled.Science">Test structured extraction</MudButton>
+     </div>
+    }
     <span class="field-help flush">Long-term relationship and event memories are built in the background. Recall uses a limited time and context budget; gameplay continues normally if Graphiti is unavailable. Each match can opt out, and memories remain isolated by match and AI player.</span>
    </section>
    <section class="surface-panel form-panel">
@@ -100,7 +110,9 @@ else if (snapshot is not null)
 @code {
  private AdminSnapshot? snapshot; private List<AiProfile> profiles=[]; private bool loading=true,busy,includeSecrets=true,includeWorkers=true,retainFullTurnHistory; private string? error,message,graphitiProfileId; private string scheduleName="Nightly control backup",operationKind="backup"; private int intervalSeconds=86400,recentCheckpoints=10,milestoneInterval=25;
  private bool GraphitiEnabled => snapshot is not null && Bool(snapshot.Graphiti,"enabled");
+ private AiProfile? SelectedGraphitiProfile => profiles.FirstOrDefault(item=>item.ProfileId==graphitiProfileId);
  private string GraphitiLabel => snapshot is not null && Bool(snapshot.Graphiti, "enabled") ? "ON" : "OFF";
+ private string GraphitiProbeDescription { get { if(snapshot is null||!snapshot.Graphiti.TryGetProperty("last_probe",out var probe)||probe.ValueKind!=JsonValueKind.Object)return "Not tested yet. This probe performs a real structured-output call without writing to the memory graph.";var state=Text(probe,"state","not tested");var detail=Text(probe,"message","");return $"Last extraction probe: {state.Replace('_',' ')}. {detail}"; } }
  private string KnowledgeLabel => snapshot is not null && Bool(snapshot.Knowledge,"ok") ? (snapshot.Knowledge.TryGetProperty("state",out var state)&&state.ValueKind==JsonValueKind.Object?Text(state,"state","ready"):"ready").ToUpperInvariant() : "DEGRADED";
  private string StorageSummary => snapshot is null ? "No completed archives yet." : $"Completed archive: {Int(snapshot.Storage,"completed_campaigns",0)} campaigns · {Int(snapshot.Storage,"completed_archive_saves",0)} final saves · {Bytes(snapshot.Storage,"completed_archive_bytes")}";
  protected override async Task OnInitializedAsync()=>await Reload();
@@ -108,6 +120,7 @@ else if (snapshot is not null)
  private async Task GraphitiProfileChanged(string? profileId){graphitiProfileId=profileId;if(string.IsNullOrWhiteSpace(profileId))return;await ConfigureGraphiti(true,profileId,"Graphiti memory enabled with the selected extraction profile.");}
  private async Task GraphitiEnabledChanged(bool enabled){if(enabled){if(!string.IsNullOrWhiteSpace(graphitiProfileId))await ConfigureGraphiti(true,graphitiProfileId,"Graphiti memory enabled.");return;}await ConfigureGraphiti(false,null,"Graphiti memory disabled and its extraction profile cleared.");}
  private async Task ConfigureGraphiti(bool enabled,string? profileId,string success){busy=true;error=null;message=null;var result=await Api.PostAsync<JsonElement>("api/admin/graphiti",new GraphitiConfigurationRequest(enabled,profileId));if(result.Payload?.Ok==true)message=success;else error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private async Task ProbeGraphiti(){busy=true;error=null;message=null;try{var result=await Api.PostAsync<JsonElement>("api/admin/graphiti/probe",new{});if(result.Payload?.Ok==true&&result.Payload.Data.ValueKind==JsonValueKind.Object&&Bool(result.Payload.Data,"accepted"))message="Graphiti accepted a real structured extraction through the selected profile.";else error=result.Payload?.Data.ValueKind==JsonValueKind.Object?Text(result.Payload.Data,"message","Graphiti extraction was rejected."):result.Payload?.Error?.Message;}finally{await Reload();busy=false;}}
  private async Task CreateBackup(){busy=true;var result=await Api.PostAsync<JsonElement>("api/admin/backups",new BackupRequest(includeSecrets,includeWorkers));if(result.Payload?.Ok==true)message="Backup created.";else error=result.Payload?.Error?.Message;await Reload();busy=false;}
  private async Task SaveStoragePolicy(){busy=true;error=null;message=null;var result=await Api.PostAsync<JsonElement>("api/admin/storage-policy",new StoragePolicyRequest(recentCheckpoints,milestoneInterval,retainFullTurnHistory));if(result.Payload?.Ok==true)message="Save retention policy updated.";else error=result.Payload?.Error?.Message;await Reload();busy=false;}
  private async Task Verify(string id){busy=true;var result=await Api.PostAsync<JsonElement>($"api/admin/backups/{id}/verify",new{});if(result.Payload?.Ok==true)message="Backup manifest verified.";else error=result.Payload?.Error?.Message;busy=false;}

@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import json
 
-from smacx_generation import GenerationSettingsError, normalize_generation_settings, openai_extra_body
+from smacx_generation import (
+    GenerationSettingsError, direct_reasoning_parameters,
+    normalize_generation_settings, openai_extra_body,
+)
 
 
 def rejected(value: dict, expected: str) -> None:
@@ -72,6 +75,10 @@ def main() -> int:
     provider_override = openai_extra_body({"preset": "provider-default", "temperature": 0.3})
     if provider_override != {"temperature": 0.3}:
         raise AssertionError("provider-default discarded an explicit override")
+    if direct_reasoning_parameters("medium") != {"reasoning_effort": "medium"}:
+        raise AssertionError("direct callers did not receive top-level reasoning effort")
+    if direct_reasoning_parameters("none") != {}:
+        raise AssertionError("none reasoning should be omitted for direct callers")
     rejected({"preset": "custom", "extra_parameters": {"model": "override"}},
              "reserved_or_duplicate_extra_parameter")
     rejected({"preset": "custom", "temperature": float("nan")}, "invalid_temperature")
@@ -83,6 +90,7 @@ def main() -> int:
         "templates_are_editable": True,
         "provider_default_overrides_reach_provider": True,
         "reserved_fields_rejected": True,
+        "direct_reasoning_adapter": True,
     }}, separators=(",", ":")))
     return 0
 

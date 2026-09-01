@@ -31,6 +31,7 @@ PYTHONPATH=src python3 scripts/human_hosted_lan_contract_test.py
 PYTHONPATH=src python3 scripts/virtual_lan_contract_test.py
 PYTHONPATH=src python3 scripts/graphiti_projection_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
+PYTHONPATH=src python3 scripts/graphiti_provider_capture_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 ```
 
@@ -156,6 +157,12 @@ rejected provider probes while preserving the distinction between transport
 acceptance and semantic behavior. `hermes_adapter_test.py` covers Hermes's full
 generic reasoning ladder; the portal labels Qwen's documented low/medium/xhigh
 levels and the provider-dependent High option honestly.
+
+`graphiti_provider_capture_test.py` runs the production Graphiti adapter inside
+its real image and proves that reasoning is top-level, chat-template kwargs are
+preserved, and JSON Schema output is both requested and decoded. The opt-in
+`graphiti_extraction_live_test.py` performs the same structured call against a
+real configured endpoint without writing a memory episode or graph node.
 
 ## Browser portal test
 

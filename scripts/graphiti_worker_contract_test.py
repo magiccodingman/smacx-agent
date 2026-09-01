@@ -3,14 +3,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
 import tempfile
 
 from smacx_control import ControlPlane
-from smacx_graphiti import _environment_secret, load_runtime_config
-from smacx_graphiti_worker import _enabled, _scopes, _state
+from smacx_graphiti import (
+    _environment_secret, graphiti_generation_parameters, load_runtime_config,
+)
+from smacx_graphiti_worker import RecallBroker, _enabled, _scopes, _state
 from smacx_store import ScopeViolation, SmacxStore
 
 
@@ -76,14 +79,65 @@ def main() -> int:
             "profile_id": "profile-graph-001",
             "display_name": "Graph extraction",
             "provider_id": provider["provider_id"], "model_id": "extract-model",
-            "reasoning_effort": "none",
-            "generation_settings": {"preset": "provider-default"},
+            "reasoning_effort": "medium",
+            "generation_settings": {"preset": "qwen38-medium", "temperature": 1.0,
+                                    "extra_parameters": {"chat_template_kwargs": {
+                                        "enable_thinking": True,
+                                        "preserve_thinking": False,
+                                    }}},
         })
         runtime_config = load_runtime_config(store)
         if runtime_config.llm_model != "extract-model" \
                 or runtime_config.embed_model != "smacx-local-embeddings" \
                 or runtime_config.embed_dim != 2048:
             raise AssertionError("Graphiti did not resolve its selected profile and shared embedding endpoint")
+        _, _, direct_body = graphiti_generation_parameters(runtime_config)
+        if direct_body.get("reasoning_effort") != "medium" or direct_body.get(
+                "chat_template_kwargs") != {
+                    "enable_thinking": True, "preserve_thinking": False,
+                }:
+            raise AssertionError("Graphiti direct request adaptation drifted")
+        original_fingerprint = control.graphiti_status()["profile"]["profile_fingerprint"]
+        synced = control.sync_graphiti_profile({
+            "profile_id": "profile-graph-001", "display_name": "Graph extraction",
+            "provider_id": provider["provider_id"], "model_id": "extract-model",
+            "reasoning_effort": "low",
+            "generation_settings": {"preset": "qwen38-low", "temperature": 0.8,
+                                    "extra_parameters": {"chat_template_kwargs": {
+                                        "enable_thinking": True,
+                                        "preserve_thinking": False,
+                                    }}},
+        })
+        if not synced["synced"] or not synced["changed"] or \
+                synced["profile"]["reasoning_effort"] != "low" or \
+                synced["profile"]["profile_fingerprint"] == original_fingerprint:
+            raise AssertionError("selected Graphiti profile was not synchronized exactly")
+        unrelated_sync = control.sync_graphiti_profile({
+            "profile_id": "profile-graph-other", "display_name": "Other",
+            "provider_id": provider["provider_id"], "model_id": "extract-model",
+            "reasoning_effort": "none", "generation_settings": {"preset": "provider-default"},
+        })
+        if unrelated_sync["synced"] or unrelated_sync["changed"]:
+            raise AssertionError("an unrelated profile changed Graphiti")
+        synchronized_config = load_runtime_config(store)
+
+        class ProbeSink:
+            fingerprint = synchronized_config.fingerprint
+
+            async def probe_extraction(self):
+                return {"ok": True, "state": "accepted", "structured_output": True}
+
+        loop = asyncio.new_event_loop()
+        try:
+            broker = RecallBroker(store, loop)
+            broker.sink = ProbeSink()
+            if not loop.run_until_complete(broker.probe()).get("structured_output"):
+                raise AssertionError("worker readiness endpoint did not use the active sink")
+            broker.sink.fingerprint = "stale"
+            if loop.run_until_complete(broker.probe()).get("state") != "reloading":
+                raise AssertionError("worker probe did not reject a stale sink")
+        finally:
+            loop.close()
         if not _enabled(store):
             raise AssertionError("Control Center enable policy was not persisted")
         unrelated = control.clear_graphiti_profile("profile-graph-unrelated")
@@ -105,6 +159,9 @@ def main() -> int:
             "extraction_profile_required": True,
             "disable_clears_extraction_profile": True,
             "profile_deactivation_is_conditional": True,
+            "selected_profile_auto_sync_contract": True,
+            "graphiti_reasoning_and_kwargs_adapted": True,
+            "worker_probe_requires_current_profile": True,
             "canonical_schema_revision": store.schema_version(),
         }}, separators=(",", ":")))
     return 0
