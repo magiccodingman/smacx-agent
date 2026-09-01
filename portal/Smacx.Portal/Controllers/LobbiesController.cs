@@ -313,7 +313,7 @@ public sealed class LobbiesController(
             "seat_not_found", "That faction seat was not found."));
         var oldUserId = seat.UserId;
         seat.ControllerKind = request.ControllerKind;
-        seat.AgentId = null; seat.AiProfileVersionId = null; seat.UserId = null;
+        seat.AgentId = null; seat.AiProfileId = null; seat.UserId = null;
         seat.PlayerHandle = null; seat.JoinMode = "browser"; seat.RequestedFactionId = FactionCatalog.Random;
         seat.ResolvedFactionKey = null; seat.LeaderName = null;
         seat.RequestedPersonalityId = "standard"; seat.PersonalityCardId = "none";
@@ -325,9 +325,9 @@ public sealed class LobbiesController(
         {
             if (string.IsNullOrWhiteSpace(request.AgentId)) return BadRequest(
                 ApiResponse<LobbyDetails>.Failure("ai_profile_required", "Choose an AI profile for this seat."));
-            var aiProfile = await database.PortalAiProfileVersions.AsNoTracking()
+            var aiProfile = await database.PortalAiProfiles.AsNoTracking()
                 .Where(item => item.AgentId == request.AgentId && item.Active)
-                .OrderByDescending(item => item.Version).FirstOrDefaultAsync(HttpContext.RequestAborted);
+                .FirstOrDefaultAsync(HttpContext.RequestAborted);
             if (aiProfile is null) return BadRequest(ApiResponse<LobbyDetails>.Failure(
                 "unknown_ai_profile", "That AI profile is not active."));
             if (request.FactionId != FactionCatalog.Random && FactionCatalog.Find(request.FactionId) is null)
@@ -344,7 +344,7 @@ public sealed class LobbiesController(
                 return Conflict(ApiResponse<LobbyDetails>.Failure(
                     "duplicate_agent_faction", "Another AI seat already reserves that faction."));
             var faction = FactionCatalog.Find(request.FactionId);
-            seat.AgentId = aiProfile.AgentId; seat.AiProfileVersionId = aiProfile.ProfileVersionId;
+            seat.AgentId = aiProfile.AgentId; seat.AiProfileId = aiProfile.ProfileId;
             seat.RequestedFactionId = request.FactionId;
             seat.RequestedPersonalityId = request.PersonalityId;
             seat.PlayerHandle = faction?.LeaderName ?? "Random faction AI";
@@ -1379,13 +1379,13 @@ public sealed class LobbiesController(
         {
             var agent = agentSeat.AgentId;
             var requestedFaction = FactionCatalog.Find(agentSeat.FactionId);
-            var profile = database.PortalAiProfileVersions.Local.FirstOrDefault(item => item.AgentId == agent)
-                ?? database.PortalAiProfileVersions.AsNoTracking().FirstOrDefault(item => item.AgentId == agent);
+            var profile = database.PortalAiProfiles.Local.FirstOrDefault(item => item.AgentId == agent)
+                ?? database.PortalAiProfiles.AsNoTracking().FirstOrDefault(item => item.AgentId == agent);
             database.PortalLobbySeats.Add(new PortalLobbySeat
             {
                 MatchId = matchId, SeatIndex = seatIndex++, ControllerKind = "agent",
                 AgentId = agent,
-                AiProfileVersionId = profile?.ProfileVersionId,
+                AiProfileId = profile?.ProfileId,
                 PlayerHandle = requestedFaction?.LeaderName ?? "Random faction AI",
                 RequestedFactionId = agentSeat.FactionId,
                 LeaderName = requestedFaction?.LeaderName,

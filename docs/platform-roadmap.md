@@ -21,7 +21,7 @@ is delivered as vertical, independently testable milestones.
    prefix, semantic bridge, virtual display, health protocol, and Selkies
    interactive/read-only browser stream.
 5. **Control plane and portal** — authenticated Blazor Control Center, provider
-   discovery, versioned AI profiles, typed match builder, secrets, isolated
+   discovery, durable editable AI profiles, typed match builder, secrets, isolated
    per-worker MCP, browser human seats, observer deck, and managed Hermes
    profile/session management. The durable
    operator and host-Hermes vertical slices, durable schedules, verified

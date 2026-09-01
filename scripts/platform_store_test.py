@@ -56,6 +56,9 @@ def main() -> int:
 
         store.ensure_agent("agent-alpha", "Alpha")
         store.ensure_agent("agent-beta", "Beta")
+        renamed = store.ensure_agent("agent-alpha", "Alpha Prime")
+        if renamed["display_name"] != "Alpha Prime":
+            raise AssertionError("existing agent identity was not edited in place")
         store.create_match(match_id="match-foundation", display_name="Foundation", mode="lan")
         alpha_perspective = store.create_perspective(
             "match-foundation", "agent-alpha", perspective_id="perspective-alpha",

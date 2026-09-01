@@ -30,17 +30,16 @@ public sealed class CatalogController(
                     ProviderId: provider.GetProperty("provider_id").GetString()!,
                     ModelId: model.GetProperty("model_id").GetString()!)))
                 .ToHashSet();
-            var activeProfiles = await database.PortalAiProfileVersions.AsNoTracking()
+            var activeProfiles = await database.PortalAiProfiles.AsNoTracking()
                 .Where(item => item.Active)
                 .OrderBy(item => item.DisplayName)
-                .ThenByDescending(item => item.Version)
                 .ToArrayAsync(HttpContext.RequestAborted);
             var agentStatus = agents.ToDictionary(item => item.AgentId, item => item.Status);
             return ApiResponse<LobbyCatalog>.Success(new(
                 sources.Select(item => new CatalogItem(item.Id, item.DisplayName, item.Status)).ToArray(),
                 runtimes.Select(item => new CatalogItem(item.Id, item.DisplayName, item.Status)).ToArray(),
                 activeProfiles.Where(item => readyModels.Contains((item.ProviderId, item.ModelId))).Select(item => new CatalogItem(
-                    item.AgentId, $"{item.DisplayName} v{item.Version} · {item.ModelId} · {item.ReasoningEffort}",
+                    item.AgentId, $"{item.DisplayName} · {item.ModelId} · {item.ReasoningEffort}",
                     agentStatus.GetValueOrDefault(item.AgentId, "configured"))).ToArray(),
                 true));
         }

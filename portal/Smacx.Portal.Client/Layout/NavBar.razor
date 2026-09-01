@@ -49,7 +49,7 @@
         try
         {
             var snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;
-            var profiles=(await Api.GetAsync<IReadOnlyList<AiProfileVersion>>("api/admin/ai-profiles"))?.Data??[];
+            var profiles=(await Api.GetAsync<IReadOnlyList<AiProfile>>("api/admin/ai-profiles"))?.Data??[];
             warnings.Clear();
             if(snapshot is null)return;
             if(snapshot.Providers.ValueKind!=JsonValueKind.Array||snapshot.Providers.GetArrayLength()==0)warnings.Add(new("No model endpoint is configured","admin/providers"));

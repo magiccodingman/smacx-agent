@@ -77,7 +77,7 @@ public sealed class AdministrationController(
     [HttpPost("providers/{providerId}/delete")]
     public async Task<ActionResult<ApiResponse<JsonElement?>>> DeleteProvider(string providerId)
     {
-        var referenced = await database.PortalAiProfileVersions.AsNoTracking()
+        var referenced = await database.PortalAiProfiles.AsNoTracking()
             .AnyAsync(item => item.ProviderId == providerId, HttpContext.RequestAborted);
         if (referenced)
         {
@@ -89,24 +89,43 @@ public sealed class AdministrationController(
     }
 
     [HttpGet("ai-profiles")]
-    public async Task<ActionResult<ApiResponse<IReadOnlyList<AiProfileVersion>>>> Profiles()
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<AiProfile>>>> Profiles()
     {
-        var items = await database.PortalAiProfileVersions.AsNoTracking()
-            .OrderBy(item => item.DisplayName).ThenByDescending(item => item.Version)
+        var items = await database.PortalAiProfiles.AsNoTracking()
+            .OrderByDescending(item => item.Active).ThenBy(item => item.DisplayName)
             .Select(item => ToContract(item)).ToArrayAsync(HttpContext.RequestAborted);
-        return ApiResponse<IReadOnlyList<AiProfileVersion>>.Success(items);
+        return ApiResponse<IReadOnlyList<AiProfile>>.Success(items);
     }
 
     [HttpPost("ai-profiles")]
-    public async Task<ActionResult<ApiResponse<AiProfileVersion>>> CreateProfile(
-        AiProfileVersionRequest request)
+    public async Task<ActionResult<ApiResponse<AiProfile>>> SaveProfile(
+        AiProfileRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 160 ||
             string.IsNullOrWhiteSpace(request.ProviderId) || string.IsNullOrWhiteSpace(request.ModelId) ||
             request.ReasoningEffort is not ("none" or "minimal" or "low" or "medium" or "high" or "xhigh" or "max" or "ultra") ||
             request.ContextLength is not null and < HermesMinimumContextLength)
-            return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+            return BadRequest(ApiResponse<AiProfile>.Failure(
                 "invalid_ai_profile", $"Check the profile name, provider, model, and reasoning. A manual context budget must be at least {HermesMinimumContextLength:N0} tokens; leave it blank to use the model's advertised context."));
+        var displayName = request.DisplayName.Trim();
+        var normalizedDisplayName = displayName.ToUpperInvariant();
+        var duplicate = await database.PortalAiProfiles.AsNoTracking().FirstOrDefaultAsync(
+            item => item.NormalizedDisplayName == normalizedDisplayName && item.ProfileId != request.ProfileId,
+            HttpContext.RequestAborted);
+        if (duplicate is not null)
+            return Conflict(ApiResponse<AiProfile>.Failure(
+                duplicate.Active ? "ai_profile_name_in_use" : "inactive_ai_profile_name_in_use",
+                duplicate.Active
+                    ? $"An AI profile named '{displayName}' already exists. Edit that profile or choose a different name."
+                    : $"An inactive AI profile named '{displayName}' already owns that history. Show inactive profiles and reactivate it instead of creating a duplicate."));
+        PortalAiProfile? entity = null;
+        if (!string.IsNullOrWhiteSpace(request.ProfileId))
+        {
+            entity = await database.PortalAiProfiles.FindAsync([request.ProfileId], HttpContext.RequestAborted);
+            if (entity is null)
+                return NotFound(ApiResponse<AiProfile>.Failure(
+                    "profile_not_found", "The AI profile was not found."));
+        }
         int? advertisedContext;
         try
         {
@@ -114,12 +133,12 @@ public sealed class AdministrationController(
             var provider = providers.RootElement.GetProperty("providers").EnumerateArray()
                 .FirstOrDefault(item => item.GetProperty("provider_id").GetString() == request.ProviderId);
             if (provider.ValueKind != JsonValueKind.Object)
-                return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+                return BadRequest(ApiResponse<AiProfile>.Failure(
                     "unknown_provider", "Choose a configured model endpoint."));
             var model = provider.GetProperty("models").EnumerateArray()
                 .FirstOrDefault(item => item.GetProperty("model_id").GetString() == request.ModelId);
             if (model.ValueKind != JsonValueKind.Object)
-                return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+                return BadRequest(ApiResponse<AiProfile>.Failure(
                     "unknown_provider_model", "Choose a model currently advertised by this endpoint."));
             advertisedContext = provider.TryGetProperty("context_length_override", out var providerOverride) &&
                 providerOverride.ValueKind == JsonValueKind.Number
@@ -132,14 +151,14 @@ public sealed class AdministrationController(
         catch (ControlPlaneException exception)
         {
             return StatusCode(exception.StatusCode ?? 502,
-                ApiResponse<AiProfileVersion>.Failure(exception.Code, exception.Message));
+                ApiResponse<AiProfile>.Failure(exception.Code, exception.Message));
         }
         if (request.ContextLength is { } manual && advertisedContext is { } maximum && manual > maximum)
-            return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+            return BadRequest(ApiResponse<AiProfile>.Failure(
                 "context_length_exceeds_model_limit",
                 $"This endpoint advertises a {maximum:N0}-token context for the selected model. Leave the field blank to use it automatically, or enter a value between {HermesMinimumContextLength:N0} and {maximum:N0}."));
         if (request.ContextLength is null && advertisedContext is { } automatic && automatic < HermesMinimumContextLength)
-            return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+            return BadRequest(ApiResponse<AiProfile>.Failure(
                 "model_context_below_hermes_minimum",
                 $"This endpoint advertises only {automatic:N0} tokens. Managed Hermes agents require at least {HermesMinimumContextLength:N0}."));
         ModelGenerationSettings generation;
@@ -149,66 +168,60 @@ public sealed class AdministrationController(
         }
         catch (ArgumentException exception)
         {
-            return BadRequest(ApiResponse<AiProfileVersion>.Failure(
+            return BadRequest(ApiResponse<AiProfile>.Failure(
                 "invalid_generation_settings", exception.Message));
         }
-        var stableId = request.StableProfileId ?? $"profile-{Guid.NewGuid():N}";
-        var latest = await database.PortalAiProfileVersions
-            .Where(item => item.StableProfileId == stableId)
-            .OrderByDescending(item => item.Version).FirstOrDefaultAsync(HttpContext.RequestAborted);
-        if (request.StableProfileId is not null && latest is null)
-            return NotFound(ApiResponse<AiProfileVersion>.Failure(
-                "profile_not_found", "The profile family was not found."));
-        var version = (latest?.Version ?? 0) + 1;
-        var agentId = $"agent-{Guid.NewGuid():N}";
+        var creating = entity is null;
+        entity ??= new PortalAiProfile { AgentId = $"agent-{Guid.NewGuid():N}" };
         try
         {
             using var created = await control.PostRawAsync("api/v1/agents", new
             {
-                agent_id = agentId,
-                display_name = $"{request.DisplayName.Trim()} v{version}",
+                agent_id = entity.AgentId,
+                display_name = displayName,
                 personality_ref = "none",
             }, HttpContext.RequestAborted);
         }
         catch (ControlPlaneException exception)
         {
             return StatusCode(exception.StatusCode ?? 502,
-                ApiResponse<AiProfileVersion>.Failure(exception.Code, exception.Message));
+                ApiResponse<AiProfile>.Failure(exception.Code, exception.Message));
         }
-        var entity = new PortalAiProfileVersion
-        {
-            StableProfileId = stableId,
-            Version = version,
-            DisplayName = request.DisplayName.Trim(),
-            AgentId = agentId,
-            ProviderId = request.ProviderId,
-            ModelId = request.ModelId.Trim(),
-            ReasoningEffort = request.ReasoningEffort,
-            ContextLength = request.ContextLength,
-            GenerationSettingsJson = JsonSerializer.Serialize(generation),
-            Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
-            PersonalityCardId = "none",
-        };
-        if (latest is not null)
-        {
-            var superseded = await database.PortalAiProfileVersions
-                .Where(item => item.StableProfileId == stableId && item.Active)
-                .ToArrayAsync(HttpContext.RequestAborted);
-            foreach (var item in superseded) item.Active = false;
-        }
-        database.PortalAiProfileVersions.Add(entity);
+        entity.DisplayName = displayName;
+        entity.NormalizedDisplayName = normalizedDisplayName;
+        entity.ProviderId = request.ProviderId;
+        entity.ModelId = request.ModelId.Trim();
+        entity.ReasoningEffort = request.ReasoningEffort;
+        entity.ContextLength = request.ContextLength;
+        entity.GenerationSettingsJson = JsonSerializer.Serialize(generation);
+        entity.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+        entity.PersonalityCardId = "none";
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        if (creating) database.PortalAiProfiles.Add(entity);
         await database.SaveChangesAsync(HttpContext.RequestAborted);
-        return CreatedAtAction(nameof(Profiles), ApiResponse<AiProfileVersion>.Success(ToContract(entity)));
+        return ApiResponse<AiProfile>.Success(ToContract(entity));
     }
 
-    [HttpPost("ai-profiles/{profileVersionId}/deactivate")]
-    public async Task<ActionResult<ApiResponse<AiProfileVersion>>> DeactivateProfile(string profileVersionId)
+    [HttpPost("ai-profiles/{profileId}/deactivate")]
+    public async Task<ActionResult<ApiResponse<AiProfile>>> DeactivateProfile(string profileId)
     {
-        var item = await database.PortalAiProfileVersions.FindAsync([profileVersionId], HttpContext.RequestAborted);
+        var item = await database.PortalAiProfiles.FindAsync([profileId], HttpContext.RequestAborted);
         if (item is null) return NotFound();
         item.Active = false;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
         await database.SaveChangesAsync(HttpContext.RequestAborted);
-        return ApiResponse<AiProfileVersion>.Success(ToContract(item));
+        return ApiResponse<AiProfile>.Success(ToContract(item));
+    }
+
+    [HttpPost("ai-profiles/{profileId}/reactivate")]
+    public async Task<ActionResult<ApiResponse<AiProfile>>> ReactivateProfile(string profileId)
+    {
+        var item = await database.PortalAiProfiles.FindAsync([profileId], HttpContext.RequestAborted);
+        if (item is null) return NotFound();
+        item.Active = true;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        await database.SaveChangesAsync(HttpContext.RequestAborted);
+        return ApiResponse<AiProfile>.Success(ToContract(item));
     }
 
     [HttpPost("game-sources")]
@@ -249,17 +262,17 @@ public sealed class AdministrationController(
     public async Task<ActionResult<ApiResponse<JsonElement?>>> Graphiti(GraphitiConfigurationRequest request)
     {
         object? profile = null;
-        if (!string.IsNullOrWhiteSpace(request.ProfileVersionId))
+        if (!string.IsNullOrWhiteSpace(request.ProfileId))
         {
-            var item = await database.PortalAiProfileVersions.AsNoTracking().FirstOrDefaultAsync(
-                candidate => candidate.ProfileVersionId == request.ProfileVersionId,
+            var item = await database.PortalAiProfiles.AsNoTracking().FirstOrDefaultAsync(
+                candidate => candidate.ProfileId == request.ProfileId,
                 HttpContext.RequestAborted);
             if (item is null || !item.Active)
                 return BadRequest(ApiResponse<JsonElement?>.Failure(
                     "invalid_graphiti_profile", "Choose an active AI profile for Graphiti extraction."));
             profile = new
             {
-                profile_version_id = item.ProfileVersionId,
+                profile_id = item.ProfileId,
                 display_name = item.DisplayName,
                 provider_id = item.ProviderId,
                 model_id = item.ModelId,
@@ -333,10 +346,10 @@ public sealed class AdministrationController(
         }
     }
 
-    private static AiProfileVersion ToContract(PortalAiProfileVersion item) => new(
-        item.ProfileVersionId, item.StableProfileId, item.Version, item.DisplayName,
+    private static AiProfile ToContract(PortalAiProfile item) => new(
+        item.ProfileId, item.DisplayName,
         item.AgentId, item.ProviderId, item.ModelId, item.ReasoningEffort,
-        item.ContextLength, item.Notes, item.Active, item.PersonalityCardId, item.CreatedAt,
+        item.ContextLength, item.Notes, item.Active, item.PersonalityCardId, item.CreatedAt, item.UpdatedAt,
         ParseGeneration(item.GenerationSettingsJson));
 
     private static ModelGenerationSettings NormalizeGeneration(

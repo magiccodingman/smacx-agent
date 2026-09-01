@@ -52,8 +52,10 @@ All matches use classification `unranked`. The durable match record retains a
 classification and policy snapshot so a future ranked policy can be introduced
 without reinterpreting historical matches. The current API rejects `ranked`.
 
-AI profiles are versioned snapshots of provider, model, context, reasoning,
-prompt-policy, Hermes runtime, and experiment metadata. Hermes retains its
+AI profiles are stable, uniquely named identities that may be edited in place,
+deactivated, and later reactivated without severing their analytics history.
+Operators who need separate experimental cohorts create separately named
+profiles. Hermes retains its
 tool-critical system layer. The application injects a stable SMACX player
 contract, immutable match context, an optional personality block, and scoped
 memory in that order. Personality storage and selection are scaffolded, but the

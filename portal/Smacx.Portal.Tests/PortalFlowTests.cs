@@ -114,10 +114,10 @@ public sealed class PortalFlowTests : IAsyncLifetime
         await using (var scope = factory!.Services.CreateAsyncScope())
         {
             var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            database.PortalAiProfileVersions.Add(new PortalAiProfileVersion
+            database.PortalAiProfiles.Add(new PortalAiProfile
             {
-                ProfileVersionId = "profile-version-test", StableProfileId = "profile-test",
-                Version = 1, DisplayName = "Test Qwen", AgentId = "agent-test",
+                ProfileId = "profile-test", DisplayName = "Test Qwen",
+                NormalizedDisplayName = "TEST QWEN", AgentId = "agent-test",
                 ProviderId = "provider-test", ModelId = "model-test", ReasoningEffort = "low",
                 GenerationSettingsJson = System.Text.Json.JsonSerializer.Serialize(
                     new ModelGenerationSettings("custom", Temperature: 0.8, TopP: 0.9)),
@@ -126,7 +126,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
                 item.MatchId == matchId && item.SeatIndex == 2);
             agentSeat.ControllerKind = "agent";
             agentSeat.AgentId = "agent-test";
-            agentSeat.AiProfileVersionId = "profile-version-test";
+            agentSeat.AiProfileId = "profile-test";
             agentSeat.OutcomeFinalized = true;
             agentSeat.OutcomeResult = "win";
             agentSeat.VictoryType = "economic_solo";
@@ -144,7 +144,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
             database.PortalTurnMetrics.Add(new PortalTurnMetric
             {
                 MatchId = matchId, AgentId = "agent-test",
-                ProfileVersionId = "profile-version-test", Turn = 1,
+                ProfileId = "profile-test", Turn = 1,
                 DurationSeconds = 2.5, PromptTokens = 100, CompletionTokens = 20,
                 CacheReadTokens = 70, CacheWriteTokens = 5, ReasoningTokens = 8,
                 ApiCalls = 3, CompletedAt = DateTimeOffset.UtcNow,
@@ -155,6 +155,27 @@ public sealed class PortalFlowTests : IAsyncLifetime
             "api/admin/providers/provider-test/delete", new { }, csrf.Token);
         Assert.Equal(HttpStatusCode.Conflict, protectedProvider.Response.StatusCode);
         Assert.Equal("provider_in_use_by_ai_profile", protectedProvider.Payload.Error?.Code);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var deactivated = await PostAsync<AiProfile>(
+            "api/admin/ai-profiles/profile-test/deactivate", new { }, csrf.Token);
+        Assert.False(deactivated.Payload.Data?.Active);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var inactiveDuplicate = await PostAsync<AiProfile>(
+            "api/admin/ai-profiles",
+            new AiProfileRequest("test qwen", "unused-provider", "unused-model", "none"), csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, inactiveDuplicate.Response.StatusCode);
+        Assert.Equal("inactive_ai_profile_name_in_use", inactiveDuplicate.Payload.Error?.Code);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var reactivated = await PostAsync<AiProfile>(
+            "api/admin/ai-profiles/profile-test/reactivate", new { }, csrf.Token);
+        Assert.True(reactivated.Payload.Data?.Active);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var activeDuplicate = await PostAsync<AiProfile>(
+            "api/admin/ai-profiles",
+            new AiProfileRequest("TEST QWEN", "unused-provider", "unused-model", "none"), csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, activeDuplicate.Response.StatusCode);
+        Assert.Equal("ai_profile_name_in_use", activeDuplicate.Payload.Error?.Code);
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var editedSeat = await PutAsync<LobbyDetails>(
@@ -231,11 +252,16 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.DoesNotContain("__EFMigrationsHistory", tables);
 
         await using var columnsCommand = connection.CreateCommand();
-        columnsCommand.CommandText = "PRAGMA table_info('PortalAiProfileVersions')";
+        columnsCommand.CommandText = "PRAGMA table_info('PortalAiProfiles')";
         var columns = new List<string>();
         await using var columnsReader = await columnsCommand.ExecuteReaderAsync();
         while (await columnsReader.ReadAsync()) columns.Add(columnsReader.GetString(1));
         Assert.Contains("GenerationSettingsJson", columns);
+        Assert.Contains("ProfileId", columns);
+        Assert.Contains("NormalizedDisplayName", columns);
+        Assert.Contains("UpdatedAt", columns);
+        Assert.DoesNotContain("Version", columns);
+        Assert.DoesNotContain("StableProfileId", columns);
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var claimed = await PostAsync<PortalSession>("api/auth/register",

@@ -109,9 +109,9 @@ part of this project.
 
 ## Operations and verification
 
-The Operations page reports the rules service, embedding mode, corpus refresh,
-and Graphiti status. It also lets an administrator choose local, external, or
-disabled embeddings and select Graphiti's independent extraction profile.
+The Operations page reports rules and Graphiti health and selects Graphiti's
+independent extraction profile. **Models & AI profiles** contains the shared
+local, external, or disabled embedding configuration beside its provider.
 
 Useful contained checks:
 
