@@ -31,7 +31,10 @@ from smacx_prompt import (
     PERSONALITY_NONE, SYSTEM_PROMPT_SCHEMA, compose_player_system_prompt,
     prompt_sha256,
 )
-from smacx_generation import normalize_generation_settings, openai_extra_body
+from smacx_generation import (
+    GenerationSettingsError, direct_reasoning_parameters,
+    normalize_generation_settings, openai_extra_body,
+)
 
 
 CONTROL_ID = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -298,30 +301,107 @@ class ControlPlane:
             self._set_setting("graphiti.enabled", False)
             return self.graphiti_status()
         if profile is not None:
-            provider_id = _require_id(str(profile.get("provider_id", "")), "provider_id")
-            model_id = _bounded(str(profile.get("model_id", "")), "model_id", MODEL_ID_LIMIT)
-            provider = self.get_provider(provider_id)
-            if not any(item["model_id"] == model_id for item in provider["models"]):
-                raise ScopeViolation("unknown_provider_model")
-            generation = normalize_generation_settings(
-                profile.get("generation_settings") if isinstance(profile.get("generation_settings"), Mapping) else None,
-            )
-            self._set_setting("graphiti.profile", {
-                "profile_id": _bounded(
-                    str(profile.get("profile_id", "")), "profile_id", 160,
-                ),
-                "display_name": _bounded(str(profile.get("display_name", "")), "profile_name", 160),
-                "provider_id": provider_id,
-                "model_id": model_id,
-                "reasoning_effort": str(profile.get("reasoning_effort") or "none")[:32],
-                "generation_settings": generation,
-            })
+            self._set_setting("graphiti.profile", self._normalize_graphiti_profile(profile))
         if enabled and not isinstance(self._setting("graphiti.profile"), Mapping):
             raise InvalidRecord("graphiti_extraction_profile_required")
         if enabled and self.embedding_configuration()["mode"] == "disabled":
             raise InvalidRecord("graphiti_requires_embeddings")
         self._set_setting("graphiti.enabled", True)
         return self.graphiti_status()
+
+    def _normalize_graphiti_profile(self, profile: Mapping[str, Any]) -> dict[str, Any]:
+        provider_id = _require_id(str(profile.get("provider_id", "")), "provider_id")
+        model_id = _bounded(str(profile.get("model_id", "")), "model_id", MODEL_ID_LIMIT)
+        provider = self.get_provider(provider_id)
+        if not any(item["model_id"] == model_id for item in provider["models"]):
+            raise ScopeViolation("unknown_provider_model")
+        reasoning_effort = str(profile.get("reasoning_effort") or "none").strip().lower()
+        try:
+            direct_reasoning_parameters(reasoning_effort)
+            generation = normalize_generation_settings(
+                profile.get("generation_settings")
+                if isinstance(profile.get("generation_settings"), Mapping) else None,
+            )
+        except GenerationSettingsError as exc:
+            raise InvalidRecord(str(exc)) from exc
+        result = {
+            "profile_id": _bounded(str(profile.get("profile_id", "")), "profile_id", 160),
+            "display_name": _bounded(
+                str(profile.get("display_name", "")), "profile_name", 160,
+            ),
+            "provider_id": provider_id,
+            "model_id": model_id,
+            "reasoning_effort": reasoning_effort,
+            "generation_settings": generation,
+        }
+        result["profile_fingerprint"] = hashlib.sha256(
+            json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return result
+
+    def sync_graphiti_profile(self, profile: Mapping[str, Any]) -> dict[str, Any]:
+        """Refresh the selected extraction profile without changing enablement."""
+        current = self._setting("graphiti.profile")
+        requested_id = str(profile.get("profile_id", ""))
+        if not isinstance(current, Mapping) or current.get("profile_id") != requested_id:
+            return {**self.graphiti_status(), "synced": False, "changed": False}
+        normalized = self._normalize_graphiti_profile(profile)
+        changed = dict(current) != normalized
+        if changed:
+            self._set_setting("graphiti.profile", normalized)
+        return {**self.graphiti_status(), "synced": True, "changed": changed}
+
+    def probe_graphiti_extraction(self, *, timeout: float = 120.0) -> dict[str, Any]:
+        profile = self._setting("graphiti.profile")
+        if self._setting("graphiti.enabled") is not True or not isinstance(profile, Mapping):
+            raise InvalidRecord("graphiti_not_configured")
+        endpoint = os.environ.get(
+            "SMACX_GRAPHITI_RECALL_URL", "http://graphiti-projector:8091",
+        ).rstrip("/")
+        request = Request(
+            endpoint + "/probe", data=b"{}",
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            method="POST",
+        )
+        status_code: int | None = None
+        payload: dict[str, Any] = {}
+        try:
+            with urlopen(request, timeout=min(max(float(timeout), 1.0), 180.0)) as response:
+                status_code = int(response.status)
+                raw = response.read(PROVIDER_RESPONSE_LIMIT + 1)
+        except HTTPError as exc:
+            status_code = int(exc.code)
+            raw = exc.read(PROVIDER_RESPONSE_LIMIT + 1)
+        except (URLError, TimeoutError, OSError) as exc:
+            raw = b""
+            payload = {"error": f"graphiti_probe_unavailable:{type(exc).__name__}"}
+        if raw:
+            try:
+                decoded = json.loads(raw)
+                if isinstance(decoded, dict):
+                    payload = decoded
+            except json.JSONDecodeError:
+                payload = {"error": "graphiti_probe_invalid_response"}
+        accepted = bool(status_code and 200 <= status_code < 300 and payload.get("ok") is True)
+        state = "accepted" if accepted else str(payload.get("state") or "rejected")
+        result = {
+            "ok": True,
+            "accepted": accepted,
+            "state": state,
+            "http_status": status_code,
+            "profile_id": profile.get("profile_id"),
+            "profile_fingerprint": profile.get("profile_fingerprint"),
+            "reasoning_effort": payload.get("reasoning_effort", profile.get("reasoning_effort")),
+            "structured_output": bool(payload.get("structured_output")),
+            "duration_ms": payload.get("duration_ms"),
+            "message": str(payload.get("message") or payload.get("error") or (
+                "The active Graphiti adapter produced a valid structured extraction."
+                if accepted else "The active Graphiti adapter did not complete its extraction probe."
+            ))[:1000],
+            "tested_unix": time.time(),
+        }
+        self._set_setting("graphiti.last_probe", result)
+        return result
 
     def clear_graphiti_profile(self, profile_id: str) -> dict[str, Any]:
         profile_id = _require_id(profile_id, "profile_id")
@@ -429,6 +509,7 @@ class ControlPlane:
     def graphiti_status(self) -> dict[str, Any]:
         enabled = self._setting("graphiti.enabled") is True
         profile = self._setting("graphiti.profile")
+        last_probe = self._setting("graphiti.last_probe")
         with self.store.transaction() as connection:
             state = connection.execute(
                 "SELECT * FROM graphiti_runtime_state WHERE singleton=1"
@@ -450,8 +531,15 @@ class ControlPlane:
             "last_projection_unix": None, "last_error": None, "metadata_json": "{}",
         }
         runtime["metadata"] = json.loads(runtime.pop("metadata_json"))
+        if isinstance(last_probe, Mapping) and isinstance(profile, Mapping) and \
+                last_probe.get("profile_fingerprint") != profile.get("profile_fingerprint"):
+            last_probe = {
+                **dict(last_probe), "accepted": None, "state": "stale",
+                "message": "The extraction profile changed after its last Graphiti probe.",
+            }
         return {"ok": True, "enabled": enabled, "configured": isinstance(profile, Mapping),
                 "profile": profile if isinstance(profile, Mapping) else None,
+                "last_probe": last_probe if isinstance(last_probe, Mapping) else None,
                 "embeddings": self.embedding_configuration(), "runtime": runtime,
                 "queued_rebuilds": queued, "scopes": scopes,
                 "sqlite_authoritative": True}

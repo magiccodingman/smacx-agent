@@ -39,7 +39,17 @@ are labelled as fallible historical context.
 Graphiti is disabled until an administrator selects an independent extraction
 AI profile under **Operations & recovery**. A fast non-thinking profile is
 normally enough. Changing that profile reloads the projector without touching a
-gameplay seat or carrying over the previous provider secret.
+gameplay seat or carrying over the previous provider secret. Editing the
+selected profile refreshes Graphiti automatically; a background reconciler
+repairs that snapshot after a transient control-service outage.
+
+Reasoning is one profile intent with two deliberate adapters. Managed gameplay
+passes it through Hermes. Graphiti calls the OpenAI-compatible endpoint directly
+and therefore sends it as top-level `reasoning_effort`, while keeping typed
+extensions such as `chat_template_kwargs` in the request body. In particular,
+`preserve_thinking=false` remains effective for Qwen profiles. Graphiti
+extraction calls are stateless, so completed reasoning is never carried from one
+episode to the next by this service.
 
 Graphiti uses the installation's one shared embedding configuration:
 
@@ -77,6 +87,12 @@ FalkorDB and the recall endpoint have no published host ports. In the portal:
 3. select it as the Graphiti extraction profile, which enables Graphiti
    immediately.
 
+Use **Test structured extraction** to perform a real, non-mutating structured
+JSON call through the active Graphiti adapter. This is stricter than the generic
+provider acceptance test: it verifies the response-format path Graphiti itself
+needs. The result is fingerprinted to the selected profile and becomes stale
+when that profile changes.
+
 Turning Graphiti off clears that extraction-profile selection. Select a profile
 again whenever Graphiti should be re-enabled. Deactivating the selected AI
 profile performs the same cleanup automatically; deactivating any other profile
@@ -106,11 +122,26 @@ match/event telemetry is small and should not be discarded implicitly.
 PYTHONPATH=src python3 scripts/graphiti_projection_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 docker compose build graphiti-projector
+PYTHONPATH=src python3 scripts/graphiti_provider_capture_test.py
 ```
 
 The tests cover perspective isolation, curated-event exclusion, failure-safe
 cursors, deterministic IDs, exact-group rebuild, required extraction profile,
-shared embedding resolution, and observable fail-open behavior.
+shared embedding resolution, automatic profile synchronization, direct
+reasoning/request adaptation, structured-output wire capture, and observable
+fail-open behavior.
+
+An opt-in live extraction check can target an installation-owned endpoint
+without writing to FalkorDB:
+
+```bash
+docker run --rm --network host -v "$PWD:/test:ro" \
+  -e PYTHONPATH=/test/src \
+  -e SMACX_TEST_PROVIDER_BASE_URL=http://model-host:8000/v1 \
+  -e SMACX_TEST_PROVIDER_MODEL=your-model \
+  --entrypoint python smacx-agent-graphiti:dev \
+  /test/scripts/graphiti_extraction_live_test.py
+```
 
 The reference live contract additionally projected one synthetic diplomacy
 episode twice, proved that its deterministic UUID produced one episode,

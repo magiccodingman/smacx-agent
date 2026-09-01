@@ -55,6 +55,16 @@ class RecallBroker:
             },
         }
 
+    async def probe(self) -> dict[str, Any]:
+        if self.sink is None:
+            return {"ok": False, "state": "not_ready", "error": "graphiti_not_ready"}
+        config = load_runtime_config(self.store)
+        if self.sink.fingerprint != config.fingerprint:
+            return {
+                "ok": False, "state": "reloading", "error": "graphiti_profile_reloading",
+            }
+        return await self.sink.probe_extraction()
+
 
 class RecallHandler(BaseHTTPRequestHandler):
     broker: RecallBroker
@@ -72,7 +82,7 @@ class RecallHandler(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(payload)
 
     def do_POST(self) -> None:
-        if self.path != "/recall":
+        if self.path not in {"/recall", "/probe"}:
             self.send_error(404); return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -81,11 +91,12 @@ class RecallHandler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError("invalid_body")
-            future = asyncio.run_coroutine_threadsafe(self.broker.recall(body), self.broker.loop)
-            result = future.result(timeout=10)
-            status = 200 if result.get("ok") else 503
+            operation = self.broker.probe() if self.path == "/probe" else self.broker.recall(body)
+            future = asyncio.run_coroutine_threadsafe(operation, self.broker.loop)
+            result = future.result(timeout=120 if self.path == "/probe" else 10)
+            status = 200 if result.get("ok") else (409 if result.get("state") == "reloading" else 503)
         except FutureTimeoutError:
-            result = {"ok": False, "error": "graphiti_recall_timeout", "facts": []}; status = 504
+            result = {"ok": False, "error": "graphiti_operation_timeout", "facts": []}; status = 504
         except Exception as exc:
             result = {"ok": False, "error": f"graphiti_recall_failed:{type(exc).__name__}", "facts": []}; status = 400
         payload = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode()

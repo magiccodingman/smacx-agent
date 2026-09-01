@@ -739,6 +739,32 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, result)
                 return
+            if path == "/api/v1/graphiti/sync-profile":
+                auth = self._authorize_mutation()
+                body = self._body()
+                if not isinstance(body.get("profile"), dict):
+                    raise InvalidRecord("invalid_graphiti_profile")
+                result = self.server.control.sync_graphiti_profile(body["profile"])
+                self.server.control.audit(
+                    auth["admin_id"], "graphiti.profile.sync", "agent_profile",
+                    str(body["profile"].get("profile_id", "")), "success",
+                    {"synced": result["synced"], "changed": result["changed"]},
+                    self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            if path == "/api/v1/graphiti/probe":
+                auth = self._authorize_mutation()
+                self._body()
+                result = self.server.control.probe_graphiti_extraction()
+                self.server.control.audit(
+                    auth["admin_id"], "graphiti.probe", "installation", None,
+                    "success" if result["accepted"] else "failure",
+                    {"accepted": result["accepted"], "state": result["state"],
+                     "profile_id": result["profile_id"]}, self.client_address[0],
+                )
+                self._json(200, result)
+                return
             if path == "/api/v1/embeddings":
                 auth = self._authorize_mutation()
                 body = self._body()

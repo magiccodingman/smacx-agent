@@ -157,13 +157,17 @@ else
                                     </div>
                                 }
                             </div>
-                            <MudSelect T="string" @bind-Value="reasoning" Label="Hermes reasoning effort" Variant="Variant.Outlined"
-                                       HelperText="A coarse Hermes control separate from the JSON request parameters. Model-server support varies; test acceptance below.">
+                            <MudSelect T="string" @bind-Value="reasoning" Label="Reasoning effort" Variant="Variant.Outlined"
+                                       HelperText="Gameplay passes this intent through Hermes; direct services such as Graphiti send it as the endpoint's top-level reasoning_effort field. Model support varies.">
                                 @foreach (var value in reasoningValues)
                                 {
                                     <MudSelectItem Value="@value">@value</MudSelectItem>
                                 }
                             </MudSelect>
+                            @if (!string.IsNullOrWhiteSpace(ReasoningCompatibilityWarning))
+                            {
+                                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-3">@ReasoningCompatibilityWarning</MudAlert>
+                            }
                             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mt-3">
                                 Saving proves these settings are stored. A successful acceptance test proves the endpoint accepted the request—not that it honored every parameter semantically.
                             </MudAlert>
@@ -444,6 +448,28 @@ else
         _ => "Starts blank for widest compatibility. You may still add explicit overrides below.",
     };
     private string GenerationSummary => "The values shown below are authoritative. Templates never lock or silently restore fields.";
+    private string? ReasoningCompatibilityWarning
+    {
+        get
+        {
+            var template = extraParameters.FirstOrDefault(item => item.Key == "chat_template_kwargs");
+            if (template is null) return null;
+            try
+            {
+                using var document = JsonDocument.Parse(template.Value);
+                if (!document.RootElement.TryGetProperty("enable_thinking", out var enabled) ||
+                    enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return null;
+                if (enabled.GetBoolean() && reasoning == "none")
+                    return "Thinking is enabled but reasoning effort is omitted. Qwen3.8 may fall back to its endpoint default (xhigh on the reference configuration). Choose an explicit effort or disable thinking.";
+                if (!enabled.GetBoolean() && reasoning != "none")
+                    return "Thinking is disabled in chat_template_kwargs, so the selected reasoning effort is not expected to change model behavior.";
+                if (enabled.GetBoolean() && IsQwen38 && reasoning is not ("low" or "medium" or "xhigh"))
+                    return "Qwen3.8 documents low, medium, and xhigh. This effort is provider-dependent; verify it before using the profile.";
+            }
+            catch (JsonException) { return null; }
+            return null;
+        }
+    }
 
     protected override async Task OnInitializedAsync() => await Reload();
 

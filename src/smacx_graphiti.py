@@ -17,7 +17,9 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol
 import uuid
 
-from smacx_generation import normalize_generation_settings, openai_extra_body
+from smacx_generation import (
+    direct_reasoning_parameters, normalize_generation_settings, openai_extra_body,
+)
 from smacx_store import MemoryScope, SmacxStore
 
 
@@ -68,6 +70,66 @@ class GraphitiRuntimeConfig:
     embed_api_key: str
     embed_model: str
     embed_dim: int
+
+
+def graphiti_generation_parameters(
+    config: GraphitiRuntimeConfig,
+) -> tuple[float, int, dict[str, Any]]:
+    """Adapt one profile to Graphiti's direct OpenAI-compatible request."""
+    body = openai_extra_body(config.generation_settings)
+    temperature = float(body.pop("temperature", 0.0))
+    maximum = int(body.pop("max_tokens", 16_384))
+    body.update(direct_reasoning_parameters(config.reasoning_effort))
+    return temperature, maximum, body
+
+
+def create_graphiti_llm_client(config: GraphitiRuntimeConfig) -> tuple[Any, Any]:
+    """Build the exact Graphiti LLM adapter and expose its sanitized wire settings."""
+    try:
+        import openai
+        from graphiti_core.llm_client.config import DEFAULT_MAX_TOKENS, LLMConfig, ModelSize
+        from graphiti_core.llm_client.errors import EmptyResponseError, RateLimitError
+        from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient, DEFAULT_MODEL
+    except ImportError as exc:
+        raise RuntimeError("graphiti_core_not_installed") from exc
+
+    temperature, maximum, body = graphiti_generation_parameters(config)
+
+    class SmacxGraphitiClient(OpenAIGenericClient):
+        async def _generate_response(self, messages, response_model=None,
+                                     max_tokens=DEFAULT_MAX_TOKENS,
+                                     model_size=ModelSize.medium):
+            formatted = []
+            for message in messages:
+                message.content = self._clean_input(message.content)
+                if message.role in {"user", "system"}:
+                    formatted.append({"role": message.role, "content": message.content})
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model or DEFAULT_MODEL, messages=formatted,
+                    temperature=self.temperature, max_tokens=max_tokens,
+                    response_format=self._build_response_format(response_model),
+                    extra_body=body or None,
+                )
+                content = response.choices[0].message.content or ""
+                if not content:
+                    raise EmptyResponseError("LLM returned an empty response")
+                return json.loads(self._strip_code_fences(content))
+            except openai.RateLimitError as exc:
+                raise RateLimitError from exc
+
+    llm_config = LLMConfig(
+        api_key=config.llm_api_key, model=config.llm_model,
+        small_model=config.llm_model, base_url=config.llm_base_url,
+        temperature=temperature, max_tokens=maximum,
+    )
+    structured_output_mode = os.environ.get("SMACX_GRAPHITI_STRUCTURED_OUTPUT_MODE", "json_schema")
+    if structured_output_mode not in {"json_schema", "json_object"}:
+        raise RuntimeError("invalid_graphiti_structured_output_mode")
+    return SmacxGraphitiClient(
+        config=llm_config, max_tokens=maximum,
+        structured_output_mode=structured_output_mode,
+    ), llm_config
 
 
 def _setting(store: SmacxStore, key: str) -> Any | None:
@@ -161,11 +223,14 @@ class GraphitiCoreSink:
     """Direct graphiti-core adapter; no unauthenticated Graphiti HTTP surface."""
 
     def __init__(self, client: Any, episode_type: Any, clear_data: Any,
-                 *, fingerprint: str = "environment") -> None:
+                 *, fingerprint: str = "environment", llm_client: Any | None = None,
+                 reasoning_effort: str = "none") -> None:
         self._client = client
         self._episode_type = episode_type
         self._clear_data = clear_data
         self.fingerprint = fingerprint
+        self._llm_client = llm_client or getattr(client, "llm_client", None)
+        self.reasoning_effort = reasoning_effort
 
     @classmethod
     async def from_environment(cls) -> "GraphitiCoreSink":
@@ -237,60 +302,16 @@ class GraphitiCoreSink:
     @classmethod
     async def from_config(cls, config: GraphitiRuntimeConfig) -> "GraphitiCoreSink":
         try:
-            import openai
             from graphiti_core import Graphiti
             from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
             from graphiti_core.driver.falkordb_driver import FalkorDriver
             from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
-            from graphiti_core.llm_client.config import DEFAULT_MAX_TOKENS, LLMConfig, ModelSize
-            from graphiti_core.llm_client.errors import EmptyResponseError, RateLimitError
-            from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient, DEFAULT_MODEL
             from graphiti_core.nodes import EpisodeType
             from graphiti_core.utils.maintenance.graph_data_operations import clear_data
         except ImportError as exc:
             raise RuntimeError("graphiti_core_not_installed") from exc
 
-        body = openai_extra_body(config.generation_settings)
-        temperature = float(body.pop("temperature", 0.0))
-        maximum = int(body.pop("max_tokens", 16_384))
-        if config.reasoning_effort not in {"", "none"}:
-            body["reasoning_effort"] = config.reasoning_effort
-
-        class SmacxGraphitiClient(OpenAIGenericClient):
-            async def _generate_response(self, messages, response_model=None,
-                                         max_tokens=DEFAULT_MAX_TOKENS,
-                                         model_size=ModelSize.medium):
-                formatted = []
-                for message in messages:
-                    message.content = self._clean_input(message.content)
-                    if message.role in {"user", "system"}:
-                        formatted.append({"role": message.role, "content": message.content})
-                try:
-                    response = await self.client.chat.completions.create(
-                        model=self.model or DEFAULT_MODEL, messages=formatted,
-                        temperature=self.temperature, max_tokens=max_tokens,
-                        response_format=self._build_response_format(response_model),
-                        extra_body=body or None,
-                    )
-                    content = response.choices[0].message.content or ""
-                    if not content:
-                        raise EmptyResponseError("LLM returned an empty response")
-                    return json.loads(self._strip_code_fences(content))
-                except openai.RateLimitError as exc:
-                    raise RateLimitError from exc
-
-        llm_config = LLMConfig(
-            api_key=config.llm_api_key, model=config.llm_model,
-            small_model=config.llm_model, base_url=config.llm_base_url,
-            temperature=temperature, max_tokens=maximum,
-        )
-        structured_output_mode = os.environ.get("SMACX_GRAPHITI_STRUCTURED_OUTPUT_MODE", "json_schema")
-        if structured_output_mode not in {"json_schema", "json_object"}:
-            raise RuntimeError("invalid_graphiti_structured_output_mode")
-        llm_client = SmacxGraphitiClient(
-            config=llm_config, max_tokens=maximum,
-            structured_output_mode=structured_output_mode,
-        )
+        llm_client, llm_config = create_graphiti_llm_client(config)
         if os.environ.get("SMACX_GRAPHITI_DATABASE_PROVIDER", "falkordb") != "falkordb":
             raise RuntimeError("unsupported_graphiti_database_provider")
         client = Graphiti(
@@ -309,7 +330,57 @@ class GraphitiCoreSink:
             max_coroutines=max(1, min(int(os.environ.get("SMACX_GRAPHITI_CONCURRENCY", "2")), 16)),
         )
         await client.build_indices_and_constraints()
-        return cls(client, EpisodeType, clear_data, fingerprint=config.fingerprint)
+        return cls(
+            client, EpisodeType, clear_data, fingerprint=config.fingerprint,
+            llm_client=llm_client, reasoning_effort=config.reasoning_effort,
+        )
+
+    async def probe_extraction(self) -> dict[str, Any]:
+        """Exercise Graphiti's real structured-output path without graph writes."""
+        if self._llm_client is None:
+            raise RuntimeError("graphiti_llm_client_unavailable")
+        from graphiti_core.prompts.models import Message
+        from pydantic import BaseModel
+
+        class ProbeFact(BaseModel):
+            subject: str
+            relationship: str
+            object: str
+
+        started = asyncio.get_running_loop().time()
+        result = await self._llm_client.generate_response(
+            [
+                Message(
+                    role="system",
+                    content=(
+                        "Extract exactly one supplied relationship. Do not infer hidden "
+                        "facts and return only the requested structured object."
+                    ),
+                ),
+                Message(
+                    role="user",
+                    content="Observed public fact: Deirdre has a treaty with Lal.",
+                ),
+            ],
+            response_model=ProbeFact,
+            max_tokens=256,
+            prompt_name="smacx.graphiti.readiness",
+        )
+        structured = isinstance(result, Mapping) and all(
+            isinstance(result.get(key), str) and bool(str(result.get(key)).strip())
+            for key in ("subject", "relationship", "object")
+        )
+        duration = int((asyncio.get_running_loop().time() - started) * 1000)
+        if not structured:
+            raise RuntimeError("graphiti_probe_invalid_structured_output")
+        return {
+            "ok": True,
+            "state": "accepted",
+            "structured_output": True,
+            "reasoning_effort": self.reasoning_effort,
+            "duration_ms": duration,
+            "message": "The active Graphiti adapter returned valid structured JSON.",
+        }
 
     async def add_episode(self, episode: GraphEpisode) -> None:
         # graphiti-core 0.29 treats an explicit UUID as an update target. Seed

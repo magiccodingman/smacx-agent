@@ -207,6 +207,18 @@ public sealed class AdministrationController(
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         if (creating) database.PortalAiProfiles.Add(entity);
         await database.SaveChangesAsync(HttpContext.RequestAborted);
+        try
+        {
+            using var synced = await control.PostRawAsync(
+                "api/v1/graphiti/sync-profile", new { profile = GraphitiProfile(entity) },
+                HttpContext.RequestAborted);
+        }
+        catch (ControlPlaneException exception)
+        {
+            logger.LogWarning(exception,
+                "AI profile {ProfileId} was saved, but its selected Graphiti snapshot could not be refreshed immediately",
+                entity.ProfileId);
+        }
         return ApiResponse<AiProfile>.Success(ToContract(entity));
     }
 
@@ -349,18 +361,14 @@ public sealed class AdministrationController(
             if (item is null || !item.Active)
                 return BadRequest(ApiResponse<JsonElement?>.Failure(
                     "invalid_graphiti_profile", "Choose an active AI profile for Graphiti extraction."));
-            profile = new
-            {
-                profile_id = item.ProfileId,
-                display_name = item.DisplayName,
-                provider_id = item.ProviderId,
-                model_id = item.ModelId,
-                reasoning_effort = item.ReasoningEffort,
-                generation_settings = JsonSerializer.Deserialize<JsonElement>(item.GenerationSettingsJson),
-            };
+            profile = GraphitiProfile(item);
         }
         return await Proxy("api/v1/graphiti", new { enabled = request.Enabled, profile });
     }
+
+    [HttpPost("graphiti/probe")]
+    public Task<ActionResult<ApiResponse<JsonElement?>>> ProbeGraphiti() =>
+        Proxy("api/v1/graphiti/probe", new { });
 
     [HttpPost("embeddings")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> Embeddings(EmbeddingConfigurationRequest request) =>
@@ -370,6 +378,16 @@ public sealed class AdministrationController(
             model_id = request.ModelId, dimensions = request.Dimensions,
             space_id = request.SpaceId,
         }, "configuration");
+
+    private static object GraphitiProfile(PortalAiProfile item) => new
+    {
+        profile_id = item.ProfileId,
+        display_name = item.DisplayName,
+        provider_id = item.ProviderId,
+        model_id = item.ModelId,
+        reasoning_effort = item.ReasoningEffort,
+        generation_settings = JsonSerializer.Deserialize<JsonElement>(item.GenerationSettingsJson),
+    };
 
     [HttpPost("backups")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> Backup(BackupRequest request) =>
