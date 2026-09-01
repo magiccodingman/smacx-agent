@@ -21,7 +21,7 @@ network, mod, provider, or rare native state is certified.
 | Managed Hermes | SMACX-derived/digest-pinned official image, isolated home/conversation, exact SMACX-owned system message, `smacx` only, provider secret volume, restart supervision | contract/secret inspection, captured provider request, and real Qwen run |
 | Match lifecycle | provision, mode-aware three-sample checkpoint, persisted connected-player votes, fair multi-match maintenance, race-safe park/reconfigure/recover, temporary native-AI delegation/reclaim, explicit browser presence states, ten-minute never-connected/all-away park, exit/crash reconciliation | real native 800×600 checkpoint/park/profile-change/recover, unexpected worker exit/reconnect, .NET quorum/cooldown/lease tests |
 | Analytics | scoped history, turn duration, Hermes input/output/cache/reasoning/API counters, CSV, isolated read-only SQL lab | fresh-schema .NET tests and real Hermes telemetry query |
-| Knowledge | automatic runtime-only installed-game and canonical/Wayback acquisition, cleaned Markdown snapshot synchronization, SemanticKnowledge weighted search, one shared local or configurable external embedding space | real 530-document/12-source build with zero warnings, one 2,048-dimension ONNX instance, contained HTTP contract, live portal search/read, and Docker build |
+| Knowledge | automatic runtime-only installed-game and canonical/Wayback acquisition, cleaned Markdown snapshot synchronization, recursive semantic Datalinks routing, Smart weighted search, direct human/agent collection browsing, one shared local or configurable external embedding space | real 420-document/81-active-collection build with zero warnings and no pagination buckets, one 2,048-dimension ONNX instance, contained HTTP/MCP contracts, live portal desktop/mobile search/read, and Docker build |
 | Memory | events, facts, beliefs, relationships, commitments, goals, summaries, compression budgets, chat, scoped recall | contained adversarial scope/compression/retrieval tests and real Qwen writes |
 | Graphiti | optional curated FalkorDB temporal derivative, separate extraction profile, asynchronous ingestion, bounded exact-scope recall, deterministic projection/rebuild/isolation | contracts plus live Qwen extraction → shared ONNX embedding → isolated Falkor graph → semantic recall → exact cleanup |
 | Operations | schedules, immutable runs, worker/MCP/Hermes reconciliation, online/volume backups, offline restore guard | contract tests, native recovery, verified live backup |
@@ -117,10 +117,12 @@ addresses, parser code, and retrieval contracts.
 At runtime, the separate knowledge service reads the operator's mounted game
 files and fetches the explicitly configured factual pages, using the fixed
 archive address when a canonical page is unavailable. On the reference legal
-copy it built 426 private searchable articles in a recursive Datalinks taxonomy
+copy it built 420 private searchable articles in an 81-node recursive Datalinks taxonomy
 after merging parallel technology descriptions, consolidating land/ocean
-terraforming records, and excluding renderer
-templates, with strategy sections excluded and no acquisition warnings. Cleaned content,
+terraforming records, and excluding renderer/index templates. Every active
+collection has game-specific semantic metadata, no leaf exceeds 22 direct
+articles, and no alphabetic or numbered pagination node remains. Strategy
+sections are excluded and the build had no acquisition warnings. Cleaned content,
 source hashes, SemanticKnowledge metadata, and compact vectors remain in the
 private persistent knowledge volume and are not copied into source or images.
 

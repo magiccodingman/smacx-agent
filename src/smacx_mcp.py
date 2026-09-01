@@ -1364,18 +1364,21 @@ def smac_memory(
 @mcp.tool(
     description=(
         "Search or read the local SemanticKnowledge Alien Crossfire mechanics encyclopedia. "
-        "topics lists organized collections; search performs weighted semantic retrieval and returns bounded "
-        "evidence; get reads one selected document. lookup and related turn named mechanics into focused "
+        "topics lists major gameplay domains; tree exposes the recursive semantic collection hierarchy; "
+        "collection_documents lists the directly contained articles of one selected collection; search uses "
+        "Smart semantic collection routing plus weighted hybrid retrieval and returns bounded evidence; get "
+        "reads one selected document. lookup and related turn named mechanics into focused "
         "semantic queries for compatibility. The corpus is built locally from the operator's installed game "
         "and explicit canonical/Wayback sources, contains no hidden match state, excludes strategy-guide "
         "sections, and is not distributed with the project."
     )
 )
 def smac_reference(
-    action: Literal["topics", "search", "get", "lookup", "related"],
+    action: Literal["topics", "tree", "collection_documents", "search", "get", "lookup", "related"],
     query: str = "",
     topic: str = "",
     document_id: str = "",
+    collection_id: str = "",
     entity_kind: str = "",
     entity_key: str = "",
     entities_json: str = "[]",
@@ -1390,7 +1393,7 @@ def smac_reference(
     if not isinstance(entities, list) or len(entities) > 30:
         return {"ok": False, "error": "invalid_reference_entities_json"}
     return read_game_reference(
-        action, query=query, topic=topic, document_id=document_id,
+        action, query=query, topic=topic, document_id=document_id, collection_id=collection_id,
         limit=limit, include_body=include_body, entity_kind=entity_kind,
         entity_key=entity_key, entities=entities, ruleset_id=ruleset_id,
     )

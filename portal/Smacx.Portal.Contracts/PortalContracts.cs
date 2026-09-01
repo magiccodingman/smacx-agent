@@ -310,10 +310,12 @@ public sealed record AnalyticsQueryResult(
     bool Truncated);
 
 public sealed record KnowledgeTopic(string Topic, int DocumentCount);
+public sealed record KnowledgeDocumentLink(string DocumentId, string Title, string Summary);
 public sealed record KnowledgeCollection(
     string Id, string? ParentId, string Title, string Description,
     IReadOnlyList<string> Tags, IReadOnlyList<string> Path,
-    int DirectDocumentCount, int DocumentCount);
+    int DirectDocumentCount, int DocumentCount,
+    IReadOnlyList<KnowledgeDocumentLink>? Documents = null);
 public sealed record KnowledgeHeading(int Level, string Text, string Anchor);
 public sealed record KnowledgeResult(
     string DocumentId, string Topic, string Title, string Summary,

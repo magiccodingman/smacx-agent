@@ -6,6 +6,7 @@ from io import BytesIO
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path
 import re
 import secrets

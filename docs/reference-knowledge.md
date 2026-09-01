@@ -21,8 +21,9 @@ its first enabled run it:
    volume, removes renderer templates, merges each technology's parallel short
    and long records, and consolidates paired land/ocean terraforming text into
    one named factual article;
-5. organizes the corpus into a stable recursive Datalinks taxonomy whose leaf
-   collections remain small enough to browse and route effectively;
+5. organizes the corpus into a stable recursive Datalinks taxonomy whose
+   collection names, descriptions, and tags express actual game concepts—not
+   alphabetic or numbered pagination buckets;
 6. synchronizes collection snapshots through `SemanticKnowledge.NET`, deleting
    documents removed by a successful later snapshot; and
 7. creates compact searchable embeddings without writing acquired content into
@@ -69,8 +70,13 @@ single-vector compatibility facade combines chunks.
 `smac_reference` exposes a small, bounded surface:
 
 - `topics` lists top-level organized collections and descendant counts;
-- `search` uses native FTS5/BM25 plus semantic retrieval and reciprocal-rank
-  fusion, with exact normalized titles and title-token matches preferred;
+- `tree` returns the recursive semantic collection map and can include each
+  collection's direct article links;
+- `collection_documents` browses one collection without flattening its child
+  collections;
+- `search` uses SemanticKnowledge Smart routing, native FTS5/BM25, semantic
+  retrieval, and reciprocal-rank fusion, with exact normalized titles and
+  title-token matches preferred;
 - `get` returns one selected document;
 - `lookup` and `related` translate named-mechanic requests into focused semantic
   searches for compatibility with existing agents.
@@ -78,6 +84,16 @@ single-vector compatibility facade combines chunks.
 Compact search returns ranked titles and descriptions. `include_body=true`
 returns a bounded evidence pack rather than an unbounded corpus dump. Current
 native state and enumerated legal choices always override general rules.
+
+The taxonomy begins with seven recognizable domains: rules and setup; bases
+and economy; diplomacy and society; factions and leaders; Planet and
+terraforming; research and technology; and units and combat. Deeper nodes use
+gameplay meaning such as citizens and drone control, Council politics, resource
+terraforming, defensive abilities, or Discover-oriented technologies. A
+collection is both a visible folder and SemanticKnowledge routing signal: its
+title, purpose-built description, and tags help Smart search decide which
+subtree to inspect. This is why the corpus never uses `A–C`, `Part 2`, or other
+presentation-only labels.
 
 The system prompt requires every managed player to read and acknowledge the
 match briefing before mutating a game. That briefing carries actual victory
@@ -89,8 +105,11 @@ policy so static mechanics knowledge cannot make the agent assume defaults.
 The portal exposes the same private corpus through one reusable responsive
 reader. It is available as **Datalinks Wiki** in normal navigation and as a
 compact **Wiki** tab in the managed in-game control center. The full reader has
-a recursive contents tree, breadcrumbs, an article outline, and hybrid search;
-tablet/mobile and in-game layouts collapse navigation without creating a
+a recursive contents tree containing both semantic folders and direct article
+links, breadcrumbs, an article outline, and hybrid search. Selecting an article
+opens that article immediately. Selecting a folder shows its meaningful
+description and child domains rather than a second index of the same pages.
+Tablet/mobile and in-game layouts collapse navigation without creating a
 second implementation.
 
 Markdown is parsed on the portal server with Markdig, raw source HTML is
@@ -98,6 +117,12 @@ disabled, and the generated HTML is sanitized before the WebAssembly client
 receives it. Human search queries use the embedding tokenizer and are capped at
 512 model tokens. Selecting a result closes search, expands its ancestor
 collections, and opens the exact article.
+
+The SemanticKnowledge database is a rebuildable private projection. A taxonomy
+revision deliberately recreates that projection before publishing the new
+snapshot so removed routing nodes cannot continue influencing retrieval.
+Operator accounts, matches, saves, analytics, and memory live elsewhere and
+are not migrated or reset by this process.
 
 ## Copyright boundary
 

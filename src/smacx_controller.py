@@ -901,15 +901,17 @@ def read_platform_memory(
 
 
 def read_game_reference(action: str, *, query: str = "", topic: str = "",
-                        document_id: str = "", limit: int = 8,
-                        include_body: bool = False, entity_kind: str = "",
+                        document_id: str = "", collection_id: str = "", limit: int = 8,
+                        include_body: bool = False, include_documents: bool = False,
+                        entity_kind: str = "",
                         entity_key: str = "", entities: list[dict[str, str]] | None = None,
                         ruleset_id: str = "smacx") -> dict[str, Any]:
     """Read global mechanics knowledge; it contains no match-hidden state."""
     try:
         return read_reference_store(
             _store(), action, query=query, topic=topic, document_id=document_id,
-            limit=limit, include_body=include_body,
+            collection_id=collection_id, limit=limit, include_body=include_body,
+            include_documents=include_documents,
             private_prefix=(f"private.{GAME_SOURCE_ID}." if GAME_SOURCE_ID else None),
             entity_kind=entity_kind, entity_key=entity_key, entities=entities,
             ruleset_id=ruleset_id,

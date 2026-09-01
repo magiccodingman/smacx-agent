@@ -46,13 +46,17 @@ public sealed class KnowledgeContractTests
               "id":"leaf-id","parent_id":"parent-id","title":"Facilities",
               "description":"Base facilities","tags":["smacx","rules"],
               "path":["Datalinks","Bases and economy","Facilities"],
-              "direct_document_count":18,"document_count":18
+              "direct_document_count":18,"document_count":18,
+              "documents":[{"document_id":"doc-1","title":"Network Node","description":"A research facility."}]
             }
             """);
         var collection = KnowledgeController.MapCollection(json.RootElement);
         Assert.Equal("parent-id", collection.ParentId);
         Assert.Equal(["Datalinks", "Bases and economy", "Facilities"], collection.Path);
         Assert.Equal(18, collection.DirectDocumentCount);
+        var document = Assert.Single(collection.Documents!);
+        Assert.Equal("doc-1", document.DocumentId);
+        Assert.Equal("Network Node", document.Title);
     }
 
     [Fact]
