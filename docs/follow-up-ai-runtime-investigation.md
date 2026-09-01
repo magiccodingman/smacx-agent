@@ -13,7 +13,10 @@ performance changes are measured rather than guessed.
 - Why did an ordinary turn require roughly 20 model calls, and which calls can
   be combined without weakening fresh-state mutation guards?
 - What were the six malformed tool calls: model argument mistakes, adapter
-  translation failures, or stale tool definitions?
+  translation failures, or stale tool definitions? The preserved calls and a
+  direct provider-only reproduction are now documented in
+  [provider-tool-call-forensics.md](provider-tool-call-forensics.md). The
+  provider wire flattens nested deferred-tool arguments before Hermes.
 - Why did Hermes compression take roughly 251–278 seconds per agent?
 - How effective was provider prefix caching, and did concurrent agents contend?
 
