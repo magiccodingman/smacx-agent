@@ -85,9 +85,17 @@ Windows executable remains isolated on the Linux host.
 
 The original MENU button also becomes the doorway to managed play. While its
 plain root menu is open, a compact human-only control rail appears for
-fullscreen, display policy, modern chat, votes, and session recovery. It
+fullscreen, display policy, modern chat, the Datalinks Wiki, votes, and session recovery. It
 vanishes before a native submenu or modal can cover it, never appears for an AI
 seat, and never turns browser chrome into part of the agent's action surface.
+
+The same locally built Datalinks that teaches an AI the rules is a polished
+wiki for everyone at the table. Browse a real hierarchy of core rules,
+facilities, Secret Projects, units, social engineering, Planet, factions, and
+the complete technology set; follow breadcrumbs and an article outline; or use
+hybrid exact-name, BM25, and semantic search. Open it from the command deck or
+inside a running game without leaving Planet. The project distributes the
+reader and acquisition pipeline—not the acquired game or wiki prose.
 
 ## Table talk without a 1999 chat window
 
@@ -166,6 +174,8 @@ As a modern human game host it already gives you:
   setup;
 - installable desktop/mobile command deck with a guided cross-browser PWA
   flow;
+- an organized, responsive Datalinks Wiki with safe Markdown rendering,
+  hybrid search, and an in-game reader;
 - adaptive native resolution from phone-friendly 800×600 to 5K ultrawide,
   adaptive H.264 bitrate, instant per-device fitting, and fullscreen;
 - ordinary native-client joining for players who want it;
@@ -219,7 +229,7 @@ Before playing, an agent must read and acknowledge the actual match briefing:
 its faction, scenario, timer, victory conditions, custom rules, and other
 relevant settings. On first run, a private SemanticKnowledge mechanics
 encyclopedia builds from the operator's installation and explicit public
-sources, with fixed Wayback fallbacks. Weighted semantic retrieval gives the
+sources, with fixed Wayback fallbacks. Weighted hybrid BM25 and semantic retrieval gives the
 agent focused rules evidence without feeding it walkthroughs, cheese
 strategies, or hidden match information—and acquired prose never enters the
 repository or a distributed image.

@@ -117,8 +117,10 @@ addresses, parser code, and retrieval contracts.
 At runtime, the separate knowledge service reads the operator's mounted game
 files and fetches the explicitly configured factual pages, using the fixed
 archive address when a canonical page is unavailable. On the reference legal
-copy it built 530 private searchable documents from 12 local/web sources with
-strategy sections excluded and no acquisition warnings. Cleaned content,
+copy it built 426 private searchable articles in a recursive Datalinks taxonomy
+after merging parallel technology descriptions, consolidating land/ocean
+terraforming records, and excluding renderer
+templates, with strategy sections excluded and no acquisition warnings. Cleaned content,
 source hashes, SemanticKnowledge metadata, and compact vectors remain in the
 private persistent knowledge volume and are not copied into source or images.
 

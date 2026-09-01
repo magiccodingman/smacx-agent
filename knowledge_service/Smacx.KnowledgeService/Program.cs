@@ -17,7 +17,7 @@ var enabled = embeddingConfiguration.Mode != "disabled";
 
 builder.Services.AddSingleton(new KnowledgeRuntimeOptions(
     dataRoot, sourceManifest, gameRoot, controlRoot, enabled, environmentEnabled,
-    ParserRevision: "smacx-clean-markdown-v6",
+    ParserRevision: "smacx-hierarchical-datalinks-v13",
     RefreshInterval: TimeSpan.FromHours(24)));
 builder.Services.AddSingleton(embeddingConfiguration);
 builder.Services.AddHttpClient("wiki", client =>
@@ -128,6 +128,17 @@ app.MapPost("/api/refresh", async (KnowledgeCorpus corpus, CancellationToken can
 app.MapGet("/api/topics", async (KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
     Results.Ok(new { topics = await corpus.TopicsAsync(cancellationToken) }));
 
+app.MapGet("/api/tree", async (KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
+    Results.Ok(new { collections = await corpus.TreeAsync(cancellationToken) }));
+
+app.MapGet("/api/collections/{collectionId:guid}/documents", async (
+    Guid collectionId, KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
+{
+    var documents = await corpus.CollectionDocumentsAsync(collectionId, cancellationToken);
+    return documents is null ? Results.NotFound(new { error = "collection_not_found" })
+        : Results.Ok(new { documents });
+});
+
 app.MapPost("/api/search", async (KnowledgeSearchApiRequest request, KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
 {
     if (string.IsNullOrWhiteSpace(request.Query)) return Results.BadRequest(new { error = "query_required" });
@@ -181,6 +192,6 @@ namespace Smacx.KnowledgeService
         string ParserRevision, TimeSpan RefreshInterval);
     public sealed record KnowledgeSearchApiRequest(
         string Query, string? Topic = null, int Top = 8, int MaxContentTokens = 8_000,
-        bool IncludeContent = true);
+        bool IncludeContent = true, int MaxQueryTokens = 1_024);
     public sealed record OpenAiEmbeddingRequest(string? Model, System.Text.Json.JsonElement Input);
 }

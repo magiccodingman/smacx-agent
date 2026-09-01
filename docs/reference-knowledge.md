@@ -18,10 +18,14 @@ its first enabled run it:
    markers, and sections labelled as strategies, walkthroughs, tips, cheats,
    exploits, recommendations, or opening moves;
 4. converts useful headings and body content to clean Markdown in a private
-   volume;
-5. synchronizes topical snapshots through `SemanticKnowledge.NET`, deleting
+   volume, removes renderer templates, merges each technology's parallel short
+   and long records, and consolidates paired land/ocean terraforming text into
+   one named factual article;
+5. organizes the corpus into a stable recursive Datalinks taxonomy whose leaf
+   collections remain small enough to browse and route effectively;
+6. synchronizes collection snapshots through `SemanticKnowledge.NET`, deleting
    documents removed by a successful later snapshot; and
-6. creates compact searchable embeddings without writing acquired content into
+7. creates compact searchable embeddings without writing acquired content into
    the repository or an image.
 
 A parser revision, source-manifest change, successful daily source refresh, or
@@ -34,6 +38,9 @@ The built-in first build can take several minutes because it downloads and
 initializes the ONNX model and embeds the complete local rules set. Model files,
 cleaned content, SQLite metadata, and vectors persist in the
 `smacx-knowledge-data` Docker volume; subsequent starts normally reuse them.
+The model is downloaded into that runtime cache, never baked into a distributed
+image, and is fetched again only for an empty cache or a changed selected model
+artifact—not on every container restart.
 
 ## One embedding runtime
 
@@ -61,8 +68,9 @@ single-vector compatibility facade combines chunks.
 
 `smac_reference` exposes a small, bounded surface:
 
-- `topics` lists organized collections and document counts;
-- `search` uses weighted semantic routing and retrieval;
+- `topics` lists top-level organized collections and descendant counts;
+- `search` uses native FTS5/BM25 plus semantic retrieval and reciprocal-rank
+  fusion, with exact normalized titles and title-token matches preferred;
 - `get` returns one selected document;
 - `lookup` and `related` translate named-mechanic requests into focused semantic
   searches for compatibility with existing agents.
@@ -75,6 +83,21 @@ The system prompt requires every managed player to read and acknowledge the
 match briefing before mutating a game. That briefing carries actual victory
 conditions, non-default rules, scenario restrictions, faction, clock, and host
 policy so static mechanics knowledge cannot make the agent assume defaults.
+
+## Human Datalinks Wiki
+
+The portal exposes the same private corpus through one reusable responsive
+reader. It is available as **Datalinks Wiki** in normal navigation and as a
+compact **Wiki** tab in the managed in-game control center. The full reader has
+a recursive contents tree, breadcrumbs, an article outline, and hybrid search;
+tablet/mobile and in-game layouts collapse navigation without creating a
+second implementation.
+
+Markdown is parsed on the portal server with Markdig, raw source HTML is
+disabled, and the generated HTML is sanitized before the WebAssembly client
+receives it. Human search queries use the embedding tokenizer and are capped at
+512 model tokens. Selecting a result closes search, expands its ancestor
+collections, and opens the exact article.
 
 ## Copyright boundary
 
@@ -93,7 +116,8 @@ disabled embeddings and select Graphiti's independent extraction profile.
 Useful contained checks:
 
 ```bash
-dotnet build knowledge_service/Smacx.KnowledgeService/Smacx.KnowledgeService.csproj -c Release
+dotnet test knowledge_service/Smacx.KnowledgeService.Tests/Smacx.KnowledgeService.Tests.csproj
+dotnet test portal/Smacx.Portal.Tests/Smacx.Portal.Tests.csproj
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 docker compose build knowledge-service
 ```

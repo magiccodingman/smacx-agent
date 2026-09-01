@@ -62,7 +62,8 @@ retrieval without downloading or committing source content:
 
 ```bash
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
-dotnet build knowledge_service/Smacx.KnowledgeService/Smacx.KnowledgeService.csproj -c Release
+dotnet test knowledge_service/Smacx.KnowledgeService.Tests/Smacx.KnowledgeService.Tests.csproj
+dotnet test portal/Smacx.Portal.Tests/Smacx.Portal.Tests.csproj
 docker compose build knowledge-service
 ```
 
@@ -72,12 +73,16 @@ snapshot synchronization, sub-second steady semantic search, and no acquired
 content in the image/repository. Source files and cleaned pages remain in the
 private `smacx-knowledge-data` volume.
 
-The 2026-08-31 reference run synchronized 530 documents from 12 sources into
-seven topical collections with no source warnings. It reported exactly one
-local ONNX model instance, 2,048 dimensions, and successful public portal
-topic/search/document flows at a 390×844 viewport. A parser-revision refresh
-updated Windows-1252 punctuation and removed native `$LINK`, brace, and caret
-renderer tokens without distributing the resulting content.
+The 2026-08-31 hierarchical reference run synchronized 426 factual documents
+from the available installed-game and configured web sources with no source
+warnings. It merged 86 duplicate short/long technology pairs, consolidated
+paired land/ocean terraforming records into named articles, removed native
+renderer templates, kept every leaf at 24 documents or fewer, and retired all
+530 documents from the earlier flat snapshot. It reported exactly one local
+ONNX model instance and 2,048 dimensions. Portal tests cover hierarchy mapping,
+sanitized Markdig output, tables, heading outlines, and the reusable compact
+reader integration. Live browser checks cover desktop/mobile navigation,
+result-to-tree expansion, and exact-title/natural-language hybrid searches.
 
 The optional Graphiti live contract used the configured Qwen endpoint and the
 same internal embedding facade to extract and recall one synthetic treaty fact

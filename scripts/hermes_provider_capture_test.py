@@ -152,7 +152,7 @@ def main() -> int:
                     "min_p": 0.0, "presence_penalty": 0.0,
                     "repetition_penalty": 1.0,
                     "chat_template_kwargs": {
-                        "enable_thinking": True, "preserve_thinking": True,
+                        "enable_thinking": True, "preserve_thinking": False,
                     },
                 }
                 for key, expected in expected_generation.items():

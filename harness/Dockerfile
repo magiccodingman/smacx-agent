@@ -3,7 +3,7 @@
 # Hermes supplies the long-running conversation/compression engine.  SMACX
 # owns the complete provider-facing system prompt through a narrow, audited
 # hook installed over this immutable upstream base.
-FROM docker.io/nousresearch/hermes-agent:v2026.8.27@sha256:5f23552e16589d291099cd8041233e6200197d225e4b28b22a0463e732d4b843
+FROM docker.io/nousresearch/hermes-agent:v2026.8.31@sha256:64923faeae267792bf9bf87fe3b4c4869e35004e360c7df01730ad801b74d524
 
 USER root
 COPY harness/smacx_strict_prompt.py /opt/smacx-strict-prompt/smacx_strict_prompt.py

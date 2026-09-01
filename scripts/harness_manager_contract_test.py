@@ -195,7 +195,7 @@ def main() -> int:
     if HERMES_IMAGE != "smacx-agent-harness:dev":
         raise AssertionError("managed harness did not select the SMACX-owned derived image")
     dockerfile = Path(__file__).resolve().parents[1] / "harness" / "Dockerfile"
-    if "nousresearch/hermes-agent:v2026.8.27@sha256:" not in dockerfile.read_text(encoding="utf-8"):
+    if "nousresearch/hermes-agent:v2026.8.31@sha256:" not in dockerfile.read_text(encoding="utf-8"):
         raise AssertionError("derived harness parent is not digest pinned")
     print(json.dumps({
         "event": "pass",
