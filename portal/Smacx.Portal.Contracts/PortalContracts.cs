@@ -326,6 +326,33 @@ public sealed record AnalyticsQueryResult(
     IReadOnlyList<string> Columns, IReadOnlyList<IReadOnlyList<object?>> Rows,
     bool Truncated);
 
+public sealed record EmbeddingAuditSummary(
+    bool Enabled, EmbeddingAuditConfiguration Configuration,
+    IReadOnlyList<EmbeddingPurposeAudit> Purposes,
+    IReadOnlyList<EmbeddingAuditBucket> RecentBuckets,
+    IReadOnlyList<EmbeddingQualityAudit> QualityAudits,
+    EmbeddingAuditPrivacy Privacy);
+public sealed record EmbeddingAuditConfiguration(
+    string Mode, string ModelId, string SpaceId, int Dimensions, int SharedModelInstances);
+public sealed record EmbeddingPurposeAudit(
+    string Purpose, string Mode, string ModelId, string SpaceId, int Dimensions,
+    string TokenCountKind, long Calls, long Inputs, long InputTokens,
+    long Vectors, long Chunks, double DurationMilliseconds, long Errors,
+    double MinimumDurationMilliseconds, double MaximumDurationMilliseconds,
+    double AverageDurationMilliseconds, double EffectiveTokensPerSecond);
+public sealed record EmbeddingAuditBucket(
+    DateTimeOffset Bucket, string Purpose, long Calls, long InputTokens,
+    double DurationMilliseconds, long Errors);
+public sealed record EmbeddingQualityAudit(
+    string AuditId, DateTimeOffset CreatedAt, string Mode, string ModelId,
+    string SpaceId, int Dimensions, bool Passed, double RelatedSimilarity,
+    double UnrelatedSimilarity, double SemanticMargin, double RepeatSimilarity,
+    double VectorNorm, double DurationMilliseconds, long InputTokens,
+    string TokenCountKind, string SearchTopTitle,
+    IReadOnlyDictionary<string, bool> Checks, string ErrorCode);
+public sealed record EmbeddingAuditPrivacy(
+    bool InputTextRetained, bool VectorsRetained, bool CredentialsRetained);
+
 public sealed record KnowledgeTopic(string Topic, int DocumentCount);
 public sealed record KnowledgeDocumentLink(string DocumentId, string Title, string Summary);
 public sealed record KnowledgeCollection(

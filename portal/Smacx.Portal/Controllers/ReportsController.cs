@@ -8,13 +8,15 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Smacx.Portal.Contracts;
 using Smacx.Portal.Data;
+using Smacx.Portal.Services;
 
 namespace Smacx.Portal.Controllers;
 
 [ApiController]
 [Route("api/reports")]
 [Authorize]
-public sealed partial class ReportsController(ApplicationDbContext database) : ControllerBase
+public sealed partial class ReportsController(
+    ApplicationDbContext database, ControlPlaneClient control) : ControllerBase
 {
     [HttpGet("history")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<MatchHistoryItem>>>> History()
@@ -168,6 +170,45 @@ public sealed partial class ReportsController(ApplicationDbContext database) : C
         return File(Encoding.UTF8.GetBytes(text.ToString()), "text/csv", "smacx-analytics.csv");
     }
 
+    [HttpGet("embedding-audit")]
+    public async Task<ActionResult<ApiResponse<EmbeddingAuditSummary>>> EmbeddingAudit()
+    {
+        try
+        {
+            using var document = await control.GetRawAsync(
+                "api/v1/reference/audit", HttpContext.RequestAborted);
+            var root = document.RootElement;
+            if (root.TryGetProperty("error", out var error))
+                return StatusCode(503, ApiResponse<EmbeddingAuditSummary>.Failure(
+                    error.GetString() ?? "embedding_audit_unavailable",
+                    "Embedding telemetry is temporarily unavailable."));
+            var configuration = root.GetProperty("configuration");
+            var purposes = root.GetProperty("purposes").EnumerateArray()
+                .Select(MapEmbeddingPurpose).ToArray();
+            var buckets = root.GetProperty("recent_buckets").EnumerateArray()
+                .Select(item => new EmbeddingAuditBucket(
+                    DateTimeOffset.FromUnixTimeSeconds(item.GetProperty("bucket_unix").GetInt64()),
+                    Text(item, "purpose"), Number(item, "calls"), Number(item, "input_tokens"),
+                    Decimal(item, "duration_ms"), Number(item, "errors"))).ToArray();
+            var quality = root.GetProperty("quality_audits").EnumerateArray()
+                .Select(MapEmbeddingQuality).ToArray();
+            var privacy = root.GetProperty("privacy");
+            return ApiResponse<EmbeddingAuditSummary>.Success(new(
+                root.GetProperty("enabled").GetBoolean(),
+                new(Text(configuration, "mode"), Text(configuration, "model_id"),
+                    Text(configuration, "space_id"), Integer(configuration, "dimensions"),
+                    Integer(configuration, "shared_model_instances")),
+                purposes, buckets, quality,
+                new(Bool(privacy, "input_text_retained"), Bool(privacy, "vectors_retained"),
+                    Bool(privacy, "credentials_retained"))));
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<EmbeddingAuditSummary>.Failure(exception.Code, exception.Message));
+        }
+    }
+
     [HttpPost("query")]
     [Authorize(Roles = "Administrator")]
     public async Task<ActionResult<ApiResponse<AnalyticsQueryResult>>> Query(AnalyticsQueryRequest request)
@@ -205,6 +246,35 @@ public sealed partial class ReportsController(ApplicationDbContext database) : C
         return ordered.Length%2==0?(ordered[middle-1]+ordered[middle])/2:ordered[middle];
     }
     private static string Csv(string value)=>$"\"{value.Replace("\"","\"\"")}\"";
+    private static EmbeddingPurposeAudit MapEmbeddingPurpose(JsonElement item) => new(
+        Text(item, "purpose"), Text(item, "mode"), Text(item, "model_id"),
+        Text(item, "space_id"), Integer(item, "dimensions"), Text(item, "token_count_kind"),
+        Number(item, "calls"), Number(item, "inputs"), Number(item, "input_tokens"),
+        Number(item, "vectors"), Number(item, "chunks"), Decimal(item, "duration_ms"),
+        Number(item, "errors"), Decimal(item, "min_duration_ms"),
+        Decimal(item, "max_duration_ms"), Decimal(item, "average_duration_ms"),
+        Decimal(item, "effective_tokens_per_second"));
+    private static EmbeddingQualityAudit MapEmbeddingQuality(JsonElement item)
+    {
+        var checks = item.GetProperty("checks").EnumerateObject()
+            .ToDictionary(property => property.Name, property => property.Value.GetBoolean(),
+                StringComparer.Ordinal);
+        return new(
+            Text(item, "audit_id"),
+            DateTimeOffset.FromUnixTimeMilliseconds((long)(Decimal(item, "created_unix") * 1000)),
+            Text(item, "mode"), Text(item, "model_id"), Text(item, "space_id"),
+            Integer(item, "dimensions"), Bool(item, "passed"),
+            Decimal(item, "related_similarity"), Decimal(item, "unrelated_similarity"),
+            Decimal(item, "semantic_margin"), Decimal(item, "repeat_similarity"),
+            Decimal(item, "vector_norm"), Decimal(item, "duration_ms"),
+            Number(item, "input_tokens"), Text(item, "token_count_kind"),
+            Text(item, "search_top_title"), checks, Text(item, "error_code"));
+    }
+    private static string Text(JsonElement item,string name)=>item.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.String?value.GetString()??"":"";
+    private static int Integer(JsonElement item,string name)=>item.TryGetProperty(name,out var value)&&value.TryGetInt32(out var number)?number:0;
+    private static long Number(JsonElement item,string name)=>item.TryGetProperty(name,out var value)&&value.TryGetInt64(out var number)?number:0;
+    private static double Decimal(JsonElement item,string name)=>item.TryGetProperty(name,out var value)&&value.TryGetDouble(out var number)?number:0;
+    private static bool Bool(JsonElement item,string name)=>item.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.True;
     private static string GenerationPreset(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return "provider-default";

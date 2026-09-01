@@ -509,6 +509,13 @@ also receive a constrained read-only SQL lab over an isolated in-memory copy
 containing only `matches`, `turn_metrics`, `ai_profiles`, and `ai_outcomes`; identity and
 secret tables are never attached.
 
+The same page includes a separate embedding observatory for the private rules
+encyclopedia and optional Graphiti memory. Purpose rows distinguish initial
+wiki construction, refresh, search, memory projection, memory recall, and the
+semantic quality canary. Counts, latency, effective throughput, error totals,
+model/dimensions, and the embedding-space fingerprint are retained; source
+text, vectors, credentials, chat, and model reasoning are explicitly not.
+
 ## 12. Graphiti
 
 SQLite remains authoritative. Graphiti is an optional derived temporal

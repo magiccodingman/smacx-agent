@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using OnnxTextEmbeddings;
 
@@ -101,49 +102,108 @@ public sealed class EmbeddingConfigurationMonitor(
 public sealed class GraphEmbeddingFacade(
     EmbeddingRuntimeConfiguration configuration,
     IServiceProvider services,
-    IHttpClientFactory clients)
+    IHttpClientFactory clients,
+    EmbeddingAuditStore audit,
+    ILogger<GraphEmbeddingFacade> logger)
 {
-    public async Task<(IReadOnlyList<float[]> Vectors, int Tokens)> EmbedAsync(
-        IReadOnlyList<string> inputs, CancellationToken cancellationToken)
+    public async Task<EmbeddingGenerationResult> EmbedAsync(
+        IReadOnlyList<string> inputs, CancellationToken cancellationToken,
+        string purpose = "graphiti_projection")
     {
-        if (configuration.Mode == "local")
+        var started = Stopwatch.GetTimestamp();
+        var modelId = configuration.ModelId ?? "external";
+        var spaceId = configuration.SpaceId ?? "";
+        var dimensions = configuration.Dimensions;
+        var tokens = 0;
+        var chunks = 0;
+        var tokenKind = "character_estimate";
+        try
         {
-            var embedding = services.GetRequiredService<OnnxTextEmbeddings.ITextEmbeddingService>();
-            var output = new List<float[]>(inputs.Count); var tokens = 0;
-            foreach (var input in inputs)
+            if (configuration.Mode == "local")
             {
-                var chunks = await embedding.EmbedDocumentAsync(input, new OnnxTextEmbeddings.EmbeddingRequestOptions
+                var embedding = services.GetRequiredService<OnnxTextEmbeddings.ITextEmbeddingService>();
+                var modelInfo = embedding.ModelInfo;
+                modelId = modelInfo?.ModelId ?? "smacx-local-embeddings";
+                spaceId = modelInfo?.EmbeddingSpaceFingerprint ?? "local-onnx";
+                dimensions = modelInfo?.Dimensions ?? 0;
+                tokenKind = "local_tokenizer";
+                var output = new List<float[]>(inputs.Count);
+                foreach (var input in inputs)
                 {
-                    MaxTokens = 768,
-                    VectorFormat = OnnxTextEmbeddings.EmbeddingVectorFormat.Float32,
-                }, cancellationToken);
-                var combined = chunks.CombineToSingle(new OnnxTextEmbeddings.SingleEmbeddingOptions
-                {
-                    OutputFormat = OnnxTextEmbeddings.EmbeddingVectorFormat.Float32,
-                });
-                output.Add(combined.Vector.ToFloat32()); tokens += combined.SourceTokenCount;
+                    var embedded = await embedding.EmbedDocumentAsync(input, new OnnxTextEmbeddings.EmbeddingRequestOptions
+                    {
+                        MaxTokens = 768,
+                        VectorFormat = OnnxTextEmbeddings.EmbeddingVectorFormat.Float32,
+                    }, cancellationToken);
+                    var combined = embedded.CombineToSingle(new OnnxTextEmbeddings.SingleEmbeddingOptions
+                    {
+                        OutputFormat = OnnxTextEmbeddings.EmbeddingVectorFormat.Float32,
+                    });
+                    output.Add(combined.Vector.ToFloat32());
+                    tokens += combined.SourceTokenCount;
+                    chunks += embedded.Count;
+                }
+                var result = new EmbeddingGenerationResult(output, tokens, tokenKind, chunks);
+                await RecordAsync(true, null, result);
+                return result;
             }
-            return (output, tokens);
+
+            var client = clients.CreateClient("external-embeddings");
+            using var request = new HttpRequestMessage(HttpMethod.Post, configuration.BaseUrl + "/embeddings")
+            {
+                Content = JsonContent.Create(new { model = configuration.ModelId, input = inputs }),
+            };
+            if (configuration.ApiKey is not null)
+                request.Headers.Authorization = new("Bearer", configuration.ApiKey);
+            using var response = await client.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+            var vectors = document.RootElement.GetProperty("data").EnumerateArray()
+                .OrderBy(item => item.GetProperty("index").GetInt32())
+                .Select(item => item.GetProperty("embedding").EnumerateArray().Select(value => value.GetSingle()).ToArray())
+                .ToArray();
+            if (vectors.Length != inputs.Count || vectors.Any(vector => vector.Length != configuration.Dimensions))
+                throw new InvalidOperationException("External embedding response has the wrong shape.");
+            if (document.RootElement.TryGetProperty("usage", out var usage) &&
+                usage.TryGetProperty("prompt_tokens", out var promptTokens))
+            {
+                tokens = promptTokens.GetInt32();
+                tokenKind = "provider_reported";
+            }
+            else tokens = inputs.Sum(input => Math.Max(1, (input.Length + 3) / 4));
+            chunks = inputs.Count;
+            var external = new EmbeddingGenerationResult(vectors, tokens, tokenKind, chunks);
+            await RecordAsync(true, null, external);
+            return external;
         }
-        var client = clients.CreateClient("external-embeddings");
-        using var request = new HttpRequestMessage(HttpMethod.Post, configuration.BaseUrl + "/embeddings")
+        catch (Exception exception)
         {
-            Content = JsonContent.Create(new { model = configuration.ModelId, input = inputs }),
-        };
-        if (configuration.ApiKey is not null)
-            request.Headers.Authorization = new("Bearer", configuration.ApiKey);
-        using var response = await client.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-        var vectors = document.RootElement.GetProperty("data").EnumerateArray()
-            .OrderBy(item => item.GetProperty("index").GetInt32())
-            .Select(item => item.GetProperty("embedding").EnumerateArray().Select(value => value.GetSingle()).ToArray())
-            .ToArray();
-        if (vectors.Length != inputs.Count || vectors.Any(vector => vector.Length != configuration.Dimensions))
-            throw new InvalidOperationException("External embedding response has the wrong shape.");
-        var externalTokens = document.RootElement.TryGetProperty("usage", out var usage) &&
-            usage.TryGetProperty("prompt_tokens", out var promptTokens) ? promptTokens.GetInt32() :
-            inputs.Sum(input => Math.Max(1, (input.Length + 3) / 4));
-        return (vectors, externalTokens);
+            await RecordAsync(false, exception.GetType().Name,
+                new([], tokens, tokenKind, chunks));
+            throw;
+        }
+
+        async Task RecordAsync(
+            bool success, string? error, EmbeddingGenerationResult generated)
+        {
+            try
+            {
+                await audit.RecordAsync(new(
+                    purpose, configuration.Mode, modelId, spaceId, dimensions,
+                    generated.TokenCountKind, success, 1, inputs.Count,
+                    generated.Tokens, generated.Vectors.Count, generated.Chunks,
+                    Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                    ErrorCode: error), CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                // Observability must never become a dependency of gameplay or
+                // memory recall. A later operation can recreate the audit DB.
+                logger.LogWarning(exception, "Embedding audit write failed for {Purpose}", purpose);
+            }
+        }
     }
 }
+
+public sealed record EmbeddingGenerationResult(
+    IReadOnlyList<float[]> Vectors, int Tokens, string TokenCountKind, int Chunks);

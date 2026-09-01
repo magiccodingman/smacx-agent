@@ -64,6 +64,12 @@ Provider keys stay in the Control Center vault. The projector reads its selected
 profile and secret from the read-only control volume; endpoint metadata and keys
 are no longer duplicated in Compose environment variables.
 
+Both local and external embedding requests pass through the private knowledge
+facade. The projector tags each call as `graphiti_projection` or
+`graphiti_recall`; the tag is allowlisted by the service and appears only in
+content-free hourly telemetry. External credentials remain owned by the facade,
+and an audit failure never changes Graphiti's fail-open behavior.
+
 ## Start the optional backend
 
 Run:

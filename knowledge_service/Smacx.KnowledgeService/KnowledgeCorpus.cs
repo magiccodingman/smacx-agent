@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -22,6 +23,8 @@ public sealed class KnowledgeCorpus(
     KnowledgeRuntimeOptions options,
     IHttpClientFactory httpFactory,
     IServiceProvider services,
+    EmbeddingRuntimeConfiguration embeddingConfiguration,
+    EmbeddingAuditStore embeddingAudit,
     ILogger<KnowledgeCorpus> logger)
 {
     private readonly SemaphoreSlim refreshLock = new(1, 1);
@@ -33,6 +36,14 @@ public sealed class KnowledgeCorpus(
     public async Task<CorpusStatus> RefreshAsync(bool force, CancellationToken cancellationToken)
     {
         await refreshLock.WaitAsync(cancellationToken);
+        var auditStarted = Stopwatch.GetTimestamp();
+        string? auditError = null;
+        var auditPurpose = "wiki_refresh";
+        var auditRelevant = false;
+        var auditInputs = 0;
+        var auditTokens = 0L;
+        var auditTokenKind = embeddingConfiguration.Mode == "local"
+            ? "local_tokenizer_source" : "character_estimate";
         try
         {
             var statePath = Path.Combine(options.DataRoot, "corpus-state.json");
@@ -48,9 +59,12 @@ public sealed class KnowledgeCorpus(
             }
 
             status = status with { State = "refreshing", LastError = null };
+            auditRelevant = true;
             await InitializeAsync(cancellationToken);
             var acquisition = await AcquireAsync(manifestBytes, cancellationToken);
             var pages = CorpusOrganization.Organize(acquisition.Pages, options.ParserRevision);
+            auditPurpose = previous is null || previous.Status.Documents == 0
+                ? "wiki_initial_build" : "wiki_refresh";
             var grouped = pages.GroupBy(page => string.Join('/', page.CollectionPath!), StringComparer.OrdinalIgnoreCase).ToArray();
             var inserted = 0; var updated = 0; var unchanged = 0; var deleted = 0;
             foreach (var group in grouped)
@@ -89,25 +103,53 @@ public sealed class KnowledgeCorpus(
             status = new("ready", pages.Select(page => page.Source).Distinct().Count(), pages.Count,
                 inserted, updated, unchanged, deleted, corpusRevision, refreshed,
                 SourceWarnings: acquisition.Warnings);
-            await WriteStateAsync(statePath, new StoredState(options.ParserRevision, manifestHash, refreshed, status), cancellationToken);
+            auditInputs = inserted + updated;
+            if (auditInputs > 0)
+            {
+                var changed = previous?.DocumentHashes is { Count: > 0 }
+                    ? pages.Where(page => !previous.DocumentHashes.TryGetValue(page.ExternalId, out var prior) || prior != page.Hash).ToArray()
+                    : pages.ToArray();
+                // Snapshot synchronization is authoritative about how many
+                // documents were actually embedded. A legacy state file may
+                // not yet contain hashes, so do not report unchanged content.
+                auditTokens = await CountSourceTokensAsync(
+                    changed.Take(auditInputs), cancellationToken);
+            }
+            await WriteStateAsync(statePath, new StoredState(
+                options.ParserRevision, manifestHash, refreshed, status,
+                pages.ToDictionary(page => page.ExternalId, page => page.Hash, StringComparer.Ordinal)),
+                cancellationToken);
             return status;
         }
         catch (Exception exception)
         {
+            auditError = exception.GetType().Name;
             logger.LogError(exception, "Knowledge corpus refresh failed; the last published snapshot remains active");
             status = status with { State = "degraded", LastError = $"{exception.GetType().Name}: {exception.Message}" };
             return status;
         }
         finally
         {
+            if (auditRelevant || auditError is not null)
+                await SafeAuditAsync(new(
+                    auditPurpose, embeddingConfiguration.Mode, AuditModelId(), AuditSpaceId(),
+                    AuditDimensions(), auditTokenKind, auditError is null, 1, auditInputs,
+                    auditTokens, 0, 0,
+                    Stopwatch.GetElapsedTime(auditStarted).TotalMilliseconds,
+                    ErrorCode: auditError));
             refreshLock.Release();
         }
     }
 
     public async Task<object> SearchAsync(KnowledgeSearchApiRequest request, CancellationToken cancellationToken)
     {
+        var auditStarted = Stopwatch.GetTimestamp();
+        LimitedQuery? limited = null;
+        string? auditError = null;
+        try
+        {
         await InitializeAsync(cancellationToken);
-        var limited = await LimitQueryAsync(request.Query, Math.Clamp(request.MaxQueryTokens, 32, 4_096), cancellationToken);
+        limited = await LimitQueryAsync(request.Query, Math.Clamp(request.MaxQueryTokens, 32, 4_096), cancellationToken);
         var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
         var documents = await storage.GetDocumentsAsync(knowledgeBaseId, cancellationToken);
         var selected = SelectCollections(request.Topic, collections);
@@ -210,6 +252,38 @@ public sealed class KnowledgeCorpus(
 
         IKnowledgeContentSearch storeSearch() => contentSearch
             ?? throw new InvalidOperationException("Knowledge content search is unavailable.");
+        }
+        catch (Exception exception)
+        {
+            auditError = exception.GetType().Name;
+            throw;
+        }
+        finally
+        {
+            if (limited is not null)
+                await SafeAuditAsync(new(
+                    "wiki_search", embeddingConfiguration.Mode, AuditModelId(), AuditSpaceId(),
+                    AuditDimensions(), embeddingConfiguration.Mode == "local"
+                        ? "local_tokenizer" : "character_estimate",
+                    auditError is null, 1, 1, limited.Tokens, 1, 1,
+                    Stopwatch.GetElapsedTime(auditStarted).TotalMilliseconds,
+                    ErrorCode: auditError));
+        }
+    }
+
+    public async Task<string?> QualityCanaryTopTitleAsync(CancellationToken cancellationToken)
+    {
+        var result = await SearchAsync(new(
+            "How do supply crawlers convoy minerals to a base?", Top: 5,
+            MaxContentTokens: 512, IncludeContent: false, MaxQueryTokens: 512),
+            cancellationToken);
+        var json = JsonSerializer.SerializeToElement(result);
+        if (!json.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
+            return null;
+        var first = results[0];
+        return (first.TryGetProperty("title", out var title) ||
+                first.TryGetProperty("Title", out title))
+            ? title.GetString() : null;
     }
 
     private IKnowledgeContentSearch? contentSearch;
@@ -333,6 +407,42 @@ public sealed class KnowledgeCorpus(
         var limitedCount = await embedding.CountQueryTokensAsync(limited, cancellationToken);
         return new(limited, limitedCount.InputTokenCount, true);
     }
+
+    private async Task<long> CountSourceTokensAsync(
+        IEnumerable<CorpusPage> pages, CancellationToken cancellationToken)
+    {
+        var embedding = services.GetService<ITextEmbeddingService>();
+        long total = 0;
+        foreach (var page in pages)
+        {
+            var text = string.Join('\n', new[]
+            {
+                page.Title, page.Description, string.Join(' ', page.Tags), page.Body,
+            });
+            if (embedding is null) total += Math.Max(1, (text.Length + 3) / 4);
+            else total += (await embedding.CountQueryTokensAsync(text, cancellationToken)).InputTokenCount;
+        }
+        return total;
+    }
+
+    private async Task SafeAuditAsync(EmbeddingAuditRecord record)
+    {
+        try { await embeddingAudit.RecordAsync(record, CancellationToken.None); }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Embedding audit write failed for {Purpose}", record.Purpose);
+        }
+    }
+
+    private string AuditModelId() => embeddingConfiguration.Mode == "local"
+        ? services.GetService<ITextEmbeddingService>()?.ModelInfo?.ModelId ?? "smacx-local-embeddings"
+        : embeddingConfiguration.ModelId ?? "external";
+    private string AuditSpaceId() => embeddingConfiguration.Mode == "local"
+        ? services.GetService<ITextEmbeddingService>()?.ModelInfo?.EmbeddingSpaceFingerprint ?? "local-onnx"
+        : embeddingConfiguration.SpaceId ?? "external";
+    private int AuditDimensions() => embeddingConfiguration.Mode == "local"
+        ? services.GetService<ITextEmbeddingService>()?.ModelInfo?.Dimensions ?? 0
+        : embeddingConfiguration.Dimensions;
 
     private static bool IsDescendant(Guid candidateId, Guid ancestorId, IReadOnlyList<KnowledgeCollectionRecord> collections)
     {
@@ -890,13 +1000,16 @@ public sealed class KnowledgeCorpus(
     }
 
     private sealed record CorpusAcquisition(List<CorpusPage> Pages, IReadOnlyList<string> Warnings);
-    private sealed record StoredState(string ParserRevision, string ManifestHash, DateTimeOffset RefreshedAt, CorpusStatus Status);
+    private sealed record StoredState(
+        string ParserRevision, string ManifestHash, DateTimeOffset RefreshedAt,
+        CorpusStatus Status, Dictionary<string, string>? DocumentHashes = null);
     private sealed record LimitedQuery(string Query, int Tokens, bool Truncated);
 }
 
 public sealed class KnowledgeCorpusWorker(
     KnowledgeCorpus corpus,
     IKnowledgeContentSearch contentSearch,
+    EmbeddingQualityAuditor quality,
     KnowledgeRuntimeOptions options,
     ILogger<KnowledgeCorpusWorker> logger) : BackgroundService
 {
@@ -905,7 +1018,13 @@ public sealed class KnowledgeCorpusWorker(
         corpus.AttachContentSearch(contentSearch);
         while (!stoppingToken.IsCancellationRequested)
         {
-            try { await corpus.RefreshAsync(force: false, stoppingToken); }
+            try
+            {
+                var refreshed = await corpus.RefreshAsync(force: false, stoppingToken);
+                if (refreshed.State == "ready")
+                    await quality.RunOnceAsync(
+                        await corpus.QualityCanaryTopTitleAsync(stoppingToken), stoppingToken);
+            }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception) { logger.LogError(exception, "Unexpected knowledge refresh worker failure"); }
             try { await Task.Delay(options.RefreshInterval, stoppingToken); }
