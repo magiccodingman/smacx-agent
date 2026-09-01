@@ -74,8 +74,13 @@ FalkorDB and the recall endpoint have no published host ports. In the portal:
 
 1. create or choose a dedicated AI profile;
 2. open **Administration → Operations & recovery**;
-3. save it as the Graphiti extraction profile; and
-4. enable the installation-wide projector.
+3. select it as the Graphiti extraction profile, which enables Graphiti
+   immediately.
+
+Turning Graphiti off clears that extraction-profile selection. Select a profile
+again whenever Graphiti should be re-enabled. Deactivating the selected AI
+profile performs the same cleanup automatically; deactivating any other profile
+leaves Graphiti untouched.
 
 Each lobby may still opt out.
 

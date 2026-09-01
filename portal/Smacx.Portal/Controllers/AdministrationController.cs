@@ -13,7 +13,8 @@ namespace Smacx.Portal.Controllers;
 [Authorize(Roles = "Administrator")]
 public sealed class AdministrationController(
     ApplicationDbContext database,
-    ControlPlaneClient control) : ControllerBase
+    ControlPlaneClient control,
+    ILogger<AdministrationController> logger) : ControllerBase
 {
     private const int HermesMinimumContextLength = 65_536;
     [HttpGet("snapshot")]
@@ -210,6 +211,18 @@ public sealed class AdministrationController(
         item.Active = false;
         item.UpdatedAt = DateTimeOffset.UtcNow;
         await database.SaveChangesAsync(HttpContext.RequestAborted);
+        try
+        {
+            using var cleared = await control.PostRawAsync(
+                "api/v1/graphiti/clear-profile",
+                new { profile_id = item.ProfileId }, HttpContext.RequestAborted);
+        }
+        catch (ControlPlaneException exception)
+        {
+            logger.LogWarning(exception,
+                "AI profile {ProfileId} was deactivated, but its Graphiti selection could not be reconciled immediately",
+                item.ProfileId);
+        }
         return ApiResponse<AiProfile>.Success(ToContract(item));
     }
 
@@ -262,7 +275,10 @@ public sealed class AdministrationController(
     public async Task<ActionResult<ApiResponse<JsonElement?>>> Graphiti(GraphitiConfigurationRequest request)
     {
         object? profile = null;
-        if (!string.IsNullOrWhiteSpace(request.ProfileId))
+        if (request.Enabled && string.IsNullOrWhiteSpace(request.ProfileId))
+            return BadRequest(ApiResponse<JsonElement?>.Failure(
+                "graphiti_profile_required", "Choose an active extraction profile to enable Graphiti."));
+        if (request.Enabled)
         {
             var item = await database.PortalAiProfiles.AsNoTracking().FirstOrDefaultAsync(
                 candidate => candidate.ProfileId == request.ProfileId,

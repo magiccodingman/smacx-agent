@@ -190,7 +190,7 @@ else
                 </div>
                 <div class="form-actions"><MudButton Variant="Variant.Text" OnClick="CloseProfileEditor" Disabled="busy">Cancel</MudButton><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanCreateProfile)"
                            OnClick="CreateProfile" StartIcon="@Icons.Material.Filled.SmartToy">
-                    @(editingProfileId is null ? "Create playable AI profile" : "Save profile")
+                    @(editingProfileId is null ? "Create playable AI profile" : "Update")
                 </MudButton></div>
             }
         </section>

@@ -728,6 +728,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, result)
                 return
+            if path == "/api/v1/graphiti/clear-profile":
+                auth = self._authorize_mutation()
+                body = self._body()
+                profile_id = str(body.get("profile_id", ""))
+                result = self.server.control.clear_graphiti_profile(profile_id)
+                self.server.control.audit(
+                    auth["admin_id"], "graphiti.profile.clear", "agent_profile", profile_id,
+                    "success", {"cleared": result["cleared"]}, self.client_address[0],
+                )
+                self._json(200, result)
+                return
             if path == "/api/v1/embeddings":
                 auth = self._authorize_mutation()
                 body = self._body()

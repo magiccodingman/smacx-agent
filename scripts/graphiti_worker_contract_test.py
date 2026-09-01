@@ -86,6 +86,15 @@ def main() -> int:
             raise AssertionError("Graphiti did not resolve its selected profile and shared embedding endpoint")
         if not _enabled(store):
             raise AssertionError("Control Center enable policy was not persisted")
+        unrelated = control.clear_graphiti_profile("profile-graph-unrelated")
+        if unrelated["cleared"] or not unrelated["enabled"]:
+            raise AssertionError("deactivating an unrelated profile changed Graphiti")
+        selected = control.clear_graphiti_profile("profile-graph-001")
+        if not selected["cleared"]:
+            raise AssertionError("selected extraction profile was not cleared")
+        disabled = control.graphiti_status()
+        if disabled["enabled"] or disabled["configured"] or disabled["profile"] is not None:
+            raise AssertionError("disabling Graphiti did not clear its extraction profile")
 
         print(json.dumps({"event": "pass", "payload": {
             "default_disabled": True,
@@ -94,6 +103,8 @@ def main() -> int:
             "failure_isolated_and_observable": True,
             "file_secret_supported": True,
             "extraction_profile_required": True,
+            "disable_clears_extraction_profile": True,
+            "profile_deactivation_is_conditional": True,
             "canonical_schema_revision": store.schema_version(),
         }}, separators=(",", ":")))
     return 0
