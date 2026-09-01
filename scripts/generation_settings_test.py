@@ -23,10 +23,22 @@ def main() -> int:
         "qwen38-instant": (False, 0.7, 0.80, 1.5),
         "qwen38-low": (True, 1.0, 0.95, 0.0),
         "qwen38-medium": (True, 1.0, 0.95, 0.0),
+        "qwen38-high": (True, 1.0, 0.95, 0.0),
         "qwen38-xhigh": (True, 1.0, 0.95, 0.0),
     }
     for preset, (thinking, temperature, top_p, presence) in expected.items():
-        body = openai_extra_body({"preset": preset})
+        body = openai_extra_body({
+            "preset": preset,
+            "temperature": temperature,
+            "top_p": top_p,
+            "presence_penalty": presence,
+            "top_k": 20,
+            "min_p": 0.0,
+            "repetition_penalty": 1.0,
+            "extra_parameters": {"chat_template_kwargs": {
+                "enable_thinking": thinking, "preserve_thinking": False,
+            }},
+        })
         template = body.get("chat_template_kwargs", {})
         if body.get("temperature") != temperature or body.get("top_p") != top_p \
                 or body.get("presence_penalty") != presence:
@@ -49,6 +61,17 @@ def main() -> int:
         raise AssertionError("JSON-typed provider extensions were not preserved")
     if openai_extra_body({"preset": "provider-default"}) != {}:
         raise AssertionError("provider defaults injected model-specific parameters")
+    editable = openai_extra_body({
+        "preset": "qwen38-low", "temperature": 0.42,
+        "extra_parameters": {"chat_template_kwargs": {
+            "enable_thinking": True, "preserve_thinking": False,
+        }},
+    })
+    if editable["temperature"] != 0.42:
+        raise AssertionError("template metadata overwrote an explicit user value")
+    provider_override = openai_extra_body({"preset": "provider-default", "temperature": 0.3})
+    if provider_override != {"temperature": 0.3}:
+        raise AssertionError("provider-default discarded an explicit override")
     rejected({"preset": "custom", "extra_parameters": {"model": "override"}},
              "reserved_or_duplicate_extra_parameter")
     rejected({"preset": "custom", "temperature": float("nan")}, "invalid_temperature")
@@ -57,6 +80,8 @@ def main() -> int:
         "historical_thinking_disabled": True,
         "provider_defaults_clean": True,
         "custom_json_extensions": True,
+        "templates_are_editable": True,
+        "provider_default_overrides_reach_provider": True,
         "reserved_fields_rejected": True,
     }}, separators=(",", ":")))
     return 0

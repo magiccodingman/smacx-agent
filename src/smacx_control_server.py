@@ -35,7 +35,7 @@ from smacx_worker_manager import LAN_PROFILES, WorkerManager, WorkerManagerError
 MAX_REQUEST_BODY = 1024 * 1024
 SESSION_COOKIE = "smacx_session"
 CSRF_COOKIE = "smacx_csrf"
-PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select|delete)$")
+PROVIDER_PATH = re.compile(r"^/api/v1/providers/([A-Za-z0-9_-]{8,96})/(discover|select|delete|probe-generation)$")
 WORKER_PATH = re.compile(
     r"^/api/v1/workers/([A-Za-z0-9_-]{8,96})/"
     r"(start|park|status|spectator|chat|group-chat|human-ui)$"
@@ -920,6 +920,21 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if match:
                 auth = self._authorize_mutation()
                 provider_id, action = match.groups()
+                if action == "probe-generation":
+                    body = self._body()
+                    result = self.server.control.probe_provider_generation(
+                        provider_id, str(body.get("model_id", "")),
+                        str(body.get("reasoning_effort", "none")),
+                        body.get("generation"),
+                    )
+                    self.server.control.audit(
+                        auth["admin_id"], "provider.probe_generation", "provider", provider_id,
+                        "success" if result["accepted"] else "rejected",
+                        {"model_id": body.get("model_id"), "http_status": result["http_status"]},
+                        self.client_address[0],
+                    )
+                    self._json(200, result)
+                    return
                 if action == "delete":
                     self._body()
                     result = self.server.control.delete_provider(provider_id)

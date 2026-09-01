@@ -19,8 +19,10 @@ performance changes are measured rather than guessed.
 
 ## Baseline corrections completed before retest
 
-- Qwen3.8 instant/low/medium/xhigh templates now use official sampling values,
+- Qwen3.8 instant/low/medium/xhigh templates start from official sampling values,
   explicit current-turn thinking selection, and `preserve_thinking=false`.
+- Templates are editable starting points. Stored explicit fields—not a preset
+  name reconstructed later—are the provider-facing contract.
 - Historical reasoning is no longer carried forward by default.
 - Arbitrary provider parameters are JSON-typed and validated instead of being
   hardcoded as Qwen fields in the generic profile path.

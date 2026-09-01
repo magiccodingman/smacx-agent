@@ -154,8 +154,8 @@ Go to **Administration → Providers & AI profiles**.
 2. Add an API key only if the provider requires one.
 3. Choose **Save endpoint & discover models**. Saving a provider does not yet
    create a lobby player.
-4. Select a discovered model and create a named, versioned **AI player
-   profile** with reasoning effort, a generation preset or explicit sampling
+4. Select a discovered model and create a named **AI player profile** with a
+   starting template, explicit sampling/request parameters, Hermes reasoning
    controls, optional context override, and experiment notes. The profile—not
    the raw endpoint—is what appears in the lobby seat picker.
 
@@ -172,12 +172,11 @@ configuration remains protected so match history stays meaningful.
 
 The provider may be on the Docker host, another LAN host, or a home-lab model
 server reachable from the Docker network. Multiple profiles may use one model
-with different reasoning, sampling, and context settings. Choose **New
-version** to revise a profile: existing matches keep the immutable version they
-started with. Creating the successor retires earlier active versions in that
-profile family from new-lobby pickers without deleting them, preserving every
-historical match and report. Use separate named profile families when several
-sampling/reasoning configurations should remain selectable for an A/B run.
+with different reasoning, sampling, and context settings. Editing updates the
+stable named profile in place and keeps its analytics identity. Deactivation is
+reversible; names remain reserved so old history cannot silently attach to a
+new identity. Use separate names when several configurations should remain
+selectable for an A/B run.
 
 The profile editor can also export or import a portable JSON template. The
 template contains the model ID, reasoning, context, generation settings, and
@@ -186,27 +185,40 @@ history. Import it after choosing an endpoint on the new installation. The UI
 only preselects the model when that endpoint actually advertises the same model
 ID.
 
-**Provider defaults** is the compatibility-first generation preset. It sends
-no sampling override and lets the endpoint choose appropriate defaults. Custom
-profiles may set temperature, top-p, top-k, min-p, presence/frequency/repetition
+**Provider defaults** is the compatibility-first blank template. It sends no
+sampling override unless the operator explicitly adds one. Every template is
+an editable starting point, never a runtime macro or locked preset. Profiles
+may set temperature, top-p, top-k, min-p, presence/frequency/repetition
 penalties, maximum output tokens, and seed. Additional rows accept JSON-typed
 provider extensions—including nested chat-template arguments—without baking a
-specific model family into the generic request path. Blank values are omitted;
-extensions should only be enabled when that OpenAI-compatible endpoint supports
-them.
+specific model family into the generic request path. These exact displayed
+values survive import/export and are passed through Hermes and direct Graphiti
+requests. Blank values are omitted.
 
 Qwen3.8 models expose two convenience presets based on the project's official
 recommendations: thinking (temperature 1.0, top-p 0.95, top-k 20, min-p 0,
 presence penalty 0, repetition penalty 1) and non-thinking (temperature 0.7,
 top-p 0.8, top-k 20, min-p 0, presence penalty 1.5, repetition penalty 1).
-Qwen3.8 presets are exposed as Instant, Low, Medium, and XHigh. Instant disables
-thinking and uses `none`; the others explicitly select their corresponding
-level. Every built-in Qwen3.8 preset sets `preserve_thinking=false`, so old
+Qwen3.8 templates are exposed as Instant, Low, Medium, High, and XHigh. Instant
+disables thinking and uses `none`; Low, Medium, and XHigh select Qwen's
+documented levels. High is retained as a clearly marked provider-dependent
+Hermes option rather than represented as an official Qwen level. Every built-in
+Qwen3.8 template visibly adds `chat_template_kwargs` with
+`preserve_thinking=false`, so old
 reasoning traces do not balloon later prompts while the current tool loop still
-retains its active reasoning state. Other models retain Hermes's wider
-reasoning menu, and Hermes/provider routing may omit an unsupported level.
+retains its active reasoning state. Operators may edit or remove any template
+value. Hermes reasoning remains a separate advanced control because its adapter
+may serialize reasoning differently from model-specific JSON parameters.
 See the [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/README.md)
 for the upstream recommendations.
+
+Use **Test provider acceptance** on a saved profile to send one bounded request
+through the configured endpoint. The resulting status distinguishes untested,
+accepted, rejected, and stale configurations. An accepted request proves the
+stored fields were serialized and the endpoint returned success; it does not
+prove that the server honored every extension semantically. The UI deliberately
+keeps that distinction visible instead of treating an HTTP 200 as behavioral
+certification.
 
 The default gameplay context is **Automatic** and uses the selected model's
 advertised context length. A manual override must be at least 65,536 tokens and
