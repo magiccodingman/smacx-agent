@@ -100,6 +100,33 @@ public sealed class ControlPlaneClient(
             item.GetProperty("status").GetString()!)).ToArray();
     }
 
+    public async Task<ControlIncident?> GetActiveCapabilityIncidentAsync(
+        string matchId, CancellationToken cancellationToken = default)
+    {
+        using var document = await SendAsync(
+            HttpMethod.Get,
+            $"api/v1/incidents?match_id={Uri.EscapeDataString(matchId)}&active_only=true",
+            null, cancellationToken);
+        foreach (var item in document.RootElement.GetProperty("incidents").EnumerateArray())
+        {
+            var kind = item.GetProperty("incident_kind").GetString() ?? "";
+            if (kind.StartsWith("capability_gap:", StringComparison.Ordinal))
+            {
+                return ParseIncident(item);
+            }
+        }
+        return null;
+    }
+
+    public async Task<ControlIncident> GetIncidentAsync(
+        string incidentId, CancellationToken cancellationToken = default)
+    {
+        using var document = await SendAsync(
+            HttpMethod.Get, $"api/v1/incidents/{Uri.EscapeDataString(incidentId)}",
+            null, cancellationToken);
+        return ParseIncident(document.RootElement.GetProperty("incident"));
+    }
+
     public async Task<ControlStreamAccess> GetStreamAccessAsync(
         string instanceId, bool interactive, CancellationToken cancellationToken = default)
     {
@@ -236,6 +263,20 @@ public sealed class ControlPlaneClient(
         item.GetProperty("created_unix").GetDouble(),
         item.GetProperty("updated_unix").GetDouble());
 
+    private static ControlIncident ParseIncident(JsonElement item)
+    {
+        var details = item.GetProperty("details").Clone();
+        return new ControlIncident(
+            item.GetProperty("incident_id").GetString()!,
+            item.GetProperty("match_id").GetString()!,
+            item.GetProperty("instance_id").GetString()!,
+            item.GetProperty("incident_kind").GetString()!,
+            item.GetProperty("status").GetString()!,
+            details,
+            item.GetProperty("first_seen_unix").GetDouble(),
+            item.GetProperty("last_seen_unix").GetDouble());
+    }
+
     private static ControlSeat ParseSeat(JsonElement item)
     {
         string? MetadataString(string name) =>
@@ -275,6 +316,9 @@ public sealed record ControlStreamAccess(
 public sealed record ControlMatchOperation(
     ControlMatch Match, bool AwaitingExternalHumans, string? NetworkSessionId,
     JsonElement? ExternalJoin);
+public sealed record ControlIncident(
+    string IncidentId, string MatchId, string InstanceId, string IncidentKind,
+    string Status, JsonElement Details, double FirstSeenUnix, double LastSeenUnix);
 
 public sealed class ControlPlaneException(
     string code,

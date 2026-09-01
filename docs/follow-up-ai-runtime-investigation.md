@@ -44,9 +44,9 @@ reasoning effort as requested and observed, tool-validation failures,
 compression input/output size, and compression duration. Never infer raw TPS
 from whole-turn wall time.
 
-## Capability-gap follow-up
+## Remaining supervision follow-up
 
-Promote worker-local capability reports into durable portal incidents, surface
-an immediate **Needs attention** state, stop restart loops, detect silent stalls
-and repeated invalid decisions, and offer a redacted diagnostic bundle. This is
-deferred to the focused AI-runtime investigation.
+Capability reports are now durable portal incidents with a **Needs attention**
+dialog, restart suppression, preserved native state, and a redacted diagnostic
+bundle. Future runtime work should extend the same operator experience to silent
+stalls and repeated invalid decisions that never reach `smac_report_capability_gap`.

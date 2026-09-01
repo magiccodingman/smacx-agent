@@ -19,6 +19,7 @@ import threading
 import time
 from typing import Any, Mapping
 import uuid
+import zipfile
 from typing import TYPE_CHECKING
 
 from smacx_docker import DockerNotFound
@@ -33,6 +34,18 @@ IDENTITY = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
 BACKUP_DIRECTORY = re.compile(r"^backup-[a-f0-9]{32}$")
 OPERATION_KINDS = {"backup", "checkpoint", "match_start", "match_resume"}
 TARGET_KINDS = {"installation", "match"}
+CAPABILITY_GAP_MAX_BYTES = 8 * 1024 * 1024
+DIAGNOSTIC_BUNDLE_MAX_BYTES = 25 * 1024 * 1024
+_SENSITIVE_KEY = re.compile(
+    r"(?:api.?key|authorization|bearer|password|secret|cookie|csrf|session.?token|"
+    r"provider.?url|base.?url|host.?address|join.?address|private.?path)", re.IGNORECASE,
+)
+_PRIVATE_CONVERSATION_KEY = re.compile(
+    r"(?:chat|message|conversation|reasoning|thinking|prompt|response)", re.IGNORECASE,
+)
+_URL = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_IP_ADDRESS = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?![\w.])")
+_HOST_PATH = re.compile(r"(?:/home/|/Users/|[A-Za-z]:\\)[^\s\"']+")
 
 
 def _new_id(kind: str) -> str:
@@ -77,6 +90,11 @@ class OperationsManager:
             raise StoreError("invalid_backup_root")
         self.backup_root.mkdir(parents=True, exist_ok=True, mode=0o750)
         os.chmod(self.backup_root, 0o750)
+        self.diagnostic_root = (self.data_root / "diagnostics").resolve()
+        if self.diagnostic_root.parent != self.data_root:
+            raise StoreError("invalid_diagnostic_root")
+        self.diagnostic_root.mkdir(parents=True, exist_ok=True, mode=0o750)
+        os.chmod(self.diagnostic_root, 0o750)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._operation_lock = threading.RLock()
@@ -580,16 +598,376 @@ class OperationsManager:
             instance_id, kind, status, details,
         )
 
+    @staticmethod
+    def _redact_text(value: str) -> str:
+        text = _URL.sub("<redacted-url>", value)
+        text = _IP_ADDRESS.sub("<redacted-ip>", text)
+        text = _HOST_PATH.sub("<redacted-path>", text)
+        text = re.sub(
+            r"(?i)(api.?key|authorization|bearer|password|secret|token)"
+            r"\s*[:=]\s*[^\s,;]+", r"\1=<redacted>", text,
+        )
+        return text[:200_000]
+
+    @classmethod
+    def _redact_payload(cls, value: Any, *, key: str = "") -> Any:
+        if _SENSITIVE_KEY.search(key):
+            return "<redacted>"
+        if _PRIVATE_CONVERSATION_KEY.search(key):
+            return "<omitted-private-conversation>"
+        if isinstance(value, Mapping):
+            return {
+                str(child_key)[:120]: cls._redact_payload(child, key=str(child_key))
+                for child_key, child in list(value.items())[:500]
+            }
+        if isinstance(value, list):
+            return [cls._redact_payload(item, key=key) for item in value[:500]]
+        if isinstance(value, str):
+            return cls._redact_text(value)
+        if isinstance(value, (int, float, bool)) or value is None:
+            return value
+        return cls._redact_text(str(value))
+
+    def _capability_gap_records(self) -> list[dict[str, Any]]:
+        path = self.data_root / "capability-gaps.jsonl"
+        if not path.is_file():
+            return []
+        size = path.stat().st_size
+        if size > CAPABILITY_GAP_MAX_BYTES:
+            with path.open("rb") as stream:
+                stream.seek(-CAPABILITY_GAP_MAX_BYTES, os.SEEK_END)
+                stream.readline()
+                content = stream.read().decode("utf-8", errors="replace")
+        else:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        records: list[dict[str, Any]] = []
+        for line in content.splitlines()[-200:]:
+            try:
+                candidate = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(candidate, dict) and re.fullmatch(
+                    r"gap-[a-f0-9]{32}", str(candidate.get("gap_id", ""))):
+                records.append(candidate)
+        return records
+
+    def _instance_for_gap(self, report: Mapping[str, Any]) -> str | None:
+        match_id = str(report.get("match_id") or "")
+        session_id = str(report.get("session_id") or "")
+        if not IDENTITY.fullmatch(match_id):
+            return None
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT instance_id FROM sessions WHERE session_id=? AND match_id=? "
+                "ORDER BY started_unix DESC LIMIT 1", (session_id, match_id),
+            ).fetchone() if IDENTITY.fullmatch(session_id) else None
+            if row is None:
+                row = connection.execute(
+                    "SELECT instance_id FROM instances WHERE match_id=? "
+                    "ORDER BY created_unix DESC LIMIT 1", (match_id,),
+                ).fetchone()
+        return str(row["instance_id"]) if row else None
+
+    def _existing_gap_incident(self, gap_id: str) -> dict[str, Any] | None:
+        kind = f"capability_gap:{gap_id}"
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT incident_id FROM supervision_incidents WHERE incident_kind=? "
+                "ORDER BY first_seen_unix DESC LIMIT 1", (kind,),
+            ).fetchone()
+        return self.control.get_supervision_incident(str(row[0])) if row else None
+
+    def _stop_gap_harness(self, instance_id: str, gap_id: str) -> list[str]:
+        stopped: list[str] = []
+        for run in self.control.list_harness_runs():
+            if str(run.get("instance_id")) != instance_id or run.get("status") not in {
+                    "queued", "starting", "running", "restarting"}:
+                continue
+            run_id = str(run["run_id"])
+            self.control.update_harness_run(
+                run_id, desired_status="stopped", last_error=f"capability_gap:{gap_id}",
+                metadata_update={"capability_gap_id": gap_id, "operator_attention_required": True},
+            )
+            if self.harness_manager is not None:
+                try:
+                    self.harness_manager.stop_run(run_id)
+                except Exception:
+                    self.control.update_harness_run(
+                        run_id, status="error", desired_status="stopped",
+                        last_error=f"capability_gap:{gap_id}",
+                    )
+            stopped.append(run_id)
+        return stopped
+
+    def _container_log(self, container_name: str | None, *, tail: int = 300) -> str:
+        if not container_name or self.worker_manager is None:
+            return "No managed container log was available.\n"
+        try:
+            resource = self.worker_manager.docker.inspect_container(container_name)
+            labels = resource.get("Config", {}).get("Labels", {})
+            if labels.get("io.smacx.managed") != "true" or \
+                    labels.get("io.smacx.installation") != self.worker_manager.installation_id:
+                return "Container ownership could not be verified; log omitted.\n"
+            return self._redact_text(
+                self.worker_manager.docker.container_logs(container_name, tail=tail)
+            ) + "\n"
+        except Exception as exc:
+            return f"Log unavailable: {self._redact_text(str(exc))}\n"
+
+    def _collect_recent_saves(self, instance_id: str, destination: Path) -> list[dict[str, Any]]:
+        manager = self.worker_manager
+        if manager is None or not manager.control_data_volume:
+            return []
+        spec = self.control.get_worker_spec(instance_id)
+        volume = manager.docker.inspect_volume(str(spec["data_volume"]))
+        manager.docker.require_owned(
+            volume, manager.installation_id, purpose="worker-data",
+        )
+        relative = destination.relative_to(self.data_root).as_posix()
+        helper_name = manager._name("diagnostic", f"{instance_id}-{uuid.uuid4().hex}")  # noqa: SLF001
+        script = """
+import hashlib,json,pathlib,shutil
+source=pathlib.Path('/source')
+target=pathlib.Path('/control')/TARGET
+target.mkdir(parents=True,exist_ok=True)
+candidates=[]
+for path in source.rglob('*'):
+    if not path.is_file(): continue
+    lower=path.name.lower()
+    if lower.endswith('.sav') or lower.endswith('.sav.zst'):
+        try: candidates.append((path.stat().st_mtime,path))
+        except OSError: pass
+seen=set(); copied=[]; total=0
+for _,path in sorted(candidates,reverse=True):
+    digest=hashlib.sha256(path.read_bytes()).hexdigest()
+    if digest in seen: continue
+    size=path.stat().st_size
+    if size > 8*1024*1024 or total+size > 20*1024*1024: continue
+    seen.add(digest); total+=size
+    safe='save-%d-%s%s' % (len(copied)+1,digest[:12],''.join(path.suffixes).lower())
+    shutil.copyfile(path,target/safe)
+    copied.append({'path':'saves/'+safe,'sha256':digest,'size_bytes':size})
+    if len(copied)>=3: break
+print(json.dumps({'ok':True,'saves':copied},separators=(',',':')))
+""".replace("TARGET", repr(relative))
+        identifier = manager.docker.create_container(helper_name, {
+            "Image": manager.mcp_image, "Entrypoint": ["python3"], "Cmd": ["-c", script],
+            "User": "10001:10001", "Labels": manager._labels(  # noqa: SLF001
+                "diagnostic-helper", **{"io.smacx.instance": instance_id},
+            ),
+            "HostConfig": {
+                "NetworkMode": "none", "ReadonlyRootfs": True, "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"], "Mounts": [
+                    {"Type": "volume", "Source": spec["data_volume"],
+                     "Target": "/source", "ReadOnly": True},
+                    {"Type": "volume", "Source": manager.control_data_volume,
+                     "Target": "/control"},
+                ],
+            },
+        })
+        try:
+            manager.docker.start_container(identifier)
+            stopped = manager.docker.wait_container(identifier, timeout=120.0)
+            logs = manager.docker.container_logs(identifier, tail=20).strip()
+            if int(stopped.get("State", {}).get("ExitCode", -1)) != 0:
+                return []
+            line = "{}"
+            for item in reversed(logs.splitlines()):
+                opening = item.find("{")
+                if opening >= 0:
+                    line = item[opening:]
+                    break
+            result = json.loads(line)
+            return result.get("saves", []) if isinstance(result.get("saves"), list) else []
+        except Exception:
+            return []
+        finally:
+            try:
+                manager._cleanup_container(identifier, "diagnostic-helper")  # noqa: SLF001
+            except Exception:
+                pass
+
+    @staticmethod
+    def _write_json(path: Path, payload: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+                        encoding="utf-8")
+        os.chmod(path, 0o600)
+
+    def _create_gap_bundle(
+        self, incident: Mapping[str, Any], report: Mapping[str, Any],
+        instance_id: str, stopped_runs: list[str],
+    ) -> dict[str, Any]:
+        incident_id = str(incident["incident_id"])
+        staging = self.diagnostic_root / f".{incident_id}.staging"
+        bundle = self.diagnostic_root / f"smacx-gap-{str(report['gap_id'])[4:]}.zip"
+        if bundle.is_file():
+            return {"relative_path": bundle.relative_to(self.data_root).as_posix(),
+                    "file_name": bundle.name, "size_bytes": bundle.stat().st_size,
+                    "sha256": _sha256(bundle)}
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(mode=0o700)
+        spec = self.control.get_worker_spec(instance_id)
+        match = self.control.get_match(str(spec["match_id"]))
+        seats = self.control.list_seats(str(spec["match_id"]))
+        public_seats = [{
+            "seat_index": seat.get("seat_index"), "controller_kind": seat.get("controller_kind"),
+            "faction_id": seat.get("faction_id"), "faction_name": seat.get("faction_name"),
+            "instance_id": seat.get("instance_id"),
+            "player": f"Player {int(seat.get('seat_index') or 0) + 1}",
+        } for seat in seats]
+        safe_report = self._redact_payload(report)
+        environment = {
+            "schema": "smacx.diagnostic.environment.v1",
+            "installation_id": self.store.installation_id(),
+            "project_revision": os.environ.get("SMACX_BUILD_REVISION", "unavailable"),
+            "worker_image": spec.get("image_ref"), "mcp_image": getattr(self.worker_manager, "mcp_image", None),
+            "game_source_id": spec.get("game_source_id"), "runtime_id": spec.get("runtime_id"),
+            "worker_observed_status": spec.get("observed_status"),
+            "worker_container_state": "preserved_for_operator_diagnosis",
+        }
+        configuration = {
+            "schema": "smacx.diagnostic.match.v1", "match_id": match.get("match_id"),
+            "display_name": match.get("display_name"), "mode": match.get("mode"),
+            "status": match.get("status"), "ruleset_id": match.get("ruleset_id"),
+            "last_turn": match.get("last_turn"), "last_year": match.get("last_year"),
+            "settings": self._redact_payload(match.get("metadata", {}).get("game_settings", {})),
+            "scenario_id": match.get("metadata", {}).get("scenario_id"),
+        }
+        self._write_json(staging / "incident" / "capability-gap.json", safe_report)
+        self._write_json(staging / "incident" / "environment.json", environment)
+        self._write_json(staging / "incident" / "match-configuration.json", configuration)
+        self._write_json(staging / "incident" / "seat-map.json", {"seats": public_seats})
+        trace = {"event": "capability_gap", "gap": safe_report,
+                 "stopped_harness_runs": stopped_runs}
+        trace_path = staging / "traces" / "semantic-trace.jsonl"
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        trace_path.write_text(json.dumps(trace, ensure_ascii=False, separators=(",", ":")) + "\n",
+                              encoding="utf-8")
+        os.chmod(trace_path, 0o600)
+        network = spec.get("network") if isinstance(spec.get("network"), Mapping) else {}
+        (staging / "traces" / "bridge.log").write_text(
+            self._container_log(str(spec.get("container_name") or "")), encoding="utf-8")
+        (staging / "traces" / "mcp.log").write_text(
+            self._container_log(str(network.get("mcp_container_name") or "")), encoding="utf-8")
+        harness_log = "Full model conversations and reasoning are intentionally excluded.\n"
+        for run in self.control.list_harness_runs():
+            if str(run.get("run_id")) in stopped_runs:
+                harness_log += self._container_log(str(run.get("container_name") or ""), tail=200)
+        (staging / "traces" / "harness.log").write_text(harness_log, encoding="utf-8")
+        (staging / "traces" / "supervisor.log").write_text(
+            f"incident_id={incident_id}\ngap_id={report['gap_id']}\n"
+            f"harness_runs_stopped={','.join(stopped_runs) or 'none'}\n",
+            encoding="utf-8")
+        for log_path in (staging / "traces").glob("*.log"):
+            os.chmod(log_path, 0o600)
+        saves = self._collect_recent_saves(instance_id, staging / "saves")
+        readme = f"""# SMACX capability-gap diagnostic
+
+Gap ID: `{report['gap_id']}`
+
+Incident ID: `{incident_id}`
+
+Match: `{match.get('match_id')}`
+
+Turn / year: `{report.get('turn')}` / `{match.get('last_year')}`
+
+The AI reached a native game state that the semantic bridge could not safely observe or act on.
+Its harness was stopped before automatic continuation, while the native worker was preserved for diagnosis.
+
+Attach this ZIP to a new issue at https://github.com/magiccodingman/smacx-agent/issues.
+Describe what the human players saw immediately before the alert. The bundle intentionally excludes
+game binaries/assets, credentials, private provider addresses, account data, chat, and full model reasoning.
+
+`saves/` contains up to three newest distinct managed saves when they were safely available. Compressed
+`.sav.zst` files can be decompressed with `zstd -d` before reproduction.
+"""
+        (staging / "README.md").write_text(readme, encoding="utf-8")
+        os.chmod(staging / "README.md", 0o600)
+        files = []
+        for path in sorted(item for item in staging.rglob("*") if item.is_file()):
+            files.append({"path": path.relative_to(staging).as_posix(), "sha256": _sha256(path),
+                          "size_bytes": path.stat().st_size})
+        manifest = {
+            "schema": "smacx.capability-gap-bundle.v1", "incident_id": incident_id,
+            "gap_id": report["gap_id"], "created_unix": time.time(),
+            "privacy": {"game_binaries_included": False, "credentials_included": False,
+                        "private_chat_included": False, "full_model_history_included": False},
+            "saves": saves, "files": files,
+        }
+        self._write_json(staging / "manifest.json", manifest)
+        temporary_bundle = bundle.with_suffix(".zip.tmp")
+        with zipfile.ZipFile(temporary_bundle, "w", compression=zipfile.ZIP_DEFLATED,
+                             compresslevel=6) as archive:
+            for path in sorted(item for item in staging.rglob("*") if item.is_file()):
+                archive.write(path, path.relative_to(staging).as_posix())
+        if temporary_bundle.stat().st_size > DIAGNOSTIC_BUNDLE_MAX_BYTES:
+            temporary_bundle.unlink(missing_ok=True)
+            raise StoreError("diagnostic_bundle_too_large")
+        os.chmod(temporary_bundle, 0o600)
+        os.replace(temporary_bundle, bundle)
+        shutil.rmtree(staging)
+        return {"relative_path": bundle.relative_to(self.data_root).as_posix(),
+                "file_name": bundle.name, "size_bytes": bundle.stat().st_size,
+                "sha256": _sha256(bundle)}
+
+    def ingest_capability_gaps_once(self) -> dict[str, Any]:
+        ingested = ignored = errors = 0
+        for report in self._capability_gap_records():
+            gap_id = str(report["gap_id"])
+            if self._existing_gap_incident(gap_id) is not None:
+                ignored += 1
+                continue
+            instance_id = self._instance_for_gap(report)
+            if instance_id is None:
+                ignored += 1
+                continue
+            try:
+                stopped_runs = self._stop_gap_harness(instance_id, gap_id)
+                detail = {
+                    "schema": "smacx.capability-gap-incident.v1", "gap_id": gap_id,
+                    "summary": "AI play stopped at a semantic capability gap.",
+                    "screen_or_state": self._redact_text(str(report.get("screen_or_state") or "Unknown state")),
+                    "intended_decision": self._redact_text(str(report.get("intended_decision") or "")),
+                    "required_observation": self._redact_text(str(report.get("required_observation") or "")),
+                    "required_action": self._redact_text(str(report.get("required_action") or "")),
+                    "why_blocked": self._redact_text(str(report.get("why_blocked") or "")),
+                    "turn": report.get("turn"), "revision": report.get("revision"),
+                    "reported_at_unix": report.get("reported_at_unix"),
+                    "harness_runs_stopped": stopped_runs,
+                    "native_worker_preserved": True,
+                }
+                incident = self._incident(
+                    instance_id, f"capability_gap:{gap_id}", "operator_required", detail,
+                )
+                bundle = self._create_gap_bundle(incident, report, instance_id, stopped_runs)
+                detail["diagnostic_bundle"] = bundle
+                self._incident(
+                    instance_id, f"capability_gap:{gap_id}", "operator_required", detail,
+                )
+                ingested += 1
+            except Exception as exc:
+                errors += 1
+                self._incident(instance_id, f"capability_gap:{gap_id}", "operator_required", {
+                    "schema": "smacx.capability-gap-incident.v1", "gap_id": gap_id,
+                    "summary": "AI play stopped at a semantic capability gap.",
+                    "bundle_error": self._redact_text(str(exc)), "native_worker_preserved": True,
+                })
+        return {"checked": len(self._capability_gap_records()), "ingested": ingested,
+                "ignored": ignored, "errors": errors}
+
     def reconcile_once(self) -> dict[str, Any]:
         with self._operation_lock:
             return self._reconcile_once()
 
     def _reconcile_once(self) -> dict[str, Any]:
+        gap_result = self.ingest_capability_gaps_once()
         if self.worker_manager is None:
             harness_result = self.harness_manager.reconcile_once() \
                 if self.harness_manager is not None else {"checked": 0, "restarted": 0}
             return {"ok": True, "checked": 0, "recovered": 0, "operator_required": 0,
-                    "harness": harness_result}
+                    "capability_gaps": gap_result, "harness": harness_result}
         checked = recovered = operator_required = 0
         for spec in self.control.list_worker_specs():
             if spec["desired_status"] != "running":
@@ -641,7 +1019,8 @@ class OperationsManager:
         harness_result = self.harness_manager.reconcile_once() \
             if self.harness_manager is not None else {"checked": 0, "restarted": 0}
         return {"ok": True, "checked": checked, "recovered": recovered,
-                "operator_required": operator_required, "harness": harness_result}
+                "operator_required": operator_required, "capability_gaps": gap_result,
+                "harness": harness_result}
 
     def status(self) -> dict[str, Any]:
         with self.store.transaction() as connection:

@@ -103,6 +103,40 @@ public sealed class ResponseHandlingTests
         }
     }
 
+    [Fact]
+    public async Task ServerClientReadsDurableCapabilityIncidentAndBundleMetadata()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"smacx-control-client-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var tokenFile = Path.Combine(root, "portal-service-token");
+        await File.WriteAllTextAsync(tokenFile, "test-service-token");
+        try
+        {
+            var json = """
+                {"ok":true,"incidents":[{"incident_id":"incident-test1234","match_id":"match-test1234","instance_id":"instance-test1234","incident_kind":"capability_gap:gap-cccccccccccccccccccccccccccccccc","status":"operator_required","details":{"gap_id":"gap-cccccccccccccccccccccccccccccccc","summary":"AI stopped safely","diagnostic_bundle":{"file_name":"smacx-gap-test.zip","size_bytes":4096}},"first_seen_unix":1800000000,"last_seen_unix":1800000001}]}
+                """;
+            using var http = new HttpClient(new SequenceHandler(JsonResponse(json)))
+            {
+                BaseAddress = new Uri("http://control.test/"),
+            };
+            var client = new ControlPlaneClient(
+                http,
+                Options.Create(new ControlPlaneOptions { ServiceTokenFile = tokenFile }),
+                NullLogger<ControlPlaneClient>.Instance);
+
+            var incident = await client.GetActiveCapabilityIncidentAsync("match-test1234");
+
+            Assert.NotNull(incident);
+            Assert.Equal("operator_required", incident.Status);
+            Assert.Equal("smacx-gap-test.zip",
+                incident.Details.GetProperty("diagnostic_bundle").GetProperty("file_name").GetString());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(json, Encoding.UTF8, "application/json"),

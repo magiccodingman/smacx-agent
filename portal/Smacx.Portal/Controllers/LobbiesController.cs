@@ -59,6 +59,48 @@ public sealed class LobbiesController(
         return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
     }
 
+    [HttpGet("{matchId}/incidents/{incidentId}/diagnostic")]
+    [Authorize]
+    public async Task<IActionResult> DownloadDiagnostic(string matchId, string incidentId)
+    {
+        var profile = await database.PortalMatches.AsNoTracking().SingleOrDefaultAsync(
+            item => item.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null || !CanManage(profile) && !await IsMemberAsync(matchId))
+            return NotFound();
+        try
+        {
+            var incident = await control.GetIncidentAsync(incidentId, HttpContext.RequestAborted);
+            if (incident.MatchId != matchId ||
+                !incident.IncidentKind.StartsWith("capability_gap:", StringComparison.Ordinal))
+                return NotFound();
+            var details = incident.Details;
+            if (!details.TryGetProperty("diagnostic_bundle", out var bundle) ||
+                bundle.ValueKind != JsonValueKind.Object ||
+                !bundle.TryGetProperty("relative_path", out var relativeValue) ||
+                relativeValue.ValueKind != JsonValueKind.String)
+                return NotFound();
+            var relative = relativeValue.GetString() ?? "";
+            var dataRoot = Path.GetFullPath(
+                Environment.GetEnvironmentVariable("SMACX_CONTROL_DATA_MOUNT")
+                    ?? "/var/lib/smacx-control");
+            var path = Path.GetFullPath(Path.Combine(dataRoot, relative));
+            var diagnosticRoot = Path.GetFullPath(Path.Combine(dataRoot, "diagnostics"));
+            if (!path.StartsWith(diagnosticRoot + Path.DirectorySeparatorChar,
+                    StringComparison.Ordinal) || !System.IO.File.Exists(path))
+                return NotFound();
+            var name = bundle.TryGetProperty("file_name", out var nameValue) &&
+                nameValue.ValueKind == JsonValueKind.String
+                    ? Path.GetFileName(nameValue.GetString()) : Path.GetFileName(path);
+            return File(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read),
+                "application/zip", name, enableRangeProcessing: false);
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<object>.Failure(exception.Code, exception.Message));
+        }
+    }
+
     [HttpPost]
     [Authorize]
     public async Task<ActionResult<ApiResponse<LobbyDetails>>> Create(CreateLobbyRequest request)
@@ -1144,6 +1186,7 @@ public sealed class LobbiesController(
                 seat.RequestedPersonalityId, seat.PersonalityName);
         }).ToArray();
         var nativeJoin = await ReadNativeJoinAsync(profile.MatchId);
+        var incident = await ReadCapabilityIncidentAsync(profile.MatchId);
         return new LobbyDetails(
             profile.MatchId, profile.DisplayName, profile.Mode, profile.Status,
             profile.LanProfile, profile.CurrentTurn, profile.CurrentYear, profile.IsListed,
@@ -1151,7 +1194,51 @@ public sealed class LobbiesController(
             profile.RankingMode, profile.GraphitiEnabled, profile.PersonalityCardId,
             CanManage(profile), seats, ReadSettings(profile.SettingsJson), nativeJoin, profile.LastError,
             profile.CreatedAt, profile.UpdatedAt,
-            Presence(profile, seatEntities));
+            Presence(profile, seatEntities), incident);
+    }
+
+    private async Task<CapabilityGapIncident?> ReadCapabilityIncidentAsync(string matchId)
+    {
+        try
+        {
+            var incident = await control.GetActiveCapabilityIncidentAsync(
+                matchId, HttpContext.RequestAborted);
+            if (incident is null) return null;
+            var detail = incident.Details;
+            string Text(string name, string fallback = "") =>
+                detail.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                    ? value.GetString() ?? fallback : fallback;
+            int? Number(string name) =>
+                detail.TryGetProperty(name, out var value) && value.TryGetInt32(out var number)
+                    ? number : null;
+            string? fileName = null;
+            long? size = null;
+            if (detail.TryGetProperty("diagnostic_bundle", out var bundle) &&
+                bundle.ValueKind == JsonValueKind.Object)
+            {
+                if (bundle.TryGetProperty("file_name", out var nameValue) &&
+                    nameValue.ValueKind == JsonValueKind.String) fileName = nameValue.GetString();
+                if (bundle.TryGetProperty("size_bytes", out var sizeValue) &&
+                    sizeValue.TryGetInt64(out var bytes)) size = bytes;
+            }
+            var reported = detail.TryGetProperty("reported_at_unix", out var reportedValue) &&
+                reportedValue.TryGetDouble(out var unix)
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)(unix * 1000))
+                    : DateTimeOffset.FromUnixTimeMilliseconds((long)(incident.FirstSeenUnix * 1000));
+            return new CapabilityGapIncident(
+                incident.IncidentId, Text("gap_id", incident.IncidentKind["capability_gap:".Length..]),
+                incident.Status, Text("summary", "AI play needs operator attention."),
+                Text("screen_or_state", "Unknown native state"), Text("intended_decision"),
+                Text("required_observation"), Text("required_action"), Text("why_blocked"),
+                Number("turn"), reported,
+                detail.TryGetProperty("native_worker_preserved", out var preserved) &&
+                    preserved.ValueKind == JsonValueKind.True,
+                fileName, size);
+        }
+        catch (ControlPlaneException)
+        {
+            return null;
+        }
     }
 
     private void ResolveAgentSeats(string matchId, IReadOnlyList<PortalLobbySeat> seats)

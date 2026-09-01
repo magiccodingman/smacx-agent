@@ -2177,6 +2177,38 @@ class ControlPlane:
                 )
         return {"incident_id": incident_id, "status": status}
 
+    def get_supervision_incident(self, incident_id: str) -> dict[str, Any]:
+        _require_id(incident_id, "incident_id")
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM supervision_incidents WHERE incident_id=?", (incident_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_supervision_incident")
+        result = dict(row)
+        result["details"] = json.loads(result.pop("details_json"))
+        return result
+
+    def list_supervision_incidents(
+        self, *, match_id: str | None = None, active_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        if match_id is not None:
+            _require_id(match_id, "match_id")
+        clauses: list[str] = []
+        values: list[Any] = []
+        if match_id is not None:
+            clauses.append("match_id=?")
+            values.append(match_id)
+        if active_only:
+            clauses.append("status IN ('open','operator_required')")
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.store.transaction() as connection:
+            identifiers = [str(row[0]) for row in connection.execute(
+                "SELECT incident_id FROM supervision_incidents" + where
+                + " ORDER BY last_seen_unix DESC, incident_id DESC", values,
+            ).fetchall()]
+        return [self.get_supervision_incident(identifier) for identifier in identifiers]
+
     def get_harness_profile(self, harness_profile_id: str) -> dict[str, Any]:
         _require_id(harness_profile_id, "harness_profile_id")
         with self.store.transaction() as connection:
