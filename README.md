@@ -152,6 +152,13 @@ a verified safe checkpoint and parks the campaign instead of leaving forgotten
 Windows processes burning forever in the corner. AI-only simulations keep
 running; direct/native seats are never guessed from browser presence.
 
+Lobby setup is equally deliberate: create the world and rules first, then
+assemble all seven seats in one staging room. Take or leave a faction, reserve
+friends, add or remove AI and stock opponents, and choose every faction before
+anything launches. Regular members can keep up to five waiting rooms;
+administrators are unlimited for simulations, and forgotten never-started rooms
+expire after a day without activity.
+
 Disruptive changes are treated like table decisions, not surprise process
 kills. Native resolution changes, temporary computer control for an absent
 player, seat reclaim, host transfer, parking, and ending a match use persisted

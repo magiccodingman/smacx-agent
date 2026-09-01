@@ -286,11 +286,23 @@ browser human hosts. This gives the supervisor reliable save, park, recovery,
 reconnect, and stream authority without asking a lobby creator to understand a
 1999 network topology.
 
-**Create waiting lobby** writes only a durable staging room. It does not start
-a game process or advertise a native session. The staging page shows all seven
-seats and lets the owner change a seat between open, reserved human, AI, and
-stock computer. **Start match** is the single action that provisions managed
-players and begins native session advertising.
+**Create waiting lobby** records only the campaign-wide world, rules, and access
+policy. It does not start a game process, advertise a native session, or assign
+the creator to a faction. The resulting staging room begins with seven open
+seats and is the one authoritative roster editor. A player can take or leave a
+seat; the owner can reserve a human, add an AI or stock computer, configure any
+assignment, or remove it explicitly. The owner may remain an observer. **Start
+match** is enabled once an AI or browser-controlled human can act as the managed
+host; it is the single action that provisions players and begins native session
+advertising.
+
+Regular members may own at most five waiting lobbies. Joined or invited rooms
+do not count, and starting or closing a room immediately frees a slot.
+Administrators are unlimited for simulation work. The create page shows the
+current quota and links to rooms that must be started or closed. A waiting room
+with no connected lobby browser and no seat/configuration activity for 24 hours
+is deleted automatically; `SMACX_WAITING_LOBBY_TTL_HOURS` may set 1–720 hours.
+Actively open staging rooms cannot expire.
 
 Reserved public display names are case-insensitive seat reservations; they do not
 send notifications. A matching existing or future local account claims the

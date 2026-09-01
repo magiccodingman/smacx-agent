@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using Smacx.Portal.Contracts;
 using Smacx.Portal.Data;
+using Smacx.Portal.Infrastructure;
 using Smacx.Portal.Services;
 
 namespace Smacx.Portal.Controllers;
@@ -18,6 +20,17 @@ public sealed class CatalogController(
     [HttpGet("lobby")]
     public async Task<ActionResult<ApiResponse<LobbyCatalog>>> Lobby()
     {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        var ownedWaiting = await database.PortalMatches.AsNoTracking()
+            .Where(item => item.OwnerUserId == userId && item.Status == "waiting")
+            .OrderByDescending(item => item.UpdatedAt)
+            .Select(item => new OwnedWaitingLobby(
+                item.MatchId, item.DisplayName, item.UpdatedAt))
+            .ToArrayAsync(HttpContext.RequestAborted);
+        var quota = new WaitingLobbyQuota(
+            ownedWaiting.Length,
+            User.IsInRole(PortalRoles.Administrator) ? null : WaitingLobbyPolicy.MemberLimit,
+            ownedWaiting);
         try
         {
             var sources = await control.ListGameSourcesAsync(HttpContext.RequestAborted);
@@ -41,15 +54,15 @@ public sealed class CatalogController(
                 activeProfiles.Where(item => readyModels.Contains((item.ProviderId, item.ModelId))).Select(item => new CatalogItem(
                     item.AgentId, $"{item.DisplayName} · {item.ModelId} · {item.ReasoningEffort}",
                     agentStatus.GetValueOrDefault(item.AgentId, "configured"))).ToArray(),
-                true));
+                true, quota));
         }
         catch (ControlPlaneException exception)
         {
-            return ApiResponse<LobbyCatalog>.Success(new([], [], [], false, exception.Code));
+            return ApiResponse<LobbyCatalog>.Success(new([], [], [], false, quota, exception.Code));
         }
         catch (HttpRequestException)
         {
-            return ApiResponse<LobbyCatalog>.Success(new([], [], [], false, "control_unavailable"));
+            return ApiResponse<LobbyCatalog>.Success(new([], [], [], false, quota, "control_unavailable"));
         }
     }
 

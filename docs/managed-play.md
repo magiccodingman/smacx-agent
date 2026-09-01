@@ -249,11 +249,18 @@ clients.
 
 The lobby exposes this lifecycle as `awaiting_first_connection`,
 `temporarily_disconnected`, `idle_grace_period`, or `checkpoint_pending`, with
-the remaining countdown where applicable. A never-opened browser match is not
-immortal: its ten-minute abandoned-lobby timer starts from match creation.
+the remaining countdown where applicable. A started browser match that has
+never been opened is not immortal: its ten-minute abandoned-game timer starts
+from match creation.
 Reconnecting any managed human before maintenance begins cancels the idle
 condition. Parking still waits for native stability, so simultaneous turns or
 an open modal are not discarded merely because a browser left.
+
+A never-started waiting room has no native workers to park. Its owner can close
+it immediately, and inactive waiting rooms expire after 24 hours by default.
+An active SignalR lobby connection protects the room; disconnecting refreshes
+its activity timestamp so the full idle period begins when the staging room is
+actually left.
 
 ## Identity collision rules
 

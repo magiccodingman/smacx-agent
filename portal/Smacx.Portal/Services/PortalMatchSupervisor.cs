@@ -16,12 +16,15 @@ public sealed class PortalMatchSupervisor(
     IServiceScopeFactory scopes,
     IHubContext<LobbyHub> lobbyHub,
     StreamPresenceTracker presence,
+    WaitingLobbyPresenceTracker waitingLobbyPresence,
+    WaitingLobbyPolicy waitingLobbyPolicy,
     ILogger<PortalMatchSupervisor> logger) : BackgroundService
 {
     private int dormantReconcileOffset;
     private bool dormantReconciled;
     private readonly Dictionary<string, string> announcedCapabilityIncidents =
         new(StringComparer.Ordinal);
+    private DateTimeOffset nextWaitingLobbyExpirySweep;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -106,6 +109,24 @@ public sealed class PortalMatchSupervisor(
             }
         }
         await AutoParkIdleBrowserMatchesAsync(database, control, cancellationToken);
+        await ExpireWaitingLobbiesAsync(database, cancellationToken);
+    }
+
+    private async Task ExpireWaitingLobbiesAsync(
+        ApplicationDbContext database, CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now < nextWaitingLobbyExpirySweep) return;
+        nextWaitingLobbyExpirySweep = now + TimeSpan.FromMinutes(1);
+        var matchIds = await WaitingLobbyExpiration.ExpireAsync(
+            database, waitingLobbyPresence, waitingLobbyPolicy, now, cancellationToken);
+        foreach (var matchId in matchIds)
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                "LobbyClosed", matchId, cancellationToken);
+        if (matchIds.Count == 0) return;
+        logger.LogInformation(
+            "Expired {Count} inactive waiting lobbies older than {Lifetime}",
+            matchIds.Count, waitingLobbyPolicy.IdleLifetime);
     }
 
     private async Task ReconcileDormantMatchesAsync(

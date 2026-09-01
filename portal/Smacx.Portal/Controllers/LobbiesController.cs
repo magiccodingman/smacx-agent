@@ -25,6 +25,7 @@ public sealed class LobbiesController(
     StreamPresenceTracker presence,
     PersonalityCardLibrary personalityCards) : ControllerBase
 {
+    private static readonly SemaphoreSlim WaitingLobbyCreationGate = new(1, 1);
     [HttpGet]
     [AllowAnonymous]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<PublicLobbySummary>>>> List()
@@ -115,153 +116,111 @@ public sealed class LobbiesController(
         {
             return BadRequest(ApiResponse<LobbyDetails>.Failure(validation.Value.Code, validation.Value.Message));
         }
-        if (FactionCatalog.IsReservedLeaderName(user.DisplayName))
-            return Conflict(ApiResponse<LobbyDetails>.Failure(
-                "reserved_faction_leader_name",
-                "Change your public display name before joining; faction-leader names are reserved for AI players."));
-        if ((request.HostController == "human" || request.OwnerPlays) &&
-            request.InvitedHumanHandles.Any(handle =>
-                handle.Trim().Equals(user.DisplayName, StringComparison.OrdinalIgnoreCase)))
+        await WaitingLobbyCreationGate.WaitAsync(HttpContext.RequestAborted);
+        try
         {
-            return BadRequest(ApiResponse<LobbyDetails>.Failure(
-                "duplicate_player_handle",
-                "Your account is already assigned to this lobby; do not invite the same public display name again."));
-        }
-
-        var matchId = $"match-{Guid.NewGuid():N}";
-        var now = DateTimeOffset.UtcNow;
-        var requestedAgents = EffectiveAgentSeats(request);
-        var profile = new PortalMatchProfile
-        {
-            MatchId = matchId,
-            OwnerUserId = user.Id,
-            DisplayName = request.DisplayName.Trim(),
-            Status = "waiting",
-            Mode = request.Mode,
-            GameSourceId = request.GameSourceId,
-            RuntimeId = request.RuntimeId,
-            LanProfile = ResolveProfile(request.WorldSize),
-            SettingsJson = JsonSerializer.Serialize(new
+            if (!User.IsInRole(PortalRoles.Administrator))
             {
-                request.WorldSize,
-                request.Difficulty,
-                request.RandomMap,
-                request.DoOrDie,
-                request.NativeBotCount,
-                request.NativeBotDifficulty,
-                request.HostController,
-                request.OwnerPlays,
-                request.TimeControl,
-                request.OceanCoverage,
-                request.ErosiveForces,
-                request.NativeLife,
-                request.CloudCover,
-                request.RuleOptions,
-                request.ScenarioId,
-                request.ResumeSlot,
-            }),
-            NativeSettingsJson = JsonSerializer.Serialize(new
-            {
-                difficulty = DifficultyId(request.Difficulty),
-                time_control = request.TimeControl,
-                world_size = WorldSizeId(request.WorldSize),
-                ocean_coverage = request.OceanCoverage,
-                erosive_forces = request.ErosiveForces,
-                native_life = request.NativeLife,
-                cloud_cover = request.CloudCover,
-                victory_transcendence = Rule(request, "victory_transcendence", true),
-                victory_conquest = Rule(request, "victory_conquest", true),
-                victory_diplomatic = Rule(request, "victory_diplomatic", true),
-                victory_economic = Rule(request, "victory_economic", true),
-                victory_cooperative = Rule(request, "victory_cooperative", !request.DoOrDie),
-                do_or_die = request.DoOrDie,
-                look_first = Rule(request, "look_first", false),
-                tech_stagnation = Rule(request, "tech_stagnation", false),
-                spoils_of_war = Rule(request, "spoils_of_war", true),
-                blind_research = Rule(request, "blind_research", true),
-                intense_rivalry = Rule(request, "intense_rivalry", false),
-                unity_survey = Rule(request, "unity_survey", false),
-                unity_scattering = Rule(request, "unity_scattering", false),
-                random_events = Rule(request, "random_events", true),
-                time_warp = Rule(request, "time_warp", false),
-                ironman = Rule(request, "ironman", false),
-            }),
-            AllowAnonymousSpectators = request.AllowAnonymousSpectators,
-            ManagedClientsOnly = request.ManagedClientsOnly,
-            RankingMode = "unranked",
-            GraphitiEnabled = request.GraphitiEnabled,
-            PersonalityCardId = "none",
-            ScenarioId = string.IsNullOrWhiteSpace(request.ScenarioId) ? null : request.ScenarioId,
-            ResumeSlot = string.IsNullOrWhiteSpace(request.ResumeSlot) ? null : request.ResumeSlot,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
-        database.PortalMatches.Add(profile);
-        database.PortalMatchMembers.Add(new PortalMatchMember
-        {
-            MatchId = matchId,
-            UserId = user.Id,
-            Role = "owner",
-            JoinMode = "browser",
-            JoinedAt = now,
-        });
-
-        var seatIndex = 0;
-        if (request.HostController == "agent")
-        {
-            AddAgentSeats(requestedAgents, ref seatIndex, matchId, now);
-            if (request.OwnerPlays)
-            {
-                AddHumanSeat(user.Id, user.DisplayName, request.HumanJoinMode, ref seatIndex, matchId, now);
+                var ownedWaiting = await database.PortalMatches.AsNoTracking().CountAsync(
+                    item => item.OwnerUserId == user.Id && item.Status == "waiting",
+                    HttpContext.RequestAborted);
+                if (ownedWaiting >= WaitingLobbyPolicy.MemberLimit)
+                    return Conflict(ApiResponse<LobbyDetails>.Failure(
+                        "waiting_lobby_limit_reached",
+                        $"Members may own at most {WaitingLobbyPolicy.MemberLimit} waiting lobbies. Start or close one before creating another."));
             }
-        }
-        else
-        {
-            AddHumanSeat(user.Id, user.DisplayName, request.HumanJoinMode, ref seatIndex, matchId, now);
-            AddAgentSeats(requestedAgents, ref seatIndex, matchId, now);
-        }
-        foreach (var handle in request.InvitedHumanHandles)
-        {
-            var invited = await EnsureLobbyUserAsync(handle.Trim());
-            AddHumanSeat(invited.Id, invited.DisplayName, request.HumanJoinMode,
-                ref seatIndex, matchId, now);
-        }
-        for (var index = 0; index < request.NativeBotCount; index++)
-        {
-            database.PortalLobbySeats.Add(new PortalLobbySeat
+
+            var matchId = $"match-{Guid.NewGuid():N}";
+            var now = DateTimeOffset.UtcNow;
+            var profile = new PortalMatchProfile
             {
                 MatchId = matchId,
-                SeatIndex = seatIndex++,
-                ControllerKind = "native",
-                PlayerHandle = $"Native bot {index + 1}",
-                Status = "assigned",
+                OwnerUserId = user.Id,
+                DisplayName = request.DisplayName.Trim(),
+                Status = "waiting",
+                Mode = request.Mode,
+                GameSourceId = request.GameSourceId,
+                RuntimeId = request.RuntimeId,
+                LanProfile = ResolveProfile(request.WorldSize),
+                SettingsJson = JsonSerializer.Serialize(new
+                {
+                    request.WorldSize,
+                    request.Difficulty,
+                    request.RandomMap,
+                    request.DoOrDie,
+                    request.TimeControl,
+                    request.OceanCoverage,
+                    request.ErosiveForces,
+                    request.NativeLife,
+                    request.CloudCover,
+                    request.RuleOptions,
+                    request.ScenarioId,
+                    request.ResumeSlot,
+                }),
+                NativeSettingsJson = JsonSerializer.Serialize(new
+                {
+                    difficulty = DifficultyId(request.Difficulty),
+                    time_control = request.TimeControl,
+                    world_size = WorldSizeId(request.WorldSize),
+                    ocean_coverage = request.OceanCoverage,
+                    erosive_forces = request.ErosiveForces,
+                    native_life = request.NativeLife,
+                    cloud_cover = request.CloudCover,
+                    victory_transcendence = Rule(request, "victory_transcendence", true),
+                    victory_conquest = Rule(request, "victory_conquest", true),
+                    victory_diplomatic = Rule(request, "victory_diplomatic", true),
+                    victory_economic = Rule(request, "victory_economic", true),
+                    victory_cooperative = Rule(request, "victory_cooperative", !request.DoOrDie),
+                    do_or_die = request.DoOrDie,
+                    look_first = Rule(request, "look_first", false),
+                    tech_stagnation = Rule(request, "tech_stagnation", false),
+                    spoils_of_war = Rule(request, "spoils_of_war", true),
+                    blind_research = Rule(request, "blind_research", true),
+                    intense_rivalry = Rule(request, "intense_rivalry", false),
+                    unity_survey = Rule(request, "unity_survey", false),
+                    unity_scattering = Rule(request, "unity_scattering", false),
+                    random_events = Rule(request, "random_events", true),
+                    time_warp = Rule(request, "time_warp", false),
+                    ironman = Rule(request, "ironman", false),
+                }),
+                AllowAnonymousSpectators = request.AllowAnonymousSpectators,
+                ManagedClientsOnly = request.ManagedClientsOnly,
+                RankingMode = "unranked",
+                GraphitiEnabled = request.GraphitiEnabled,
+                PersonalityCardId = "none",
+                ScenarioId = string.IsNullOrWhiteSpace(request.ScenarioId) ? null : request.ScenarioId,
+                ResumeSlot = string.IsNullOrWhiteSpace(request.ResumeSlot) ? null : request.ResumeSlot,
+                CreatedAt = now,
                 UpdatedAt = now,
-            });
-        }
-        while (seatIndex < 7)
-        {
-            database.PortalLobbySeats.Add(new PortalLobbySeat
+            };
+            database.PortalMatches.Add(profile);
+            database.PortalMatchMembers.Add(new PortalMatchMember
             {
                 MatchId = matchId,
-                SeatIndex = seatIndex++,
-                ControllerKind = "open",
-                Status = "open",
-                UpdatedAt = now,
+                UserId = user.Id,
+                Role = "owner",
+                JoinMode = "browser",
+                JoinedAt = now,
             });
-        }
-        await database.SaveChangesAsync(HttpContext.RequestAborted);
-
-        if (request.StartNow)
-        {
-            var started = await MaterializeAsync(profile, HttpContext.RequestAborted);
-            if (started is not null)
+            for (var seatIndex = 0; seatIndex < 7; seatIndex++)
             {
-                return StatusCode(started.Value.Status, ApiResponse<LobbyDetails>.Failure(
-                    started.Value.Code, started.Value.Message));
+                database.PortalLobbySeats.Add(new PortalLobbySeat
+                {
+                    MatchId = matchId,
+                    SeatIndex = seatIndex,
+                    ControllerKind = "open",
+                    Status = "open",
+                    UpdatedAt = now,
+                });
             }
+            await database.SaveChangesAsync(HttpContext.RequestAborted);
+            return CreatedAtAction(nameof(Get), new { matchId },
+                ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile)));
         }
-        return CreatedAtAction(nameof(Get), new { matchId },
-            ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile)));
+        finally
+        {
+            WaitingLobbyCreationGate.Release();
+        }
     }
 
     [HttpPost("{matchId}/join")]
@@ -305,8 +264,7 @@ public sealed class LobbiesController(
             HttpContext.RequestAborted);
         if (old is not null)
         {
-            old.ControllerKind = "open"; old.UserId = null; old.PlayerHandle = null;
-            old.Status = "open"; old.UpdatedAt = DateTimeOffset.UtcNow;
+            ResetSeatToOpen(old);
         }
         seat.ControllerKind = "human"; seat.UserId = user.Id; seat.PlayerHandle = user.DisplayName;
         seat.JoinMode = request.JoinMode; seat.Status = "ready"; seat.UpdatedAt = DateTimeOffset.UtcNow;
@@ -328,6 +286,68 @@ public sealed class LobbiesController(
         await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
             "LobbyChanged", matchId, HttpContext.RequestAborted);
         return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
+    }
+
+    [HttpPost("{matchId}/leave")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<LobbyDetails>>> Leave(
+        string matchId, LeaveLobbySeatRequest request)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+        var profile = await database.PortalMatches.SingleOrDefaultAsync(
+            item => item.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null || profile.Status != "waiting")
+            return Conflict(ApiResponse<LobbyDetails>.Failure(
+                "seat_leave_requires_waiting_lobby",
+                "A player may leave a seat only before the match starts."));
+        var seat = await database.PortalLobbySeats.SingleOrDefaultAsync(
+            item => item.MatchId == matchId && item.SeatIndex == request.SeatIndex,
+            HttpContext.RequestAborted);
+        if (seat is null || seat.ControllerKind != "human" || seat.UserId != user.Id)
+            return Conflict(ApiResponse<LobbyDetails>.Failure(
+                "seat_not_owned", "You do not occupy that human seat."));
+
+        ResetSeatToOpen(seat);
+        var member = await database.PortalMatchMembers.SingleOrDefaultAsync(
+            item => item.MatchId == matchId && item.UserId == user.Id,
+            HttpContext.RequestAborted);
+        if (member is not null)
+        {
+            member.SeatIndex = null;
+            if (member.Role != "owner") member.LeftAt = DateTimeOffset.UtcNow;
+        }
+        profile.UpdatedAt = DateTimeOffset.UtcNow;
+        await database.SaveChangesAsync(HttpContext.RequestAborted);
+        await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+            "LobbyChanged", matchId, HttpContext.RequestAborted);
+        return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
+    }
+
+    [HttpPost("{matchId}/close")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<bool>>> Close(string matchId)
+    {
+        var profile = await database.PortalMatches.SingleOrDefaultAsync(
+            item => item.MatchId == matchId, HttpContext.RequestAborted);
+        if (profile is null)
+            return NotFound(ApiResponse<bool>.Failure("lobby_not_found", "The lobby was not found."));
+        if (!CanManage(profile)) return Forbid();
+        if (profile.Status != "waiting")
+            return Conflict(ApiResponse<bool>.Failure(
+                "close_requires_waiting_lobby",
+                "Only a never-started waiting lobby can be closed. Use the campaign lifecycle after launch."));
+
+        var provisionalUserIds = await database.PortalLobbySeats.AsNoTracking()
+            .Where(item => item.MatchId == matchId && item.UserId != null)
+            .Select(item => item.UserId!)
+            .ToArrayAsync(HttpContext.RequestAborted);
+        database.PortalMatches.Remove(profile);
+        await database.SaveChangesAsync(HttpContext.RequestAborted);
+        await RemoveOrphanedProvisionalUsersAsync(provisionalUserIds);
+        await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+            "LobbyClosed", matchId, HttpContext.RequestAborted);
+        return ApiResponse<bool>.Success(true);
     }
 
     [HttpPut("{matchId}/seats/{seatIndex:int}")]
@@ -373,14 +393,8 @@ public sealed class LobbiesController(
                 "faction_already_reserved",
                 "Another human, AI, or stock computer seat already reserves that faction."));
         var oldUserId = seat.UserId;
+        ResetSeatToOpen(seat);
         seat.ControllerKind = request.ControllerKind;
-        seat.AgentId = null; seat.AiProfileId = null; seat.UserId = null;
-        seat.PlayerHandle = null; seat.JoinMode = "browser"; seat.RequestedFactionId = FactionCatalog.Random;
-        seat.ResolvedFactionKey = null; seat.LeaderName = null;
-        seat.RequestedPersonalityId = "standard"; seat.PersonalityCardId = "none";
-        seat.PersonalityName = null; seat.PersonalityPrompt = null; seat.PersonalityPromptSha256 = null;
-        seat.FactionId = null; seat.FactionName = null; seat.ControlInstanceId = null;
-        seat.UpdatedAt = DateTimeOffset.UtcNow;
 
         if (request.ControllerKind == "agent")
         {
@@ -446,8 +460,11 @@ public sealed class LobbiesController(
             var oldMember = await database.PortalMatchMembers.SingleOrDefaultAsync(
                 item => item.MatchId == matchId && item.UserId == oldUserId,
                 HttpContext.RequestAborted);
-            if (oldMember is not null && oldMember.Role != "owner")
-            { oldMember.SeatIndex = null; oldMember.LeftAt = DateTimeOffset.UtcNow; }
+            if (oldMember is not null)
+            {
+                oldMember.SeatIndex = null;
+                if (oldMember.Role != "owner") oldMember.LeftAt = DateTimeOffset.UtcNow;
+            }
         }
         profile.UpdatedAt = DateTimeOffset.UtcNow;
         await database.SaveChangesAsync(HttpContext.RequestAborted);
@@ -997,6 +1014,9 @@ public sealed class LobbiesController(
         var humans = assigned.Where(seat => seat.ControllerKind == "human").ToArray();
         var managedHumans = humans.Where(seat => seat.JoinMode == "browser").ToArray();
         var externalHumans = humans.Where(seat => seat.JoinMode == "native").ToArray();
+        if (agents.Length == 0 && managedHumans.Length == 0)
+            return (400, "managed_host_required",
+                "Add at least one AI or browser-controlled human before starting. That managed seat hosts reliable saves, recovery, and reconnects.");
         var occupiedNativeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var index in Enumerable.Range(0, 7))
         {
@@ -1014,8 +1034,7 @@ public sealed class LobbiesController(
         // numbers are presentation slots and can be rearranged while staging,
         // so never infer native ownership from the first visible slot.
         var hostSeat = agents.FirstOrDefault()
-            ?? managedHumans.FirstOrDefault()
-            ?? externalHumans.FirstOrDefault();
+            ?? managedHumans.FirstOrDefault();
         if (hostSeat is not null) hostSeat.IsManagedHost = true;
         if (networkSeatCount == 1)
         {
@@ -1209,8 +1228,9 @@ public sealed class LobbiesController(
             var canSpectate = live && seat.ControlInstanceId is not null
                 && (canControl || administrator || profile.AllowAnonymousSpectators);
             var canJoin = profile.Status == "waiting" && userId is not null &&
-                (seat.ControllerKind == "open" || seat.ControllerKind == "human" &&
-                    seat.UserId == userId);
+                seat.ControllerKind == "open";
+            var canLeave = profile.Status == "waiting" && userId is not null &&
+                seat.ControllerKind == "human" && seat.UserId == userId;
             return new LobbySeatSummary(
                 seat.SeatIndex, seat.ControllerKind, seat.AgentId, seat.PlayerHandle,
                 seat.FactionId, seat.FactionName, seat.Status,
@@ -1219,7 +1239,7 @@ public sealed class LobbiesController(
                 seat.DelegationStatus, seat.TemporaryControllerKind,
                 seat.LastBrowserSeenAt, seat.IsManagedHost,
                 seat.RequestedFactionId, seat.ResolvedFactionKey,
-                seat.RequestedPersonalityId, seat.PersonalityName);
+                seat.RequestedPersonalityId, seat.PersonalityName, canLeave);
         }).ToArray();
         var nativeJoin = await ReadNativeJoinAsync(profile.MatchId);
         var incident = await ReadCapabilityIncidentAsync(profile.MatchId);
@@ -1503,54 +1523,42 @@ public sealed class LobbiesController(
             HttpContext.RequestAborted);
     }
 
-    private void AddAgentSeats(
-        IReadOnlyList<AgentSeatRequest> agents, ref int seatIndex, string matchId, DateTimeOffset now)
+    private static void ResetSeatToOpen(PortalLobbySeat seat)
     {
-        foreach (var agentSeat in agents)
-        {
-            var agent = agentSeat.AgentId;
-            var requestedFaction = FactionCatalog.Find(agentSeat.FactionId);
-            var profile = database.PortalAiProfiles.Local.FirstOrDefault(item => item.AgentId == agent)
-                ?? database.PortalAiProfiles.AsNoTracking().FirstOrDefault(item => item.AgentId == agent);
-            database.PortalLobbySeats.Add(new PortalLobbySeat
-            {
-                MatchId = matchId, SeatIndex = seatIndex++, ControllerKind = "agent",
-                AgentId = agent,
-                AiProfileId = profile?.ProfileId,
-                PlayerHandle = requestedFaction?.LeaderName ?? "Random faction AI",
-                RequestedFactionId = agentSeat.FactionId,
-                LeaderName = requestedFaction?.LeaderName,
-                RequestedPersonalityId = agentSeat.PersonalityId,
-                Status = "assigned", UpdatedAt = now,
-            });
-        }
+        seat.ControllerKind = "open";
+        seat.AgentId = null;
+        seat.AiProfileId = null;
+        seat.UserId = null;
+        seat.PlayerHandle = null;
+        seat.JoinMode = "browser";
+        seat.RequestedFactionId = FactionCatalog.Random;
+        seat.ResolvedFactionKey = null;
+        seat.LeaderName = null;
+        seat.RequestedPersonalityId = "standard";
+        seat.PersonalityCardId = "none";
+        seat.PersonalityName = null;
+        seat.PersonalityPrompt = null;
+        seat.PersonalityPromptSha256 = null;
+        seat.FactionId = null;
+        seat.FactionName = null;
+        seat.ControlInstanceId = null;
+        seat.Status = "open";
+        seat.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    private void AddHumanSeat(
-        string? userId, string handle, string joinMode,
-        ref int seatIndex, string matchId, DateTimeOffset now)
+    private async Task RemoveOrphanedProvisionalUsersAsync(IEnumerable<string> candidateIds)
     {
-        database.PortalLobbySeats.Add(new PortalLobbySeat
+        foreach (var userId in candidateIds.Distinct(StringComparer.Ordinal))
         {
-            MatchId = matchId, SeatIndex = seatIndex++, ControllerKind = "human",
-            UserId = userId, PlayerHandle = handle, Status = userId is null ? "invited" : "ready",
-            JoinMode = joinMode,
-            UpdatedAt = now,
-        });
-        if (userId is not null)
-        {
-            var member = database.PortalMatchMembers.Local.FirstOrDefault(item =>
-                item.MatchId == matchId && item.UserId == userId);
-            if (member is null)
-            {
-                member = new PortalMatchMember
-                {
-                    MatchId = matchId, UserId = userId, Role = "player",
-                    JoinMode = joinMode, JoinedAt = now,
-                };
-                database.PortalMatchMembers.Add(member);
-            }
-            member.SeatIndex = seatIndex - 1;
+            var provisional = await database.Users.SingleOrDefaultAsync(
+                item => item.Id == userId && item.IsProvisional,
+                HttpContext.RequestAborted);
+            if (provisional is null || await database.PortalLobbySeats.AsNoTracking().AnyAsync(
+                    item => item.UserId == userId, HttpContext.RequestAborted)) continue;
+            var deleted = await userManager.DeleteAsync(provisional);
+            if (!deleted.Succeeded)
+                throw new InvalidOperationException(
+                    "The lobby closed, but its unused provisional player account could not be removed.");
         }
     }
 
@@ -1598,48 +1606,8 @@ public sealed class LobbiesController(
         if (request.WorldSize is not ("tiny" or "small" or "standard" or "large" or "huge"))
             return ("invalid_world_size", "Choose a supported native planet size.");
         if (request.Difficulty is not ("citizen" or "specialist" or "talent" or
-                "librarian" or "thinker" or "transcend") ||
-            request.NativeBotDifficulty is not ("citizen" or "specialist" or "talent" or
                 "librarian" or "thinker" or "transcend"))
             return ("invalid_difficulty", "Choose a supported native difficulty.");
-        if (request.HostController is not ("human" or "agent"))
-            return ("invalid_host_controller", "Choose a human or agent host.");
-        if (request.HumanJoinMode is not ("browser" or "native"))
-            return ("invalid_human_join_mode", "Choose browser-managed or native human clients.");
-        if (request.ManagedClientsOnly && request.HumanJoinMode != "browser")
-            return ("managed_clients_required", "Managed-only lobbies require browser human seats.");
-        var agents = EffectiveAgentSeats(request);
-        if (request.HostController == "agent" && agents.Count == 0)
-            return ("agent_host_required",
-                "Choose at least one AI player profile, or create one in Administration → Models & AI profiles.");
-        if (request.NativeBotCount is < 0 or > 6)
-            return ("invalid_native_bot_count", "Choose between zero and six native bots.");
-        if (agents.Any(item => item.FactionId != FactionCatalog.Random && FactionCatalog.Find(item.FactionId) is null))
-            return ("invalid_agent_faction", "Choose Random or one official Alpha Centauri faction for every AI seat.");
-        if (agents.Any(item => BuiltInPersonalityCatalog.FindMode(item.PersonalityId) is null))
-            return ("invalid_agent_personality", "Choose None, Standard, Random, Friendly, Aggressive, or Extreme for every AI seat.");
-        if (agents.Any(item => item.FactionId == FactionCatalog.Random && item.PersonalityId is not ("none" or "standard" or "random")))
-            return ("personality_requires_faction", "Friendly, Aggressive, and Extreme require a specific faction. Random factions support None, Standard, or Random.");
-        var fixedFactions = agents.Where(item => item.FactionId != FactionCatalog.Random)
-            .Select(item => item.FactionId).ToArray();
-        if (fixedFactions.Distinct(StringComparer.OrdinalIgnoreCase).Count() != fixedFactions.Length)
-            return ("duplicate_agent_faction", "Each specific faction can be assigned to only one AI seat.");
-        if (request.InvitedHumanHandles.Any(handle =>
-                string.IsNullOrWhiteSpace(handle) || handle.Trim().Length > 31 ||
-                handle.Any(character => character < 32 || character > 126)))
-            return ("invalid_player_handle", "Public display names must contain 1–31 printable characters.");
-        var normalizedInvites = request.InvitedHumanHandles
-            .Select(handle => handle.Trim()).ToArray();
-        if (normalizedInvites.Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
-            normalizedInvites.Length)
-            return ("duplicate_player_handle",
-                "Each invited public display name can occupy only one seat, regardless of letter case.");
-        if (normalizedInvites.Any(FactionCatalog.IsReservedLeaderName))
-            return ("reserved_faction_leader_name",
-                "Faction-leader names are reserved for AI players and cannot be assigned to humans.");
-        var ownerSeats = request.HostController == "human" || request.OwnerPlays ? 1 : 0;
-        if (ownerSeats + agents.Count + request.InvitedHumanHandles.Count + request.NativeBotCount > 7)
-            return ("too_many_seats", "A lobby supports at most seven players.");
         if (request.TimeControl is < 0 or > 4 || request.OceanCoverage is < 0 or > 2 ||
             request.ErosiveForces is < 0 or > 2 || request.NativeLife is < 0 or > 2 ||
             request.CloudCover is < 0 or > 2)
@@ -1662,11 +1630,6 @@ public sealed class LobbiesController(
             return ("invalid_resume_slot", "Save slots use 1–32 letters, numbers, underscores, or hyphens.");
         return null;
     }
-
-    private static IReadOnlyList<AgentSeatRequest> EffectiveAgentSeats(CreateLobbyRequest request) =>
-        request.AgentSeats is { Count: > 0 }
-            ? request.AgentSeats
-            : request.AgentIds.Select(item => new AgentSeatRequest(item)).ToArray();
 
     private static bool Rule(CreateLobbyRequest request, string name, bool fallback) =>
         request.RuleOptions?.TryGetValue(name, out var enabled) == true ? enabled : fallback;
