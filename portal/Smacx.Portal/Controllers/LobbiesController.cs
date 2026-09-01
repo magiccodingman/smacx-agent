@@ -775,9 +775,10 @@ public sealed class LobbiesController(
             .Where(item => item.MessageId == entity.Id).ToArrayAsync(HttpContext.RequestAborted);
         var message = ToMessage(entity, storedDeliveries);
         // Never push a private/group body through the broad lobby SignalR
-        // group. Each client refetches through the authorization-filtered API.
+        // group. Notify only the isolated chat component, which refetches
+        // through the authorization-filtered API.
         await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
-            "LobbyChanged", matchId, HttpContext.RequestAborted);
+            "LobbyMessagesChanged", matchId, HttpContext.RequestAborted);
         return ApiResponse<LobbyMessage>.Success(message);
     }
 

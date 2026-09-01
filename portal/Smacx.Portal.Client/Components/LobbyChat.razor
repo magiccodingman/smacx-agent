@@ -1,0 +1,157 @@
+@implements IAsyncDisposable
+@inject Services.PortalApiClient Api
+
+<section class="surface-panel chat-panel">
+    <div class="panel-heading">
+        <div><span class="panel-kicker">LOBBY COMMS</span><h2>Chat</h2></div>
+        <span class="live-dot">@(Lobby.Status == "completed" ? "ARCHIVE" : "LIVE")</span>
+    </div>
+    <p class="section-copy">
+        @(Lobby.Status == "completed"
+            ? "The campaign's public and private message history is retained for review."
+            : "Lobby members can coordinate here. Messages from a browser-controlled faction also cross into the native game; observer messages remain in the lobby.")
+    </p>
+    <div class="chat-log" aria-live="polite" aria-relevant="additions">
+        @if (messages.Count == 0)
+        {
+            <span class="chat-empty">No messages yet.</span>
+        }
+        @foreach (var message in messages)
+        {
+            <div class="chat-message" @key="message.Id">
+                <strong>@message.SenderHandle</strong>
+                <span>@message.CreatedAt.ToLocalTime().ToString("t")</span>
+                @if (message.DeliveredToGame) { <span class="native-delivered">IN GAME</span> }
+                else if (Lobby.Status == "running") { <span class="portal-only">LOBBY ONLY</span> }
+                @if (message.RecipientFactionId > 0) { <span class="native-delivered">PRIVATE → F@message.RecipientFactionId</span> }
+                <p>@message.Content</p>
+            </div>
+        }
+    </div>
+    @if (Lobby.Status != "completed")
+    {
+        <AuthorizeView>
+            <Authorized>
+                <MudSelect T="int" @bind-Value="recipientFactionId" Label="Recipient" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="int" Value="0">Everyone</MudSelectItem>
+                    @foreach (var seat in Lobby.Seats.Where(item => item.FactionId is not null).DistinctBy(item => item.FactionId))
+                    {
+                        <MudSelectItem T="int" Value="@seat.FactionId!.Value">@(seat.PlayerHandle ?? seat.FactionName ?? $"Faction {seat.FactionId}")</MudSelectItem>
+                    }
+                </MudSelect>
+                <div class="chat-compose">
+                    <MudTextField @bind-Value="draft" Placeholder="Message the lobby…" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Immediate="true" OnKeyDown="ChatKey" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary"
+                                   OnClick="Send" Disabled="@(sending || string.IsNullOrWhiteSpace(draft))" />
+                </div>
+            </Authorized>
+            <NotAuthorized><div class="chat-signin">Sign in to speak in the lobby.</div></NotAuthorized>
+        </AuthorizeView>
+    }
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-2">@error</MudAlert>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string MatchId { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public LobbyDetails Lobby { get; set; } = default!;
+
+    private readonly SemaphoreSlim refreshGate = new(1, 1);
+    private readonly PeriodicTimer refreshTimer = new(TimeSpan.FromSeconds(5));
+    private readonly CancellationTokenSource refreshCancellation = new();
+    private Task? refreshLoop;
+    private List<LobbyMessage> messages = [];
+    private string loadedMatchId = string.Empty;
+    private string draft = string.Empty;
+    private string? error;
+    private int recipientFactionId;
+    private bool sending;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedMatchId == MatchId) return;
+        loadedMatchId = MatchId;
+        await RefreshAsync();
+        refreshLoop ??= RefreshLoop(refreshCancellation.Token);
+    }
+
+    public async Task RefreshAsync()
+    {
+        if (!await refreshGate.WaitAsync(0)) return;
+        try
+        {
+            var result = await Api.GetAsync<IReadOnlyList<LobbyMessage>>(
+                $"api/lobbies/{MatchId}/messages", refreshCancellation.Token);
+            if (result?.Ok == true && result.Data is not null)
+            {
+                messages = result.Data.ToList();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (refreshCancellation.IsCancellationRequested) { }
+        catch (HttpRequestException) { }
+        finally
+        {
+            refreshGate.Release();
+        }
+    }
+
+    private async Task RefreshLoop(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await refreshTimer.WaitForNextTickAsync(cancellationToken))
+                await RefreshAsync();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private async Task Send()
+    {
+        var text = draft.Trim();
+        if (text.Length == 0 || sending) return;
+        sending = true;
+        error = null;
+        var result = await Api.PostAsync<LobbyMessage>(
+            $"api/lobbies/{MatchId}/messages",
+            new SendLobbyMessageRequest(text, recipientFactionId));
+        sending = false;
+        if (result.Payload?.Ok == true && result.Payload.Data is { } message)
+        {
+            draft = string.Empty;
+            Upsert(message);
+        }
+        else
+        {
+            error = result.Payload?.Error?.Message ?? "Message failed.";
+        }
+    }
+
+    private async Task ChatKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !args.ShiftKey) await Send();
+    }
+
+    private void Upsert(LobbyMessage message)
+    {
+        var index = messages.FindIndex(item => item.Id == message.Id);
+        if (index >= 0) messages[index] = message;
+        else messages.Add(message);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        refreshCancellation.Cancel();
+        refreshTimer.Dispose();
+        if (refreshLoop is not null)
+        {
+            try { await refreshLoop; }
+            catch (OperationCanceledException) { }
+        }
+        refreshCancellation.Dispose();
+        refreshGate.Dispose();
+    }
+}
