@@ -17,7 +17,7 @@ var enabled = embeddingConfiguration.Mode != "disabled";
 
 builder.Services.AddSingleton(new KnowledgeRuntimeOptions(
     dataRoot, sourceManifest, gameRoot, controlRoot, enabled, environmentEnabled,
-    ParserRevision: "smacx-hierarchical-datalinks-v13",
+    ParserRevision: "smacx-semantic-datalinks-v14",
     RefreshInterval: TimeSpan.FromHours(24)));
 builder.Services.AddSingleton(embeddingConfiguration);
 builder.Services.AddHttpClient("wiki", client =>
@@ -45,6 +45,10 @@ if (embeddingConfiguration.Mode == "local")
     });
     builder.Services.AddSemanticKnowledge(options =>
     {
+        // This projection is rebuildable from the mounted game/source
+        // manifest. Version 2 deliberately retires the former alphabetic
+        // collection nodes so they cannot continue influencing Smart Search.
+        options.DatabaseVersion = 2;
         options.PersistenceMode = KnowledgePersistenceMode.Rebuildable;
         options.Embeddings.Storage = VectorStoragePreference.Compact;
         options.Embeddings.PersistedRecordFormat = EmbeddingVectorFormat.Int8;
@@ -54,6 +58,7 @@ else if (embeddingConfiguration.Mode == "external")
 {
     builder.Services.AddSemanticKnowledge(options =>
     {
+        options.DatabaseVersion = 2;
         options.PersistenceMode = KnowledgePersistenceMode.Rebuildable;
         options.Embeddings.Storage = VectorStoragePreference.Compact;
         options.Embeddings.PersistedRecordFormat = EmbeddingVectorFormat.Int8;
@@ -128,8 +133,8 @@ app.MapPost("/api/refresh", async (KnowledgeCorpus corpus, CancellationToken can
 app.MapGet("/api/topics", async (KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
     Results.Ok(new { topics = await corpus.TopicsAsync(cancellationToken) }));
 
-app.MapGet("/api/tree", async (KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
-    Results.Ok(new { collections = await corpus.TreeAsync(cancellationToken) }));
+app.MapGet("/api/tree", async (bool? includeDocuments, KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
+    Results.Ok(new { collections = await corpus.TreeAsync(includeDocuments == true, cancellationToken) }));
 
 app.MapGet("/api/collections/{collectionId:guid}/documents", async (
     Guid collectionId, KnowledgeCorpus corpus, CancellationToken cancellationToken) =>

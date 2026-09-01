@@ -31,13 +31,14 @@ internal static class CorpusOrganization
     public static IReadOnlyList<CorpusPage> Organize(IEnumerable<CorpusPage> input, string parserRevision)
     {
         var pages = input.Where(IsUseful).ToList();
+        var technologyRoles = CorpusTaxonomy.TechnologyRoles(pages);
         pages = MergeTechnologyDescriptions(pages, parserRevision);
         pages = MergeTerraformDescriptions(pages, parserRevision);
 
-        var classified = pages.Select(page => page with
+        var classified = pages.Select(page =>
         {
-            CollectionPath = Classify(page),
-            Topic = Classify(page).Last(),
+            var path = CorpusTaxonomy.Classify(page, technologyRoles);
+            return page with { CollectionPath = path, Topic = path.Last() };
         }).ToList();
 
         // The native files occasionally repeat identical descriptions under
@@ -48,7 +49,7 @@ internal static class CorpusOrganization
             .Select(group => group.First())
             .ToList();
 
-        return SplitCrowdedLeaves(classified).Select(page => page with
+        return classified.Select(page => page with
         {
             // SemanticKnowledge document identities are knowledge-base-wide.
             // Binding a generated identity to its canonical leaf lets a future
@@ -60,6 +61,14 @@ internal static class CorpusOrganization
 
     private static bool IsUseful(CorpusPage page)
     {
+        var normalizedTitle = Regex.Replace(page.Title.ToLowerInvariant(), @"[^a-z0-9]+", "");
+        // Navigation/index pages and broad duplicate web summaries are not
+        // factual articles. Installed Datalinks already supplies their useful
+        // mechanics as individually titled documents.
+        if (normalizedTitle is "tableofcontents" or "sidmeiersalphacentauri" or
+            "importantnotetotranslators") return false;
+        if (page.SourceFile.Length == 0 && normalizedTitle is
+            "facilities" or "terraforming" or "socialengineering") return false;
         if (!page.SourceFile.Equals("helpx.txt", StringComparison.OrdinalIgnoreCase) &&
             !page.SourceFile.Equals("help.txt", StringComparison.OrdinalIgnoreCase)) return true;
         var key = page.SourceKey.Trim();
@@ -147,111 +156,6 @@ internal static class CorpusOrganization
         return pages;
     }
 
-    private static IReadOnlyList<string> Classify(CorpusPage page)
-    {
-        var file = page.SourceFile.ToLowerInvariant();
-        var key = page.SourceKey.ToUpperInvariant();
-        var text = $"{key} {page.Title}".ToLowerInvariant();
-
-        if (file == "technology")
-            return ["Datalinks", "Research and technology", "Technology entries"];
-        if (file.StartsWith("concept", StringComparison.Ordinal) && key == "CONCEPT44")
-            return ["Datalinks", "Bases and economy", "Production, citizens, and resources"];
-
-        if (key.StartsWith("HELPFAC", StringComparison.Ordinal))
-            return ["Datalinks", "Bases and economy", "Facilities"];
-        if (key.StartsWith("HELPPROJ", StringComparison.Ordinal))
-            return ["Datalinks", "Bases and economy", "Secret projects"];
-        if (key.StartsWith("UNITDESC", StringComparison.Ordinal))
-            return ["Datalinks", "Units and combat", "Predefined units"];
-        if (key.StartsWith("CHASSISDESC", StringComparison.Ordinal) || key == "CHASSIS")
-            return ["Datalinks", "Units and combat", "Chassis"];
-        if (key.StartsWith("WEAPONDESC", StringComparison.Ordinal) || key == "WEAPONS")
-            return ["Datalinks", "Units and combat", "Weapons"];
-        if (key.StartsWith("ARMORDESC", StringComparison.Ordinal) || key is "DEFENSES" or "REACTORS" or "REACTORDESC")
-            return ["Datalinks", "Units and combat", "Armor and reactors"];
-        if (key.StartsWith("ABILDESC", StringComparison.Ordinal) || key == "ABILITIES")
-            return ["Datalinks", "Units and combat", "Special abilities"];
-        if (key.StartsWith("HELPTERRA", StringComparison.Ordinal))
-            return ["Datalinks", "Planet", "Terraforming"];
-        if (key.StartsWith("HELPSOC", StringComparison.Ordinal) || key.StartsWith("HELPEFFECT", StringComparison.Ordinal) ||
-            key.StartsWith("SOC", StringComparison.Ordinal))
-            return ["Datalinks", "Diplomacy and society", "Social engineering"];
-
-        if (file.StartsWith("alphax", StringComparison.Ordinal))
-        {
-            if (key is "TERRAIN" or "RESOURCEINFO" or "RESOURCES" or "NATURAL")
-                return ["Datalinks", "Planet", "Terrain, resources, and native life"];
-            if (key is "WORLDBUILDER" or "WORLDSIZE")
-                return ["Datalinks", "Planet", "World generation"];
-            if (key is "TECHNOLOGY")
-                return ["Datalinks", "Research and technology", "Research rules"];
-            if (key is "UNITS" or "ORDERS" or "COMPASS" or "PLANS" or "TRIAD" or "MORALE" or "DEFENSEMODES" or "OFFENSEMODES")
-                return ["Datalinks", "Units and combat", "Orders and combat rules"];
-            if (key is "FACILITIES" or "CITIZENS" or "ENERGY")
-                return ["Datalinks", "Bases and economy", "Production, citizens, and resources"];
-            if (key is "FACTIONS" or "NEWFACTIONS" or "CUSTOMFACTIONS" or "MANDATE" or "MOOD" or "MIGHT")
-                return ["Datalinks", "Factions and leaders", "Faction rules and identities"];
-            if (key is "REPUTE" or "PROPOSALS")
-                return ["Datalinks", "Diplomacy and society", "Diplomacy, reputation, and council"];
-            if (key is "RULES" or "DIFF" or "TIMECONTROLS")
-                return ["Datalinks", "Rules and interface", "Game settings and difficulty"];
-        }
-
-        if (ContainsAny(text, "diplom", "treaty", "pact", "truce", "vendetta", "council", "commerce", "atrocit", "probe", "reputation"))
-            return ["Datalinks", "Diplomacy and society", "Diplomacy, reputation, and council"];
-        if (ContainsAny(text, "social", "politic", "econom", "values", "future society"))
-            return ["Datalinks", "Diplomacy and society", "Social engineering"];
-        if (ContainsAny(text, "research", "technology", "discover", "tech"))
-            return ["Datalinks", "Research and technology", "Research rules"];
-        if (ContainsAny(text, "base", "facility", "project", "citizen", "drone", "talent", "mineral", "nutrient", "energy"))
-            return ["Datalinks", "Bases and economy", "Production, citizens, and resources"];
-        if (ContainsAny(text, "unit", "combat", "attack", "defense", "movement", "zone of control", "morale"))
-            return ["Datalinks", "Units and combat", "Orders and combat rules"];
-        if (ContainsAny(text, "planet", "terrain", "fungus", "ecolog", "terraform", "ocean", "map"))
-            return ["Datalinks", "Planet", "Planetary rules"];
-        if (ContainsAny(text, "faction", "leader"))
-            return ["Datalinks", "Factions and leaders", "Faction rules and identities"];
-        return ["Datalinks", "Rules and interface", "Core concepts"];
-    }
-
-    private static IReadOnlyList<CorpusPage> SplitCrowdedLeaves(List<CorpusPage> pages)
-    {
-        var bucketed = new List<CorpusPage>();
-        foreach (var group in pages.GroupBy(page => string.Join('\u001f', page.CollectionPath!), StringComparer.Ordinal))
-        {
-            var ordered = group.OrderBy(page => page.Title, StringComparer.OrdinalIgnoreCase).ToArray();
-            if (ordered.Length <= 24) { bucketed.AddRange(ordered); continue; }
-            foreach (var page in ordered)
-                bucketed.Add(page with { CollectionPath = [.. page.CollectionPath!, AlphabetBucket(page.Title)] });
-        }
-        var output = new List<CorpusPage>();
-        foreach (var group in bucketed.GroupBy(page => string.Join('\u001f', page.CollectionPath!), StringComparer.Ordinal))
-        {
-            var ordered = group.OrderBy(page => page.Title, StringComparer.OrdinalIgnoreCase).ToArray();
-            if (ordered.Length <= 24) { output.AddRange(ordered); continue; }
-            for (var index = 0; index < ordered.Length; index++)
-                output.Add(ordered[index] with { CollectionPath = [.. ordered[index].CollectionPath!, $"Part {index / 24 + 1}"] });
-        }
-        return output;
-    }
-
-    private static string AlphabetBucket(string title)
-    {
-        title = Regex.Replace(title.Trim(), @"^(?:the|a|an)\s+", "", RegexOptions.IgnoreCase);
-        var initial = title.FirstOrDefault(char.IsLetterOrDigit);
-        if (initial is >= '0' and <= '9') return "Numbers and symbols";
-        return char.ToUpperInvariant(initial) switch
-        {
-            >= 'A' and <= 'C' => "A–C", >= 'D' and <= 'F' => "D–F",
-            >= 'G' and <= 'I' => "G–I", >= 'J' and <= 'L' => "J–L",
-            >= 'M' and <= 'O' => "M–O", >= 'P' and <= 'R' => "P–R",
-            >= 'S' and <= 'U' => "S–U", >= 'V' and <= 'Z' => "V–Z",
-            _ => "Other",
-        };
-    }
-
-    private static bool ContainsAny(string value, params string[] terms) => terms.Any(value.Contains);
     private static string StripLeadingTitle(string body) => Regex.Replace(body, @"^#[^\n]*\n+", "").Trim();
     private static string Normalize(string value) => Regex.Replace(value.ToLowerInvariant(), @"\s+", " ").Trim();
     private static string Slug(string value) => Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');

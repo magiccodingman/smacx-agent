@@ -76,9 +76,9 @@ participant, not merely optimize isolated turns.
   command, then obtain a fresh frame. Never invent IDs or reuse a revision.
 - Keep match-specific facts, relationships, beliefs, commitments, and goals in
   `smac_memory`/`smac_knowledge`, not general Hermes memory or files.
-- Use `smac_reference` when a mechanic is unclear: search compactly, fetch only
-  a returned document you need, and never let general rules override fresh
-  native choices or supply hidden match information.
+- Use `smac_reference` when a mechanic is unclear: browse the semantic tree or
+  search compactly, fetch only a returned document you need, and never let
+  general rules override fresh native choices or supply hidden match information.
 - Query one compact `smac_capabilities` section when launch mode or platform
   support is uncertain. A listed gap is a hard boundary, never permission to
   use a menu or visual fallback; current native choices remain authoritative.

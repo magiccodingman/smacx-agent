@@ -33,7 +33,8 @@ public sealed class KnowledgeController(
     {
         try
         {
-            using var document = await control.GetRawAsync("api/v1/reference/tree", HttpContext.RequestAborted);
+            using var document = await control.GetRawAsync(
+                "api/v1/reference/tree?include_documents=true", HttpContext.RequestAborted);
             var collections = document.RootElement.GetProperty("collections").EnumerateArray()
                 .Select(MapCollection).ToArray();
             return ApiResponse<IReadOnlyList<KnowledgeCollection>>.Success(collections);
@@ -119,7 +120,13 @@ public sealed class KnowledgeController(
             ? parent.GetString() : null,
         item.GetProperty("title").GetString()!, item.GetProperty("description").GetString() ?? "",
         ReadTags(item), ReadStrings(item, "path"),
-        item.GetProperty("direct_document_count").GetInt32(), item.GetProperty("document_count").GetInt32());
+        item.GetProperty("direct_document_count").GetInt32(), item.GetProperty("document_count").GetInt32(),
+        item.TryGetProperty("documents", out var documents) && documents.ValueKind == System.Text.Json.JsonValueKind.Array
+            ? documents.EnumerateArray().Select(document => new KnowledgeDocumentLink(
+                document.GetProperty("document_id").GetString()!,
+                document.GetProperty("title").GetString()!,
+                document.TryGetProperty("description", out var description) ? description.GetString() ?? "" : "")).ToArray()
+            : []);
 
     internal static KnowledgeResult Map(System.Text.Json.JsonElement item, bool includeBody = false) => new(
         item.GetProperty("document_id").GetString()!, item.GetProperty("topic").GetString()!,

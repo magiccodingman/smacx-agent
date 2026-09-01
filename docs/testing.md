@@ -96,16 +96,21 @@ snapshot synchronization, sub-second steady semantic search, and no acquired
 content in the image/repository. Source files and cleaned pages remain in the
 private `smacx-knowledge-data` volume.
 
-The 2026-08-31 hierarchical reference run synchronized 426 factual documents
-from the available installed-game and configured web sources with no source
-warnings. It merged 86 duplicate short/long technology pairs, consolidated
-paired land/ocean terraforming records into named articles, removed native
-renderer templates, kept every leaf at 24 documents or fewer, and retired all
-530 documents from the earlier flat snapshot. It reported exactly one local
-ONNX model instance and 2,048 dimensions. Portal tests cover hierarchy mapping,
-sanitized Markdig output, tables, heading outlines, and the reusable compact
-reader integration. Live browser checks cover desktop/mobile navigation,
-result-to-tree expansion, and exact-title/natural-language hybrid searches.
+The 2026-09-01 semantic-taxonomy reference run synchronized 420 factual
+documents from the available installed-game and configured web sources with no
+source warnings. It published 81 active recursive collections with specific
+titles, descriptions, and tags; no alphabetic/numbered pagination nodes; and no
+leaf above 22 direct articles. It merged the duplicate short/long technology
+records, consolidated paired land/ocean terraforming records, removed native
+renderer/index pages, and organized technologies by their installed Conquer,
+Discover, Build, Explore, or tied priorities. It reported exactly one local
+ONNX model instance and 2,048 dimensions. Portal tests cover hierarchy and
+direct-article mapping, sanitized Markdig output, tables, heading outlines, and
+the reusable compact reader. Live browser checks cover desktop/tablet/mobile
+navigation, collection overviews, direct tree article opening, result-to-tree
+expansion, and exact-title/natural-language Smart hybrid searches. A live
+control-container check also browsed the same tree and collection article list
+through the agent retrieval boundary.
 
 The optional Graphiti live contract used the configured Qwen endpoint and the
 same internal embedding facade to extract and recall one synthetic treaty fact

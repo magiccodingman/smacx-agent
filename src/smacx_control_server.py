@@ -346,7 +346,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/reference/tree":
                 self._authentication()
-                self._json(200, read_reference(self.server.control.store, "tree"))
+                query = parse_qs(parts.query, keep_blank_values=True)
+                include_documents = query.get("include_documents", ["false"])[0].lower() in {"1", "true", "yes"}
+                self._json(200, read_reference(
+                    self.server.control.store, "tree", include_documents=include_documents,
+                ))
                 return
             if path.startswith("/api/v1/reference/collections/") and path.endswith("/documents"):
                 self._authentication()

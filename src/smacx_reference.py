@@ -50,7 +50,8 @@ def _search(query: str, *, topic: str = "", limit: int = 8, include_body: bool =
 
 
 def read_reference(_store: Any, action: str, *, query: str = "", topic: str = "",
-                   document_id: str = "", limit: int = 8, include_body: bool = False,
+                   document_id: str = "", collection_id: str = "", limit: int = 8,
+                   include_body: bool = False, include_documents: bool = False,
                    max_query_tokens: int = 1_024,
                    private_prefix: str | None = None, entity_kind: str = "",
                    entity_key: str = "", entities: list[dict[str, str]] | None = None,
@@ -63,12 +64,13 @@ def read_reference(_store: Any, action: str, *, query: str = "", topic: str = ""
         result = _request("/api/topics")
         return {"ok": not bool(result.get("error")), **result}
     if action == "tree":
-        result = _request("/api/tree")
+        result = _request("/api/tree" + ("?includeDocuments=true" if include_documents else ""))
         return {"ok": not bool(result.get("error")), **result}
     if action == "collection_documents":
-        if not document_id:
+        requested_collection = collection_id or document_id
+        if not requested_collection:
             return {"ok": False, "error": "reference_collection_id_required"}
-        result = _request("/api/collections/" + quote(document_id, safe="") + "/documents")
+        result = _request("/api/collections/" + quote(requested_collection, safe="") + "/documents")
         return {"ok": not bool(result.get("error")), **result}
     if action == "get":
         if not document_id:

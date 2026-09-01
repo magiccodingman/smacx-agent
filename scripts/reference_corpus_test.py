@@ -27,8 +27,12 @@ class Handler(BaseHTTPRequestHandler):
             self._write({"enabled": True, "state": {"state": "ready"}, "mode": "local"})
         elif self.path == "/api/topics":
             self._write({"topics": [{"id": "rules", "title": "Core rules", "document_count": 20}]})
-        elif self.path == "/api/tree":
-            self._write({"collections": [{"id": "root", "parent_id": None, "title": "Datalinks", "document_count": 20}]})
+        elif self.path == "/api/tree?includeDocuments=true":
+            self._write({"collections": [{
+                "id": "root", "parent_id": None, "title": "Datalinks", "document_count": 20,
+                "description": "Rules and reference data for Alpha Centauri and Alien Crossfire.",
+                "documents": [{"document_id": "doc-001", "title": "Treaties"}],
+            }]})
         elif self.path == "/api/collections/rules/documents":
             self._write({"documents": [{"document_id": "doc-001", "title": "Treaties"}]})
         elif self.path == "/api/documents/doc-001":
@@ -61,9 +65,10 @@ def main() -> int:
             raise AssertionError("knowledge health was not observable")
         if not read_reference(None, "topics").get("topics"):
             raise AssertionError("collection hierarchy was not returned")
-        if not read_reference(None, "tree").get("collections"):
+        tree = read_reference(None, "tree", include_documents=True)
+        if not tree.get("collections") or not tree["collections"][0].get("documents"):
             raise AssertionError("recursive collection tree was not returned")
-        if not read_reference(None, "collection_documents", document_id="rules").get("documents"):
+        if not read_reference(None, "collection_documents", collection_id="rules").get("documents"):
             raise AssertionError("collection browsing was not returned")
         compact = read_reference(None, "search", query="Treaty Pact", include_body=False,
                                  max_query_tokens=512)

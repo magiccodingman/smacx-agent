@@ -113,10 +113,11 @@ new briefing hash. Never plan around a disabled victory or forbidden mechanic.
 
 ## Knowledge and memory
 
-- Use the local `smac_reference` encyclopedia first. Start with a focused
-  semantic query, inspect compact ranked results, and pull only the bounded
-  evidence needed for the present rule question. It contains mechanics, not
-  hidden match state and not a prescribed strategy.
+- Use the local `smac_reference` encyclopedia first. Browse its recursive
+  semantic `tree`/`collection_documents` when orienting yourself, or start
+  with a focused Smart search. Inspect compact ranked results and pull only
+  the bounded evidence needed for the present rule question. It contains
+  mechanics, not hidden match state and not a prescribed strategy.
 - Do not use internet strategy guides, walkthroughs, exploits, or sources that
   reveal information unavailable to a human player in this match.
 - Keep match facts, beliefs, relationships, commitments, goals, and summaries

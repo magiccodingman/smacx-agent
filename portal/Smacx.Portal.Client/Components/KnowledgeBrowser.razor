@@ -52,9 +52,32 @@
                 <article class="datalinks-document">@((MarkupString)(selectedDocument.RenderedHtml ?? ""))</article>
                 <footer class="datalinks-provenance"><MudIcon Icon="@Icons.Material.Filled.Verified"/><div><strong>Built on this host</strong><span>@selectedDocument.Provenance</span><small>@selectedDocument.SourceLicense</small></div></footer>
             }
-            else if (documents.Count > 0)
+            else if (selectedCollection is not null)
             {
-                <div class="datalinks-index"><span class="panel-kicker">@selectedCollection?.Title</span><h2>Choose an article</h2><div>@foreach (var document in documents){<button @onclick="()=>OpenDocument(document.DocumentId)"><MudIcon Icon="@Icons.Material.Filled.Article"/><span><strong>@document.Title</strong><small>@document.Summary</small></span></button>}</div></div>
+                <section class="datalinks-collection-overview">
+                    <span class="panel-kicker">COLLECTION OVERVIEW</span>
+                    <h1>@selectedCollection.Title</h1>
+                    <p>@selectedCollection.Description</p>
+                    @if (selectedCollection.Tags.Count > 0)
+                    {
+                        <div class="datalinks-collection-tags">@foreach (var tag in selectedCollection.Tags.Where(tag => tag is not "smacx" and not "rules")){<span>@tag.Replace('-', ' ')</span>}</div>
+                    }
+                    <div class="datalinks-collection-stats"><strong>@selectedCollection.DocumentCount</strong><span>factual article@(selectedCollection.DocumentCount == 1 ? "" : "s") in this branch</span></div>
+                    @if (ChildCollections.Count > 0)
+                    {
+                        <div class="datalinks-collection-branches">
+                            @foreach (var child in ChildCollections)
+                            {
+                                <button @onclick="()=>SelectCollection(child)">
+                                    <MudIcon Icon="@Icons.Material.Filled.FolderOpen"/>
+                                    <span><strong>@child.Title</strong><small>@child.Description</small></span>
+                                    <em>@child.DocumentCount</em>
+                                </button>
+                            }
+                        </div>
+                    }
+                    <p class="datalinks-collection-guidance">Expand this collection in Contents and choose an article, or use Search to jump directly to a named mechanic.</p>
+                </section>
             }
             else
             {
@@ -93,7 +116,6 @@
 @code {
     [Parameter] public bool Compact { get; set; }
     private IReadOnlyList<KnowledgeCollection> collections = [];
-    private IReadOnlyList<KnowledgeResult> documents = [];
     private IReadOnlyList<KnowledgeResult> searchResults = [];
     private KnowledgeSearchResponse? searchResponse;
     private KnowledgeCollection? selectedCollection;
@@ -105,6 +127,9 @@
     private KnowledgeCollection? Root => collections.FirstOrDefault(item => item.ParentId is null);
     private IReadOnlyList<KnowledgeCollection> RootNodes => collections.Where(item => item.ParentId == Root?.Id).OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).ToArray();
     private IReadOnlyList<string> Breadcrumbs => selectedDocument?.CollectionPath ?? selectedCollection?.Path ?? ["Datalinks"];
+    private IReadOnlyList<KnowledgeCollection> ChildCollections => selectedCollection is null ? [] : collections
+        .Where(item => item.ParentId == selectedCollection.Id)
+        .OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).ToArray();
     private IReadOnlyList<KnowledgeHeading> VisibleHeadings => selectedDocument?.Headings?.Where(item => item.Level is 2 or 3).ToArray() ?? [];
     private int TotalDocuments => Root?.DocumentCount ?? collections.MaxBy(item => item.DocumentCount)?.DocumentCount ?? 0;
     private RenderFragment TreeContent => builder =>
@@ -116,7 +141,9 @@
             builder.SetKey($"{node.Id}:{selectedCollection?.Id}");
             builder.AddAttribute(sequence++, "Node", node); builder.AddAttribute(sequence++, "Collections", collections);
             builder.AddAttribute(sequence++, "Expanded", expanded); builder.AddAttribute(sequence++, "SelectedId", selectedCollection?.Id);
+            builder.AddAttribute(sequence++, "SelectedDocumentId", selectedDocument?.DocumentId);
             builder.AddAttribute(sequence++, "OnSelect", EventCallback.Factory.Create<KnowledgeCollection>(this, SelectCollection));
+            builder.AddAttribute(sequence++, "OnDocumentSelect", EventCallback.Factory.Create<KnowledgeDocumentLink>(this, OpenDocumentLink));
             builder.CloseComponent();
         }
     };
@@ -138,22 +165,31 @@
             collections = response?.Data ?? [];
             error = response?.Error?.Message;
             if (Root is not null) expanded.Add(Root.Id);
-            var first = collections.Where(item => item.DirectDocumentCount > 0).OrderBy(item => string.Join('/', item.Path), StringComparer.OrdinalIgnoreCase).FirstOrDefault();
-            if (first is not null) await SelectCollection(first, openFirst: true);
+            if (Root is not null) await SelectCollection(Root);
         }
         catch (Exception exception) { error = exception.Message; }
         finally { loadingTree = false; }
     }
 
-    private async Task SelectCollection(KnowledgeCollection collection) => await SelectCollection(collection, false);
-    private async Task SelectCollection(KnowledgeCollection collection, bool openFirst)
+    private Task SelectCollection(KnowledgeCollection collection)
     {
-        selectedCollection = collection; selectedDocument = null; documents = []; error = null;
+        selectedCollection = collection; selectedDocument = null; error = null;
         ExpandAncestors(collection.Id);
-        if (collection.DirectDocumentCount == 0) return;
-        var response = await Api.GetAsync<IReadOnlyList<KnowledgeResult>>($"api/knowledge/collections/{Uri.EscapeDataString(collection.Id)}/documents");
-        documents = response?.Data ?? []; error = response?.Error?.Message;
-        if (openFirst && documents.Count > 0) await OpenDocument(documents[0].DocumentId);
+        expanded.Add(collection.Id);
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenDocumentLink(KnowledgeDocumentLink link)
+    {
+        var collection = collections.FirstOrDefault(item =>
+            item.Documents?.Any(document => document.DocumentId == link.DocumentId) == true);
+        if (collection is not null)
+        {
+            selectedCollection = collection;
+            ExpandAncestors(collection.Id);
+            expanded.Add(collection.Id);
+        }
+        await OpenDocument(link.DocumentId);
     }
 
     private async Task OpenDocument(string id)
