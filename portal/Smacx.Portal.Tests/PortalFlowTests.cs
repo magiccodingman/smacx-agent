@@ -126,7 +126,12 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.True(created.Payload.Ok);
         Assert.Equal("waiting", created.Payload.Data?.Status);
         Assert.Equal(7, created.Payload.Data?.Seats.Count);
-        Assert.All(created.Payload.Data!.Seats,
+        Assert.Equal("human", created.Payload.Data!.Seats[0].ControllerKind);
+        Assert.Equal("Administrator", created.Payload.Data.Seats[0].PlayerHandle);
+        Assert.True(created.Payload.Data.Seats[0].CanLeave);
+        Assert.Equal("reconnecting", created.Payload.Data.Seats[0].ConnectionState);
+        Assert.NotNull(created.Payload.Data.Seats[0].StagingPresenceExpiresAt);
+        Assert.All(created.Payload.Data.Seats.Skip(1),
             seat => Assert.Equal("open", seat.ControllerKind));
         Assert.True(created.Payload.Data?.CanManage);
         var matchId = created.Payload.Data!.MatchId;
@@ -135,10 +140,16 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Null(administratorCatalog.WaitingLobbies.Limit);
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var movedOwner = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/1",
+            new UpdateLobbySeatRequest("human"), csrf.Token);
+        Assert.Equal("open", movedOwner.Payload.Data?.Seats[0].ControllerKind);
+        Assert.Equal("human", movedOwner.Payload.Data?.Seats[1].ControllerKind);
         var joinedOpenSeat = await PostAsync<LobbyDetails>(
             $"api/lobbies/{matchId}/join", new JoinLobbyRequest(0, "browser"), csrf.Token);
         Assert.Equal(HttpStatusCode.OK, joinedOpenSeat.Response.StatusCode);
         Assert.True(joinedOpenSeat.Payload.Data?.Seats[0].CanLeave);
+        Assert.Equal("open", joinedOpenSeat.Payload.Data?.Seats[1].ControllerKind);
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var leftOpenSeat = await PostAsync<LobbyDetails>(
             $"api/lobbies/{matchId}/leave", new LeaveLobbySeatRequest(0), csrf.Token);
@@ -342,9 +353,13 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal("GuestOne", claimed.Payload.Data?.User?.DisplayName);
         var claimedLobby = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Contains(claimedLobby.Seats,
-            seat => seat.PlayerHandle == "GuestOne" && seat.CanControl);
+            seat => seat.PlayerHandle == "GuestOne" && seat.CanJoin && !seat.CanLeave);
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var acceptedSeat = await PostAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/join", new JoinLobbyRequest(1, "browser"), csrf.Token);
+        Assert.True(acceptedSeat.Payload.Data?.Seats[1].CanLeave);
+        Assert.Equal("ready", acceptedSeat.Payload.Data?.Seats[1].Status);
         var left = await PostAsync<LobbyDetails>(
             $"api/lobbies/{matchId}/leave", new LeaveLobbySeatRequest(1), csrf.Token);
         Assert.Equal(HttpStatusCode.OK, left.Response.StatusCode);
@@ -379,6 +394,71 @@ public sealed class PortalFlowTests : IAsyncLifetime
         var replacement = await PostAsync<LobbyDetails>(
             "api/lobbies", create with { DisplayName = "Replacement lobby" }, csrf.Token);
         Assert.Equal(HttpStatusCode.Created, replacement.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WaitingBrowserSeatUsesMultiTabGraceAndReopensWithoutRemovingOwner()
+    {
+        var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var bootstrapToken = (await File.ReadAllTextAsync(
+            Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        await PostAsync<PortalSession>("api/auth/bootstrap",
+            new BootstrapRequest(bootstrapToken, "StrongP1", "StrongP1"), csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var created = await PostAsync<LobbyDetails>("api/lobbies", new CreateLobbyRequest(
+            "Presence lobby", "source-test", "runtime-test", "alien-crossfire",
+            "standard", "small", "talent", true, false, false, false, true), csrf.Token);
+        var matchId = created.Payload.Data!.MatchId;
+
+        await using var scope = factory!.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tracker = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.WaitingLobbyPresenceTracker>();
+        var policy = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.WaitingLobbyPolicy>();
+        var ownerSeat = await database.PortalLobbySeats.SingleAsync(item =>
+            item.MatchId == matchId && item.SeatIndex == 0);
+        var ownerId = ownerSeat.UserId!;
+        var now = DateTimeOffset.UtcNow;
+
+        tracker.Join(matchId, "tab-one", ownerId);
+        tracker.Join(matchId, "tab-two", ownerId);
+        await Smacx.Portal.Services.WaitingLobbySeatLifecycle.SynchronizeAsync(
+            database, tracker, policy, now);
+        Assert.Equal("connected", ownerSeat.ConnectionState);
+
+        tracker.Leave(matchId, "tab-one");
+        await Smacx.Portal.Services.WaitingLobbySeatLifecycle.SynchronizeAsync(
+            database, tracker, policy, now + policy.SeatReconnectGrace + TimeSpan.FromSeconds(1));
+        Assert.Equal("human", ownerSeat.ControllerKind);
+        Assert.Equal("connected", ownerSeat.ConnectionState);
+
+        tracker.Leave(matchId, "tab-two");
+        var disconnectedAt = now + policy.SeatReconnectGrace + TimeSpan.FromSeconds(2);
+        await Smacx.Portal.Services.WaitingLobbySeatLifecycle.SynchronizeAsync(
+            database, tracker, policy, disconnectedAt);
+        Assert.Equal("reconnecting", ownerSeat.ConnectionState);
+
+        tracker.Join(matchId, "returning-tab", ownerId);
+        await Smacx.Portal.Services.WaitingLobbySeatLifecycle.SynchronizeAsync(
+            database, tracker, policy, disconnectedAt + policy.SeatReconnectGrace);
+        Assert.Equal("human", ownerSeat.ControllerKind);
+        Assert.Equal("connected", ownerSeat.ConnectionState);
+
+        tracker.Leave(matchId, "returning-tab");
+        var finalDisconnect = disconnectedAt + policy.SeatReconnectGrace + TimeSpan.FromSeconds(1);
+        await Smacx.Portal.Services.WaitingLobbySeatLifecycle.SynchronizeAsync(
+            database, tracker, policy, finalDisconnect);
+        await Smacx.Portal.Services.WaitingLobbySeatLifecycle.SynchronizeAsync(
+            database, tracker, policy,
+            finalDisconnect + policy.SeatReconnectGrace + TimeSpan.FromSeconds(1));
+
+        Assert.Equal("open", ownerSeat.ControllerKind);
+        Assert.Null(ownerSeat.UserId);
+        var membership = await database.PortalMatchMembers.SingleAsync(item =>
+            item.MatchId == matchId && item.UserId == ownerId);
+        Assert.Equal("owner", membership.Role);
+        Assert.Null(membership.SeatIndex);
+        Assert.Null(membership.LeftAt);
+        Assert.True(await database.PortalMatches.AnyAsync(item => item.MatchId == matchId));
     }
 
     private async Task<T> GetDataAsync<T>(string path)

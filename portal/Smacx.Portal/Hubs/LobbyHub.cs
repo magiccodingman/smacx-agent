@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -27,12 +28,30 @@ public sealed class LobbyHub(
             throw new HubException("lobby_access_denied");
         }
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId));
-        waitingPresence.Join(matchId, Context.ConnectionId);
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        waitingPresence.Join(matchId, Context.ConnectionId, userId);
         JoinedLobbies.Add(matchId);
         if (lobby.Status == "waiting")
         {
+            if (userId is not null)
+            {
+                var seat = await database.PortalLobbySeats
+                    .OrderBy(item => item.SeatIndex)
+                    .FirstOrDefaultAsync(item => item.MatchId == matchId &&
+                        item.UserId == userId && item.ControllerKind == "human" &&
+                        item.JoinMode == "browser" && item.Status == "ready",
+                        Context.ConnectionAborted);
+                if (seat is not null)
+                {
+                    seat.ConnectionState = "connected";
+                    seat.LastBrowserSeenAt = DateTimeOffset.UtcNow;
+                    seat.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+            }
             lobby.UpdatedAt = DateTimeOffset.UtcNow;
             await database.SaveChangesAsync(Context.ConnectionAborted);
+            await Clients.Group(GroupName(matchId)).SendAsync(
+                "LobbyChanged", matchId, Context.ConnectionAborted);
         }
     }
 
@@ -41,7 +60,7 @@ public sealed class LobbyHub(
         waitingPresence.Leave(matchId, Context.ConnectionId);
         JoinedLobbies.Remove(matchId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(matchId));
-        await TouchWaitingLobbyAsync(matchId, Context.ConnectionAborted);
+        await MarkDisconnectedAsync(matchId, Context.ConnectionAborted);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -49,18 +68,37 @@ public sealed class LobbyHub(
         foreach (var matchId in JoinedLobbies.ToArray())
         {
             waitingPresence.Leave(matchId, Context.ConnectionId);
-            await TouchWaitingLobbyAsync(matchId, CancellationToken.None);
+            await MarkDisconnectedAsync(matchId, CancellationToken.None);
         }
         await base.OnDisconnectedAsync(exception);
     }
 
-    private async Task TouchWaitingLobbyAsync(string matchId, CancellationToken cancellationToken)
+    private async Task MarkDisconnectedAsync(string matchId, CancellationToken cancellationToken)
     {
         var lobby = await database.PortalMatches.SingleOrDefaultAsync(
             item => item.MatchId == matchId && item.Status == "waiting", cancellationToken);
         if (lobby is null) return;
-        lobby.UpdatedAt = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow;
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is not null && !waitingPresence.IsUserActive(matchId, userId))
+        {
+            var seat = await database.PortalLobbySeats
+                .OrderBy(item => item.SeatIndex)
+                .FirstOrDefaultAsync(item => item.MatchId == matchId &&
+                    item.UserId == userId && item.ControllerKind == "human" &&
+                    item.JoinMode == "browser" && item.Status == "ready",
+                    cancellationToken);
+            if (seat is not null)
+            {
+                seat.ConnectionState = "reconnecting";
+                seat.LastBrowserSeenAt = now;
+                seat.UpdatedAt = now;
+            }
+        }
+        lobby.UpdatedAt = now;
         await database.SaveChangesAsync(cancellationToken);
+        await Clients.Group(GroupName(matchId)).SendAsync(
+            "LobbyChanged", matchId, cancellationToken);
     }
 
     private HashSet<string> JoinedLobbies

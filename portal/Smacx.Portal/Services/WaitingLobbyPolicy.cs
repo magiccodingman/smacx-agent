@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
+using Smacx.Portal.Contracts;
 using Smacx.Portal.Data;
 
 namespace Smacx.Portal.Services;
@@ -8,6 +8,7 @@ public sealed class WaitingLobbyPolicy
 {
     public const int MemberLimit = 5;
     public TimeSpan IdleLifetime { get; }
+    public TimeSpan SeatReconnectGrace { get; }
 
     public WaitingLobbyPolicy()
     {
@@ -16,34 +17,167 @@ public sealed class WaitingLobbyPolicy
         if (string.IsNullOrWhiteSpace(configured))
         {
             IdleLifetime = TimeSpan.FromHours(defaultHours);
-            return;
         }
-        if (!int.TryParse(configured, out var hours) || hours is < 1 or > 720)
+        else if (!int.TryParse(configured, out var hours) || hours is < 1 or > 720)
+        {
             throw new InvalidOperationException(
                 "SMACX_WAITING_LOBBY_TTL_HOURS must be an integer between 1 and 720.");
-        IdleLifetime = TimeSpan.FromHours(hours);
+        }
+        else
+        {
+            IdleLifetime = TimeSpan.FromHours(hours);
+        }
+
+        const int defaultGraceSeconds = 30;
+        configured = Environment.GetEnvironmentVariable("SMACX_STAGING_SEAT_GRACE_SECONDS");
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            SeatReconnectGrace = TimeSpan.FromSeconds(defaultGraceSeconds);
+        }
+        else if (!int.TryParse(configured, out var seconds) || seconds is < 10 or > 300)
+        {
+            throw new InvalidOperationException(
+                "SMACX_STAGING_SEAT_GRACE_SECONDS must be an integer between 10 and 300.");
+        }
+        else
+        {
+            SeatReconnectGrace = TimeSpan.FromSeconds(seconds);
+        }
     }
 }
 
 public sealed class WaitingLobbyPresenceTracker
 {
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> matches =
+    private readonly object sync = new();
+    private readonly Dictionary<string, Dictionary<string, string?>> matches =
         new(StringComparer.Ordinal);
 
-    public void Join(string matchId, string connectionId)
+    public void Join(string matchId, string connectionId, string? userId = null)
     {
-        matches.GetOrAdd(matchId, _ => new(StringComparer.Ordinal))[connectionId] = 0;
+        lock (sync)
+        {
+            if (!matches.TryGetValue(matchId, out var connections))
+            {
+                connections = new(StringComparer.Ordinal);
+                matches[matchId] = connections;
+            }
+            connections[connectionId] = userId;
+        }
     }
 
     public void Leave(string matchId, string connectionId)
     {
-        if (!matches.TryGetValue(matchId, out var connections)) return;
-        connections.TryRemove(connectionId, out _);
-        if (connections.IsEmpty) matches.TryRemove(matchId, out _);
+        lock (sync)
+        {
+            if (!matches.TryGetValue(matchId, out var connections)) return;
+            connections.Remove(connectionId);
+            if (connections.Count == 0) matches.Remove(matchId);
+        }
     }
 
-    public bool IsActive(string matchId) =>
-        matches.TryGetValue(matchId, out var connections) && !connections.IsEmpty;
+    public bool IsActive(string matchId)
+    {
+        lock (sync)
+            return matches.TryGetValue(matchId, out var connections) && connections.Count > 0;
+    }
+
+    public bool IsUserActive(string matchId, string userId)
+    {
+        lock (sync)
+            return matches.TryGetValue(matchId, out var connections) &&
+                connections.Values.Any(value => value == userId);
+    }
+}
+
+public static class WaitingLobbySeatLifecycle
+{
+    public static async Task<IReadOnlyList<string>> SynchronizeAsync(
+        ApplicationDbContext database,
+        WaitingLobbyPresenceTracker presence,
+        WaitingLobbyPolicy policy,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        var seats = await database.PortalLobbySeats
+            .Where(seat => seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
+                seat.Status == "ready" && seat.UserId != null &&
+                database.PortalMatches.Any(match => match.MatchId == seat.MatchId &&
+                    match.Status == "waiting"))
+            .ToArrayAsync(cancellationToken);
+        if (seats.Length == 0) return [];
+
+        var changedMatches = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var seat in seats)
+        {
+            if (presence.IsUserActive(seat.MatchId, seat.UserId!))
+            {
+                if (seat.ConnectionState == "connected") continue;
+                seat.ConnectionState = "connected";
+                seat.LastBrowserSeenAt = now;
+                seat.UpdatedAt = now;
+                changedMatches.Add(seat.MatchId);
+                continue;
+            }
+
+            if (seat.ConnectionState != "reconnecting" || seat.LastBrowserSeenAt is null)
+            {
+                seat.ConnectionState = "reconnecting";
+                seat.LastBrowserSeenAt = now;
+                seat.UpdatedAt = now;
+                changedMatches.Add(seat.MatchId);
+                continue;
+            }
+
+            if (seat.LastBrowserSeenAt.Value + policy.SeatReconnectGrace > now) continue;
+            var oldUserId = seat.UserId;
+            ResetToOpen(seat, now);
+            var member = await database.PortalMatchMembers.SingleOrDefaultAsync(item =>
+                item.MatchId == seat.MatchId && item.UserId == oldUserId, cancellationToken);
+            if (member is not null)
+            {
+                member.SeatIndex = null;
+                if (member.Role != "owner") member.LeftAt = now;
+            }
+            changedMatches.Add(seat.MatchId);
+        }
+
+        if (changedMatches.Count == 0) return [];
+        var profiles = await database.PortalMatches
+            .Where(match => changedMatches.Contains(match.MatchId))
+            .ToArrayAsync(cancellationToken);
+        foreach (var profile in profiles) profile.UpdatedAt = now;
+        await database.SaveChangesAsync(cancellationToken);
+        return changedMatches.ToArray();
+    }
+
+    public static void ResetToOpen(PortalLobbySeat seat, DateTimeOffset? now = null)
+    {
+        seat.ControllerKind = "open";
+        seat.AgentId = null;
+        seat.AiProfileId = null;
+        seat.UserId = null;
+        seat.PlayerHandle = null;
+        seat.JoinMode = "browser";
+        seat.RequestedFactionId = FactionCatalog.Random;
+        seat.ResolvedFactionKey = null;
+        seat.LeaderName = null;
+        seat.RequestedPersonalityId = "standard";
+        seat.PersonalityCardId = "none";
+        seat.PersonalityName = null;
+        seat.PersonalityPrompt = null;
+        seat.PersonalityPromptSha256 = null;
+        seat.FactionId = null;
+        seat.FactionName = null;
+        seat.ControlInstanceId = null;
+        seat.Status = "open";
+        seat.ConnectionState = "unknown";
+        seat.LastBrowserSeenAt = null;
+        seat.LastWorkerSeenAt = null;
+        seat.IsManagedHost = false;
+        seat.TemporaryControllerKind = "none";
+        seat.DelegationStatus = "none";
+        seat.UpdatedAt = now ?? DateTimeOffset.UtcNow;
+    }
 }
 
 public static class WaitingLobbyExpiration

@@ -132,6 +132,11 @@ The portal stores normalized messages with sender handle, sender faction,
 recipient faction, native deduplication marker, channel, conversation, and
 logical-message identity.
 
+Waiting-lobby Comms is for the humans assembling the table. AI runtimes do not
+exist until **Start match**, so those staging messages are neither delivered to
+an AI nor replayed into its initial prompt. Once running, browser and native
+messages use the game transport and enter the AI's semantic chat view normally.
+
 ### Global and private
 
 Global messages use native recipient `0`. Private targets come only from the

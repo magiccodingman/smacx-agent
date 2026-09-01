@@ -71,6 +71,7 @@ public sealed class PortalMatchSupervisor(
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var control = scope.ServiceProvider.GetRequiredService<ControlPlaneClient>();
         await ReconcileDormantMatchesAsync(database, control, cancellationToken);
+        await SynchronizeWaitingSeatsAsync(database, cancellationToken);
         var match = await database.PortalMatches
             .OrderBy(item => item.UpdatedAt)
             .FirstOrDefaultAsync(item => item.Status == "provisioning", cancellationToken);
@@ -110,6 +111,17 @@ public sealed class PortalMatchSupervisor(
         }
         await AutoParkIdleBrowserMatchesAsync(database, control, cancellationToken);
         await ExpireWaitingLobbiesAsync(database, cancellationToken);
+    }
+
+    private async Task SynchronizeWaitingSeatsAsync(
+        ApplicationDbContext database, CancellationToken cancellationToken)
+    {
+        var matchIds = await WaitingLobbySeatLifecycle.SynchronizeAsync(
+            database, waitingLobbyPresence, waitingLobbyPolicy,
+            DateTimeOffset.UtcNow, cancellationToken);
+        foreach (var matchId in matchIds)
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                "LobbyChanged", matchId, cancellationToken);
     }
 
     private async Task ExpireWaitingLobbiesAsync(
