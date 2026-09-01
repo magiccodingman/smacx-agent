@@ -7,11 +7,6 @@ public sealed record PersonalityCatalogItem(
     string Id, string Kind, string DisplayName, string Description,
     string? FactionId = null);
 
-public sealed record AgentSeatRequest(
-    string AgentId,
-    string FactionId = "random",
-    string PersonalityId = "standard");
-
 public sealed record UpdateDisplayNameRequest(string DisplayName);
 
 public static class FactionCatalog

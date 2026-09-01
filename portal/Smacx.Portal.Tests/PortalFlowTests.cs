@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Smacx.Portal.Contracts;
@@ -56,6 +57,42 @@ public sealed class PortalFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task WaitingLobbyExpirationPreservesActiveRoomsAndDeletesInactiveRooms()
+    {
+        var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var bootstrapToken = (await File.ReadAllTextAsync(
+            Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        await PostAsync<PortalSession>("api/auth/bootstrap",
+            new BootstrapRequest(bootstrapToken, "StrongP1", "StrongP1"), csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var request = new CreateLobbyRequest(
+            "Expiring lobby", "source-test", "runtime-test", "alien-crossfire",
+            "standard", "small", "talent", true, false, false, false, true);
+        var created = await PostAsync<LobbyDetails>("api/lobbies", request, csrf.Token);
+        var matchId = created.Payload.Data!.MatchId;
+
+        await using var scope = factory!.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tracker = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.WaitingLobbyPresenceTracker>();
+        var policy = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.WaitingLobbyPolicy>();
+        var match = await database.PortalMatches.SingleAsync(item => item.MatchId == matchId);
+        match.UpdatedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(25);
+        await database.SaveChangesAsync();
+
+        tracker.Join(matchId, "test-connection");
+        var protectedIds = await Smacx.Portal.Services.WaitingLobbyExpiration.ExpireAsync(
+            database, tracker, policy, DateTimeOffset.UtcNow);
+        Assert.Empty(protectedIds);
+        Assert.True(await database.PortalMatches.AnyAsync(item => item.MatchId == matchId));
+
+        tracker.Leave(matchId, "test-connection");
+        var expiredIds = await Smacx.Portal.Services.WaitingLobbyExpiration.ExpireAsync(
+            database, tracker, policy, DateTimeOffset.UtcNow);
+        Assert.Contains(matchId, expiredIds);
+        Assert.False(await database.PortalMatches.AnyAsync(item => item.MatchId == matchId));
+    }
+
+    [Fact]
     public async Task BootstrapAuthAndStagedLobbyFlowUsesCanonicalSchema()
     {
         var setup = await GetDataAsync<PortalSetupState>("api/auth/setup");
@@ -83,16 +120,41 @@ public sealed class PortalFlowTests : IAsyncLifetime
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var create = new CreateLobbyRequest(
             "Test Planetfall", "source-test", "runtime-test", "alien-crossfire",
-            "standard", "small", "talent", true, false, false, false, true,
-            "none", [], ["GuestOne"], "human", true, 0, "librarian", false, "unranked");
+            "standard", "small", "talent", true, false, false, false, true);
         var created = await PostAsync<LobbyDetails>("api/lobbies", create, csrf.Token);
         Assert.Equal(HttpStatusCode.Created, created.Response.StatusCode);
         Assert.True(created.Payload.Ok);
         Assert.Equal("waiting", created.Payload.Data?.Status);
         Assert.Equal(7, created.Payload.Data?.Seats.Count);
-        Assert.Equal("human", created.Payload.Data?.Seats[0].ControllerKind);
+        Assert.All(created.Payload.Data!.Seats,
+            seat => Assert.Equal("open", seat.ControllerKind));
         Assert.True(created.Payload.Data?.CanManage);
         var matchId = created.Payload.Data!.MatchId;
+        var administratorCatalog = await GetDataAsync<LobbyCatalog>("api/catalog/lobby");
+        Assert.True(administratorCatalog.WaitingLobbies.Unlimited);
+        Assert.Null(administratorCatalog.WaitingLobbies.Limit);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var joinedOpenSeat = await PostAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/join", new JoinLobbyRequest(0, "browser"), csrf.Token);
+        Assert.Equal(HttpStatusCode.OK, joinedOpenSeat.Response.StatusCode);
+        Assert.True(joinedOpenSeat.Payload.Data?.Seats[0].CanLeave);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var leftOpenSeat = await PostAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/leave", new LeaveLobbySeatRequest(0), csrf.Token);
+        Assert.Equal(HttpStatusCode.OK, leftOpenSeat.Response.StatusCode);
+        Assert.Equal("open", leftOpenSeat.Payload.Data?.Seats[0].ControllerKind);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var ownerSeat = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/0",
+            new UpdateLobbySeatRequest("human"), csrf.Token);
+        Assert.True(ownerSeat.Payload.Data?.Seats[0].CanLeave);
+        Assert.False(ownerSeat.Payload.Data?.Seats[0].CanJoin);
+        var invitedSeat = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/1",
+            new UpdateLobbySeatRequest("human", PlayerHandle: "GuestOne"), csrf.Token);
+        Assert.Equal("GuestOne", invitedSeat.Payload.Data?.Seats[1].PlayerHandle);
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
         var reservedLeader = await PostAsync<PortalSession>(
@@ -204,18 +266,11 @@ public sealed class PortalFlowTests : IAsyncLifetime
             $"api/lobbies/{matchId}/seats/4",
             new UpdateLobbySeatRequest("open"), csrf.Token);
         Assert.Equal("open", reopened.Payload.Data?.Seats[4].ControllerKind);
-        var repeatedProfile = create with
-        {
-            DisplayName = "Repeated profile seats",
-            HostController = "agent",
-            OwnerPlays = false,
-            InvitedHumanHandles = [],
-            AgentIds = ["agent-test", "agent-test"],
-            AgentSeats = [new("agent-test"), new("agent-test")],
-        };
-        var repeatedCreated = await PostAsync<LobbyDetails>("api/lobbies", repeatedProfile, csrf.Token);
-        Assert.Equal(HttpStatusCode.Created, repeatedCreated.Response.StatusCode);
-        Assert.Equal(2, repeatedCreated.Payload.Data?.Seats.Count(item => item.AgentId == "agent-test"));
+        var repeatedProfile = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/2",
+            new UpdateLobbySeatRequest("agent", "agent-test"), csrf.Token);
+        Assert.Equal(HttpStatusCode.OK, repeatedProfile.Response.StatusCode);
+        Assert.Equal(2, repeatedProfile.Payload.Data?.Seats.Count(item => item.AgentId == "agent-test"));
         var withJoin = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Equal("192.0.2.25", withJoin.NativeJoin?.HostAddress);
         Assert.Equal("GaianGuest", withJoin.NativeJoin?.Players.Single().PlayerName);
@@ -249,15 +304,11 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, rejected.Response.StatusCode);
         Assert.Equal("ranked_not_available", rejected.Payload.Error?.Code);
 
-        var duplicateHandles = create with
-        {
-            DisplayName = "Duplicate handles",
-            InvitedHumanHandles = ["CaseTwin", "casetwin"],
-        };
-        var duplicateRejected = await PostAsync<LobbyDetails>(
-            "api/lobbies", duplicateHandles, csrf.Token);
-        Assert.Equal(HttpStatusCode.BadRequest, duplicateRejected.Response.StatusCode);
-        Assert.Equal("duplicate_player_handle", duplicateRejected.Payload.Error?.Code);
+        var duplicateRejected = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/5",
+            new UpdateLobbySeatRequest("human", PlayerHandle: "guestone"), csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, duplicateRejected.Response.StatusCode);
+        Assert.Equal("display_name_in_use", duplicateRejected.Payload.Error?.Code);
 
         await using var connection = new SqliteConnection(
             $"Data Source={Path.Combine(dataRoot, "portal.sqlite3")}");
@@ -292,6 +343,42 @@ public sealed class PortalFlowTests : IAsyncLifetime
         var claimedLobby = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Contains(claimedLobby.Seats,
             seat => seat.PlayerHandle == "GuestOne" && seat.CanControl);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var left = await PostAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/leave", new LeaveLobbySeatRequest(1), csrf.Token);
+        Assert.Equal(HttpStatusCode.OK, left.Response.StatusCode);
+        Assert.Equal("open", left.Payload.Data?.Seats[1].ControllerKind);
+
+        var memberLobbies = new List<string>();
+        for (var index = 1; index <= 5; index++)
+        {
+            csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+            var memberCreated = await PostAsync<LobbyDetails>(
+                "api/lobbies", create with { DisplayName = $"Guest lobby {index}" }, csrf.Token);
+            Assert.Equal(HttpStatusCode.Created, memberCreated.Response.StatusCode);
+            memberLobbies.Add(memberCreated.Payload.Data!.MatchId);
+        }
+        var quotaCatalog = await GetDataAsync<LobbyCatalog>("api/catalog/lobby");
+        Assert.Equal(5, quotaCatalog.WaitingLobbies.OwnedCount);
+        Assert.Equal(5, quotaCatalog.WaitingLobbies.Limit);
+        Assert.False(quotaCatalog.WaitingLobbies.CanCreate);
+        Assert.Equal(5, quotaCatalog.WaitingLobbies.Lobbies.Count);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var overLimit = await PostAsync<LobbyDetails>(
+            "api/lobbies", create with { DisplayName = "Guest lobby 6" }, csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, overLimit.Response.StatusCode);
+        Assert.Equal("waiting_lobby_limit_reached", overLimit.Payload.Error?.Code);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var closed = await PostAsync<bool>(
+            $"api/lobbies/{memberLobbies[0]}/close", new { }, csrf.Token);
+        Assert.True(closed.Payload.Data);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var replacement = await PostAsync<LobbyDetails>(
+            "api/lobbies", create with { DisplayName = "Replacement lobby" }, csrf.Token);
+        Assert.Equal(HttpStatusCode.Created, replacement.Response.StatusCode);
     }
 
     private async Task<T> GetDataAsync<T>(string path)

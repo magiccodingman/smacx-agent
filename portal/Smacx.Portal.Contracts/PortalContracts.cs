@@ -65,16 +65,7 @@ public sealed record CreateLobbyRequest(
     bool AllowAnonymousSpectators,
     bool ManagedClientsOnly,
     bool GraphitiEnabled,
-    string PersonalityCardId,
-    IReadOnlyList<string> AgentIds,
-    IReadOnlyList<string> InvitedHumanHandles,
-    string HostController = "human",
-    bool OwnerPlays = true,
-    int NativeBotCount = 0,
-    string NativeBotDifficulty = "librarian",
-    bool StartNow = false,
     string RankingMode = "unranked",
-    string HumanJoinMode = "browser",
     int TimeControl = 2,
     int OceanCoverage = 1,
     int ErosiveForces = 1,
@@ -82,10 +73,11 @@ public sealed record CreateLobbyRequest(
     int CloudCover = 1,
     IReadOnlyDictionary<string, bool>? RuleOptions = null,
     string? ScenarioId = null,
-    string? ResumeSlot = null,
-    IReadOnlyList<AgentSeatRequest>? AgentSeats = null);
+    string? ResumeSlot = null);
 
 public sealed record JoinLobbyRequest(int SeatIndex, string JoinMode = "browser");
+
+public sealed record LeaveLobbySeatRequest(int SeatIndex);
 
 public sealed record UpdateLobbySeatRequest(
     string ControllerKind,
@@ -127,7 +119,8 @@ public sealed record LobbySeatSummary(
     string RequestedFactionId = "random",
     string? ResolvedFactionKey = null,
     string RequestedPersonalityId = "standard",
-    string? PersonalityName = null);
+    string? PersonalityName = null,
+    bool CanLeave = false);
 
 public sealed record FactionPersonalityCatalog(
     IReadOnlyList<FactionCatalogItem> Factions,
@@ -294,6 +287,18 @@ public sealed record PortalActivityItem(
 
 public sealed record CatalogItem(string Id, string DisplayName, string Status);
 
+public sealed record OwnedWaitingLobby(
+    string MatchId, string DisplayName, DateTimeOffset UpdatedAt);
+
+public sealed record WaitingLobbyQuota(
+    int OwnedCount,
+    int? Limit,
+    IReadOnlyList<OwnedWaitingLobby> Lobbies)
+{
+    public bool Unlimited => Limit is null;
+    public bool CanCreate => Limit is null || OwnedCount < Limit.Value;
+}
+
 public sealed record ScenarioCatalogItem(string Id, string DisplayName, string RelativePath);
 
 public sealed record LobbyCatalog(
@@ -301,6 +306,7 @@ public sealed record LobbyCatalog(
     IReadOnlyList<CatalogItem> Runtimes,
     IReadOnlyList<CatalogItem> Agents,
     bool ControlConnected,
+    WaitingLobbyQuota WaitingLobbies,
     string? ErrorCode = null);
 
 public sealed record MatchHistoryItem(
