@@ -78,7 +78,9 @@ FalkorDB and the recall endpoint have no published host ports. In the portal:
    immediately.
 
 Turning Graphiti off clears that extraction-profile selection. Select a profile
-again whenever Graphiti should be re-enabled.
+again whenever Graphiti should be re-enabled. Deactivating the selected AI
+profile performs the same cleanup automatically; deactivating any other profile
+leaves Graphiti untouched.
 
 Each lobby may still opt out.
 
