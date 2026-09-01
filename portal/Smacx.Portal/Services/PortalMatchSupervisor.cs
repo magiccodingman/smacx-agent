@@ -818,7 +818,9 @@ public sealed class PortalMatchSupervisor(
                 logger.LogDebug(exception, "Native chat poll failed for {InstanceId}", seat.ControlInstanceId);
             }
         }
-        if (imported) await NotifyAsync(match.MatchId, cancellationToken);
+        if (imported)
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(match.MatchId)).SendAsync(
+                "LobbyMessagesChanged", match.MatchId, cancellationToken);
     }
 
     private Task NotifyAsync(string matchId, CancellationToken cancellationToken) =>
