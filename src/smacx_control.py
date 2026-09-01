@@ -2074,7 +2074,8 @@ class ControlPlane:
                            last_error: str | None = None,
                            exit_code: int | None = None,
                            increment_restart: bool = False,
-                           heartbeat: bool = False) -> dict[str, Any]:
+                           heartbeat: bool = False,
+                           metadata_update: Mapping[str, Any] | None = None) -> dict[str, Any]:
         _require_id(run_id, "run_id")
         if status is not None and status not in {
                 "queued", "starting", "running", "restarting", "stopped", "completed", "error"}:
@@ -2102,8 +2103,20 @@ class ControlPlane:
         if status in {"stopped", "completed", "error"}:
             fields.append("stopped_unix=?")
             values.append(now)
-        values.append(run_id)
         with self.store.transaction() as connection:
+            if metadata_update is not None:
+                if not isinstance(metadata_update, Mapping):
+                    raise InvalidRecord("invalid_harness_run_metadata")
+                row = connection.execute(
+                    "SELECT metadata_json FROM harness_runs WHERE run_id=?", (run_id,),
+                ).fetchone()
+                if not row:
+                    raise ScopeViolation("unknown_harness_run")
+                metadata = json.loads(str(row["metadata_json"]))
+                metadata.update(dict(metadata_update))
+                fields.append("metadata_json=?")
+                values.append(_json(metadata))
+            values.append(run_id)
             cursor = connection.execute(
                 f"UPDATE harness_runs SET {', '.join(fields)} WHERE run_id=?", values,
             )
@@ -2128,6 +2141,41 @@ class ControlPlane:
                 "SELECT run_id FROM harness_runs ORDER BY created_unix DESC"
             )]
         return [self.get_harness_run(identifier) for identifier in identifiers]
+
+    def record_supervision_incident(
+        self, instance_id: str, incident_kind: str, status: str,
+        details: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        _require_id(instance_id, "instance_id")
+        if status not in {"open", "recovered", "operator_required", "closed"}:
+            raise InvalidRecord("invalid_supervision_incident_status")
+        if not isinstance(incident_kind, str) or not incident_kind or len(incident_kind) > 120:
+            raise InvalidRecord("invalid_supervision_incident_kind")
+        spec = self.get_worker_spec(instance_id)
+        now = time.time()
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT incident_id FROM supervision_incidents WHERE instance_id=? "
+                "AND incident_kind=? AND status IN ('open','operator_required') "
+                "ORDER BY first_seen_unix DESC LIMIT 1", (instance_id, incident_kind),
+            ).fetchone()
+            if row:
+                incident_id = str(row["incident_id"])
+                connection.execute(
+                    "UPDATE supervision_incidents SET status=?, details_json=?, "
+                    "last_seen_unix=? WHERE incident_id=?",
+                    (status, _json(details), now, incident_id),
+                )
+            else:
+                incident_id = _new_id("incident")
+                connection.execute(
+                    "INSERT INTO supervision_incidents(incident_id, match_id, instance_id, "
+                    "incident_kind, status, details_json, first_seen_unix, last_seen_unix) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (incident_id, spec["match_id"], instance_id, incident_kind,
+                     status, _json(details), now, now),
+                )
+        return {"incident_id": incident_id, "status": status}
 
     def get_harness_profile(self, harness_profile_id: str) -> dict[str, Any]:
         _require_id(harness_profile_id, "harness_profile_id")

@@ -96,9 +96,12 @@ subtree to inspect. This is why the corpus never uses `A–C`, `Part 2`, or othe
 presentation-only labels.
 
 The system prompt requires every managed player to read and acknowledge the
-match briefing before mutating a game. That briefing carries actual victory
-conditions, non-default rules, scenario restrictions, faction, clock, and host
-policy so static mechanics knowledge cannot make the agent assume defaults.
+match-configuration briefing before its first mutation. That briefing carries
+actual victory conditions, non-default rules, scenario restrictions, faction,
+clock, and host policy so static mechanics knowledge cannot make the agent
+assume defaults. The catalog itself is queried on demand rather than copied
+into every briefing, and ordinary gameplay changes never invalidate the
+configuration hash.
 
 ## Human Datalinks Wiki
 

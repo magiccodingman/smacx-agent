@@ -22,6 +22,7 @@ PYTHONPATH=src python3 scripts/hermes_adapter_test.py
 PYTHONPATH=src python3 scripts/generation_settings_test.py
 PYTHONPATH=src python3 scripts/provider_generation_probe_test.py
 PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
+PYTHONPATH=src python3 scripts/harness_continuation_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/platform_store_test.py
@@ -254,6 +255,18 @@ played a Tiny/Citizen Alien Crossfire game through turn 13/year 2113 with only
 command, rules retrieval, unit movement, goal/fact memory, and stale-revision
 re-observation. No screenshot, computer, mouse, keyboard, terminal, or raw UI
 tool was available. The live match then passed stop-agent → checkpoint → park.
+
+The 2026-09-01 stable-briefing smoke continued a real Tiny/Citizen match through
+turn 18/year 2118 across a checkpoint, park, and fresh native session. Its
+Hermes transcript contained 100 syntactically valid tool calls and no malformed
+tool-call JSON. Eighteen in-game years required exactly one full v2 briefing and
+one compact acknowledgement; all 48 decision frames used one configuration
+hash. Three clean ten-iteration Hermes yields advanced the native state and
+were continued without consuming the error-restart budget. Recovery emitted
+one compact unchanged-configuration notice, did not reread the briefing, and
+rotated the native session/revision guards. A live managed knowledge write also
+proved that the authoritative SQLite identity no longer depends on a legacy
+`match.json` mirror.
 
 Hermes telemetry was independently read from its private state through the
 same no-network/read-only helper used by production:

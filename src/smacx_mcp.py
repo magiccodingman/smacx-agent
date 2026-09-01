@@ -27,6 +27,7 @@ from smacx_controller import (
     list_saved_games,
     load_saved_game,
     match_briefing_context as controller_match_briefing_context,
+    match_briefing_acknowledgement_status as controller_match_briefing_acknowledgement_status,
     match_briefing_is_acknowledged as controller_match_briefing_is_acknowledged,
     new_game,
     scenario_game,
@@ -47,8 +48,8 @@ mcp = MCPServer(
     description="Nonvisual fair-play state and semantic control for Sid Meier's Alpha Centauri: Alien Crossfire.",
     instructions=(
         "Use only structured observations, enumerated choices, and semantic commands. "
-        "Read and acknowledge smac_match_briefing before the first gameplay mutation and after "
-        "any recovery or settings change. "
+        "Read and acknowledge smac_match_briefing before the first gameplay mutation and only "
+        "when smac_decision reports a changed configuration thereafter. "
         "There are deliberately no screenshot, click, keyboard, or raw text-entry tools. "
         "If a needed capability is absent, call smac_report_capability_gap once and stop. "
         "Observations are restricted to the current human faction's legitimate perspective."
@@ -64,6 +65,8 @@ MANAGED_ATTACHED = os.environ.get("SMACX_MANAGED_ATTACHED", "0") == "1"
 CAPABILITY_GAPS: dict[tuple[str, str], dict] = {}
 CAPABILITY_GAP_LOCK = threading.Lock()
 MATCH_BRIEFING_CACHE: dict[tuple[str, str], str] = {}
+MATCH_CONFIGURATION_CACHE: dict[tuple[str, str, str], dict] = {}
+MATCH_BRIEFING_RESUME_NOTICES: set[tuple[str, str]] = set()
 MATCH_BRIEFING_LOCK = threading.Lock()
 SESSION_LOCAL_KNOWLEDGE_REFERENCE = re.compile(
     r"(?:\b(?:unit|vehicle|base|prototype)[ _-]?ids?\b"
@@ -135,52 +138,191 @@ def _managed_lifecycle_block(operation: str) -> dict | None:
     }
 
 
+def _requested_native_differences(requested: object, native: object) -> list[dict]:
+    if not isinstance(requested, dict) or not isinstance(native, dict):
+        return []
+    game_map = native.get("map") if isinstance(native.get("map"), dict) else {}
+    rules = native.get("rules") if isinstance(native.get("rules"), dict) else {}
+    difficulty = native.get("difficulty") \
+        if isinstance(native.get("difficulty"), dict) else {}
+    time_control = native.get("time_control") \
+        if isinstance(native.get("time_control"), dict) else {}
+    observed: dict[str, object] = {
+        **{key: rules[key] for key in rules},
+        "world_size": game_map.get("size_id"),
+        "custom_width": game_map.get("width"),
+        "custom_height": game_map.get("height"),
+        "difficulty": difficulty.get("id"),
+        "time_control": time_control.get("id"),
+    }
+    for key in ("ocean_coverage", "erosive_forces", "native_life", "cloud_cover"):
+        observed[key] = game_map.get(key)
+    differences = []
+    for key, expected in sorted(requested.items()):
+        # Random/custom generation is a launch method, not a native persisted
+        # rule. Everything else is compared only when the bridge can observe it.
+        if key == "map_generation" or key not in observed or observed[key] is None:
+            continue
+        if observed[key] != expected:
+            differences.append({
+                "field": key, "requested": expected, "native": observed[key],
+            })
+    return differences
+
+
+def _configuration_changes(previous: object, current: object,
+                           path: str = "") -> list[dict]:
+    if isinstance(previous, dict) and isinstance(current, dict):
+        changes: list[dict] = []
+        for key in sorted(set(previous) | set(current)):
+            child = f"{path}.{key}" if path else str(key)
+            if key not in previous:
+                changes.append({"field": child, "before": None, "after": current[key]})
+            elif key not in current:
+                changes.append({"field": child, "before": previous[key], "after": None})
+            else:
+                changes.extend(_configuration_changes(previous[key], current[key], child))
+        return changes
+    if isinstance(previous, list) and isinstance(current, list) and previous == current:
+        return []
+    return [] if previous == current else [{
+        "field": path or "$", "before": previous, "after": current,
+    }]
+
+
+def _canonical_match_configuration(snapshot: dict, context: dict) -> dict:
+    active = snapshot.get("faction") if isinstance(snapshot.get("faction"), dict) else {}
+    seat = context.get("seat") if isinstance(context.get("seat"), dict) else {}
+    match = context.get("match") if isinstance(context.get("match"), dict) else {}
+    source = context.get("game_source") \
+        if isinstance(context.get("game_source"), dict) else {}
+    configuration = {
+        "match": {
+            "mode": match.get("mode"),
+            "ruleset_id": match.get("ruleset_id"),
+        },
+        "seat": {
+            "seat_index": seat.get("seat_index"),
+            "controller_kind": seat.get("controller_kind"),
+            "faction_id": active.get("id", seat.get("assigned_faction_id")),
+            "faction_name": active.get("name", seat.get("assigned_faction_name")),
+        },
+        # These bridge objects are defined as configuration-only contracts.
+        # Their complete shape is intentionally canonicalized so newly exposed
+        # native rules are safe-by-default and automatically participate in the hash.
+        "native_game_settings": snapshot.get("game_settings"),
+        "scenario": snapshot.get("scenario"),
+        "control_policy": context.get("policy") or {},
+        "game_artifact": {
+            "executable_sha256": source.get("executable_sha256"),
+        },
+    }
+    # Detach the immutable contract from the bridge response. Test doubles and
+    # future bridge clients may reuse mutable dictionaries between snapshots.
+    return json.loads(json.dumps(configuration, ensure_ascii=False))
+
+
 def _compose_match_briefing(snapshot: dict) -> dict:
     match_id = str(snapshot.get("match_id") or "")
     session_id = str(snapshot.get("session_id") or "")
     context = controller_match_briefing_context(match_id, session_id)
     if not context.get("ok"):
         return context
+    configuration = _canonical_match_configuration(snapshot, context)
+    contract = {
+        "schema": "smacx.match-briefing.v2",
+        "configuration": configuration,
+    }
+    encoded = json.dumps(
+        contract, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
+    import hashlib
+    briefing_hash = hashlib.sha256(encoded).hexdigest()
+    status = controller_match_briefing_acknowledgement_status(
+        match_id, session_id, briefing_hash,
+    )
+    if not status.get("ok"):
+        return status
+    acknowledged = bool(status.get("acknowledged"))
+    inherited_from_session = None
+    if acknowledged and not status.get("current_session"):
+        inherited_from_session = status.get("previous_session_id")
+        inherited = controller_acknowledge_match_briefing(
+            match_id, session_id, briefing_hash,
+        )
+        if not inherited.get("ok"):
+            return inherited
+    scope_key = (
+        match_id, str(context["scope"]["agent_id"]),
+        str(context["scope"]["perspective_id"]),
+    )
+    with MATCH_BRIEFING_LOCK:
+        previous = MATCH_CONFIGURATION_CACHE.get(scope_key)
+        MATCH_BRIEFING_CACHE[(match_id, session_id)] = briefing_hash
+        if acknowledged:
+            MATCH_CONFIGURATION_CACHE[scope_key] = {
+                "briefing_hash": briefing_hash, "configuration": configuration,
+            }
+        resume_notice = None
+        notice_key = (match_id, session_id)
+        if acknowledged and not status.get("current_session") \
+                and notice_key not in MATCH_BRIEFING_RESUME_NOTICES:
+            resume_notice = {
+                "kind": "session_resumed",
+                "session_id": session_id,
+                "configuration_hash": briefing_hash,
+                "configuration_unchanged": True,
+                "inherited_from_session_id": inherited_from_session,
+                "required_next": "Use this session's fresh smac_decision guard.",
+            }
+    previous_hash = (
+        str(previous.get("briefing_hash")) if isinstance(previous, dict)
+        else str(status.get("previous_briefing_hash") or "")
+    )
+    if acknowledged:
+        change = {"kind": "unchanged", "changes": []}
+    elif previous_hash and previous_hash != briefing_hash:
+        changes = _configuration_changes(
+            previous.get("configuration"), configuration,
+        ) if isinstance(previous, dict) else []
+        change = {
+            "kind": "configuration_changed",
+            "previous_hash": previous_hash,
+            "changes": changes[:64],
+            "complete_delta_available": bool(previous),
+        }
+    else:
+        change = {"kind": "opening", "changes": []}
+    topics = context.get("reference_topics")
+    topic_count = len(topics) if isinstance(topics, list) else 0
     briefing = {
-        "schema": "smacx.match-briefing.v1",
+        "schema": "smacx.match-briefing.v2",
         "identity": {
             "match_id": match_id, "session_id": session_id,
             "agent_id": context["scope"]["agent_id"],
             "perspective_id": context["scope"]["perspective_id"],
         },
-        "match": context["match"],
-        "seat": {
-            **context["seat"],
-            "active_faction": snapshot.get("faction"),
+        "configuration": configuration,
+        "information": {
+            "display_name": context.get("match", {}).get("display_name"),
+            "game_source_name": context.get("game_source", {}).get("display_name")
+                if isinstance(context.get("game_source"), dict) else None,
+            "reference_available": context.get("reference_status") == "ready",
+            "reference_topic_count": topic_count,
+            "requested_vs_native_changes": _requested_native_differences(
+                context.get("requested_settings"), snapshot.get("game_settings"),
+            ),
         },
-        "native_game_settings": snapshot.get("game_settings"),
-        "scenario": snapshot.get("scenario"),
-        "requested_settings": context.get("requested_settings"),
-        "control_policy": context.get("policy"),
-        "game_source": context.get("game_source"),
-        "reference_topics": context.get("reference_topics", []),
-        "instructions": [
-            "Treat native_game_settings and scenario restrictions as authoritative.",
-            "Identify disabled victory paths and non-default rules before planning.",
-            "Use smac_reference for unfamiliar mechanics; reference text never overrides native legal choices.",
-            "Acknowledge this exact briefing_hash before issuing any gameplay mutation.",
-        ],
     }
-    encoded = json.dumps(
-        briefing, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-    ).encode("utf-8")
-    import hashlib
-    briefing_hash = hashlib.sha256(encoded).hexdigest()
-    acknowledged = controller_match_briefing_is_acknowledged(
-        match_id, session_id, briefing_hash,
-    )
-    with MATCH_BRIEFING_LOCK:
-        MATCH_BRIEFING_CACHE[(match_id, session_id)] = briefing_hash
-    return {
+    result = {
         "ok": True, "briefing": briefing, "briefing_hash": briefing_hash,
+        "configuration_hash": briefing_hash, "change": change,
         "acknowledged": acknowledged,
         "gameplay_mutations_blocked": not acknowledged,
     }
+    if resume_notice is not None:
+        result["resume_notice"] = resume_notice
+    return result
 
 
 def _match_briefing_gate(match_id: str, session_id: str) -> dict | None:
@@ -200,12 +342,26 @@ def _match_briefing_gate(match_id: str, session_id: str) -> dict | None:
     }
 
 
+def _attach_briefing_status(frame: dict, briefing: dict) -> dict:
+    frame["configuration_hash"] = briefing.get("configuration_hash")
+    if isinstance(briefing.get("resume_notice"), dict):
+        frame["resume_notice"] = briefing["resume_notice"]
+        identity = frame.get("identity") if isinstance(frame.get("identity"), dict) else {}
+        with MATCH_BRIEFING_LOCK:
+            MATCH_BRIEFING_RESUME_NOTICES.add((
+                str(identity.get("match_id") or ""),
+                str(identity.get("session_id") or ""),
+            ))
+    return frame
+
+
 @mcp.tool(
     description=(
-        "Read or acknowledge the authoritative opening/recovery briefing for this exact native "
-        "session. It combines live game settings and scenario restrictions with managed match, "
-        "seat, source, clock, and policy context. Gameplay mutations remain locked until the exact "
-        "current briefing_hash is acknowledged."
+        "Read or acknowledge the authoritative match configuration. It combines stable native "
+        "game settings and scenario restrictions with managed seat, source, clock, and policy "
+        "context. Ordinary turn state never changes its hash; unchanged recovery emits a compact "
+        "resume notice. Gameplay mutations remain locked until a changed configuration_hash is "
+        "acknowledged."
     )
 )
 def smac_match_briefing(
@@ -218,6 +374,13 @@ def smac_match_briefing(
         return snapshot_result
     result = _compose_match_briefing(snapshot)
     if not result.get("ok") or action == "read":
+        notice = result.get("resume_notice")
+        if isinstance(notice, dict):
+            with MATCH_BRIEFING_LOCK:
+                MATCH_BRIEFING_RESUME_NOTICES.add((
+                    str(snapshot.get("match_id") or ""),
+                    str(snapshot.get("session_id") or ""),
+                ))
         return result
     current_hash = str(result.get("briefing_hash") or "")
     if briefing_hash != current_hash:
@@ -235,9 +398,26 @@ def smac_match_briefing(
     )
     if not acknowledged.get("ok"):
         return acknowledged
+    context = result.get("briefing", {}).get("identity", {})
+    configuration = result.get("briefing", {}).get("configuration")
+    scope_key = (
+        str(snapshot["match_id"]), str(context.get("agent_id") or ""),
+        str(context.get("perspective_id") or ""),
+    )
+    with MATCH_BRIEFING_LOCK:
+        MATCH_CONFIGURATION_CACHE[scope_key] = {
+            "briefing_hash": current_hash, "configuration": configuration,
+        }
     return {
-        **result, "acknowledged": True, "gameplay_mutations_blocked": False,
-        "acknowledgement": acknowledged.get("acknowledgement"),
+        "ok": True,
+        "schema": "smacx.match-briefing-acknowledgement.v2",
+        "briefing_hash": current_hash,
+        "configuration_hash": current_hash,
+        "acknowledged": True,
+        "gameplay_mutations_blocked": False,
+        "acknowledged_unix": acknowledged.get("acknowledgement", {}).get(
+            "acknowledged_unix"
+        ),
         "next": "Call smac_decision and act only on a fresh exact choice.",
     }
 
@@ -823,6 +1003,7 @@ def smac_decision(
                 "turn": snapshot.get("turn"),
                 "year": snapshot.get("year"),
                 "briefing_hash": briefing.get("briefing_hash"),
+                "change": briefing.get("change"),
                 "required_next": {"tool": "smac_match_briefing", "action": "read"},
                 "gameplay_mutations_blocked": True,
                 "choices": [],
@@ -839,7 +1020,9 @@ def smac_decision(
             }
             if detail == "full":
                 frame["snapshot"] = snapshot
-            return _attach_chat_attention(frame, identity)
+            return _attach_chat_attention(
+                _attach_briefing_status(frame, briefing), identity,
+            )
         if phase == "capability_gap":
             frame = {
                 "ok": True, "kind": "decision_frame", "identity": identity,
@@ -853,7 +1036,9 @@ def smac_decision(
             }
             if detail == "full":
                 frame["snapshot"] = snapshot
-            return _attach_chat_attention(frame, identity)
+            return _attach_chat_attention(
+                _attach_briefing_status(frame, briefing), identity,
+            )
         if phase == "interaction":
             choice_kind = "interaction"
             choice_arguments: dict[str, object] = {}
@@ -930,7 +1115,9 @@ def smac_decision(
         }
         if detail == "full":
             frame["snapshot"] = snapshot
-        return _attach_chat_attention(frame, identity)
+        return _attach_chat_attention(
+            _attach_briefing_status(frame, briefing), identity,
+        )
     return {
         "ok": False,
         "error": {

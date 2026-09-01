@@ -331,9 +331,17 @@ def _knowledge_path(match_id: str) -> Path | None:
     if not IDENTITY_PATTERN.fullmatch(match_id):
         return None
     manifest = _read_match_manifest(match_id)
-    if manifest.get("match_id") != match_id:
-        return None
-    return KNOWLEDGE_ROOT / match_id / "knowledge.json"
+    if manifest.get("match_id") == match_id:
+        return KNOWLEDGE_ROOT / match_id / "knowledge.json"
+    # Managed workers register their authoritative match and perspective in the
+    # shared platform store.  They do not need a legacy match.json mirror in the
+    # per-worker volume before durable knowledge can be used.
+    try:
+        if _store().scopes_for_match(match_id):
+            return KNOWLEDGE_ROOT / match_id / "knowledge.json"
+    except StoreError:
+        pass
+    return None
 
 
 def _read_knowledge_file(match_id: str) -> dict[str, Any]:
@@ -374,6 +382,7 @@ def _import_legacy_knowledge_if_needed(scope: MemoryScope) -> dict[str, Any] | N
 
 def _write_knowledge_file(match_id: str, data: dict[str, Any]) -> Path:
     path = KNOWLEDGE_ROOT / match_id / "knowledge.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(temporary, path)
@@ -1006,10 +1015,27 @@ def match_briefing_is_acknowledged(
     try:
         scope = _scope_for_match(match_id, session_id=session_id)
         return bool(scope and _store().match_briefing_acknowledged(
-            scope, session_id, briefing_hash,
+            scope, session_id, briefing_hash, across_sessions=True,
         ))
     except StoreError:
         return False
+
+
+def match_briefing_acknowledgement_status(
+    match_id: str, session_id: str, briefing_hash: str,
+) -> dict[str, Any]:
+    try:
+        scope = _scope_for_match(match_id, session_id=session_id)
+        if scope is None:
+            raise StoreError("unknown_match_scope")
+        return {
+            "ok": True,
+            **_store().match_briefing_acknowledgement_status(
+                scope, session_id, briefing_hash,
+            ),
+        }
+    except StoreError as exc:
+        return {"ok": False, "error": str(exc), "acknowledged": False}
 
 
 def _persist_chat_envelope(

@@ -259,8 +259,9 @@ class HarnessManager:
     @staticmethod
     def default_continuation_prompt() -> str:
         return (
-            "Resume the same managed match from current semantic state. Revalidate the match "
-            "briefing as required by the system contract, then continue autonomous play."
+            "Continue the same active managed match now. Do not provide a progress report or "
+            "final narrative. Call smac_decision, handle a briefing change only if that fresh "
+            "frame requires it, and keep playing until an authoritative terminal condition occurs."
         )
 
     def create_run(self, descriptor: Mapping[str, Any], *,
@@ -280,6 +281,7 @@ class HarnessManager:
                 "restart_on_clean_exit": True, "restart_on_error": True,
                 "restart_limit": restarts, "run_budget_seconds": budget,
                 "max_turns": turns, "toolsets": "smacx",
+                "max_clean_yields_without_progress": 3,
             },
         )
         return self.start_run(str(run["run_id"]), runtime=runtime)
@@ -349,8 +351,10 @@ class HarnessManager:
                                 (runtime["secret_volume"], "harness-secret")):
             resource = self.docker.inspect_volume(str(volume))
             self.docker.require_owned(resource, self.installation_id, purpose=purpose)
-        prompt = run["initial_prompt"] if int(run["restart_count"]) == 0 \
-            else run["continuation_prompt"]
+        metadata = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
+        invocation_count = int(metadata.get("invocation_count") or 0)
+        first_invocation = invocation_count == 0 and int(run["restart_count"]) == 0
+        prompt = run["initial_prompt"] if first_invocation else run["continuation_prompt"]
         container_name = str(runtime["container_name"])
         try:
             old = self.docker.inspect_container(container_name)
@@ -360,8 +364,14 @@ class HarnessManager:
             self.docker.remove_container(container_name)
         except DockerNotFound:
             pass
+        progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
         self.control.update_harness_run(
             run_id, status="starting", container_name=container_name,
+            metadata_update={
+                "invocation_count": invocation_count + 1,
+                "attempt_started_progress": progress,
+                "attempt_started_unix": time.time(),
+            },
         )
         identifier = self.docker.create_container(
             container_name, self._container_config(run, runtime, str(prompt)),
@@ -494,7 +504,7 @@ print(json.dumps(result,separators=(',',':')))
         return self.control.update_harness_run(run_id, status="stopped", exit_code=0)
 
     def reconcile_once(self) -> dict[str, Any]:
-        checked = restarted = stopped = errors = 0
+        checked = restarted = continued = stopped = errors = operator_required = 0
         for run in self.control.list_harness_runs():
             if run["status"] not in {"queued", "starting", "running", "restarting"}:
                 continue
@@ -529,9 +539,74 @@ print(json.dumps(result,separators=(',',':')))
                 continue
             exit_code = int(observed.get("exit_code") or 0)
             policy = run["restart_policy"]
+            if exit_code == 0:
+                progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
+                metadata = run.get("metadata") \
+                    if isinstance(run.get("metadata"), dict) else {}
+                started = metadata.get("attempt_started_progress") \
+                    if isinstance(metadata.get("attempt_started_progress"), dict) else {}
+                comparable = bool(started.get("available") and progress.get("available"))
+                marker_fields = (
+                    "match_id", "session_id", "revision", "turn", "year", "phase",
+                    "game_completed", "final_score_completed",
+                )
+                advanced = comparable and any(
+                    started.get(field) != progress.get(field) for field in marker_fields
+                )
+                no_progress = int(metadata.get("consecutive_clean_yields_without_progress") or 0)
+                no_progress = 0 if advanced or not comparable else no_progress + 1
+                continuation_count = int(metadata.get("continuation_count") or 0) + 1
+                yield_metadata = {
+                    "continuation_count": continuation_count,
+                    "consecutive_clean_yields_without_progress": no_progress,
+                    "last_clean_yield_progress": progress,
+                    "last_clean_yield_advanced": advanced,
+                    "last_clean_yield_unix": time.time(),
+                }
+                if progress.get("final_score_completed") is True:
+                    self.control.update_harness_run(
+                        str(run["run_id"]), status="completed", exit_code=0,
+                        metadata_update=yield_metadata,
+                    )
+                    continue
+                threshold = min(max(int(
+                    policy.get("max_clean_yields_without_progress", 3)
+                ), 1), 20)
+                if comparable and no_progress >= threshold:
+                    detail = {
+                        "run_id": run["run_id"], "clean_yield_count": continuation_count,
+                        "consecutive_without_progress": no_progress,
+                        "threshold": threshold, "progress": progress,
+                    }
+                    incident = self.control.record_supervision_incident(
+                        str(run["instance_id"]), "harness_clean_yield_no_progress",
+                        "operator_required", detail,
+                    )
+                    self.control.update_harness_run(
+                        str(run["run_id"]), status="error", desired_status="stopped",
+                        exit_code=0, last_error="harness_clean_yield_no_progress",
+                        metadata_update={**yield_metadata, "supervision_incident": incident},
+                    )
+                    errors += 1
+                    operator_required += 1
+                    continue
+                if policy.get("restart_on_clean_exit") is True:
+                    self.control.update_harness_run(
+                        str(run["run_id"]), status="restarting", exit_code=0,
+                        metadata_update=yield_metadata,
+                    )
+                    self.start_run(str(run["run_id"]))
+                    continued += 1
+                    continue
+                self.control.update_harness_run(
+                    str(run["run_id"]), status="error", exit_code=0,
+                    last_error="managed_harness_clean_exit_while_match_active",
+                    metadata_update=yield_metadata,
+                )
+                errors += 1
+                continue
             restart_allowed = (
-                (exit_code == 0 and policy.get("restart_on_clean_exit") is True)
-                or (exit_code != 0 and policy.get("restart_on_error") is True)
+                exit_code != 0 and policy.get("restart_on_error") is True
             ) and int(run["restart_count"]) < int(policy.get("restart_limit", 0))
             if restart_allowed:
                 self.control.update_harness_run(
@@ -548,4 +623,5 @@ print(json.dumps(result,separators=(',',':')))
                 )
                 errors += int(exit_code != 0)
         return {"ok": True, "checked": checked, "restarted": restarted,
-                "stopped": stopped, "errors": errors}
+                "continued": continued, "stopped": stopped, "errors": errors,
+                "operator_required": operator_required}

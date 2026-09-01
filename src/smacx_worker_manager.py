@@ -3372,6 +3372,38 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 result["mcp"] = {"container_present": False, "running": False}
         return result
 
+    def semantic_progress(self, instance_id: str) -> dict[str, Any]:
+        """Return a compact supervisor-only marker for autonomous progress."""
+        worker = self.worker_status(instance_id)
+        if not worker.get("running") or worker.get("health") != "healthy":
+            return {
+                "available": False,
+                "reason": "worker_not_healthy",
+                "session_id": worker.get("session_id"),
+            }
+        try:
+            result = self._native_request(instance_id, "semantic_snapshot")
+        except WorkerManagerError as exc:
+            return {"available": False, "reason": str(exc)[:240]}
+        snapshot = result.get("snapshot")
+        if not result.get("ok") or not isinstance(snapshot, Mapping):
+            return {"available": False, "reason": "semantic_snapshot_unavailable"}
+        protocol = snapshot.get("protocol") \
+            if isinstance(snapshot.get("protocol"), Mapping) else {}
+        outcome = snapshot.get("outcome") \
+            if isinstance(snapshot.get("outcome"), Mapping) else {}
+        return {
+            "available": True,
+            "match_id": snapshot.get("match_id"),
+            "session_id": snapshot.get("session_id"),
+            "revision": snapshot.get("revision"),
+            "turn": snapshot.get("turn"),
+            "year": snapshot.get("year"),
+            "phase": protocol.get("phase"),
+            "game_completed": outcome.get("game_completed") is True,
+            "final_score_completed": outcome.get("final_score_completed") is True,
+        }
+
     def spectator_access(self, instance_id: str, *, interactive: bool = False) -> dict[str, Any]:
         """Return one short-lived caller's upstream stream credential."""
         spec = self.control.get_worker_spec(instance_id)

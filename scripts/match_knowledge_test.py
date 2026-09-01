@@ -94,6 +94,24 @@ def main() -> int:
                     or len(ledger.get("history", [])) != 2:
                 raise AssertionError(f"ledger contents invalid: {ledger}")
 
+            # Managed workers use the shared SQLite identity as authority and
+            # may not have a legacy match.json mirror in their worker volume.
+            # Removing that mirror must not disable scoped knowledge.
+            (controller.KNOWLEDGE_ROOT / match_id / "match.json").unlink()
+            state["revision"] = "revision-3"
+            state["turn"] = 14
+            managed_without_manifest = controller.put_match_knowledge(
+                match_id, session_id, "revision-3", "faction-1.intent",
+                "Resumed the economic plan after recovery.",
+                category="diplomacy", subject="faction-1",
+            )
+            if not managed_without_manifest.get("ok") \
+                    or managed_without_manifest.get("entry", {}).get("observed_turn") != 14:
+                raise AssertionError(
+                    "managed SQLite identity was incorrectly gated on legacy match.json: "
+                    f"{managed_without_manifest}"
+                )
+
             print(json.dumps({
                 "event": "pass",
                 "payload": {
@@ -101,6 +119,7 @@ def main() -> int:
                     "session_and_revision_guarded": True,
                     "cross_match_read_rejected": True,
                     "correction_history_preserved": True,
+                    "managed_identity_does_not_require_legacy_manifest": True,
                     "arbitrary_paths_exposed": False,
                 },
             }, separators=(",", ":")))

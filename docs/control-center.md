@@ -240,7 +240,9 @@ AI seats use:
 - only the `smacx` toolset;
 - an integrity-checked, SMACX-owned complete provider system prompt;
 - immutable match identity and policy;
-- a mandatory native-settings briefing and exact acknowledgement gate;
+- a versioned native-configuration briefing and exact acknowledgement gate;
+  unchanged recoveries reuse the durable acknowledgement, while real rule or
+  seat changes return a compact delta and relock play;
 - the lobby-selected faction personality layer (Standard, Random, None, or one
   of four authored variants for that leader); and
 - scoped match memory.

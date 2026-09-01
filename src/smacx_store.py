@@ -2703,20 +2703,76 @@ class SmacxStore:
         return dict(row)
 
     def match_briefing_acknowledged(
-        self, scope: MemoryScope, session_id: str, briefing_hash: str,
+        self, scope: MemoryScope, session_id: str, briefing_hash: str, *,
+        across_sessions: bool = False,
     ) -> bool:
         self.require_scope(scope)
         _require_id(session_id, "session_id")
         if not re.fullmatch(r"[a-f0-9]{64}", briefing_hash):
             raise InvalidRecord("invalid_match_briefing_hash")
+        session_scope = self.scope_for_session(session_id)
+        if session_scope != scope:
+            raise ScopeViolation("session_scope_mismatch")
         with self._connect() as connection:
-            row = connection.execute(
-                "SELECT 1 FROM match_briefing_acknowledgements WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND session_id=? AND briefing_hash=?",
-                (scope.match_id, scope.agent_id, scope.perspective_id,
-                 session_id, briefing_hash),
-            ).fetchone()
+            if across_sessions:
+                row = connection.execute(
+                    "SELECT 1 FROM match_briefing_acknowledgements WHERE match_id=? "
+                    "AND agent_id=? AND perspective_id=? AND briefing_hash=? LIMIT 1",
+                    (scope.match_id, scope.agent_id, scope.perspective_id, briefing_hash),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT 1 FROM match_briefing_acknowledgements WHERE match_id=? "
+                    "AND agent_id=? AND perspective_id=? AND session_id=? AND briefing_hash=?",
+                    (scope.match_id, scope.agent_id, scope.perspective_id,
+                     session_id, briefing_hash),
+                ).fetchone()
         return row is not None
+
+    def match_briefing_acknowledgement_status(
+        self, scope: MemoryScope, session_id: str, briefing_hash: str,
+    ) -> dict[str, Any]:
+        """Describe durable configuration acknowledgement for one live session.
+
+        The native session remains a command-safety boundary, but an unchanged
+        match configuration does not need to be reread after process recovery.
+        """
+        self.require_scope(scope)
+        _require_id(session_id, "session_id")
+        if not re.fullmatch(r"[a-f0-9]{64}", briefing_hash):
+            raise InvalidRecord("invalid_match_briefing_hash")
+        session_scope = self.scope_for_session(session_id)
+        if session_scope != scope:
+            raise ScopeViolation("session_scope_mismatch")
+        with self._connect() as connection:
+            current = connection.execute(
+                "SELECT * FROM match_briefing_acknowledgements WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND briefing_hash=? "
+                "ORDER BY (session_id=?) DESC, acknowledged_unix DESC LIMIT 1",
+                (scope.match_id, scope.agent_id, scope.perspective_id,
+                 briefing_hash, session_id),
+            ).fetchone()
+            latest = connection.execute(
+                "SELECT * FROM match_briefing_acknowledgements WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? "
+                "ORDER BY acknowledged_unix DESC LIMIT 1",
+                (scope.match_id, scope.agent_id, scope.perspective_id),
+            ).fetchone()
+        acknowledged = dict(current) if current else None
+        previous = dict(latest) if latest else None
+        return {
+            "acknowledged": acknowledged is not None,
+            "current_session": bool(
+                acknowledged and acknowledged.get("session_id") == session_id
+            ),
+            "acknowledgement": acknowledged,
+            "previous_briefing_hash": (
+                str(previous["briefing_hash"]) if previous else None
+            ),
+            "previous_session_id": (
+                str(acknowledged["session_id"]) if acknowledged else None
+            ),
+        }
 
     def list_projection_records(
         self,

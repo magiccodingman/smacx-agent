@@ -88,6 +88,18 @@ def main() -> int:
         if store.match_briefing_acknowledged(alpha, "session-alpha", "b" * 64) \
                 or store.match_briefing_acknowledged(beta, "session-beta", briefing_hash):
             raise AssertionError("briefing acknowledgement crossed a hash or perspective boundary")
+        resumed_session = store.start_session(
+            alpha, alpha_instance["instance_id"], session_id="session-alpha-resumed",
+        )
+        status = store.match_briefing_acknowledgement_status(
+            alpha, resumed_session["session_id"], briefing_hash,
+        )
+        if status.get("acknowledged") is not True \
+                or status.get("current_session") is not False \
+                or not store.match_briefing_acknowledged(
+                    alpha, "session-alpha-resumed", briefing_hash, across_sessions=True,
+                ):
+            raise AssertionError("durable configuration acknowledgement did not survive recovery")
         expect_error(
             ScopeViolation,
             lambda: store.acknowledge_match_briefing(beta, "session-alpha", briefing_hash),
@@ -327,7 +339,8 @@ def main() -> int:
                 "immutable_events": True,
                 "perspective_isolation": True,
                 "session_scope_enforced": True,
-                "briefing_acknowledgement_exact_and_isolated": True,
+            "briefing_acknowledgement_exact_and_isolated": True,
+            "briefing_acknowledgement_survives_same_match_recovery": True,
                 "fact_history_preserved": True,
                 "claims_beliefs_relationships_versioned": True,
                 "goals_commitments_versioned": True,
