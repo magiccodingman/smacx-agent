@@ -305,11 +305,18 @@ event history.
 ## Knowledge system
 
 The separate .NET knowledge service acquires an explicit set of rules sources
-at runtime, cleans them to heading/body Markdown, and atomically synchronizes
-topical snapshots through SemanticKnowledge.NET. Installed Alien Crossfire
+at runtime, cleans them to heading/body Markdown, merges parallel native
+records, organizes them into recursive collections, and synchronizes leaf
+snapshots through SemanticKnowledge.NET. Installed Alien Crossfire
 mechanics files come from the read-only game mount; canonical web pages fall
 back to fixed Internet Archive captures. Acquired text and vectors remain in a
 private persistent volume and never enter source, images, or release artifacts.
+
+SQLite FTS5/BM25 and semantic stages use reciprocal-rank fusion for human and
+metadata-oriented agent discovery. The portal renders a selected Markdown
+document server-side with raw HTML disabled and sanitizes the result before the
+WebAssembly client displays it. One reusable reader supplies both the normal
+Datalinks page and the compact in-game Wiki tab.
 
 One configurable embedding space serves both SemanticKnowledge and Graphiti.
 The default registers one ONNX model instance. SemanticKnowledge retains its

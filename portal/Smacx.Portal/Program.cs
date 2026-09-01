@@ -70,6 +70,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ControllerLeaseService>();
 builder.Services.AddScoped<MatchGovernanceService>();
 builder.Services.AddSingleton<PersonalityCardLibrary>();
+builder.Services.AddSingleton<DatalinksMarkdownRenderer>();
 builder.Services.AddHostedService<PortalMatchSupervisor>();
 builder.Services.AddHostedService<PortalMaintenanceCoordinator>();
 builder.Services.AddHttpContextAccessor();

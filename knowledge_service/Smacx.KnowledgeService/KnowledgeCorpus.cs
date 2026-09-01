@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
+using OnnxTextEmbeddings;
 using SemanticKnowledge;
 
 namespace Smacx.KnowledgeService;
@@ -20,6 +21,7 @@ public sealed class KnowledgeCorpus(
     IKnowledgeStorageProvider storage,
     KnowledgeRuntimeOptions options,
     IHttpClientFactory httpFactory,
+    IServiceProvider services,
     ILogger<KnowledgeCorpus> logger)
 {
     private readonly SemaphoreSlim refreshLock = new(1, 1);
@@ -48,12 +50,12 @@ public sealed class KnowledgeCorpus(
             status = status with { State = "refreshing", LastError = null };
             await InitializeAsync(cancellationToken);
             var acquisition = await AcquireAsync(manifestBytes, cancellationToken);
-            var pages = acquisition.Pages;
-            var grouped = pages.GroupBy(page => page.Topic, StringComparer.OrdinalIgnoreCase).ToArray();
+            var pages = CorpusOrganization.Organize(acquisition.Pages, options.ParserRevision);
+            var grouped = pages.GroupBy(page => string.Join('/', page.CollectionPath!), StringComparer.OrdinalIgnoreCase).ToArray();
             var inserted = 0; var updated = 0; var unchanged = 0; var deleted = 0;
             foreach (var group in grouped)
             {
-                var collection = await EnsureCollectionAsync(group.Key, cancellationToken);
+                var collection = await EnsureCollectionAsync(group.First().CollectionPath!, cancellationToken);
                 var revision = Hash(options.ParserRevision + "\n" + string.Join("\n", group.Select(page => page.Hash).Order()));
                 var result = await synchronization.SyncCollectionSnapshotAsync(
                     knowledgeBaseId, collection.Id, schemaId, revision,
@@ -67,10 +69,14 @@ public sealed class KnowledgeCorpus(
                 unchanged += result.Unchanged; deleted += result.Deleted;
             }
 
-            var activeTopics = grouped.Select(group => TopicKey(group.Key)).ToHashSet(StringComparer.Ordinal);
+            var activeTopics = grouped.Select(group => CollectionKey(group.First().CollectionPath!)).ToHashSet(StringComparer.Ordinal);
             foreach (var old in await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken))
             {
-                if (acquisition.Warnings.Count != 0 || old.ExternalId is null || activeTopics.Contains(old.ExternalId)) continue;
+                if (acquisition.Warnings.Count != 0 || old.ExternalId is null || activeTopics.Contains(old.ExternalId) ||
+                    (old.ExternalId.StartsWith("datalinks:", StringComparison.Ordinal) &&
+                     pages.Any(page => page.CollectionPath!.Take(page.CollectionPath!.Count - 1)
+                        .Select((_, index) => CollectionKey(page.CollectionPath.Take(index + 1)))
+                        .Contains(old.ExternalId, StringComparer.Ordinal)))) continue;
                 var result = await synchronization.SyncCollectionSnapshotAsync(
                     knowledgeBaseId, old.Id, schemaId,
                     Hash(options.ParserRevision + ":removed:" + old.ExternalId),
@@ -101,8 +107,9 @@ public sealed class KnowledgeCorpus(
     public async Task<object> SearchAsync(KnowledgeSearchApiRequest request, CancellationToken cancellationToken)
     {
         await InitializeAsync(cancellationToken);
+        var limited = await LimitQueryAsync(request.Query, Math.Clamp(request.MaxQueryTokens, 32, 4_096), cancellationToken);
         var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
-        var collectionTitles = collections.ToDictionary(item => item.Id, item => item.Title);
+        var documents = await storage.GetDocumentsAsync(knowledgeBaseId, cancellationToken);
         var selected = string.IsNullOrWhiteSpace(request.Topic)
             ? Array.Empty<Guid>()
             : collections.Where(item => string.Equals(item.Title, request.Topic, StringComparison.OrdinalIgnoreCase)
@@ -111,7 +118,7 @@ public sealed class KnowledgeCorpus(
         var search = new KnowledgeSearchRequest
         {
             KnowledgeBaseId = knowledgeBaseId,
-            Mode = selected.Length == 0 ? KnowledgeSearchMode.Smart : KnowledgeSearchMode.Scoped,
+            Mode = selected.Length == 0 ? KnowledgeSearchMode.Global : KnowledgeSearchMode.Scoped,
             CollectionIds = selected,
             IncludeDescendants = true,
             Top = Math.Clamp(request.Top, 1, 30),
@@ -120,11 +127,12 @@ public sealed class KnowledgeCorpus(
         if (request.IncludeContent)
         {
             var content = await storeSearch().SearchContentAsync(
-                request.Query, search, Math.Clamp(request.MaxContentTokens, 256, 64_000), cancellationToken);
+                limited.Query, search, Math.Clamp(request.MaxContentTokens, 256, 64_000), cancellationToken);
             return new
             {
-                query = request.Query,
-                results = content.Hits.Select(item => ToHit(item, collectionTitles)).ToArray(),
+                query = limited.Query, original_query = request.Query,
+                query_truncated = limited.Truncated, query_tokens = limited.Tokens,
+                results = content.Hits.Select(item => ToHit(item, collections)).ToArray(),
                 evidence = content.Evidence.Select(item => new
                 {
                     document_id = item.DocumentId, field = item.FieldKey,
@@ -133,8 +141,76 @@ public sealed class KnowledgeCorpus(
                 approximate_tokens = content.ApproximateTokenCount,
             };
         }
-        var hits = await store.SearchAsync(request.Query, search, cancellationToken);
-        return new { query = request.Query, results = hits.Select(item => ToHit(item, collectionTitles)).ToArray() };
+        var advanced = KnowledgeSearchQuery.Create(knowledgeBaseId, limited.Query)
+            .Add(KnowledgeRetrievalStage.Semantic("semantic-context",
+                    KnowledgeSearchField.Title(4), KnowledgeSearchField.Description(3),
+                    KnowledgeSearchField.Tags(2), KnowledgeSearchField.Body())
+                .Candidates(Math.Max(100, request.Top * 12)))
+            .Add(KnowledgeRetrievalStage.Lexical("lexical-identity",
+                    KnowledgeSearchField.Title(10), KnowledgeSearchField.Tags(5),
+                    KnowledgeSearchField.Description(3), KnowledgeSearchField.Body())
+                .Candidates(Math.Max(100, request.Top * 12)).WithWeight(1.35f))
+            .UseReciprocalRankFusion(60)
+            .IncludeResults(KnowledgeResultInclude.MatchedChunks)
+            .Take(Math.Clamp(request.Top, 1, 30));
+        if (selected.Length == 0) advanced.Global(); else advanced.Scoped(selected, includeDescendants: true);
+        var primaryHits = await store.SearchAsync(advanced, cancellationToken);
+        var rankedLists = new List<(IReadOnlyList<KnowledgeSearchHit> Hits, double Weight)>
+        {
+            (primaryHits, 1.0),
+        };
+        var lexicalTokens = LexicalTokens(limited.Query).Take(6).ToArray();
+        foreach (var token in lexicalTokens)
+        {
+            var lexical = KnowledgeSearchQuery.Create(knowledgeBaseId, token)
+                .Add(KnowledgeRetrievalStage.Lexical("lexical-term",
+                        KnowledgeSearchField.Title(10), KnowledgeSearchField.Tags(5),
+                        KnowledgeSearchField.Description(3), KnowledgeSearchField.Body())
+                    .Candidates(Math.Max(80, request.Top * 10)))
+                .IncludeResults(KnowledgeResultInclude.MatchedChunks)
+                .Take(Math.Max(24, request.Top * 4));
+            if (selected.Length == 0) lexical.Global(); else lexical.Scoped(selected, includeDescendants: true);
+            rankedLists.Add((await store.SearchAsync(lexical, cancellationToken), 1.5));
+        }
+        var fused = new Dictionary<Guid, (KnowledgeSearchHit Hit, double Score)>();
+        foreach (var (ranked, weight) in rankedLists)
+        {
+            for (var rank = 0; rank < ranked.Count; rank++)
+            {
+                var hit = ranked[rank];
+                var score = weight / (60d + rank + 1);
+                fused[hit.DocumentId] = fused.TryGetValue(hit.DocumentId, out var current)
+                    ? (current.Hit, current.Score + score) : (hit, score);
+            }
+        }
+        var normalized = NormalizeTitle(limited.Query);
+        var rankedResults = documents.Select(document =>
+            {
+                var normalizedTitle = NormalizeTitle(document.Title);
+                var words = normalizedTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                return new
+                {
+                    Document = document,
+                    Exact = normalizedTitle == normalized,
+                    TitleTerms = lexicalTokens.Count(token => words.Contains(token, StringComparer.Ordinal)),
+                    Fused = fused.GetValueOrDefault(document.Id),
+                };
+            })
+            .Where(item => item.Exact || item.TitleTerms > 0 || item.Fused.Hit is not null)
+            .OrderByDescending(item => item.Exact)
+            .ThenByDescending(item => item.TitleTerms)
+            .ThenByDescending(item => item.Fused.Score)
+            .Take(Math.Clamp(request.Top, 1, 30))
+            .Select(item => item.Fused.Hit is not null
+                ? ToHit(item.Fused.Hit, collections)
+                : ToDocumentHit(item.Document, collections))
+            .ToArray();
+        return new
+        {
+            query = limited.Query, original_query = request.Query,
+            query_truncated = limited.Truncated, query_tokens = limited.Tokens,
+            results = rankedResults,
+        };
 
         IKnowledgeContentSearch storeSearch() => contentSearch
             ?? throw new InvalidOperationException("Knowledge content search is unavailable.");
@@ -147,12 +223,15 @@ public sealed class KnowledgeCorpus(
         await InitializeAsync(cancellationToken);
         var document = await store.GetDocumentAsync(documentId, cancellationToken);
         if (document is null || document.KnowledgeBaseId != knowledgeBaseId) return null;
-        var topic = (await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken))
-            .FirstOrDefault(item => item.Id == document.CollectionId)?.Title ?? "Mechanics";
+        var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
+        var collection = collections.FirstOrDefault(item => item.Id == document.CollectionId);
+        var topic = collection?.Title ?? "Mechanics";
         return new
         {
             document_id = document.Id,
             external_id = document.ExternalId,
+            collection_id = document.CollectionId,
+            collection_path = CollectionPath(collection, collections),
             topic,
             document.Title,
             document.Description,
@@ -167,16 +246,112 @@ public sealed class KnowledgeCorpus(
     {
         await InitializeAsync(cancellationToken);
         var documents = await storage.GetDocumentsAsync(knowledgeBaseId, cancellationToken);
-        return (await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken))
-            .OrderBy(item => item.Title)
+        var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
+        var root = collections.FirstOrDefault(item => item.ExternalId == "datalinks:datalinks");
+        return collections.Where(item => item.ParentCollectionId == root?.Id)
+            .OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
             .Select(item => (object)new
             {
                 id = item.Id, item.Title, item.Description, item.Tags,
-                document_count = documents.Count(document => document.CollectionId == item.Id),
+                document_count = documents.Count(document => IsDescendant(document.CollectionId, item.Id, collections)),
+            }).ToArray();
+    }
+
+    public async Task<IReadOnlyList<object>> TreeAsync(CancellationToken cancellationToken)
+    {
+        await InitializeAsync(cancellationToken);
+        var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
+        var documents = await storage.GetDocumentsAsync(knowledgeBaseId, cancellationToken);
+        var active = new HashSet<Guid>();
+        foreach (var document in documents)
+        {
+            var current = collections.FirstOrDefault(item => item.Id == document.CollectionId);
+            while (current is not null && active.Add(current.Id))
+                current = current.ParentCollectionId is { } parent
+                    ? collections.FirstOrDefault(item => item.Id == parent) : null;
+        }
+        return collections.Where(item => active.Contains(item.Id) && item.ExternalId?.StartsWith("datalinks:", StringComparison.Ordinal) == true)
+            .OrderBy(item => string.Join('\u001f', CollectionPath(item, collections)), StringComparer.OrdinalIgnoreCase)
+            .Select(item => (object)new
+            {
+                id = item.Id, parent_id = item.ParentCollectionId,
+                item.Title, item.Description, item.Tags,
+                path = CollectionPath(item, collections),
+                direct_document_count = documents.Count(document => document.CollectionId == item.Id),
+                document_count = documents.Count(document => IsDescendant(document.CollectionId, item.Id, collections)),
+            }).ToArray();
+    }
+
+    public async Task<IReadOnlyList<object>?> CollectionDocumentsAsync(Guid collectionId, CancellationToken cancellationToken)
+    {
+        await InitializeAsync(cancellationToken);
+        var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
+        var collection = collections.FirstOrDefault(item => item.Id == collectionId);
+        if (collection is null || collection.ExternalId?.StartsWith("datalinks:", StringComparison.Ordinal) != true)
+            return null;
+        var documents = await storage.GetDocumentsAsync(knowledgeBaseId, cancellationToken);
+        return documents.Where(document => document.CollectionId == collectionId)
+            .OrderBy(document => document.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(document => (object)new
+            {
+                document_id = document.Id, collection_id = collection.Id,
+                collection_path = CollectionPath(collection, collections), topic = collection.Title,
+                document.Title, document.Description, document.Tags,
+                source = document.Values.TryGetValue("source", out var source) ? source.Text : null,
             }).ToArray();
     }
 
     public void AttachContentSearch(IKnowledgeContentSearch search) => contentSearch = search;
+
+    private async Task<LimitedQuery> LimitQueryAsync(string query, int maxTokens, CancellationToken cancellationToken)
+    {
+        query = query.Trim();
+        var embedding = services.GetService<ITextEmbeddingService>();
+        if (embedding is null)
+        {
+            var maximumCharacters = maxTokens * 4;
+            return query.Length <= maximumCharacters
+                ? new(query, Math.Max(1, query.Length / 4), false)
+                : new(query[..maximumCharacters].TrimEnd(), maxTokens, true);
+        }
+        var count = await embedding.CountQueryTokensAsync(query, cancellationToken);
+        if (count.InputTokenCount <= maxTokens) return new(query, count.InputTokenCount, false);
+        var low = 1; var high = query.Length;
+        while (low < high)
+        {
+            var midpoint = low + (high - low + 1) / 2;
+            var candidate = await embedding.CountQueryTokensAsync(query[..midpoint], cancellationToken);
+            if (candidate.InputTokenCount <= maxTokens) low = midpoint; else high = midpoint - 1;
+        }
+        var limited = query[..low].TrimEnd();
+        var limitedCount = await embedding.CountQueryTokensAsync(limited, cancellationToken);
+        return new(limited, limitedCount.InputTokenCount, true);
+    }
+
+    private static bool IsDescendant(Guid candidateId, Guid ancestorId, IReadOnlyList<KnowledgeCollectionRecord> collections)
+    {
+        var current = collections.FirstOrDefault(item => item.Id == candidateId);
+        while (current is not null)
+        {
+            if (current.Id == ancestorId) return true;
+            current = current.ParentCollectionId is { } parent
+                ? collections.FirstOrDefault(item => item.Id == parent) : null;
+        }
+        return false;
+    }
+
+    private static IReadOnlyList<string> CollectionPath(KnowledgeCollectionRecord? collection, IReadOnlyList<KnowledgeCollectionRecord> collections)
+    {
+        var path = new List<string>();
+        while (collection is not null)
+        {
+            path.Add(collection.Title);
+            collection = collection.ParentCollectionId is { } parent
+                ? collections.FirstOrDefault(item => item.Id == parent) : null;
+        }
+        path.Reverse();
+        return path;
+    }
 
     private async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -196,15 +371,23 @@ public sealed class KnowledgeCorpus(
         schemaId = (await store.EnsureSchemaAsync(schema, cancellationToken)).Id;
     }
 
-    private async Task<KnowledgeCollectionRecord> EnsureCollectionAsync(string topic, CancellationToken cancellationToken)
+    private async Task<KnowledgeCollectionRecord> EnsureCollectionAsync(IReadOnlyList<string> path, CancellationToken cancellationToken)
     {
-        var item = await store.GetOrCreateCollectionAsync(
-            knowledgeBaseId, topic, defaultSchemaId: schemaId, externalId: TopicKey(topic), cancellationToken: cancellationToken);
-        return await catalog.UpsertCollectionAsync(item with
+        KnowledgeCollectionRecord? parent = null;
+        for (var index = 0; index < path.Count; index++)
         {
-            Description = $"Rules, mechanics, reference data, and datalinks for {topic}. Strategy guides are intentionally excluded.",
-            Tags = ["smacx", "rules", TopicKey(topic)],
-        }, cancellationToken);
+            var partial = path.Take(index + 1).ToArray();
+            var item = await store.GetOrCreateCollectionAsync(
+                knowledgeBaseId, path[index], parentCollectionId: parent?.Id,
+                defaultSchemaId: schemaId, externalId: CollectionKey(partial), cancellationToken: cancellationToken);
+            parent = await catalog.UpsertCollectionAsync(item with
+            {
+                ParentCollectionId = index == 0 ? null : parent?.Id,
+                Description = $"Factual Alpha Centauri and Alien Crossfire datalinks for {path[index]}. Strategy guides are intentionally excluded.",
+                Tags = ["smacx", "rules", TopicKey(path[index])],
+            }, cancellationToken);
+        }
+        return parent!;
     }
 
     private async Task<CorpusAcquisition> AcquireAsync(byte[] manifestBytes, CancellationToken cancellationToken)
@@ -295,6 +478,14 @@ public sealed class KnowledgeCorpus(
         files.Add(File.Exists(Path.Combine(root, "helpx.txt")) ? "helpx.txt" : "help.txt");
         files.AddRange(["alphax.txt", "TECHSHORTS.txt", "TECHLONGS.TXT"]);
         var result = new List<CorpusPage>();
+        var indexedNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var alphaPath = Path.Combine(root, "alphax.txt");
+        if (File.Exists(alphaPath))
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            var alpha = await File.ReadAllTextAsync(alphaPath, Encoding.GetEncoding(1252), cancellationToken);
+            indexedNames = ExtractAlphaNames(alpha);
+        }
         foreach (var file in files)
         {
             var path = Path.Combine(root, file);
@@ -304,12 +495,13 @@ public sealed class KnowledgeCorpus(
             // model-facing Markdown.
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             var text = await File.ReadAllTextAsync(path, Encoding.GetEncoding(1252), cancellationToken);
-            foreach (var section in ParseGameSections(file, text)) result.Add(section);
+            foreach (var section in ParseGameSections(file, text, indexedNames)) result.Add(section);
         }
         return result;
     }
 
-    private IEnumerable<CorpusPage> ParseGameSections(string file, string text)
+    private IEnumerable<CorpusPage> ParseGameSections(
+        string file, string text, IReadOnlyDictionary<string, string> indexedNames)
     {
         var lines = text.Replace("\r\n", "\n").Split('\n');
         var indexedTitles = ExtractIndexedTitles(lines);
@@ -340,7 +532,7 @@ public sealed class KnowledgeCorpus(
                     continue;
                 }
                 if (current.Length > 20 && key is not "TITLES" and not "ADVTITLES")
-                    yield return GamePage(file, key, title, current.ToString());
+                    yield return GamePage(file, key, title ?? indexedNames.GetValueOrDefault(key), current.ToString());
                 key = marker;
                 title = pendingTitle ?? indexedTitles.GetValueOrDefault(marker);
                 pendingTitle = null;
@@ -351,7 +543,38 @@ public sealed class KnowledgeCorpus(
             current.AppendLine(line);
         }
         if (current.Length > 20 && key is not "TITLES" and not "ADVTITLES")
-            yield return GamePage(file, key, title, current.ToString());
+            yield return GamePage(file, key, title ?? indexedNames.GetValueOrDefault(key), current.ToString());
+    }
+
+    private static Dictionary<string, string> ExtractAlphaNames(string text)
+    {
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var sections = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["UNITS"] = "UNITDESC", ["CHASSIS"] = "CHASSISDESC", ["WEAPONS"] = "WEAPONDESC",
+            ["DEFENSES"] = "ARMORDESC", ["ABILITIES"] = "ABILDESC",
+        };
+        foreach (var pair in sections)
+        {
+            var start = Array.FindIndex(lines, line => line.Trim().Equals("#" + pair.Key, StringComparison.OrdinalIgnoreCase));
+            if (start < 0) continue;
+            var index = 0;
+            for (var cursor = start + 1; cursor < lines.Length; cursor++)
+            {
+                var line = lines[cursor].Trim();
+                if (line.StartsWith('#')) break;
+                if (line.Length == 0 || line.StartsWith(';') || int.TryParse(line, out _)) continue;
+                var comma = line.IndexOf(',');
+                if (comma <= 0) continue;
+                var name = line[..comma].Trim().TrimStart('*');
+                if (name.Length == 0) continue;
+                result[pair.Value + index++] = name;
+            }
+        }
+        result["ARMORDESC"] = "Armor";
+        result["REACTORDESC"] = "Reactors";
+        return result;
     }
 
     private static Dictionary<string, string> ExtractIndexedTitles(string[] lines)
@@ -376,14 +599,15 @@ public sealed class KnowledgeCorpus(
 
     private CorpusPage GamePage(string file, string key, string? displayTitle, string raw)
     {
-        var title = string.IsNullOrWhiteSpace(displayTitle) ? Humanize(key) : displayTitle.Trim();
+        var title = FriendlyTitle(key, displayTitle, raw);
         var body = CleanMarkdown($"# {title}\n\n{CleanGameMarkup(raw)}");
         var topic = TopicFor(file + " " + key + " " + title);
         return new CorpusPage(
             "game:" + TopicKey(file) + ":" + Hash(key)[..16], topic, title,
             FirstSentence(body), body, ["local-game", TopicKey(topic), TopicKey(file)],
             "installed-game:" + file,
-            Hash(options.ParserRevision + "\n" + file + "\n" + key + "\n" + body));
+            Hash(options.ParserRevision + "\n" + file + "\n" + key + "\n" + body),
+            SourceFile: file, SourceKey: key);
     }
 
     private static string ToMarkdown(HtmlNode root)
@@ -480,16 +704,25 @@ public sealed class KnowledgeCorpus(
         return "Core rules and terminology";
     }
 
-    private static object ToHit(KnowledgeSearchHit hit, IReadOnlyDictionary<Guid, string> collectionTitles) => new
+    private static object ToHit(KnowledgeSearchHit hit, IReadOnlyList<KnowledgeCollectionRecord> collections) => new
     {
         document_id = hit.DocumentId, collection_id = hit.CollectionId,
-        topic = collectionTitles.GetValueOrDefault(hit.CollectionId, "Mechanics"),
+        collection_path = CollectionPath(collections.FirstOrDefault(item => item.Id == hit.CollectionId), collections),
+        topic = collections.FirstOrDefault(item => item.Id == hit.CollectionId)?.Title ?? "Mechanics",
         hit.Title, hit.Description, hit.Tags, score = hit.Score,
         matches = hit.Matches.Select(match => new
         {
             field = match.FieldKey, score = match.AdjustedSimilarity,
             token_count = match.TokenCount,
         }).ToArray(),
+    };
+    private static object ToDocumentHit(KnowledgeDocumentRecord document, IReadOnlyList<KnowledgeCollectionRecord> collections) => new
+    {
+        document_id = document.Id, collection_id = document.CollectionId,
+        collection_path = CollectionPath(collections.FirstOrDefault(item => item.Id == document.CollectionId), collections),
+        topic = collections.FirstOrDefault(item => item.Id == document.CollectionId)?.Title ?? "Mechanics",
+        document.Title, document.Description, document.Tags, score = 1d,
+        matches = Array.Empty<object>(),
     };
 
     private async IAsyncEnumerable<ExternalKnowledgeDocumentInput> Documents(
@@ -526,7 +759,92 @@ public sealed class KnowledgeCorpus(
         return (end >= 40 ? plain[..(end + 1)] : plain[..Math.Min(plain.Length, 220)]).Trim();
     }
     private static string Humanize(string value) => Regex.Replace(value.Replace('_', ' ').Trim(), "(?<=[a-z])(?=[A-Z])", " ");
+    private static string FriendlyTitle(string key, string? displayTitle, string raw)
+    {
+        var candidate = displayTitle?.Trim();
+        if (key.Equals("CONCEPT44", StringComparison.OrdinalIgnoreCase))
+            candidate = "Economy energy allocation";
+        else if (Regex.Match(key, @"^HELPEFFECT(\d+)$", RegexOptions.IgnoreCase) is { Success: true } effect &&
+                 int.TryParse(effect.Groups[1].Value, out var effectIndex))
+            candidate = SocialEffectTitle(effectIndex);
+        else if (key.StartsWith("HELPTERRA", StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = Regex.Match(raw, @"\{([^}\r\n]+)\}").Groups[1].Value;
+            if (candidate.Length == 0) candidate = TerraformTitle(displayTitle);
+            if (candidate.Length == 0)
+                candidate = Regex.Match(raw, @"\$LINK<([^=>]+)", RegexOptions.IgnoreCase).Groups[1].Value;
+        }
+        candidate = Regex.Replace(candidate ?? string.Empty, @"\s+\d+\s*$", "").Trim();
+        if (candidate.Length == 0)
+        {
+            candidate = key.ToUpperInvariant() switch
+            {
+                "RULES" => "Core game rules", "DIFF" => "Difficulty levels", "TIMECONTROLS" => "Time controls",
+                "TERRAIN" => "Terrain definitions", "RESOURCEINFO" => "Resource production", "RESOURCES" => "Resource types",
+                "WORLDBUILDER" => "World generation rules", "WORLDSIZE" => "World sizes", "NATURAL" => "Native life",
+                "TECHNOLOGY" => "Research configuration", "CHASSIS" => "Chassis configuration", "REACTORS" => "Reactor configuration",
+                "WEAPONS" => "Weapon configuration", "DEFENSES" => "Armor configuration", "ABILITIES" => "Special ability configuration",
+                "MORALE" => "Morale levels", "DEFENSEMODES" => "Defensive combat modes", "OFFENSEMODES" => "Offensive combat modes",
+                "UNITS" => "Predefined unit configuration", "FACILITIES" => "Facility and project configuration",
+                "ORDERS" => "Unit orders", "COMPASS" => "Map directions", "PLANS" => "Unit strategic roles", "TRIAD" => "Unit domains",
+                "ENERGY" => "Energy rules", "CITIZENS" => "Citizen types", "SOCIO" => "Social engineering categories",
+                "SOCECONOMY" => "Economy social effect configuration", "SOCEFFIC" => "Efficiency social effect configuration",
+                "SOCSUPPORT" => "Support social effect configuration", "SOCTALENT" => "Talent social effect configuration",
+                "SOCMORALE" => "Morale social effect configuration", "SOCPOLICE" => "Police social effect configuration",
+                "SOCGROWTH" => "Growth social effect configuration", "SOCPLANET" => "Planet social effect configuration",
+                "SOCPROBE" => "Probe social effect configuration", "SOCINDUSTRY" => "Industry social effect configuration",
+                "SOCRESEARCH" => "Research social effect configuration", "REPUTE" => "Reputation levels",
+                "PROPOSALS" => "Planetary Council proposals", "FACTIONS" => "Original faction definitions",
+                "NEWFACTIONS" => "Alien Crossfire faction definitions", "CUSTOMFACTIONS" => "Custom faction rules",
+                "MANDATE" => "Faction mandates", "MOOD" => "Faction diplomatic moods", "MIGHT" => "Faction strength comparisons",
+                "BONUSNAMES" => "Faction bonus terminology",
+                _ => Humanize(key),
+            };
+        }
+        if (candidate.All(character => !char.IsLetter(character) || char.IsUpper(character)))
+            candidate = string.Join(' ', candidate.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => char.ToUpperInvariant(word[0]) + word[1..]));
+        else if (candidate.Length > 0 && char.IsLower(candidate[0]))
+            candidate = char.ToUpperInvariant(candidate[0]) + candidate[1..];
+        return candidate;
+    }
+    private static string SocialEffectTitle(int index) => index switch
+    {
+        0 => "Economy social effect", 1 => "Efficiency social effect", 2 => "Support social effect",
+        3 => "Talent social effect", 4 => "Morale social effect", 5 => "Police social effect",
+        6 => "Growth social effect", 7 => "Planet social effect", 8 => "Probe social effect",
+        9 => "Industry social effect", 10 => "Research social effect", _ => $"Social effect {index}",
+    };
+    private static string TerraformTitle(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        "FARM" => "Build farm", "SOIL" => "Enrich soil", "MINE" => "Build mine",
+        "SOLAR" => "Build solar collector", "FOREST" => "Plant forest", "ROAD" => "Build road",
+        "MAGTUBE" => "Build mag tube", "BUNKER" => "Build bunker", "AIRBASE" => "Build airbase",
+        "SENSOR" => "Build sensor array", "REMOVEFUNGUS" => "Remove fungus",
+        "MAKEFUNGUS" => "Cultivate fungus", "CONDENSER" => "Build condenser",
+        "BOREHOLE" => "Drill thermal borehole", "AQUIFER" => "Drill aquifer",
+        "RAISE" => "Terraform raise", "LOWER" => "Terraform lower", "LEVEL" => "Terraform level",
+        "MIRROR" => "Launch orbital solar mirror", null or "" => "",
+        _ => Humanize(value!),
+    };
     private static string TopicKey(string value) => Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+    private static string NormalizeTitle(string value) => Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", " ").Trim();
+    private static IEnumerable<string> LexicalTokens(string query)
+    {
+        var ignored = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "and", "are", "can", "did", "does", "for", "from", "how", "into", "the", "this", "what", "when", "where", "which", "who", "why", "with", "work",
+        };
+        return Regex.Matches(query.ToLowerInvariant(), @"[a-z0-9]+")
+            .Select(match => match.Value).Where(token => token.Length >= 3 && !ignored.Contains(token))
+            .Select(token => token.EndsWith("ies", StringComparison.Ordinal) && token.Length > 4
+                ? token[..^3] + "y"
+                : token.EndsWith('s') && token.Length > 4 &&
+                  !token.EndsWith("us", StringComparison.Ordinal) && !token.EndsWith("ss", StringComparison.Ordinal)
+                    ? token[..^1] : token)
+            .Distinct(StringComparer.Ordinal);
+    }
+    private static string CollectionKey(IEnumerable<string> path) => "datalinks:" + string.Join('/', path.Select(TopicKey));
     private static string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static Task<StoredState?> ReadStateAsync(string path, CancellationToken cancellationToken) =>
         !File.Exists(path) ? Task.FromResult<StoredState?>(null) : ReadAsync(path, cancellationToken);
@@ -542,10 +860,9 @@ public sealed class KnowledgeCorpus(
         File.Move(temporary, path, true);
     }
 
-    private sealed record CorpusPage(string ExternalId, string Topic, string Title, string Description,
-        string Body, IReadOnlyList<string> Tags, string Source, string Hash);
     private sealed record CorpusAcquisition(List<CorpusPage> Pages, IReadOnlyList<string> Warnings);
     private sealed record StoredState(string ParserRevision, string ManifestHash, DateTimeOffset RefreshedAt, CorpusStatus Status);
+    private sealed record LimitedQuery(string Query, int Tokens, bool Truncated);
 }
 
 public sealed class KnowledgeCorpusWorker(

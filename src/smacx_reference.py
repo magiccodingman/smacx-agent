@@ -34,13 +34,15 @@ def _request(path: str, payload: dict[str, Any] | None = None, *, timeout: float
         return {"ok": False, "error": "reference_service_unavailable"}
 
 
-def _search(query: str, *, topic: str = "", limit: int = 8, include_body: bool = False) -> dict[str, Any]:
+def _search(query: str, *, topic: str = "", limit: int = 8, include_body: bool = False,
+            max_query_tokens: int = 1_024) -> dict[str, Any]:
     result = _request("/api/search", {
         "query": query,
         "topic": topic or None,
         "top": min(max(int(limit), 1), 30),
         "maxContentTokens": 16_000 if include_body else 4_000,
         "includeContent": include_body,
+        "maxQueryTokens": min(max(int(max_query_tokens), 32), 4_096),
     })
     if result.get("error"):
         return {"ok": False, "error": str(result["error"])}
@@ -49,6 +51,7 @@ def _search(query: str, *, topic: str = "", limit: int = 8, include_body: bool =
 
 def read_reference(_store: Any, action: str, *, query: str = "", topic: str = "",
                    document_id: str = "", limit: int = 8, include_body: bool = False,
+                   max_query_tokens: int = 1_024,
                    private_prefix: str | None = None, entity_kind: str = "",
                    entity_key: str = "", entities: list[dict[str, str]] | None = None,
                    ruleset_id: str = "smacx") -> dict[str, Any]:
@@ -59,6 +62,14 @@ def read_reference(_store: Any, action: str, *, query: str = "", topic: str = ""
     if action == "topics":
         result = _request("/api/topics")
         return {"ok": not bool(result.get("error")), **result}
+    if action == "tree":
+        result = _request("/api/tree")
+        return {"ok": not bool(result.get("error")), **result}
+    if action == "collection_documents":
+        if not document_id:
+            return {"ok": False, "error": "reference_collection_id_required"}
+        result = _request("/api/collections/" + quote(document_id, safe="") + "/documents")
+        return {"ok": not bool(result.get("error")), **result}
     if action == "get":
         if not document_id:
             return {"ok": False, "error": "reference_document_id_required"}
@@ -67,7 +78,8 @@ def read_reference(_store: Any, action: str, *, query: str = "", topic: str = ""
     if action == "search":
         if not query.strip():
             return {"ok": False, "error": "reference_query_required"}
-        return _search(query, topic=topic, limit=limit, include_body=include_body)
+        return _search(query, topic=topic, limit=limit, include_body=include_body,
+                       max_query_tokens=max_query_tokens)
     if action == "lookup":
         requested = entities or ([{"kind": entity_kind, "key": entity_key}]
                                  if entity_kind and entity_key else [])

@@ -8,6 +8,7 @@ import json
 import os
 import threading
 
+SEARCH_REQUESTS = []
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
@@ -26,6 +27,10 @@ class Handler(BaseHTTPRequestHandler):
             self._write({"enabled": True, "state": {"state": "ready"}, "mode": "local"})
         elif self.path == "/api/topics":
             self._write({"topics": [{"id": "rules", "title": "Core rules", "document_count": 20}]})
+        elif self.path == "/api/tree":
+            self._write({"collections": [{"id": "root", "parent_id": None, "title": "Datalinks", "document_count": 20}]})
+        elif self.path == "/api/collections/rules/documents":
+            self._write({"documents": [{"document_id": "doc-001", "title": "Treaties"}]})
         elif self.path == "/api/documents/doc-001":
             self._write({"document_id": "doc-001", "title": "Treaties", "body": "Treaties are diplomatic agreements."})
         else:
@@ -37,6 +42,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/api/search":
             self.send_error(404)
             return
+        SEARCH_REQUESTS.append(body)
         self._write({
             "query": body["query"],
             "results": [{"document_id": "doc-001", "title": "Treaties", "description": "Diplomatic agreements", "score": .91}],
@@ -55,9 +61,16 @@ def main() -> int:
             raise AssertionError("knowledge health was not observable")
         if not read_reference(None, "topics").get("topics"):
             raise AssertionError("collection hierarchy was not returned")
-        compact = read_reference(None, "search", query="Treaty Pact", include_body=False)
+        if not read_reference(None, "tree").get("collections"):
+            raise AssertionError("recursive collection tree was not returned")
+        if not read_reference(None, "collection_documents", document_id="rules").get("documents"):
+            raise AssertionError("collection browsing was not returned")
+        compact = read_reference(None, "search", query="Treaty Pact", include_body=False,
+                                 max_query_tokens=512)
         if not compact.get("results") or compact.get("evidence"):
             raise AssertionError("compact search did not remain compact")
+        if SEARCH_REQUESTS[-1].get("maxQueryTokens") != 512:
+            raise AssertionError("human query token cap did not cross the service boundary")
         focused = read_reference(None, "lookup", entity_kind="diplomacy", entity_key="treaty", include_body=True)
         if not focused.get("entities", [{}])[0].get("evidence"):
             raise AssertionError("focused semantic lookup omitted bounded evidence")

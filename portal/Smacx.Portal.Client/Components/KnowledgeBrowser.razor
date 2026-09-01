@@ -1,0 +1,195 @@
+@inject Services.PortalApiClient Api
+
+<section class="datalinks-browser @(Compact ? "compact" : null)">
+    @if (loadingTree)
+    {
+        <div class="datalinks-loading"><MudProgressCircular Indeterminate="true" Color="Color.Primary"/><span>Opening the locally built Datalinks…</span></div>
+    }
+    else if (!string.IsNullOrWhiteSpace(error) && collections.Count == 0)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert>
+    }
+    else
+    {
+        <div class="datalinks-mobile-tools">
+            <details>
+                <summary><MudIcon Icon="@Icons.Material.Filled.AccountTree"/> Contents</summary>
+                <div class="datalinks-mobile-tree">@TreeContent</div>
+            </details>
+            @if (VisibleHeadings.Count > 0)
+            {
+                <details>
+                    <summary><MudIcon Icon="@Icons.Material.Filled.Toc"/> On this page</summary>
+                    <nav class="datalinks-outline">@OutlineContent</nav>
+                </details>
+            }
+        </div>
+
+        <aside class="datalinks-navigation">
+            <div class="datalinks-rail-heading"><span>LOCAL ARCHIVE</span><strong>Datalinks</strong><small>@TotalDocuments factual entries</small></div>
+            <MudButton FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Search" OnClick="OpenSearch">Search Datalinks</MudButton>
+            <nav class="datalinks-tree">@TreeContent</nav>
+        </aside>
+
+        <main class="datalinks-main">
+            <header class="datalinks-article-header">
+                <div class="datalinks-breadcrumbs">
+                    @foreach (var (crumb, index) in Breadcrumbs.Select((value, index) => (value, index)))
+                    {
+                        @if (index > 0) { <MudIcon Icon="@Icons.Material.Filled.ChevronRight"/> }
+                        <span>@crumb</span>
+                    }
+                </div>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Search" OnClick="OpenSearch">Search</MudButton>
+            </header>
+
+            @if (loadingDocument)
+            {
+                <div class="datalinks-loading article"><MudProgressCircular Indeterminate="true" Size="Size.Small"/><span>Loading article…</span></div>
+            }
+            else if (selectedDocument is not null)
+            {
+                <article class="datalinks-document">@((MarkupString)(selectedDocument.RenderedHtml ?? ""))</article>
+                <footer class="datalinks-provenance"><MudIcon Icon="@Icons.Material.Filled.Verified"/><div><strong>Built on this host</strong><span>@selectedDocument.Provenance</span><small>@selectedDocument.SourceLicense</small></div></footer>
+            }
+            else if (documents.Count > 0)
+            {
+                <div class="datalinks-index"><span class="panel-kicker">@selectedCollection?.Title</span><h2>Choose an article</h2><div>@foreach (var document in documents){<button @onclick="()=>OpenDocument(document.DocumentId)"><MudIcon Icon="@Icons.Material.Filled.Article"/><span><strong>@document.Title</strong><small>@document.Summary</small></span></button>}</div></div>
+            }
+            else
+            {
+                <div class="empty-state compact"><MudIcon Icon="@Icons.Material.Filled.MenuBook"/><strong>Choose a Datalinks section</strong><span>Browse the organized rules, mechanics, technologies, facilities, factions, and planetary reference.</span></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert> }
+        </main>
+
+        <aside class="datalinks-page-outline">
+            <div class="datalinks-rail-heading"><span>ARTICLE</span><strong>On this page</strong></div>
+            <nav class="datalinks-outline">@OutlineContent</nav>
+        </aside>
+    }
+</section>
+
+@if (searchOpen)
+{
+    <div class="datalinks-search-backdrop" @onclick="CloseSearch">
+        <section class="datalinks-search-dialog" role="dialog" aria-modal="true" aria-label="Search Datalinks" @onclick:stopPropagation="true">
+            <header><div><span class="panel-kicker">HYBRID RETRIEVAL</span><h2>Search Datalinks</h2></div><MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseSearch"/></header>
+            <div class="datalinks-search-box"><MudTextField @bind-Value="query" Placeholder="Technology, facility, rule, faction…" Variant="Variant.Outlined" Immediate="true" AutoFocus="true" MaxLength="2048" OnKeyDown="SearchKeyDown" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"/><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Search" Disabled="@(searching || string.IsNullOrWhiteSpace(query))">Search</MudButton></div>
+            <p class="datalinks-search-help">Exact names are preferred; BM25 and semantic retrieval fill in conceptually related results. Queries are capped at 512 model tokens.</p>
+            @if (searching) { <MudProgressLinear Indeterminate="true" Color="Color.Primary"/> }
+            else if (searchResponse?.QueryTruncated == true) { <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">The query was safely shortened to 512 model tokens.</MudAlert> }
+            <div class="datalinks-search-results">
+                @if (searched && searchResults.Count == 0) { <div class="panel-empty">No factual Datalinks entry matched that query.</div> }
+                @foreach (var result in searchResults)
+                {
+                    <button @onclick="()=>OpenSearchResult(result)"><span class="panel-kicker">@string.Join(" / ", result.CollectionPath ?? [result.Topic])</span><strong>@result.Title</strong><p>@result.Summary</p><small>@string.Join(" · ", result.Tags.Take(4))</small></button>
+                }
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Compact { get; set; }
+    private IReadOnlyList<KnowledgeCollection> collections = [];
+    private IReadOnlyList<KnowledgeResult> documents = [];
+    private IReadOnlyList<KnowledgeResult> searchResults = [];
+    private KnowledgeSearchResponse? searchResponse;
+    private KnowledgeCollection? selectedCollection;
+    private KnowledgeResult? selectedDocument;
+    private readonly HashSet<string> expanded = [];
+    private bool loadingTree = true, loadingDocument, searchOpen, searching, searched;
+    private string query = "";
+    private string? error;
+    private KnowledgeCollection? Root => collections.FirstOrDefault(item => item.ParentId is null);
+    private IReadOnlyList<KnowledgeCollection> RootNodes => collections.Where(item => item.ParentId == Root?.Id).OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).ToArray();
+    private IReadOnlyList<string> Breadcrumbs => selectedDocument?.CollectionPath ?? selectedCollection?.Path ?? ["Datalinks"];
+    private IReadOnlyList<KnowledgeHeading> VisibleHeadings => selectedDocument?.Headings?.Where(item => item.Level is 2 or 3).ToArray() ?? [];
+    private int TotalDocuments => Root?.DocumentCount ?? collections.MaxBy(item => item.DocumentCount)?.DocumentCount ?? 0;
+    private RenderFragment TreeContent => builder =>
+    {
+        var sequence = 0;
+        foreach (var node in RootNodes)
+        {
+            builder.OpenComponent<KnowledgeTreeNode>(sequence++);
+            builder.SetKey($"{node.Id}:{selectedCollection?.Id}");
+            builder.AddAttribute(sequence++, "Node", node); builder.AddAttribute(sequence++, "Collections", collections);
+            builder.AddAttribute(sequence++, "Expanded", expanded); builder.AddAttribute(sequence++, "SelectedId", selectedCollection?.Id);
+            builder.AddAttribute(sequence++, "OnSelect", EventCallback.Factory.Create<KnowledgeCollection>(this, SelectCollection));
+            builder.CloseComponent();
+        }
+    };
+    private RenderFragment OutlineContent => builder =>
+    {
+        var sequence = 0;
+        foreach (var heading in VisibleHeadings)
+        {
+            builder.OpenElement(sequence++, "a"); builder.AddAttribute(sequence++, "href", "#" + heading.Anchor);
+            builder.AddAttribute(sequence++, "class", "level-" + heading.Level); builder.AddContent(sequence++, heading.Text); builder.CloseElement();
+        }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Api.GetAsync<IReadOnlyList<KnowledgeCollection>>("api/knowledge/tree");
+            collections = response?.Data ?? [];
+            error = response?.Error?.Message;
+            if (Root is not null) expanded.Add(Root.Id);
+            var first = collections.Where(item => item.DirectDocumentCount > 0).OrderBy(item => string.Join('/', item.Path), StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            if (first is not null) await SelectCollection(first, openFirst: true);
+        }
+        catch (Exception exception) { error = exception.Message; }
+        finally { loadingTree = false; }
+    }
+
+    private async Task SelectCollection(KnowledgeCollection collection) => await SelectCollection(collection, false);
+    private async Task SelectCollection(KnowledgeCollection collection, bool openFirst)
+    {
+        selectedCollection = collection; selectedDocument = null; documents = []; error = null;
+        ExpandAncestors(collection.Id);
+        if (collection.DirectDocumentCount == 0) return;
+        var response = await Api.GetAsync<IReadOnlyList<KnowledgeResult>>($"api/knowledge/collections/{Uri.EscapeDataString(collection.Id)}/documents");
+        documents = response?.Data ?? []; error = response?.Error?.Message;
+        if (openFirst && documents.Count > 0) await OpenDocument(documents[0].DocumentId);
+    }
+
+    private async Task OpenDocument(string id)
+    {
+        loadingDocument = true; error = null;
+        var response = await Api.GetAsync<KnowledgeResult>($"api/knowledge/documents/{Uri.EscapeDataString(id)}");
+        selectedDocument = response?.Data; error = response?.Error?.Message; loadingDocument = false;
+    }
+
+    private void OpenSearch() { searchOpen = true; error = null; }
+    private void CloseSearch() { searchOpen = false; }
+    private async Task SearchKeyDown(KeyboardEventArgs args) { if (args.Key == "Enter") await Search(); }
+    private async Task Search()
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+        searching = true; searched = true;
+        var response = await Api.GetAsync<KnowledgeSearchResponse>($"api/knowledge/search?q={Uri.EscapeDataString(query.Trim())}&limit=14");
+        searchResponse = response?.Data; searchResults = response?.Data?.Results ?? []; error = response?.Error?.Message; searching = false;
+    }
+
+    private async Task OpenSearchResult(KnowledgeResult result)
+    {
+        var collection = collections.FirstOrDefault(item => item.Id == result.CollectionId);
+        if (collection is not null) { await SelectCollection(collection); ExpandAncestors(collection.Id); }
+        await OpenDocument(result.DocumentId); searchOpen = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ExpandAncestors(string id)
+    {
+        expanded.RemoveWhere(candidate => collections.Any(item => item.Id == candidate && item.DirectDocumentCount > 0));
+        var current = collections.FirstOrDefault(item => item.Id == id);
+        while (current is not null)
+        {
+            expanded.Add(current.Id);
+            current = current.ParentId is { } parent ? collections.FirstOrDefault(item => item.Id == parent) : null;
+        }
+    }
+}

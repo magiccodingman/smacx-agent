@@ -344,6 +344,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, read_reference(self.server.control.store, "topics"))
                 return
+            if path == "/api/v1/reference/tree":
+                self._authentication()
+                self._json(200, read_reference(self.server.control.store, "tree"))
+                return
+            if path.startswith("/api/v1/reference/collections/") and path.endswith("/documents"):
+                self._authentication()
+                collection_id = unquote(path.removeprefix("/api/v1/reference/collections/").removesuffix("/documents"))
+                self._json(200, read_reference(
+                    self.server.control.store, "collection_documents", document_id=collection_id,
+                ))
+                return
             if path == "/api/v1/reference/status":
                 self._authentication()
                 self._json(200, read_reference(self.server.control.store, "status"))
@@ -353,12 +364,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 query = parse_qs(parts.query, keep_blank_values=True)
                 try:
                     limit = min(max(int(query.get("limit", ["8"])[0]), 1), 30)
+                    max_query_tokens = min(max(int(query.get("max_query_tokens", ["1024"])[0]), 32), 4096)
                 except (TypeError, ValueError) as exc:
                     raise InvalidRecord("invalid_reference_limit") from exc
                 self._json(200, read_reference(
                     self.server.control.store, "search",
                     query=query.get("q", [""])[0], topic=query.get("topic", [""])[0],
-                    limit=limit, include_body=False,
+                    limit=limit, include_body=False, max_query_tokens=max_query_tokens,
                 ))
                 return
             if path.startswith("/api/v1/reference/documents/"):

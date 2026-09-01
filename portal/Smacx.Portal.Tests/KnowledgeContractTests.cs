@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Smacx.Portal.Controllers;
+using Smacx.Portal.Services;
 
 namespace Smacx.Portal.Tests;
 
@@ -35,5 +36,48 @@ public sealed class KnowledgeContractTests
         Assert.Equal(["local-game", "diplomacy-and-society"], document.Tags);
         Assert.Equal("installed-game:conceptsx.txt", document.Provenance);
         Assert.Equal("# Council Proposals\n\nFactual rules.", document.Body);
+    }
+
+    [Fact]
+    public void HierarchicalCollectionShapeMapsForTheReusableReader()
+    {
+        using var json = JsonDocument.Parse("""
+            {
+              "id":"leaf-id","parent_id":"parent-id","title":"Facilities",
+              "description":"Base facilities","tags":["smacx","rules"],
+              "path":["Datalinks","Bases and economy","Facilities"],
+              "direct_document_count":18,"document_count":18
+            }
+            """);
+        var collection = KnowledgeController.MapCollection(json.RootElement);
+        Assert.Equal("parent-id", collection.ParentId);
+        Assert.Equal(["Datalinks", "Bases and economy", "Facilities"], collection.Path);
+        Assert.Equal(18, collection.DirectDocumentCount);
+    }
+
+    [Fact]
+    public void MarkdownRendererBuildsOutlineAndRejectsRawHtml()
+    {
+        var rendered = new DatalinksMarkdownRenderer().Render("""
+            # Planetary Networks
+
+            ## Effects
+
+            **Network Nodes** improve research.
+
+            <script>alert('never')</script>
+
+            ### Notes
+
+            | Resource | Value |
+            | --- | ---: |
+            | Energy | 2 |
+            """);
+
+        Assert.Contains("<strong>Network Nodes</strong>", rendered.Html);
+        Assert.Contains("<table>", rendered.Html);
+        Assert.DoesNotContain("<script", rendered.Html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(rendered.Headings, item => item.Text == "Effects" && item.Level == 2);
+        Assert.Contains(rendered.Headings, item => item.Text == "Notes" && item.Level == 3);
     }
 }

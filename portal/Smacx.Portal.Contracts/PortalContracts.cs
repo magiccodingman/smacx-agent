@@ -310,12 +310,20 @@ public sealed record AnalyticsQueryResult(
     bool Truncated);
 
 public sealed record KnowledgeTopic(string Topic, int DocumentCount);
+public sealed record KnowledgeCollection(
+    string Id, string? ParentId, string Title, string Description,
+    IReadOnlyList<string> Tags, IReadOnlyList<string> Path,
+    int DirectDocumentCount, int DocumentCount);
+public sealed record KnowledgeHeading(int Level, string Text, string Anchor);
 public sealed record KnowledgeResult(
     string DocumentId, string Topic, string Title, string Summary,
     IReadOnlyList<string> Tags, string Provenance, string SourceLicense,
-    string? Body = null);
+    string? Body = null, string? CollectionId = null,
+    IReadOnlyList<string>? CollectionPath = null, string? RenderedHtml = null,
+    IReadOnlyList<KnowledgeHeading>? Headings = null);
 public sealed record KnowledgeSearchResponse(
-    string Query, string? Topic, IReadOnlyList<KnowledgeResult> Results);
+    string Query, string? Topic, IReadOnlyList<KnowledgeResult> Results,
+    bool QueryTruncated = false, int? QueryTokens = null);
 
 public sealed record ProviderConfigurationRequest(
     string DisplayName, string BaseUrl, string? ApiKey = null,

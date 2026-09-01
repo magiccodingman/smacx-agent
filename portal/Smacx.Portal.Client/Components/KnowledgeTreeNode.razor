@@ -1,0 +1,46 @@
+<div class="datalinks-tree-node" style="@($"--tree-depth:{Depth}")">
+    <div class="datalinks-tree-row @(IsSelected ? "selected" : null)">
+        @if (Children.Count > 0)
+        {
+            <button class="datalinks-tree-toggle" @onclick="Toggle" aria-label="@(IsExpanded ? "Collapse" : "Expand") @Node.Title">
+                <MudIcon Icon="@(IsExpanded ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronRight)" />
+            </button>
+        }
+        else
+        {
+            <span class="datalinks-tree-spacer"></span>
+        }
+        <button class="datalinks-tree-label" @onclick="Select">
+            <MudIcon Icon="@(Children.Count > 0 ? Icons.Material.Filled.Folder : Icons.Material.Filled.Article)" />
+            <span>@Node.Title</span><small>@Node.DocumentCount</small>
+        </button>
+    </div>
+    @if (IsExpanded)
+    {
+        @foreach (var child in Children)
+        {
+            <KnowledgeTreeNode Node="child" Collections="Collections" Expanded="Expanded"
+                               SelectedId="SelectedId" Depth="@(Depth + 1)" OnSelect="OnSelect" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public KnowledgeCollection Node { get; set; } = null!;
+    [Parameter, EditorRequired] public IReadOnlyList<KnowledgeCollection> Collections { get; set; } = [];
+    [Parameter, EditorRequired] public HashSet<string> Expanded { get; set; } = [];
+    [Parameter] public string? SelectedId { get; set; }
+    [Parameter] public int Depth { get; set; }
+    [Parameter] public EventCallback<KnowledgeCollection> OnSelect { get; set; }
+    private IReadOnlyList<KnowledgeCollection> Children => Collections
+        .Where(item => item.ParentId == Node.Id).OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).ToArray();
+    private bool IsExpanded => Expanded.Contains(Node.Id);
+    private bool IsSelected => string.Equals(SelectedId, Node.Id, StringComparison.OrdinalIgnoreCase) ||
+        (Node.DirectDocumentCount > 0 && Expanded.Contains(Node.Id));
+    private void Toggle() { if (!Expanded.Add(Node.Id)) Expanded.Remove(Node.Id); }
+    private async Task Select()
+    {
+        if (Children.Count > 0) Expanded.Add(Node.Id);
+        await OnSelect.InvokeAsync(Node);
+    }
+}
