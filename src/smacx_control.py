@@ -1372,6 +1372,8 @@ class ControlPlane:
                          agent_seats: list[Mapping[str, Any]] | None = None,
                          human_player_names: list[str] | None = None,
                          managed_human_player_names: list[str] | None = None,
+                         human_seat_preferences: list[Mapping[str, Any]] | None = None,
+                         faction_roster_choice_ids: list[int] | None = None,
                          host_controller_kind: str = "agent",
                          human_host_name: str | None = None,
                          human_host_managed: bool = False,
@@ -1381,6 +1383,8 @@ class ControlPlane:
         display_name = _bounded(display_name, "match_name", 160)
         human_player_names = list(human_player_names or [])
         managed_human_player_names = list(managed_human_player_names or [])
+        human_seat_preferences = list(human_seat_preferences or [])
+        faction_roster_choice_ids = list(faction_roster_choice_ids or [])
         agent_seats = list(agent_seats or [])
         if agent_seats:
             parsed_agent_ids = [str(item.get("agent_id") or "") for item in agent_seats]
@@ -1435,6 +1439,42 @@ class ControlPlane:
                    and all(32 <= ord(character) <= 126 for character in name)
                    for name in all_human_names):
             raise InvalidRecord("invalid_lan_human_player_name")
+        preference_by_name: dict[str, dict[str, Any]] = {}
+        for item in human_seat_preferences:
+            player_name = item.get("player_name")
+            choice = item.get("faction_choice_id")
+            if not isinstance(player_name, str) or not isinstance(choice, int) \
+                    or not 0 <= choice <= 13:
+                raise InvalidRecord("invalid_lan_human_faction_preference")
+            key = player_name.casefold()
+            if key in preference_by_name:
+                raise InvalidRecord("duplicate_lan_human_faction_preference")
+            preference_by_name[key] = {
+                "requested_faction_key": item.get("faction_key"),
+                "requested_faction_name": item.get("faction_name"),
+                "requested_faction_choice_id": choice,
+            }
+        if preference_by_name and set(preference_by_name) != {
+                name.casefold() for name in all_human_names}:
+            raise InvalidRecord("lan_human_faction_preferences_do_not_match_seats")
+        if faction_roster_choice_ids and (
+                len(faction_roster_choice_ids) != 7
+                or len(set(faction_roster_choice_ids)) != 7
+                or any(not isinstance(choice, int) or not 0 <= choice <= 13
+                       for choice in faction_roster_choice_ids)):
+            raise InvalidRecord("invalid_lan_faction_roster")
+        requested_choices = [
+            int(item["faction_choice_id"]) for item in agent_seats
+            if isinstance(item.get("faction_choice_id"), int)
+        ] + [
+            int(item["requested_faction_choice_id"])
+            for item in preference_by_name.values()
+        ]
+        if len(requested_choices) != len(set(requested_choices)):
+            raise InvalidRecord("duplicate_lan_faction_reservation")
+        if faction_roster_choice_ids and not set(requested_choices).issubset(
+                set(faction_roster_choice_ids)):
+            raise InvalidRecord("lan_faction_reservation_outside_roster")
         if not 2 <= len(agent_ids) + len(all_human_names) <= 7:
             raise InvalidRecord("lan_requires_two_to_seven_total_seats")
         normalized_human_names = {name.casefold() for name in all_human_names}
@@ -1465,6 +1505,8 @@ class ControlPlane:
             raise ScopeViolation("unknown_active_lan_agent")
         match_metadata = dict(metadata or {})
         match_metadata["host_controller_kind"] = host_controller_kind
+        if faction_roster_choice_ids:
+            match_metadata["faction_roster_choice_ids"] = faction_roster_choice_ids
         match = self.store.create_match(
             match_id=match_id, display_name=display_name, mode="lan",
             ruleset_id=ruleset_id, metadata=match_metadata,
@@ -1475,6 +1517,7 @@ class ControlPlane:
                 if human_host_managed:
                     self._create_managed_human_lan_seat(
                         match["match_id"], 0, str(human_host_name), role="host",
+                        faction_preference=preference_by_name.get(str(human_host_name).casefold()),
                     )
                 else:
                     now = time.time()
@@ -1488,6 +1531,7 @@ class ControlPlane:
                                 "external_player_name": human_host_name,
                                 "managed": False,
                                 "network_join_pending": False,
+                                **preference_by_name.get(str(human_host_name).casefold(), {}),
                             }), now, now),
                         )
                 seats.append(self.get_seat(match["match_id"], 0))
@@ -1527,6 +1571,7 @@ class ControlPlane:
                 seat_index = first_agent_seat + len(agent_ids) + offset
                 self._create_managed_human_lan_seat(
                     match["match_id"], seat_index, player_name, role="client",
+                    faction_preference=preference_by_name.get(player_name.casefold()),
                 )
                 seats.append(self.get_seat(match["match_id"], seat_index))
             for offset, player_name in enumerate(human_player_names):
@@ -1546,6 +1591,7 @@ class ControlPlane:
                              "external_player_name": player_name,
                              "managed": False,
                              "network_join_pending": True,
+                             **preference_by_name.get(player_name.casefold(), {}),
                          }), now, now),
                     )
                 seats.append(self.get_seat(match["match_id"], seat_index))
@@ -1558,7 +1604,8 @@ class ControlPlane:
         return {"match": match, "seats": seats}
 
     def _create_managed_human_lan_seat(
-            self, match_id: str, seat_index: int, player_name: str, *, role: str) -> None:
+            self, match_id: str, seat_index: int, player_name: str, *, role: str,
+            faction_preference: Mapping[str, Any] | None = None) -> None:
         """Create a browser human identity without granting it an agent harness."""
         human_id = _new_id("human")
         self.store.ensure_agent(
@@ -1581,6 +1628,7 @@ class ControlPlane:
                      "external_player_name": player_name,
                      "managed": True,
                      "network_join_pending": role != "host",
+                     **dict(faction_preference or {}),
                  }), now, now),
             )
 

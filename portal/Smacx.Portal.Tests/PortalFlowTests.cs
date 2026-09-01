@@ -184,6 +184,26 @@ public sealed class PortalFlowTests : IAsyncLifetime
             csrf.Token);
         Assert.Equal(HttpStatusCode.OK, editedSeat.Response.StatusCode);
         Assert.Equal("agent-test", editedSeat.Payload.Data?.Seats[3].AgentId);
+        var configuredHuman = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/0",
+            new UpdateLobbySeatRequest("human", null, null, "browser", "gaians"),
+            csrf.Token);
+        Assert.Equal("gaians", configuredHuman.Payload.Data?.Seats[0].RequestedFactionId);
+        var configuredComputer = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/4",
+            new UpdateLobbySeatRequest("native", null, null, "browser", "hive"),
+            csrf.Token);
+        Assert.Equal("hive", configuredComputer.Payload.Data?.Seats[4].RequestedFactionId);
+        var duplicateFaction = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/3",
+            new UpdateLobbySeatRequest("agent", "agent-test", null, "browser", "gaians"),
+            csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, duplicateFaction.Response.StatusCode);
+        Assert.Equal("faction_already_reserved", duplicateFaction.Payload.Error?.Code);
+        var reopened = await PutAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/seats/4",
+            new UpdateLobbySeatRequest("open"), csrf.Token);
+        Assert.Equal("open", reopened.Payload.Data?.Seats[4].ControllerKind);
         var repeatedProfile = create with
         {
             DisplayName = "Repeated profile seats",

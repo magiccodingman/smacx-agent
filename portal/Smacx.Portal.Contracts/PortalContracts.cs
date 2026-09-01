@@ -277,7 +277,10 @@ public static class ResolutionProfiles
         All.FirstOrDefault(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 }
 
-public sealed record NativeJoinPlayer(int SeatIndex, string PlayerName, int? ExpectedFactionId);
+public sealed record NativeJoinPlayer(
+    int SeatIndex, string PlayerName, int? ExpectedFactionId,
+    string? ExpectedFactionKey = null, string? ExpectedFactionName = null,
+    int? ExpectedFactionChoiceId = null);
 public sealed record NativeJoinDetails(
     string HostAddress,
     string SessionName,

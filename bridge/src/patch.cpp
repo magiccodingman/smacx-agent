@@ -15,10 +15,18 @@ int __cdecl ProdPicker_calculate_itoa(int UNUSED(value), char* buf, int UNUSED(b
 }
 
 int __thiscall NetWin_random_get(void*, int low, int high) {
+    uint32_t allowed = 0;
+    char managed_mask[32] = {};
+    if (GetEnvironmentVariableA(
+            "SMACX_AGENT_ALLOWED_FACTION_MASK", managed_mask,
+            sizeof(managed_mask))) {
+        allowed = static_cast<uint32_t>(strtoul(managed_mask, NULL, 10));
+    }
     int val = 0; // Multiplayer random factions
     for (int i = 0; i < 1000; i++) {
         val = random_get(low, high);
-        if (!((1 << val) & conf.skip_random_factions)) {
+        if ((!allowed || allowed & (1u << val))
+        && !((1u << val) & conf.skip_random_factions)) {
             break;
         }
     }

@@ -882,6 +882,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "tutorial_ui": bool(supplied.get("tutorial_ui", False)),
             "game_settings": game_settings,
         }
+        faction_roster = supplied.get("faction_roster")
+        if faction_roster is not None:
+            if not isinstance(faction_roster, list) or len(faction_roster) != 7 \
+                    or len(set(faction_roster)) != 7 \
+                    or any(not isinstance(choice, int) or not 0 <= choice <= 13
+                           for choice in faction_roster):
+                raise InvalidRecord("invalid_worker_faction_roster")
+            result["faction_roster"] = list(faction_roster)
         startup_save = supplied.get("startup_save")
         scenario_id = supplied.get("scenario_id")
         lan_scenario_id = supplied.get("lan_scenario_id")
@@ -1007,6 +1015,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             values["SMACX_AGENT_STARTUP_SCENARIO"] = autostart["scenario_id"]
         if isinstance(autostart.get("lan_scenario_id"), str):
             values["SMACX_AGENT_LAN_SCENARIO"] = autostart["lan_scenario_id"]
+        faction_roster = autostart.get("faction_roster")
+        if isinstance(faction_roster, list) and len(faction_roster) == 7:
+            values["SMACX_AGENT_FACTION_ROSTER"] = ",".join(
+                str(int(choice)) for choice in faction_roster
+            )
+            values["SMACX_AGENT_ALLOWED_FACTION_MASK"] = str(sum(
+                1 << int(choice) for choice in faction_roster
+            ))
         values.update(game_settings_environment(autostart["game_settings"]))
         return [f"{key}={value}" for key, value in values.items()]
 
@@ -2112,11 +2128,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     ), timeout=45, context="host_configured_lobby",
                     action="status",
                 )
-                for seat in agent_seats:
+                for seat in managed_seats:
                     seat_index = int(seat["seat_index"])
                     choice = seat.get("metadata", {}).get("requested_faction_choice_id")
                     if not isinstance(choice, int):
-                        raise WorkerManagerError("managed_agent_faction_choice_missing")
+                        raise WorkerManagerError("managed_seat_faction_choice_missing")
                     instance_id = str(seat["instance_id"])
                     lobby = self._wait_native(
                         instance_id, "semantic_lan",
@@ -2415,6 +2431,15 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         "seat_index": int(seat["seat_index"]),
                         "player_name": str(seat["metadata"]["external_player_name"]),
                         "expected_faction_id": seat.get("faction_id"),
+                        "expected_faction_key": seat.get("metadata", {}).get(
+                            "requested_faction_key"
+                        ),
+                        "expected_faction_name": seat.get("metadata", {}).get(
+                            "requested_faction_name"
+                        ),
+                        "expected_faction_choice_id": seat.get("metadata", {}).get(
+                            "requested_faction_choice_id"
+                        ),
                     }
                     for seat in external_human_seats
                 ]
@@ -2451,7 +2476,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         "human_players": human_players,
                         "instructions": (
                             "Join Multiplayer > TCP/IP using host_address, enter the exact "
-                            "assigned player_name, select the saved faction when resuming, "
+                            "assigned player_name, select the faction reserved for that seat, "
                             "and mark Ready. Then ask the Control Center to start again."
                         ),
                     },
@@ -2628,6 +2653,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if not isinstance(faction_id, int):
                 blockers.append({"player_name": player_name, "reason": "faction_not_selected"})
                 continue
+            if resume_slot is None:
+                expected_choice = seat.get("metadata", {}).get(
+                    "requested_faction_choice_id"
+                )
+                if isinstance(expected_choice, int) and \
+                        participant.get("faction_choice_id") != expected_choice:
+                    blockers.append({
+                        "player_name": player_name,
+                        "reason": "reserved_faction_not_selected",
+                        "expected_faction_choice_id": expected_choice,
+                        "observed_faction_choice_id": participant.get("faction_choice_id"),
+                    })
+                    continue
             if resume_slot is not None:
                 expected_faction = seat.get("faction_id")
                 required_choice = participant.get("required_faction_choice_id")

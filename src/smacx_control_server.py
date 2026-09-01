@@ -581,6 +581,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(managed_human_player_names, list) \
                         or not all(isinstance(item, str) for item in managed_human_player_names):
                     raise InvalidRecord("invalid_lan_managed_human_player_names")
+                human_seat_preferences = body.get("human_seat_preferences", [])
+                if not isinstance(human_seat_preferences, list) \
+                        or not all(isinstance(item, dict) for item in human_seat_preferences):
+                    raise InvalidRecord("invalid_lan_human_seat_preferences")
+                faction_roster_choice_ids = body.get("faction_roster_choice_ids", [])
+                if not isinstance(faction_roster_choice_ids, list) \
+                        or not all(isinstance(item, int) for item in faction_roster_choice_ids):
+                    raise InvalidRecord("invalid_lan_faction_roster")
                 profile = str(body.get("profile", "small_easy"))
                 if profile not in LAN_PROFILES:
                     raise InvalidRecord("unsupported_lan_profile")
@@ -588,6 +596,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     str(body.get("display_name", "")), list(agent_ids),
                     human_player_names=list(human_player_names),
                     managed_human_player_names=list(managed_human_player_names),
+                    human_seat_preferences=list(human_seat_preferences),
+                    faction_roster_choice_ids=list(faction_roster_choice_ids),
                     host_controller_kind=str(body.get("host_controller_kind", "agent")),
                     human_host_name=(str(body["human_host_name"])
                                      if body.get("human_host_name") is not None else None),
@@ -616,7 +626,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                                 str(seat["perspective_id"]),
                             ),
                             str(body.get("game_source_id", "")), str(body.get("runtime_id", "")),
-                            autostart={"enabled": False},
+                            autostart={
+                                "enabled": False,
+                                "faction_roster": list(faction_roster_choice_ids),
+                            },
                             view_enabled=body.get("view_enabled") is True,
                             view_mode=("interactive" if seat["controller_kind"] == "human"
                                        else "view-only"),
