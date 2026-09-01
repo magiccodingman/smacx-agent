@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -92,9 +94,14 @@ public sealed class AdministrationController(
     [HttpGet("ai-profiles")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<AiProfile>>>> Profiles()
     {
-        var items = await database.PortalAiProfiles.AsNoTracking()
+        var entities = await database.PortalAiProfiles.AsNoTracking()
             .OrderByDescending(item => item.Active).ThenBy(item => item.DisplayName)
-            .Select(item => ToContract(item)).ToArrayAsync(HttpContext.RequestAborted);
+            .ToArrayAsync(HttpContext.RequestAborted);
+        var settings = await database.PortalSettings.AsNoTracking()
+            .Where(item => item.Key.StartsWith("ai-profile.acceptance."))
+            .ToDictionaryAsync(item => item.Key, item => item.Value, HttpContext.RequestAborted);
+        var items = entities.Select(item => ToContract(item,
+            ParseAcceptance(settings.GetValueOrDefault(AcceptanceKey(item.ProfileId)), item))).ToArray();
         return ApiResponse<IReadOnlyList<AiProfile>>.Success(items);
     }
 
@@ -165,7 +172,7 @@ public sealed class AdministrationController(
         ModelGenerationSettings generation;
         try
         {
-            generation = NormalizeGeneration(request.Generation, request.ModelId, request.ReasoningEffort);
+            generation = NormalizeGeneration(request.Generation);
         }
         catch (ArgumentException exception)
         {
@@ -201,6 +208,62 @@ public sealed class AdministrationController(
         if (creating) database.PortalAiProfiles.Add(entity);
         await database.SaveChangesAsync(HttpContext.RequestAborted);
         return ApiResponse<AiProfile>.Success(ToContract(entity));
+    }
+
+    [HttpPost("ai-profiles/{profileId}/test-provider-acceptance")]
+    public async Task<ActionResult<ApiResponse<GenerationAcceptanceStatus>>> TestProviderAcceptance(
+        string profileId)
+    {
+        var item = await database.PortalAiProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(profile => profile.ProfileId == profileId, HttpContext.RequestAborted);
+        if (item is null)
+            return NotFound(ApiResponse<GenerationAcceptanceStatus>.Failure(
+                "profile_not_found", "The AI profile was not found."));
+        JsonElement result;
+        try
+        {
+            using var response = await control.PostRawAsync(
+                $"api/v1/providers/{Uri.EscapeDataString(item.ProviderId)}/probe-generation",
+                new
+                {
+                    model_id = item.ModelId,
+                    reasoning_effort = item.ReasoningEffort,
+                    generation = ParseGeneration(item.GenerationSettingsJson),
+                }, HttpContext.RequestAborted);
+            result = response.RootElement.Clone();
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<GenerationAcceptanceStatus>.Failure(exception.Code, exception.Message));
+        }
+        var testedAt = DateTimeOffset.UtcNow;
+        var status = new GenerationAcceptanceStatus(
+            result.GetProperty("state").GetString() ?? "rejected",
+            result.GetProperty("accepted").GetBoolean(), false,
+            result.GetProperty("message").GetString() ?? "The acceptance probe completed.",
+            testedAt,
+            result.TryGetProperty("profile_fields", out var fields) && fields.ValueKind == JsonValueKind.Array
+                ? fields.EnumerateArray().Select(value => value.GetString() ?? "").Where(value => value.Length > 0).ToArray()
+                : [],
+            result.TryGetProperty("http_status", out var http) && http.ValueKind == JsonValueKind.Number
+                ? http.GetInt32() : null);
+        var stored = JsonSerializer.Serialize(new
+        {
+            fingerprint = ProfileFingerprint(item),
+            status,
+        });
+        var key = AcceptanceKey(profileId);
+        var setting = await database.PortalSettings.FindAsync([key], HttpContext.RequestAborted);
+        if (setting is null)
+        {
+            setting = new PortalSetting { Key = key };
+            database.PortalSettings.Add(setting);
+        }
+        setting.Value = stored;
+        setting.UpdatedAt = testedAt;
+        await database.SaveChangesAsync(HttpContext.RequestAborted);
+        return ApiResponse<GenerationAcceptanceStatus>.Success(status);
     }
 
     [HttpPost("ai-profiles/{profileId}/deactivate")]
@@ -362,40 +425,62 @@ public sealed class AdministrationController(
         }
     }
 
-    private static AiProfile ToContract(PortalAiProfile item) => new(
+    private static AiProfile ToContract(
+        PortalAiProfile item, GenerationAcceptanceStatus? acceptance = null) => new(
         item.ProfileId, item.DisplayName,
         item.AgentId, item.ProviderId, item.ModelId, item.ReasoningEffort,
         item.ContextLength, item.Notes, item.Active, item.PersonalityCardId, item.CreatedAt, item.UpdatedAt,
-        ParseGeneration(item.GenerationSettingsJson));
+        ParseGeneration(item.GenerationSettingsJson), acceptance);
 
-    private static ModelGenerationSettings NormalizeGeneration(
-        ModelGenerationSettings? requested, string modelId, string reasoningEffort)
+    private static string AcceptanceKey(string profileId) => $"ai-profile.acceptance.{profileId}";
+
+    private static string ProfileFingerprint(PortalAiProfile item)
+    {
+        var canonical = JsonSerializer.Serialize(new
+        {
+            item.ProviderId,
+            item.ModelId,
+            item.ReasoningEffort,
+            Generation = ParseGeneration(item.GenerationSettingsJson),
+        });
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
+    }
+
+    private static GenerationAcceptanceStatus? ParseAcceptance(string? json, PortalAiProfile item)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var status = root.GetProperty("status").Deserialize<GenerationAcceptanceStatus>();
+            if (status is null) return null;
+            return root.GetProperty("fingerprint").GetString() == ProfileFingerprint(item)
+                ? status
+                : status with
+                {
+                    State = "stale",
+                    Accepted = null,
+                    Message = "This profile changed after its last provider acceptance test. Test it again.",
+                };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    internal static ModelGenerationSettings NormalizeGeneration(ModelGenerationSettings? requested)
     {
         var generation = requested ?? new ModelGenerationSettings();
-        generation = generation.Preset switch
+        var preset = generation.Preset switch
         {
-            "provider-default" => new ModelGenerationSettings(),
-            "qwen38-instant" => Qwen("qwen38-instant", false, generation),
-            "qwen38-low" => Qwen("qwen38-low", true, generation),
-            "qwen38-medium" => Qwen("qwen38-medium", true, generation),
-            "qwen38-xhigh" => Qwen("qwen38-xhigh", true, generation),
-            // Pre-release compatibility aliases. New UI never writes them.
-            "qwen38-thinking" => Qwen("qwen38-low", true, generation),
-            "qwen38-instruct" => Qwen("qwen38-instant", false, generation),
-            "custom" => generation,
-            _ => throw new ArgumentException(
-                "Choose Provider defaults, a Qwen3.8 template, or Custom."),
+            "provider-default" or "custom" or "qwen38-instant" or "qwen38-low" or
+            "qwen38-medium" or "qwen38-high" or "qwen38-xhigh" => generation.Preset,
+            "qwen38-thinking" => "qwen38-low",
+            "qwen38-instruct" => "qwen38-instant",
+            _ => throw new ArgumentException("Choose a supported starting template."),
         };
-        if (generation.Preset.StartsWith("qwen38-", StringComparison.Ordinal) &&
-            !modelId.Contains("qwen3.8", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("The Qwen3.8 presets can only be used with a Qwen3.8 model.");
-        var expectedReasoning = generation.Preset switch
-        {
-            "qwen38-instant" => "none", "qwen38-low" => "low",
-            "qwen38-medium" => "medium", "qwen38-xhigh" => "xhigh", _ => null,
-        };
-        if (expectedReasoning is not null && reasoningEffort != expectedReasoning)
-            throw new ArgumentException($"{generation.Preset} requires reasoning effort {expectedReasoning}.");
         Range(generation.Temperature, 0, 2, "Temperature");
         Range(generation.TopP, 0, 1, "Top P");
         Range(generation.MinP, 0, 1, "Min P");
@@ -407,27 +492,7 @@ public sealed class AdministrationController(
         if (generation.MaxOutputTokens is < 1 or > 262_144)
             throw new ArgumentException("Maximum output tokens must be between 1 and 262,144.");
         ValidateExtraParameters(generation.ExtraParameters);
-        return generation;
-    }
-
-    private static ModelGenerationSettings Qwen(
-        string preset, bool thinking, ModelGenerationSettings requested)
-    {
-        var extras = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
-        {
-            ["top_k"] = JsonSerializer.SerializeToElement(20),
-            ["min_p"] = JsonSerializer.SerializeToElement(0.0),
-            ["repetition_penalty"] = JsonSerializer.SerializeToElement(1.0),
-            ["chat_template_kwargs"] = JsonSerializer.SerializeToElement(new Dictionary<string, bool>
-            {
-                ["enable_thinking"] = thinking,
-                ["preserve_thinking"] = false,
-            }),
-        };
-        return new ModelGenerationSettings(
-            preset, thinking ? 1.0 : 0.7, thinking ? 0.95 : 0.80,
-            null, null, thinking ? 0.0 : 1.5, null, null,
-            requested.MaxOutputTokens, requested.Seed, thinking, false, extras);
+        return generation with { Preset = preset };
     }
 
     private static void ValidateExtraParameters(
@@ -438,7 +503,8 @@ public sealed class AdministrationController(
         var reserved = new HashSet<string>(StringComparer.Ordinal)
         {
             "model", "messages", "stream", "tools", "tool_choice", "reasoning_effort",
-            "temperature", "top_p", "presence_penalty", "frequency_penalty", "max_tokens", "seed",
+            "temperature", "top_p", "top_k", "min_p", "presence_penalty", "frequency_penalty",
+            "repetition_penalty", "max_tokens", "seed",
         };
         foreach (var (key, value) in parameters)
         {

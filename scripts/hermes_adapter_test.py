@@ -89,7 +89,14 @@ def main() -> int:
             "reasoning_effort": "low",
             "external_profile_id": "smacx-descriptor-contract",
             "context_length": 65536,
-            "generation_settings": {"preset": "qwen38-thinking"},
+            "generation_settings": {
+                "preset": "qwen38-low", "temperature": 1.0, "top_p": 0.95,
+                "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0,
+                "repetition_penalty": 1.0,
+                "extra_parameters": {"chat_template_kwargs": {
+                    "enable_thinking": True, "preserve_thinking": False,
+                }},
+            },
         }, hermes_root=root)
         if descriptor_profile["profile_id"] != "smacx-descriptor-contract":
             raise AssertionError("Control descriptor did not preserve external profile identity")

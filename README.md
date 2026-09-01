@@ -294,7 +294,7 @@ deal? Was it strong, merely expensive, or—most importantly—fun to play with?
 | **Watch** | Admin seat switching, AI observation, opt-in anonymous spectator deck, worker-enforced read-only streams |
 | **Continue** | Connected-player votes, stable-boundary checkpoints, safe temporary bot delegation/reclaim, crash reconciliation, faction restoration |
 | **Remember** | Chat history and scoped AI facts, beliefs, relationships, promises, goals, and summaries |
-| **Experiment** | Immutable model profiles with reasoning and sampling controls, telemetry, outcomes, analytics, CSV, and constrained SQL reports |
+| **Experiment** | Stable named model profiles with editable templates, advanced provider parameters, honest acceptance checks, telemetry, outcomes, analytics, CSV, and constrained SQL reports |
 
 ## Bring your copy and open the table
 

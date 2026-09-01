@@ -357,7 +357,13 @@ public sealed record AiProfile(
     string DisplayName, string AgentId, string ProviderId, string ModelId,
     string ReasoningEffort, int? ContextLength, string? Notes,
     bool Active, string PersonalityCardId, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    ModelGenerationSettings Generation);
+    ModelGenerationSettings Generation,
+    GenerationAcceptanceStatus? Acceptance = null);
+
+public sealed record GenerationAcceptanceStatus(
+    string State, bool? Accepted, bool SemanticEffectVerified,
+    string Message, DateTimeOffset? TestedAt = null,
+    IReadOnlyList<string>? SentFields = null, int? HttpStatus = null);
 
 public sealed record GameSourceRequest(string DisplayName, string HostPath);
 public sealed record RuntimeImportRequest(string DisplayName, string SourceHostPath);

@@ -20,6 +20,7 @@ PYTHONPATH=src python3 scripts/worker_contract_test.py
 python3 scripts/save_retention_live_test.py
 PYTHONPATH=src python3 scripts/hermes_adapter_test.py
 PYTHONPATH=src python3 scripts/generation_settings_test.py
+PYTHONPATH=src python3 scripts/provider_generation_probe_test.py
 PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
@@ -32,6 +33,27 @@ PYTHONPATH=src python3 scripts/graphiti_projection_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 ```
+
+The opt-in live reasoning/history boundary uses the real derived Hermes image
+through a local recording proxy. It emits only aggregate counts—never prompts,
+responses, reasoning text, or API keys:
+
+```bash
+SMACX_TEST_PROVIDER_BASE_URL=http://model-host:8000/v1 \
+SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
+SMACX_TEST_PROVIDER_API_KEY='...' \
+PYTHONPATH=src python3 scripts/hermes_reasoning_history_live_test.py
+```
+
+It clones one Hermes conversation before its second turn and verifies that no
+completed historical reasoning leaks from Hermes when preservation is disabled.
+The current Hermes release strips completed no-tool reasoning from its own
+history in either mode, so a separate synthetic provider request proves Qwen's
+chat template itself excludes the supplied old reasoning with
+`preserve_thinking=false` and retains it with `true`. Separate fixed-seed
+profiles prove Low and XHigh reach the provider distinctly and compare their
+aggregate reasoning measures. Known grammar/tool-call defects are classified
+separately because this test exposes no tools.
 
 The .NET flow creates a new canonical SQLite database, bootstraps the admin,
 creates/claims an invited account, creates a lobby, sends private chat, reads
@@ -129,8 +151,11 @@ The capture test runs the real derived Hermes image against a local
 OpenAI-compatible recorder and asserts one exact SMACX-owned system message,
 with no Hermes scaffold or workspace rule content. It also proves the chosen
 reasoning effort and whitelisted sampling payload reach the final provider
-request. `hermes_adapter_test.py` covers Hermes's full generic reasoning ladder;
-the portal narrows Qwen3.8 to its documented low/medium/xhigh choices.
+request. `provider_generation_probe_test.py` separately proves accepted and
+rejected provider probes while preserving the distinction between transport
+acceptance and semantic behavior. `hermes_adapter_test.py` covers Hermes's full
+generic reasoning ladder; the portal labels Qwen's documented low/medium/xhigh
+levels and the provider-dependent High option honestly.
 
 ## Browser portal test
 

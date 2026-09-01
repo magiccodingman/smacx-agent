@@ -108,68 +108,68 @@ else
                     </MudSelect>
                 }
 
-                <div class="field-pair">
-                    <MudSelect T="string" @bind-Value="reasoning" Label="Reasoning effort" Variant="Variant.Outlined"
-                               HelperText="Passed to Hermes and routed according to the selected model/provider.">
-                        @foreach (var value in AvailableReasoning)
-                        {
-                            <MudSelectItem Value="@value">@value</MudSelectItem>
-                        }
-                    </MudSelect>
-                    <MudNumericField T="int?" @bind-Value="contextLength" Label="Gameplay context budget (optional)"
-                                     Placeholder="Automatic" Variant="Variant.Outlined" Min="65536"
-                                     Max="@SelectedModelContextMaximum" Clearable="true" />
-                </div>
+                <MudNumericField T="int?" @bind-Value="contextLength" Label="Gameplay context budget (optional)"
+                                 Placeholder="Automatic" Variant="Variant.Outlined" Min="65536"
+                                 Max="@SelectedModelContextMaximum" Clearable="true" />
                 <span class="field-help flush">@ContextHelp</span>
 
                 <MudSelect T="string" Value="@generationPreset" ValueChanged="GenerationPresetChanged"
-                           Label="Generation preset" Variant="Variant.Outlined">
+                           Label="Start from template" Variant="Variant.Outlined">
                     <MudSelectItem T="string" Value="@("provider-default")">Provider defaults · widest compatibility</MudSelectItem>
                     @if (IsQwen38)
                     {
                         <MudSelectItem T="string" Value="@("qwen38-instant")">Qwen3.8 Instant · thinking disabled</MudSelectItem>
                         <MudSelectItem T="string" Value="@("qwen38-low")">Qwen3.8 Low · efficient reasoning</MudSelectItem>
                         <MudSelectItem T="string" Value="@("qwen38-medium")">Qwen3.8 Medium · balanced reasoning</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("qwen38-high")">Qwen3.8 High · provider-dependent</MudSelectItem>
                         <MudSelectItem T="string" Value="@("qwen38-xhigh")">Qwen3.8 XHigh · deepest reasoning</MudSelectItem>
                     }
-                    <MudSelectItem T="string" Value="@("custom")">Custom sampling controls</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("custom")">Blank custom template</MudSelectItem>
                 </MudSelect>
                 <span class="field-help flush">@GenerationHelp</span>
 
-                @if (generationPreset != "provider-default")
-                {
-                    <MudExpansionPanels Class="generation-panel">
-                        <MudExpansionPanel Text="Sampling and output controls" Expanded="@(generationPreset == "custom")">
-                            <div class="generation-summary">@GenerationSummary</div>
+                <MudExpansionPanels Class="generation-panel">
+                    <MudExpansionPanel Text="Sampling, output & provider request parameters" Expanded="true">
+                            <div class="template-reset-row">
+                                <div class="generation-summary">@GenerationSummary</div>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.RestartAlt"
+                                           OnClick="ResetTemplateDefaults">Reset template defaults</MudButton>
+                            </div>
                             <div class="field-pair generation-fields">
-                                <MudNumericField T="double?" @bind-Value="temperature" Label="Temperature" Variant="Variant.Outlined" Min="0" Max="2" Disabled="@IsOfficialPreset" />
-                                <MudNumericField T="double?" @bind-Value="topP" Label="Top P" Variant="Variant.Outlined" Min="0" Max="1" Disabled="@IsOfficialPreset" />
-                                <MudNumericField T="int?" @bind-Value="topK" Label="Top K" Variant="Variant.Outlined" Min="0" Max="100000" Disabled="@IsOfficialPreset" />
-                                <MudNumericField T="double?" @bind-Value="minP" Label="Min P" Variant="Variant.Outlined" Min="0" Max="1" Disabled="@IsOfficialPreset" />
-                                <MudNumericField T="double?" @bind-Value="presencePenalty" Label="Presence penalty" Variant="Variant.Outlined" Min="-2" Max="2" Disabled="@IsOfficialPreset" />
-                                <MudNumericField T="double?" @bind-Value="frequencyPenalty" Label="Frequency penalty" Variant="Variant.Outlined" Min="-2" Max="2" Disabled="@IsOfficialPreset" />
-                                <MudNumericField T="double?" @bind-Value="repetitionPenalty" Label="Repetition penalty" Variant="Variant.Outlined" Min="0.01" Max="2" Disabled="@IsOfficialPreset" />
+                                <MudNumericField T="double?" @bind-Value="temperature" Label="Temperature" Variant="Variant.Outlined" Min="0" Max="2" />
+                                <MudNumericField T="double?" @bind-Value="topP" Label="Top P" Variant="Variant.Outlined" Min="0" Max="1" />
+                                <MudNumericField T="int?" @bind-Value="topK" Label="Top K" Variant="Variant.Outlined" Min="0" Max="100000" />
+                                <MudNumericField T="double?" @bind-Value="minP" Label="Min P" Variant="Variant.Outlined" Min="0" Max="1" />
+                                <MudNumericField T="double?" @bind-Value="presencePenalty" Label="Presence penalty" Variant="Variant.Outlined" Min="-2" Max="2" />
+                                <MudNumericField T="double?" @bind-Value="frequencyPenalty" Label="Frequency penalty" Variant="Variant.Outlined" Min="-2" Max="2" />
+                                <MudNumericField T="double?" @bind-Value="repetitionPenalty" Label="Repetition penalty" Variant="Variant.Outlined" Min="0.01" Max="2" />
                                 <MudNumericField T="int?" @bind-Value="maxOutputTokens" Label="Maximum output tokens (optional)" Variant="Variant.Outlined" Min="1" Max="262144" />
                                 <MudNumericField T="int?" @bind-Value="seed" Label="Seed (optional)" Variant="Variant.Outlined" />
                             </div>
-                            @if (generationPreset == "custom")
-                            {
-                                <div class="custom-parameter-editor">
-                                    <div class="panel-heading"><div><strong>Additional request parameters</strong><small>Values are JSON: use true, 20, "text", arrays, or objects.</small></div><MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddExtraParameter">Add parameter</MudButton></div>
-                                    @foreach (var parameter in extraParameters)
-                                    {
-                                        <div class="custom-parameter-row">
-                                            <MudTextField @bind-Value="parameter.Key" Label="Key" Variant="Variant.Outlined" Immediate="true" />
-                                            <MudTextField @bind-Value="parameter.Value" Label="JSON value" Variant="Variant.Outlined" Immediate="true" />
-                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Color="Color.Error" OnClick="@(() => RemoveExtraParameter(parameter))" aria-label="Remove parameter" />
-                                        </div>
-                                    }
-                                </div>
-                            }
-                            <span class="field-help flush">Blank common fields are omitted. Chat-template controls and any other server-specific extension belong in the JSON-typed additional parameters above.</span>
-                        </MudExpansionPanel>
-                    </MudExpansionPanels>
-                }
+                            <div class="custom-parameter-editor">
+                                <div class="panel-heading"><div><strong>Additional request parameters</strong><small>These are sent as JSON alongside the common controls. Values may be true, 20, "text", arrays, or objects.</small></div><MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddExtraParameter">Add parameter</MudButton></div>
+                                @foreach (var parameter in extraParameters)
+                                {
+                                    <div class="custom-parameter-row">
+                                        <MudTextField @bind-Value="parameter.Key" Label="Key" Variant="Variant.Outlined" Immediate="true" />
+                                        <MudTextField @bind-Value="parameter.Value" Label="JSON value" Variant="Variant.Outlined" Immediate="true" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Color="Color.Error" OnClick="@(() => RemoveExtraParameter(parameter))" aria-label="Remove parameter" />
+                                    </div>
+                                }
+                            </div>
+                            <MudSelect T="string" @bind-Value="reasoning" Label="Hermes reasoning effort" Variant="Variant.Outlined"
+                                       HelperText="A coarse Hermes control separate from the JSON request parameters. Model-server support varies; test acceptance below.">
+                                @foreach (var value in reasoningValues)
+                                {
+                                    <MudSelectItem Value="@value">@value</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mt-3">
+                                Saving proves these settings are stored. A successful acceptance test proves the endpoint accepted the request—not that it honored every parameter semantically.
+                            </MudAlert>
+                            <span class="field-help flush">Blank common fields are omitted. Unsupported extensions may be rejected or silently ignored by an OpenAI-compatible server.</span>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
                 <MudTextField @bind-Value="profileNotes" Label="Operator note (optional)" Lines="2" Variant="Variant.Outlined" />
                 <span class="field-help flush">Faction and personality are chosen independently for each AI seat when a lobby is created; they are not properties of the reusable model profile.</span>
                 <div class="profile-portability">
@@ -309,10 +309,14 @@ else
                 <div>
                     <strong>@profile.DisplayName</strong>
                     <small>@profile.ModelId · @profile.ReasoningEffort reasoning · @GenerationLabel(profile.Generation) · @GameplayContext(profile.ContextLength) gameplay context</small>
+                    <small>@AcceptanceDescription(profile.Acceptance)</small>
                 </div>
                 <span class="status-badge">@(profile.Active ? "active" : "inactive")</span>
-                <span>Faction/personality chosen per seat</span>
+                <span class="status-badge @AcceptanceClass(profile.Acceptance)">@AcceptanceLabel(profile.Acceptance)</span>
                 <div class="endpoint-actions">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Disabled="busy"
+                               StartIcon="@Icons.Material.Filled.Science"
+                               OnClick="() => TestProviderAcceptance(profile)">Test provider acceptance</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Edit" OnClick="() => EditProfile(profile)">Edit</MudButton>
                     @if (profile.Active)
                     {
@@ -377,12 +381,9 @@ else
     private double? repetitionPenalty;
     private int? maxOutputTokens;
     private int? seed;
-    private string thinkingMode = "default";
-    private string preserveMode = "default";
     private readonly List<ExtraParameterDraft> extraParameters = [];
 
     private readonly string[] reasoningValues = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
-    private readonly string[] qwenReasoningValues = ["low", "medium", "xhigh"];
     private List<JsonElement> Providers => snapshot is null ? [] : snapshot.Providers.EnumerateArray().ToList();
     private IEnumerable<AiProfile> VisibleProfiles => profiles.Where(profile => profile.Active || showInactiveProfiles);
     private IEnumerable<JsonElement> EmbeddingModels => string.IsNullOrWhiteSpace(embeddingProviderId)
@@ -412,7 +413,6 @@ else
         && !string.IsNullOrWhiteSpace(selectedProvider)
         && !string.IsNullOrWhiteSpace(selectedModel);
     private bool IsQwen38 => selectedModel.Contains("qwen3.8", StringComparison.OrdinalIgnoreCase);
-    private bool IsOfficialPreset => generationPreset.StartsWith("qwen38-", StringComparison.Ordinal);
     private int? SelectedModelContextMaximum
     {
         get
@@ -433,26 +433,17 @@ else
     private string ContextHelp => SelectedModelContextMaximum is { } maximum
         ? $"Automatic is recommended and will use the model's advertised {maximum:N0}-token context. A manual value must be between 65,536 and {maximum:N0}."
         : "Automatic is recommended and uses the context advertised by the endpoint. Enter at least 65,536 only when you intentionally want a smaller working context.";
-    private IEnumerable<string> AvailableReasoning => generationPreset switch
-    {
-        "qwen38-instant" => ["none"], "qwen38-low" => ["low"],
-        "qwen38-medium" => ["medium"], "qwen38-xhigh" => ["xhigh"],
-        _ => reasoningValues,
-    };
     private string GenerationHelp => generationPreset switch
     {
-        "qwen38-instant" => "Official Qwen3.8 non-thinking sampling. Historical reasoning is explicitly discarded.",
-        "qwen38-low" => "Official Qwen3.8 thinking sampling with low reasoning and preserved thinking disabled.",
-        "qwen38-medium" => "Official Qwen3.8 thinking sampling with medium reasoning and preserved thinking disabled.",
-        "qwen38-xhigh" => "Official Qwen3.8 thinking sampling with xhigh reasoning and preserved thinking disabled.",
-        "custom" => "Only the values you enter are sent. Unsupported extension fields may be rejected by the model server.",
-        _ => "No sampling fields are sent, so Hermes and the endpoint choose compatible model defaults.",
+        "qwen38-instant" => "Qwen3.8 non-thinking starting values. preserve_thinking is explicitly false.",
+        "qwen38-low" => "Qwen3.8 thinking starting values with Hermes low reasoning and preserve_thinking explicitly false.",
+        "qwen38-medium" => "Qwen3.8 thinking starting values with Hermes medium reasoning and preserve_thinking explicitly false.",
+        "qwen38-high" => "A provider-dependent High variant. Qwen documents low, medium, and xhigh; test this endpoint before relying on high.",
+        "qwen38-xhigh" => "Qwen3.8 thinking starting values with Hermes xhigh reasoning and preserve_thinking explicitly false.",
+        "custom" => "A blank editable starting point. Only populated values are sent.",
+        _ => "Starts blank for widest compatibility. You may still add explicit overrides below.",
     };
-    private string GenerationSummary => generationPreset is "qwen38-low" or "qwen38-medium" or "qwen38-xhigh"
-        ? "temperature 1.0 · top-p 0.95 · top-k 20 · min-p 0 · presence 0 · repetition 1 · preserved thinking disabled"
-        : generationPreset == "qwen38-instant"
-            ? "temperature 0.7 · top-p 0.80 · top-k 20 · min-p 0 · presence 1.5 · repetition 1 · thinking disabled"
-            : "Custom values are saved with this AI profile and replayed on every Hermes run.";
+    private string GenerationSummary => "The values shown below are authoritative. Templates never lock or silently restore fields.";
 
     protected override async Task OnInitializedAsync() => await Reload();
 
@@ -699,7 +690,7 @@ else
             var savedProfile = result.Payload.Data!;
             ResetProfileForm(resetFields: false);
             await Reload(selectedProvider);
-            notice = $"{savedProfile.DisplayName} was saved and is available in new lobbies as an AI player.";
+            notice = $"{savedProfile.DisplayName} was stored and is available in new lobbies. Test provider acceptance before relying on custom parameters.";
             profileEditorOpen = false;
         }
         busy = false;
@@ -785,6 +776,33 @@ else
         busy = false;
     }
 
+    private async Task TestProviderAcceptance(AiProfile profile)
+    {
+        busy = true;
+        error = null;
+        notice = null;
+        try
+        {
+            var result = await Api.PostAsync<GenerationAcceptanceStatus>(
+                $"api/admin/ai-profiles/{profile.ProfileId}/test-provider-acceptance", new { });
+            if (result.Payload?.Ok != true)
+                error = result.Payload?.Error?.Message ?? "The provider acceptance test could not run.";
+            else
+                notice = result.Payload.Data!.Accepted == true
+                    ? "The endpoint accepted the serialized profile request. Semantic application remains unverified."
+                    : result.Payload.Data.Message;
+            await Reload(selectedProvider);
+        }
+        catch (HttpRequestException)
+        {
+            error = "The portal could not reach its server. Check the service and try again.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
     private void ProviderChanged(string value)
     {
         selectedProvider = value;
@@ -839,55 +857,68 @@ else
         repetitionPenalty = generation.RepetitionPenalty;
         maxOutputTokens = generation.MaxOutputTokens;
         seed = generation.Seed;
-        thinkingMode = generation.EnableThinking is null ? "default" : generation.EnableThinking.Value ? "enabled" : "disabled";
-        preserveMode = generation.PreserveThinking is null ? "default" : generation.PreserveThinking.Value ? "enabled" : "disabled";
         extraParameters.Clear();
         if (generation.ExtraParameters is not null)
             extraParameters.AddRange(generation.ExtraParameters.Select(item =>
                 new ExtraParameterDraft(item.Key, item.Value.GetRawText())));
+        if (generation.EnableThinking is not null || generation.PreserveThinking is not null)
+        {
+            var legacy = new Dictionary<string, bool>();
+            if (generation.EnableThinking is not null) legacy["enable_thinking"] = generation.EnableThinking.Value;
+            if (generation.PreserveThinking is not null) legacy["preserve_thinking"] = generation.PreserveThinking.Value;
+            if (!extraParameters.Any(item => item.Key == "chat_template_kwargs"))
+                extraParameters.Add(new("chat_template_kwargs", JsonSerializer.Serialize(legacy)));
+        }
     }
 
     private void GenerationPresetChanged(string value)
     {
         generationPreset = value;
+        ApplyTemplateDefaults(value);
+    }
+
+    private void ResetTemplateDefaults() => ApplyTemplateDefaults(generationPreset);
+
+    private void ApplyTemplateDefaults(string value)
+    {
         temperature = topP = minP = presencePenalty = frequencyPenalty = repetitionPenalty = null;
         topK = null;
-        thinkingMode = preserveMode = "default";
+        maxOutputTokens = seed = null;
         extraParameters.Clear();
-        if (value is "qwen38-low" or "qwen38-medium" or "qwen38-xhigh")
+        if (value is "qwen38-low" or "qwen38-medium" or "qwen38-high" or "qwen38-xhigh")
         {
             temperature = 1.0; topP = 0.95; topK = 20; minP = 0.0;
             presencePenalty = 0.0; repetitionPenalty = 1.0;
-            thinkingMode = "enabled"; preserveMode = "disabled";
             reasoning = value[7..];
+            extraParameters.Add(new("chat_template_kwargs",
+                "{\"enable_thinking\":true,\"preserve_thinking\":false}"));
         }
         else if (value == "qwen38-instant")
         {
             temperature = 0.7; topP = 0.80; topK = 20; minP = 0.0;
             presencePenalty = 1.5; repetitionPenalty = 1.0;
-            thinkingMode = "disabled"; preserveMode = "disabled"; reasoning = "none";
+            reasoning = "none";
+            extraParameters.Add(new("chat_template_kwargs",
+                "{\"enable_thinking\":false,\"preserve_thinking\":false}"));
         }
+        else reasoning = "none";
     }
 
     private ModelGenerationSettings BuildGeneration()
     {
-        Dictionary<string, JsonElement>? extras = null;
-        if (generationPreset == "custom")
+        Dictionary<string, JsonElement>? extras = new(StringComparer.Ordinal);
+        foreach (var item in extraParameters.Where(item => !string.IsNullOrWhiteSpace(item.Key)))
         {
-            extras = new(StringComparer.Ordinal);
-            foreach (var item in extraParameters.Where(item => !string.IsNullOrWhiteSpace(item.Key)))
-            {
-                var key = item.Key.Trim();
-                if (extras.ContainsKey(key)) throw new InvalidOperationException($"Custom parameter '{key}' appears more than once.");
-                try { extras.Add(key, JsonDocument.Parse(item.Value).RootElement.Clone()); }
-                catch (JsonException) { throw new InvalidOperationException($"{item.Key} must contain a valid JSON value."); }
-            }
+            var key = item.Key.Trim();
+            if (extras.ContainsKey(key)) throw new InvalidOperationException($"Request parameter '{key}' appears more than once.");
+            try { extras.Add(key, JsonDocument.Parse(item.Value).RootElement.Clone()); }
+            catch (JsonException) { throw new InvalidOperationException($"{item.Key} must contain a valid JSON value."); }
         }
+        if (extras.Count == 0) extras = null;
         return new ModelGenerationSettings(
             generationPreset, temperature, topP, topK, minP, presencePenalty,
             frequencyPenalty, repetitionPenalty, maxOutputTokens, seed,
-            thinkingMode == "default" ? null : thinkingMode == "enabled",
-            preserveMode == "default" ? null : preserveMode == "enabled", extras);
+            ExtraParameters: extras);
     }
 
     private void AddExtraParameter() => extraParameters.Add(new("", "true"));
@@ -915,9 +946,31 @@ else
         "qwen38-instant" => "Qwen3.8 Instant template",
         "qwen38-low" => "Qwen3.8 Low template",
         "qwen38-medium" => "Qwen3.8 Medium template",
+        "qwen38-high" => "Qwen3.8 High template (provider-dependent)",
         "qwen38-xhigh" => "Qwen3.8 XHigh template",
         "custom" => "custom sampling",
         _ => "provider sampling defaults",
+    };
+    private static string AcceptanceLabel(GenerationAcceptanceStatus? status) => status?.State switch
+    {
+        "accepted" => "request accepted",
+        "rejected" => "request rejected",
+        "stale" => "test stale",
+        _ => "not tested",
+    };
+    private static string AcceptanceClass(GenerationAcceptanceStatus? status) => status?.State switch
+    {
+        "accepted" => "status-positive",
+        "rejected" => "status-negative",
+        "stale" => "status-warning",
+        _ => "status-neutral",
+    };
+    private static string AcceptanceDescription(GenerationAcceptanceStatus? status) => status?.State switch
+    {
+        "accepted" => $"Provider accepted the serialized request {status.TestedAt?.ToLocalTime():g}; parameter behavior is not semantically verified.",
+        "rejected" => status.Message,
+        "stale" => status.Message,
+        _ => "Settings are stored. Provider acceptance and semantic behavior have not been tested.",
     };
     private static string SafeFileName(string value)
     {

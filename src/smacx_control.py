@@ -31,7 +31,7 @@ from smacx_prompt import (
     PERSONALITY_NONE, SYSTEM_PROMPT_SCHEMA, compose_player_system_prompt,
     prompt_sha256,
 )
-from smacx_generation import normalize_generation_settings
+from smacx_generation import normalize_generation_settings, openai_extra_body
 
 
 CONTROL_ID = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -830,6 +830,88 @@ class ControlPlane:
                 (current_default, now, now, provider_id),
             )
         return self.get_provider(provider_id)
+
+    def probe_provider_generation(self, provider_id: str, model_id: str,
+                                  reasoning_effort: str,
+                                  generation_settings: Mapping[str, Any] | None,
+                                  *, timeout: float = 60.0,
+                                  ssl_context: ssl.SSLContext | None = None) -> dict[str, Any]:
+        """Send one bounded request and report transport acceptance honestly.
+
+        HTTP success proves only that the endpoint accepted the serialized
+        request. It cannot prove that a server applied every extension field.
+        """
+        _require_id(provider_id, "provider_id")
+        model_id = _bounded(model_id, "model_id", MODEL_ID_LIMIT)
+        if reasoning_effort not in {
+            "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+        }:
+            raise InvalidRecord("invalid_reasoning_effort")
+        normalized = normalize_generation_settings(generation_settings)
+        with self.store.transaction() as connection:
+            provider = connection.execute(
+                "SELECT * FROM model_providers WHERE provider_id=?", (provider_id,),
+            ).fetchone()
+            model_exists = connection.execute(
+                "SELECT 1 FROM provider_models WHERE provider_id=? AND model_id=?",
+                (provider_id, model_id),
+            ).fetchone()
+        if not provider:
+            raise ScopeViolation("unknown_provider_id")
+        if not model_exists:
+            raise InvalidRecord("unknown_provider_model")
+        profile_body = openai_extra_body(normalized)
+        request_body: dict[str, Any] = {
+            "model": model_id,
+            "messages": [{"role": "user", "content": "Reply with OK."}],
+            "stream": False,
+            **profile_body,
+        }
+        if reasoning_effort != "none":
+            request_body["reasoning_effort"] = reasoning_effort
+        probe_only_fields: list[str] = []
+        if "max_tokens" not in request_body:
+            request_body["max_tokens"] = 8
+            probe_only_fields.append("max_tokens")
+        headers = {
+            "Accept": "application/json", "Content-Type": "application/json",
+            "User-Agent": "SMACX-Agent-Control/1",
+        }
+        if provider["api_key_secret_id"]:
+            headers["Authorization"] = "Bearer " + self.vault.read(
+                str(provider["api_key_secret_id"]), purpose=f"provider.{provider_id}.api_key",
+            )
+        request = Request(
+            str(provider["base_url"]).rstrip("/") + "/chat/completions",
+            data=json.dumps(request_body, ensure_ascii=False, separators=(",", ":")).encode(),
+            headers=headers, method="POST",
+        )
+        accepted = False
+        status_code: int | None = None
+        message = "The endpoint accepted the request. Individual parameter behavior remains unverified."
+        try:
+            with urlopen(request, timeout=min(max(float(timeout), 1.0), 90.0),
+                         context=ssl_context) as response:
+                status_code = int(response.status)
+                response.read(PROVIDER_RESPONSE_LIMIT + 1)
+                accepted = 200 <= status_code < 300
+        except HTTPError as exc:
+            status_code = int(exc.code)
+            message = f"The endpoint rejected the request with HTTP {status_code}."
+        except (URLError, TimeoutError, OSError) as exc:
+            message = f"The endpoint could not complete the acceptance probe ({type(exc).__name__})."
+        sent_fields = sorted(key for key in request_body if key not in {"model", "messages", "stream"})
+        return {
+            "ok": True,
+            "accepted": accepted,
+            "state": "accepted" if accepted else "rejected",
+            "http_status": status_code,
+            "sent_fields": sent_fields,
+            "profile_fields": sorted(set(profile_body) | ({"reasoning_effort"} if reasoning_effort != "none" else set())),
+            "probe_only_fields": probe_only_fields,
+            "semantic_effect_verified": False,
+            "message": message,
+        }
 
     def _provider_failure(self, provider_id: str, error: str) -> None:
         with self.store.transaction() as connection:
@@ -1679,14 +1761,8 @@ class ControlPlane:
         if not model_id or not model:
             raise ScopeViolation("harness_model_not_selected")
         generation = normalize_generation_settings(generation_settings)
-        if generation["preset"].startswith("qwen38-") and "qwen3.8" not in str(model_id).lower():
-            raise InvalidRecord("qwen38_preset_requires_qwen38_model")
-        expected_qwen_reasoning = {
-            "qwen38-instant": "none", "qwen38-low": "low",
-            "qwen38-medium": "medium", "qwen38-xhigh": "xhigh",
-        }.get(str(generation["preset"]))
-        if expected_qwen_reasoning is not None and reasoning_effort != expected_qwen_reasoning:
-            raise InvalidRecord("qwen38_template_reasoning_mismatch")
+        # Template identifiers are provenance only. Explicit stored values and
+        # the independently selected Hermes reasoning effort are authoritative.
         context_length = context_length or provider.get("context_length_override") \
             or model.get("context_length")
         if context_length is None:

@@ -101,7 +101,15 @@ def main() -> int:
                     provider_base_url=f"http://127.0.0.1:{server.server_port}/v1",
                     model_id="Qwen/Qwen3.8-27B", profile_id=profile_id,
                     reasoning_effort=reasoning_effort, system_prompt=prompt,
-                    generation_settings={"preset": "qwen38-thinking"},
+                    generation_settings={
+                        "preset": "qwen38-low",
+                        "temperature": 1.0, "top_p": 0.95,
+                        "presence_penalty": 0.0,
+                        "top_k": 20, "min_p": 0.0, "repetition_penalty": 1.0,
+                        "extra_parameters": {"chat_template_kwargs": {
+                            "enable_thinking": True, "preserve_thinking": False,
+                        }},
+                    },
                 )
                 config_path = root / "profiles" / profile["profile_id"] / "config.yaml"
                 config = json.loads(config_path.read_text(encoding="utf-8"))

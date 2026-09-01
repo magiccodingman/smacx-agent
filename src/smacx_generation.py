@@ -45,7 +45,7 @@ _ALIASES = {
 
 _PRESETS = {
     "provider-default", "custom", "qwen38-instant", "qwen38-low",
-    "qwen38-medium", "qwen38-xhigh", "qwen38-thinking", "qwen38-instruct",
+    "qwen38-medium", "qwen38-high", "qwen38-xhigh", "qwen38-thinking", "qwen38-instruct",
 }
 _EXTRA_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$")
 _RESERVED = {
@@ -118,24 +118,6 @@ def _extras(value: Any) -> dict[str, Any]:
     return result
 
 
-def _qwen_defaults(*, thinking: bool) -> dict[str, Any]:
-    return {
-        "temperature": 1.0 if thinking else 0.7,
-        "top_p": 0.95 if thinking else 0.80,
-        "presence_penalty": 0.0 if thinking else 1.5,
-        "extra_parameters": {
-            "top_k": 20,
-            "min_p": 0.0,
-            "repetition_penalty": 1.0,
-            "chat_template_kwargs": {
-                "enable_thinking": thinking,
-                # SMACX intentionally retains only the active turn's reasoning.
-                "preserve_thinking": False,
-            },
-        },
-    }
-
-
 def normalize_generation_settings(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if value is None:
         return {"preset": "provider-default"}
@@ -156,24 +138,23 @@ def normalize_generation_settings(value: Mapping[str, Any] | None) -> dict[str, 
         preset = "qwen38-low"
     elif preset == "qwen38-instruct":
         preset = "qwen38-instant"
-    if preset == "provider-default":
-        return {"preset": preset}
-    if preset.startswith("qwen38-"):
-        overrides = {key: item for key, item in canonical.items() if key in {"max_output_tokens", "seed"}}
-        canonical = {**_qwen_defaults(thinking=preset != "qwen38-instant"), **overrides}
-    else:
-        legacy_extras = dict(_extras(canonical.get("extra_parameters")))
-        for key in ("top_k", "min_p", "repetition_penalty"):
-            if key in canonical:
-                legacy_extras[key] = canonical[key]
-        template = dict(legacy_extras.get("chat_template_kwargs") or {})
-        if "enable_thinking" in canonical:
-            template["enable_thinking"] = canonical["enable_thinking"]
-        if "preserve_thinking" in canonical:
-            template["preserve_thinking"] = canonical["preserve_thinking"]
-        if template:
-            legacy_extras["chat_template_kwargs"] = template
-        canonical["extra_parameters"] = legacy_extras
+    # Presets are editable starting points, not runtime macros. The values
+    # saved with a profile are authoritative for every preset, including
+    # provider-default and the built-in Qwen templates.
+    legacy_extras = dict(_extras(canonical.get("extra_parameters")))
+    for key in ("top_k", "min_p", "repetition_penalty"):
+        if key in canonical:
+            if key in legacy_extras:
+                raise GenerationSettingsError("reserved_or_duplicate_extra_parameter")
+            legacy_extras[key] = canonical[key]
+    template = dict(legacy_extras.get("chat_template_kwargs") or {})
+    if "enable_thinking" in canonical:
+        template["enable_thinking"] = canonical["enable_thinking"]
+    if "preserve_thinking" in canonical:
+        template["preserve_thinking"] = canonical["preserve_thinking"]
+    if template:
+        legacy_extras["chat_template_kwargs"] = template
+    canonical["extra_parameters"] = legacy_extras
 
     result: dict[str, Any] = {"preset": preset}
     ranges = {
@@ -196,8 +177,6 @@ def normalize_generation_settings(value: Mapping[str, Any] | None) -> dict[str, 
 def openai_extra_body(settings: Mapping[str, Any] | None) -> dict[str, Any]:
     """Translate normalized settings into Hermes' OpenAI ``extra_body``."""
     normalized = normalize_generation_settings(settings)
-    if normalized["preset"] == "provider-default":
-        return {}
     body = {
         key: item for key, item in normalized.items()
         if key in {"temperature", "top_p", "presence_penalty", "frequency_penalty", "seed"}
