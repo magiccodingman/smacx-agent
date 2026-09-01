@@ -323,6 +323,30 @@ class ControlPlane:
         self._set_setting("graphiti.enabled", True)
         return self.graphiti_status()
 
+    def clear_graphiti_profile(self, profile_id: str) -> dict[str, Any]:
+        profile_id = _require_id(profile_id, "profile_id")
+        cleared = False
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT value_json FROM control_settings WHERE setting_key = 'graphiti.profile'"
+            ).fetchone()
+            current = json.loads(row["value_json"]) if row else None
+            if isinstance(current, Mapping) and current.get("profile_id") == profile_id:
+                connection.execute(
+                    "DELETE FROM control_settings WHERE setting_key = 'graphiti.profile'"
+                )
+                connection.execute(
+                    "INSERT INTO control_settings(setting_key, value_json, updated_unix) "
+                    "VALUES ('graphiti.enabled', 'false', ?) "
+                    "ON CONFLICT(setting_key) DO UPDATE SET value_json='false', "
+                    "updated_unix=excluded.updated_unix",
+                    (time.time(),),
+                )
+                cleared = True
+        result = self.graphiti_status()
+        result["cleared"] = cleared
+        return result
+
     def embedding_configuration(self) -> dict[str, Any]:
         configured = self._setting("embeddings.configuration")
         if not isinstance(configured, Mapping):
