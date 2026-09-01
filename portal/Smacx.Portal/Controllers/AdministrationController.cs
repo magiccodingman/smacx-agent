@@ -262,7 +262,10 @@ public sealed class AdministrationController(
     public async Task<ActionResult<ApiResponse<JsonElement?>>> Graphiti(GraphitiConfigurationRequest request)
     {
         object? profile = null;
-        if (!string.IsNullOrWhiteSpace(request.ProfileId))
+        if (request.Enabled && string.IsNullOrWhiteSpace(request.ProfileId))
+            return BadRequest(ApiResponse<JsonElement?>.Failure(
+                "graphiti_profile_required", "Choose an active extraction profile to enable Graphiti."));
+        if (request.Enabled)
         {
             var item = await database.PortalAiProfiles.AsNoTracking().FirstOrDefaultAsync(
                 candidate => candidate.ProfileId == request.ProfileId,

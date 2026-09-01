@@ -290,6 +290,13 @@ class ControlPlane:
     def set_graphiti_enabled(self, enabled: bool, *, profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
         if not isinstance(enabled, bool):
             raise InvalidRecord("invalid_graphiti_enabled")
+        if not enabled:
+            with self.store.transaction() as connection:
+                connection.execute(
+                    "DELETE FROM control_settings WHERE setting_key = 'graphiti.profile'"
+                )
+            self._set_setting("graphiti.enabled", False)
+            return self.graphiti_status()
         if profile is not None:
             provider_id = _require_id(str(profile.get("provider_id", "")), "provider_id")
             model_id = _bounded(str(profile.get("model_id", "")), "model_id", MODEL_ID_LIMIT)
@@ -313,7 +320,7 @@ class ControlPlane:
             raise InvalidRecord("graphiti_extraction_profile_required")
         if enabled and self.embedding_configuration()["mode"] == "disabled":
             raise InvalidRecord("graphiti_requires_embeddings")
-        self._set_setting("graphiti.enabled", enabled)
+        self._set_setting("graphiti.enabled", True)
         return self.graphiti_status()
 
     def embedding_configuration(self) -> dict[str, Any]:
@@ -353,7 +360,7 @@ class ControlPlane:
             })
         self._set_setting("embeddings.configuration", result)
         if mode == "disabled":
-            self._set_setting("graphiti.enabled", False)
+            self.set_graphiti_enabled(False)
         return self.embedding_configuration()
 
     def storage_policy(self) -> dict[str, Any]:

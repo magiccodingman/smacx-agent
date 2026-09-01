@@ -497,8 +497,9 @@ secret tables are never attached.
 
 SQLite remains authoritative. Graphiti is an optional derived temporal
 projection and can be toggled per match. Configure the shared embedding mode
-under **Models & AI profiles**, select a separate active extraction profile
-on the Operations page, then start:
+under **Models & AI profiles**, then select a separate active extraction
+profile on the Operations page. Selecting it enables Graphiti immediately;
+turning Graphiti off clears the selection. Then start:
 
 ```bash
 ./scripts/graphiti-up.sh
