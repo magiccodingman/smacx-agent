@@ -155,7 +155,24 @@ public sealed record LobbyDetails(
     string? LastError,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    MatchPresenceState? Presence = null);
+    MatchPresenceState? Presence = null,
+    CapabilityGapIncident? NeedsAttention = null);
+
+public sealed record CapabilityGapIncident(
+    string IncidentId,
+    string GapId,
+    string Status,
+    string Summary,
+    string ScreenOrState,
+    string IntendedDecision,
+    string RequiredObservation,
+    string RequiredAction,
+    string WhyBlocked,
+    int? Turn,
+    DateTimeOffset ReportedAt,
+    bool NativeWorkerPreserved,
+    string? DiagnosticFileName,
+    long? DiagnosticSizeBytes);
 
 public sealed record MatchPresenceState(
     string State, string Summary, bool AutomaticParkingEnabled,

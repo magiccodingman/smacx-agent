@@ -59,6 +59,7 @@ HARNESS_RUN_PATH = re.compile(
     r"^/api/v1/harness-runs/([A-Za-z0-9_-]{8,96})/(start|stop|status|telemetry)$"
 )
 SCENARIO_CATALOG_PATH = re.compile(r"^/api/v1/game-sources/([A-Za-z0-9_-]{8,96})/scenarios$")
+INCIDENT_PATH = re.compile(r"^/api/v1/incidents/([A-Za-z0-9_-]{8,96})$")
 
 
 class RequestRateLimiter:
@@ -327,6 +328,24 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/operations/status":
                 self._authentication()
                 self._json(200, self._operations().status())
+                return
+            if path == "/api/v1/incidents":
+                self._authentication()
+                query = parse_qs(parts.query, keep_blank_values=True)
+                match_id = query.get("match_id", [None])[0]
+                active_only = query.get("active_only", ["false"])[0].lower() in {
+                    "1", "true", "yes",
+                }
+                self._json(200, {"ok": True, "incidents":
+                    self.server.control.list_supervision_incidents(
+                        match_id=match_id, active_only=active_only,
+                    )})
+                return
+            incident_path = INCIDENT_PATH.fullmatch(path)
+            if incident_path:
+                self._authentication()
+                self._json(200, {"ok": True, "incident":
+                    self.server.control.get_supervision_incident(incident_path.group(1))})
                 return
             if path == "/api/v1/storage-policy":
                 self._authentication()

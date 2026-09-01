@@ -20,6 +20,8 @@ public sealed class PortalMatchSupervisor(
 {
     private int dormantReconcileOffset;
     private bool dormantReconciled;
+    private readonly Dictionary<string, string> announcedCapabilityIncidents =
+        new(StringComparer.Ordinal);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -82,6 +84,26 @@ public sealed class PortalMatchSupervisor(
         foreach (var item in observed)
         {
             await SynchronizeAsync(database, control, item, cancellationToken);
+            try
+            {
+                var incident = await control.GetActiveCapabilityIncidentAsync(
+                    item.MatchId, cancellationToken);
+                if (incident is null)
+                {
+                    announcedCapabilityIncidents.Remove(item.MatchId);
+                }
+                else if (!announcedCapabilityIncidents.TryGetValue(item.MatchId, out var announced) ||
+                         announced != incident.IncidentId)
+                {
+                    announcedCapabilityIncidents[item.MatchId] = incident.IncidentId;
+                    await NotifyAsync(item.MatchId, cancellationToken);
+                }
+            }
+            catch (ControlPlaneException exception)
+            {
+                logger.LogDebug(exception,
+                    "Capability incident poll failed for {MatchId}", item.MatchId);
+            }
         }
         await AutoParkIdleBrowserMatchesAsync(database, control, cancellationToken);
     }

@@ -347,11 +347,29 @@ isolation enforced by the projector.
 
 Do not use vision or UI input. The agent calls `smac_report_capability_gap` once
 with the native label/state, intended decision, missing observation, and missing
-action. Mutation latches closed for that process session.
+action. Mutation latches closed for that process session. Before normal harness
+reconciliation can continue the conversation, the operations supervisor:
 
-Capture the match/session/revision and bridge diagnostics, add a typed adapter
-with fair-state and rejection tests, rebuild, then recover into a fresh native
-session. The capability gap is expected fail-closed behavior.
+1. creates a durable `operator_required` incident scoped to the exact match,
+   native session, instance, and gap ID;
+2. stops the affected Hermes run and disables automatic restart;
+3. leaves the native worker at the failing state for operator inspection; and
+4. creates a bounded diagnostic ZIP in the persistent control volume.
+
+Lobby and managed-player pages show **The AI stopped safely**. Download the ZIP,
+open the prefilled issue at
+<https://github.com/magiccodingman/smacx-agent/issues>, and attach the file. The
+bundle contains the redacted gap, environment fingerprints, match settings,
+pseudonymized seat map, bounded semantic/runtime logs, checksums, and up to three
+newest distinct managed saves when available. It deliberately excludes game
+binaries and assets, credentials, private provider addresses and filesystem
+paths, user/account data, chat, and full model reasoning.
+
+GitHub does not permit the local portal to attach a downloaded file to a new
+issue automatically. Drag the ZIP into the issue after the prefilled page opens.
+Add a typed adapter with fair-state and rejection tests, rebuild, then recover
+into a fresh native session. A capability gap is expected fail-closed behavior,
+not permission to fall back to screenshots or mouse input.
 
 ## Cleanup
 

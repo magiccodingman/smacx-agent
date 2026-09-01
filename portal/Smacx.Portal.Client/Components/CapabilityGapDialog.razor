@@ -1,0 +1,109 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@using Smacx.Portal.Contracts
+
+<div class="capability-gap-backdrop" role="presentation">
+    <section class="capability-gap-dialog" role="alertdialog" aria-modal="true"
+             aria-labelledby="capability-gap-title" aria-describedby="capability-gap-description">
+        <div class="capability-gap-mark"><MudIcon Icon="@Icons.Material.Filled.ReportProblem" /></div>
+        <div class="capability-gap-heading">
+            <span class="panel-kicker">SEMANTIC BRIDGE · NEEDS ATTENTION</span>
+            <h2 id="capability-gap-title">The AI stopped safely</h2>
+            <p id="capability-gap-description">
+                It found a game state the semantic bridge cannot yet understand or control. Automatic
+                continuation is off, and the native game is preserved for diagnosis.
+            </p>
+        </div>
+
+        <div class="capability-gap-summary">
+            <div><span>Gap ID</span><code>@Incident.GapId</code></div>
+            <div><span>Turn</span><strong>@(Incident.Turn?.ToString() ?? "Unknown")</strong></div>
+            <div><span>Native state</span><strong>@Incident.ScreenOrState</strong></div>
+            <div><span>Reported</span><strong>@Incident.ReportedAt.ToLocalTime().ToString("g")</strong></div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Incident.IntendedDecision))
+        {
+            <div class="capability-gap-detail"><span>What the AI was trying to do</span><p>@Incident.IntendedDecision</p></div>
+        }
+        <div class="capability-gap-detail"><span>Why it stopped</span><p>@Incident.WhyBlocked</p></div>
+
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+            The diagnostic ZIP is redacted. It contains no game binaries, credentials, private provider
+            addresses, chat history, account data, or full model reasoning.
+        </MudAlert>
+
+        <div class="capability-gap-actions">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Disabled="@(Incident.DiagnosticFileName is null)"
+                       Href="@DownloadHref">
+                Download diagnostic ZIP
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.BugReport"
+                       Href="@IssueHref" Target="_blank">
+                Open GitHub issue
+            </MudButton>
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ContentCopy"
+                       OnClick="CopyIssueSummary">
+                Copy issue summary
+            </MudButton>
+            @if (ReturnRequested.HasDelegate)
+            {
+                <MudButton Variant="Variant.Text" OnClick="ReturnToLobby">Return to lobby</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Text" OnClick="Dismiss">Stay in lobby</MudButton>
+            }
+        </div>
+        @if (copied)
+        {
+            <span class="capability-gap-copied" role="status">Issue summary copied.</span>
+        }
+        <small>GitHub does not allow websites to attach local files automatically. Drag the downloaded ZIP into the issue.</small>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CapabilityGapIncident Incident { get; set; } = default!;
+    [Parameter, EditorRequired] public string MatchId { get; set; } = "";
+    [Parameter] public EventCallback Dismissed { get; set; }
+    [Parameter] public EventCallback ReturnRequested { get; set; }
+    private IJSObjectReference? module;
+    private bool copied;
+
+    private string DownloadHref =>
+        $"api/lobbies/{Uri.EscapeDataString(MatchId)}/incidents/{Uri.EscapeDataString(Incident.IncidentId)}/diagnostic";
+
+    private string IssueSummary => string.Join("\n", new[]
+    {
+        "SMACX semantic capability gap", "", $"Gap ID: {Incident.GapId}",
+        $"Match ID: {MatchId}", $"Turn: {Incident.Turn?.ToString() ?? "unknown"}",
+        $"Native state: {Incident.ScreenOrState}",
+        $"Intended decision: {Incident.IntendedDecision}",
+        $"Missing observation: {Incident.RequiredObservation}",
+        $"Missing action: {Incident.RequiredAction}", $"Reason blocked: {Incident.WhyBlocked}",
+        "", "I downloaded the redacted diagnostic ZIP and will attach it to this issue.",
+    });
+
+    private string IssueHref =>
+        "https://github.com/magiccodingman/smacx-agent/issues/new?" +
+        $"title={Uri.EscapeDataString($"Capability gap {Incident.GapId}")}&" +
+        $"body={Uri.EscapeDataString(IssueSummary)}";
+
+    private async Task CopyIssueSummary()
+    {
+        module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/incident-actions.js");
+        await module.InvokeVoidAsync("copyText", IssueSummary);
+        copied = true;
+    }
+
+    private Task ReturnToLobby() => ReturnRequested.InvokeAsync();
+    private Task Dismiss() => Dismissed.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null) await module.DisposeAsync();
+    }
+}

@@ -25,6 +25,7 @@ PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
 PYTHONPATH=src python3 scripts/harness_continuation_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
+PYTHONPATH=src python3 scripts/capability_incident_contract_test.py
 PYTHONPATH=src python3 scripts/platform_store_test.py
 PYTHONPATH=src python3 scripts/platform_controller_test.py
 PYTHONPATH=src python3 scripts/external_lan_contract_test.py
@@ -194,7 +195,10 @@ Run the browser portal at desktop and mobile widths and verify:
 15. first-tab controller, second-tab viewer, explicit takeover, and old-stream
     revocation; and
 16. internal Exit game view confirmation, external unload warning, semantic
-    native-quit cancellation, and idle-parking countdown.
+    native-quit cancellation, and idle-parking countdown; and
+17. synthetic capability-gap promotion, immediate player/lobby dialog, stopped
+    harness continuation, diagnostic ZIP download, required archive members,
+    redaction checks, and prefilled GitHub issue action.
 
 The 2026-08-29 Chrome run rendered the actual game through Selkies, accepted
 browser input, kept observer paths read-only, and verified the desktop/mobile

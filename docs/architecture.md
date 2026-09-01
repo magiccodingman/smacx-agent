@@ -195,6 +195,14 @@ yields without a session, revision, turn, year, phase, or outcome change stop
 the run and raise an operator-required supervision incident. Actual nonzero
 process exits retain their separate bounded restart budget.
 
+Capability-gap reports take priority over both continuation and error restart.
+The MCP sidecar appends one match/session-scoped report to the persistent control
+volume. The operations supervisor ingests it before harness reconciliation,
+records an operator-required incident, stops that seat's harness, preserves the
+native worker, and publishes a redacted diagnostic archive. Portal polling and
+the lobby SignalR channel surface the same durable incident to connected humans;
+the browser dialog is therefore recoverable after a refresh or portal restart.
+
 Chat messages and web content remain untrusted game information. They do not
 become operator/system instructions. Lifecycle, Docker, backups, provider
 secrets, stream tickets, and recovery are never agent tools.
