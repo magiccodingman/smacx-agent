@@ -65,6 +65,34 @@ chunked around 768 tokens to avoid weak long-tail facts and to give the model
 precise evidence. SemanticKnowledge retains the chunk array. Only Graphiti's
 single-vector compatibility facade combines chunks.
 
+## Embedding observability
+
+The **Analytics** page includes an embedding observatory for both the built-in
+CPU model and an administrator-selected external provider. It separates:
+
+- initial encyclopedia construction and later changed-document refreshes;
+- human/agent semantic wiki searches;
+- Graphiti episode projection and scoped memory recall; and
+- a repeatable semantic quality canary.
+
+Hourly aggregates record operation and input counts, source/provider token
+counts, vector/chunk counts, elapsed time, effective tokens per second, model,
+dimension, embedding-space identity, and failures. Local source and query token
+counts come from the actual tokenizer. External counts use provider usage when
+available and are visibly labelled estimates when it is absent. Wiki refresh
+throughput is an end-to-end operation measurement, including synchronization;
+it is not presented as raw model-only benchmark throughput.
+
+The canary verifies vector shape, finite values, normalization, repeatability,
+semantic separation, and a real encyclopedia retrieval. It runs once after the
+active embedding configuration and corpus are ready, and again after a clean
+restart caused by an embedding-space change.
+
+Audit storage is a compact hourly SQLite aggregate in the private knowledge
+volume, with only the latest 200 quality results retained. It has no columns for
+input text, acquired prose, embeddings, credentials, chat, or model reasoning.
+Audit writes are fail-open and cannot block rules retrieval or gameplay.
+
 ## Agent retrieval
 
 `smac_reference` exposes a small, bounded surface:

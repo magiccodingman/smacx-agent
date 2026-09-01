@@ -120,6 +120,13 @@ inside a temporary Falkor graph. Repeating the same deterministic episode did
 not duplicate it; cleanup removed that graph and the test-only extraction
 profile was removed afterward, leaving Graphiti disabled by default.
 
+Embedding audit contracts aggregate repeated calls by allowlisted purpose,
+preserve provider-reported versus estimated token provenance, retain bounded
+quality-canary history, and inspect the audit schema to ensure it has no prompt,
+content, or vector-payload fields. Live validation also checks that the local
+model reports one shared instance and that the canary passes numerical,
+semantic-separation, repeatability, and real-wiki retrieval checks.
+
 ## Build and container integration
 
 Use the normal serialized launcher:

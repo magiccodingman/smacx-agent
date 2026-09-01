@@ -382,6 +382,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, read_reference(self.server.control.store, "status"))
                 return
+            if path == "/api/v1/reference/audit":
+                self._authentication()
+                self._json(200, read_reference(self.server.control.store, "audit"))
+                return
             if path == "/api/v1/reference/search":
                 self._authentication()
                 query = parse_qs(parts.query, keep_blank_values=True)

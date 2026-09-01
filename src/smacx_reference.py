@@ -60,6 +60,9 @@ def read_reference(_store: Any, action: str, *, query: str = "", topic: str = ""
     if action == "status":
         result = _request("/api/status", timeout=5.0)
         return {"ok": not bool(result.get("error")), **result}
+    if action == "audit":
+        result = _request("/api/audit", timeout=15.0)
+        return {"ok": not bool(result.get("error")), **result}
     if action == "topics":
         result = _request("/api/topics")
         return {"ok": not bool(result.get("error")), **result}

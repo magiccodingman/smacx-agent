@@ -20,6 +20,7 @@ builder.Services.AddSingleton(new KnowledgeRuntimeOptions(
     ParserRevision: "smacx-semantic-datalinks-v14",
     RefreshInterval: TimeSpan.FromHours(24)));
 builder.Services.AddSingleton(embeddingConfiguration);
+builder.Services.AddSingleton<EmbeddingAuditStore>();
 builder.Services.AddHttpClient("wiki", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -78,6 +79,7 @@ if (enabled)
     builder.Services.AddSingleton<KnowledgeCorpus>();
     builder.Services.AddHostedService<KnowledgeCorpusWorker>();
     builder.Services.AddSingleton<GraphEmbeddingFacade>();
+    builder.Services.AddSingleton<EmbeddingQualityAuditor>();
 }
 builder.Services.AddHostedService<EmbeddingConfigurationMonitor>();
 builder.Services.AddHttpClient("external-embeddings", client => client.Timeout = TimeSpan.FromSeconds(90));
@@ -125,6 +127,10 @@ app.MapGet("/api/status", (KnowledgeRuntimeOptions options, IServiceProvider ser
     });
 });
 
+app.MapGet("/api/audit", async (
+    EmbeddingAuditStore audit, IServiceProvider services, CancellationToken cancellationToken) =>
+    Results.Ok(await audit.SummaryAsync(embeddingConfiguration, services, cancellationToken)));
+
 if (enabled)
 {
 app.MapPost("/api/refresh", async (KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
@@ -164,7 +170,9 @@ app.MapGet("/v1/models", () => Results.Ok(new
     data = new[] { new { id = embeddingConfiguration.ModelId ?? "smacx-local-embeddings", @object = "model" } },
 }));
 
-app.MapPost("/v1/embeddings", async (OpenAiEmbeddingRequest request, GraphEmbeddingFacade embedding, CancellationToken cancellationToken) =>
+app.MapPost("/v1/embeddings", async (
+    OpenAiEmbeddingRequest request, HttpRequest httpRequest,
+    GraphEmbeddingFacade embedding, CancellationToken cancellationToken) =>
 {
     var inputs = request.Input.ValueKind switch
     {
@@ -174,7 +182,10 @@ app.MapPost("/v1/embeddings", async (OpenAiEmbeddingRequest request, GraphEmbedd
     };
     if (inputs.Length is 0 or > 64 || inputs.Any(string.IsNullOrWhiteSpace))
         return Results.BadRequest(new { error = new { message = "input must be a string or an array of 1-64 strings" } });
-    var generated = await embedding.EmbedAsync(inputs, cancellationToken);
+    var requestedPurpose = httpRequest.Headers["X-SMACX-Embedding-Purpose"].ToString();
+    var purpose = requestedPurpose is "graphiti_projection" or "graphiti_recall"
+        ? requestedPurpose : "graphiti_projection";
+    var generated = await embedding.EmbedAsync(inputs, cancellationToken, purpose);
     var output = generated.Vectors.Select((vector, index) =>
         (object)new { @object = "embedding", index, embedding = vector }).ToArray();
     return Results.Ok(new

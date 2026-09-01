@@ -25,6 +25,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/status":
             self._write({"enabled": True, "state": {"state": "ready"}, "mode": "local"})
+        elif self.path == "/api/audit":
+            self._write({
+                "enabled": True,
+                "purposes": [{"purpose": "wiki_search", "calls": 2, "input_tokens": 18}],
+                "privacy": {"input_text_retained": False, "vectors_retained": False,
+                            "credentials_retained": False},
+            })
         elif self.path == "/api/topics":
             self._write({"topics": [{"id": "rules", "title": "Core rules", "document_count": 20}]})
         elif self.path == "/api/tree?includeDocuments=true":
@@ -63,6 +70,10 @@ def main() -> int:
         from smacx_reference import read_reference
         if not read_reference(None, "status").get("ok"):
             raise AssertionError("knowledge health was not observable")
+        audit = read_reference(None, "audit")
+        if audit.get("purposes", [{}])[0].get("purpose") != "wiki_search" \
+                or audit.get("privacy", {}).get("input_text_retained") is not False:
+            raise AssertionError("content-free embedding audit was not observable")
         if not read_reference(None, "topics").get("topics"):
             raise AssertionError("collection hierarchy was not returned")
         tree = read_reference(None, "tree", include_documents=True)
@@ -85,6 +96,7 @@ def main() -> int:
         print(json.dumps({"event": "pass", "payload": {
             "semantic_service_boundary": True, "compact_then_evidence": True,
             "collection_hierarchy": True, "service_health": True,
+            "content_free_embedding_audit": True,
         }}, separators=(",", ":")))
         return 0
     finally:

@@ -341,6 +341,13 @@ multi-chunk vectors; an internal OpenAI-compatible facade combines chunks into
 one vector only for Graphiti. External embeddings are an advanced alternative,
 and changing their stable space ID triggers revalidation/rebuild.
 
+Embedding work emits content-free, purpose-aware hourly aggregates into a
+separate knowledge-volume SQLite database. Graphiti tags internal facade calls
+as projection or recall; the corpus records initial build, changed-document
+refresh, and search independently. A startup quality canary checks numerical
+and semantic behavior. Telemetry contains neither text nor vector payloads and
+is fail-open, preserving the knowledge service as an optional dependency.
+
 ## Graphiti
 
 Graphiti is a derived temporal projection:

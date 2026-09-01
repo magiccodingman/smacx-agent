@@ -258,7 +258,10 @@ and important history are projected asynchronously, then recalled only within
 the exact match/player perspective. SemanticKnowledge and Graphiti share one
 configurable embedding runtime instead of loading duplicate models. SQLite
 remains authoritative, so Graphiti is an enhancement rather than a new point
-of failure.
+of failure. A content-free embedding observatory separates encyclopedia builds
+and searches from Graphiti projection and recall, measures latency and effective
+throughput, and runs a semantic quality canary without retaining prose, prompts,
+vectors, credentials, chat, or model reasoning.
 
 ## Watch the game—or the experiment
 
