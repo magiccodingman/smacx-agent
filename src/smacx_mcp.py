@@ -56,6 +56,8 @@ mcp = MCPServer(
         "when smac_decision reports a changed configuration thereafter. "
         "There are deliberately no screenshot, click, keyboard, or raw text-entry tools. "
         "If a needed capability is absent, call smac_report_capability_gap once and stop. "
+        "A rule_advisory explains why an action is currently illegal; follow its recovery "
+        "instruction instead of misreporting that native rule as a missing capability. "
         "Execute only with smac_execute_choice; its bounded rebase owns revision churn. "
         "Observations are restricted to the current human faction's legitimate perspective."
     ),
@@ -1069,6 +1071,61 @@ def _compact_decision_choices(choices: object) -> list[dict]:
     return compact
 
 
+def _decision_advisories(choices: object) -> list[dict]:
+    """Preserve native rule explanations that are deliberately not executable."""
+    if not isinstance(choices, list):
+        return []
+    allowed = {
+        "kind", "available", "unit_id", "base_id", "reason",
+        "minimum_base_range", "nearest_known_base_range", "meaning",
+    }
+    advisories: list[dict] = []
+    for raw in choices:
+        if not isinstance(raw, dict) or isinstance(raw.get("command"), str):
+            continue
+        if raw.get("kind") != "rule_status":
+            continue
+        item = {key: raw[key] for key in allowed if key in raw}
+        if item:
+            advisories.append(item)
+        if len(advisories) >= 8:
+            break
+    return advisories
+
+
+def _latest_rule_advisories(match_id: str, session_id: str) -> list[dict]:
+    now = time.monotonic()
+    with DECISION_LOCK:
+        candidates = [
+            value for value in DECISION_CACHE.values()
+            if value.get("identity", {}).get("match_id") == match_id
+            and value.get("identity", {}).get("session_id") == session_id
+            and now - float(value.get("created_monotonic", 0)) <= DECISION_TTL_SECONDS
+        ]
+    if not candidates:
+        return []
+    latest = max(candidates, key=lambda value: float(
+        value.get("created_monotonic", 0)))
+    advisories = latest.get("advisories")
+    return advisories if isinstance(advisories, list) else []
+
+
+def _settlement_rule_explains_request(required_action: str,
+                                      advisories: list[dict]) -> dict | None:
+    requested = required_action.casefold()
+    wants_settlement = bool(re.search(
+        r"(?:found|build|construct)[ _-]{0,3}(?:a[ _-]{0,3})?base|"
+        r"base[ _-]{0,3}(?:found|build|construct)", requested,
+    ))
+    if not wants_settlement:
+        return None
+    return next((item for item in advisories if
+                 isinstance(item, dict) and item.get("kind") == "rule_status"
+                 and item.get("available") is False
+                 and isinstance(item.get("reason"), str)
+                 and "base" in str(item.get("meaning", "")).casefold()), None)
+
+
 def _cache_decision_choices(identity: dict, choices: object, *,
                             choice_kind: str, choice_arguments: dict,
                             focus: dict | None = None,
@@ -1083,6 +1140,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
     labels: dict[str, str] = {}
     raw_items = choices if isinstance(choices, list) else []
     compact: list[dict] = []
+    advisories = _decision_advisories(raw_items)
     for raw in raw_items:
         if not isinstance(raw, dict) or not isinstance(raw.get("command"), str):
             continue
@@ -1179,6 +1237,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "choices": private,
             "choice_labels": labels,
+            "advisories": advisories,
             "consumed": False,
         }
     return decision_id, public
@@ -1498,6 +1557,9 @@ def smac_decision(
             },
             "choices": public_choices,
         }
+        advisories = _decision_advisories(choices_result.get("choices", []))
+        if advisories:
+            frame["rule_advisories"] = advisories
         if detail == "full":
             frame["snapshot"] = snapshot
         return _attach_working_state(_attach_chat_attention(
@@ -1561,7 +1623,7 @@ def smac_choices(
             "target_tile_id": target_tile_id, "target_unit_id": target_unit_id,
         },
     )
-    return {
+    frame = {
         "ok": True, "kind": "choice_frame", "decision_id": decision_id,
         "identity": identity, "choice_kind": kind, "choices": choices,
         "required_next": {
@@ -1569,6 +1631,10 @@ def smac_choices(
             "execute_at_most": 1,
         },
     }
+    advisories = _decision_advisories(result.get("choices", []))
+    if advisories:
+        frame["rule_advisories"] = advisories
+    return frame
 
 
 def smac_command(
@@ -2482,6 +2548,27 @@ def smac_report_capability_gap(
     explicit_gap = (
         isinstance(protocol, dict) and protocol.get("phase") == "capability_gap"
     ) or isinstance(execution_circuit, dict)
+    if not explicit_gap:
+        rule = _settlement_rule_explains_request(
+            required_action, _latest_rule_advisories(match_id, session_id),
+        )
+        if rule is not None:
+            return {
+                "ok": False,
+                "error": {
+                    "code": "native_rule_explains_unavailable_action",
+                    "message": (
+                        "Founding a base is implemented, but the native rules reject this "
+                        "Colony Pod's current tile. This is not a capability gap."
+                    ),
+                },
+                "recorded": False,
+                "gameplay_mutations_blocked": False,
+                "rule_advisory": rule,
+                "instruction": rule.get("meaning") or (
+                    "Move the Colony Pod to a different legal site and request a fresh decision."
+                ),
+            }
     if not explicit_gap and _revision_conflict_report(
         screen_or_state, intended_decision, required_observation,
         required_action, why_blocked,

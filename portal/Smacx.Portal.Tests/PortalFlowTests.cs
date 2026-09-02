@@ -204,6 +204,44 @@ public sealed class PortalFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DirectParkIsQueuedDurablyWithoutWaitingOnTheControlPlane()
+    {
+        var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var bootstrapToken = (await File.ReadAllTextAsync(
+            Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        await PostAsync<PortalSession>("api/auth/bootstrap",
+            new BootstrapRequest(bootstrapToken, "StrongP1", "StrongP1"), csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var created = await PostAsync<LobbyDetails>("api/lobbies",
+            new CreateLobbyRequest(
+                "Durable park", "source-test", "runtime-test", "alien-crossfire",
+                "standard", "small", "talent", true, false, false, false, true),
+            csrf.Token);
+        var matchId = created.Payload.Data!.MatchId;
+
+        await using (var scope = factory!.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var match = await database.PortalMatches.SingleAsync(item => item.MatchId == matchId);
+            match.Status = "running";
+            await database.SaveChangesAsync();
+        }
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var parked = await PostAsync<LobbyDetails>(
+            $"api/lobbies/{matchId}/lifecycle",
+            new MatchLifecycleRequest("park", "durable-test"), csrf.Token);
+        Assert.Equal(HttpStatusCode.Accepted, parked.Response.StatusCode);
+        Assert.Equal("parking", parked.Payload.Data?.Status);
+
+        await using var verificationScope = factory.Services.CreateAsyncScope();
+        var verificationDatabase = verificationScope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+        Assert.True(await verificationDatabase.PortalMaintenanceOperations.AnyAsync(item =>
+            item.MatchId == matchId && item.Kind == "direct_park"));
+    }
+
+    [Fact]
     public async Task BootstrapAuthAndStagedLobbyFlowUsesCanonicalSchema()
     {
         var setup = await GetDataAsync<PortalSetupState>("api/auth/setup");

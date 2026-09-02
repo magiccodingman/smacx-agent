@@ -555,20 +555,47 @@ public sealed class LobbiesController(
             switch (request.Action)
             {
                 case "park":
-                    // Claim the lifecycle before any slow operation so the
-                    // supervisor cannot replace a stopped Hermes run while a
-                    // native checkpoint is being taken.
+                    // Parking spans native quiescence, a verified save, Hermes
+                    // shutdown, and worker teardown.  Queue it durably so a
+                    // browser disconnect cannot cancel half of that sequence
+                    // and let the supervisor resurrect autonomous play.
+                    var activePark = await database.PortalMaintenanceOperations
+                        .AnyAsync(item => item.MatchId == matchId &&
+                            item.Kind == "direct_park" &&
+                            (item.Status == "queued" || item.Status == "running"),
+                            HttpContext.RequestAborted);
+                    if (!activePark)
+                    {
+                        database.PortalMaintenanceOperations.Add(new PortalMaintenanceOperation
+                        {
+                            MatchId = matchId,
+                            Kind = "direct_park",
+                            Status = "queued",
+                            Phase = "queued",
+                            Summary = "Safe parking is queued and will continue in the background.",
+                            PayloadJson = JsonSerializer.Serialize(new
+                            {
+                                slot = request.Slot ?? "control_recovery",
+                            }),
+                            CompletedSteps = 0,
+                            TotalSteps = 4,
+                            CanCancel = false,
+                        });
+                        database.PortalMatchEvents.Add(new PortalMatchEvent
+                        {
+                            MatchId = matchId,
+                            EventType = "park_queued",
+                            Summary = "Safe parking was queued as a durable background operation.",
+                        });
+                    }
                     profile.Status = "parking";
                     profile.LastError = null;
                     profile.UpdatedAt = DateTimeOffset.UtcNow;
                     await database.SaveChangesAsync(HttpContext.RequestAborted);
                     await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
                         "LobbyChanged", matchId, HttpContext.RequestAborted);
-                    await StopAgentRunsAsync(matchId, HttpContext.RequestAborted);
-                    await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint",
-                        new { slot = request.Slot ?? "control_recovery" });
-                    await control.PostRawAsync($"api/v1/matches/{matchId}/park", new { });
-                    break;
+                    return Accepted(ApiResponse<LobbyDetails>.Success(
+                        await MapDetailsAsync(profile)));
                 case "checkpoint": await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint", new { slot = request.Slot ?? "control_recovery" }); break;
                 case "recover":
                     if (await control.GetActiveCapabilityIncidentAsync(

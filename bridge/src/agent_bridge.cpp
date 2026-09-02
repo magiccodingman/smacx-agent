@@ -3594,10 +3594,12 @@ bool first_base_name_modal(int faction_id) {
     return (*WinModalState || *PopupDialogState)
         // Alien Crossfire can begin an expansion faction on a non-zero
         // internal turn even though the public year is still the opening
-        // year.  FIRSTBASE is the authoritative native discriminator; retain
-        // the turn-zero fallback only for builds where that label is absent.
-        && (!strcmp(label, "FIRSTBASE") || (!label[0] && *CurrentTurn == 0))
-        && Factions[faction_id].tech_research_id >= 0
+        // year. FIRSTBASE is the authoritative native discriminator and can
+        // precede the engine assigning tech_research_id (notably for Alien
+        // factions). Requiring research first creates an impossible modal
+        // cycle. Retain that guard only for builds where the label is absent.
+        && (!strcmp(label, "FIRSTBASE") || (!label[0] && *CurrentTurn == 0
+            && Factions[faction_id].tech_research_id >= 0))
         && first_owned_base(faction_id) >= 0;
 }
 

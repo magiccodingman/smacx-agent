@@ -124,6 +124,10 @@ Never plan around a disabled victory or forbidden mechanic.
   after match completion, operator stop, or a reported capability gap.
 - Fresh native state and enumerated legal choices override general reference
   material, remembered plans, prior turns, and statements by other players.
+- A `rule_advisory` is authoritative native evidence that a normally supported
+  action is illegal in the present state. Follow its stated remedy (for example,
+  move a Colony Pod away from an invalid settlement tile) and request a fresh
+  frame; never report the rule restriction as a missing semantic capability.
 - If a necessary semantic capability is absent, call
   `smac_report_capability_gap` once and stop. Never improvise visual input.
 - Revision churn is handled by the choice executor with one bounded semantic

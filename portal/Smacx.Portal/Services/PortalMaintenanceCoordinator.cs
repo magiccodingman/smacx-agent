@@ -34,6 +34,8 @@ public sealed class PortalMaintenanceCoordinator(
         var control = scope.ServiceProvider.GetRequiredService<ControlPlaneClient>();
         if (await ProcessCapabilityRecoveryAsync(database, control, cancellationToken))
             return;
+        if (await ProcessDirectParkAsync(database, control, cancellationToken))
+            return;
         // Rotate among approved work by its last attempt time.  A match that is
         // waiting for a human/native safe boundary must never starve approved
         // maintenance for every other match on the server.
@@ -229,6 +231,201 @@ public sealed class PortalMaintenanceCoordinator(
             await database.SaveChangesAsync(CancellationToken.None);
             await NotifyAsync(proposal.MatchId, CancellationToken.None);
         }
+    }
+
+    private async Task<bool> ProcessDirectParkAsync(
+        ApplicationDbContext database, ControlPlaneClient control,
+        CancellationToken stoppingToken)
+    {
+        var operation = await database.PortalMaintenanceOperations
+            .Where(item => item.Kind == "direct_park" &&
+                (item.Status == "queued" || item.Status == "running"))
+            .OrderBy(item => item.UpdatedAt)
+            .FirstOrDefaultAsync(stoppingToken);
+        if (operation is null) return false;
+
+        var match = await database.PortalMatches.SingleOrDefaultAsync(
+            item => item.MatchId == operation.MatchId, stoppingToken);
+        if (match is null)
+        {
+            operation.Status = "failed";
+            operation.Phase = "failed";
+            operation.Summary = "Parking stopped because the campaign no longer exists.";
+            operation.CompletedAt = DateTimeOffset.UtcNow;
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+            await database.SaveChangesAsync(stoppingToken);
+            return true;
+        }
+
+        try
+        {
+            operation.Status = "running";
+            match.Status = "parking";
+            match.LastError = null;
+            match.UpdatedAt = DateTimeOffset.UtcNow;
+            await StepAsync(database, operation, "waiting_for_safe_boundary",
+                "Waiting for the native game to reach a stable save boundary.", 0,
+                stoppingToken);
+
+            var slot = "control_recovery";
+            try
+            {
+                using var payload = JsonDocument.Parse(operation.PayloadJson);
+                if (payload.RootElement.TryGetProperty("slot", out var configured) &&
+                    configured.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(configured.GetString()))
+                    slot = configured.GetString()!;
+            }
+            catch (JsonException)
+            {
+                // Old or manually repaired rows safely use the recovery slot.
+            }
+
+            using var checkpointDocument = await control.PostRawAsync(
+                $"api/v1/matches/{operation.MatchId}/checkpoint",
+                new { slot }, stoppingToken);
+            var checkpoint = checkpointDocument.RootElement.GetProperty("checkpoint");
+            operation.StableTurn = checkpoint.TryGetProperty("turn", out var turn) &&
+                turn.ValueKind == JsonValueKind.Number ? turn.GetInt32() : null;
+            operation.StableYear = checkpoint.TryGetProperty("year", out var year) &&
+                year.ValueKind == JsonValueKind.Number ? year.GetInt32() : null;
+            if (!await database.PortalStableCheckpoints.AnyAsync(
+                    item => item.OperationId == operation.OperationId, stoppingToken))
+            {
+                database.PortalStableCheckpoints.Add(new PortalStableCheckpoint
+                {
+                    MatchId = operation.MatchId,
+                    OperationId = operation.OperationId,
+                    Slot = checkpoint.GetProperty("slot").GetString() ?? slot,
+                    Turn = operation.StableTurn,
+                    Year = operation.StableYear,
+                    SeatMapJson = "[]",
+                    Stability = "three_sample_verified",
+                });
+            }
+            await StepAsync(database, operation, "checkpoint_verified",
+                $"Stable checkpoint captured at turn {operation.StableTurn?.ToString() ?? "?"}.",
+                1, stoppingToken);
+
+            await StopHarnessRunsAsync(control, operation.MatchId, stoppingToken);
+            await StepAsync(database, operation, "autonomous_players_stopped",
+                "Every autonomous player is stopped; parking the native workers.", 2,
+                stoppingToken);
+            using (await control.PostRawAsync(
+                $"api/v1/matches/{operation.MatchId}/park", new { }, stoppingToken)) { }
+            await CompleteDirectParkAsync(database, match, operation,
+                "The match is safely parked and ready to resume later.", stoppingToken);
+        }
+        catch (ControlPlaneException exception) when (IsSafeBoundaryWait(exception))
+        {
+            operation.Status = "queued";
+            operation.Phase = "waiting_for_safe_boundary";
+            operation.Summary = "Waiting for the current native interaction to settle before saving.";
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+            match.Status = "parking";
+            match.UpdatedAt = DateTimeOffset.UtcNow;
+            await database.SaveChangesAsync(CancellationToken.None);
+            await NotifyAsync(operation.MatchId, CancellationToken.None);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // The durable running row is resumed after process restart.
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // A control request may have committed after its HTTP connection
+            // changed.  Native truth wins over transport ambiguity.
+            try
+            {
+                var native = await control.GetMatchAsync(
+                    operation.MatchId, CancellationToken.None);
+                if (native.Match.Status == "parked")
+                {
+                    await CompleteDirectParkAsync(database, match, operation,
+                        "Parking completed and was reconciled after the portal connection changed.",
+                        CancellationToken.None);
+                    return true;
+                }
+            }
+            catch (Exception reconciliationException)
+            {
+                logger.LogDebug(reconciliationException,
+                    "Native park reconciliation deferred for {MatchId}", operation.MatchId);
+            }
+
+            if (IsTransientLifecycleConflict(exception))
+            {
+                operation.Status = "queued";
+                operation.Phase = "waiting_for_runtime_cleanup";
+                operation.Summary = "A previous runtime cleanup is still finishing. Parking will retry automatically.";
+                operation.UpdatedAt = DateTimeOffset.UtcNow;
+                match.Status = "parking";
+                match.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                var detail = $"Parking stopped safely: {exception.Message}";
+                operation.Status = "failed";
+                operation.Phase = "operator_review";
+                operation.Summary = detail[..Math.Min(detail.Length, 2000)];
+                operation.CompletedAt = DateTimeOffset.UtcNow;
+                operation.UpdatedAt = DateTimeOffset.UtcNow;
+                operation.CanCancel = false;
+                match.Status = "error";
+                match.LastError = operation.Summary;
+                match.UpdatedAt = DateTimeOffset.UtcNow;
+                database.PortalMatchEvents.Add(new PortalMatchEvent
+                {
+                    MatchId = operation.MatchId,
+                    EventType = "park_failed",
+                    Summary = operation.Summary,
+                });
+            }
+            await database.SaveChangesAsync(CancellationToken.None);
+            await NotifyAsync(operation.MatchId, CancellationToken.None);
+        }
+        return true;
+    }
+
+    private async Task CompleteDirectParkAsync(
+        ApplicationDbContext database, PortalMatchProfile match,
+        PortalMaintenanceOperation operation, string summary,
+        CancellationToken cancellationToken)
+    {
+        operation.Status = "completed";
+        operation.Phase = "complete";
+        operation.Summary = summary;
+        operation.CompletedSteps = operation.TotalSteps;
+        operation.CanCancel = false;
+        operation.CompletedAt = DateTimeOffset.UtcNow;
+        operation.UpdatedAt = DateTimeOffset.UtcNow;
+        match.Status = "parked";
+        match.LastError = null;
+        match.UpdatedAt = DateTimeOffset.UtcNow;
+        var managedSeats = await database.PortalLobbySeats
+            .Where(item => item.MatchId == operation.MatchId &&
+                item.ControlInstanceId != null)
+            .ToArrayAsync(cancellationToken);
+        foreach (var seat in managedSeats)
+        {
+            seat.ConnectionState = "worker_stopped";
+            seat.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        if (!await database.PortalMatchEvents.AnyAsync(item =>
+                item.MatchId == operation.MatchId && item.EventType == "park" &&
+                item.DetailsJson.Contains(operation.OperationId), cancellationToken))
+        {
+            database.PortalMatchEvents.Add(new PortalMatchEvent
+            {
+                MatchId = operation.MatchId,
+                EventType = "park",
+                Summary = summary,
+                DetailsJson = JsonSerializer.Serialize(new { operation.OperationId }),
+            });
+        }
+        await database.SaveChangesAsync(cancellationToken);
+        await NotifyAsync(operation.MatchId, cancellationToken);
     }
 
     private async Task<bool> ProcessCapabilityRecoveryAsync(

@@ -148,6 +148,44 @@ def main() -> int:
                 "an unresolved native parameter schema was exposed as executable"
             )
 
+        settlement_id, settlement_choices = smacx_mcp._cache_decision_choices(
+            {"match_id": "match-settlement", "session_id": "session-settlement",
+             "revision": "r-settlement"},
+            [
+                {"command": "move_unit", "unit_id": 14, "target_tile_id": 812},
+                {"id": "settlement:unavailable:14", "kind": "rule_status",
+                 "available": False, "unit_id": 14,
+                 "reason": "too_close_to_known_base", "minimum_base_range": 3,
+                 "nearest_known_base_range": 2,
+                 "meaning": "The native rules do not allow this Colony Pod to found a base "
+                            "on its current tile. Move it and request fresh unit choices."},
+            ],
+            choice_kind="unit_actions", choice_arguments={"unit_id": 14},
+            focus={"kind": "unit_actions"}, turn=9, year=2109, phase="turn",
+        )
+        if len(settlement_choices) != 1:
+            raise AssertionError("rule status was incorrectly exposed as an executable choice")
+        advisories = smacx_mcp.DECISION_CACHE[settlement_id].get("advisories", [])
+        if not advisories or advisories[0].get("reason") != "too_close_to_known_base":
+            raise AssertionError(f"native settlement explanation was lost: {advisories}")
+        smacx_mcp._call = lambda operation, **arguments: (
+            {"ok": True, "snapshot": {
+                "match_id": "match-settlement", "session_id": "session-settlement",
+                "revision": "r-settlement", "turn": 9, "year": 2109,
+                "protocol": {"phase": "turn"},
+            }} if operation == "semantic_snapshot" else
+            (_ for _ in ()).throw(AssertionError(f"unexpected operation {operation}"))
+        )
+        false_gap = smacx_mcp.smac_report_capability_gap(
+            "Colony Pod cannot settle here", "Expand to a second base",
+            "No found-base choice is visible", "found_base",
+            "The current tile does not expose the action",
+        )
+        if false_gap.get("error", {}).get("code") != \
+                "native_rule_explains_unavailable_action" \
+                or false_gap.get("recorded") is not False:
+            raise AssertionError(f"native rule was misreported as a capability gap: {false_gap}")
+
         smacx_mcp.ACTION_PROGRESS.clear()
         smacx_mcp._call = lambda operation, **arguments: (
             {"ok": True, "changed": True} if operation == "semantic_command" else
