@@ -12,13 +12,10 @@ for advertising or personal profiling.
 
 ## What is measured
 
-Top-level portal pages load `/js/potato.js` from their own SMACX Agent host. The
-portal serves that first-party path through a bounded, 24-hour cache of the
-maintainer's exact Plausible browser script; the third-party tracker source is
-not vendored into this Apache-2.0 repository. The script reports events to the
-maintainer-operated Plausible endpoint at
-`https://track.truthorigin.com/api/event` under the site identifier
-`smacx-agent.magiccodingman`.
+Top-level portal pages load the analytics script through a first-party path on
+their own SMACX Agent host. The tracker source is not vendored into this
+Apache-2.0 repository, and events are sent to the maintainer-operated Plausible
+deployment.
 
 The integration measures aggregate page views and client-side route changes,
 eligible file downloads, outbound-link clicks, and the ordinary browser,
