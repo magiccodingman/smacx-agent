@@ -83,7 +83,7 @@ def main() -> int:
         "checks": checks, "paths": paths,
         "notes": [
             "AI-only and routed-tailnet workers use Linux containers and Proton on both hosts.",
-            "A physical Windows/WSL2 DirectPlay game still requires the certification checklist.",
+            "Test the physical Windows/WSL2 DirectPlay route from the intended client before play.",
         ],
     }, separators=(",", ":")))
     return 0 if okay else 1

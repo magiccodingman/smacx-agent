@@ -125,7 +125,7 @@ def exchange_bidirectional_chat(manager: WorkerManager, agent_instance: str,
         item for item in human_chat.get("participants", []) if item.get("local") is False
     )
     agent_faction = agent_participant["faction_id"]
-    human_text = f"Alice human-host certification {marker}"
+    human_text = f"Alice human-host test {marker}"
     sent_human = manager._native_request(  # noqa: SLF001
         human_instance, "semantic_chat", action="send",
         match_id=human_chat["identity"]["match_id"],

@@ -11,9 +11,9 @@ must also let ordinary people create lobbies, play managed seats from a web
 browser, reconnect, watch permitted perspectives, and inspect match history
 without learning the lower-level MCP and Docker interfaces.
 
-The application is intended for trusted localhost and local-area networks. It
-is not an Internet game service, binary distributor, matchmaking network, or
-competitive anti-cheat platform. All matches are initially unranked.
+The application is intended for a private household or invited-friends host. It
+is not a binary distributor, public matchmaking network, or competitive
+anti-cheat platform. All matches are unranked.
 
 ## Decision
 
@@ -50,9 +50,8 @@ permitted seat streams. A separate
 `managed clients only` option disallows external native clients when operators
 want one reproducible runtime for every human seat.
 
-All matches use classification `unranked`. The durable match record retains a
-classification and policy snapshot so a future ranked policy can be introduced
-without reinterpreting historical matches. The current API rejects `ranked`.
+All matches use classification `unranked`. The durable match record retains its
+classification and policy snapshot, and the current API rejects `ranked`.
 
 AI profiles are stable, uniquely named identities that may be edited in place,
 deactivated, and later reactivated without severing their analytics history.
@@ -60,8 +59,8 @@ Operators who need separate experimental cohorts create separately named
 profiles. Hermes retains its
 tool-critical system layer. The application injects a stable SMACX player
 contract, immutable match context, an optional personality block, and scoped
-memory in that order. Personality storage and selection are scaffolded, but the
-only selectable value in this milestone is `None`.
+memory in that order. Personality selection belongs to each AI seat; `None`
+remains available when no personality should be injected.
 
 Graphiti remains an optional, derived projection. Match configuration may use
 the server default, enable it, or disable it. SQLite remains authoritative and
@@ -73,11 +72,11 @@ Migration history begins only after a public schema is released.
 
 ## Security and distribution posture
 
-The portal is the only ordinary LAN HTTP entry point. The Python service,
+The portal is the only ordinary HTTP entry point. The Python service,
 Docker authority, MCP endpoints, provider secrets, bridge tokens, and stream
 credentials stay on private networks or purpose volumes. Client-side Blazor
-authorization is never treated as enforcement. Anonymous stream tickets are
-short-lived, read-only, and revoked when the lobby disables spectators.
+authorization is never treated as enforcement. Authenticated spectator tickets
+are short-lived, read-only, and revoked when the lobby disables spectators.
 
 The project documentation contains the following complete game-assets notice:
 
@@ -85,9 +84,11 @@ The project documentation contains the following complete game-assets notice:
 > Alien Crossfire, or other proprietary game assets. Users provide their own
 > installation.
 
-The software does not enforce ownership or mod parity. Runtime fingerprints are
-diagnostic and experimental metadata unless a lobby explicitly requires
-managed browser clients.
+The software does not enforce mod parity. For remote accounts, the browser
+locally hashes a small selection of user-chosen installation files and sends
+only a compact fingerprint for a good-faith ownership check; no executable,
+DLL, or game asset is uploaded. Managed browser clients use the host's
+installation.
 
 ## Consequences
 
@@ -95,6 +96,4 @@ The portal can evolve independently without weakening the semantic fair-play
 boundary. Browser users gain a modern experience while native clients and MCP
 automation remain possible. The split introduces an internal authenticated API
 and two databases, but each has a single writer and a narrow responsibility.
-Public Internet deployment, Windows certification, physical multi-machine
-certification, ranked ratings, and personality content remain outside this
-milestone.
+Public matchmaking and competitive ratings are not part of this architecture.

@@ -1,7 +1,7 @@
 # MCP tool reference
 
 - `smac_status()` — process identity and menu/game state.
-- `smac_capabilities(section)` — reviewed static platform coverage and certification boundary. Query one compact section such as `launch_modes`, `lan_profiles`, `known_fail_closed_gaps`, or `deployment`; this never substitutes for fresh legal actions.
+- `smac_capabilities(section)` — static platform availability and safety boundary. Query one compact section such as `launch_modes`, `lan_profiles`, `known_fail_closed_gaps`, or `deployment`; this never substitutes for fresh legal actions.
 - `smac_new_game(...)` — launch a configured random single-player match semantically.
 - `smac_scenarios()` — list exact safe scenario IDs from the operator's legal game copy; no scenario asset is returned.
 - `smac_new_scenario(scenario_id, ...)` — load one returned solo scenario directly while preserving scenario-authored rules and restrictions.
@@ -21,7 +21,7 @@
 - `smac_command(...)` — execute exactly one returned choice with `match_id`, `session_id`, and `expected_revision`.
 - `smac_wait(seconds)` — bounded wait while the engine or another faction owns the turn.
 - `smac_chat(...)` — list or send guarded native LAN chat scoped to the current match/session and optional recipient faction. It persists delivered speech with network-player/faction associations and exactly-once attention state.
-- `smac_lan(...)` — inspect, host, discover, join, configure, ready, and start the validated native DirectPlay LAN lifecycle.
+- `smac_lan(...)` — inspect, host, discover, join, configure, ready, and start the managed native DirectPlay LAN lifecycle.
 - `smac_saves(action, match_id, slot)` — list or load match-scoped save slots. Stop the current game before load.
 - `smac_knowledge(action, match_id, ...)` — list/get/history or record durable match facts in the authoritative scoped SQLite store. Writes require the active `session_id` and current snapshot `revision`; corrections retain audit history and the former JSON ledger is only a compatibility mirror. Session-local unit/base/prototype engine IDs are rejected.
 - `smac_memory(...)` — retrieve the bounded working set, scoped FTS5/BM25 search, batched recall, chat/events, structured projection histories, optional Graphiti status, or an exact-scope `graph_recall`. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.

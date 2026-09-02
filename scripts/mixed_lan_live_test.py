@@ -4,7 +4,7 @@
 The external client owns a separate durable fixture scope and has no seat,
 perspective, MCP, or worker binding in the match under test. It uses the same
 semantic bridge only to automate what a physical human will do manually during
-certification: discover, join by exact native session ID, choose the saved
+exercise: discover, join by exact native session ID, choose the saved
 faction, ready, exchange chat, disconnect, and rejoin.
 """
 
@@ -37,7 +37,7 @@ def docker(*arguments: str, check: bool = True) -> str:
 
 def wait_for(manager: WorkerManager, instance_id: str, operation: str,
              predicate, *, timeout: float, **arguments) -> dict:
-    return manager._wait_native(  # noqa: SLF001 - native certification seam
+    return manager._wait_native(  # noqa: SLF001 - native test seam
         instance_id, operation, predicate, timeout=timeout,
         poll_seconds=0.5, **arguments,
     )
@@ -70,7 +70,7 @@ def resolve_opening_interactions(manager: WorkerManager,
     DirectPlay chat is not serviced while a peer remains inside the stock
     PLANETFALL/research modal loop. A physical player dismisses these dialogs
     before chatting; the fixture must do the semantic equivalent on all three
-    processes or it is certifying an impossible user sequence.
+    processes or it is testing an impossible user sequence.
     """
     transient_errors = {
         "stale_state", "popup_transition_pending",
@@ -294,7 +294,7 @@ def exchange_chat(manager: WorkerManager, host_instance: str,
         match_id=external_chat["identity"]["match_id"],
         session_id=external_chat["identity"]["session_id"],
         client_message_id=f"external-{marker}",
-        text=f"Alice external certification {marker}",
+        text=f"Alice external test {marker}",
         recipient_faction_id=0,
     )
     if not sent.get("ok") or sent.get("sent") is not True:
@@ -311,7 +311,7 @@ def exchange_chat(manager: WorkerManager, host_instance: str,
         )
         message = next(
             (item for item in host_chat.get("messages", [])
-             if item.get("text") == f"Alice external certification {marker}"),
+             if item.get("text") == f"Alice external test {marker}"),
             None,
         )
         if participant and isinstance(participant.get("faction_id"), int) and message \

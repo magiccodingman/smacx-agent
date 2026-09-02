@@ -53,10 +53,9 @@ bare `docker compose up` for the control service unless you first export
 ### Build resources
 
 The worker image and Blazor publish optimizer are the expensive phases. Builds
-are intentionally sequential. The known-good development VM has 16 GiB RAM,
-16 GiB swap, and eight virtual CPUs. About 12 GiB RAM plus 4 GiB swap is a
-practical source-build target. Runtime demand is much lower and grows mainly
-with active browser/game/AI seats.
+are intentionally sequential. If the kernel terminates a build for lack of
+memory, increase the host's available memory or swap and rerun the launcher.
+Runtime demand is lower and grows mainly with active browser/game/AI seats.
 
 ## 2. First administrator
 
@@ -216,8 +215,8 @@ through the configured endpoint. The resulting status distinguishes untested,
 accepted, rejected, and stale configurations. An accepted request proves the
 stored fields were serialized and the endpoint returned success; it does not
 prove that the server honored every extension semantically. The UI deliberately
-keeps that distinction visible instead of treating an HTTP 200 as behavioral
-certification.
+keeps that distinction visible instead of treating an HTTP 200 as proof of
+semantic behavior.
 
 The default gameplay context is **Automatic** and uses the selected model's
 advertised context length. A manual override must be at least 65,536 tokens and
@@ -337,7 +336,7 @@ The transport reconnects to the same worker after a browser refresh. A user can
 leave the browser and return without changing their native faction.
 
 The managed desktop is fixed for one worker lifetime, but the portal supports a
-validated native catalog from 800×600 through 5120×1440. Selkies scales the
+managed native catalog from 800×600 through 5120×1440. Selkies scales the
 current desktop locally while preserving its aspect ratio, so ordinary browser
 resizing and phone rotation are instant and never disturb another player.
 Landscape and fullscreen are strongly recommended on a small touch screen.

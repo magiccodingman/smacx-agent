@@ -186,14 +186,14 @@ async function loadDashboard() {
 function renderCapabilities(capabilities) {
   const profiles = Object.keys(capabilities.lan_profiles || {});
   const deployment = capabilities.deployment || {};
-  const pendingExternal = Object.values(deployment).filter((item) =>
-    String(item.status || "").includes("external_certification_required")
+  const limitedPaths = Object.values(deployment).filter((item) =>
+    ["experimental", "unavailable"].includes(String(item.status || ""))
   ).length;
   const scenario = capabilities.launch_modes?.solo_scenario?.status || "unknown";
   $("#capability-summary").textContent =
-    `${profiles.length} native-tested random-map profiles · scenario launch ${scenario.replaceAll("_", " ")} · ${pendingExternal} external certification gate(s)`;
+    `${profiles.length} managed random-map profiles · scenario launch ${scenario.replaceAll("_", " ")} · ${limitedPaths} limited platform path(s)`;
   $("#capability-detail").textContent =
-    "Agents can query the same fail-closed ledger through smac_capabilities; current-turn choices remain authoritative.";
+    "Agents can query the same fail-closed availability map through smac_capabilities; current-turn choices remain authoritative.";
 }
 
 function renderGraphiti(graphiti) {
