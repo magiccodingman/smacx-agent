@@ -2,7 +2,7 @@
     <div class="brand-mark">α</div>
     <div>
         <div class="brand-title">SMACX</div>
-        <div class="brand-subtitle">LAN CONTROL</div>
+        <div class="brand-subtitle">PLANETARY NETWORK</div>
     </div>
 </div>
 
@@ -18,12 +18,13 @@
     <MudNavLink Href="install" Icon="@Icons.Material.Filled.InstallMobile" OnClick="Navigate">Install app</MudNavLink>
     <AuthorizeView Roles="Administrator">
         <MudNavLink Href="admin" Icon="@Icons.Material.Filled.AdminPanelSettings" OnClick="Navigate">Administration</MudNavLink>
+        <MudNavLink Href="admin/network" Icon="@Icons.Material.Filled.VpnLock" OnClick="Navigate">Network access</MudNavLink>
     </AuthorizeView>
 </MudNavMenu>
 
 <div class="drawer-footer">
     <span class="status-pulse"></span>
-    <div><strong>LAN mode</strong><small>Private network only</small></div>
+    <div><strong>Private host</strong><small>LAN + invited friends</small></div>
 </div>
 
 @code {

@@ -59,7 +59,12 @@ public sealed class PortalMatchSupervisor(
             match.Status = "provisioning";
             match.UpdatedAt = DateTimeOffset.UtcNow;
         }
-        if (interrupted.Length > 0)
+        var waitingWithoutPresence = await database.PortalMatches
+            .Where(item => item.Status == "waiting" && item.WaitingVacantSince == null)
+            .ToArrayAsync(cancellationToken);
+        foreach (var match in waitingWithoutPresence)
+            match.WaitingVacantSince = DateTimeOffset.UtcNow;
+        if (interrupted.Length > 0 || waitingWithoutPresence.Length > 0)
         {
             await database.SaveChangesAsync(cancellationToken);
         }
@@ -138,7 +143,7 @@ public sealed class PortalMatchSupervisor(
         if (matchIds.Count == 0) return;
         logger.LogInformation(
             "Expired {Count} inactive waiting lobbies older than {Lifetime}",
-            matchIds.Count, waitingLobbyPolicy.IdleLifetime);
+            matchIds.Count, waitingLobbyPolicy.AbandonLifetime);
     }
 
     private async Task ReconcileDormantMatchesAsync(

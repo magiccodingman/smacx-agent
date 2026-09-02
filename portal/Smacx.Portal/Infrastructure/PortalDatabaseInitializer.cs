@@ -15,6 +15,7 @@ public sealed class PortalDatabaseInitializer(
         await using var scope = scopeFactory.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await database.Database.EnsureCreatedAsync(cancellationToken);
+        await EnsureCanonicalAccessSchemaAsync(database, cancellationToken);
 
         var requiredTables = new HashSet<string>(StringComparer.Ordinal)
         {
@@ -22,7 +23,7 @@ public sealed class PortalDatabaseInitializer(
             "PortalChatGroups", "PortalChatGroupMembers", "PortalChatDeliveries",
             "PortalGovernanceProposals", "PortalGovernanceVotes",
             "PortalMaintenanceOperations", "PortalStableCheckpoints",
-            "PortalAiProfiles",
+            "PortalAiProfiles", "RegistrationInvitations", "PortalMatchParticipants",
         };
         var connection = database.Database.GetDbConnection();
         await connection.OpenAsync(cancellationToken);
@@ -62,7 +63,9 @@ public sealed class PortalDatabaseInitializer(
 
         var requiredUserColumns = new HashSet<string>(StringComparer.Ordinal)
         {
-            "NormalizedDisplayName",
+            "NormalizedDisplayName", "IsActive", "IsPrimaryAdministrator",
+            "InstallationVerifiedAt", "InstallationVerificationSource",
+            "InstallationFingerprintId",
         };
         await using (var command = connection.CreateCommand())
         {
@@ -107,6 +110,25 @@ public sealed class PortalDatabaseInitializer(
             }
         }
 
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var primary = await database.Users.SingleOrDefaultAsync(
+            user => user.IsPrimaryAdministrator, cancellationToken);
+        if (primary is null)
+        {
+            var bootstrapAdministrator = await userManager.FindByNameAsync("admin");
+            if (bootstrapAdministrator is not null &&
+                await userManager.IsInRoleAsync(bootstrapAdministrator, PortalRoles.Administrator))
+            {
+                bootstrapAdministrator.IsPrimaryAdministrator = true;
+                bootstrapAdministrator.IsActive = true;
+                bootstrapAdministrator.InstallationVerifiedAt ??= DateTimeOffset.UtcNow;
+                bootstrapAdministrator.InstallationVerificationSource ??= "server_game_source";
+                bootstrapAdministrator.InstallationFingerprintId ??= "server-game-source";
+                bootstrapAdministrator.UpdatedAt = DateTimeOffset.UtcNow;
+                await database.SaveChangesAsync(cancellationToken);
+            }
+        }
+
         var registration = await database.PortalSettings.FindAsync(["registration.enabled"], cancellationToken);
         if (registration is null)
         {
@@ -136,5 +158,73 @@ public sealed class PortalDatabaseInitializer(
         }
 
         logger.LogInformation("Portal canonical schema is ready");
+    }
+
+    private static async Task EnsureCanonicalAccessSchemaAsync(
+        ApplicationDbContext database,
+        CancellationToken cancellationToken)
+    {
+        var connection = database.Database.GetDbConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        async Task<HashSet<string>> Columns(string table)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"PRAGMA table_info('{table.Replace("'", "''")}')";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) names.Add(reader.GetString(1));
+            return names;
+        }
+
+        async Task Execute(string sql)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var users = await Columns("AspNetUsers");
+        if (!users.Contains("IsActive"))
+            await Execute("ALTER TABLE AspNetUsers ADD COLUMN IsActive INTEGER NOT NULL DEFAULT 1");
+        if (!users.Contains("IsPrimaryAdministrator"))
+            await Execute("ALTER TABLE AspNetUsers ADD COLUMN IsPrimaryAdministrator INTEGER NOT NULL DEFAULT 0");
+        if (!users.Contains("InstallationVerifiedAt"))
+            await Execute("ALTER TABLE AspNetUsers ADD COLUMN InstallationVerifiedAt INTEGER NULL");
+        if (!users.Contains("InstallationVerificationSource"))
+            await Execute("ALTER TABLE AspNetUsers ADD COLUMN InstallationVerificationSource TEXT NULL");
+        if (!users.Contains("InstallationFingerprintId"))
+            await Execute("ALTER TABLE AspNetUsers ADD COLUMN InstallationFingerprintId TEXT NULL");
+
+        var matches = await Columns("PortalMatches");
+        if (!matches.Contains("WaitingVacantSince"))
+            await Execute("ALTER TABLE PortalMatches ADD COLUMN WaitingVacantSince INTEGER NULL");
+
+        await Execute("""
+            CREATE TABLE IF NOT EXISTS RegistrationInvitations (
+                Id TEXT NOT NULL PRIMARY KEY,
+                TokenHash TEXT NOT NULL,
+                CreatedByUserId TEXT NOT NULL,
+                UsedByUserId TEXT NULL,
+                Label TEXT NULL,
+                CreatedAt INTEGER NOT NULL,
+                ExpiresAt INTEGER NOT NULL,
+                UsedAt INTEGER NULL,
+                RevokedAt INTEGER NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS IX_RegistrationInvitations_TokenHash
+                ON RegistrationInvitations(TokenHash);
+            CREATE INDEX IF NOT EXISTS IX_RegistrationInvitations_Expiry
+                ON RegistrationInvitations(ExpiresAt, UsedAt, RevokedAt);
+            CREATE TABLE IF NOT EXISTS PortalMatchParticipants (
+                MatchId TEXT NOT NULL,
+                UserId TEXT NOT NULL,
+                FirstSeatIndex INTEGER NOT NULL,
+                RecordedAt INTEGER NOT NULL,
+                PRIMARY KEY (MatchId, UserId),
+                FOREIGN KEY (MatchId) REFERENCES PortalMatches(MatchId) ON DELETE CASCADE,
+                FOREIGN KEY (UserId) REFERENCES AspNetUsers(Id) ON DELETE RESTRICT
+            );
+            """);
     }
 }

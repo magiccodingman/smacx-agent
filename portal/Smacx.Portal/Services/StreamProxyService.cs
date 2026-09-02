@@ -14,6 +14,8 @@ public sealed class StreamProxyService(
     ControlPlaneClient control,
     StreamPresenceTracker presence,
     ControllerLeaseService controllerLeases,
+    MatchAccessService matchAccess,
+    AccountConnectionRegistry accountConnections,
     ILogger<StreamProxyService> logger)
 {
     private static readonly ForwarderRequestConfig RequestConfig = new()
@@ -42,7 +44,8 @@ public sealed class StreamProxyService(
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         var ownsSeat = userId is not null && seat.UserId == userId;
         var administrator = context.User.IsInRole(Infrastructure.PortalRoles.Administrator);
-        var mayView = ownsSeat || administrator || match.AllowAnonymousSpectators;
+        var mayView = ownsSeat || await matchAccess.CanSpectateAsync(
+            match, userId, administrator, context.RequestAborted);
         if (!mayView)
         {
             context.Response.StatusCode = context.User.Identity?.IsAuthenticated == true
@@ -52,7 +55,7 @@ public sealed class StreamProxyService(
         }
 
         // Only the human assigned to this exact browser seat receives input.
-        // Administrators and public spectators always get Selkies' enforced
+        // Non-participating administrators and authenticated spectators always get Selkies' enforced
         // view-only credential, even though administrators may inspect any seat.
         var forceViewOnly = context.Request.Query.TryGetValue("view", out var view)
             && view.Count > 0 && view[0] == "1";
@@ -67,16 +70,18 @@ public sealed class StreamProxyService(
             && seat.JoinMode == "browser"
             && hasControllerLease;
         using var presenceLease = interactive ? presence.Enter(instanceId) : null;
-        using var linkedCancellation = interactive
-            ? CancellationTokenSource.CreateLinkedTokenSource(
-                context.RequestAborted, controllerRevoked)
-            : null;
-        if (linkedCancellation is not null)
-            context.RequestAborted = linkedCancellation.Token;
+        var accountRevoked = userId is null ? CancellationToken.None : accountConnections.Token(userId);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            context.RequestAborted, controllerRevoked, accountRevoked);
+        context.RequestAborted = linkedCancellation.Token;
         ControlStreamAccess access;
         try
         {
             access = await control.GetStreamAccessAsync(instanceId, interactive, context.RequestAborted);
+        }
+        catch (OperationCanceledException) when (accountRevoked.IsCancellationRequested)
+        {
+            return;
         }
         catch (ControlPlaneException exception)
         {
@@ -102,6 +107,11 @@ public sealed class StreamProxyService(
         {
             logger.LogInformation(
                 "Closed superseded controller stream for {InstanceId}", instanceId);
+            return;
+        }
+        catch (OperationCanceledException) when (accountRevoked.IsCancellationRequested)
+        {
+            logger.LogInformation("Closed stream for revoked account {UserId}", userId);
             return;
         }
         if (interactive && controllerRevoked.IsCancellationRequested)

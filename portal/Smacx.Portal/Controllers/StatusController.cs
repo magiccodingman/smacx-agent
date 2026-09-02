@@ -39,7 +39,7 @@ public sealed class StatusController(ControlPlaneClient control, ApplicationDbCo
     }
 
     [HttpGet("activity")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<PortalActivityItem>>>> Activity()
     {
         var items = await (

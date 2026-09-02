@@ -5,8 +5,9 @@ The Control Center is the ordinary way to run SMACX Agent. It is a persistent
 not need an existing Hermes installation or dashboard: AI seats receive an
 isolated, digest-pinned Hermes runtime automatically.
 
-This guide assumes Linux and a trusted localhost/private-LAN deployment. The
-portal is not designed as a public Internet service.
+This guide assumes Linux and begins with localhost and trusted-LAN deployment.
+The same private host can later invite known friends over HTTPS, but it is not
+public matchmaking or an anonymous streaming service.
 
 ## 1. Start the platform once
 
@@ -94,20 +95,16 @@ account** while the old name is not reserved by an unfinished match. Inviting a
 display name to a lobby reserves a passwordless provisional account;
 registering that display name later claims the existing seat and history.
 
-## 3. Publish on a trusted LAN
+## 3. Open on a trusted LAN
 
-The default binding is host-only. To let household/friend devices reach the
-portal:
+The included Caddy edge publishes port 8080 for localhost and private-network
+play. Players browse to `http://HOST_LAN_IP:8080`; the portal itself remains
+unpublished behind that edge. Caddy and the DDNS helper are part of every
+deployment, but public TLS and address updates remain idle until configured.
 
-```bash
-SMACX_PORTAL_PUBLISH=0.0.0.0:8080 \
-SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
-  ./scripts/control-center-up.sh
-```
-
-Players browse to `http://HOST_LAN_IP:8080`. Restrict that port with the host
-firewall to the trusted LAN. Do not forward it from the router and do not put
-it behind public Internet ingress.
+To continue the same installation for invitation-only remote friends, follow
+[Internet hosting for friends](internet-hosting.md). Do not forward the plain
+HTTP LAN port; remote sign-in requires the Caddy-managed HTTPS hostname.
 
 Browser seats need only the website. Stream traffic remains behind the portal;
 worker ports are never shared as public credentials.
@@ -266,7 +263,7 @@ Choose **New lobby** and set:
   host);
 - browser or direct/native human mode, invited handles, AI profiles, and stock
   game-controlled remaining factions;
-- anonymous spectators (off by default), managed-clients-only, and Graphiti.
+- authenticated non-player spectators (off by default), managed-clients-only, and Graphiti.
 
 The portal validates named values and sends typed native settings. It does not
 drive setup menus with clicks. Scenarios use a catalog built from the validated
@@ -308,9 +305,10 @@ Regular members may own at most five waiting lobbies. Joined or invited rooms
 do not count, and starting or closing a room immediately frees a slot.
 Administrators are unlimited for simulation work. The create page shows the
 current quota and links to rooms that must be started or closed. A waiting room
-with no connected lobby browser and no seat/configuration activity for 24 hours
-is deleted automatically; `SMACX_WAITING_LOBBY_TTL_HOURS` may set 1–720 hours.
-Actively open staging rooms cannot expire.
+remains live while any signed-in human has that exact staging page open. When
+its final viewer leaves, a persisted 30-minute expiration begins; returning to
+the page cancels it. `SMACX_WAITING_LOBBY_ABANDON_MINUTES` may set 5–1440
+minutes. The lobby directory does not keep rooms alive.
 
 Reserved public display names are case-insensitive seat reservations; they do not
 send notifications. A matching existing or future local account receives the

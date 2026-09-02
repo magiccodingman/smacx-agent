@@ -3,16 +3,17 @@
 @inject NavigationManager Navigation
 <PageTitle>Create account · SMACX Agent</PageTitle>
 <div class="auth-stage"><section class="auth-card">
-    <div class="auth-sigil">+</div><span class="panel-kicker">JOIN THE NETWORK</span><h1>Create a LAN identity</h1>
+    <div class="auth-sigil">+</div><span class="panel-kicker">JOIN THE NETWORK</span><h1>Create your identity</h1>
     <p>Your username is only for signing in. Your public display name appears in lobbies, games, and chat and can be changed later.</p>
+    @if(inviteRequired){<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">This network requires a one-time invitation. If you opened this page directly, accept the administrator's invite link first.</MudAlert>}
     <MudTextField @bind-Value="username" Label="Username" Variant="Variant.Outlined" Immediate="true" /><MudTextField @bind-Value="displayName" Label="Public display name" Variant="Variant.Outlined" Immediate="true" MaxLength="31" Counter="31" />
     <MudTextField @bind-Value="password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" HelperText="@PasswordHelp" /><MudTextField @bind-Value="confirmation" Label="Confirm password" InputType="InputType.Password" Variant="Variant.Outlined" Immediate="true" />
     <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="busy" OnClick="CreateAccount">Create account</MudButton><div class="auth-hint">Already registered? <a href="login">Sign in</a></div>
     @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert> }
 </section></div>
 @code {
-    private string username = ""; private string displayName = ""; private string password = ""; private string confirmation = ""; private string? error; private bool busy; private int passwordMinimumLength = 8;
+    private string username = ""; private string displayName = ""; private string password = ""; private string confirmation = ""; private string? error; private bool busy; private bool inviteRequired; private int passwordMinimumLength = 8;
     private string PasswordHelp => $"At least {passwordMinimumLength} characters with upper, lower, and a number.";
-    protected override async Task OnInitializedAsync() { passwordMinimumLength = (await Api.GetAsync<PortalSetupState>("api/auth/setup"))?.Data?.PasswordMinimumLength ?? 8; }
-    private async Task CreateAccount() { busy = true; error = null; var result = await Api.PostAsync<PortalSession>("api/auth/register", new RegistrationRequest(username, displayName, password, confirmation)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo("/", true); else error = result.Payload?.Error?.Message ?? "Registration failed."; }
+    protected override async Task OnInitializedAsync() { var setup=(await Api.GetAsync<PortalSetupState>("api/auth/setup"))?.Data; passwordMinimumLength=setup?.PasswordMinimumLength??8;inviteRequired=setup?.RegistrationRequiresInvite==true; }
+    private async Task CreateAccount() { busy = true; error = null; var result = await Api.PostAsync<RegistrationResult>("api/auth/register", new RegistrationRequest(username, displayName, password, confirmation)); busy = false; if (result.Payload?.Ok == true) Navigation.NavigateTo("/login?registered=1", true); else error = result.Payload?.Error?.Message ?? "Registration failed."; }
 }

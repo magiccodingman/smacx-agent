@@ -1,6 +1,6 @@
 # Architecture
 
-SMACX Agent is a LAN application around the real Alien Crossfire executable,
+SMACX Agent is a private household/friends application around the real Alien Crossfire executable,
 not a replacement game engine. It separates human presentation, operator
 authority, AI reasoning, durable knowledge, and native mutation so each can be
 tested and secured independently.
@@ -8,7 +8,10 @@ tested and secured independently.
 ## Component map
 
 ```text
-trusted LAN browser
+trusted LAN or invited HTTPS browser
+       |
+       v
+Caddy edge (HTTP LAN; automatic TLS for configured public hostname)
        |
        | accounts, lobbies, reports, ephemeral controller leases
        v
@@ -65,6 +68,8 @@ The portal is the only ordinary browser/LAN entry point and the only writer of
 its canonical pre-release SQLite schema:
 
 - ASP.NET Core Identity users/roles/password-reset grants;
+- trusted-network classification behind the private Caddy proxy, single-use
+  registration invitations, account activation, and content-free installation fingerprints;
 - case-insensitive public display names, provisional invited identities, and
   collision-safe DirectPlay participant binding;
 - lobby drafts, browser membership, UI policy, stream presence/tickets;
@@ -225,9 +230,10 @@ Authorization happens before proxying:
 
 - member controls their exact browser seat only while its per-tab lease is the
   active generation;
-- administrator may control their own seat and observe any seat;
-- lobby opt-in may issue anonymous spectator tickets;
-- observer/anonymous modes are enforced read-only at transport; and
+- administrator may control their own seat and, only when not a campaign participant, observe any seat;
+- lobby opt-in permits signed-in non-participants to request spectator access;
+- participant identity is retained durably so leaving cannot unlock enemy views;
+- observer mode is enforced read-only at transport; and
 - direct worker credentials/passwords are not exposed.
 
 Leases are process-local, expire after 30 seconds, and are bound to user plus

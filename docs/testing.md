@@ -189,7 +189,8 @@ Run the browser portal at desktop and mobile widths and verify:
 5. game mouse, keyboard shortcut, text input, audio and fullscreen;
 6. administrator cross-seat view;
 7. observer deck switching and read-only transport;
-8. anonymous spectator allowed/denied policy without a session;
+8. authenticated spectator allowed/denied policy, mandatory sign-in, durable
+   participant exclusion, and non-playing administrator access;
 9. global/private/consent-group chat, authorization, logical delivery, and
    player/faction label;
 10. root-MENU-only human control rail and its disappearance for native

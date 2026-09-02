@@ -1,19 +1,20 @@
 @page "/spectate"
 @page "/spectate/{MatchId}"
+@attribute [Authorize]
 @inject Services.PortalApiClient Api
 <PageTitle>Spectate · SMACX Agent</PageTitle>
 
 @if (string.IsNullOrWhiteSpace(MatchId))
 {
-    <PageHeader Kicker="OBSERVATION DECK" Title="Live matches" Description="Watch opted-in games without sending input. Administrators can inspect every managed seat." />
+    <PageHeader Kicker="OBSERVATION DECK" Title="Live matches" Description="Authenticated non-players may watch opted-in games without sending input. A campaign participant can never spectate another seat." />
     @if (loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary"/> }
-    else if (!lobbies.Any(item => item.AnonymousSpectators))
+    else if (!lobbies.Any(item => item.CanSpectate))
     {
-        <div class="empty-state surface-panel"><div class="empty-orbit"><MudIcon Icon="@Icons.Material.Filled.Visibility"/></div><h2>No public observation feeds</h2><p>When a lobby enables spectators, its live managed seats appear here.</p></div>
+        <div class="empty-state surface-panel"><div class="empty-orbit"><MudIcon Icon="@Icons.Material.Filled.Visibility"/></div><h2>No observation feeds</h2><p>When a lobby permits signed-in spectators, its live managed seats appear here unless you are one of its players.</p></div>
     }
     else
     {
-        <div class="lobby-grid">@foreach(var item in lobbies.Where(item=>item.AnonymousSpectators)){<a class="surface-panel lobby-card" href="@($"spectate/{item.MatchId}")"><span class="panel-kicker">LIVE FEED</span><h2>@item.DisplayName</h2><p>@item.SeatCount occupied seats</p><span class="lobby-state @item.Status">@item.Status</span></a>}</div>
+        <div class="lobby-grid">@foreach(var item in lobbies.Where(item=>item.CanSpectate)){<a class="surface-panel lobby-card" href="@($"spectate/{item.MatchId}")"><span class="panel-kicker">LIVE FEED</span><h2>@item.DisplayName</h2><p>@item.SeatCount occupied seats</p><span class="lobby-state @item.Status">@item.Status</span></a>}</div>
     }
 }
 else if (loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary"/> }

@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
@@ -14,11 +16,13 @@ using Smacx.Portal.Client.Pages;
 using Smacx.Portal.Client.Services;
 using Smacx.Portal.Components;
 using Smacx.Portal.Components.Account;
+using Smacx.Portal.Contracts;
 using Smacx.Portal.Data;
 using Smacx.Portal.Hubs;
 using Smacx.Portal.Infrastructure;
 using Smacx.Portal.Services;
 using Yarp.ReverseProxy.Forwarder;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var cliMode = args.Length >= 1 && args[0] is "bootstrap-token" or "admin-reset-token";
@@ -54,6 +58,29 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
 builder.Services.AddSignalR();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            ApiResponse<bool>.Failure("rate_limited",
+                "Too many access attempts were received. Wait a few minutes and try again."),
+            cancellationToken);
+    };
+    options.AddPolicy("authentication", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20, Window = TimeSpan.FromMinutes(5), QueueLimit = 0,
+        }));
+    options.AddPolicy("invitation", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10, Window = TimeSpan.FromMinutes(5), QueueLimit = 0,
+        }));
+});
 builder.Services.AddHttpForwarder();
 builder.Services.AddSingleton(new HttpMessageInvoker(new SocketsHttpHandler
 {
@@ -68,6 +95,12 @@ builder.Services.AddScoped<StreamProxyService>();
 builder.Services.AddSingleton<StreamPresenceTracker>();
 builder.Services.AddSingleton<WaitingLobbyPolicy>();
 builder.Services.AddSingleton<WaitingLobbyPresenceTracker>();
+builder.Services.AddSingleton<RequestNetworkClassifier>();
+builder.Services.AddScoped<PortalAccessPolicy>();
+builder.Services.AddScoped<MatchAccessService>();
+builder.Services.AddSingleton<AccountConnectionRegistry>();
+builder.Services.AddSingleton<PortalSecurityTicketService>();
+builder.Services.AddSingleton<InstallationFingerprintCatalog>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ControllerLeaseService>();
 builder.Services.AddScoped<MatchGovernanceService>();
@@ -109,8 +142,50 @@ builder.Services.AddAuthentication(options =>
             cookie.ExpireTimeSpan = TimeSpan.FromHours(12);
             cookie.Events.OnRedirectToLogin = context => ApiStatus(context, StatusCodes.Status401Unauthorized);
             cookie.Events.OnRedirectToAccessDenied = context => ApiStatus(context, StatusCodes.Status403Forbidden);
+            cookie.Events.OnValidatePrincipal = async context =>
+            {
+                var userId = context.Principal?.FindFirst(
+                    System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (userId is null) return;
+                var database = context.HttpContext.RequestServices
+                    .GetRequiredService<ApplicationDbContext>();
+                var user = await database.Users.AsNoTracking().SingleOrDefaultAsync(
+                    item => item.Id == userId, context.HttpContext.RequestAborted);
+                var access = context.HttpContext.RequestServices
+                    .GetRequiredService<PortalAccessPolicy>();
+                var remote = access.Zone(context.HttpContext) == PortalRequestZone.Remote;
+                if (user is null || !user.IsActive ||
+                    remote && user.IsPrimaryAdministrator &&
+                        !access.PrimaryAdministratorRemoteLoginAllowed ||
+                    remote && !user.IsPrimaryAdministrator &&
+                        user.InstallationVerifiedAt is null)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+                }
+            };
         });
     });
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    var configured = Environment.GetEnvironmentVariable("SMACX_TRUSTED_PROXY_NETWORKS")
+        ?? "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7";
+    foreach (var value in configured.Split(',',
+                 StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+    {
+        var parts = value.Split('/', 2);
+        if (!IPAddress.TryParse(parts[0], out var address) || parts.Length != 2 ||
+            !int.TryParse(parts[1], out var prefix))
+            throw new InvalidOperationException(
+                $"Invalid SMACX_TRUSTED_PROXY_NETWORKS entry '{value}'.");
+        options.KnownIPNetworks.Add(new System.Net.IPNetwork(address, prefix));
+    }
+});
 
 var storage = builder.Configuration.GetSection(PortalStorageOptions.SectionName)
     .Get<PortalStorageOptions>() ?? new PortalStorageOptions();
@@ -178,6 +253,8 @@ builder.Services.AddHttpClient<ControlPlaneClient>(client =>
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -190,9 +267,9 @@ else
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
 app.UseWebSockets();
 
@@ -257,11 +334,13 @@ static Task ApiStatus(RedirectContext<CookieAuthenticationOptions> context, int 
     if (context.Request.Path.StartsWithSegments("/api"))
     {
         context.Response.StatusCode = statusCode;
+        return context.Response.WriteAsJsonAsync(ApiResponse<bool>.Failure(
+            statusCode == StatusCodes.Status401Unauthorized ? "authentication_required" : "access_denied",
+            statusCode == StatusCodes.Status401Unauthorized
+                ? "Sign in to continue."
+                : "This account is not allowed to perform that action."));
     }
-    else
-    {
-        context.Response.Redirect(context.RedirectUri);
-    }
+    context.Response.Redirect(context.RedirectUri);
     return Task.CompletedTask;
 }
 

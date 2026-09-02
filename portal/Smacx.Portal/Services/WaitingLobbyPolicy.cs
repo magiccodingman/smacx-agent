@@ -7,25 +7,25 @@ namespace Smacx.Portal.Services;
 public sealed class WaitingLobbyPolicy
 {
     public const int MemberLimit = 5;
-    public TimeSpan IdleLifetime { get; }
+    public TimeSpan AbandonLifetime { get; }
     public TimeSpan SeatReconnectGrace { get; }
 
     public WaitingLobbyPolicy()
     {
-        const int defaultHours = 24;
-        var configured = Environment.GetEnvironmentVariable("SMACX_WAITING_LOBBY_TTL_HOURS");
+        const int defaultMinutes = 30;
+        var configured = Environment.GetEnvironmentVariable("SMACX_WAITING_LOBBY_ABANDON_MINUTES");
         if (string.IsNullOrWhiteSpace(configured))
         {
-            IdleLifetime = TimeSpan.FromHours(defaultHours);
+            AbandonLifetime = TimeSpan.FromMinutes(defaultMinutes);
         }
-        else if (!int.TryParse(configured, out var hours) || hours is < 1 or > 720)
+        else if (!int.TryParse(configured, out var minutes) || minutes is < 5 or > 1440)
         {
             throw new InvalidOperationException(
-                "SMACX_WAITING_LOBBY_TTL_HOURS must be an integer between 1 and 720.");
+                "SMACX_WAITING_LOBBY_ABANDON_MINUTES must be an integer between 5 and 1440.");
         }
         else
         {
-            IdleLifetime = TimeSpan.FromHours(hours);
+            AbandonLifetime = TimeSpan.FromMinutes(minutes);
         }
 
         const int defaultGraceSeconds = 30;
@@ -189,10 +189,11 @@ public static class WaitingLobbyExpiration
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        var cutoff = now - policy.IdleLifetime;
+        var cutoff = now - policy.AbandonLifetime;
         var candidates = await database.PortalMatches
-            .Where(item => item.Status == "waiting" && item.UpdatedAt <= cutoff)
-            .OrderBy(item => item.UpdatedAt)
+            .Where(item => item.Status == "waiting" && item.WaitingVacantSince != null &&
+                item.WaitingVacantSince <= cutoff)
+            .OrderBy(item => item.WaitingVacantSince)
             .Take(50)
             .ToArrayAsync(cancellationToken);
         var expired = candidates.Where(item => !presence.IsActive(item.MatchId)).ToArray();

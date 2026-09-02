@@ -5,7 +5,9 @@ public sealed record PortalSetupState(
     bool RegistrationEnabled,
     string DefaultAdministrator,
     string BootstrapCommand,
-    int PasswordMinimumLength);
+    int PasswordMinimumLength,
+    string AccessZone = "trusted",
+    bool RegistrationRequiresInvite = false);
 
 public sealed record PortalUser(
     string Id,
@@ -14,9 +16,17 @@ public sealed record PortalUser(
     string GameHandle,
     IReadOnlyList<string> Roles,
     bool IsAdministrator,
-    bool MustResetPassword);
+    bool MustResetPassword,
+    bool IsActive = true,
+    bool IsPrimaryAdministrator = false,
+    bool InstallationVerified = false,
+    DateTimeOffset? InstallationVerifiedAt = null);
 
-public sealed record PortalSession(bool Authenticated, PortalUser? User);
+public sealed record PortalSession(
+    bool Authenticated,
+    PortalUser? User,
+    bool RequiresInstallationVerification = false,
+    string? NextPath = null);
 
 public sealed record LoginRequest(string Username, string Password, bool RememberMe = false);
 
@@ -25,6 +35,78 @@ public sealed record RegistrationRequest(
     string DisplayName,
     string Password,
     string ConfirmPassword);
+
+public sealed record RegistrationResult(
+    string Username,
+    bool Created,
+    string Message,
+    string NextPath = "/login");
+
+public sealed record AccessContext(
+    string Zone,
+    bool TrustedNetwork,
+    bool RegistrationEnabled,
+    bool RegistrationRequiresInvite,
+    bool InstallationVerificationRequired,
+    bool InstallationVerified,
+    bool PrimaryAdministratorRemoteLoginAllowed);
+
+public sealed record InvitationGrantRequest(string Invitation);
+public sealed record InvitationGrantResult(DateTimeOffset ExpiresAt, string RegistrationPath);
+
+public sealed record AdminInvitationSummary(
+    string Id,
+    string? Label,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset? UsedAt,
+    string? UsedByDisplayName);
+
+public sealed record CreateInvitationRequest(string? Label = null);
+public sealed record CreatedInvitation(
+    string Id,
+    string Secret,
+    DateTimeOffset ExpiresAt,
+    string SharePath);
+
+public sealed record NetworkAccessSettings(
+    IReadOnlyList<string> TrustedNetworks,
+    bool TrustedRegistrationRequiresInvite,
+    bool TrustedInstallationVerificationRequired,
+    bool PrimaryAdministratorRemoteLoginAllowed,
+    string PublicHostname,
+    string DdnsProvider,
+    bool DdnsConfigured);
+
+public sealed record UpdateNetworkAccessSettingsRequest(
+    bool TrustedRegistrationRequiresInvite,
+    bool TrustedInstallationVerificationRequired);
+
+public sealed record InstallationFingerprintFile(
+    string Id,
+    IReadOnlyList<string> RelativePaths,
+    long? ExpectedMinimumSize = null,
+    long? ExpectedMaximumSize = null);
+
+public sealed record InstallationFingerprintManifest(
+    string ManifestId,
+    string ChallengeId,
+    string Edition,
+    int RequiredRecognizedAnchors,
+    IReadOnlyList<InstallationFingerprintFile> Files,
+    string SubmitPath);
+
+public sealed record InstallationFingerprintEvidence(string Id, long Size, string Sha256);
+public sealed record InstallationVerificationRequest(
+    string ChallengeId,
+    string ManifestId,
+    IReadOnlyList<InstallationFingerprintEvidence> Evidence);
+public sealed record InstallationVerificationResult(
+    bool Verified,
+    string? FingerprintId,
+    string Message,
+    DateTimeOffset? VerifiedAt = null);
 
 public sealed record BootstrapRequest(string Token, string Password, string ConfirmPassword);
 
@@ -49,8 +131,11 @@ public sealed record PublicLobbySummary(
     string Status,
     int CurrentTurn,
     int SeatCount,
-    bool AnonymousSpectators,
-    DateTimeOffset UpdatedAt);
+    bool SpectatorsAllowed,
+    DateTimeOffset UpdatedAt,
+    int OpenSeatCount = 0,
+    DateTimeOffset? WaitingExpiresAt = null,
+    bool CanSpectate = false);
 
 public sealed record CreateLobbyRequest(
     string DisplayName,
@@ -62,7 +147,7 @@ public sealed record CreateLobbyRequest(
     string Difficulty,
     bool RandomMap,
     bool DoOrDie,
-    bool AllowAnonymousSpectators,
+    bool AllowSpectators,
     bool ManagedClientsOnly,
     bool GraphitiEnabled,
     string RankingMode = "unranked",
@@ -137,7 +222,7 @@ public sealed record LobbyDetails(
     int? CurrentTurn,
     int? CurrentYear,
     bool IsListed,
-    bool AllowAnonymousSpectators,
+    bool AllowSpectators,
     bool ManagedClientsOnly,
     string RankingMode,
     bool GraphitiEnabled,
@@ -463,9 +548,14 @@ public sealed record AdminUserSummary(
     bool IsAdministrator,
     bool IsProvisional,
     bool MustResetPassword,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsActive = true,
+    bool IsPrimaryAdministrator = false,
+    bool InstallationVerified = false,
+    DateTimeOffset? InstallationVerifiedAt = null);
 
 public sealed record SetAdministratorRequest(bool IsAdministrator);
+public sealed record SetAccountActiveRequest(bool IsActive);
 public sealed record PasswordResetTicket(string Username, string Token, DateTimeOffset ExpiresAt);
 public sealed record CompletePasswordResetRequest(
     string Username, string Token, string Password, string ConfirmPassword);
