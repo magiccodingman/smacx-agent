@@ -147,7 +147,7 @@ public sealed class ResponseHandlingTests
         try
         {
             var json = """
-                {"ok":true,"match":{"match_id":"match-test1234","display_name":"Recovery test","mode":"singleplayer","status":"running","last_turn":12,"last_year":2112,"created_unix":1800000000,"updated_unix":1800000001,"metadata":{"recovery_checkpoint":{"slot":"control_recovery","verified":true}}},"seats":[]}
+                {"ok":true,"match":{"match_id":"match-test1234","display_name":"Recovery test","mode":"singleplayer","status":"running","last_turn":12,"last_year":2112,"created_unix":1800000000,"updated_unix":1800000001,"metadata":{"recovery_checkpoint":{"slot":"control_recovery","verified":true},"last_recovered_unix":1800000012.5}},"seats":[]}
                 """;
             using var http = new HttpClient(new SequenceHandler(JsonResponse(json)))
             {
@@ -161,11 +161,31 @@ public sealed class ResponseHandlingTests
             var match = await client.GetMatchAsync("match-test1234");
 
             Assert.True(match.Match.HasVerifiedRecoveryCheckpoint);
+            Assert.Equal(1800000012.5, match.Match.RuntimeGeneration);
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData("docker_http_409", "conflict")]
+    [InlineData("control_error", "removal of container worker is already in progress")]
+    public void ContainerRemovalConflictsAreRetried(string code, string message)
+    {
+        var exception = new ControlPlaneException(code, message, 409);
+
+        Assert.True(PortalMaintenanceCoordinator.IsTransientLifecycleConflict(exception));
+    }
+
+    [Fact]
+    public void OrdinaryRecoveryFailureRequiresOperatorReview()
+    {
+        var exception = new ControlPlaneException(
+            "verified_recovery_checkpoint_required", "No checkpoint is available.", 409);
+
+        Assert.False(PortalMaintenanceCoordinator.IsTransientLifecycleConflict(exception));
     }
 
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)

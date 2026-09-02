@@ -236,7 +236,9 @@ public sealed record LobbyDetails(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     MatchPresenceState? Presence = null,
-    CapabilityGapIncident? NeedsAttention = null);
+    CapabilityGapIncident? NeedsAttention = null,
+    double RuntimeGeneration = 0,
+    MaintenanceProgress? Maintenance = null);
 
 public sealed record CapabilityGapIncident(
     string IncidentId,

@@ -124,7 +124,12 @@ class WorkerManager:
         if view_publish_ip not in {"127.0.0.1", "0.0.0.0"}:
             raise InvalidRecord("invalid_view_publish_ip")
         self.view_publish_ip = view_publish_ip
-        self._incident_recovery_lock = threading.Lock()
+        # Docker lifecycle mutations may arrive concurrently from the portal,
+        # the control supervisor, and explicit operator recovery. A single
+        # re-entrant lock makes each multi-container transition atomic while
+        # still allowing recover_match -> park_match -> park_worker nesting.
+        self._lifecycle_lock = threading.RLock()
+        self._incident_recovery_lock = self._lifecycle_lock
         installation_hash = hashlib.sha256(
             self.store.installation_id().encode("utf-8")
         ).hexdigest()[:12]
@@ -1115,6 +1120,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "instance_id": seat["instance_id"]}
 
     def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            return self._start_worker_locked(instance_id, timeout=timeout)
+
+    def _start_worker_locked(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         source = self.control.get_game_source(spec["game_source_id"])
         runtime = self.control.get_runtime(spec["runtime_id"])
@@ -2903,6 +2912,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         }
 
     def park_match(self, match_id: str) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            return self._park_match_locked(match_id)
+
+    def _park_match_locked(self, match_id: str) -> dict[str, Any]:
         seats = self.control.list_seats(match_id)
         parked = []
         for seat in reversed(seats):
@@ -3144,6 +3157,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return refreshed
 
     def recover_match(self, match_id: str, *, refresh_runtime: bool = False) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            return self._recover_match_locked(match_id, refresh_runtime=refresh_runtime)
+
+    def _recover_match_locked(self, match_id: str, *, refresh_runtime: bool = False) -> dict[str, Any]:
         """Resume a managed match only from its last bridge-verified checkpoint."""
         match = self.control.get_match(match_id)
         checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
@@ -3226,7 +3243,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         therefore visible and safe to retry rather than silently resuming an
         autonomous caller against a partially restored match.
         """
-        with self._incident_recovery_lock:
+        with self._lifecycle_lock:
             return self._retry_match_after_update_locked(match_id, incident_id)
 
     def _retry_match_after_update_locked(
@@ -3258,6 +3275,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return recovered
 
     def start_mcp_sidecar(self, instance_id: str, *, timeout: float = 90.0) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            return self._start_mcp_sidecar_locked(instance_id, timeout=timeout)
+
+    def _start_mcp_sidecar_locked(self, instance_id: str, *, timeout: float = 90.0) -> dict[str, Any]:
         if not self.control_data_volume:
             raise WorkerManagerError("managed_mcp_not_configured")
         spec = self.control.get_worker_spec(instance_id)
@@ -3424,6 +3445,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise
 
     def stop_mcp_sidecar(self, instance_id: str) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            return self._stop_mcp_sidecar_locked(instance_id)
+
+    def _stop_mcp_sidecar_locked(self, instance_id: str) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         container_name = str(spec["network"].get("mcp_container_name") or self._name("mcp", instance_id))
         try:
@@ -3600,6 +3625,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             self._cleanup_container(identifier, "worker-state-compactor")
 
     def park_worker(self, instance_id: str) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            return self._park_worker_locked(instance_id)
+
+    def _park_worker_locked(self, instance_id: str) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         self.stop_mcp_sidecar(instance_id)
         spec = self.control.get_worker_spec(instance_id)

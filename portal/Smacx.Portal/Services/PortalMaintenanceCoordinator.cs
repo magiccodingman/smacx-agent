@@ -32,6 +32,8 @@ public sealed class PortalMaintenanceCoordinator(
         await using var scope = scopes.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var control = scope.ServiceProvider.GetRequiredService<ControlPlaneClient>();
+        if (await ProcessCapabilityRecoveryAsync(database, control, cancellationToken))
+            return;
         // Rotate among approved work by its last attempt time.  A match that is
         // waiting for a human/native safe boundary must never starve approved
         // maintenance for every other match on the server.
@@ -227,6 +229,161 @@ public sealed class PortalMaintenanceCoordinator(
             await database.SaveChangesAsync(CancellationToken.None);
             await NotifyAsync(proposal.MatchId, CancellationToken.None);
         }
+    }
+
+    private async Task<bool> ProcessCapabilityRecoveryAsync(
+        ApplicationDbContext database, ControlPlaneClient control,
+        CancellationToken stoppingToken)
+    {
+        var operation = await database.PortalMaintenanceOperations
+            .Where(item => item.Kind == "capability_recovery" &&
+                (item.Status == "queued" || item.Status == "running"))
+            .OrderBy(item => item.UpdatedAt)
+            .FirstOrDefaultAsync(stoppingToken);
+        if (operation is null) return false;
+
+        var match = await database.PortalMatches.SingleOrDefaultAsync(
+            item => item.MatchId == operation.MatchId, stoppingToken);
+        if (match is null)
+        {
+            operation.Status = "failed";
+            operation.Phase = "failed";
+            operation.Summary = "Recovery stopped because the campaign no longer exists.";
+            operation.CompletedAt = DateTimeOffset.UtcNow;
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+            await database.SaveChangesAsync(stoppingToken);
+            return true;
+        }
+
+        try
+        {
+            using var payload = JsonDocument.Parse(operation.PayloadJson);
+            var incidentId = payload.RootElement.GetProperty("incidentId").GetString();
+            if (string.IsNullOrWhiteSpace(incidentId))
+                throw new InvalidOperationException("The queued recovery has no incident identifier.");
+
+            operation.Status = "running";
+            match.Status = "recovering";
+            match.LastError = null;
+            match.UpdatedAt = DateTimeOffset.UtcNow;
+            await StepAsync(database, operation, "stopping_autonomous_player",
+                "Stopping the paused autonomous player before rebuilding its native runtime.",
+                1, stoppingToken);
+            await StopHarnessRunsAsync(control, operation.MatchId, stoppingToken);
+
+            await StepAsync(database, operation, "rebuilding_current_runtime",
+                "Rebuilding the game worker, semantic bridge, and MCP from the current images, then restoring the verified checkpoint.",
+                2, stoppingToken);
+            using (await control.PostRawAsync(
+                $"api/v1/matches/{operation.MatchId}/retry-after-update",
+                new { incident_id = incidentId }, stoppingToken)) { }
+
+            await StepAsync(database, operation, "native_checkpoint_restored",
+                "The current native runtime is healthy and the verified checkpoint is restored.",
+                4, stoppingToken);
+            operation.Status = "completed";
+            operation.Phase = "complete";
+            operation.Summary = "Recovery completed. Autonomous play is reconnecting now.";
+            operation.CompletedSteps = operation.TotalSteps;
+            operation.CanCancel = false;
+            operation.CompletedAt = DateTimeOffset.UtcNow;
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+            match.Status = "running";
+            match.LastError = null;
+            match.UpdatedAt = DateTimeOffset.UtcNow;
+            database.PortalMatchEvents.Add(new PortalMatchEvent
+            {
+                MatchId = operation.MatchId,
+                EventType = "incident_retry",
+                Summary = "The capability-stopped campaign resumed from its verified checkpoint using the current managed runtime.",
+                DetailsJson = JsonSerializer.Serialize(new
+                {
+                    operation.OperationId,
+                    incidentId,
+                }),
+            });
+            await database.SaveChangesAsync(stoppingToken);
+            await NotifyAsync(operation.MatchId, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Leave the row running. On process restart the same idempotent
+            // control operation is resumed or reconciled against native truth.
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // The Python request may have finished after an HTTP disconnect.
+            // Reconcile native truth before ever presenting a failed recovery.
+            try
+            {
+                var native = await control.GetMatchAsync(operation.MatchId, CancellationToken.None);
+                var incident = await control.GetActiveCapabilityIncidentAsync(
+                    operation.MatchId, CancellationToken.None);
+                if (native.Match.Status == "running" && incident is null)
+                {
+                    operation.Status = "completed";
+                    operation.Phase = "complete";
+                    operation.Summary = "Recovery completed and was reconciled after the portal connection changed.";
+                    operation.CompletedSteps = operation.TotalSteps;
+                    operation.CompletedAt = DateTimeOffset.UtcNow;
+                    operation.UpdatedAt = DateTimeOffset.UtcNow;
+                    match.Status = "running";
+                    match.LastError = null;
+                    match.UpdatedAt = DateTimeOffset.UtcNow;
+                    await database.SaveChangesAsync(CancellationToken.None);
+                    await NotifyAsync(operation.MatchId, CancellationToken.None);
+                    return true;
+                }
+            }
+            catch (Exception reconciliationException)
+            {
+                logger.LogDebug(reconciliationException,
+                    "Native recovery reconciliation deferred for {MatchId}", operation.MatchId);
+            }
+
+            if (IsTransientLifecycleConflict(exception))
+            {
+                operation.Status = "queued";
+                operation.Phase = "waiting_for_runtime_cleanup";
+                operation.Summary = "A previous container cleanup is still finishing. Recovery will retry automatically.";
+                operation.UpdatedAt = DateTimeOffset.UtcNow;
+                match.Status = "recovering";
+                match.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                var detail = $"Recovery stopped safely: {exception.Message}";
+                operation.Status = "failed";
+                operation.Phase = "operator_review";
+                operation.Summary = detail[..Math.Min(detail.Length, 2000)];
+                operation.CompletedAt = DateTimeOffset.UtcNow;
+                operation.UpdatedAt = DateTimeOffset.UtcNow;
+                operation.CanCancel = false;
+                match.Status = "error";
+                match.LastError = operation.Summary;
+                match.UpdatedAt = DateTimeOffset.UtcNow;
+                database.PortalMatchEvents.Add(new PortalMatchEvent
+                {
+                    MatchId = operation.MatchId,
+                    EventType = "incident_retry_failed",
+                    Summary = operation.Summary,
+                });
+            }
+            await database.SaveChangesAsync(CancellationToken.None);
+            await NotifyAsync(operation.MatchId, CancellationToken.None);
+        }
+        return true;
+    }
+
+    internal static bool IsTransientLifecycleConflict(Exception exception)
+    {
+        var code = exception is ControlPlaneException controlException
+            ? controlException.Code : string.Empty;
+        var text = $"{code} {exception.Message}";
+        return text.Contains("docker_http_409", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("already in progress", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("removal of container", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int SeatIndex(string payloadJson)
