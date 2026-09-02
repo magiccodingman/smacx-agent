@@ -286,8 +286,9 @@ vectors, credentials, chat, or model reasoning.
 
 Every managed seat renders independently. A non-playing administrator can switch
 between players and watch a human or AI screen without disturbing it. A lobby can
-also opt into authenticated spectating, with read-only enforcement at the stream
-transport rather than a decorative disabled button. Anyone assigned a player
+also opt into authenticated spectating, while AI-only simulations are always
+observable by signed-in nonparticipants. Read-only access is enforced at the
+stream transport rather than by a decorative disabled button. Anyone assigned a player
 faction in that campaign—including an administrator—can never use the spectator
 deck to inspect another perspective.
 
@@ -320,7 +321,7 @@ deal? Was it strong, merely expensive, or—most importantly—fun to play with?
 | **Create** | Typed standard/custom/scenario setup, durable waiting lobbies, seven-seat composition, human/AI/native-bot mixing |
 | **Play** | Installable command deck; real game streaming with audio/input/fullscreen; true 800×600-to-5120×1440 profiles; adaptive bitrate; one-controller tab safety; instant fit, reconnect, or native-client joining |
 | **Host** | Isolated game workers, prepared Proton environments, DirectPlay setup, exact player identity, concurrent matches |
-| **Watch** | Non-player admin seat switching, AI observation, opt-in authenticated spectator deck, permanent participant exclusion, worker-enforced read-only streams |
+| **Watch** | Non-player admin seat switching, always-observable AI-only simulations, opt-in authenticated spectating for human games, permanent participant exclusion, worker-enforced read-only streams |
 | **Continue** | Connected-player votes, stable-boundary checkpoints, safe temporary bot delegation/reclaim, crash reconciliation, faction restoration |
 | **Remember** | Chat history and scoped AI facts, beliefs, relationships, promises, goals, and summaries |
 | **Experiment** | Stable named model profiles with editable templates, advanced provider parameters, honest acceptance checks, telemetry, outcomes, analytics, CSV, and constrained SQL reports |

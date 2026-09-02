@@ -77,7 +77,9 @@ portal. The Python service,
 Docker authority, MCP endpoints, provider secrets, bridge tokens, and stream
 credentials stay on private networks or purpose volumes. Client-side Blazor
 authorization is never treated as enforcement. Authenticated spectator tickets
-are short-lived, read-only, and revoked when the lobby disables spectators.
+are short-lived and read-only. Human games revoke them when the lobby disables
+spectators; running AI-only simulations remain observable to authenticated
+nonparticipants so unattended workers cannot become opaque.
 
 The project documentation contains the following complete game-assets notice:
 

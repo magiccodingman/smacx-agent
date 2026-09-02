@@ -81,6 +81,14 @@ Spectating always requires an active signed-in account. Enabling **Allow
 spectators** for a lobby permits authenticated non-participants to receive
 read-only streams. It never creates an anonymous link.
 
+A running campaign with no human-controlled seats is always observable by
+authenticated non-participants, even when the lobby switch is off. This keeps
+an unattended simulation from becoming an opaque background process. The
+owner and administrators can also return to its campaign page to save a
+checkpoint, **Stop & park**, or end it. The automatic rule stops applying if a
+human-controlled seat is restored; the normal lobby preference then governs
+spectator access.
+
 A user who has occupied a faction in a campaign cannot later watch another
 faction's perspective. This remains true after leaving the seat and also applies
 to administrators. A non-participating administrator may observe seats for

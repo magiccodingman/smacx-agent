@@ -271,7 +271,9 @@ Choose **New lobby** and set:
   host);
 - browser or direct/native human mode, invited handles, AI profiles, and stock
   game-controlled remaining factions;
-- authenticated non-player spectators (off by default), managed-clients-only, and Graphiti.
+- authenticated non-player spectators (off by default for games with human
+  players; automatic for running AI-only simulations), managed-clients-only,
+  and Graphiti.
 
 The portal validates named values and sends typed native settings. It does not
 drive setup menus with clicks. Scenarios use a catalog built from the validated
@@ -437,8 +439,10 @@ separate memory records.
 
 Non-participating administrators can watch managed seats for household support
 and debugging. A lobby owner can opt into authenticated non-player spectating;
-it is disabled by default. Signed-in viewers who have never occupied a faction
-in that campaign can open the observation deck and switch among permitted seats.
+it is disabled by default for games containing human players. Running AI-only
+simulations are always visible to signed-in viewers who have never occupied a
+faction in that campaign. Eligible viewers can open the observation deck and
+switch among permitted seats.
 Every spectator stream is read-only. A campaign participant remains excluded
 from enemy views after leaving a seat, including when that account is an
 administrator.
@@ -492,9 +496,11 @@ If every human seat is a managed browser seat and all of them remain absent for
 the idle window, the supervisor applies the same checkpoint-first park. It does
 not auto-park AI-only simulations or infer presence for direct clients.
 
-AI-only campaigns continue unattended by design. Their owner or an
-administrator can open the lobby detail page at any time to **Save
-checkpoint**, **Park for later**, or **End campaign**. Park is reversible and
+AI-only campaigns continue unattended by design, but never become
+unmanageable or opaque. Their owner or an administrator can open the lobby
+detail page at any time to **Save checkpoint**, **Stop & park**, or **End
+campaign**, and authenticated nonparticipants can always observe their managed
+seats. Park is reversible and
 retains the verified save, seat assignments, AI conversations, semantic
 memory, and analytics. End is available only after parking, is deliberately
 irreversible, releases the large disposable game prefix plus runtime secrets,
