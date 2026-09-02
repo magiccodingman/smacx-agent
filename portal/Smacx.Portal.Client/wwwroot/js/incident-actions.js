@@ -27,6 +27,15 @@ export function dismissIncident(incidentId) {
   }
 }
 
+export function restoreIncident(incidentId) {
+  const incidents = readDismissedIncidents().filter(item => item !== incidentId);
+  try {
+    localStorage.setItem(dismissedIncidentKey, JSON.stringify(incidents));
+  } catch {
+    // The live component can still reopen when storage is unavailable.
+  }
+}
+
 export async function downloadFile(url, suggestedName) {
   const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) {

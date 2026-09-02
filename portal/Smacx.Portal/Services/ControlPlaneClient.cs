@@ -264,7 +264,13 @@ public sealed class ControlPlaneClient(
         item.TryGetProperty("last_year", out var year) && year.ValueKind == JsonValueKind.Number
             ? year.GetInt32() : null,
         item.GetProperty("created_unix").GetDouble(),
-        item.GetProperty("updated_unix").GetDouble());
+        item.GetProperty("updated_unix").GetDouble(),
+        item.TryGetProperty("metadata", out var metadata) &&
+            metadata.ValueKind == JsonValueKind.Object &&
+            metadata.TryGetProperty("recovery_checkpoint", out var checkpoint) &&
+            checkpoint.ValueKind == JsonValueKind.Object &&
+            checkpoint.TryGetProperty("verified", out var verified) &&
+            verified.ValueKind == JsonValueKind.True);
 
     private static ControlIncident ParseIncident(JsonElement item)
     {
@@ -302,7 +308,8 @@ public sealed class ControlPlaneClient(
 
 public sealed record ControlMatch(
     string MatchId, string DisplayName, string Mode, string Status, string? RulesetId,
-    int? LastTurn, int? LastYear, double CreatedUnix, double UpdatedUnix);
+    int? LastTurn, int? LastYear, double CreatedUnix, double UpdatedUnix,
+    bool HasVerifiedRecoveryCheckpoint = false);
 
 public sealed record ControlSeat(
     int SeatIndex, string ControllerKind, string? AgentId, string? PlayerHandle,

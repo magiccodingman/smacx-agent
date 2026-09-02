@@ -51,6 +51,7 @@ public sealed class PortalMatchSupervisor(
     {
         await using var scope = scopes.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var control = scope.ServiceProvider.GetRequiredService<ControlPlaneClient>();
         var interrupted = await database.PortalMatches
             .Where(item => item.Status == "starting")
             .ToArrayAsync(cancellationToken);
@@ -59,12 +60,34 @@ public sealed class PortalMatchSupervisor(
             match.Status = "provisioning";
             match.UpdatedAt = DateTimeOffset.UtcNow;
         }
+        var interruptedRecovery = await database.PortalMatches
+            .Where(item => item.Status == "recovering")
+            .ToArrayAsync(cancellationToken);
+        foreach (var match in interruptedRecovery)
+        {
+            try
+            {
+                var native = await control.GetMatchAsync(match.MatchId, cancellationToken);
+                match.Status = native.Match.Status == "parked" ? "parked" : "running";
+                var incident = await control.GetActiveCapabilityIncidentAsync(
+                    match.MatchId, cancellationToken);
+                match.LastError = incident is null ? null
+                    : "Recovery was interrupted before the capability incident could be cleared. The native state remains preserved and operator attention is still required.";
+            }
+            catch (ControlPlaneException exception)
+            {
+                match.Status = "error";
+                match.LastError = $"Recovery reconciliation is waiting for the control plane: {exception.Message}";
+            }
+            match.UpdatedAt = DateTimeOffset.UtcNow;
+        }
         var waitingWithoutPresence = await database.PortalMatches
             .Where(item => item.Status == "waiting" && item.WaitingVacantSince == null)
             .ToArrayAsync(cancellationToken);
         foreach (var match in waitingWithoutPresence)
             match.WaitingVacantSince = DateTimeOffset.UtcNow;
-        if (interrupted.Length > 0 || waitingWithoutPresence.Length > 0)
+        if (interrupted.Length > 0 || interruptedRecovery.Length > 0 ||
+            waitingWithoutPresence.Length > 0)
         {
             await database.SaveChangesAsync(cancellationToken);
         }

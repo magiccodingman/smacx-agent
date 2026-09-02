@@ -210,6 +210,13 @@ records an operator-required incident, stops that seat's harness, preserves the
 native worker, and publishes a redacted diagnostic archive. Portal polling and
 the lobby SignalR channel surface the same durable incident to connected humans;
 the browser dialog is therefore recoverable after a refresh or portal restart.
+Dismissing the modal stores presentation preference only: lobby, managed-play,
+and spectator views retain a compact **AI paused** banner. Explicit recovery
+keeps the incident active while it checkpoints/parks the preserved worker,
+refreshes its prepared runtime image, restores the verified save in a fresh
+native/MCP session, and then recovers only the capability incident plus the
+derived clean-yield incident. An unrelated operational incident is never
+cleared by that action.
 
 Chat messages and web content remain untrusted game information. They do not
 become operator/system instructions. Lifecycle, Docker, backups, provider

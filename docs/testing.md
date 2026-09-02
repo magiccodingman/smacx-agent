@@ -35,6 +35,7 @@ PYTHONPATH=src python3 scripts/match_briefing_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/capability_incident_contract_test.py
+PYTHONPATH=src python3 scripts/incident_recovery_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 ```

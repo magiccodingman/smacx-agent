@@ -570,7 +570,38 @@ public sealed class LobbiesController(
                     await control.PostRawAsync($"api/v1/matches/{matchId}/park", new { });
                     break;
                 case "checkpoint": await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint", new { slot = request.Slot ?? "control_recovery" }); break;
-                case "recover": await control.PostRawAsync($"api/v1/matches/{matchId}/recover", new { }); break;
+                case "recover":
+                    if (await control.GetActiveCapabilityIncidentAsync(
+                            matchId, HttpContext.RequestAborted) is not null)
+                        return Conflict(ApiResponse<LobbyDetails>.Failure(
+                            "capability_incident_requires_explicit_retry",
+                            "Use Retry from verified checkpoint so the current runtime is installed and the incident remains fail-closed during recovery."));
+                    await control.PostRawAsync($"api/v1/matches/{matchId}/recover", new { });
+                    break;
+                case "retry-after-update":
+                    if (profile.Status == "recovering")
+                        return Conflict(ApiResponse<LobbyDetails>.Failure(
+                            "capability_recovery_in_progress",
+                            "This campaign is already rebuilding from its verified checkpoint."));
+                    if (profile.Status is not ("running" or "parked" or "error"))
+                        return Conflict(ApiResponse<LobbyDetails>.Failure(
+                            "capability_recovery_not_available",
+                            "This campaign is not in a recoverable operator-attention state."));
+                    if (string.IsNullOrWhiteSpace(request.IncidentId))
+                        return BadRequest(ApiResponse<LobbyDetails>.Failure(
+                            "capability_incident_required",
+                            "Choose the active capability incident to retry."));
+                    profile.Status = "recovering";
+                    profile.LastError = null;
+                    profile.UpdatedAt = DateTimeOffset.UtcNow;
+                    await database.SaveChangesAsync(HttpContext.RequestAborted);
+                    await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                        "LobbyChanged", matchId, HttpContext.RequestAborted);
+                    await StopAgentRunsAsync(matchId, HttpContext.RequestAborted);
+                    await control.PostRawAsync(
+                        $"api/v1/matches/{matchId}/retry-after-update",
+                        new { incident_id = request.IncidentId }, HttpContext.RequestAborted);
+                    break;
                 case "end":
                     if (profile.Status != "parked")
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
@@ -579,7 +610,8 @@ public sealed class LobbiesController(
                     await control.PostRawAsync($"api/v1/matches/{matchId}/complete", new { });
                     break;
                 default: return BadRequest(ApiResponse<LobbyDetails>.Failure(
-                    "invalid_lifecycle_action", "Choose park, checkpoint, recover, or end."));
+                    "invalid_lifecycle_action",
+                    "Choose park, checkpoint, recover, retry-after-update, or end."));
             }
             profile.Status = request.Action switch
             {
@@ -603,22 +635,40 @@ public sealed class LobbiesController(
             database.PortalMatchEvents.Add(new PortalMatchEvent
             {
                 MatchId = matchId, EventType = request.Action,
-                Summary = $"Match {request.Action} completed.",
+                Summary = request.Action == "retry-after-update"
+                    ? "The capability-stopped match resumed from its verified checkpoint using the current managed runtime."
+                    : $"Match {request.Action} completed.",
             });
             await database.SaveChangesAsync(HttpContext.RequestAborted);
             return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
         }
         catch (ControlPlaneException exception)
         {
-            if (request.Action == "park")
+            if (request.Action is "park" or "retry-after-update")
             {
-                profile.Status = "running";
+                if (request.Action == "retry-after-update")
+                {
+                    try
+                    {
+                        profile.Status = (await control.GetMatchAsync(
+                            matchId, CancellationToken.None)).Match.Status == "parked"
+                                ? "parked" : "running";
+                    }
+                    catch (ControlPlaneException)
+                    {
+                        profile.Status = "running";
+                    }
+                }
+                else profile.Status = "running";
                 profile.LastError = exception.Message[..Math.Min(exception.Message.Length, 4000)];
                 profile.UpdatedAt = DateTimeOffset.UtcNow;
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {
-                    MatchId = matchId, EventType = "park_failed",
-                    Summary = $"Parking failed safely: {exception.Message}",
+                    MatchId = matchId,
+                    EventType = request.Action == "park" ? "park_failed" : "incident_retry_failed",
+                    Summary = request.Action == "park"
+                        ? $"Parking failed safely: {exception.Message}"
+                        : $"Capability recovery stayed fail-closed: {exception.Message}",
                 });
                 await database.SaveChangesAsync(CancellationToken.None);
                 await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
@@ -1364,6 +1414,17 @@ public sealed class LobbiesController(
                 reportedValue.TryGetDouble(out var unix)
                     ? DateTimeOffset.FromUnixTimeMilliseconds((long)(unix * 1000))
                     : DateTimeOffset.FromUnixTimeMilliseconds((long)(incident.FirstSeenUnix * 1000));
+            var verifiedCheckpointAvailable = false;
+            try
+            {
+                verifiedCheckpointAvailable = (await control.GetMatchAsync(
+                    matchId, HttpContext.RequestAborted)).Match.HasVerifiedRecoveryCheckpoint;
+            }
+            catch (ControlPlaneException)
+            {
+                // Incident visibility is more important than enabling recovery.
+                // A transient match-detail failure leaves retry safely disabled.
+            }
             return new CapabilityGapIncident(
                 incident.IncidentId, Text("gap_id", incident.IncidentKind["capability_gap:".Length..]),
                 incident.Status, Text("summary", "AI play needs operator attention."),
@@ -1372,6 +1433,7 @@ public sealed class LobbiesController(
                 Number("turn"), reported,
                 detail.TryGetProperty("native_worker_preserved", out var preserved) &&
                     preserved.ValueKind == JsonValueKind.True,
+                verifiedCheckpointAvailable,
                 fileName, size);
         }
         catch (ControlPlaneException)

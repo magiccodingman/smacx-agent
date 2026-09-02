@@ -137,6 +137,37 @@ public sealed class ResponseHandlingTests
         }
     }
 
+    [Fact]
+    public async Task ServerClientReportsOnlyVerifiedRecoveryCheckpoints()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"smacx-control-client-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var tokenFile = Path.Combine(root, "portal-service-token");
+        await File.WriteAllTextAsync(tokenFile, "test-service-token");
+        try
+        {
+            var json = """
+                {"ok":true,"match":{"match_id":"match-test1234","display_name":"Recovery test","mode":"singleplayer","status":"running","last_turn":12,"last_year":2112,"created_unix":1800000000,"updated_unix":1800000001,"metadata":{"recovery_checkpoint":{"slot":"control_recovery","verified":true}}},"seats":[]}
+                """;
+            using var http = new HttpClient(new SequenceHandler(JsonResponse(json)))
+            {
+                BaseAddress = new Uri("http://control.test/"),
+            };
+            var client = new ControlPlaneClient(
+                http,
+                Options.Create(new ControlPlaneOptions { ServiceTokenFile = tokenFile }),
+                NullLogger<ControlPlaneClient>.Instance);
+
+            var match = await client.GetMatchAsync("match-test1234");
+
+            Assert.True(match.Match.HasVerifiedRecoveryCheckpoint);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(json, Encoding.UTF8, "application/json"),

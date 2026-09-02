@@ -48,7 +48,10 @@ MATCH_DETAIL_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})$")
 MATCH_STATUS_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/status$")
 SCHEDULE_PATH = re.compile(r"^/api/v1/schedules/([A-Za-z0-9_-]{8,96})/(activate|pause|disable)$")
 BACKUP_PATH = re.compile(r"^/api/v1/backups/([A-Za-z0-9_-]{8,96})/verify$")
-RECOVERY_PATH = re.compile(r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/(checkpoint|recover)$")
+RECOVERY_PATH = re.compile(
+    r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/"
+    r"(checkpoint|recover|retry-after-update)$"
+)
 RESOLUTION_PATH = re.compile(
     r"^/api/v1/matches/([A-Za-z0-9_-]{8,96})/resolution$"
 )
@@ -938,9 +941,16 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 manager = self._manager()
                 body = self._body()
                 match_id, action = recovery_match.groups()
-                result = manager.checkpoint_match(
-                    match_id, slot=str(body.get("slot", "control_recovery")),
-                ) if action == "checkpoint" else manager.recover_match(match_id)
+                if action == "checkpoint":
+                    result = manager.checkpoint_match(
+                        match_id, slot=str(body.get("slot", "control_recovery")),
+                    )
+                elif action == "retry-after-update":
+                    result = manager.retry_match_after_update(
+                        match_id, str(body.get("incident_id", "")),
+                    )
+                else:
+                    result = manager.recover_match(match_id)
                 self.server.control.audit(
                     auth["admin_id"], f"match.{action}", "match", match_id,
                     "success", {"managed_recovery": True}, self.client_address[0],

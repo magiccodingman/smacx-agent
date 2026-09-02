@@ -34,8 +34,23 @@
             The diagnostic ZIP is redacted. It contains no game binaries, credentials, private provider
             addresses, chat history, account data, or full model reasoning.
         </MudAlert>
+        @if (!Incident.VerifiedCheckpointAvailable)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-2">
+                No bridge-verified checkpoint is available yet. Keep the native worker preserved or use
+                Stop &amp; park; automatic retry remains disabled rather than guessing at game state.
+            </MudAlert>
+        }
 
         <div class="capability-gap-actions">
+            @if (CanRetry && RetryRequested.HasDelegate)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.RestartAlt"
+                           Disabled="RetryBusy" OnClick="Retry">
+                    @(RetryBusy ? "Recovering…" : "Retry from verified checkpoint")
+                </MudButton>
+            }
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Download"
                        Disabled="@(Incident.DiagnosticFileName is null || downloading)"
@@ -56,7 +71,7 @@
             }
             else
             {
-                <MudButton Variant="Variant.Text" OnClick="Dismiss">Stay in lobby</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="Dismiss">Dismiss for now</MudButton>
             }
         </div>
         @if (copied)
@@ -71,12 +86,47 @@
     </section>
 </div>
 }
+else if (loaded && dismissed)
+{
+    <section class="capability-gap-banner @(Overlay ? "overlay" : "")" role="status" aria-live="polite">
+        <div class="capability-gap-banner-icon"><MudIcon Icon="@Icons.Material.Filled.PauseCircle" /></div>
+        <div class="capability-gap-banner-copy">
+            <span class="panel-kicker">AI PAUSED · OPERATOR ATTENTION REQUIRED</span>
+            <strong>Autonomous play is stopped at turn @(Incident.Turn?.ToString() ?? "unknown").</strong>
+            <p>The native game is preserved. Dismissing the report does not resume the AI.</p>
+            <code>@Incident.GapId</code>
+        </div>
+        <div class="capability-gap-banner-actions">
+            @if (CanRetry && RetryRequested.HasDelegate)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.RestartAlt"
+                           Disabled="RetryBusy" OnClick="Retry">
+                    @(RetryBusy ? "Recovering…" : "Retry from checkpoint")
+                </MudButton>
+            }
+            else if (!string.IsNullOrWhiteSpace(RecoveryHref))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.BuildCircle" Href="@RecoveryHref">
+                    Open recovery controls
+                </MudButton>
+            }
+            <MudButton Variant="Variant.Outlined" OnClick="Reopen">View incident</MudButton>
+        </div>
+    </section>
+}
 
 @code {
     [Parameter, EditorRequired] public CapabilityGapIncident Incident { get; set; } = default!;
     [Parameter, EditorRequired] public string MatchId { get; set; } = "";
     [Parameter] public EventCallback Dismissed { get; set; }
     [Parameter] public EventCallback ReturnRequested { get; set; }
+    [Parameter] public EventCallback RetryRequested { get; set; }
+    [Parameter] public bool CanRetry { get; set; }
+    [Parameter] public bool RetryBusy { get; set; }
+    [Parameter] public string? RecoveryHref { get; set; }
+    [Parameter] public bool Overlay { get; set; }
     private IJSObjectReference? module;
     private bool copied, downloading, dismissed, loaded;
     private string? loadedIncidentId, downloadError;
@@ -164,6 +214,15 @@
         await RememberDismissal();
         await Dismissed.InvokeAsync();
     }
+
+    private async Task Reopen()
+    {
+        module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/incident-actions.js");
+        await module.InvokeVoidAsync("restoreIncident", Incident.IncidentId);
+        dismissed = false;
+    }
+
+    private Task Retry() => RetryRequested.InvokeAsync();
 
     public async ValueTask DisposeAsync()
     {

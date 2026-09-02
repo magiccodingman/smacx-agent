@@ -172,7 +172,8 @@ public sealed record UpdateLobbySeatRequest(
     string FactionId = "random",
     string PersonalityId = "standard");
 
-public sealed record MatchLifecycleRequest(string Action, string? Slot = null);
+public sealed record MatchLifecycleRequest(
+    string Action, string? Slot = null, string? IncidentId = null);
 
 public sealed record ControllerLeaseRequest(string PlayInstanceId);
 
@@ -250,6 +251,7 @@ public sealed record CapabilityGapIncident(
     int? Turn,
     DateTimeOffset ReportedAt,
     bool NativeWorkerPreserved,
+    bool VerifiedCheckpointAvailable,
     string? DiagnosticFileName,
     long? DiagnosticSizeBytes);
 
