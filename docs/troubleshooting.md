@@ -70,6 +70,121 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll admin-reset-token 
 Use the printed 30-minute ticket on the Reset access page. This keeps matches,
 profiles, analytics, and accounts intact.
 
+## Network and Internet access
+
+First identify the route that is failing:
+
+- host: `http://127.0.0.1:8080`;
+- trusted LAN: `http://HOST-LAN-IP:8080`;
+- invited Internet: `https://PUBLIC-HOSTNAME`; or
+- native DirectPlay: the private physical/virtual player LAN.
+
+These routes have different requirements. Review [Network access and play
+modes](network-access.md) before changing firewall rules.
+
+### A LAN device cannot open the portal
+
+Confirm the edge listens on all host interfaces and the host has the expected
+private address:
+
+```bash
+docker compose ps edge control-center
+hostname -I
+curl --fail http://127.0.0.1:8080/healthz
+```
+
+Use `http://`, the host's LAN address, and port 8080. Allow TCP 8080 from the
+trusted LAN in the host firewall. Do not solve a LAN problem by forwarding 8080
+on the Internet router.
+
+### The public hostname does not connect
+
+Check each layer in order:
+
+```bash
+getent ahostsv4 planet.example.net
+docker compose ps edge ddns control-center
+docker compose logs --tail=200 edge ddns
+curl --fail --show-error https://planet.example.net/healthz
+```
+
+Replace the example hostname. Its A record must resolve to the current public
+IPv4 address. An AAAA record must be removed unless public IPv6 actually reaches
+the host. The router must forward public TCP 443 to the Docker host's TCP 443,
+and the Linux firewall must allow it.
+
+Test from a phone with Wi-Fi disabled. Some routers cannot loop their public
+hostname back into the LAN even though remote access works.
+
+Compare `curl -4 https://icanhazip.com` with the router's WAN IPv4. A mismatch
+usually means double NAT or carrier-grade NAT. Forward through both privately
+owned routers, or request a public address from the ISP. Ordinary port
+forwarding cannot cross ISP carrier-grade NAT.
+
+Never forward TCP 8080, DirectPlay TCP 47624/TCP+UDP 2300–2400, worker stream
+ports, control/MCP/database ports, or the Docker socket. Remote browser play
+needs only the Caddy HTTPS edge on TCP 443.
+
+### Caddy cannot obtain a certificate
+
+Confirm that `SMACX_PUBLIC_HOSTNAME` contains only the hostname—no scheme, port,
+path, or trailing slash—and that public DNS already points at this host. Then:
+
+```bash
+./scripts/control-center-up.sh
+docker compose logs --tail=250 edge
+```
+
+Caddy's data volume persists certificates and renewal state. Do not delete it
+while troubleshooting. A DNS record pointing elsewhere, blocked inbound TCP
+443, another service occupying host port 443, or a stale AAAA record are the
+usual causes.
+
+### Dynamic DNS does not update
+
+```bash
+docker compose logs --since=30m ddns
+ls -l runtime/edge-secrets/ddns-token
+```
+
+The selected provider, hostname, and token must all be present. The token file
+must contain the provider's update credential and be readable by the configured
+secret group. Keep the secret out of `.env` and logs. Verify the result with
+`getent ahostsv4 PUBLIC-HOSTNAME` after DNS caches refresh.
+
+### An invitation is invalid or opens only a local address
+
+An Internet invitation should begin with the configured `https://` public
+hostname. If **Administration → Network access** says no public hostname is
+configured, fix `.env` and restart before creating the invitation.
+
+Invitations are single-use, expire after 24 hours, and may be revoked. Create a
+new invitation rather than attempting to reuse its secret. The complete link,
+including the `#invite=...` fragment, must be preserved.
+
+### Remote sign-in asks for installation verification
+
+That is expected once per account. Use a desktop browser and select the
+directory that directly contains `terranx.exe`. The browser hashes the selected
+files locally; game content is not uploaded. After success, that account can log
+in from phones, tablets, and other browsers without repeating the check.
+
+An administrator may approve an otherwise legitimate unrecognized release from
+**Administration → Players**. Do not disable or weaken the remote verification
+boundary to work around one unsupported fingerprint.
+
+### A LAN user is treated as remote
+
+Check **Administration → Network access** for the address the portal classified
+as trusted. Routed private networks outside the defaults must be added explicitly
+to `SMACX_TRUSTED_NETWORKS` as CIDRs. If another reverse proxy sits in front of
+Caddy, also configure only that real proxy network in
+`SMACX_TRUSTED_PROXY_NETWORKS`; never trust arbitrary forwarded headers.
+
+For the complete host sequence, continue with [Internet hosting for invited
+friends](internet-hosting.md). For the player sequence, use [Joining a SMACX
+Agent server](joining-a-server.md).
+
 ## Portal loads but authenticated pages loop or look empty
 
 Confirm both services use the current images and the browser is not holding an
@@ -160,7 +275,8 @@ the worker. Current images must contain `video_mode=1`, `window_width=800`, and
 
 Confirm the stream page says interactive/Play rather than observer/Watch. Only
 the seat member or administrator controlling their own assigned seat receives
-an interactive ticket. Anonymous and cross-seat observation are always
+an interactive ticket. Unauthenticated users receive no stream ticket;
+authenticated spectator and cross-seat observation tickets are always
 read-only at the worker transport.
 
 Click once inside the stream to focus it. Browser-reserved shortcuts may not be
@@ -375,7 +491,7 @@ not permission to fall back to screenshots or mouse input.
 Stop persistent services without deleting data:
 
 ```bash
-docker compose stop control-center control-api
+docker compose stop
 ```
 
 Avoid `docker compose down -v`. Dynamic worker resources are ownership-labeled

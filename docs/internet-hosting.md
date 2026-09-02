@@ -1,126 +1,305 @@
 # Internet hosting for invited friends
 
-Internet access extends the same SMACX Agent installation used on localhost and
-LAN. There is no separate Internet image, Compose profile, database, or game
-service. Caddy remains the only browser-facing edge; its TLS site activates when
-a public hostname is configured. The DDNS helper remains idle when it is not.
+This guide extends the same persistent installation used for localhost and LAN.
+There is no separate Internet image, Compose profile, database, or game server.
+The included Caddy edge adds HTTPS, and the included DDNS helper can keep a
+hostname pointed at a changing home address.
 
-This is intended for a small private friend group, not public matchmaking or an
-open streaming service.
+The result is a private table for people you invite. It is not open registration,
+public matchmaking, or anonymous game streaming.
 
 Remote friends normally use managed browser seats: video, audio, mouse,
-keyboard, chat, and reconnect stay inside the HTTPS connection. Traditional
-native DirectPlay joining remains a LAN/advanced virtual-LAN path and is not
-made Internet-safe by Caddy.
+keyboard, chat, and reconnect remain inside one authenticated HTTPS connection.
+Traditional native DirectPlay remains a physical-LAN/private-Tailscale route and
+must not be exposed by public port forwarding.
 
-## 1. Choose a hostname
+## Before opening Internet access
 
-Use a domain you own or a hostname from DuckDNS, Dynu, or FreeDNS. Point it at
-the host's public IP. Forward public TCP port `443` to the Docker host's port
-`443`. Caddy obtains and renews the public certificate automatically.
+Complete [Getting started: localhost and LAN](lan-installation.md) first. Confirm
+that:
 
-Set the hostname before starting the same Compose project:
+- the portal is healthy at `http://127.0.0.1:8080`;
+- the administrator can sign in;
+- a LAN browser can reach `http://HOST-LAN-IP:8080`;
+- a test lobby can be created; and
+- **Administration → Game runtime** reports the managed platform ready.
+
+Back up the platform from **Administration → Operations** before changing host
+networking.
+
+You also need:
+
+- a hostname you control, or a DuckDNS/Dynu/FreeDNS hostname;
+- a publicly reachable home Internet connection;
+- router access to forward public TCP 443; and
+- a host firewall rule allowing TCP 443.
+
+## 1. Check whether inbound hosting is possible
+
+Find the public IPv4 address seen by the Internet:
 
 ```bash
-SMACX_PUBLIC_HOSTNAME="planet.example.net" \
-SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
-  ./scripts/control-center-up.sh
+curl -4 https://icanhazip.com
 ```
 
-For a persistent configuration, copy `.env.example` to `.env`, set the game
-source and public hostname there, then use the ordinary launcher. This is still
-the same installation and the same persistent data volumes used for LAN play.
+Compare it with the WAN/Internet IPv4 address shown by the router. If they do not
+match, another upstream router or carrier-grade NAT may sit in front of the
+network. Addresses in `100.64.0.0/10` are a common carrier-grade NAT signal.
 
-The LAN URL on port 8080 continues to work. Remote players use only
-`https://planet.example.net`. Remote login and invitation redemption fail
-closed on plain HTTP because passwords, session cookies, and browser hashing
-must not cross the Internet without TLS.
+- If there are two routers, forward TCP 443 through both or place the inner
+  router in the outer router's appropriate passthrough/bridge configuration.
+- If the ISP uses carrier-grade NAT, ordinary inbound port forwarding will not
+  work. Request a public address from the ISP or keep the service LAN-only.
+- If using IPv6, publish an AAAA record only when the Docker host actually has
+  that public IPv6 address and its firewall admits TCP 443. A stale/unreachable
+  AAAA record can make some clients fail even when IPv4 works.
 
-## 2. Optional dynamic DNS
+## 2. Give the host a stable private address
 
-The always-present `ddns` service sleeps when unconfigured. Activate one
-provider in the host `.env` file:
+Reserve the Docker host's LAN address in the router's DHCP settings, or configure
+an appropriate static address. The port-forwarding rule must keep pointing to
+the same machine after reboots.
+
+For the examples below, assume:
+
+```text
+Docker host LAN address: 192.168.1.25
+Public hostname:         planet.example.net
+```
+
+## 3. Choose and configure a hostname
+
+### Domain you already own
+
+Create an A record for a name such as `planet.example.net` pointing at the
+public IPv4 address. Add an AAAA record only under the IPv6 condition above.
+
+### Dynamic DNS hostname
+
+The included updater supports:
+
+- [DuckDNS](https://www.duckdns.org/)
+- [Dynu Dynamic DNS](https://www.dynu.com/en-US/DynamicDNS)
+- [FreeDNS](https://freedns.afraid.org/)
+
+Create a hostname with the selected provider and obtain its update token or
+password. The helper updates the current public address every five minutes by
+default.
+
+Check DNS after creating or changing the record:
+
+```bash
+getent ahostsv4 planet.example.net
+```
+
+DNS caches take time to expire. Continue only after the result contains the
+expected public address.
+
+## 4. Configure the existing deployment
+
+Edit the repository's `.env`:
 
 ```dotenv
-SMACX_PUBLIC_HOSTNAME=your-name.duckdns.org
+SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri"
+SMACX_PUBLIC_HOSTNAME=planet.example.net
+SMACX_ALLOW_PRIMARY_ADMIN_REMOTE_LOGIN=0
+```
+
+Use only the hostname—no `https://`, port, path, or trailing slash.
+
+For a fixed public address or externally managed DNS, leave DDNS off:
+
+```dotenv
+SMACX_DDNS_PROVIDER=off
+SMACX_DDNS_HOSTNAME=
+```
+
+For DuckDNS:
+
+```dotenv
 SMACX_DDNS_PROVIDER=duckdns
 SMACX_DDNS_HOSTNAME=your-name.duckdns.org
 ```
 
-Write the provider token to the host-only secret file (it is created on first
-startup and ignored by Git):
+For Dynu:
+
+```dotenv
+SMACX_DDNS_PROVIDER=dynu
+SMACX_DDNS_HOSTNAME=your-name.example
+SMACX_DDNS_USERNAME=your-dynu-username
+```
+
+For FreeDNS:
+
+```dotenv
+SMACX_DDNS_PROVIDER=freedns
+SMACX_DDNS_HOSTNAME=your-name.example
+```
+
+Write the provider's update token/password to the host-only secret file. The
+launcher creates the directory and blank file if needed:
 
 ```bash
-printf '%s' 'replace-with-provider-token' > runtime/edge-secrets/ddns-token
+printf '%s' 'replace-with-provider-update-secret' > runtime/edge-secrets/ddns-token
 chmod 640 runtime/edge-secrets/ddns-token
 ```
 
-Supported provider values are `duckdns`, `dynu`, and `freedns`. Dynu may also
-set `SMACX_DDNS_USERNAME`; FreeDNS uses its private update token. The refresh
-interval defaults to 300 seconds and may be changed with
-`SMACX_DDNS_INTERVAL_SECONDS` (minimum 60).
+FreeDNS expects the private token portion of its direct-update URL. Dynu expects
+the credential accepted by its NIC update endpoint. Do not put the secret in
+`.env`, commit it, paste it into an issue, or share the `runtime/edge-secrets`
+directory.
 
-The token is mounted read-only and is absent from Compose environment output and
-Docker inspect-visible container configuration. Do not commit or share `.env`
-or the secret directory.
+Start or rebuild the same stack:
 
-## 3. Invite a player
+```bash
+./scripts/control-center-up.sh
+```
 
-1. Sign in locally as an administrator.
-2. Open **Administration → Network access**.
-3. Create a one-time invitation and share its full link privately.
-4. The friend opens the link and creates an account within 24 hours.
-5. Registration consumes the invitation and returns them to sign-in.
+The `edge` and `ddns` containers are already part of the ordinary installation.
+The DDNS container remains idle when no provider is configured.
 
-The secret is placed in the URL fragment, so it is not sent in the initial HTTP
-request or written to ordinary reverse-proxy access logs. Invitations are
-single-use, hashed in the database, rate-limited when redeemed, and revocable.
+## 5. Forward and allow only HTTPS
 
-## 4. One-time local installation check
+In the router, create this rule:
 
-At the first remote sign-in, a desktop browser asks the player to select their
-own Alpha Centauri installation directory. All inspection happens locally in
-the browser:
+```text
+Protocol:        TCP
+External port:   443
+Internal host:   192.168.1.25
+Internal port:   443
+```
 
-- the directory picker grants access only to the folder the player chose;
-- several characteristic game files are hashed with WebCrypto SHA-256;
-- only candidate IDs, sizes, and hashes are submitted;
-- no executable, DLL, artwork, audio, text, or other game content is uploaded;
-- several known content anchors must agree, so renaming an unrelated file is
-  insufficient; and
-- executable and modded files may differ without invalidating otherwise
-  recognized game content.
+Router terminology varies: **Port forwarding**, **NAT**, **Virtual server**, or
+**Inbound rule** commonly lead to the same setting.
 
-After success, verification belongs to the account, not that browser. The
-player can subsequently sign in from a phone, tablet, PWA, or another desktop.
-An administrator can approve a legitimate unsupported release manually from
-**Administration → Players**.
+Allow inbound TCP 443 in the Linux host firewall. For a host using UFW:
 
-The check is a good-faith ownership boundary, not invasive DRM. Its purpose is
-to keep a private browser host from becoming an anonymous game distributor.
+```bash
+sudo ufw allow 443/tcp
+sudo ufw status
+```
 
-## Primary administrator and account safety
+Keep TCP 8080 restricted to localhost/trusted LAN. Do not publicly forward:
 
-The original `admin` account is tied to the server's mounted game source. It is
+- TCP 8080;
+- DirectPlay TCP 47624 or TCP/UDP 2300–2400;
+- a worker's temporary stream port;
+- the control API, MCP, database, Graphiti, knowledge, or model-provider ports;
+  or
+- the Docker socket.
+
+Caddy obtains and renews the public certificate automatically. SMACX Agent's
+edge disables HTTP redirects, so normal deployment needs public TCP 443 rather
+than exposing the LAN HTTP service. See Caddy's [automatic HTTPS
+documentation](https://caddyserver.com/docs/automatic-https) for its certificate
+requirements and challenge behavior.
+
+## 6. Verify HTTPS from outside the LAN
+
+Check container status and certificate/DDNS logs on the host:
+
+```bash
+docker compose ps edge ddns control-center
+docker compose logs --tail=150 edge ddns
+```
+
+Then disconnect a phone from Wi-Fi and open:
+
+```text
+https://planet.example.net
+```
+
+Testing over mobile data avoids router hairpin-NAT ambiguity. The browser should
+show a trusted certificate and the SMACX Agent sign-in page. You can also test:
+
+```bash
+curl --fail --show-error https://planet.example.net/healthz
+```
+
+Run that command from a machine outside the home network when the router cannot
+loop a public hostname back inside.
+
+Household devices may continue using `http://HOST-LAN-IP:8080`. If the router
+supports hairpin NAT, the public HTTPS hostname may also work from the LAN. Both
+addresses reach the same accounts, lobbies, and campaigns.
+
+## 7. Prepare a remote administrator safely
+
+The original `admin` account is tied to the host's mounted game source. It is
 automatically verified and cannot be deleted, deactivated, or demoted. Remote
-login for that account is blocked by default. Prefer a separately promoted
-administrator for remote administration.
+login for that account is blocked by default.
 
-If absolutely necessary, the host may opt in with:
+For remote administration:
+
+1. Create an ordinary account while on the LAN.
+2. Promote it under **Administration → Players**.
+3. Confirm it has a strong, unique password.
+4. Use that account remotely.
+
+Only when there is a specific recovery need should the host opt in:
 
 ```dotenv
 SMACX_ALLOW_PRIMARY_ADMIN_REMOTE_LOGIN=1
 ```
 
-Deactivating another account invalidates its cookie on the next request and
-actively closes its lobby and game-stream connections. Reactivation is
-available from the same Players page.
+## 8. Invite a friend
 
-## Spectators and cheating boundary
+1. Sign in as an administrator.
+2. Open **Administration → Network access**.
+3. Optionally enter a private label, such as the friend's name/device.
+4. Choose **Create invitation**.
+5. Copy the complete HTTPS link and share it privately.
 
-Spectating always requires a signed-in active account. **Allow spectators**
-means authenticated non-participants may receive transport-enforced read-only
-streams. A user who has ever occupied a player faction in that campaign cannot
-spectate another seat later, even if that user is an administrator or leaves
-the match. Non-participating administrators retain observation access for
-household support and debugging.
+The invitation:
+
+- is single-use;
+- expires after 24 hours;
+- can be revoked before use;
+- is stored as a digest rather than plaintext; and
+- places its secret after `#` so ordinary proxy request logs do not receive it.
+
+The friend follows [Joining a SMACX Agent server](joining-a-server.md): open the
+link on a desktop, create an account, sign in, and select their own installation
+directory once. No game file is uploaded. After verification, the account can
+use phones, tablets, PWAs, or other browsers without repeating the check.
+
+Existing verified accounts do not need a new invitation every time they sign in.
+An administrator can deactivate an account to revoke its future access and
+close its active lobby/stream connections.
+
+## Security and privacy boundaries
+
+- There is no open Internet registration endpoint without a valid invitation.
+- Spectating requires an active signed-in account and lobby opt-in.
+- Campaign participants cannot spectate enemy seats later.
+- Browser stream authorization is seat-scoped and enforced by the server.
+- The host's game directory is never served as downloadable files.
+- The one-time player check submits only content-free fingerprints.
+- Provider credentials and internal services remain behind the private edge.
+
+## Updating or disabling Internet access
+
+When the public IP changes, the configured DDNS helper updates it automatically.
+Inspect recent success/failure output with:
+
+```bash
+docker compose logs --since=30m ddns
+```
+
+To change hostname, update both DNS/DDNS settings and
+`SMACX_PUBLIC_HOSTNAME`, then rerun `./scripts/control-center-up.sh`.
+
+To return to LAN-only operation:
+
+1. remove the router's TCP 443 forwarding rule;
+2. set `SMACX_PUBLIC_HOSTNAME=` and `SMACX_DDNS_PROVIDER=off` in `.env`;
+3. clear the DDNS token file if it is no longer needed; and
+4. rerun `./scripts/control-center-up.sh`.
+
+Accounts and campaigns remain intact.
+
+## Troubleshooting Internet access
+
+Continue with [Network and Internet troubleshooting](troubleshooting.md#network-and-internet-access)
+for DNS, Caddy certificates, CGNAT/double NAT, invitations, trusted-network
+classification, and installation-verification failures.

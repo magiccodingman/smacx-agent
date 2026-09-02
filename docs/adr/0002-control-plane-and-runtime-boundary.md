@@ -18,18 +18,20 @@ making the game protocol or durable memory dependent on Hermes internals.
 
 ## Decision
 
-SMACX Agent has one persistent, authenticated Control Center and ephemeral or
-parked per-seat game workers. The Control Center uses the same authoritative
-SQLite database as match memory. Its first-run flow creates a one-time local
+SMACX Agent has one persistent, authenticated portal and ephemeral or parked
+per-seat game workers. The ASP.NET portal owns its Identity, lobby, access, and
+public-projection SQLite database; the private Python control service separately
+owns authoritative native match, memory, worker, save, and operations state.
+Neither service writes the other's database. First run creates a one-time local
 bootstrap token and no default password. The default username is `admin`, as a
-convenience rather than a credential. Passwords use scrypt; browser session and
-CSRF values are stored only as digests.
+convenience rather than a credential. Password storage and browser sessions use
+ASP.NET Core Identity and protected cookie infrastructure.
 
-Provider API keys, bridge tokens, and spectator passwords are file secrets with
-mode 0600. SQLite stores only purpose-scoped references and integrity
-fingerprints. HTTP responses, audit details, and logs never contain secret
-values. Provider discovery follows the OpenAI-compatible `/v1/models`
-contract. One model may be selected automatically; multiple models require an
+Provider API keys, bridge tokens, service credentials, and database credentials
+are purpose-scoped secrets outside ordinary browser responses. SQLite stores
+only purpose-scoped references and integrity fingerprints where appropriate.
+HTTP responses, audit details, and logs never contain secret values. Provider
+discovery follows the OpenAI-compatible `/v1/models` contract. One model may be selected automatically; multiple models require an
 operator choice. Context length can be discovered or explicitly overridden.
 
 The Control Center container receives the Docker socket after the worker
@@ -70,14 +72,22 @@ gameplay.
 
 ## Network posture
 
-The default Compose publication is `127.0.0.1`. A home-lab operator may bind a
-trusted LAN address explicitly. Public exposure requires an HTTPS reverse proxy
-and secure cookies. Legacy DirectPlay traffic uses a separately managed virtual
-LAN; it is not tunneled through the Control Center's HTTP port.
+The included Caddy edge publishes HTTP port 8080 on the host for localhost and
+trusted-LAN browser play. When `SMACX_PUBLIC_HOSTNAME` is configured, the same
+edge serves invitation-gated Internet access on HTTPS port 443 with automatic
+certificate management. Remote registration requires an expiring single-use
+invitation and first remote sign-in requires a content-free local installation
+check. The portal, control API, workers, MCP, databases, and stream credentials
+are not published directly.
+
+Legacy DirectPlay traffic uses a separately managed physical/private virtual
+player LAN; it is not tunneled through the portal and is never publicly port
+forwarded. See [Network access and play modes](../network-access.md).
 
 ## Consequences
 
-Operators start one service and manage later matches without Compose teardown.
+Operators start one persistent stack and manage later matches without Compose
+teardown.
 No agent receives Docker, spectator, provider-secret, or bootstrap credentials.
 The web process becomes high authority only when worker orchestration is
 enabled, so its request validation, audit trail, and resource-label checks are
@@ -87,7 +97,7 @@ boundary exists for isolation and testability.
 Direct Docker-socket access means compromise of the authenticated Control
 Center is equivalent to host compromise. Running as UID 10001, dropping Linux
 capabilities, and using a read-only root filesystem reduce ordinary container
-risk but do not weaken Docker daemon authority. Consequently the service is
-loopback-only by default, has no generic Docker proxy API, validates every
-operator input, and mutates only objects with exact installation and purpose
-labels.
+risk but do not weaken Docker daemon authority. Consequently the Docker-bearing
+control service remains private behind a purpose-authenticated portal boundary,
+has no generic Docker proxy API, validates every operator input, and mutates
+only objects with exact installation and purpose labels.
