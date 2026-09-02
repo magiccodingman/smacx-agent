@@ -1,0 +1,48 @@
+@page "/privacy"
+
+<PageTitle>Privacy · SMACX Agent</PageTitle>
+
+<PageHeader Kicker="RESPECTFUL ANALYTICS"
+            Title="A small signal, not a dossier"
+            Description="SMACX Agent uses privacy-focused Plausible Analytics to answer one useful question for its maintainer: is anyone using this project?" />
+
+<div class="privacy-grid">
+    <section class="surface-panel privacy-purpose">
+        <MudIcon Icon="@Icons.Material.Filled.Favorite" />
+        <div>
+            <span class="panel-kicker">WHY ANALYTICS EXIST</span>
+            <h2>Quiet communities still matter</h2>
+            <p>I have released many open-source projects for small, specialized communities. Those projects may receive few stars, discussions, or messages even while real people depend on them. Without a modest usage signal, it is easy to assume nobody cares and stop checking the repository.</p>
+            <p>Aggregate activity tells me that continued maintenance may matter to someone. It helps me decide whether to return, review reports, and keep improving the project. It is not used for advertising or building personal profiles.</p>
+        </div>
+    </section>
+
+    <section class="surface-panel privacy-details">
+        <span class="panel-kicker">WHAT PLAUSIBLE OBSERVES</span>
+        <h2>Limited, aggregate website activity</h2>
+        <p>Top-level portal pages load <code>/js/potato.js</code>, a first-party path backed by a bounded 24-hour cache of the maintainer's exact Plausible browser script. Events report to the maintainer-operated endpoint at <code>track.truthorigin.com</code>. This also applies to self-hosted copies of SMACX Agent.</p>
+        <ul>
+            <li>Page views and client-side route changes</li>
+            <li>Eligible file downloads and outbound-link clicks</li>
+            <li>Ordinary aggregate browser, device, referrer, and geographic statistics produced by Plausible</li>
+        </ul>
+        <p>Plausible does not use tracking cookies or create cross-site advertising profiles. Network request information is processed by Plausible to produce aggregate statistics rather than retained by SMACX Agent as a personal activity history.</p>
+    </section>
+
+    <section class="surface-panel privacy-details privacy-never">
+        <span class="panel-kicker">WHAT IS NOT SENT</span>
+        <h2>Your game remains your game</h2>
+        <ul>
+            <li>Usernames, display names, passwords, or API keys</li>
+            <li>Lobby or in-game chat messages</li>
+            <li>AI prompts, responses, memories, or model-provider details</li>
+            <li>Game binaries, saves, match state, or installation fingerprints</li>
+        </ul>
+        <p>Tracking is skipped when the portal is framed or opened in an explicit embedded view. Those surfaces exist to display the game, not measure portal navigation.</p>
+    </section>
+
+    <section class="surface-panel privacy-thanks">
+        <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" />
+        <div><strong>Thank you for using SMACX Agent.</strong><span>Simply knowing that someone showed up can be enough motivation to keep a niche open-source project healthy.</span></div>
+    </section>
+</div>

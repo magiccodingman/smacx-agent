@@ -64,6 +64,20 @@ public sealed class PortalFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PublicPrivacyNoticeAndFirstPartyAnalyticsLoaderAreAvailable()
+    {
+        var home = await client!.GetStringAsync("/");
+        Assert.Contains("smacx-agent.magiccodingman", home);
+        Assert.Contains("https://track.truthorigin.com/api/event", home);
+        Assert.Contains("script.src = '/js/potato.js'", home);
+        Assert.Contains("window.top !== window.self", home);
+
+        using var privacy = await client.GetAsync("/privacy");
+        Assert.Equal(HttpStatusCode.OK, privacy.StatusCode);
+
+    }
+
+    [Fact]
     public async Task InvitationRegistrationIsSingleUseAndDoesNotSignInAutomatically()
     {
         var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
