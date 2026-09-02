@@ -67,6 +67,15 @@ through 1920×1200, 8 Mbps through 2560×1600, 12 Mbps through 4K, and a bounded
 does not manufacture a wasteful 4K encode. Spectators inherit the seat's
 stream and cannot change it.
 
+Each worker serves the same X display through two private, authenticated
+Selkies endpoints. HTTPS and loopback clients use the primary H.264 stream with
+audio. A browser opened through a plain non-loopback LAN HTTP address is routed
+to the worker's JPEG/WebSocket endpoint because WebCodecs is unavailable in
+that browser security context. Both endpoints preserve the same controller or
+view-only credential boundary; the compatibility endpoint omits audio. Neither
+worker endpoint is exposed as a public browser route—the portal remains the
+authorization and reverse-proxy boundary.
+
 ## One controller per seat
 
 Every open Play page receives an ephemeral, server-owned, user/worker-bound

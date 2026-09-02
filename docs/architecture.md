@@ -28,6 +28,8 @@ one isolated seat
        +--> Proton + terranx.exe + semantic bridge <--> exact-seat MCP
        |                |
        |                +--> Selkies video/audio/input (portal proxied)
+       |                     + secure/loopback H.264 + audio
+       |                     + plain-LAN HTTP JPEG compatibility view
        |
        +--> isolated SMACX-derived Hermes <--> OpenAI-compatible provider
 

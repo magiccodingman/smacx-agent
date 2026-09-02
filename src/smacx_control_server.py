@@ -1042,6 +1042,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 elif action == "spectator":
                     result = manager.spectator_access(
                         instance_id, interactive=body.get("interactive") is True,
+                        compatibility=body.get("compatibility") is True,
                     )
                 elif action == "chat":
                     result = manager.portal_chat(

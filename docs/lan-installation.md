@@ -175,6 +175,13 @@ Browser players need only the URL. A traditional native DirectPlay player uses
 their own game installation and the advanced player-network setup described in
 [Network access and play modes](network-access.md).
 
+Plain LAN HTTP supports the full portal plus managed video, mouse, keyboard,
+touch, and spectating. Because browsers expose WebCodecs only to secure
+contexts, the stream automatically selects its JPEG/WebSocket compatibility
+path and omits game audio on that origin. Use the configured trusted HTTPS
+hostname (or another certificate trusted by the device) for H.264/WebCodecs
+video, game audio, and PWA installation.
+
 ## 7. Create the first game
 
 1. Sign in and open **Lobbies**.

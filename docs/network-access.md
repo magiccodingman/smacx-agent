@@ -15,7 +15,7 @@ The ordinary choice is simple:
 | Route | Address | What the player needs | Account entry | Installation check | Game transport |
 | --- | --- | --- | --- | --- | --- |
 | Host browser | `http://127.0.0.1:8080` | Browser | First administrator bootstraps; later accounts follow LAN policy | Off by default | Managed browser stream |
-| Trusted-LAN browser | `http://HOST-LAN-IP:8080` | Browser | Open registration by default; administrator may require an invitation | Off by default; administrator may require it | Managed browser stream |
+| Trusted-LAN browser | `http://HOST-LAN-IP:8080` | Browser | Open registration by default; administrator may require an invitation | Off by default; administrator may require it | Managed JPEG/WebSocket video and input; HTTPS is required for browser audio |
 | Invited Internet browser | `https://PUBLIC-HOSTNAME` | Browser; desktop once for verification | One-time, 24-hour invitation for a new account | Required once per account | Managed browser stream over HTTPS |
 | Physical-LAN native client | Worker/session details from staging | Own compatible game installation | Signed-in/provisional lobby identity | Not the browser verification flow | DirectPlay on the private player network |
 | Tailscale native client | Exact worker IPv4 through the tailnet | Own compatible game installation and Tailscale | Signed-in/provisional lobby identity | Not the browser verification flow | DirectPlay over a private routed tailnet |
@@ -28,9 +28,11 @@ needs HTTPS, and remote accounts still need the one-time installation check.
 ## Browser play
 
 A managed browser seat runs the original game in an isolated worker on the host.
-Video, audio, mouse, keyboard, chat, reconnect, and mobile/PWA access travel
-through the authenticated portal. The player's device does not receive a copy of
-the host's game files.
+Video, mouse, keyboard, touch, chat, and reconnect travel through the
+authenticated portal. A secure origin also carries game audio and permits PWA
+installation. Plain LAN HTTP automatically selects a JPEG/WebSocket video
+compatibility mode instead of presenting a dead WebCodecs error. The player's
+device does not receive a copy of the host's game files.
 
 Only the edge is browser-facing:
 

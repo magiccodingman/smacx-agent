@@ -25,6 +25,7 @@ else if (lobby is null)
 else
 {
     <PageHeader Kicker="OBSERVATION DECK" Title="@lobby.DisplayName" Description="Switch between isolated seat perspectives. This view cannot send game input." />
+    <StreamSecurityNotice />
     <div class="stream-shell surface-panel">
         <div class="stream-toolbar">
             @foreach (var seat in WatchableSeats)
