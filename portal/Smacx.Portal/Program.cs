@@ -47,6 +47,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveWebAssemblyComponents()
     .AddAuthenticationStateSerialization(options => options.SerializeAllClaims = true);
 builder.Services.AddMudServices();
+builder.Services.AddMemoryCache();
 builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
 builder.Services.AddAntiforgery(options =>
@@ -101,6 +102,7 @@ builder.Services.AddScoped<MatchAccessService>();
 builder.Services.AddSingleton<AccountConnectionRegistry>();
 builder.Services.AddSingleton<PortalSecurityTicketService>();
 builder.Services.AddSingleton<InstallationFingerprintCatalog>();
+builder.Services.AddSingleton<AnalyticsScriptProvider>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ControllerLeaseService>();
 builder.Services.AddScoped<MatchGovernanceService>();
@@ -249,6 +251,11 @@ builder.Services.AddHttpClient<ControlPlaneClient>(client =>
 {
     client.BaseAddress = new Uri(controlBaseUrl.EndsWith('/') ? controlBaseUrl : $"{controlBaseUrl}/");
     client.Timeout = TimeSpan.FromMinutes(15);
+});
+builder.Services.AddHttpClient("plausible-script", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("SMACX-Agent/1.0 analytics-script-proxy");
 });
 
 var app = builder.Build();

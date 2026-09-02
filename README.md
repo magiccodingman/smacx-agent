@@ -377,6 +377,17 @@ For complete prerequisites, runtime registration, networking, accounts,
 providers, lobbies, streams, saves, and recovery, use the
 [operator guide](docs/control-center.md).
 
+## Respectful usage analytics
+
+SMACX Agent uses cookie-free Plausible Analytics to give the maintainer one
+quiet but meaningful signal: whether people are using the project. This is
+especially valuable for niche open-source software whose real community may
+not show up through stars or discussions. Self-hosted portal pages send limited,
+aggregate page-view, download, and outbound-link activity to the maintainer's
+Plausible endpoint; game data, chat, credentials, saves, AI conversations, and
+installation fingerprints are not sent. See the complete [privacy
+notice](docs/privacy.md).
+
 ## Go deeper
 
 The front page tells the product story. Detailed claims and engineering
@@ -393,6 +404,7 @@ evidence live where they can stay precise:
 - [Mechanics encyclopedia and copyright boundary](docs/reference-knowledge.md)
 - [Optional Graphiti temporal memory](docs/graphiti.md)
 - [Testing and reproducible evidence](docs/testing.md)
+- [Privacy and aggregate usage analytics](docs/privacy.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## License

@@ -10,6 +10,50 @@
     <meta name="application-name" content="SMACX Agent" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <script>
+        (() => {
+            const isFramed = window.top !== window.self;
+            const search = new URLSearchParams(window.location.search);
+            const isEmbedView = search.get('hideNav') === '1' || search.get('hideImage') === '1';
+            const shouldTrack = !isFramed && !isEmbedView;
+
+            if (!shouldTrack) {
+                window.plausible = window.plausible || function () {};
+                return;
+            }
+
+            window.plausible = window.plausible || function () {
+                (window.plausible.q = window.plausible.q || []).push(arguments);
+            };
+
+            let lastTrackedUrl = window.location.href;
+            const trackNavigation = () => {
+                const nextUrl = window.location.href;
+                if (nextUrl === lastTrackedUrl) return;
+                lastTrackedUrl = nextUrl;
+                window.plausible('pageview', { u: nextUrl });
+            };
+            const observeHistory = method => {
+                const original = window.history[method];
+                window.history[method] = function () {
+                    const result = original.apply(this, arguments);
+                    queueMicrotask(trackNavigation);
+                    return result;
+                };
+            };
+            observeHistory('pushState');
+            observeHistory('replaceState');
+            window.addEventListener('popstate', trackNavigation);
+            window.addEventListener('hashchange', trackNavigation);
+
+            const script = document.createElement('script');
+            script.defer = true;
+            script.dataset.domain = 'smacx-agent.magiccodingman';
+            script.dataset.api = 'https://track.truthorigin.com/api/event';
+            script.src = '/js/potato.js';
+            document.head.appendChild(script);
+        })();
+    </script>
     <script src="js/pwa-install.js"></script>
     <script src="js/access-verification.js"></script>
     <link rel="manifest" href="manifest.webmanifest" />
