@@ -43,6 +43,13 @@ gameplay seat or carrying over the previous provider secret. Editing the
 selected profile refreshes Graphiti automatically; a background reconciler
 repairs that snapshot after a transient control-service outage.
 
+The enabled state and selected profile are durable installation settings in
+the control volume. Rebuilding or recreating the portal container does not
+change them. Background reconciliation is deliberately healing-only: a portal
+process that temporarily cannot see its profile database preserves the last
+valid control snapshot. Only an explicit administrator disable or profile
+deactivation clears the selection.
+
 Reasoning is one profile intent with two deliberate adapters. Managed gameplay
 passes it through Hermes. Graphiti calls the OpenAI-compatible endpoint directly
 and therefore sends it as top-level `reasoning_effort`, while keeping typed

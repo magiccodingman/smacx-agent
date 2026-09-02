@@ -27,7 +27,7 @@ public sealed class GraphitiProfileReconciler(
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task ReconcileAsync(CancellationToken cancellationToken)
+    internal async Task ReconcileOnceAsync(CancellationToken cancellationToken = default)
     {
         await using var scope = scopes.CreateAsyncScope();
         var control = scope.ServiceProvider.GetRequiredService<ControlPlaneClient>();
@@ -43,8 +43,17 @@ public sealed class GraphitiProfileReconciler(
             .SingleOrDefaultAsync(profile => profile.ProfileId == profileId, cancellationToken);
         if (item is null || !item.Active)
         {
-            using var cleared = await control.PostRawAsync(
-                "api/v1/graphiti/clear-profile", new { profile_id = profileId }, cancellationToken);
+            // Reconciliation is deliberately healing-only. A replacement or
+            // diagnostic portal process may temporarily observe an empty,
+            // stale, or unavailable portal database while the durable control
+            // snapshot remains valid. Treating that absence as an operator
+            // deletion used to erase the selected profile and disable
+            // Graphiti during otherwise ordinary container recreation.
+            // Explicit profile deactivation and the administrator toggle own
+            // the destructive clear operation.
+            logger.LogDebug(
+                "Selected Graphiti profile {ProfileId} is not active in this portal store; preserving the durable control snapshot",
+                profileId);
             return;
         }
         using var synced = await control.PostRawAsync(
@@ -61,4 +70,7 @@ public sealed class GraphitiProfileReconciler(
                 },
             }, cancellationToken);
     }
+
+    private Task ReconcileAsync(CancellationToken cancellationToken) =>
+        ReconcileOnceAsync(cancellationToken);
 }
