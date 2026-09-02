@@ -59,7 +59,8 @@ def main() -> int:
         smacx_mcp._call = turn_call
         frame = smacx_mcp.smac_decision()
         if not frame.get("ok") or frame.get("focus", {}).get("unit", {}).get("id") != 7 \
-                or frame.get("required_next", {}).get("guard", {}).get("expected_revision") != "r1" \
+                or frame.get("required_next", {}).get("tool") != "smac_execute_choice" \
+                or frame.get("required_next", {}).get("decision_id") != frame.get("decision_id") \
                 or "snapshot" in frame \
                 or calls[-1] != ("semantic_choices", {
                     "kind": "unit_actions", "unit_id": 7,
@@ -127,7 +128,9 @@ def main() -> int:
         )
         frame = smacx_mcp.smac_decision()
         if frame.get("focus", {}).get("kind") != "interaction" \
-                or frame.get("choices", [{}])[0].get("command") != "acknowledge_popup":
+                or frame.get("choices", [{}])[0].get("label") != "Acknowledge popup" \
+                or "action" in frame.get("choices", [{}])[0] \
+                or not str(frame.get("choices", [{}])[0].get("choice_id", "")).startswith("choice-"):
             raise AssertionError(f"bad interaction frame: {frame}")
 
         smacx_mcp._call = lambda operation, **arguments: snapshot("wait")
@@ -166,6 +169,7 @@ def main() -> int:
         smacx_mcp.MATCH_BRIEFING_CACHE.clear()
         smacx_mcp.MATCH_CONFIGURATION_CACHE.clear()
         smacx_mcp.MATCH_BRIEFING_RESUME_NOTICES.clear()
+        smacx_mcp.DECISION_CACHE.clear()
     print("decision frame tests passed")
     return 0
 

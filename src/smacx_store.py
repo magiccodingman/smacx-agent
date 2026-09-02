@@ -1,7 +1,8 @@
-"""Authoritative durable identities, events, chat, and memory for SMACX Agent.
+"""Platform records and rebuildable query projections for SMACX Agent.
 
-SQLite is the source of truth.  External memory systems such as Graphiti are
-downstream projections and must never be required to read or mutate this store.
+Canonical campaign history lives in the hash-linked campaign journal. SQLite
+coordinates platform processes and serves transactional query/FTS projections;
+Graphiti remains an optional downstream projection.
 """
 
 from __future__ import annotations
@@ -1006,6 +1007,7 @@ class SmacxStore:
         # deterministic, non-reversible namespace to the derived graph.
         material = "\x1f".join((
             self.installation_id(), scope.match_id, scope.agent_id, scope.perspective_id,
+            os.environ.get("SMACX_TIMELINE_ID", "timeline-main"),
         ))
         return "smacx_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:48]
 

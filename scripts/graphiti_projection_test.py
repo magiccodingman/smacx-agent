@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 
 from smacx_graphiti import GraphEpisode, GraphitiProjector
+from smacx_journal import CampaignJournal
 from smacx_store import MemoryScope, SmacxStore
 
 
@@ -50,41 +51,38 @@ async def exercise() -> dict:
         )
         alpha = MemoryScope("match-graph-test", "agent-graph-alpha", "perspective-graph-alpha")
         beta = MemoryScope("match-graph-test", "agent-graph-beta", "perspective-graph-beta")
+        journal = CampaignJournal(Path(temporary) / "campaigns")
         alpha_events = [
-            store.append_event(
+            journal.append(
                 alpha,
                 "diplomacy.contact",
                 {"counterpart": "Morgan", "observation": "made contact"},
                 turn=1,
                 year=2101,
-                search_text="Contacted Morgan",
-            ),
-            store.append_event(
+            )["event_id"],
+            journal.append(
                 alpha,
                 "chat.message",
                 {"speech": "Morgan claims peaceful intent", "untrusted": True},
                 turn=2,
                 year=2102,
-                search_text="Morgan claims peaceful intent",
-            ),
-            store.append_event(
+            )["event_id"],
+            journal.append(
                 alpha,
-                "memory.belief_updated",
+                "memory.belief",
                 {"belief": "Morgan may be sincere", "confidence": 0.6},
                 turn=2,
                 year=2102,
-                search_text="Morgan may be sincere",
-            ),
+            )["event_id"],
         ]
-        store.append_event(
+        journal.append(
             alpha, "unit.moved", {"unit": 12, "tile": 44},
-            turn=2, year=2102, search_text="Routine scout movement", importance=20,
+            turn=2, year=2102,
         )
-        store.append_event(
+        journal.append(
             beta,
             "strategy.secret",
             {"intent": "attack Alpha"},
-            search_text="Secret Beta attack plan",
         )
 
         sink = FakeSink()
@@ -112,8 +110,9 @@ async def exercise() -> dict:
         if any("Secret Beta attack plan" in episode.body for episode in sink.episodes):
             raise AssertionError("another perspective leaked into Graphiti")
 
-        deterministic = projector.episode_for_event(alpha, store.list_events(alpha, limit=10)[-1])
-        deterministic_again = projector.episode_for_event(alpha, store.list_events(alpha, limit=10)[-1])
+        latest = journal.events_after(alpha, limit=10)[-1]
+        deterministic = projector.episode_for_event(alpha, latest)
+        deterministic_again = projector.episode_for_event(alpha, latest)
         if deterministic.episode_uuid != deterministic_again.episode_uuid:
             raise AssertionError("episode UUID is not replay-stable")
 
@@ -130,7 +129,7 @@ async def exercise() -> dict:
             "resume_from_cursor": True,
             "stable_episode_ids": True,
             "group_rebuild_isolated": True,
-            "sqlite_remains_authoritative": True,
+            "sqlite_projection_cursor_is_rebuildable": True,
             "routine_events_excluded": True,
         }
 

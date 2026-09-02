@@ -45,6 +45,8 @@ def main() -> int:
             raise AssertionError("duplicate unscoped Hermes memory remained enabled")
         if config["mcp_servers"]["smacx"]["url"] != profile["mcp_url"]:
             raise AssertionError("Hermes profile was not bound to its exact MCP sidecar")
+        if config["model"].get("reasoning_echo") is not False:
+            raise AssertionError("generic provider profiles unexpectedly replay reasoning")
         if (profile_root / ".env").stat().st_mode & 0o777 != 0o600:
             raise AssertionError("Hermes profile secret file permissions are not private")
         if (profile_root / "SYSTEM.md").read_text(encoding="utf-8") != system_prompt \
@@ -100,6 +102,11 @@ def main() -> int:
         }, hermes_root=root)
         if descriptor_profile["profile_id"] != "smacx-descriptor-contract":
             raise AssertionError("Control descriptor did not preserve external profile identity")
+        descriptor_config = json.loads((
+            Path(descriptor_profile["profile_root"]) / "config.yaml"
+        ).read_text(encoding="utf-8"))
+        if descriptor_config["model"].get("reasoning_echo") is not True:
+            raise AssertionError("Qwen current-episode reasoning continuity was not enabled")
 
         other = profile_root.parent / profile["profile_id"]
         (other / ".smacx-profile.json").write_text(
@@ -129,6 +136,7 @@ def main() -> int:
                 "control_descriptor_supported": True,
                 "reasoning_ladder_reaches_hermes": True,
                 "generation_settings_supported": True,
+                "current_episode_reasoning_echo": True,
             },
         }, separators=(",", ":")))
     return 0

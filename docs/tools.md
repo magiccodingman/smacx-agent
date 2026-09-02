@@ -1,11 +1,9 @@
 # MCP tool reference
 
-- `smac_status()` — process identity and menu/game state.
-- `smac_capabilities(section)` — static platform availability and safety boundary. Query one compact section such as `launch_modes`, `lan_profiles`, `known_fail_closed_gaps`, or `deployment`; this never substitutes for fresh legal actions.
-- `smac_new_game(...)` — launch a configured random single-player match semantically.
-- `smac_scenarios()` — list exact safe scenario IDs from the operator's legal game copy; no scenario asset is returned.
-- `smac_new_scenario(scenario_id, ...)` — load one returned solo scenario directly while preserving scenario-authored rules and restrictions.
-- `smac_launch()` — launch only the visible isolated game window.
+Managed AI seats receive a deliberately bounded 14-tool surface. Game launch,
+native setup, lifecycle, raw snapshots, saves, and process stop are private
+operator/control operations and are not advertised to the model.
+
 - `smac_match_briefing(action, briefing_hash)` — read the authoritative live
   faction/difficulty/map/victory/rules/clock/scenario/seat briefing, then
   acknowledge its exact hash. Decisions and gameplay mutations remain locked
@@ -14,17 +12,14 @@
   compact resume notice; a real configuration change returns a field-path
   delta and relocks play. Acknowledgement is compact and never echoes the full
   briefing.
-- `smac_snapshot()` — compact fair-play turn state, current ready-unit references, protocol phase, current guard, latest deferred-action status, and latest publicly displayed Council result.
-- `smac_decision(..., detail="compact")` — preferred action-ordered loop: a revision-stable player-state headline plus the exact active interaction, selected ready unit choices, wait/gap directive, or game-management choices. It retries assembly if state changes between observation and enumeration. Compact is the default and avoids replaying the comprehensive snapshot on every unit; use `detail="full"` only for one decision that genuinely needs the complete turn document. Set `finish_ready_units=true` only after deliberately deciding every remaining unit is finished; this returns the exact guarded skip-all/game-management frame and conflicts with selecting one `unit_id`.
+- `smac_decision(..., detail="compact")` — preferred action-ordered loop: a revision-stable player-state headline plus exactly one active interaction, selected ready unit, wait/gap directive, or game-management focus. Executable choices expose only short labels, observable context, and opaque IDs. Compact is the default; use `detail="full"` only for a decision that genuinely needs the larger fair-play document.
+- `smac_execute_choice(decision_id, choice_id)` — consume exactly one opaque choice. The server restores its private native command, parameters, confirmations, match/session identity, and revision guard; permits one semantic stale-state rebase; journals the outcome; and rejects replay. A completed native turn returns `turn_handoff_required`; `smac_decision` can return the same no-choice boundary if native automation completed the turn between observations.
 - `smac_list(kind, ...)` — bases, units, factions, technologies, or known/visible tiles.
-- `smac_choices(kind, ...)` — enumerate interaction, research, allocation, Social Engineering, diplomacy, Council, Unit Workshop, production, base-management, base-citizen, unit, or game-management choices.
-- `smac_command(...)` — execute exactly one returned choice with `match_id`, `session_id`, and `expected_revision`.
+- `smac_choices(kind, ...)` — bounded specialist enumeration for interaction, research, allocation, Social Engineering, diplomacy, Council, Unit Workshop, production, base management, citizens, units, or game management. Executable results remain opaque.
 - `smac_wait(seconds)` — bounded wait while the engine or another faction owns the turn.
 - `smac_chat(...)` — list or send guarded native LAN chat scoped to the current match/session and optional recipient faction. It persists delivered speech with network-player/faction associations and exactly-once attention state.
-- `smac_lan(...)` — inspect, host, discover, join, configure, ready, and start the managed native DirectPlay LAN lifecycle.
-- `smac_saves(action, match_id, slot)` — list or load match-scoped save slots. Stop the current game before load.
-- `smac_knowledge(action, match_id, ...)` — list/get/history or record durable match facts in the authoritative scoped SQLite store. Writes require the active `session_id` and current snapshot `revision`; corrections retain audit history and the former JSON ledger is only a compatibility mirror. Session-local unit/base/prototype engine IDs are rejected.
-- `smac_memory(...)` — retrieve the bounded working set, scoped FTS5/BM25 search, batched recall, chat/events, structured projection histories, optional Graphiti status, or an exact-scope `graph_recall`. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.
+- `smac_knowledge(action, match_id, ...)` — list/get/history or record a durable named match fact. Successful changes enter the canonical hash-linked campaign journal; SQLite/FTS files are rebuildable query projections. Session-local unit/base/prototype engine IDs are rejected.
+- `smac_memory(...)` — retrieve the bounded journal-derived working state, scoped search, batched recall, chat/events, structured histories, optional Graphiti status, or an exact-scope `graph_recall`. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.
 - `smac_reference(action, ...)` — browse the recursive semantic collection
   tree and a collection's direct articles, perform Smart weighted search,
   fetch one selected document, or issue focused named-mechanic/related
@@ -32,10 +27,24 @@
   not pagination labels. Document evidence is token-bounded; runtime-acquired
   content contains no match state and never overrides fresh native choices.
 - `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
+- `smac_notebook(...)` — list, read, revise, or delete bounded named campaign notes, plans, territories, and other agent-authored records in the same canonical perspective timeline.
 - `smac_report_capability_gap(...)` — record one missing semantic capability, deduplicate repeated reports for that session, and latch commands plus launch/new/load. Only a developer MCP restart followed by a fresh session after bridge development can resume play.
-- `smac_stop()` — terminate only this project's isolated game processes; MCP stays running.
 
-Current command families are exposed in the live MCP schema. Prefer `smac_decision`; use `smac_choices` for strategic/specialized queries. Never guess command strings or engine IDs: copy one returned action and guard, execute it, then obtain a new frame.
+Prefer `smac_decision`; use `smac_choices` only for a deliberate specialist
+query. Never guess command strings, confirmation flags, coordinates, or engine
+IDs: select one opaque ID and obtain a new frame after execution.
+
+An executable choice must already bind every native argument. If an older or
+unfinished semantic family exposes a parameter schema instead of concrete
+values, the MCP withholds that pseudo-choice rather than inviting the model to
+invent arguments. Specialized families enumerate exact alternatives first:
+for example, each governor choice carries all primary toggle values and each
+production-queue append carries its exact buildable item ID.
+
+The authenticated control plane—not the managed MCP—owns `status`,
+capabilities, game/scenario creation, DirectPlay host/join/configure/start,
+save/load, recovery, and stop operations. This separation keeps impossible
+lifecycle choices out of every provider request.
 
 `smac_lan` can launch the isolated visible game from an inactive menu, host a named DirectPlay session, discover sessions at a supplied IPv4 address, and join exactly one freshly returned opaque `network_session_id`. In the stock lobby, follow `legal_actions`: the host may apply one freshly enumerated guarded profile, send a fully typed custom difficulty/timer/world/rules record, or load one exact multiplayer `scenario_id` returned by `smac_scenarios`. Scenario seats choose only currently offered native `faction_choice_id` values. A client may ready, and the host may start only when all clients are ready. Every lobby mutation copies the current match/session/lobby revision and uses a unique idempotent `client_operation_id`. Paths, raw bit masks, the visual custom-clock editor, and menu coordinates are never accepted as setup input.
 

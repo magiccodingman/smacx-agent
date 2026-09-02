@@ -818,7 +818,7 @@ public sealed class PortalMatchSupervisor(
                     run_budget_seconds = 86_400,
                     max_turns = 5_000,
                     restart_limit = 1_000,
-                    initial_prompt = "Begin or resume this managed match now. Follow the system contract's opening briefing protocol, then continue autonomous play until the operator stops the run or a semantic capability gap is reported.",
+                    initial_prompt = "[SMACX_EPISODE_BOUNDARY kind=start] Re-anchor with the authoritative smac_decision state, then continue autonomous play.",
                 }, cancellationToken);
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {

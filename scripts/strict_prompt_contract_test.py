@@ -67,6 +67,17 @@ def main() -> int:
             "    return 'upstream\\n' + (system_message or '')\n",
             encoding="utf-8",
         )
+        (root / "run_agent.py").write_text(
+            "class AIAgent:\n"
+            "    @staticmethod\n"
+            "    def _sanitize_api_messages(messages):\n"
+            "        return [dict(message) for message in messages]\n"
+            "    def _strip_think_blocks(self, content):\n"
+            "        return content\n"
+            "    def _build_assistant_message(self, message, finish_reason):\n"
+            "        return dict(message)\n",
+            encoding="utf-8",
+        )
         prompt_path = root / "SYSTEM.md"
         prompt_path.write_text(prompt, encoding="utf-8")
         result = run_probe(root, prompt_path, prompt_sha256(prompt))

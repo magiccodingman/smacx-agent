@@ -9,6 +9,7 @@ import tempfile
 import threading
 
 from smacx_control import ControlPlane
+from smacx_journal import CampaignJournal
 from smacx_store import MemoryScope, SmacxStore
 from smacx_worker_manager import WorkerManager, WorkerManagerError
 
@@ -60,6 +61,13 @@ def main() -> int:
             instance["instance_id"], "capability_gap:gap-" + "e" * 32,
             "operator_required", {"turn": 12, "reason": "different gap"},
         )
+        journal = CampaignJournal(root / "campaigns")
+        before_list = control.list_supervision_incidents(match_id=scope.match_id)
+        before_head = journal.verify(scope)["head_hash"]
+        after_list = control.list_supervision_incidents(match_id=scope.match_id)
+        after_head = journal.verify(scope)["head_hash"]
+        if before_list != after_list or before_head != after_head:
+            raise AssertionError("listing incidents unexpectedly mutated the campaign journal")
 
         manager = object.__new__(WorkerManager)
         manager.control = control
@@ -138,6 +146,7 @@ def main() -> int:
                 "unrelated_incident_preserved": True,
                 "interrupted_response_retry_is_idempotent": True,
                 "failed_recovery_stays_latched": True,
+                "incident_listing_is_read_only": True,
             },
         }, separators=(",", ":")))
     return 0

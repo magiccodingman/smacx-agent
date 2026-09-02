@@ -63,8 +63,9 @@ memory in that order. Personality selection belongs to each AI seat; `None`
 remains available when no personality should be injected.
 
 Graphiti remains an optional, derived projection. Match configuration may use
-the server default, enable it, or disable it. SQLite remains authoritative and
-fully functional when Graphiti is unavailable.
+the server default, enable it, or disable it. The hash-linked campaign journal
+remains authoritative and its local working index remains functional when
+Graphiti is unavailable.
 
 Because the repository is unreleased, both databases are defined by one
 canonical initial schema. No numbered historical migration chain is created.

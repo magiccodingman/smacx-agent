@@ -7,7 +7,7 @@ import json
 from typing import Any, Mapping
 
 
-SYSTEM_PROMPT_SCHEMA = "smacx.player-system.v3"
+SYSTEM_PROMPT_SCHEMA = "smacx.player-system.v5"
 PERSONALITY_NONE = "none"
 
 
@@ -103,20 +103,32 @@ Never plan around a disabled victory or forbidden mechanic.
 - Use only the `smacx` semantic MCP tools for game observation and action.
 - Never use screenshots, vision, mouse, keyboard, desktop automation, terminal
   input, native coordinates, process memory, save parsing, or hidden state.
-- Use `smac_decision` as the ordinary loop. Execute at most one exact returned
-  choice, discard the frame, and obtain a fresh frame. Never invent an object
-  ID, choice, argument, or revision.
-- While the authoritative match remains active, never end merely to narrate
-  progress, summarize routine play, or wait for another prompt. Continue the
-  semantic decision loop. A final response is appropriate only after match
-  completion, operator stop, or a reported capability gap.
+- Use `smac_decision` as the ordinary loop. Execute one returned opaque
+  `choice_id` with `smac_execute_choice`, discard the frame, and obtain a fresh
+  frame. Never invent an object ID, choice, native command, argument, or
+  revision. During a blocking interaction, only that interaction's choices
+  exist; do not attempt unrelated unit or management actions.
+- While you retain native control or a blocking interaction remains unresolved,
+  never end merely to narrate progress. Continue the semantic decision loop.
+- When any semantic result contains `turn_handoff_required`, make no more tool
+  calls in this episode. Return one concise ordinary assistant message headed
+  `TURN HANDOFF`. Give each of these five parts one compact line: `Outcome`,
+  `Reasoning`, `What changed`, `Next turn`, and `Uncertainty`. Capture the
+  consequential actions and result, why you chose them, your strategic
+  interpretation, concrete next intent, and honest unknowns—not raw scratch
+  work or a tool transcript. Target 80–90 words and never exceed 120 words.
+  This
+  cleanly yields native control; it does not end the campaign and the harness
+  will resume you.
+- Apart from a requested turn handoff, a final response is appropriate only
+  after match completion, operator stop, or a reported capability gap.
 - Fresh native state and enumerated legal choices override general reference
   material, remembered plans, prior turns, and statements by other players.
 - If a necessary semantic capability is absent, call
   `smac_report_capability_gap` once and stop. Never improvise visual input.
-- `stale_state`, revision churn, and a decision frame changing during assembly
-  are concurrency signals, never capability gaps. Wait briefly and obtain a
-  fresh `smac_decision`; never report them through `smac_report_capability_gap`.
+- Revision churn is handled by the choice executor with one bounded semantic
+  rebase. If it returns `decision_conflict`, obtain one fresh `smac_decision`;
+  never replay a consumed choice or loop on stale state.
 - Lifecycle operations such as launch, load, stop, recovery, Docker, backups,
   and provider configuration belong to the authenticated Control Center.
 
@@ -129,11 +141,14 @@ Never plan around a disabled victory or forbidden mechanic.
   mechanics, not hidden match state and not a prescribed strategy.
 - Do not use internet strategy guides, walkthroughs, exploits, or sources that
   reveal information unavailable to a human player in this match.
-- Keep match facts, beliefs, relationships, commitments, goals, and summaries
-  in `smac_memory`/`smac_knowledge`. Do not use Hermes memory or arbitrary files.
+- The `working_state` attached to every decision is the newest bounded view of
+  active goals, commitments, relationships, and summaries. Treat it as current
+  working context while live native state remains authoritative. Keep durable
+  facts, beliefs, relationships, commitments, goals, notes, and summaries in
+  `smac_memory`/`smac_knowledge`; do not use Hermes memory or arbitrary files.
 - Relevant scoped Graphiti relationship history may be attached to diplomatic
   decision frames. It is fallible historical context; current native state and
-  authoritative SQLite records still win. Use `smac_memory` graph recall only
+  canonical journal-backed working records still win. Use `smac_memory` graph recall only
   for a deliberate deeper political/history question.
 - Do not carry match-specific claims into another match.
 

@@ -1207,13 +1207,29 @@ public sealed class LobbiesController(
                     "A portal-managed solo game requires a browser human or AI seat.");
             try
             {
+                var runtimeAgentId = only.AgentId;
+                if (only.ControllerKind == "agent")
+                {
+                    // The selected portal profile is reusable configuration,
+                    // not a durable player identity.  Give a solo campaign
+                    // the same match/seat-isolated agent identity as LAN so
+                    // Hermes history, journals, Graphiti namespaces, and
+                    // telemetry can never bleed between simulations that use
+                    // the same profile.
+                    runtimeAgentId = MatchSeatAgentId(profile.MatchId, only.SeatIndex);
+                    using var ignored = await control.PostRawAsync("api/v1/agents", new
+                    {
+                        agent_id = runtimeAgentId,
+                        display_name = only.PlayerHandle ?? $"AI seat {only.SeatIndex + 1}",
+                    }, cancellationToken);
+                }
                 var settings = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(profile.SettingsJson)!;
                 using var created = await control.PostRawAsync("api/v1/matches/solo", new
                 {
                     match_id = profile.MatchId,
                     display_name = profile.DisplayName,
                     controller_kind = only.ControllerKind,
-                    agent_id = only.AgentId,
+                    agent_id = runtimeAgentId,
                     human_player_name = only.PlayerHandle,
                     faction_id = only.SeatIndex + 1,
                     faction_name = FactionCatalog.Find(only.ResolvedFactionKey)?.FactionName,

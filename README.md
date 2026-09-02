@@ -268,7 +268,8 @@ separate what it observed from what you claimed, remember an unpaid favor,
 track a border agreement, question an ally's suspicious explanation, forgive a
 betrayal—or decide not to.
 
-Those memories are isolated by match, player, perspective, and native session.
+Those memories are isolated by match, player, perspective, native session, and
+timeline.
 One faction cannot inherit another faction's secrets, and a new campaign does
 not begin with grudges from the last one.
 
@@ -277,9 +278,12 @@ temporal knowledge graph over that political history. Routine unit motion is
 not dumped into it: curated diplomacy, chat, commitments, beliefs, incidents,
 and important history are projected asynchronously, then recalled only within
 the exact match/player perspective. SemanticKnowledge and Graphiti share one
-configurable embedding runtime instead of loading duplicate models. SQLite
-remains authoritative, so Graphiti is an enhancement rather than a new point
-of failure. A content-free embedding observatory separates encyclopedia builds
+configurable embedding runtime instead of loading duplicate models. A
+hash-linked campaign journal remains authoritative and can rebuild both its
+working search index and Graphiti, so the graph is an enhancement rather than a
+new point of failure. Meaningful boundaries are committed to a private local
+Git history, making a campaign inspectable without recording raw model
+scratchpads or game assets. A content-free embedding observatory separates encyclopedia builds
 and searches from Graphiti projection and recall, measures latency and effective
 throughput, and runs a semantic quality canary without retaining prose, prompts,
 vectors, credentials, chat, or model reasoning.

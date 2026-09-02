@@ -58,7 +58,8 @@ instead select an external OpenAI-compatible embedding model and must provide
 its exact vector dimensions and a stable embedding-space ID. A space/model
 change restarts the knowledge service cleanly and makes SemanticKnowledge
 revalidate/rebuild its vectors. Disabling embeddings also disables semantic
-rules and Graphiti; gameplay's authoritative SQLite memory remains available.
+rules and Graphiti; the authoritative campaign journal and its lexical working
+index remain available.
 
 The Jasper model supports long inputs, but retrieval documents are deliberately
 chunked around 768 tokens to avoid weak long-tail facts and to give the model

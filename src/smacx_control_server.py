@@ -727,7 +727,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     raise WorkerManagerError("managed_mcp_not_healthy")
                 try:
                     budget = int(body.get("run_budget_seconds", 3600))
-                    max_turns = int(body.get("max_turns", 5000))
+                    max_turns = int(body.get("max_turns", 256))
                     restart_limit = int(body.get("restart_limit", 1000))
                 except (TypeError, ValueError) as exc:
                     raise InvalidRecord("invalid_harness_run_limits") from exc

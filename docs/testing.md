@@ -39,6 +39,19 @@ PYTHONPATH=src python3 scripts/incident_recovery_test.py
 PYTHONPATH=src python3 scripts/worker_lifecycle_serialization_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
+PYTHONPATH=src python3 scripts/campaign_journal_test.py
+PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
+PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
+```
+
+The provider-wire context policy must run inside the built Hermes image because
+it deliberately tests the pinned harness's private message-construction hooks:
+
+```bash
+docker run --rm --entrypoint /opt/hermes/.venv/bin/python \
+  -e PYTHONPATH=/workspace/harness \
+  -v "$PWD:/workspace:ro" -w /workspace \
+  smacx-agent-harness:dev scripts/harness_context_policy_test.py
 ```
 
 Additional focused `scripts/*_test.py` files cover individual semantic action
@@ -124,6 +137,28 @@ Native tests must use an isolated display and test-owned match/data roots. They
 must never send input to the developer's normal desktop or reuse a live player
 campaign.
 
+Every autonomous-play benchmark must set the native multiplayer turn clock to
+**None**. A timed game can advance on the model's behalf and is not evidence of
+successful agent control. Generate a content-free causal report with:
+
+```bash
+python3 scripts/agent_simulation_report.py \
+  --campaign-root /path/to/control/campaigns \
+  --portal-db /path/to/portal.sqlite3 \
+  --match-id match-... \
+  --output docs/benchmarks/results/<date>-<label>.json
+
+python3 scripts/hermes_session_audit.py \
+  --database /path/to/profile/state.db \
+  --output docs/benchmarks/results/<date>-<label>-hermes.json
+```
+
+The first report counts only journaled actions and observed before/after turn
+changes as causal success. The second reports aggregate tool frequency,
+malformed records, exact repetition, compression health, handoff compliance,
+and token totals. Neither tool emits prompts, responses, chat, reasoning text,
+arguments, endpoints, secrets, game assets, or saves.
+
 ## Repository boundaries
 
 Before opening a pull request, confirm that the diff contains none of the
@@ -133,9 +168,12 @@ following:
 - downloaded/cleaned reference prose or embeddings;
 - provider credentials, session tokens, cookies, passwords, or private host
   addresses;
-- generated Wine prefixes, logs, screenshots, backups, caches, or test data;
+- generated Wine prefixes, raw logs, screenshots, backups, caches, saves, or
+  private test data;
 - reference-machine validation diaries, temporary roadmaps, or coding-agent
   notes.
 
-Public test documentation should describe repeatable procedures. Historical
-results and maintainer backlog belong outside the repository.
+Public test documentation should describe repeatable procedures. Sanitized,
+reproducible benchmark aggregates may live under `docs/benchmarks/results`;
+reference-machine diaries, raw transcripts, and maintainer backlog remain
+outside the repository.

@@ -16,6 +16,8 @@ def main() -> int:
         "database": controller.PLATFORM_DB_PATH,
         "store": controller._store_instance,
         "store_path": controller._store_instance_path,
+        "journal": controller._journal_instance,
+        "journal_root": controller._journal_instance_root,
         "bridge": controller.bridge_request,
     }
     match_id = "match-platform-controller"
@@ -88,6 +90,8 @@ def main() -> int:
             controller.PLATFORM_DB_PATH = root / "state" / "smacx.sqlite3"
             controller._store_instance = None
             controller._store_instance_path = None
+            controller._journal_instance = None
+            controller._journal_instance_root = None
             controller.bridge_request = fake_bridge
             controller._write_match_manifest(match_id, {"match_id": match_id, "sessions": []})
             context = controller._ensure_platform_identity(
@@ -213,7 +217,9 @@ def main() -> int:
             imported = controller.read_match_knowledge(
                 legacy_match, key="morgan.intent", include_history=True,
             )
-            if imported.get("storage") != "sqlite" or len(imported.get("history", [])) != 2:
+            if imported.get("authority") != "campaign_journal" \
+                    or imported.get("storage") != "sqlite_query_projection" \
+                    or len(imported.get("history", [])) != 2:
                 raise AssertionError(f"legacy history import failed: {imported}")
 
             print(json.dumps({
@@ -233,6 +239,8 @@ def main() -> int:
         controller.PLATFORM_DB_PATH = originals["database"]
         controller._store_instance = originals["store"]
         controller._store_instance_path = originals["store_path"]
+        controller._journal_instance = originals["journal"]
+        controller._journal_instance_root = originals["journal_root"]
         controller.bridge_request = originals["bridge"]
 
 

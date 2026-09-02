@@ -104,6 +104,14 @@ class FakeDocker:
             raise DockerNotFound("missing container")
         del self.containers[name]
 
+    def start_container(self, name: str) -> None:
+        self.containers[name]["State"]["Running"] = True
+
+    def wait_container(self, name: str, *, timeout: float) -> dict:
+        del timeout
+        self.containers[name]["State"] = {"Running": False, "ExitCode": 0}
+        return self.containers[name]
+
     def put_archive(self, container: str, _destination: str, archive: bytes) -> None:
         config = self.containers[container]["Config"]
         volume = config["HostConfig"]["Mounts"][0]["Source"]
@@ -155,8 +163,21 @@ def main() -> int:
     control = FakeControl()
     docker = FakeDocker()
     manager = HarnessManager(control, docker, FakeWorkerManager())  # type: ignore[arg-type]
+    prompt = control.get_harness_profile("harness-contract-profile")["system_prompt"]
+    if "turn_handoff_required" not in prompt or "TURN HANDOFF" not in prompt \
+            or "never exceed 120 words" not in prompt:
+        raise AssertionError("managed system prompt omitted the bounded native-turn handoff")
     runtime = manager.provision_profile(descriptor(keyed=True))
-    data_files = unpack(docker.contents[runtime["data_volume"]][-1])
+    data_archive = docker.contents[runtime["data_volume"]][-1]
+    data_files = unpack(data_archive)
+    owner_helpers = [config for config in docker.configs
+                     if config.get("Entrypoint") == ["/bin/chown"]]
+    if not owner_helpers or owner_helpers[-1].get("Cmd") != ["10000:10000", "/target"]:
+        raise AssertionError("managed data volume ownership helper was not used")
+    owner_host = owner_helpers[-1]["HostConfig"]
+    if owner_host.get("NetworkMode") != "none" or owner_host.get("ReadonlyRootfs") is not True \
+            or owner_host.get("CapDrop") != ["ALL"] or owner_host.get("CapAdd") != ["CHOWN"]:
+        raise AssertionError("data-volume ownership helper has excess privilege")
     config_bytes = next(value for name, value in data_files.items() if name.endswith("config.yaml"))
     config = json.loads(config_bytes)
     serialized = json.dumps(config)
@@ -206,7 +227,9 @@ def main() -> int:
             "key_env_not_key_persisted": True,
             "secret_rotated_on_reprovision": True,
             "read_only_capability_dropped_runtime": True,
+            "writable_unprivileged_data_root": True,
             "semantic_toolsets_only": True,
+            "prompt_driven_native_turn_handoff": True,
         },
     }, separators=(",", ":")))
     return 0

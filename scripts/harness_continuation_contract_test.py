@@ -15,6 +15,7 @@ def marker(revision: str, turn: int) -> dict:
         "session_id": "session-continuation", "revision": revision,
         "turn": turn, "year": 2100 + turn, "phase": "turn",
         "game_completed": False, "final_score_completed": False,
+        "meaningful_fingerprint": f"turn-{turn}",
     }
 
 
@@ -72,11 +73,24 @@ class ContractHarnessManager(HarnessManager):
         self.worker_manager = worker  # type: ignore[assignment]
         self.start_count = 0
         self.exit_code = 0
+        self.observed_running = False
+        self.docker = type("FakeDocker", (), {
+            "stop_container": lambda _self, _name, timeout=10: None,
+            "remove_container": lambda _self, _name: None,
+        })()
 
     def status(self, _run_id: str) -> dict:
         return {"ok": True, "run": self.control.run, "observed": {
-            "container_present": True, "running": False,
+            "container_present": True, "running": self.observed_running,
             "exit_code": self.exit_code, "status": "exited",
+        }}
+
+    def _journal_run_event(self, *_arguments, **_keywords) -> list[dict[str, str]]:
+        return []
+
+    def telemetry(self, _run_id: str) -> dict:
+        return {"ok": True, "telemetry": {
+            "api_calls": 3, "output_tokens": 5000, "reasoning_tokens": 1000,
         }}
 
     def start_run(self, run_id: str, **_arguments) -> dict:
@@ -121,6 +135,31 @@ def main() -> int:
     if errored.get("restarted") != 1 or control.run["restart_count"] != 1:
         raise AssertionError(f"error restart budget was not independent: {errored}")
 
+    # A process that stays alive while spending calls/tokens against an
+    # unchanged native state is restarted from a fresh managed episode.
+    manager.observed_running = True
+    manager.exit_code = 0
+    control.run.update({
+        "desired_status": "running", "status": "running", "restart_count": 0,
+        "restart_policy": {
+            **control.run["restart_policy"], "semantic_stall_seconds": 120,
+            "semantic_stall_recovery_limit": 2,
+        },
+        "metadata": {
+            "semantic_sample_unix": time.time() - 61,
+            "semantic_telemetry_unix": time.time() - 61,
+            "semantic_fingerprint": "turn-2",
+            "semantic_progress_unix": time.time() - 180,
+            "semantic_baseline_telemetry": {
+                "api_calls": 0, "output_tokens": 0, "reasoning_tokens": 0,
+            },
+        },
+    })
+    live_stall = manager.reconcile_once()
+    if live_stall.get("restarted") != 1 \
+            or control.run["metadata"].get("semantic_stall_recoveries") != 1:
+        raise AssertionError(f"live semantic stall was not recovered: {live_stall}")
+
     print(json.dumps({
         "event": "pass",
         "payload": {
@@ -129,6 +168,7 @@ def main() -> int:
             "no_progress_circuit_breaker": True,
             "operator_incident_recorded": True,
             "error_restart_budget_independent": True,
+            "live_token_spending_stall_recovered": True,
         },
     }, separators=(",", ":")))
     return 0

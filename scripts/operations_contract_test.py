@@ -10,8 +10,9 @@ import tempfile
 import time
 
 from smacx_control import ControlPlane
+from smacx_journal import CampaignJournal
 from smacx_operations import OperationsManager, restore_backup_offline
-from smacx_store import SmacxStore, StoreError
+from smacx_store import MemoryScope, SmacxStore, StoreError
 
 
 class FakeWorkerManager:
@@ -42,11 +43,27 @@ def main() -> int:
         control = ControlPlane(store, root / "secrets")
         installation_id = store.installation_id()
         control.create_agent("Before backup", agent_id="agent-before")
+        store.create_match(match_id="match-journal-backup", display_name="Journal", mode="lan")
+        store.create_perspective(
+            "match-journal-backup", "agent-before",
+            perspective_id="perspective-journal-backup",
+        )
+        journal_scope = MemoryScope(
+            "match-journal-backup", "agent-before", "perspective-journal-backup",
+        )
+        journal = CampaignJournal(root / "campaigns")
+        before_event = journal.append(
+            journal_scope, "memory.goal", {
+                "record": {"goal_key": "survive", "title": "Survive"},
+                "record_input": {"goal_key": "survive", "title": "Survive"},
+            }, turn=1, commit_reason="Test backup boundary",
+        )
         secret = control.vault.put("test.backup", "test-secret-value")
         backup_ops = OperationsManager(control, data_root=root)
         backup = backup_ops.create_backup(include_secrets=True, include_workers=False)
         verified = backup_ops.verify_backup(backup["backup_id"])
-        if not verified["ok"] or not verified["includes_secrets"]:
+        if not verified["ok"] or not verified["includes_secrets"] \
+                or not verified.get("campaigns_included"):
             raise AssertionError("complete backup did not verify")
 
         fake = FakeWorkerManager()
@@ -80,6 +97,12 @@ def main() -> int:
                 raise AssertionError("finished operation history was mutable")
 
         control.create_agent("After backup", agent_id="agent-after")
+        journal.append(
+            journal_scope, "memory.goal", {
+                "record": {"goal_key": "expand", "title": "Expand"},
+                "record_input": {"goal_key": "expand", "title": "Expand"},
+            }, turn=2,
+        )
         orphan = control.vault.put("test.orphan", "must-not-survive-restore")
         restored = restore_backup_offline(
             control, root, backup["backup_id"], confirm_installation_id=installation_id,
@@ -94,6 +117,10 @@ def main() -> int:
             raise AssertionError("offline restore retained an orphaned post-backup secret")
         if not restored.get("emergency_backup_id"):
             raise AssertionError("offline restore did not create a rollback backup")
+        replayed = CampaignJournal(root / "campaigns").replay(journal_scope)
+        if replayed["manifest"]["head_hash"] != before_event["event_hash"] \
+                or "expand" in replayed["goals"]:
+            raise AssertionError("offline restore did not restore canonical campaign journal")
 
         tamper_ops = OperationsManager(reopened, data_root=root)
         tamper = tamper_ops.create_backup(include_secrets=False, include_workers=False)
@@ -114,6 +141,7 @@ def main() -> int:
                 "secret_backup_and_restore": True,
                 "orphan_secret_removed": True,
                 "pre_restore_rollback_backup": True,
+                "campaign_journal_backup_and_restore": True,
                 "tamper_detection": True,
                 "worker_archives_fail_closed_without_manager": True,
             },

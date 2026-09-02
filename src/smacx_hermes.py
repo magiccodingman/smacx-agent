@@ -167,6 +167,11 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "default": model_id.strip(),
             "provider": "custom",
             "base_url": provider_base_url.rstrip("/"),
+            # Hermes otherwise strips reasoning_content for generic custom
+            # providers.  Qwen's preserve_thinking=false only provides the
+            # desired current-episode semantics when the latest assistant
+            # reasoning is actually echoed across interleaved tool calls.
+            "reasoning_echo": generation.get("reasoning_continuity") == "current_episode",
         },
         "custom_providers": [custom_provider],
         "agent": {"max_turns": "none", "reasoning_effort": reasoning_effort},
@@ -303,7 +308,7 @@ def hermes_command(profile: dict[str, Any], *, prompt_file: str | None = None,
         "hermes", "-p", profile["profile_id"], "chat",
         "--continue", profile["match_id"], "--create-if-missing",
         "--in", profile["workspace"], "--reasoning", profile["reasoning_effort"],
-        "--toolsets", toolsets, "--max-turns", str(min(max(max_turns, 1), 5000)),
+        "--toolsets", toolsets, "--max-turns", str(min(max(max_turns, 1), 512)),
         "--pass-session-id",
     ]
     if run_budget_seconds is not None:

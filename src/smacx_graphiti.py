@@ -1,6 +1,7 @@
-"""Optional, failure-isolated Graphiti projection for scoped SMACX events.
+"""Optional, failure-isolated Graphiti projection for scoped campaign events.
 
-SQLite remains authoritative.  This module is deliberately lazy about importing
+The campaign journal remains authoritative. SQLite supplies a rebuildable event
+cursor to this projector. This module is deliberately lazy about importing
 Graphiti so the game, controller, MCP, and local search work without it.
 """
 
@@ -21,6 +22,7 @@ import uuid
 from smacx_generation import (
     direct_reasoning_parameters, normalize_generation_settings, openai_extra_body,
 )
+from smacx_journal import CampaignJournal
 from smacx_store import MemoryScope, SmacxStore
 
 
@@ -415,8 +417,6 @@ class GraphitiCoreSink:
         # graphiti-core 0.29 treats an explicit UUID as an update target. Seed
         # the deterministic episode first, while retaining prior episodes for
         # temporal extraction, and mark completion in the scoped Falkor graph.
-        from graphiti_core.nodes import EpisodicNode
-
         purpose_token = _EMBEDDING_PURPOSE.set("graphiti_projection")
         try:
             await self._add_episode(episode)
@@ -424,6 +424,10 @@ class GraphitiCoreSink:
             _EMBEDDING_PURPOSE.reset(purpose_token)
 
     async def _add_episode(self, episode: GraphEpisode) -> None:
+        # Keep the optional dependency import in the coroutine that constructs
+        # the node. A local import in add_episode is not visible in this helper.
+        from graphiti_core.nodes import EpisodicNode
+
         driver = self._client.driver.clone(database=episode.group_id)
         records, _, _ = await driver.execute_query(
             "MATCH (e:Episodic {uuid: $uuid}) "
@@ -517,24 +521,26 @@ class GraphitiProjector:
         self.store = store
         self.sink = sink
         self.projector_name = projector_name
+        self.journal = CampaignJournal(store.path.parent / "campaigns")
 
     @staticmethod
     def should_project(event: Mapping[str, Any]) -> bool:
         """Keep Graphiti political/strategic instead of mirroring the event log.
 
-        SQLite retains every authoritative event. The graph receives only durable
+        The campaign journal retains every authoritative event. The graph receives only durable
         social history, beliefs, commitments, goals, summaries, and unusually
         important strategic/lifecycle incidents. Routine unit orders and raw
         engine observations never become LLM-extracted episodes.
         """
         event_type = str(event.get("event_type") or "")
         if event_type.startswith((
-            "chat.", "memory.relationship_", "memory.commitment_",
-            "memory.goal_", "memory.belief_", "memory.summary_",
+            "chat.", "memory.relationship", "memory.commitment",
+            "memory.goal", "memory.belief", "memory.summary",
+            "notebook.",
             "diplomacy.", "council.", "incident.", "recovery.",
         )):
             return True
-        if event_type == "memory.fact_recorded":
+        if event_type in {"memory.fact", "memory.fact_recorded"}:
             payload = event.get("payload")
             category = str(payload.get("category") if isinstance(payload, Mapping) else "")
             return category in {
@@ -572,12 +578,15 @@ class GraphitiProjector:
             body=body,
             group_id=namespace,
             reference_time=datetime.fromtimestamp(observed_unix, tz=timezone.utc),
-            source_description="Authoritative SMACX scoped-event projection",
+            source_description="Canonical SMACX campaign-journal projection",
             custom_extraction_instructions=EXTRACTION_INSTRUCTIONS,
         )
 
     async def run_once(self, scope: MemoryScope, *, limit: int = 50) -> dict[str, Any]:
-        events = self.store.events_after_projection_cursor(scope, self.projector_name, limit=limit)
+        cursor = self.store.projection_cursor(scope, self.projector_name)
+        events = self.journal.events_after(
+            scope, cursor.get("last_event_id"), limit=limit,
+        )
         projected = 0
         skipped = 0
         for event in events:
@@ -605,7 +614,8 @@ class GraphitiProjector:
                     "skipped": skipped,
                     "failed_event_id": event["event_id"],
                     "cursor": cursor,
-                    "sqlite_authoritative": True,
+                    "journal_authoritative": True,
+                    "sqlite_role": "projection_cursor_cache",
                 }
             self.store.advance_projection_cursor(
                 scope, self.projector_name, event, status="ready", last_error=None,
@@ -618,7 +628,8 @@ class GraphitiProjector:
             "remaining_hint": len(events) == min(max(limit, 1), 500),
             "cursor": self.store.projection_cursor(scope, self.projector_name),
             "namespace": self.store.graph_namespace(scope),
-            "sqlite_authoritative": True,
+            "journal_authoritative": True,
+            "sqlite_role": "projection_cursor_cache",
         }
 
     async def rebuild(self, scope: MemoryScope, *, limit: int = 50) -> dict[str, Any]:

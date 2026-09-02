@@ -456,7 +456,8 @@ read-only. A persistent telemetry helper is a regression.
 
 ## Graphiti is unavailable
 
-This is nonfatal. SQLite and scoped FTS5/BM25 match memory remain authoritative.
+This is nonfatal. The campaign journal remains authoritative, and its scoped
+FTS5/BM25 working index continues to operate.
 Choose an active extraction AI profile under Operations; under **Models & AI
 profiles**, keep the default shared local embedding runtime or configure one
 compatible external embedding space before:
