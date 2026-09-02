@@ -399,3 +399,5 @@ evidence live where they can stay precise:
 
 SMACX Agent is licensed under Apache License 2.0. Thinker-derived code retains
 its MIT notice; see [NOTICE.md](NOTICE.md).
+
+This project is not endorsed by or affiliated with EA or its licensors.
