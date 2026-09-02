@@ -3136,7 +3136,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             # A fresh typed/custom lobby records the descriptive profile as
             # `custom`, but a recovery loads an already-serialized native save
             # and therefore must not reapply map settings. start_lan_match
-            # still requires one certified bootstrap profile for its menu-free
+            # still requires one supported bootstrap profile for its menu-free
             # recovery path; use the neutral small profile when the recorded
             # fresh-game label is not one of those bootstrap profiles.
             recorded_profile = str(match.get("metadata", {}).get(

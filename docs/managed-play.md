@@ -21,7 +21,7 @@ Two layers deliberately remain separate:
    the next worker lifetime. It is optional and runs only through the stable
    checkpoint/recovery workflow.
 
-The validated profile catalog is:
+The managed profile catalog is:
 
 | Use | Profiles |
 | --- | --- |
@@ -31,10 +31,10 @@ The validated profile catalog is:
 | Ultrawide | 2560×1080, 3440×1440, 3840×1600, 5120×1440 |
 
 The worker configures both Xvfb and Thinker's custom window mode from the same
-validated dimensions. This matters at 800×600: asking only the stream server
+managed dimensions. This matters at 800×600: asking only the stream server
 for 800×600 while leaving Thinker at its default 1024×768 produces a clipped
 game. The worker writes `video_mode=1`, `window_width`, and `window_height`
-before every launch and rejects dimensions below 800×600 or above the validated
+before every launch and rejects dimensions below 800×600 or above the supported
 pixel envelope.
 
 ### Device recommendation
@@ -62,7 +62,7 @@ interactive stream.
 The H.264 target is selected from the native framebuffer rather than the
 viewer's CSS size: 2.2 Mbps at 800×600, 3.5 Mbps through 1280×800, 5.5 Mbps
 through 1920×1200, 8 Mbps through 2560×1600, 12 Mbps through 4K, and a bounded
-14 Mbps for the validated 5K-ultrawide ceiling. A 4K browser watching an
+14 Mbps for the 5K-ultrawide ceiling. A 4K browser watching an
 800×600 seat therefore receives the 800×600 stream and scales it locally; it
 does not manufacture a wasteful 4K encode. Spectators inherit the seat's
 stream and cannot change it.
@@ -167,7 +167,7 @@ member/faction authorization filter. Authenticated, eligible spectators see
 only global chat; former participants cannot enter spectator mode.
 
 Chat text is bounded to the printable ASCII supported reliably by the stock
-game transport. Voice chat is not managed by this milestone.
+game transport. Voice chat is not managed by the platform.
 
 ## Connected-player governance
 
@@ -316,27 +316,5 @@ created only for assigned agent seats.
   managed browser reconnect is the seamless path.
 - Native profile changes replace worker lifetimes; they are intentionally not
   live X11 resizes of a running DirectDraw surface.
-- Ranked play and microphone/voice management are outside this milestone.
+- Ranked play and microphone/voice management are not supported.
 - The application does not include or distribute the game.
-
-## Reproducible evidence
-
-The reference-host run verified:
-
-- true native 800×600 and 1920×1080 X11/game windows;
-- 800×600 checkpoint → park → native-profile change → recovery in roughly
-  eight seconds on the development host;
-- scroll-free 390×844 portrait, 844×390 landscape, 1024×768 tablet, and
-  1280×720 desktop browser layouts;
-- keyboard input through the browser stream;
-- human-only launch with six stock factions and no agent requirement;
-- automatic browser reconnection after an unexpected native worker exit;
-- canonical schema creation without `__EFMigrationsHistory`;
-- connected-human quorum, solo approval, cooldown/waiver, and complete profile
-  catalog contracts; and
-- logical consent-group delivery and match/perspective isolation in the
-  platform store.
-
-See [testing.md](testing.md) for commands and [project-status.md](project-status.md)
-for the distinction between Linux-local evidence and deferred physical-host
-certification.

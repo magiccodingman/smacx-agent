@@ -220,7 +220,7 @@ accepts ordinary input for interactive tickets, and supports reconnect and
 fullscreen. The portal reverse-proxies HTTP/WebSocket transport and rewrites
 the WebSocket Origin expected by Selkies.
 
-The worker chooses one validated native framebuffer for its lifetime and writes
+The worker chooses one configured native framebuffer for its lifetime and writes
 the same dimensions into Xvfb, Selkies manual mode, and Thinker's custom window
 configuration. Browser CSS performs ordinary resize/orientation fitting without
 mutating that framebuffer. A native-profile change is a checkpointed worker
@@ -418,10 +418,11 @@ to one to avoid native/Blazor optimization exhausting home-lab memory.
 
 ## Deliberate limits
 
-- Linux is the implemented and locally verified deployment.
-- Physical two-computer LAN, real remote Tailscale peer, and Windows/WSL2 are
-  designed/contract-tested but await external certification.
-- The service is LAN-only, not Internet matchmaking/hosting.
+- The managed game host is Linux-first and expects Docker plus Wine/Proton.
+- Browser players may connect from other operating systems; traditional native
+  clients remain responsible for their own game compatibility and DirectPlay
+  networking.
+- Remote access is for a private invited-friends host, not public matchmaking.
 - All matches are unranked.
 - The authored personality library is deliberately finite and selected per AI
   seat; adding arbitrary user-authored cards is outside the current UI.

@@ -53,7 +53,7 @@ fullscreen, and reconnect support.
 
 - Play at a desktop without installing or patching the game there.
 - Open the same private site from a laptop, tablet, phone, Full HD monitor, or
-  ultrawide display. Validated native profiles run from 800×600 through
+  ultrawide display. Managed native profiles run from 800×600 through
   5120×1440, while instant CSS fitting preserves the game aspect ratio at any
   browser size. Landscape fullscreen is the sweet spot on small screens.
 - Use your own native game client when that is what you prefer. The lobby gives
@@ -390,20 +390,18 @@ notice](docs/privacy.md).
 
 ## Go deeper
 
-The front page tells the product story. Detailed claims and engineering
-evidence live where they can stay precise:
+The front page tells the product story. Operator and developer documentation
+goes deeper where needed:
 
-- [Project status and validation](docs/project-status.md)
 - [Operator guide](docs/control-center.md)
 - [Managed play, display, chat, voting, and recovery](docs/managed-play.md)
 - [Installable app and trusted HTTPS](docs/installable-app.md)
 - [Architecture and trust boundaries](docs/architecture.md)
-- [Semantic gameplay coverage](docs/coverage.md)
 - [Agent loop and fair-play contract](docs/agent-loop.md)
 - [MCP tool reference](docs/tools.md)
 - [Mechanics encyclopedia and copyright boundary](docs/reference-knowledge.md)
 - [Optional Graphiti temporal memory](docs/graphiti.md)
-- [Testing and reproducible evidence](docs/testing.md)
+- [Contributor testing](docs/testing.md)
 - [Privacy and aggregate usage analytics](docs/privacy.md)
 - [Troubleshooting](docs/troubleshooting.md)
 

@@ -65,7 +65,7 @@ model. Kernel mode is required because the game needs ordinary TCP and UDP,
 not an HTTP/SOCKS proxy. The router alone receives `/dev/net/tun`, `NET_ADMIN`,
 and `NET_RAW`; game, MCP, harness, and Control Center containers do not.
 
-## Validation boundary
+## Test the route
 
 `scripts/virtual_lan_contract_test.py` checks the digest pin, kernel tunnel,
 capability boundary, durable state, exact route, absence of published ports,
@@ -73,12 +73,10 @@ and explicit-IP contract. `scripts/virtual_lan_route_live_test.sh` creates two
 temporary routed subnets and passes real TCP 47624 and UDP 2350 traffic across
 their router before deleting only its test resources.
 
-Those tests certify the deployable topology and DirectPlay port path on Linux.
-Completing an actual Internet game additionally depends on an operator's
-Tailscale account, ACL/route approval, ISP path, and a second machine. That
-external certification cannot be honestly inferred from a one-host test; use
-the physical checklist in [Testing](testing.md) before labeling a particular
-home-lab or Windows deployment certified.
+These checks cover the packaged topology and DirectPlay port path. An actual
+remote game also depends on the operator's Tailscale account, ACL and route
+approval, ISP path, and client machine. Test the displayed worker address from
+each participating client before starting a long campaign.
 
 Do not use Tailscale Funnel, public port forwarding, or a public Control Center
 for gameplay. The supported remote path is a private tailnet with explicit

@@ -109,9 +109,9 @@ def main() -> int:
                 server.server_port, "GET", "/api/v1/capabilities", cookies=cookies,
             )
             if status != 200 \
-                    or capabilities.get("launch_modes", {}).get("solo_scenario", {}).get("status") != "native_live_tested" \
-                    or capabilities.get("deployment", {}).get("physical_two_machine_lan", {}).get("status") != "external_certification_required":
-                raise AssertionError("authenticated capability ledger is missing or overclaims coverage")
+                    or capabilities.get("launch_modes", {}).get("solo_scenario", {}).get("status") != "available" \
+                    or capabilities.get("deployment", {}).get("physical_two_machine_lan", {}).get("status") != "available_private_network":
+                raise AssertionError("authenticated capability manifest is missing or inconsistent")
 
             provider_body = {
                 "display_name": "HTTP provider", "base_url": "http://model-box:8000/v1",

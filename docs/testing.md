@@ -1,430 +1,137 @@
-# Testing and evidence
+# Contributor testing
 
-Tests are layered so ordinary contributors can verify contracts without a game
-installation while native/stream/model tests remain explicit and
-installation-owned.
+SMACX Agent separates tests that run on an ordinary development machine from
+tests that require an operator-owned game installation, Docker, a model
+provider, or a native LAN fixture. Tests create isolated data roots and must not
+write acquired game/reference content into the repository.
 
-## Fast pre-commit checks
+## .NET portal and knowledge services
+
+Restore once, then run the solution:
 
 ```bash
 dotnet restore Smacx.Agent.slnx
 dotnet test Smacx.Agent.slnx --no-restore
+```
 
-node scripts/pwa_install_test.mjs
-python3 scripts/human_ui_safety_test.py
+The solution covers portal accounts and authorization, lobby lifecycle,
+presence and controller leases, provider profiles, Graphiti reconciliation,
+network policy, knowledge organization, embedding audits, and response
+handling.
 
+## Python contracts
+
+Compile the Python surface and run the dependency-free control contracts:
+
+```bash
 python3 -m compileall -q src worker scripts
 PYTHONPATH=src python3 scripts/control_plane_test.py
 PYTHONPATH=src python3 scripts/control_http_test.py
 PYTHONPATH=src python3 scripts/worker_contract_test.py
-python3 scripts/save_retention_live_test.py
-PYTHONPATH=src python3 scripts/hermes_adapter_test.py
-PYTHONPATH=src python3 scripts/generation_settings_test.py
-PYTHONPATH=src python3 scripts/provider_generation_probe_test.py
-PYTHONPATH=src python3 scripts/harness_manager_contract_test.py
-PYTHONPATH=src python3 scripts/harness_continuation_contract_test.py
+PYTHONPATH=src python3 scripts/capability_manifest_test.py
+PYTHONPATH=src python3 scripts/mcp_command_schema_test.py
+PYTHONPATH=src python3 scripts/match_briefing_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/capability_incident_contract_test.py
-PYTHONPATH=src python3 scripts/platform_store_test.py
-PYTHONPATH=src python3 scripts/platform_controller_test.py
-PYTHONPATH=src python3 scripts/external_lan_contract_test.py
-PYTHONPATH=src python3 scripts/human_hosted_lan_contract_test.py
-PYTHONPATH=src python3 scripts/virtual_lan_contract_test.py
-PYTHONPATH=src python3 scripts/graphiti_projection_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
-PYTHONPATH=src python3 scripts/graphiti_provider_capture_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 ```
 
-The opt-in live reasoning/history boundary uses the real derived Hermes image
-through a local recording proxy. It emits only aggregate counts—never prompts,
-responses, reasoning text, or API keys:
+Additional focused `scripts/*_test.py` files cover individual semantic action
+families. Run the relevant focused contract whenever changing its bridge,
+controller, MCP schema, worker, or portal behavior.
+
+## Browser and installable-app contracts
 
 ```bash
-SMACX_TEST_PROVIDER_BASE_URL=http://model-host:8000/v1 \
-SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
-SMACX_TEST_PROVIDER_API_KEY='...' \
-PYTHONPATH=src python3 scripts/hermes_reasoning_history_live_test.py
+node scripts/pwa_install_test.mjs
+python3 scripts/human_ui_safety_test.py
 ```
 
-It clones one Hermes conversation before its second turn and verifies that no
-completed historical reasoning leaks from Hermes when preservation is disabled.
-The current Hermes release strips completed no-tool reasoning from its own
-history in either mode, so a separate synthetic provider request proves Qwen's
-chat template itself excludes the supplied old reasoning with
-`preserve_thinking=false` and retains it with `true`. Separate fixed-seed
-profiles prove Low and XHigh reach the provider distinctly and compare their
-aggregate reasoning measures. Known grammar/tool-call defects are classified
-separately because this test exposes no tools.
+For UI changes, also inspect the real portal at desktop and mobile widths.
+Exercise the affected lobby, administration, play, spectator, chat, recovery,
+or install flow rather than relying only on component compilation.
 
-The .NET flow creates a new canonical SQLite database, bootstraps the admin,
-creates/claims an invited account, creates a lobby, sends private chat, reads
-native join metadata, verifies activity/analytics and token dimensions, and
-asserts that no `__EFMigrationsHistory` table exists.
+## Container integration
 
-Python contracts cover authentication/CSRF, service-token separation, secret
-redaction, Docker ownership, worker import safety, match/perspective scope,
-native-progress mirroring, managed Hermes secret/tool boundaries, lifecycle
-reconciliation, operations, LAN validation, Graphiti cursor isolation, and the
-reference corpus.
-
-The MCP package is intentionally isolated in the control image. Run briefing
-and decision contracts through that environment:
+Build and start the same images used by operators:
 
 ```bash
-docker run --rm --network none \
-  --entrypoint /opt/smacx/mcp-venv/bin/python \
-  -e PYTHONPATH=/repo/src -v "$PWD:/repo:ro" \
-  smacx-agent-control:dev /repo/scripts/match_briefing_contract_test.py
-```
-
-## Runtime knowledge boundary
-
-The contained client contract verifies authenticated service health, collection
-hierarchy, compact search, bounded semantic evidence, and selected-document
-retrieval without downloading or committing source content:
-
-```bash
-PYTHONPATH=src python3 scripts/reference_corpus_test.py
-dotnet test knowledge_service/Smacx.KnowledgeService.Tests/Smacx.KnowledgeService.Tests.csproj
-dotnet test portal/Smacx.Portal.Tests/Smacx.Portal.Tests.csproj
-docker compose build knowledge-service
-```
-
-A live first-run test uses an operator-owned game mount. It must report one
-shared ONNX model instance, successful canonical-or-Wayback acquisition,
-snapshot synchronization, sub-second steady semantic search, and no acquired
-content in the image/repository. Source files and cleaned pages remain in the
-private `smacx-knowledge-data` volume.
-
-The 2026-09-01 semantic-taxonomy reference run synchronized 420 factual
-documents from the available installed-game and configured web sources with no
-source warnings. It published 81 active recursive collections with specific
-titles, descriptions, and tags; no alphabetic/numbered pagination nodes; and no
-leaf above 22 direct articles. It merged the duplicate short/long technology
-records, consolidated paired land/ocean terraforming records, removed native
-renderer/index pages, and organized technologies by their installed Conquer,
-Discover, Build, Explore, or tied priorities. It reported exactly one local
-ONNX model instance and 2,048 dimensions. Portal tests cover hierarchy and
-direct-article mapping, sanitized Markdig output, tables, heading outlines, and
-the reusable compact reader. Live browser checks cover desktop/tablet/mobile
-navigation, collection overviews, direct tree article opening, result-to-tree
-expansion, and exact-title/natural-language Smart hybrid searches. A live
-control-container check also browsed the same tree and collection article list
-through the agent retrieval boundary.
-
-The optional Graphiti live contract used the configured Qwen endpoint and the
-same internal embedding facade to extract and recall one synthetic treaty fact
-inside a temporary Falkor graph. Repeating the same deterministic episode did
-not duplicate it; cleanup removed that graph and the test-only extraction
-profile was removed afterward, leaving Graphiti disabled by default.
-
-Embedding audit contracts aggregate repeated calls by allowlisted purpose,
-preserve provider-reported versus estimated token provenance, retain bounded
-quality-canary history, and inspect the audit schema to ensure it has no prompt,
-content, or vector-payload fields. Live validation also checks that the local
-model reports one shared instance and that the canary passes numerical,
-semantic-separation, repeatability, and real-wiki retrieval checks.
-
-## Build and container integration
-
-Use the normal serialized launcher:
-
-```bash
-SMACX_GAME_SOURCE=/absolute/path/to/legal/game \
+SMACX_GAME_SOURCE=/absolute/path/to/your/game \
   ./scripts/control-center-up.sh
 docker compose ps
 curl --fail http://127.0.0.1:8080/healthz
 ```
 
-Do not start three image builds in parallel on a small VM. An observed build on
-8 GiB RAM/1 GiB swap exhausted memory while native, worker, and Blazor publish
-were concurrent. `control-center-up.sh` now sets `COMPOSE_PARALLEL_LIMIT=1` and
-builds services sequentially. The continuation run passed with 16 GiB RAM and
-16 GiB swap.
+The launcher serializes memory-intensive image builds. Do not add parallel
+build steps that make the ordinary development launcher less reliable on a
+small home-lab host.
 
-Inspect dependency vulnerabilities:
+Graphiti has an optional integration profile:
 
 ```bash
-dotnet list Smacx.Agent.slnx package --vulnerable --include-transitive
+./scripts/graphiti-up.sh
+PYTHONPATH=src python3 scripts/graphiti_projection_test.py
+PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
+PYTHONPATH=src python3 scripts/graphiti_provider_capture_test.py
 ```
 
-Container images are digest-pinned where upstream stability matters. Also
-inspect the generated SBOM/package lists and run the scanner available in the
-target CI/registry; absence of one local scanner is not evidence of no
-vulnerabilities.
+## Provider and Hermes boundaries
 
-The strict provider boundary has two levels of proof:
+The contained provider-capture tests use local recording endpoints and must not
+print prompts, reasoning, secrets, or response content:
 
 ```bash
 docker build -f harness/Dockerfile -t smacx-agent-harness:dev .
+PYTHONPATH=src python3 scripts/hermes_adapter_test.py
 PYTHONPATH=src python3 scripts/hermes_provider_capture_test.py
+PYTHONPATH=src python3 scripts/provider_generation_probe_test.py
+PYTHONPATH=src python3 scripts/graphiti_provider_capture_test.py
 ```
 
-The capture test runs the real derived Hermes image against a local
-OpenAI-compatible recorder and asserts one exact SMACX-owned system message,
-with no Hermes scaffold or workspace rule content. It also proves the chosen
-reasoning effort and whitelisted sampling payload reach the final provider
-request. `provider_generation_probe_test.py` separately proves accepted and
-rejected provider probes while preserving the distinction between transport
-acceptance and semantic behavior. `hermes_adapter_test.py` covers Hermes's full
-generic reasoning ladder; the portal labels Qwen's documented low/medium/xhigh
-levels and the provider-dependent High option honestly.
+Tests against a real OpenAI-compatible provider are opt-in. Supply credentials
+through ignored environment variables or secret files, never command output,
+fixtures, snapshots, or commits.
 
-`graphiti_provider_capture_test.py` runs the production Graphiti adapter inside
-its real image and proves that reasoning is top-level, chat-template kwargs are
-preserved, and JSON Schema output is both requested and decoded. The opt-in
-`graphiti_extraction_live_test.py` performs the same structured call against a
-real configured endpoint without writing a memory episode or graph node.
+## Native game integration
 
-## Browser portal test
-
-Run the browser portal at desktop and mobile widths and verify:
-
-1. first-run/login and responsive navigation;
-2. runtime/provider/profile administration;
-3. waiting lobby and every typed setup group;
-4. human browser seat launch and stream reconnect;
-5. game mouse, keyboard shortcut, text input, audio and fullscreen;
-6. administrator cross-seat view;
-7. observer deck switching and read-only transport;
-8. authenticated spectator allowed/denied policy, mandatory sign-in, durable
-   participant exclusion, and non-playing administrator access;
-9. global/private/consent-group chat, authorization, logical delivery, and
-   player/faction label;
-10. root-MENU-only human control rail and its disappearance for native
-    submenus/modals;
-11. connected-player voting, stable-boundary maintenance curtain, checkpoint,
-    park, profile change, delegation/reclaim, and recover UI/state;
-12. turn/year/faction activity feed; and
-13. analytics, native classified/unknown outcomes, CSV, and constrained SQL report;
-14. install page and account/nav entry points at desktop and phone widths;
-15. first-tab controller, second-tab viewer, explicit takeover, and old-stream
-    revocation; and
-16. internal Exit game view confirmation, external unload warning, semantic
-    native-quit cancellation, and idle-parking countdown; and
-17. synthetic capability-gap promotion, immediate player/lobby dialog, stopped
-    harness continuation, diagnostic ZIP download, required archive members,
-    redaction checks, and prefilled GitHub issue action.
-
-The 2026-08-29 Chrome run rendered the actual game through Selkies, accepted
-browser input, kept observer paths read-only, and verified the desktop/mobile
-portal layout. The portal routes use WebAssembly interactivity without
-prerender for authenticated cookie consistency; SignalR remains available for
-presence/lobby events.
-
-The managed-play run measured a true native 800×600 game at 1280×720,
-1024×768, 390×844, and 844×390 browser viewports. Local scaling preserved the
-4:3 game aspect ratio, letterboxed the unused area, centered the frame, and
-produced no horizontal or vertical page overflow. Phone portrait intentionally
-prioritizes a complete view; landscape/fullscreen makes the original text much
-more usable.
-
-The same human-only match passed native 800×600 checkpoint → park → profile
-update → recovery in about eight seconds on the reference VM. X11 then reported
-an exact 1920×1080 game window after a second stable recovery. An unexpected
-game-process exit was also observed: the supervised worker restarted from the
-verified checkpoint and the already-open browser route resumed its stream.
-The worker forces manual stream resolution and matching Thinker custom-window
-dimensions so the initial viewer cannot resize or clip the shared game desktop.
-
-The .NET suite exercises connected-human eligibility, solo approval, one-peer
-majority, resolution cooldown/waiver, the complete validated profile catalog,
-canonical schema creation, and browser API error handling. The platform-store
-suite exercises consent-group logical delivery, per-recipient status,
-deduplication, and perspective isolation.
-
-A follow-up first-run UX run used a disposable portal database against the real
-control catalog. It verified the no-profile warning and disabled launch guard,
-the two-step endpoint/profile onboarding path, automatic selection when only
-one game source/runtime exists, policy help text, and the save-versus-launch
-explanation. Drawer geometry was checked directly: closed is fully off-canvas,
-open is flush at the left edge, and route navigation closes it. The disposable
-test account, container, and volume were removed afterward.
-
-## Managed worker and semantic AI
-
-The complete worker/MCP/Hermes vertical slice:
+Native semantic tests require the user's installed game, the built bridge, and
+the prepared Wine/Proton environment. Relevant entry points include:
 
 ```bash
-SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
-SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
-SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
-SMACX_TEST_PROVIDER_URL=http://model-host:8000/v1 \
-SMACX_TEST_PROVIDER_MODEL=Qwen3.8-27B \
-PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
+./scripts/build_bridge.sh
+PYTHONPATH=src python3 scripts/native_automation_turn_test.py
+PYTHONPATH=src python3 scripts/save_load_test.py
+PYTHONPATH=src python3 scripts/full_endgame_pipeline_test.py
 ```
 
-It provisions a real game worker, MCP sidecar, and SMACX-derived Hermes image,
-checks exact identities/secret isolation/toolsets, requires a native semantic
-revision advance, and verifies a recovery set including the Hermes
-conversation.
-
-The portal-driven certification went further: Qwen3.8-27B at low reasoning
-played a Tiny/Citizen Alien Crossfire game through turn 13/year 2113 with only
-`smacx`. Logs and native bridge state proved semantic snapshot/decision/
-command, rules retrieval, unit movement, goal/fact memory, and stale-revision
-re-observation. No screenshot, computer, mouse, keyboard, terminal, or raw UI
-tool was available. The live match then passed stop-agent → checkpoint → park.
-
-The 2026-09-01 stable-briefing smoke continued a real Tiny/Citizen match through
-turn 18/year 2118 across a checkpoint, park, and fresh native session. Its
-Hermes transcript contained 100 syntactically valid tool calls and no malformed
-tool-call JSON. Eighteen in-game years required exactly one full v2 briefing and
-one compact acknowledgement; all 48 decision frames used one configuration
-hash. Three clean ten-iteration Hermes yields advanced the native state and
-were continued without consuming the error-restart budget. Recovery emitted
-one compact unchanged-configuration notice, did not reread the briefing, and
-rotated the native session/revision guards. A live managed knowledge write also
-proved that the authoritative SQLite identity no longer depends on a legacy
-`match.json` mirror.
-
-Hermes telemetry was independently read from its private state through the
-same no-network/read-only helper used by production:
-
-```json
-{
-  "sessions": 1,
-  "api_calls": 97,
-  "input_tokens": 5785165,
-  "output_tokens": 38224,
-  "cache_read_tokens": 0,
-  "cache_write_tokens": 0,
-  "reasoning_tokens": 21743
-}
-```
-
-## Managed LAN tests
-
-Two managed real game workers:
-
-```bash
-SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
-SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
-SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
-PYTHONPATH=src python3 scripts/control_lan_live_test.py
-```
-
-This proves native host/discover/join/configure/ready/start, shared match with
-distinct sessions/perspectives/factions, one MCP per seat, host-only save,
-complete park, stock multiplayer reload, exact faction restoration, and second
-entry into gameplay.
-
-Mixed independent native “human” process:
-
-```bash
-SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
-SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
-SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
-scripts/mixed-lan-live-test.sh
-```
-
-It proves player-name/faction attribution, disconnect/rejoin, saved faction
-reclaim, and post-resume chat. The fixture has no seat perspective, MCP, or
-agent identity.
-
-External human-host authority:
-
-```bash
-SMACX_TEST_GAME_SOURCE=/absolute/path/to/legal/game \
-SMACX_TEST_PROTON_SOURCE=/absolute/path/to/proton \
-SMACX_TEST_DIRECTX_REDIST=/absolute/path/to/directx_feb2010_redist.exe \
-scripts/human-hosted-lan-live-test.sh
-```
-
-The independent process exclusively owns Host/Configure/Start/Save/Load while
-managed clients discover/join/ready/observe. It passed fresh and loaded lobbies,
-bidirectional chat, managed reconnect, and exact faction restoration.
-
-Additional typed matrices:
+LAN integration additionally requires isolated native workers and appropriate
+DirectPlay networking. Use the dedicated scripts for the path being changed:
 
 ```bash
 PYTHONPATH=src python3 scripts/lan_profile_contract_test.py
-PYTHONPATH=src python3 scripts/custom_lan_live_test.py
-PYTHONPATH=src python3 scripts/lan_scenario_live_test.py
+PYTHONPATH=src python3 scripts/external_lan_contract_test.py
+PYTHONPATH=src python3 scripts/human_hosted_lan_contract_test.py
+PYTHONPATH=src python3 scripts/virtual_lan_contract_test.py
 ```
 
-These local multi-process tests are strong implementation evidence but are not
-the deferred physical two-computer certification.
+Native tests must use an isolated display and test-owned match/data roots. They
+must never send input to the developer's normal desktop or reuse a live player
+campaign.
 
-## Native gameplay regressions
+## Repository boundaries
 
-Most focused tests use the nested display wrapper and an operator-provided installation:
+Before opening a pull request, confirm that the diff contains none of the
+following:
 
-```bash
-SMACX_TEST_TIMEOUT=180 scripts/nested_display_test.sh \
-  env PYTHONPATH=src:scripts python3 scripts/TEST_NAME.py
-```
+- game executables, DLLs, saves, movies, voices, or proprietary data files;
+- downloaded/cleaned reference prose or embeddings;
+- provider credentials, session tokens, cookies, passwords, or private host
+  addresses;
+- generated Wine prefixes, logs, screenshots, backups, caches, or test data;
+- reference-machine validation diaries, temporary roadmaps, or coding-agent
+  notes.
 
-The suite includes opening interactions, decision frames, ready-unit guards,
-movement/orders/auto-explore/transports/air/combat/probes, base management,
-production/facilities/citizens, unit design/upgrade, social engineering,
-diplomacy/technology/energy/loan/joint attack, Council, atrocities, endgame,
-save/load, and capability-gap latch. See [coverage.md](coverage.md) for exact
-test-to-capability mapping.
-
-Every mutating native regression must verify wrong identity, stale revision,
-ownership/visibility, confirmation where consequential, and no mutation on
-rejection. Managed AI/LAN tests report `pixels_or_ui_input_used=false`.
-
-## Recovery and backup
-
-```bash
-PYTHONPATH=src python3 scripts/operations_contract_test.py
-PYTHONPATH=src python3 scripts/harness_backup_live_test.py
-```
-
-Native crash recovery is accepted only at a bridge-verified checkpoint. Backup
-verification checks SQLite integrity, manifests, hashes, secret archive policy,
-and worker/Hermes volume archives. Test-owned resources are selected by exact
-installation labels and cleaned afterward.
-
-The installation-local image and compact-save path have opt-in Docker proofs:
-
-```bash
-SMACX_GAME_SOURCE=/absolute/path/to/game \
-  PYTHONPATH=src python3 scripts/prepared_worker_live_test.py
-SMACX_TEST_GAME_SOURCE=/absolute/path/to/game \
-  PYTHONPATH=src python3 scripts/worker_manager_live_test.py
-python3 scripts/save_retention_live_test.py
-```
-
-They verify full game-tree fingerprinting and cache reuse, a real semantic
-opening followed by park/resume, absence of host game/runtime mounts, a
-disposable per-seat copy-on-write root, bounded checkpoint retention, zstd
-archives, and newest-checkpoint final preservation.
-
-The portal park-race regression is specifically:
-
-1. let a real managed Qwen run issue semantic actions;
-2. click **Park** while the match is active;
-3. prove the Hermes run reaches stopped before checkpoint;
-4. prove checkpoint and park return HTTP 200;
-5. prove all dynamic Hermes/MCP/worker containers are absent; and
-6. prove the portal displays `parked`, own faction, and last turn/year.
-
-## Graphiti
-
-```bash
-PYTHONPATH=src python3 scripts/graphiti_projection_test.py
-PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
-./scripts/graphiti-up.sh
-```
-
-Contract tests cover namespace isolation, cursor idempotency, rebuild, and
-fail-open-to-SQLite behavior. A backend-live test verifies FalkorDB/Graphiti only
-when compatible chat and embedding endpoints are configured.
-
-## External certification checklist
-
-Not run by this Linux-local milestone:
-
-- physical Linux host plus second physical native client;
-- actual remote Tailscale peer across networks;
-- Windows 11/WSL2 Docker Desktop deployment.
-
-When performed, record exact commits/images, interfaces, firewall, game/runtime
-hashes, provider/profile, participant names/factions, save/rejoin result, and
-whether any pixels/input path was used in
-`docs/certification-record.example.md`.
+Public test documentation should describe repeatable procedures. Historical
+results and maintainer backlog belong outside the repository.

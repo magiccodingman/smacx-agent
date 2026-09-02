@@ -48,10 +48,9 @@ free -h
 ```
 
 Do not run control, worker, and portal builds concurrently. The launcher now
-forces `COMPOSE_PARALLEL_LIMIT=1` and serializes them. A known failure occurred
-with 8 GiB RAM/1 GiB swap during concurrent Docker/Blazor optimization. The
-verified continuation VM has 16 GiB RAM and 16 GiB swap. Around 12 GiB RAM plus
-4 GiB swap is a sensible source-build target.
+forces `COMPOSE_PARALLEL_LIMIT=1` and serializes them. If the kernel terminates
+a build for lack of memory, increase the host's available memory or swap and
+rerun the launcher. Runtime demand is lower than a full source build.
 
 ## First-run token is unknown
 
@@ -204,7 +203,7 @@ Validate:
 Wi-Fi often refuses extra macvlan MAC addresses. Prefer ipvlan or
 `scripts/create-routed-player-lan.sh` on that host. The Linux host cannot always
 reach its own macvlan children; this does not imply another physical LAN client
-cannot, but the deferred physical certification must test it.
+cannot. Test the displayed worker address from the actual client device.
 
 ## Direct/native player disconnects
 

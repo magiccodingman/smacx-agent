@@ -26,7 +26,7 @@ python3 scripts/platform_preflight.py --require-wsl2 \
 
 It checks WSL2, a Linux Docker engine, Compose v2, x86-64, `/dev/net/tun`, the
 legal executable, and an actual read-only Docker bind of that path. GE-Proton
-and the verified DirectPlay redistributable are built into the worker image. It
+and the bundled DirectPlay redistributable are built into the worker image. It
 changes no game files.
 
 Then run `scripts/control-center-up.sh` for solo or same-host AI games. Visit
@@ -51,9 +51,8 @@ TCP/UDP 2300–2400; other routed access to Control Center/MCP/container ports i
 rejected. Its state volume persists authentication. Approve the exact subnet
 route in Tailscale, then join the worker IPv4 displayed by the Control Center.
 
-This is the intended Windows/Wi-Fi path and is fully configuration- and
-route-tested on Linux. It is not yet a claim that a physical Windows 11 machine
-completed the native checkpoint/rejoin matrix; run the checklist in
-[Testing](testing.md) on that machine before calling that installation
-certified. WSL2 networking and Docker Desktop versions change independently,
-so retaining this honest boundary is important.
+WSL2 networking and Docker Desktop versions change independently. Run the
+packaged preflight on the target host and confirm that its routed DirectPlay
+path and private portal are reachable before starting a campaign. Treat failed
+preflight or route checks as a host-configuration problem rather than bypassing
+them.

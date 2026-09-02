@@ -472,14 +472,14 @@ def smac_status() -> dict:
 
 @mcp.tool(
     description=(
-        "Read the reviewed platform capability and certification ledger. This is static product coverage, "
+        "Read the platform availability and safety boundary. This is static product coverage, "
         "not the current turn's legal actions. Query a section to keep context compact."
     )
 )
 def smac_capabilities(
     section: Literal[
         "all", "policy", "launch_modes", "lan_profiles", "semantic_surface",
-        "known_fail_closed_gaps", "deployment", "evidence",
+        "known_fail_closed_gaps", "deployment",
     ] = "all",
 ) -> dict:
     return capability_manifest(section)
