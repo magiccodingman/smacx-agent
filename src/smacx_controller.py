@@ -16,6 +16,7 @@ import re
 import uuid
 
 from smacx_game_settings import game_settings_environment, normalize_game_settings
+from smacx_journal import CampaignJournal, JournalError
 from smacx_store import MemoryScope, SmacxStore, StoreError
 from smacx_reference import read_reference as read_reference_store
 
@@ -55,6 +56,8 @@ _knowledge_lock = threading.Lock()
 _store_lock = threading.Lock()
 _store_instance: SmacxStore | None = None
 _store_instance_path: Path | None = None
+_journal_instance: CampaignJournal | None = None
+_journal_instance_root: Path | None = None
 
 
 class BridgeUnavailable(ConnectionError):
@@ -69,6 +72,27 @@ def _store() -> SmacxStore:
             _store_instance = SmacxStore(path)
             _store_instance_path = path
         return _store_instance
+
+
+def _journal() -> CampaignJournal:
+    """Keep the portable campaign authority beside the active platform store."""
+    global _journal_instance, _journal_instance_root
+    root = (_store().path.parent / "campaigns").resolve()
+    with _store_lock:
+        if _journal_instance is None or _journal_instance_root != root:
+            _journal_instance = CampaignJournal(root)
+            _journal_instance_root = root
+        return _journal_instance
+
+
+def _journal_working_state(scope: MemoryScope) -> dict[str, Any]:
+    store = _store()
+    with store.transaction() as connection:
+        budgets = {
+            str(row["section"]): int(row["max_tokens"])
+            for row in connection.execute("SELECT section, max_tokens FROM memory_budgets")
+        }
+    return _journal().working_state(scope, token_budgets=budgets)
 
 
 def _token() -> str:
@@ -256,6 +280,12 @@ def _ensure_platform_identity(
                 session_id=session_id,
                 loaded_save=loaded_save,
             )
+            _journal().append(
+                scope, "lifecycle.session_started", {
+                    "instance_id": instance_id, "worker_kind": "legacy",
+                    "loaded_save": loaded_save,
+                }, session_id=session_id, commit_reason="Start native session",
+            )
     platform_identity = {
         "installation_id": store.installation_id(),
         "match_id": match_id,
@@ -404,7 +434,7 @@ def _legacy_knowledge_record(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _export_legacy_knowledge(scope: MemoryScope) -> Path:
-    """Write a compatibility mirror; SQLite remains authoritative."""
+    """Write a compatibility mirror; the campaign journal remains authoritative."""
     rows = _store().get_facts(scope, include_history=True, limit=10000)
     entries: dict[str, Any] = {}
     history: list[dict[str, Any]] = []
@@ -501,7 +531,8 @@ def read_match_knowledge(
             "perspective_id": scope.perspective_id,
             "key": key,
             "entry": _legacy_knowledge_record(current_rows[0]),
-            "storage": "sqlite",
+            "authority": "campaign_journal",
+            "storage": "sqlite_query_projection",
         }
         if include_history:
             result["history"] = [
@@ -521,7 +552,8 @@ def read_match_knowledge(
         "entries": items,
         "entry_count": len(items),
         "history_count": len(_store().get_facts(scope, include_history=True, limit=10000)),
-        "storage": "sqlite",
+        "authority": "campaign_journal",
+        "storage": "sqlite_query_projection",
     }
 
 
@@ -595,7 +627,16 @@ def put_match_knowledge(
         )
         with _knowledge_lock:
             path = _export_legacy_knowledge(scope)
-    except StoreError as exc:
+        journal = _journal()
+        journal_event = journal.append(
+            scope, "memory.fact", {
+                "operation": "put", "key": key, "category": category,
+                "subject": subject, "value": value, "record": fact,
+                "observed_revision": observed_revision,
+            }, session_id=session_id, turn=snapshot.get("turn"), year=snapshot.get("year"),
+        )
+        journal.project_state(scope, _journal_working_state(scope))
+    except (StoreError, JournalError) as exc:
         return {"ok": False, "error": str(exc)}
     entry = _legacy_knowledge_record(fact)
     return {
@@ -609,6 +650,7 @@ def put_match_knowledge(
         "ledger_path": str(path),
         "database_path": str(_store().path),
         "event_id": fact["event_id"],
+        "journal_event_id": journal_event["event_id"],
     }
 
 
@@ -804,6 +846,14 @@ def write_platform_memory(
             )
         else:
             return {"ok": False, "error": "invalid_memory_update_action"}
+        journal = _journal()
+        journal_event = journal.append(
+            scope, f"memory.{action}", {
+                "operation": "upsert", "record_input": dict(record),
+                "record": stored, "observed_revision": observed_revision,
+            }, session_id=session_id, turn=turn, year=year,
+        )
+        journal.project_state(scope, _journal_working_state(scope))
         return {
             "ok": True,
             "identity": _platform_scope_identity(scope, session_id),
@@ -812,10 +862,95 @@ def write_platform_memory(
             "observed_revision": observed_revision,
             "observed_turn": turn,
             "observed_year": year,
+            "journal_event_id": journal_event["event_id"],
         }
     except BridgeUnavailable:
         return {"ok": False, "error": "game_not_connected"}
-    except (StoreError, TypeError, ValueError) as exc:
+    except (StoreError, JournalError, TypeError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def campaign_notebook(
+    action: str,
+    match_id: str,
+    *,
+    collection: str = "notes",
+    key: str = "",
+    title: str = "",
+    content: str = "",
+    tags: Sequence[str] = (),
+    status: str = "active",
+    session_id: str = "",
+    observed_revision: str = "",
+    agent_id: str = "",
+    perspective_id: str = "",
+) -> dict[str, Any]:
+    """Read or mutate the canonical match-scoped AI notebook."""
+    try:
+        snapshot: dict[str, Any] = {}
+        if action in {"put", "delete"}:
+            scope, snapshot = _guard_platform_observation(
+                match_id, session_id, observed_revision,
+                agent_id=agent_id, perspective_id=perspective_id,
+            )
+        else:
+            scope = _scope_for_match(
+                match_id, session_id=session_id or None,
+                agent_id=agent_id or None, perspective_id=perspective_id or None,
+            )
+            if scope is None:
+                raise StoreError("unknown_or_invalid_match_id")
+        result = _journal().notebook(
+                scope, action, collection=collection, key=key, title=title,
+                content=content, tags=list(tags), status=status,
+                turn=snapshot.get("turn"), year=snapshot.get("year"),
+                session_id=session_id or None,
+            )
+        if action in {"put", "delete"} and result.get("ok"):
+            _store().append_event(
+                scope, f"notebook.{action}", {"entry": result.get("item")},
+                session_id=session_id, turn=snapshot.get("turn"), year=snapshot.get("year"),
+                importance=65,
+                search_text=f"{title} {content}".strip(),
+            )
+            _journal().project_state(scope, _journal_working_state(scope))
+        return {
+            **result,
+            "identity": _platform_scope_identity(scope, session_id or None),
+            "authority": "campaign_journal",
+        }
+    except (BridgeUnavailable, StoreError, JournalError, TypeError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def record_campaign_action(
+    match_id: str,
+    session_id: str,
+    payload: Mapping[str, Any],
+    *,
+    turn: int | None = None,
+    year: int | None = None,
+    commit_reason: str = "",
+    agent_id: str = "",
+    perspective_id: str = "",
+) -> dict[str, Any]:
+    """Journal one completed native decision without exposing journal paths to the model."""
+    try:
+        scope = _scope_for_match(
+            match_id, session_id=session_id,
+            agent_id=agent_id or None, perspective_id=perspective_id or None,
+        )
+        if scope is None:
+            raise StoreError("unknown_or_invalid_match_id")
+        journal = _journal()
+        event = journal.append(
+            scope, "game.action", payload, session_id=session_id,
+            turn=turn, year=year, commit_reason=commit_reason,
+        )
+        journal.project_state(scope, _journal_working_state(scope))
+        return {"ok": True, "journal_event_id": event["event_id"],
+                "event_hash": event["event_hash"]}
+    except (StoreError, JournalError, TypeError, ValueError) as exc:
         return {"ok": False, "error": str(exc)}
 
 
@@ -848,7 +983,10 @@ def read_platform_memory(
         store = _store()
         identity = _platform_scope_identity(scope, session_id or None)
         if action == "working_set":
-            return {"ok": True, "identity": identity, "memory": store.current_memory(scope)}
+            memory = _journal_working_state(scope)
+            _journal().project_state(scope, memory)
+            return {"ok": True, "identity": identity, "memory": memory,
+                    "authority": "campaign_journal", "sqlite_role": "query_projection"}
         if action == "search":
             return {
                 "ok": True,
@@ -878,14 +1016,18 @@ def read_platform_memory(
             return {
                 "ok": True,
                 "identity": identity,
-                "events": store.list_events(scope, limit=limit),
+                "events": _journal().latest_events(
+                    scope, limit=min(max(limit, 1), 500),
+                ),
+                "authority": "campaign_journal",
             }
         if action == "graph_status":
             return {
                 "ok": True,
                 "identity": identity,
                 "projection": store.projection_cursor(scope, "graphiti-v1"),
-                "sqlite_authoritative": True,
+                "journal_authoritative": True,
+                "sqlite_role": "projection_cursor_cache",
                 "graphiti_optional": True,
             }
         projection = {
@@ -1119,7 +1261,7 @@ def _persist_chat_envelope(
                 continue
             sender_actor = actor_by_faction.get(sender_faction_id) if sender_faction_id is not None else None
             recipient_actor = actor_by_faction.get(recipient_faction_id) if recipient_faction_id is not None else None
-            persisted.append(store.record_chat(
+            stored_chat = store.record_chat(
                 scope,
                 message_uid,
                 str(raw.get("text") or ""),
@@ -1137,7 +1279,27 @@ def _persist_chat_envelope(
                     "sender_player_name": sender_actor.get("network_player_name") if sender_actor else None,
                     "sender_faction_name": sender_actor.get("faction_name") if sender_actor else None,
                 },
-            ))
+            )
+            persisted.append(stored_chat)
+            if not stored_chat.get("deduplicated"):
+                _journal().append(
+                    scope, "chat.message", {
+                        "message_uid": message_uid,
+                        "direction": direction,
+                        "channel": channel,
+                        "sender_actor_id": str(sender_actor["actor_id"]) if sender_actor else None,
+                        "recipient_actor_id": str(recipient_actor["actor_id"]) if recipient_actor else None,
+                        "sender_faction_id": sender_faction_id,
+                        "recipient_faction_id": recipient_faction_id,
+                        "content": str(raw.get("text") or ""),
+                        "metadata": {
+                            "native_sequence": sequence,
+                            "client_message_id": client_message_id or None,
+                            "sender_player_name": sender_actor.get("network_player_name") if sender_actor else None,
+                            "sender_faction_name": sender_actor.get("faction_name") if sender_actor else None,
+                        },
+                    }, session_id=session_id, turn=raw.get("turn"), year=raw.get("year"),
+                )
         return {
             **result,
             "durable": {
@@ -1147,7 +1309,7 @@ def _persist_chat_envelope(
                 "database_path": str(store.path),
             },
         }
-    except StoreError as exc:
+    except (StoreError, JournalError) as exc:
         return {**result, "durable_warning": str(exc)}
 
 
@@ -1735,8 +1897,13 @@ def stop_game(wait_seconds: int = 10) -> dict[str, Any]:
                     importance=40,
                     search_text="Native SMACX session stopped cleanly",
                 )
+                _journal().append(
+                    scope, "lifecycle.session_stopped",
+                    {"method": result.get("method"), "stopped": True},
+                    session_id=session_id, commit_reason="Stop native session",
+                )
                 _store().close_session(session_id)
-        except StoreError as exc:
+        except (StoreError, JournalError) as exc:
             result["platform_warning"] = str(exc)
         result["identity"] = identity
     return result

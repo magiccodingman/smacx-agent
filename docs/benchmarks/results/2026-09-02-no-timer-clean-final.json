@@ -1,0 +1,79 @@
+{
+  "causal_progress": {
+    "automatic_stale_rebases": 0,
+    "distinct_action_turns": 4,
+    "first_advanced_turn": 5,
+    "journaled_game_actions": 9,
+    "journaled_turn_advances": 4,
+    "last_advanced_turn": 8,
+    "native_command_counts": {
+      "acknowledge_popup": 5,
+      "auto_explore_unit": 3,
+      "set_first_base_name": 1
+    },
+    "outcome_counts": {
+      "native_accepted": 9
+    },
+    "repetition_circuits": 0,
+    "seconds_between_turn_advances": {
+      "maximum": 82.439,
+      "mean": 40.698,
+      "median": 39.655,
+      "minimum": 0.0,
+      "p90": 82.439,
+      "samples": 3
+    },
+    "supervision_incidents": 0,
+    "verified_checkpoint_events": 3
+  },
+  "generated_at": "2026-09-02T22:39:01.119810+00:00",
+  "journal": {
+    "events": 23,
+    "failed_chains": 0,
+    "hash_chains_valid": true,
+    "perspectives": 1
+  },
+  "match_id": "match-3e07f7b67b254f8b867a21eb37994234",
+  "portal_telemetry": {
+    "available": true,
+    "duration_seconds": {
+      "maximum": 59.99,
+      "mean": 42.004,
+      "median": 36.027,
+      "minimum": 35.972,
+      "p90": 59.99,
+      "samples": 4
+    },
+    "errored_turn_rows": 0,
+    "match": {
+      "current_turn": 8,
+      "current_year": 2108,
+      "mode": "singleplayer",
+      "status": "parked",
+      "time_control": 0
+    },
+    "successful_turn_rows": 5,
+    "totals": {
+      "api_calls": 27,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "input_tokens": 444710,
+      "output_tokens": 7921,
+      "reasoning_tokens": 4788
+    },
+    "turn_rows": 5
+  },
+  "privacy": {
+    "chat_included": false,
+    "game_assets_included": false,
+    "provider_endpoint_included": false,
+    "raw_prompts_included": false,
+    "raw_responses_included": false,
+    "reasoning_text_included": false
+  },
+  "schema": "smacx.agent-simulation-report.v1",
+  "validation": {
+    "causal_success_requires_journaled_agent_turn_advance": true,
+    "native_timer_must_be_none": true
+  }
+}

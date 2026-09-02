@@ -555,20 +555,47 @@ public sealed class LobbiesController(
             switch (request.Action)
             {
                 case "park":
-                    // Claim the lifecycle before any slow operation so the
-                    // supervisor cannot replace a stopped Hermes run while a
-                    // native checkpoint is being taken.
+                    // Parking spans native quiescence, a verified save, Hermes
+                    // shutdown, and worker teardown.  Queue it durably so a
+                    // browser disconnect cannot cancel half of that sequence
+                    // and let the supervisor resurrect autonomous play.
+                    var activePark = await database.PortalMaintenanceOperations
+                        .AnyAsync(item => item.MatchId == matchId &&
+                            item.Kind == "direct_park" &&
+                            (item.Status == "queued" || item.Status == "running"),
+                            HttpContext.RequestAborted);
+                    if (!activePark)
+                    {
+                        database.PortalMaintenanceOperations.Add(new PortalMaintenanceOperation
+                        {
+                            MatchId = matchId,
+                            Kind = "direct_park",
+                            Status = "queued",
+                            Phase = "queued",
+                            Summary = "Safe parking is queued and will continue in the background.",
+                            PayloadJson = JsonSerializer.Serialize(new
+                            {
+                                slot = request.Slot ?? "control_recovery",
+                            }),
+                            CompletedSteps = 0,
+                            TotalSteps = 4,
+                            CanCancel = false,
+                        });
+                        database.PortalMatchEvents.Add(new PortalMatchEvent
+                        {
+                            MatchId = matchId,
+                            EventType = "park_queued",
+                            Summary = "Safe parking was queued as a durable background operation.",
+                        });
+                    }
                     profile.Status = "parking";
                     profile.LastError = null;
                     profile.UpdatedAt = DateTimeOffset.UtcNow;
                     await database.SaveChangesAsync(HttpContext.RequestAborted);
                     await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
                         "LobbyChanged", matchId, HttpContext.RequestAborted);
-                    await StopAgentRunsAsync(matchId, HttpContext.RequestAborted);
-                    await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint",
-                        new { slot = request.Slot ?? "control_recovery" });
-                    await control.PostRawAsync($"api/v1/matches/{matchId}/park", new { });
-                    break;
+                    return Accepted(ApiResponse<LobbyDetails>.Success(
+                        await MapDetailsAsync(profile)));
                 case "checkpoint": await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint", new { slot = request.Slot ?? "control_recovery" }); break;
                 case "recover":
                     if (await control.GetActiveCapabilityIncidentAsync(
@@ -1207,13 +1234,29 @@ public sealed class LobbiesController(
                     "A portal-managed solo game requires a browser human or AI seat.");
             try
             {
+                var runtimeAgentId = only.AgentId;
+                if (only.ControllerKind == "agent")
+                {
+                    // The selected portal profile is reusable configuration,
+                    // not a durable player identity.  Give a solo campaign
+                    // the same match/seat-isolated agent identity as LAN so
+                    // Hermes history, journals, Graphiti namespaces, and
+                    // telemetry can never bleed between simulations that use
+                    // the same profile.
+                    runtimeAgentId = MatchSeatAgentId(profile.MatchId, only.SeatIndex);
+                    using var ignored = await control.PostRawAsync("api/v1/agents", new
+                    {
+                        agent_id = runtimeAgentId,
+                        display_name = only.PlayerHandle ?? $"AI seat {only.SeatIndex + 1}",
+                    }, cancellationToken);
+                }
                 var settings = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(profile.SettingsJson)!;
                 using var created = await control.PostRawAsync("api/v1/matches/solo", new
                 {
                     match_id = profile.MatchId,
                     display_name = profile.DisplayName,
                     controller_kind = only.ControllerKind,
-                    agent_id = only.AgentId,
+                    agent_id = runtimeAgentId,
                     human_player_name = only.PlayerHandle,
                     faction_id = only.SeatIndex + 1,
                     faction_name = FactionCatalog.Find(only.ResolvedFactionKey)?.FactionName,

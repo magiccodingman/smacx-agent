@@ -14,7 +14,7 @@ else if (snapshot is not null)
 {
  <div class="metric-grid operations-metrics">
   <MetricCard Label="CONTROL" Value="@Text(snapshot.Operations, "status", "ready")" Detail="Supervisor state" Icon="@Icons.Material.Filled.MonitorHeart" />
-  <MetricCard Label="GRAPHITI" Value="@GraphitiLabel" Detail="SQLite remains authoritative" Icon="@Icons.Material.Filled.AccountTree" Tone="violet" />
+  <MetricCard Label="GRAPHITI" Value="@GraphitiLabel" Detail="Campaign journal remains authoritative" Icon="@Icons.Material.Filled.AccountTree" Tone="violet" />
   <MetricCard Label="RULES" Value="@KnowledgeLabel" Detail="Local semantic mechanics" Icon="@Icons.Material.Filled.MenuBook" Tone="blue" />
   <MetricCard Label="SCHEDULES" Value="@Count(snapshot.Schedules).ToString()" Detail="Configured jobs" Icon="@Icons.Material.Filled.Schedule" Tone="gold" />
   <MetricCard Label="BACKUPS" Value="@Count(snapshot.Backups).ToString()" Detail="Recorded sets" Icon="@Icons.Material.Filled.Backup" Tone="blue" />
@@ -23,7 +23,7 @@ else if (snapshot is not null)
   <div class="form-column">
    <section class="surface-panel form-panel">
     <h2>Optional Graphiti memory</h2>
-    <p class="section-copy">Graphiti turns selected political and strategic events into a scoped temporal relationship graph. SQLite remains authoritative; routine moves and raw reasoning are never ingested.</p>
+    <p class="section-copy">Graphiti turns selected political and strategic events into a scoped temporal relationship graph. The campaign journal remains authoritative; routine moves and raw reasoning are never ingested.</p>
     <MudSelect T="string" Value="@graphitiProfileId" ValueChanged="GraphitiProfileChanged" Label="Extraction AI profile" Variant="Variant.Outlined" Disabled="busy" HelperText="Selecting a profile enables Graphiti immediately. It is independent of the AI profiles occupying gameplay seats.">
      @foreach(var profile in profiles.Where(item=>item.Active)){<MudSelectItem Value="@profile.ProfileId">@profile.DisplayName · @profile.ModelId · @profile.ReasoningEffort</MudSelectItem>}
     </MudSelect>

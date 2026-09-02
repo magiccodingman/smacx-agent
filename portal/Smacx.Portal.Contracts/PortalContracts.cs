@@ -151,7 +151,7 @@ public sealed record CreateLobbyRequest(
     bool ManagedClientsOnly,
     bool GraphitiEnabled,
     string RankingMode = "unranked",
-    int TimeControl = 2,
+    int TimeControl = 0,
     int OceanCoverage = 1,
     int ErosiveForces = 1,
     int NativeLife = 1,
@@ -495,7 +495,8 @@ public sealed record ModelGenerationSettings(
     int? Seed = null,
     bool? EnableThinking = null,
     bool? PreserveThinking = null,
-    IReadOnlyDictionary<string, System.Text.Json.JsonElement>? ExtraParameters = null);
+    IReadOnlyDictionary<string, System.Text.Json.JsonElement>? ExtraParameters = null,
+    string ReasoningContinuity = "automatic");
 
 public sealed record AiProfile(
     string ProfileId,

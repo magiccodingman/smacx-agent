@@ -578,10 +578,18 @@ semantic quality canary. Counts, latency, effective throughput, error totals,
 model/dimensions, and the embedding-space fingerprint are retained; source
 text, vectors, credentials, chat, and model reasoning are explicitly not.
 
-## 12. Graphiti
+## 12. Campaign journal and Graphiti
 
-SQLite remains authoritative. Graphiti is an optional derived temporal
-projection and can be toggled per match. Configure the shared embedding mode
+Every managed AI perspective has an append-only, hash-linked campaign journal.
+It records bounded strategic state, decisions, outcomes, diplomacy, notes,
+checkpoint references, and lifecycle events. A small local Git repository
+commits meaningful turn and checkpoint boundaries, providing inspectable
+history without committing native saves, model scratch reasoning, or secrets.
+The journal is authoritative for agent memory; its SQLite/FTS working index and
+Graphiti graph are disposable projections that can be rebuilt from it.
+
+Graphiti is an optional derived temporal projection and can be toggled per
+match. Configure the shared embedding mode
 under **Models & AI profiles**, then select a separate active extraction
 profile on the Operations page. Selecting it enables Graphiti immediately;
 editing it synchronizes the projector automatically; and turning Graphiti off
@@ -592,10 +600,11 @@ non-mutating Graphiti-format request and records whether it succeeded. Then star
 ./scripts/graphiti-up.sh
 ```
 
-If Graphiti is disabled or unavailable, gameplay, scoped SQLite/FTS memory, chat,
+If Graphiti is disabled or unavailable, gameplay, journal memory, chat,
 checkpointing, and recovery continue normally. Projection namespaces include
-installation + match + agent + perspective, preventing cross-agent/game mixing.
-See [graphiti.md](graphiti.md).
+installation + match + agent + perspective + timeline, preventing
+cross-agent/game/branch mixing. See [graphiti.md](graphiti.md) and
+[storage-lifecycle.md](storage-lifecycle.md).
 
 ## 13. Backups and supervision
 

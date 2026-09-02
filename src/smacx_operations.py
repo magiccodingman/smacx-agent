@@ -10,19 +10,21 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import sqlite3
 import tempfile
 import threading
 import time
+import tarfile
 from typing import Any, Mapping
 import uuid
 import zipfile
 from typing import TYPE_CHECKING
 
 from smacx_docker import DockerNotFound
+from smacx_journal import CampaignJournal
 from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager, WorkerManagerError
 
@@ -72,6 +74,27 @@ def _sha256(path: Path) -> str:
 
 def _tree_size(path: Path) -> int:
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+
+
+def _validate_campaign_archive(path: Path) -> list[tarfile.TarInfo]:
+    """Reject links, devices, traversal, and unrelated archive roots."""
+    members: list[tarfile.TarInfo] = []
+    total = 0
+    try:
+        with tarfile.open(path, "r:gz") as archive:
+            for member in archive.getmembers():
+                name = PurePosixPath(member.name)
+                if name.is_absolute() or ".." in name.parts or not name.parts \
+                        or name.parts[0] != "campaigns" \
+                        or not (member.isfile() or member.isdir()):
+                    raise StoreError("backup_campaign_archive_unsafe")
+                total += max(int(member.size), 0)
+                if total > 20 * 1024 * 1024 * 1024:
+                    raise StoreError("backup_campaign_archive_too_large")
+                members.append(member)
+    except (OSError, tarfile.TarError) as exc:
+        raise StoreError("backup_campaign_archive_invalid") from exc
+    return members
 
 
 class OperationsManager:
@@ -356,6 +379,11 @@ class OperationsManager:
             with sqlite3.connect(self.store.path) as source, sqlite3.connect(database_path) as target:
                 source.backup(target)
             os.chmod(database_path, 0o600)
+            campaign_archive = temporary_path / "campaigns.tar.gz"
+            campaign_result = CampaignJournal(
+                self.data_root / "campaigns"
+            ).archive_to(campaign_archive)
+            os.chmod(campaign_archive, 0o600)
             secret_count = self._copy_secrets(temporary_path / "secrets") if include_secrets else 0
             workers: list[dict[str, Any]] = []
             harnesses: list[dict[str, Any]] = []
@@ -411,6 +439,11 @@ class OperationsManager:
                 "installation_id": installation_id,
                 "created_unix": now,
                 "database": {"path": "state.sqlite3", "sha256": _sha256(database_path)},
+                "campaigns": {
+                    "path": "campaigns.tar.gz",
+                    "sha256": campaign_result["sha256"],
+                    "size_bytes": campaign_result["size_bytes"],
+                },
                 "secrets": {"included": include_secrets, "count": secret_count},
                 "workers": workers,
                 "harnesses": harnesses,
@@ -483,6 +516,14 @@ class OperationsManager:
         if integrity != "ok" or not installation \
                 or str(installation[0]) != record["installation_id"]:
             raise StoreError("backup_database_invalid")
+        campaign_descriptor = manifest.get("campaigns")
+        if isinstance(campaign_descriptor, Mapping):
+            campaign_archive = path / str(campaign_descriptor.get("path") or "")
+            if campaign_archive.parent != path.resolve() or not campaign_archive.is_file() \
+                    or campaign_archive.name != "campaigns.tar.gz" \
+                    or _sha256(campaign_archive) != campaign_descriptor.get("sha256"):
+                raise StoreError("backup_campaign_archive_invalid")
+            _validate_campaign_archive(campaign_archive)
         for worker in manifest.get("workers", []):
             relative = worker.get("archive")
             if not isinstance(relative, str) or not re.fullmatch(
@@ -505,6 +546,7 @@ class OperationsManager:
             "ok": True, "backup_id": backup_id, "installation_id": record["installation_id"],
             "worker_count": len(manifest.get("workers", [])),
             "harness_count": len(manifest.get("harnesses", [])),
+            "campaigns_included": isinstance(campaign_descriptor, Mapping),
             "includes_secrets": bool(manifest.get("secrets", {}).get("included")),
             "size_bytes": _tree_size(path),
         }
@@ -1128,10 +1170,39 @@ def restore_backup_offline(control, data_root: Path | str, backup_id: str,
                 raise StoreError("restore_secret_missing")
             shutil.copyfile(source, target)
             os.chmod(target, 0o600)
+    campaign_archive = source_root / "campaigns.tar.gz"
+    campaigns_restored = False
+    if campaign_archive.is_file():
+        members = _validate_campaign_archive(campaign_archive)
+        root = Path(data_root).expanduser().resolve()
+        staging = Path(tempfile.mkdtemp(prefix=".campaign-restore-", dir=root))
+        previous = root / f".campaigns-previous-{uuid.uuid4().hex}"
+        target = root / "campaigns"
+        moved_previous = False
+        try:
+            with tarfile.open(campaign_archive, "r:gz") as archive:
+                archive.extractall(staging, members=members)
+            candidate = staging / "campaigns"
+            if not candidate.is_dir():
+                raise StoreError("backup_campaign_archive_missing_root")
+            if target.exists():
+                os.replace(target, previous)
+                moved_previous = True
+            os.replace(candidate, target)
+            campaigns_restored = True
+            if moved_previous:
+                shutil.rmtree(previous)
+        except Exception:
+            if moved_previous and not target.exists() and previous.exists():
+                os.replace(previous, target)
+            raise
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
     with restored_store.transaction() as connection:
         connection.execute(
             "UPDATE backup_sets SET status='restored', restored_unix=? WHERE backup_id=?",
             (time.time(), backup_id),
         )
     return {"ok": True, "backup_id": backup_id,
-            "emergency_backup_id": emergency["backup_id"], "workers_restored": False}
+            "emergency_backup_id": emergency["backup_id"], "workers_restored": False,
+            "campaigns_restored": campaigns_restored}

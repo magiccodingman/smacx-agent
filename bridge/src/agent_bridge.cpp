@@ -3592,8 +3592,14 @@ int first_owned_base(int faction_id) {
 bool first_base_name_modal(int faction_id) {
     const char* label = agent_popup_label();
     return (*WinModalState || *PopupDialogState)
-        && (!label[0] || !strcmp(label, "FIRSTBASE"))
-        && *CurrentTurn == 0 && Factions[faction_id].tech_research_id >= 0
+        // Alien Crossfire can begin an expansion faction on a non-zero
+        // internal turn even though the public year is still the opening
+        // year. FIRSTBASE is the authoritative native discriminator and can
+        // precede the engine assigning tech_research_id (notably for Alien
+        // factions). Requiring research first creates an impossible modal
+        // cycle. Retain that guard only for builds where the label is absent.
+        && (!strcmp(label, "FIRSTBASE") || (!label[0] && *CurrentTurn == 0
+            && Factions[faction_id].tech_research_id >= 0))
         && first_owned_base(faction_id) >= 0;
 }
 
@@ -8237,16 +8243,30 @@ std::string base_management_choices_response(int faction_id, int base_id) {
         out << "]}";
         return out.str();
     }
+    bool governor_active = base.governor_flags & GOV_ACTIVE;
+    bool governor_citizens = base.governor_flags & GOV_MANAGE_CITIZENS;
+    bool governor_production = base.governor_flags & GOV_MANAGE_PRODUCTION;
     out << "{\"id\":\"base:rename\",\"command\":\"rename_base\","
         << "\"parameters\":{\"name\":{\"type\":\"string\",\"min_length\":1,\"max_length\":24}},"
         << "\"supported_in_multiplayer\":false},"
-        << "{\"id\":\"base:governor\",\"command\":\"set_base_governor\","
-        << "\"parameters\":{\"active\":\"0 or 1\",\"manage_citizens\":\"0 or 1\","
-        << "\"manage_production\":\"0 or 1\",\"new_units_automated\":\"optional 0 or 1\","
-        << "\"priority_explore\":\"optional 0 or 1\",\"priority_discover\":\"optional 0 or 1\","
-        << "\"priority_build\":\"optional 0 or 1\",\"priority_conquer\":\"optional 0 or 1\"},"
-        << "\"meaning\":\"Atomically set the three primary governor controls. Enabling citizen or production management lets the native governor recalculate that area.\","
-        << "\"supported_in_multiplayer\":false},"
+        << "{\"id\":\"base:governor_toggle_active\","
+        << "\"command\":\"set_base_governor\",\"base_id\":" << base_id
+        << ",\"active\":" << (governor_active ? 0 : 1)
+        << ",\"manage_citizens\":" << (governor_citizens ? 1 : 0)
+        << ",\"manage_production\":" << (governor_production ? 1 : 0)
+        << ",\"meaning\":\"Toggle the governor master state while preserving both management areas.\"},"
+        << "{\"id\":\"base:governor_toggle_citizens\","
+        << "\"command\":\"set_base_governor\",\"base_id\":" << base_id
+        << ",\"active\":" << (governor_active ? 1 : 0)
+        << ",\"manage_citizens\":" << (governor_citizens ? 0 : 1)
+        << ",\"manage_production\":" << (governor_production ? 1 : 0)
+        << ",\"meaning\":\"Toggle citizen management while preserving the other governor controls.\"},"
+        << "{\"id\":\"base:governor_toggle_production\","
+        << "\"command\":\"set_base_governor\",\"base_id\":" << base_id
+        << ",\"active\":" << (governor_active ? 1 : 0)
+        << ",\"manage_citizens\":" << (governor_citizens ? 1 : 0)
+        << ",\"manage_production\":" << (governor_production ? 0 : 1)
+        << ",\"meaning\":\"Toggle production management while preserving the other governor controls.\"},"
         << "{\"id\":\"base:governor_permissions\",\"kind\":\"information\","
         << "\"meaning\":\"The following exact toggles control what this governor and the faction default for new bases may choose.\"}";
     for (const GovernorPermissionSpec& permission : GovernorPermissions) {
@@ -8264,15 +8284,44 @@ std::string base_management_choices_response(int faction_id, int base_id) {
             << ",\"affects_future_new_bases\":true,\"meaning\":"
             << json_string(permission.meaning) << '}';
     }
-    out << ",{\"id\":\"base:queue_append\",\"command\":\"queue_production\","
-        << "\"available\":" << (base.queue_size < 9 ? "true" : "false")
-        << ",\"parameters\":{\"item_id\":\"a currently buildable item_id from production choices\"}},"
-        << "{\"id\":\"base:queue_remove\",\"command\":\"remove_queued_production\","
-        << "\"available\":" << (base.queue_size > 0 ? "true" : "false")
-        << ",\"parameters\":{\"queue_position\":\"1 through current final position; position 0 cannot be removed\"}},"
-        << "{\"id\":\"base:queue_clear\",\"command\":\"clear_production_queue\"," 
-        << "\"available\":" << (base.queue_size > 0 ? "true" : "false")
-        << ",\"meaning\":\"Remove all future entries while retaining current production.\"}";
+    int queue_position = base.queue_size + 1;
+    if (base.queue_size < 9) {
+        for (int unit_id = 0; unit_id < MaxProtoNum; ++unit_id) {
+            if (!Units[unit_id].name[0]
+            || !production_item_buildable(
+                faction_id, base_id, unit_id, queue_position)) continue;
+            out << ",{\"id\":\"base:queue_append:" << unit_id
+                << "\",\"command\":\"queue_production\",\"base_id\":" << base_id
+                << ",\"item_id\":" << unit_id << ",\"kind\":\"unit\",\"name\":"
+                << json_string(Units[unit_id].name)
+                << ",\"queue_position\":" << queue_position << '}';
+        }
+        for (int facility_id = Fac_ID_First; facility_id <= SP_ID_Last; ++facility_id) {
+            int item_id = -facility_id;
+            if (!production_item_buildable(
+                faction_id, base_id, item_id, queue_position)) continue;
+            out << ",{\"id\":\"base:queue_append:" << item_id
+                << "\",\"command\":\"queue_production\",\"base_id\":" << base_id
+                << ",\"item_id\":" << item_id << ",\"kind\":"
+                << json_string(facility_id >= SP_ID_First ? "project" : "facility")
+                << ",\"name\":" << json_string(Facility[facility_id].name)
+                << ",\"queue_position\":" << queue_position << '}';
+        }
+    }
+    for (int position = 1; position <= base.queue_size && position < 10; ++position) {
+        int item_id = base.queue_items[position];
+        out << ",{\"id\":\"base:queue_remove:" << position
+            << "\",\"command\":\"remove_queued_production\",\"base_id\":"
+            << base_id << ",\"queue_position\":" << position
+            << ",\"item_id\":" << item_id << ",\"name\":"
+            << json_string(production_name(item_id).c_str()) << '}';
+    }
+    if (base.queue_size > 0) {
+        out << ",{\"id\":\"base:queue_clear\","
+            << "\"command\":\"clear_production_queue\",\"base_id\":"
+            << base_id
+            << ",\"meaning\":\"Remove all future entries while retaining current production.\"}";
+    }
     if (can_staple(base_id) && !base.nerve_staple_turns_left) {
         out << ",{\"id\":\"base:nerve_staple\",\"command\":\"nerve_staple\"," 
             << "\"base_id\":" << base_id

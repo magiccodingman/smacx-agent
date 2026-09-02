@@ -509,6 +509,8 @@ public sealed class AdministrationController(
             throw new ArgumentException("Top K must be between 0 and 100,000.");
         if (generation.MaxOutputTokens is < 1 or > 262_144)
             throw new ArgumentException("Maximum output tokens must be between 1 and 262,144.");
+        if (generation.ReasoningContinuity is not ("automatic" or "off" or "current_episode"))
+            throw new ArgumentException("Reasoning continuity must be automatic, current episode, or off.");
         ValidateExtraParameters(generation.ExtraParameters);
         return generation with { Preset = preset };
     }

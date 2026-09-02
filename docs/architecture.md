@@ -20,8 +20,10 @@ Caddy edge (HTTP LAN; automatic TLS for configured invited-friends hostname)
        | purpose service token                         lobbies/projections
        v
 Python control API --------------------------------> control SQLite
-       |                                                native matches/saves/
-       | Docker lifecycle                              memory/operations
+       |                                                identities/lifecycle/
+       | Docker lifecycle                              operations/projections
+       |
+       +-------------------------------------------> campaign journals + Git
        v
 one isolated seat
        |
@@ -36,7 +38,7 @@ one isolated seat
 portal/MCP ----> private .NET knowledge service ----> private acquired corpus
                        |                                + shared embeddings
                        |
-control event cursor -> optional Graphiti projector -> private FalkorDB
+campaign journal -> SQLite cursor -> optional Graphiti projector -> private FalkorDB
 ```
 
 Optional Graphiti/FalkorDB reads committed authoritative events through a cursor
@@ -86,16 +88,21 @@ access and play modes](network-access.md).
 
 ### Control authority
 
-The private Python service is the only writer of the authoritative gameplay and
-operations SQLite schema:
+The private Python service is the only writer of the control SQLite schema and
+canonical campaign journal tree. SQLite owns transactional platform state:
 
 - installation, game source/runtime fingerprints, vault secrets;
 - native match, seat, agent, perspective, process-session, and instance IDs;
 - worker/MCP/Hermes lifecycle and Docker ownership labels;
 - verified saves, recovery, schedules, operation runs, and backups;
-- immutable events, chat, facts, beliefs, relationships, commitments, goals,
-  summaries, and Graphiti projection cursor; and
+- Graphiti/query projection cursors and rebuildable FTS compatibility indexes; and
 - original/private mechanics search indexes.
+
+The per-perspective hash-linked journal owns gameplay actions, chat, facts,
+beliefs, relationships, commitments, goals, summaries, notebook records,
+incidents, lifecycle, and checkpoint references. Match-local Git commits mark
+coherent boundaries. Raw model thought, transcripts, native saves, and game
+assets remain outside that repository.
 
 The portal authenticates with a purpose file credential mounted read-only. The
 control API is not host-published. Neither service opens or writes the other's
@@ -156,8 +163,8 @@ The preferred cycle is:
 
 ```text
 smac_decision
-  -> review one returned guarded choice
-  -> execute at most that choice
+  -> review one returned opaque legal choice
+  -> smac_execute_choice(decision_id, choice_id)
   -> discard the frame
   -> observe again
 ```
@@ -167,8 +174,13 @@ incoming diplomacy/council items, ready units, bases needing choices, research,
 social engineering, unit design, strategic orders, chat, and end-turn guards.
 Mutations invalidate earlier frames.
 
-Consequential actions carry typed confirmation flags and review fields. End
-turn is rejected while mandatory work or pending native action remains.
+The server retains native commands, confirmation flags, and revision guards.
+Consequential context is visible, but the model cannot fabricate those private
+fields. One semantic rebase absorbs meaningless revision churn; a real conflict
+requires a fresh decision. Repeating one semantically identical choice three
+times against the same meaningful state opens a capability circuit before a
+fourth native mutation. End turn is rejected while mandatory work or a pending
+native action remains.
 
 ## Hermes integration and prompt layering
 
@@ -195,13 +207,24 @@ personality card appended last. Hermes still supplies conversation continuity,
 compression, provider transport, and MCP execution, but contributes no system
 scaffold or workspace instructions.
 
-A model-generated final response does not terminate a still-running match.
-The supervisor classifies a clean Hermes exit as a continuation, preserves the
-same conversation, and does not consume the error-restart budget. It compares
-compact native progress markers across invocations; three consecutive clean
-yields without a session, revision, turn, year, phase, or outcome change stop
-the run and raise an operator-required supervision incident. Actual nonzero
-process exits retain their separate bounded restart budget.
+Managed Qwen thinking profiles explicitly disable unlimited historical
+`preserve_thinking`. The derived harness retains all interleaved reasoning after
+the current episode's latest user boundary, so `think -> tool -> result ->
+think` remains coherent. Before the next episode request it removes completed
+reasoning fields and serialized think blocks while retaining assistant output,
+tool history, and the newest state frame. A streaming repetition fuse turns a
+large degenerate generation into Hermes's ordinary recoverable repetition
+error.
+
+A successful native turn end asks the model for one bounded `TURN HANDOFF`
+assistant message: outcome, concise rationale, changed conclusions, next-turn
+intent, and uncertainty. The message remains in Hermes history and is eligible
+for normal compression; it is not raw scratch reasoning. The supervisor treats
+that clean exit as a campaign yield, preserves the conversation, and does not
+consume the error-restart budget. It compares a volatility-filtered semantic
+fingerprint plus turn/year/phase/outcome markers across invocations. Three clean
+yields without meaningful progress stop the run and raise an operator-required
+incident. Actual nonzero exits retain their separate bounded restart budget.
 
 Capability-gap reports take priority over both continuation and error restart.
 The MCP sidecar appends one match/session-scoped report to the persistent control
@@ -322,7 +345,7 @@ consumers ingest the logical event once. This supports public/private/group
 diplomacy and correct identity even when messages arrive outside the agent's
 active turn.
 
-Authoritative memory separates:
+The authoritative campaign journal separates:
 
 - immutable observed events;
 - facts with provenance/status;
@@ -330,11 +353,14 @@ Authoritative memory separates:
 - relationship dimensions such as trust/affinity/threat/respect;
 - commitments/debts and deadlines;
 - active/completed/abandoned goals; and
-- bounded summaries/compression records.
+- bounded summaries/compression records;
+- agent-authored notebook collections; and
+- action, checkpoint, incident, and native-session history.
 
-FTS5/BM25 retrieval of dynamic match memory is scoped and supports multiple records. Write budgets and
-summary replacement prevent unbounded context growth without erasing the raw
-event history.
+Journal replay produces a bounded current-state capsule. Each section has a
+token budget and newest/highest-priority selection; overflow shortens only the
+provider-facing projection and raises a compaction signal without deleting raw
+history. SQLite/FTS retrieval remains perspective-scoped and rebuildable.
 
 ## Knowledge system
 
@@ -370,8 +396,9 @@ is fail-open, preserving the knowledge service as an optional dependency.
 Graphiti is a derived temporal projection:
 
 ```text
-curated authoritative SQLite event cursor
-  -> projector validates installation/match/agent/perspective
+curated canonical journal events
+  -> SQLite projector watermark
+  -> projector validates installation/match/agent/perspective/timeline
   -> Graphiti episodes
   -> isolated FalkorDB graph
 ```
@@ -379,8 +406,8 @@ curated authoritative SQLite event cursor
 Projection includes only durable chat/political/relationship/commitment/goal/
 belief/summary history; routine moves and raw reasoning are skipped. Projection
 may lag, be rebuilt, or be deleted. Relevant recall is bounded and fail-open.
-Gameplay and scoped SQLite/BM25 memory continue. Graphiti cannot create facts
-in SQLite or broaden a perspective.
+Gameplay and journal/SQLite retrieval continue. Graphiti cannot create
+canonical facts or broaden a perspective.
 
 ## Analytics
 
@@ -398,6 +425,14 @@ filesystem private.
 Reports use the portal projection. The administrator SQL lab populates a new
 in-memory database with a strict allowlist of report tables; it never attaches
 the real Identity or secret/control databases.
+
+Reproducible autonomous-play reports add two content-free views. The campaign
+report verifies journal chains and counts causal before/after native progress;
+the Hermes audit reports only token/API totals, tool names, safe error-code
+labels, malformed records, exact repetition runs, compression health, and
+handoff counts. Neither includes prompts, responses, chat, reasoning text, tool
+arguments, provider endpoints, saves, or game assets. A benchmark is invalid
+unless the native multiplayer turn clock is **None**.
 
 ## Docker and secret boundaries
 

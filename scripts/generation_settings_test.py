@@ -30,7 +30,7 @@ def main() -> int:
         "qwen38-xhigh": (True, 1.0, 0.95, 0.0),
     }
     for preset, (thinking, temperature, top_p, presence) in expected.items():
-        body = openai_extra_body({
+        supplied = {
             "preset": preset,
             "temperature": temperature,
             "top_p": top_p,
@@ -41,7 +41,9 @@ def main() -> int:
             "extra_parameters": {"chat_template_kwargs": {
                 "enable_thinking": thinking, "preserve_thinking": False,
             }},
-        })
+        }
+        normalized = normalize_generation_settings(supplied)
+        body = openai_extra_body(supplied)
         template = body.get("chat_template_kwargs", {})
         if body.get("temperature") != temperature or body.get("top_p") != top_p \
                 or body.get("presence_penalty") != presence:
@@ -51,6 +53,12 @@ def main() -> int:
         if body.get("top_k") != 20 or body.get("min_p") != 0.0 \
                 or body.get("repetition_penalty") != 1.0:
             raise AssertionError(f"{preset} extension defaults drifted: {body}")
+        # Automatic continuity follows the explicit thinking switch rather
+        # than guessing from a model name. Non-thinking and generic profiles
+        # therefore never receive provider-incompatible reasoning fields.
+        expected_continuity = "current_episode" if thinking else "off"
+        if normalized.get("reasoning_continuity", "off") != expected_continuity:
+            raise AssertionError(f"{preset} reasoning continuity drifted: {normalized}")
 
     custom = openai_extra_body({
         "preset": "custom", "temperature": 0.4,
@@ -64,6 +72,9 @@ def main() -> int:
         raise AssertionError("JSON-typed provider extensions were not preserved")
     if openai_extra_body({"preset": "provider-default"}) != {}:
         raise AssertionError("provider defaults injected model-specific parameters")
+    if normalize_generation_settings({"preset": "provider-default"})[
+            "reasoning_continuity"] != "off":
+        raise AssertionError("generic provider unexpectedly enabled reasoning replay")
     editable = openai_extra_body({
         "preset": "qwen38-low", "temperature": 0.42,
         "extra_parameters": {"chat_template_kwargs": {

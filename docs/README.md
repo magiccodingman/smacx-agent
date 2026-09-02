@@ -31,6 +31,7 @@ prevents deployment instructions from polluting game-knowledge retrieval.
 - [MCP tool reference](tools.md)
 - [Mechanics encyclopedia and copyright boundary](reference-knowledge.md)
 - [Optional Graphiti temporal memory](graphiti.md)
+- [Campaign storage, journals, checkpoints, and retention](storage-lifecycle.md)
 - [Faction identities and personalities](faction-identities-and-personalities.md)
 - [Personality-card reference](personality-cards.md)
 
@@ -38,6 +39,7 @@ prevents deployment instructions from polluting game-knowledge retrieval.
 
 - [Architecture](architecture.md)
 - [Contributor testing](testing.md)
+- [Reproducible no-timer agent benchmarks](benchmarks/README.md)
 - [Architecture decisions](adr/)
 
 The canonical access model is [Network access and play

@@ -181,7 +181,8 @@ services:
     entrypoint: ["/bin/true"]
 
   # Optional temporal-graph derivative. Nothing here is agent-facing and
-  # neither service is published on the host. SQLite remains authoritative.
+  # neither service is published on the host. The campaign journal remains
+  # authoritative; FalkorDB can always be rebuilt from it.
   graphiti-db:
     profiles: ["graphiti"]
     image: ${SMACX_FALKORDB_IMAGE:-falkordb/falkordb-server:v4.20.4@sha256:c1e97472fc8d6d00c33708771b667cd592ff7488b0e8b7d43345e0611859e75d}

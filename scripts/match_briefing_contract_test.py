@@ -39,6 +39,7 @@ def main() -> int:
         "status": smacx_mcp.controller_match_briefing_acknowledgement_status,
         "ack": smacx_mcp.controller_acknowledge_match_briefing,
         "chat": smacx_mcp.controller_chat_attention,
+        "journal": smacx_mcp.controller_record_campaign_action,
     }
     acknowledged: dict[str, str] = {}
     commands: list[dict] = []
@@ -60,6 +61,9 @@ def main() -> int:
         smacx_mcp._call = call
         smacx_mcp.controller_chat_attention = lambda match_id, session_id: {
             "ok": True, "messages": [], "participants": [],
+        }
+        smacx_mcp.controller_record_campaign_action = lambda *args, **kwargs: {
+            "ok": True, "journal_event_id": "journal-briefing-test",
         }
         smacx_mcp.controller_match_briefing_context = lambda match_id, session_id: {
             "ok": True,
@@ -135,11 +139,11 @@ def main() -> int:
                 or len(json.dumps(accepted, separators=(",", ":"))) > 700:
             raise AssertionError(f"current briefing was not acknowledged: {accepted}")
         unlocked = smacx_mcp.smac_decision()
-        if unlocked.get("required_next", {}).get("tool") != "smac_command":
+        if unlocked.get("required_next", {}).get("tool") != "smac_execute_choice":
             raise AssertionError(f"decision surface did not unlock: {unlocked}")
-        executed = smacx_mcp.smac_command(
-            command="end_turn", match_id=SNAPSHOT["match_id"],
-            session_id=SNAPSHOT["session_id"], expected_revision=SNAPSHOT["revision"],
+        executed = smacx_mcp.smac_execute_choice(
+            decision_id=str(unlocked["decision_id"]),
+            choice_id=str(unlocked["choices"][0]["choice_id"]),
         )
         if not executed.get("ok") or len(commands) != 1:
             raise AssertionError(f"acknowledged mutation did not execute: {executed}")
@@ -199,6 +203,7 @@ def main() -> int:
         smacx_mcp.controller_match_briefing_acknowledgement_status = originals["status"]
         smacx_mcp.controller_acknowledge_match_briefing = originals["ack"]
         smacx_mcp.controller_chat_attention = originals["chat"]
+        smacx_mcp.controller_record_campaign_action = originals["journal"]
         smacx_mcp.MATCH_BRIEFING_CACHE.clear()
         smacx_mcp.MATCH_CONFIGURATION_CACHE.clear()
         smacx_mcp.MATCH_BRIEFING_RESUME_NOTICES.clear()

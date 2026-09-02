@@ -27,6 +27,7 @@ from urllib.request import Request, urlopen
 import uuid
 
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, SmacxStore, StoreError
+from smacx_journal import CampaignJournal, JournalError
 from smacx_prompt import (
     PERSONALITY_NONE, SYSTEM_PROMPT_SCHEMA, compose_player_system_prompt,
     prompt_sha256,
@@ -542,7 +543,8 @@ class ControlPlane:
                 "last_probe": last_probe if isinstance(last_probe, Mapping) else None,
                 "embeddings": self.embedding_configuration(), "runtime": runtime,
                 "queued_rebuilds": queued, "scopes": scopes,
-                "sqlite_authoritative": True}
+                "journal_authoritative": True,
+                "sqlite_role": "projection_cursor_cache"}
 
     def request_graphiti_rebuild(self, match_id: str, agent_id: str,
                                  perspective_id: str, *,
@@ -2247,7 +2249,24 @@ class ControlPlane:
                     (incident_id, spec["match_id"], instance_id, incident_kind,
                      status, _json(details), now, now),
                 )
-        return {"incident_id": incident_id, "status": status}
+        result = {"incident_id": incident_id, "status": status}
+        journal = CampaignJournal(self.store.path.parent / "campaigns")
+        warnings: list[str] = []
+        for scope in self.store.scopes_for_match(str(spec["match_id"])):
+            try:
+                journal.append(
+                    scope, "incident.supervision", {
+                        "incident_id": incident_id, "instance_id": instance_id,
+                        "incident_kind": incident_kind, "status": status,
+                        "details": dict(details),
+                    }, commit_reason=("Pause for operator incident"
+                                      if status == "operator_required" else ""),
+                )
+            except JournalError as exc:
+                warnings.append(str(exc))
+        if warnings:
+            result["journal_warnings"] = warnings
+        return result
 
     def get_supervision_incident(self, incident_id: str) -> dict[str, Any]:
         _require_id(incident_id, "incident_id")
@@ -2316,7 +2335,23 @@ class ControlPlane:
                     f"recovered_unix=?, last_seen_unix=? WHERE incident_id IN ({placeholders})",
                     (now, now, *identifiers),
                 )
-        return [self.get_supervision_incident(identifier) for identifier in identifiers]
+        recovered = [self.get_supervision_incident(identifier) for identifier in identifiers]
+        journal = CampaignJournal(self.store.path.parent / "campaigns")
+        for scope in self.store.scopes_for_match(match_id):
+            for incident in recovered:
+                try:
+                    journal.append(
+                        scope, "recovery.incident", {
+                            "incident_id": incident["incident_id"],
+                            "incident_kind": incident["incident_kind"],
+                            "status": "recovered",
+                        }, commit_reason="Recover supervised campaign",
+                    )
+                except JournalError:
+                    # Recovery remains visible in the control database. A
+                    # later operator action can retry journal durability.
+                    pass
+        return recovered
 
     def get_harness_profile(self, harness_profile_id: str) -> dict[str, Any]:
         _require_id(harness_profile_id, "harness_profile_id")

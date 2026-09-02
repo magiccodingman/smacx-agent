@@ -75,7 +75,7 @@ else
                 <p class="section-copy">The defaults create an ordinary unranked Alien Crossfire game.</p>
                 <MudExpansionPanels Elevation="0" Class="rule-panels">
                     <MudExpansionPanel Text="World generation & turn clock">
-                        <MudSelect T="int" @bind-Value="timeControl" Label="Multiplayer turn clock" Variant="Variant.Outlined"><MudSelectItem Value="0">None</MudSelectItem><MudSelectItem Value="1">Tight</MudSelectItem><MudSelectItem Value="2">Standard</MudSelectItem><MudSelectItem Value="3">Moderate</MudSelectItem><MudSelectItem Value="4">Loose</MudSelectItem></MudSelect>
+                        <MudSelect T="int" @bind-Value="timeControl" Label="Multiplayer turn clock" Variant="Variant.Outlined" HelperText="None is the reliable default for AI play: native timeouts must never complete a turn on an agent's behalf."><MudSelectItem Value="0">None</MudSelectItem><MudSelectItem Value="1">Tight</MudSelectItem><MudSelectItem Value="2">Standard</MudSelectItem><MudSelectItem Value="3">Moderate</MudSelectItem><MudSelectItem Value="4">Loose</MudSelectItem></MudSelect>
                         <div class="native-setting-grid"><MudSelect T="int" @bind-Value="ocean" Label="Ocean" Variant="Variant.Outlined">@TraitItems()</MudSelect><MudSelect T="int" @bind-Value="erosion" Label="Erosive forces" Variant="Variant.Outlined">@TraitItems()</MudSelect><MudSelect T="int" @bind-Value="nativeLife" Label="Native life" Variant="Variant.Outlined">@TraitItems()</MudSelect><MudSelect T="int" @bind-Value="clouds" Label="Cloud cover" Variant="Variant.Outlined">@TraitItems()</MudSelect></div>
                     </MudExpansionPanel>
                     <MudExpansionPanel Text="Victory conditions & game rules">
@@ -85,7 +85,7 @@ else
                     <MudExpansionPanel Text="Access & agent memory">
                         <div class="policy-option"><MudSwitch @bind-Value="allowSpectators" Color="Color.Primary">Allow non-player spectators</MudSwitch><span class="field-help">Controls games with human players. Running AI-only simulations are always watchable by signed-in nonparticipants. Anyone who controlled a faction remains excluded, including administrators.</span></div>
                         <div class="policy-option"><MudSwitch @bind-Value="managedOnly" Color="Color.Primary">Browser players only</MudSwitch><span class="field-help">Disallow separate native clients for consistent reconnects and spectator isolation.</span></div>
-                        <div class="policy-option"><MudSwitch @bind-Value="graphiti" Color="Color.Primary">Graphiti relationship memory</MudSwitch><span class="field-help">Project selected per-match memories into the optional relationship graph. SQLite remains authoritative.</span></div>
+                        <div class="policy-option"><MudSwitch @bind-Value="graphiti" Color="Color.Primary">Graphiti relationship memory</MudSwitch><span class="field-help">Project selected per-match memories into the optional relationship graph. The campaign journal remains authoritative.</span></div>
                     </MudExpansionPanel>
                 </MudExpansionPanels>
             </section>
@@ -114,7 +114,7 @@ else
     private string name = "New campaign", gameProfile = "alien-crossfire", mode = "standard", worldSize = "small", difficulty = "talent";
     private string sourceId = "", runtimeId = "", scenarioId = "";
     private bool doOrDie, allowSpectators, managedOnly, graphiti = true, loading = true, busy;
-    private int timeControl = 2, ocean = 1, erosion = 1, nativeLife = 1, clouds = 1; private string? error;
+    private int timeControl = 0, ocean = 1, erosion = 1, nativeLife = 1, clouds = 1; private string? error;
     private bool PlatformReady => catalog?.ControlConnected == true && catalog.GameSources.Count > 0 && catalog.Runtimes.Count > 0;
     private string ReadinessMessage => catalog?.ControlConnected != true ? "The control service is offline." : catalog.GameSources.Count == 0 ? "The game directory configured at Docker startup could not be validated." : catalog.Runtimes.Count == 0 ? "The Docker-managed compatibility runtime is unavailable." : "Alien Crossfire, Wine, DirectPlay, streaming, and semantic control passed startup readiness.";
     private bool HasRequiredScenario => mode != "scenario" || !string.IsNullOrWhiteSpace(scenarioId);

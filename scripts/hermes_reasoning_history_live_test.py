@@ -13,6 +13,7 @@ responses, or raw reasoning; only token/character counts and pass/fail facts.
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -176,10 +177,15 @@ def set_preserve(root: Path, profile_id: str, preserve: bool) -> None:
 
 
 def run(root: Path, profile_id: str, reasoning: str, query: str) -> None:
+    system_path = root / "profiles" / profile_id / "SYSTEM.md"
+    system_hash = hashlib.sha256(system_path.read_bytes()).hexdigest()
     command = [
         "docker", "run", "--rm", "--network", "host",
         "--user", f"{os.getuid()}:{os.getgid()}",
         "-v", f"{root}:/opt/data", "-e", "HOME=/opt/data", "-e", "HERMES_HOME=/opt/data",
+        "-e", "SMACX_STRICT_SYSTEM_PROMPT=1",
+        "-e", f"SMACX_SYSTEM_PROMPT_FILE=/opt/data/profiles/{profile_id}/SYSTEM.md",
+        "-e", f"SMACX_SYSTEM_PROMPT_SHA256={system_hash}",
         "--entrypoint", "/opt/hermes/.venv/bin/hermes", IMAGE,
         "-p", profile_id, "chat", "--continue", "match-reasoning-history-live",
         "--create-if-missing", "--in",
@@ -207,7 +213,7 @@ def completion_for_query(recorder: Recorder, before: int, query: str) -> dict[st
 
 def history_shape(request: dict[str, Any]) -> dict[str, int]:
     assistant_messages = 0
-    reasoning_chars = content_chars = think_markers = 0
+    reasoning_chars = reasoning_pad_chars = content_chars = think_markers = 0
     for message in request.get("messages") or []:
         if message.get("role") != "assistant":
             continue
@@ -215,13 +221,15 @@ def history_shape(request: dict[str, Any]) -> dict[str, int]:
         reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
         content = message.get("content") or ""
         if isinstance(reasoning, str):
-            reasoning_chars += len(reasoning)
+            reasoning_chars += len(reasoning.strip())
+            reasoning_pad_chars += len(reasoning) - len(reasoning.strip())
         if isinstance(content, str):
             content_chars += len(content)
             think_markers += content.count("<think>") + content.count("</think>")
     return {
         "assistant_messages": assistant_messages,
         "reasoning_chars": reasoning_chars,
+        "reasoning_pad_chars": reasoning_pad_chars,
         "content_chars": content_chars,
         "think_markers": think_markers,
     }
@@ -297,7 +305,12 @@ def main() -> int:
         if false_prompt <= 0 or true_prompt <= 0:
             raise AssertionError("Hermes history requests did not report prompt usage")
         if false_history["reasoning_chars"] != 0 or false_history["think_markers"] != 0:
-            raise AssertionError("Completed historical reasoning leaked through Hermes with preservation disabled")
+            raise AssertionError(
+                "Completed historical reasoning leaked through Hermes with preservation disabled: "
+                f"reasoning_chars={false_history['reasoning_chars']}, "
+                f"think_markers={false_history['think_markers']}, "
+                f"assistant_messages={false_history['assistant_messages']}"
+            )
 
         direct_false = direct_preserve_probe(recorder, proxy_url, False)
         direct_true = direct_preserve_probe(recorder, proxy_url, True)
@@ -346,6 +359,7 @@ def main() -> int:
             "preserve_true_prompt_tokens": true_prompt,
             "historical_reasoning_chars": historical_reasoning,
             "hermes_history_reasoning_chars": false_history["reasoning_chars"],
+            "hermes_history_reasoning_pad_chars": false_history["reasoning_pad_chars"],
             "hermes_history_content_chars": false_history["content_chars"],
             "hermes_history_think_markers": false_history["think_markers"],
             "hermes_history_shapes_match": false_history == true_history,

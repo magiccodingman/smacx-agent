@@ -15,6 +15,7 @@ from typing import Any, Mapping
 from smacx_control import ControlPlane
 from smacx_docker import DockerClient, DockerError, DockerNotFound
 from smacx_hermes import configure_profile
+from smacx_journal import CampaignJournal
 from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager
 
@@ -53,6 +54,34 @@ class HarnessManager:
             raise InvalidRecord("invalid_harness_image")
         self.image_ref = image_ref
         self.installation_id = self.store.installation_id()
+
+    def _journal_run_event(
+        self, run: Mapping[str, Any], event_type: str, payload: Mapping[str, Any],
+        *, commit_reason: str = "",
+    ) -> list[dict[str, str]]:
+        """Record bounded Hermes lifecycle metadata in the campaign authority.
+
+        Raw prompts, model output, and reasoning remain in Hermes's private
+        transcript.  The campaign timeline stores only stable references and
+        aggregate counters required to explain/rebuild an autonomous turn.
+        """
+        journal = CampaignJournal(self.store.path.parent / "campaigns")
+        results: list[dict[str, str]] = []
+        for scope in self.store.scopes_for_match(str(run["match_id"])):
+            if scope.agent_id != str(run.get("agent_id") or ""):
+                continue
+            event = journal.append(
+                scope, event_type, dict(payload),
+                session_id=(str(run.get("native_session_id"))
+                            if run.get("native_session_id") else None),
+                commit_reason=commit_reason,
+            )
+            results.append({
+                "perspective_id": scope.perspective_id,
+                "event_id": str(event["event_id"]),
+                "head_hash": str(event["event_hash"]),
+            })
+        return results
 
     def _name(self, kind: str, identity: str) -> str:
         import hashlib
@@ -117,6 +146,41 @@ class HarnessManager:
         })
         try:
             self.docker.put_archive(identifier, "/target", archive)
+        finally:
+            try:
+                self.docker.remove_container(identifier)
+            except DockerNotFound:
+                pass
+
+    def _claim_data_volume(self, volume: str, *, identity: str) -> None:
+        """Make a named Hermes volume writable by its unprivileged runtime.
+
+        Docker creates a fresh named-volume root as root:root/0755 and archive
+        extraction cannot change the mountpoint owner.  Use a short-lived,
+        networkless helper with only CAP_CHOWN; the long-running harness still
+        receives no capabilities and never runs as root.
+        """
+        helper_name = self._name("harness-owner", identity)
+        identifier = self.docker.create_container(helper_name, {
+            "Image": self.worker_manager.mcp_image,
+            "Entrypoint": ["/bin/chown"],
+            "Cmd": ["10000:10000", "/target"],
+            "User": "0:0",
+            "Labels": self._labels("harness-volume-owner", **{
+                "io.smacx.harness": identity,
+            }),
+            "HostConfig": {
+                "NetworkMode": "none", "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"], "CapAdd": ["CHOWN"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Mounts": [{"Type": "volume", "Source": volume, "Target": "/target"}],
+            },
+        })
+        try:
+            self.docker.start_container(identifier)
+            stopped = self.docker.wait_container(identifier, timeout=15.0)
+            if int(stopped.get("State", {}).get("ExitCode", -1)) != 0:
+                raise HarnessManagerError("harness_data_volume_ownership_failed")
         finally:
             try:
                 self.docker.remove_container(identifier)
@@ -215,6 +279,7 @@ class HarnessManager:
                 system_prompt=str(harness_profile["system_prompt"]),
             )
             (staging / "smacx-runner.py").write_text(RUNNER, encoding="utf-8")
+            self._claim_data_volume(data_volume, identity=harness_profile_id)
             self._seed_volume(
                 data_volume, self._archive_tree(staging), purpose="profile",
                 identity=harness_profile_id,
@@ -251,27 +316,26 @@ class HarnessManager:
     @staticmethod
     def default_initial_prompt() -> str:
         return (
-            "Begin or resume this managed match now. Follow the system contract's opening "
-            "briefing protocol, then continue autonomous play until the operator stops the run "
-            "or a semantic capability gap is reported."
+            "[SMACX_EPISODE_BOUNDARY kind=start] Re-anchor with the authoritative "
+            "smac_decision state, then continue autonomous play."
         )
 
     @staticmethod
     def default_continuation_prompt() -> str:
         return (
-            "Continue the same active managed match now. Do not provide a progress report or "
-            "final narrative. Call smac_decision, handle a briefing change only if that fresh "
-            "frame requires it, and keep playing until an authoritative terminal condition occurs."
+            "[SMACX_EPISODE_BOUNDARY kind=resume] Re-anchor with the newest authoritative "
+            "smac_decision state. Continue autonomous play until the next real boundary; "
+            "produce a TURN HANDOFF only when a semantic result requires it."
         )
 
     def create_run(self, descriptor: Mapping[str, Any], *,
                    initial_prompt: str | None = None,
                    run_budget_seconds: int = 3600,
-                   max_turns: int = 5000,
+                   max_turns: int = 256,
                    restart_limit: int = 1000) -> dict[str, Any]:
         runtime = self.provision_profile(descriptor)
         budget = min(max(int(run_budget_seconds), 60), 86_400)
-        turns = min(max(int(max_turns), 10), 5000)
+        turns = min(max(int(max_turns), 10), 512)
         restarts = min(max(int(restart_limit), 0), 100_000)
         run = self.control.create_harness_run(
             str(descriptor["harness_profile_id"]), match_id=str(descriptor["match_id"]),
@@ -282,6 +346,8 @@ class HarnessManager:
                 "restart_limit": restarts, "run_budget_seconds": budget,
                 "max_turns": turns, "toolsets": "smacx",
                 "max_clean_yields_without_progress": 3,
+                "semantic_stall_seconds": 360,
+                "semantic_stall_recovery_limit": 2,
             },
         )
         return self.start_run(str(run["run_id"]), runtime=runtime)
@@ -301,7 +367,7 @@ class HarnessManager:
             "--create-if-missing", "--in", workspace,
             "--reasoning", str(profile["reasoning_effort"]),
             "--toolsets", str(policy.get("toolsets", "smacx")),
-            "--max-turns", str(policy.get("max_turns", 5000)),
+            "--max-turns", str(policy.get("max_turns", 256)),
             "--run-budget", str(policy.get("run_budget_seconds", 3600)),
             "--pass-session-id", "--query", prompt,
         ]
@@ -351,10 +417,22 @@ class HarnessManager:
                                 (runtime["secret_volume"], "harness-secret")):
             resource = self.docker.inspect_volume(str(volume))
             self.docker.require_owned(resource, self.installation_id, purpose=purpose)
+        # Runtime specs and their named volumes outlive control-container
+        # upgrades.  Reassert the data-root ownership on every invocation so
+        # old or externally restored volumes cannot strand Hermes before it
+        # can write its session database and logs.
+        self._claim_data_volume(
+            str(runtime["data_volume"]), identity=str(run["harness_profile_id"]),
+        )
         metadata = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
         invocation_count = int(metadata.get("invocation_count") or 0)
         first_invocation = invocation_count == 0 and int(run["restart_count"]) == 0
-        prompt = run["initial_prompt"] if first_invocation else run["continuation_prompt"]
+        prompt = run["initial_prompt"] if first_invocation else (
+            f"[SMACX_EPISODE_BOUNDARY kind=resume sequence={invocation_count + 1}] "
+            "Re-anchor with the newest authoritative smac_decision state. Continue "
+            "autonomous play until the next real boundary; produce a TURN HANDOFF only "
+            "when a semantic result requires it."
+        )
         container_name = str(runtime["container_name"])
         try:
             old = self.docker.inspect_container(container_name)
@@ -378,14 +456,36 @@ class HarnessManager:
         )
         try:
             self.docker.start_container(identifier)
+            episode_journal = self._journal_run_event(
+                run, "agent.episode_started", {
+                    "run_id": run["run_id"],
+                    "harness_profile_id": run["harness_profile_id"],
+                    "external_session_id": run.get("external_session_id"),
+                    "native_session_id": run.get("native_session_id"),
+                    "invocation": invocation_count + 1,
+                    "reasoning_effort": self.control.get_harness_profile(
+                        str(run["harness_profile_id"])
+                    ).get("reasoning_effort"),
+                    "starting_progress": progress,
+                },
+                commit_reason=("Start autonomous episode" if first_invocation
+                               else "Resume autonomous episode"),
+            )
         except Exception as exc:
+            try:
+                self.docker.stop_container(identifier, timeout=5)
+                self.docker.remove_container(identifier)
+            except (DockerError, DockerNotFound):
+                pass
             self.control.update_harness_run(
                 run_id, status="error", last_error=str(exc)[:2000],
             )
             raise
         return self.control.update_harness_run(
             run_id, status="running", container_name=container_name,
-            heartbeat=True, last_error="",
+            heartbeat=True, last_error="", metadata_update={
+                "episode_journal": episode_journal,
+            },
         )
 
     def status(self, run_id: str) -> dict[str, Any]:
@@ -530,7 +630,118 @@ print(json.dumps(result,separators=(',',':')))
                 continue
             observed = self.status(str(run["run_id"]))["observed"]
             if observed.get("running"):
-                self.control.update_harness_run(str(run["run_id"]), heartbeat=True)
+                now = time.time()
+                metadata = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
+                last_sample = float(metadata.get("semantic_sample_unix") or 0)
+                if now - last_sample < 30:
+                    self.control.update_harness_run(str(run["run_id"]), heartbeat=True)
+                    continue
+                progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
+                fingerprint = progress.get("meaningful_fingerprint")
+                previous_fingerprint = metadata.get("semantic_fingerprint")
+                progress_changed = bool(
+                    progress.get("available") and fingerprint
+                    and previous_fingerprint and fingerprint != previous_fingerprint
+                )
+                progress_since = float(metadata.get("semantic_progress_unix") or now)
+                if progress_changed or not previous_fingerprint:
+                    progress_since = now
+                telemetry = metadata.get("semantic_telemetry") \
+                    if isinstance(metadata.get("semantic_telemetry"), dict) else {}
+                last_telemetry = float(metadata.get("semantic_telemetry_unix") or 0)
+                if now - last_telemetry >= 60:
+                    try:
+                        sample = self.telemetry(str(run["run_id"]))
+                        if isinstance(sample.get("telemetry"), dict):
+                            telemetry = sample["telemetry"]
+                            last_telemetry = now
+                    except (DockerError, StoreError, ValueError, json.JSONDecodeError):
+                        pass
+                baseline = metadata.get("semantic_baseline_telemetry") \
+                    if isinstance(metadata.get("semantic_baseline_telemetry"), dict) else {}
+                if progress_changed or not baseline:
+                    baseline = dict(telemetry)
+                generated = (
+                    int(telemetry.get("output_tokens") or 0)
+                    + int(telemetry.get("reasoning_tokens") or 0)
+                    - int(baseline.get("output_tokens") or 0)
+                    - int(baseline.get("reasoning_tokens") or 0)
+                )
+                calls = int(telemetry.get("api_calls") or 0) - int(baseline.get("api_calls") or 0)
+                metadata_update = {
+                    "semantic_sample_unix": now,
+                    "semantic_fingerprint": fingerprint or previous_fingerprint,
+                    "semantic_progress_unix": progress_since,
+                    "semantic_progress": progress,
+                    "semantic_telemetry": telemetry,
+                    "semantic_telemetry_unix": last_telemetry,
+                    "semantic_baseline_telemetry": baseline,
+                }
+                stall_seconds = min(max(int(
+                    run["restart_policy"].get("semantic_stall_seconds", 360)
+                ), 120), 1800)
+                stalled = bool(
+                    progress.get("available") and previous_fingerprint
+                    and fingerprint == previous_fingerprint
+                    and now - progress_since >= stall_seconds
+                    and (generated >= 4096 or calls >= 2)
+                )
+                if stalled:
+                    recovery_count = int(metadata.get("semantic_stall_recoveries") or 0) + 1
+                    recovery_limit = min(max(int(
+                        run["restart_policy"].get("semantic_stall_recovery_limit", 2)
+                    ), 0), 10)
+                    incident = self.control.record_supervision_incident(
+                        str(run["instance_id"]), "harness_semantic_stall",
+                        "open" if recovery_count <= recovery_limit else "operator_required",
+                        {
+                            "run_id": run["run_id"], "stall_seconds": now - progress_since,
+                            "generated_tokens_without_progress": generated,
+                            "api_calls_without_progress": calls, "progress": progress,
+                            "recovery_count": recovery_count,
+                        },
+                    )
+                    if recovery_count > recovery_limit:
+                        container_name = str(run.get("container_name") or "")
+                        if container_name:
+                            try:
+                                self.docker.stop_container(container_name, timeout=10)
+                                self.docker.remove_container(container_name)
+                            except DockerNotFound:
+                                pass
+                        self.control.update_harness_run(
+                            str(run["run_id"]), status="error", desired_status="stopped",
+                            last_error="harness_semantic_stall",
+                            metadata_update={**metadata_update,
+                                             "semantic_stall_recoveries": recovery_count,
+                                             "supervision_incident": incident},
+                        )
+                        errors += 1
+                        operator_required += 1
+                        continue
+                    container_name = str(run.get("container_name") or "")
+                    if container_name:
+                        try:
+                            self.docker.stop_container(container_name, timeout=10)
+                            self.docker.remove_container(container_name)
+                        except DockerNotFound:
+                            pass
+                    self.control.update_harness_run(
+                        str(run["run_id"]), status="restarting", increment_restart=True,
+                        last_error="harness_semantic_stall_auto_recovery",
+                        metadata_update={**metadata_update,
+                                         "semantic_stall_recoveries": recovery_count,
+                                         "supervision_incident": incident,
+                                         "semantic_progress_unix": now,
+                                         "semantic_baseline_telemetry": dict(telemetry)},
+                    )
+                    self.start_run(str(run["run_id"]))
+                    restarted += 1
+                    continue
+                self.control.update_harness_run(
+                    str(run["run_id"]), heartbeat=True,
+                    metadata_update=metadata_update,
+                )
                 continue
             # Avoid a tight create/exit loop when a provider is unavailable or
             # a prompt ends immediately. The supervisor runs every ten seconds;
@@ -547,7 +758,8 @@ print(json.dumps(result,separators=(',',':')))
                     if isinstance(metadata.get("attempt_started_progress"), dict) else {}
                 comparable = bool(started.get("available") and progress.get("available"))
                 marker_fields = (
-                    "match_id", "session_id", "revision", "turn", "year", "phase",
+                    "match_id", "session_id", "turn", "year", "phase",
+                    "meaningful_fingerprint",
                     "game_completed", "final_score_completed",
                 )
                 advanced = comparable and any(
@@ -564,6 +776,12 @@ print(json.dumps(result,separators=(',',':')))
                     "last_clean_yield_unix": time.time(),
                 }
                 if progress.get("final_score_completed") is True:
+                    self._journal_run_event(
+                        run, "agent.episode_ended", {
+                            "run_id": run["run_id"], "outcome": "match_completed",
+                            "exit_code": 0, "progress": progress,
+                        }, commit_reason="Complete autonomous campaign",
+                    )
                     self.control.update_harness_run(
                         str(run["run_id"]), status="completed", exit_code=0,
                         metadata_update=yield_metadata,
@@ -582,6 +800,14 @@ print(json.dumps(result,separators=(',',':')))
                         str(run["instance_id"]), "harness_clean_yield_no_progress",
                         "operator_required", detail,
                     )
+                    self._journal_run_event(
+                        run, "agent.episode_ended", {
+                            "run_id": run["run_id"],
+                            "outcome": "clean_yield_without_progress",
+                            "exit_code": 0, "progress": progress,
+                            "consecutive_without_progress": no_progress,
+                        }, commit_reason="Pause autonomous episode",
+                    )
                     self.control.update_harness_run(
                         str(run["run_id"]), status="error", desired_status="stopped",
                         exit_code=0, last_error="harness_clean_yield_no_progress",
@@ -591,6 +817,13 @@ print(json.dumps(result,separators=(',',':')))
                     operator_required += 1
                     continue
                 if policy.get("restart_on_clean_exit") is True:
+                    self._journal_run_event(
+                        run, "agent.episode_ended", {
+                            "run_id": run["run_id"], "outcome": "clean_yield",
+                            "exit_code": 0, "progress": progress,
+                            "advanced": advanced,
+                        }, commit_reason="Yield autonomous episode",
+                    )
                     self.control.update_harness_run(
                         str(run["run_id"]), status="restarting", exit_code=0,
                         metadata_update=yield_metadata,
@@ -608,6 +841,14 @@ print(json.dumps(result,separators=(',',':')))
             restart_allowed = (
                 exit_code != 0 and policy.get("restart_on_error") is True
             ) and int(run["restart_count"]) < int(policy.get("restart_limit", 0))
+            self._journal_run_event(
+                run, "agent.episode_ended", {
+                    "run_id": run["run_id"], "outcome": "process_error",
+                    "exit_code": exit_code,
+                    "restart_allowed": restart_allowed,
+                }, commit_reason=("Recover autonomous episode" if restart_allowed
+                                  else "Pause autonomous episode"),
+            )
             if restart_allowed:
                 self.control.update_harness_run(
                     str(run["run_id"]), status="restarting", exit_code=exit_code,

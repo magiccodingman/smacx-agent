@@ -7,6 +7,10 @@ FROM docker.io/nousresearch/hermes-agent:v2026.8.31@sha256:64923faeae267792bf9bf
 
 USER root
 COPY harness/smacx_strict_prompt.py /opt/smacx-strict-prompt/smacx_strict_prompt.py
+COPY harness/patch_hermes_repetition.py /tmp/patch_hermes_repetition.py
+RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_repetition.py \
+    && rm /tmp/patch_hermes_repetition.py \
+    && /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/agent/chat_completion_helpers.py
 RUN site_packages="$(/opt/hermes/.venv/bin/python -c 'import site; print(site.getsitepackages()[0])')" \
     && printf '%s\n%s\n%s\n' '/opt/hermes' '/opt/smacx-strict-prompt' 'import smacx_strict_prompt' \
         > "${site_packages}/00-smacx-strict-prompt.pth"

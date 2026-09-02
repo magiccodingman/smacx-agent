@@ -29,6 +29,9 @@ _ALIASES = {
     "max_output_tokens": "max_output_tokens", "maxOutputTokens": "max_output_tokens",
     "MaxOutputTokens": "max_output_tokens",
     "seed": "seed", "Seed": "seed",
+    "reasoning_continuity": "reasoning_continuity",
+    "reasoningContinuity": "reasoning_continuity",
+    "ReasoningContinuity": "reasoning_continuity",
     "extra_parameters": "extra_parameters", "extraParameters": "extra_parameters",
     "ExtraParameters": "extra_parameters",
     # Read-only compatibility for pre-release profile records. New profiles
@@ -56,6 +59,7 @@ _MAX_EXTRA_JSON = 32_768
 REASONING_EFFORTS = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
 }
+REASONING_CONTINUITY = {"automatic", "off", "current_episode"}
 
 
 def _number(value: Any, name: str, minimum: float, maximum: float) -> float:
@@ -123,7 +127,7 @@ def _extras(value: Any) -> dict[str, Any]:
 
 def normalize_generation_settings(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if value is None:
-        return {"preset": "provider-default"}
+        return {"preset": "provider-default", "reasoning_continuity": "off"}
     if not isinstance(value, Mapping):
         raise GenerationSettingsError("invalid_generation_settings")
     unknown = [key for key in value if key not in _ALIASES]
@@ -160,6 +164,21 @@ def normalize_generation_settings(value: Mapping[str, Any] | None) -> dict[str, 
     canonical["extra_parameters"] = legacy_extras
 
     result: dict[str, Any] = {"preset": preset}
+    continuity = canonical.get("reasoning_continuity")
+    if continuity is None:
+        continuity = "automatic"
+    if continuity is not None:
+        continuity = str(continuity).strip().lower()
+        if continuity not in REASONING_CONTINUITY:
+            raise GenerationSettingsError("invalid_reasoning_continuity")
+        if continuity == "automatic":
+            template = canonical.get("extra_parameters", {}).get("chat_template_kwargs", {})
+            continuity = (
+                "current_episode"
+                if isinstance(template, Mapping) and template.get("enable_thinking") is True
+                else "off"
+            )
+        result["reasoning_continuity"] = continuity
     ranges = {
         "temperature": (0.0, 2.0), "top_p": (0.0, 1.0),
         "presence_penalty": (-2.0, 2.0), "frequency_penalty": (-2.0, 2.0),

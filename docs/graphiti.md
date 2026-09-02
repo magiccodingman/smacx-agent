@@ -1,9 +1,11 @@
 # Optional Graphiti political memory
 
-Graphiti with FalkorDB is a derived temporal relationship index. It is never the source of
-truth. The complete scoped event ledger, chat, facts, beliefs, relationships,
-commitments, goals, and summaries remain in SQLite, and gameplay continues if
-Graphiti, FalkorDB, embeddings, or its extraction model is unavailable.
+Graphiti with FalkorDB is a derived temporal relationship index. It is never
+the source of truth. The complete scoped event ledger, chat, facts, beliefs,
+relationships, commitments, goals, notes, and summaries remain in the
+hash-linked campaign journal. SQLite holds only its rebuildable projection
+cursor and query caches. Gameplay continues if Graphiti, FalkorDB, embeddings,
+or its extraction model is unavailable.
 
 ## What is projected
 
@@ -17,22 +19,23 @@ durable social and strategic material:
 - explicitly categorized political, promise, betrayal, threat, alliance,
   history, strategy, or territory facts.
 
-Routine unit moves, raw snapshots, tool calls, wiki retrievals, and private
-reasoning are skipped while their SQLite cursor still advances. Writes happen
-asynchronously in the projector and never delay the gameplay agent.
+Routine unit moves, raw snapshots, wiki retrievals, and private reasoning are
+skipped while the projector's SQLite watermark advances to their canonical
+journal event IDs. Writes happen asynchronously and never delay the gameplay
+agent.
 
 ## Recall behavior
 
 Every group is derived internally from the exact
-`(installation, match, agent, perspective)` identity. Neither a model nor a
+`(installation, match, agent, perspective, timeline)` identity. Neither a model nor a
 caller may supply a wider namespace. The MCP automatically performs a small,
 bounded recall only when new chat or a diplomatic/interaction decision makes
 history relevant. The explicit `smac_memory(action="graph_recall", query=...)`
 path exists for a deliberate deeper political question.
 
 Recall waits because its answer is needed, but it has strict time/result limits
-and fails open. SQLite and fresh native state remain authoritative. Graph facts
-are labelled as fallible historical context.
+and fails open. The campaign journal and fresh native state remain
+authoritative. Graph facts are labelled as fallible historical context.
 
 ## Models and embeddings
 
@@ -121,7 +124,8 @@ graph instead of relying on model-supplied filters inside a shared graph.
 
 Stable UUIDv5 episode IDs make retries deterministic. The cursor advances only
 after a selected episode succeeds; an extraction error remains replayable.
-Rebuild clears one exact derived group and replays its selected SQLite events.
+Rebuild clears one exact derived group and replays selected canonical journal
+events from its beginning.
 Runtime heartbeat, projected/failure counts, selected profile, and
 embedding mode are visible in the portal.
 

@@ -23,6 +23,7 @@ from smacx_game_settings import (
     LAN_RULE_FIELDS, game_settings_environment, normalize_game_settings,
     normalize_lan_game_settings,
 )
+from smacx_journal import CampaignJournal, JournalError
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, StoreError
 
 
@@ -74,6 +75,31 @@ class WorkerManagerError(StoreError):
     pass
 
 
+def _semantic_progress_fingerprint(snapshot: Mapping[str, Any]) -> str:
+    """Hash meaningful fair-play state while ignoring packet-pump churn."""
+    volatile = {
+        "revision", "timestamp", "observed_unix", "created_unix", "updated_unix",
+        "elapsed", "tick", "tick_count", "packet_count", "heartbeat",
+    }
+
+    def stable(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            return {
+                str(key): stable(child)
+                for key, child in sorted(value.items(), key=lambda item: str(item[0]))
+                if str(key).lower() not in volatile
+                and not str(key).lower().endswith("_unix")
+                and "revision" not in str(key).lower()
+            }
+        if isinstance(value, list):
+            return [stable(item) for item in value]
+        return value
+
+    encoded = json.dumps(stable(snapshot), ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _new_id(kind: str) -> str:
     return f"{kind}-{uuid.uuid4().hex}"
 
@@ -103,6 +129,7 @@ class WorkerManager:
                  view_publish_ip: str = "127.0.0.1") -> None:
         self.control = control
         self.store = control.store
+        self.journal = CampaignJournal(self.store.path.parent / "campaigns")
         self.docker = docker
         if not RESOURCE_NAME.fullmatch(worker_image.replace(":", "-", 1)):
             # Image references may contain one registry slash and colon. Keep
@@ -1139,6 +1166,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         scope = MemoryScope(spec["match_id"], spec["agent_id"], spec["perspective_id"])
         self.store.start_session(scope, instance_id, session_id=session_id,
                                  metadata={"container_name": spec["container_name"]})
+        self.journal.append(
+            scope, "lifecycle.session_started", {
+                "instance_id": instance_id, "worker_kind": "managed",
+                "container_name": spec["container_name"],
+            }, session_id=session_id, commit_reason="Start native session",
+        )
         prepared_image = spec["image_ref"] != self.worker_image
         mounts = [
             {"Type": "volume", "Source": spec["data_volume"], "Target": "/var/lib/smacx"},
@@ -3125,6 +3158,27 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "quiescence_samples": stable_samples,
             "managed_peer_count": len(managed_instances),
         }
+        journal_checkpoints: list[dict[str, Any]] = []
+        for scope in self.store.scopes_for_match(match_id):
+            event = self.journal.append(
+                scope, "checkpoint.native", {
+                    "slot": slot,
+                    "turn": checkpoint.get("turn"),
+                    "year": checkpoint.get("year"),
+                    "quiescence": "three_sample_verified_turn_boundary",
+                    "managed_peer_count": len(managed_instances),
+                    "logical_path": checkpoint.get("path"),
+                },
+                turn=checkpoint.get("turn"), year=checkpoint.get("year"),
+                commit_reason=f"Checkpoint turn {checkpoint.get('turn', '?')}",
+            )
+            journal_checkpoints.append({
+                "agent_id": scope.agent_id,
+                "perspective_id": scope.perspective_id,
+                "event_id": event["event_id"],
+                "head_hash": event["event_hash"],
+            })
+        checkpoint["campaign_journal"] = journal_checkpoints
         updated = self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_checkpoint": checkpoint,
                                            "recovery_required": False},
@@ -3536,6 +3590,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "phase": protocol.get("phase"),
             "game_completed": outcome.get("game_completed") is True,
             "final_score_completed": outcome.get("final_score_completed") is True,
+            "meaningful_fingerprint": _semantic_progress_fingerprint(snapshot),
         }
 
     def spectator_access(
@@ -3620,6 +3675,35 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if result.get("ok") is not True:
                 raise WorkerManagerError("worker_state_compaction_invalid_result")
             result["final_preserved"] = preserve_final
+            harness_checkpoints = [
+                {
+                    "run_id": run.get("run_id"),
+                    "harness_profile_id": run.get("harness_profile_id"),
+                    "external_session_id": run.get("external_session_id"),
+                    "native_session_id": run.get("native_session_id"),
+                    "status": run.get("status"),
+                }
+                for run in self.control.list_harness_runs()
+                if str(run.get("match_id")) == str(spec["match_id"])
+            ]
+            for scope in self.store.scopes_for_match(str(spec["match_id"])):
+                try:
+                    self.journal.append(
+                        scope, "checkpoint.archive", {
+                            "instance_id": instance_id,
+                            "compression": result.get("compression"),
+                            "recent_limit": result.get("recent_limit"),
+                            "milestone_interval": result.get("milestone_interval"),
+                            "retain_full_turn_history": result.get("retain_full_turn_history"),
+                            "removed": result.get("removed"),
+                            "saves": result.get("saves", []),
+                            "final": result.get("final"),
+                            "harness_checkpoints": harness_checkpoints,
+                        }, commit_reason=("Finalize checkpoint archive" if completed
+                                          else "Park checkpoint archive"),
+                    )
+                except JournalError as exc:
+                    result.setdefault("journal_warnings", []).append(str(exc))
             return result
         finally:
             self._cleanup_container(identifier, "worker-state-compactor")

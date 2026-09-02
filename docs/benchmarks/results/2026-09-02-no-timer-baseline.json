@@ -1,0 +1,93 @@
+{
+  "causal_progress": {
+    "automatic_stale_rebases": 2,
+    "distinct_action_turns": 12,
+    "first_advanced_turn": 1,
+    "journaled_game_actions": 38,
+    "journaled_turn_advances": 12,
+    "last_advanced_turn": 12,
+    "native_command_counts": {
+      "acknowledge_popup": 5,
+      "advance_technology_presentation": 3,
+      "auto_explore_unit": 4,
+      "automate_former": 1,
+      "choose_diplomacy_option": 1,
+      "choose_research_priority": 2,
+      "continue_diplomacy": 1,
+      "end_turn": 3,
+      "move_unit": 5,
+      "respond_to_contact": 1,
+      "respond_to_design_offer": 1,
+      "respond_to_diplomatic_offer": 3,
+      "respond_to_monolith": 1,
+      "set_first_base_name": 1,
+      "skip_all_ready_units": 1,
+      "skip_unit": 5
+    },
+    "outcome_counts": {
+      "native_accepted": 36,
+      "recorded": 2
+    },
+    "repetition_circuits": 0,
+    "seconds_between_turn_advances": {
+      "maximum": 104.53,
+      "mean": 40.045,
+      "median": 27.277,
+      "minimum": 5.035,
+      "p90": 91.121,
+      "samples": 11
+    },
+    "supervision_incidents": 0,
+    "verified_checkpoint_events": 13
+  },
+  "generated_at": "2026-09-02T20:50:01.745012+00:00",
+  "journal": {
+    "events": 61,
+    "failed_chains": 0,
+    "hash_chains_valid": true,
+    "perspectives": 1
+  },
+  "match_id": "match-f8779bb1951c4f908f49c57d61ca581c",
+  "portal_telemetry": {
+    "available": true,
+    "duration_seconds": {
+      "maximum": 98.989,
+      "mean": 37.25,
+      "median": 36.009,
+      "minimum": 11.981,
+      "p90": 83.992,
+      "samples": 12
+    },
+    "errored_turn_rows": 0,
+    "match": {
+      "current_turn": 12,
+      "current_year": 2112,
+      "mode": "singleplayer",
+      "status": "parked",
+      "time_control": 0
+    },
+    "successful_turn_rows": 13,
+    "totals": {
+      "api_calls": 92,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "input_tokens": 4765690,
+      "output_tokens": 19462,
+      "reasoning_tokens": 9293
+    },
+    "turn_rows": 13
+  },
+  "privacy": {
+    "chat_included": false,
+    "game_assets_included": false,
+    "provider_endpoint_included": false,
+    "raw_prompts_included": false,
+    "raw_responses_included": false,
+    "reasoning_text_included": false
+  },
+  "schema": "smacx.agent-simulation-report.v1",
+  "validation": {
+    "causal_success_requires_journaled_agent_turn_advance": true,
+    "native_timer_must_be_none": true
+  }
+}

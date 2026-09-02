@@ -8,7 +8,7 @@ combines the exact faction, difficulty, generated map, victory toggles,
 advanced rules, multiplayer clock, scenario restrictions, match policy, and
 game-artifact fingerprint. The player reviews unfamiliar non-default mechanics
 through `smac_reference`, then acknowledges the exact returned hash.
-`smac_decision` returns no choices and every `smac_command` is rejected until
+`smac_decision` returns no choices and `smac_execute_choice` rejects mutation until
 that configuration is acknowledged.
 
 The hash deliberately excludes resources, bases, units, ready-unit count,
@@ -31,23 +31,42 @@ The three guard values have different lifetimes:
 
 Object IDs are session-local observations, not durable knowledge keys. A snapshot's `ready_unit_refs` provides the current actionable unit IDs, names, opaque tile IDs, and compact roles at that exact revision; request `unit_actions` with one of those IDs rather than guessing. A `tile_id` is not an encoded planning coordinate: never do arithmetic on it or infer neighbors from it. Re-list bases, units, factions, tiles, and choices after every mutation that can create, consume, capture, reorder, or destroy an engine object.
 
-The preferred loop is one call: `smac_decision`. It assembles the state headline and mandatory choice family only if their match/session/revision identities agree. It returns an exact `smac_command` guard and at most one decision focus, or directs the model to `smac_wait`/`smac_report_capability_gap`. Execute at most one returned choice, discard the complete frame, and call `smac_decision` again. Its default `detail="compact"` deliberately avoids repeating the comprehensive turn snapshot; request `detail="full"` only when a particular strategic decision needs it. Supplying a `unit_id` is allowed only for a unit present in a fresh decision frame; omission selects the first ready unit deterministically. After actually considering the remaining units and deciding all are finished, `finish_ready_units=true` switches that one frame to guarded game-management choices so the model can select `skip_all_ready_units`; combining it with `unit_id` is rejected.
+The preferred loop is intentionally small. `smac_decision` assembles one
+revision-stable focus and returns short semantic labels plus opaque
+`choice_id` values. Native command names, confirmation flags, and raw revision
+guards stay server-side. Execute at most one returned choice through
+`smac_execute_choice(decision_id, choice_id)`, discard the frame, and call
+`smac_decision` again. `smac_choices` remains available for bounded specialist
+queries, but it also returns opaque executable choices.
 
-The equivalent lower-level protocol remains available for strategic inspection and specialized target queries:
+The managed loop is:
 
-1. Call `smac_snapshot`.
-2. Preserve its `match_id`, `session_id`, and `revision` as one inseparable guard.
-3. Read `snapshot.interaction.kind`:
-   - `waiting_for_turn` or `waiting_for_engine`: call `smac_wait`, then restart at step 1.
-   - `popup`, `endgame_presentation`, or another named interaction: call `smac_choices(kind="interaction")`.
-   - `turn`: inspect the relevant owned bases/units/tiles, then call `smac_choices` for the object being decided. Request `game_management` only after resolving unit decisions; execute `end_turn` only when that fresh family actually returns it.
-   - `unsupported_modal`: call `smac_report_capability_gap` and stop. This latches the current match/session, so every subsequent `smac_command` is mechanically rejected.
-4. Execute one command that was returned by `smac_choices`, supplying the preserved guard as `match_id`, `session_id`, and `expected_revision`.
-5. Discard the guard and restart at step 1.
+1. Call `smac_decision`.
+2. If it requires briefing, wait, or capability-gap handling, follow only that
+   directive.
+3. Otherwise inspect the single focus and its currently legal choices.
+4. Execute exactly one opaque choice.
+5. Discard both IDs and obtain a fresh decision.
 
-This is also the action-legality pipeline. The current interaction phase selects the only usable choice family; that family lists legal commands and exact parameter bounds; the identity/revision guard makes the choice single-use; consequential actions add a fresh explicit confirmation; and the next observation verifies the postcondition. Clients should not maintain a separate guessed action graph or fabricate a command that was absent from the current family.
+Supplying a `unit_id` is allowed only for a unit present in a fresh decision
+frame; omission selects the first ready unit deterministically. After actually
+considering the remaining units and deciding all are finished,
+`finish_ready_units=true` switches that one frame to guarded game-management
+choices. Combining it with `unit_id` is rejected.
+
+This is also the action-legality pipeline. The current interaction phase
+selects the only usable choice family; the server binds each opaque ID to the
+complete native payload and confirmation requirements; the identity/revision
+guard makes the decision single-use; and the next observation verifies the
+postcondition. Clients cannot invent native command strings or parameters.
 
 The native bridge independently enforces that phase boundary. While any popup, research prompt, Council window, engine transition, or other non-turn state is active, every non-interaction mutation is rejected before its individual handler can run—even if a client fabricates a command with an otherwise fresh identity/revision guard.
+
+An accepted native mutation is followed immediately by its canonical journal
+append. If that durable write fails, the runtime reports that the native action
+did occur, opens an operator-visible capability incident, and refuses every
+later mutation. It never degrades an authoritative-history failure into a
+warning and continues playing.
 
 The game can advance between the snapshot and a later choice-family read, especially while the native AI turn is settling. If the family carries a different `revision` from the snapshot, discard the entire plan and restart at step 1. Likewise, `turn:end_blocked` is structured state—not a missing tool—and means that a fresh observation has ready units to resolve. Diagnose a capability gap only when the interaction is explicitly unsupported or a stable, same-revision state has no semantic choice for its required decision.
 
@@ -60,9 +79,32 @@ session cannot permanently latch an otherwise playable campaign.
 
 Every submitted popup action enters an exact native-window transition. During that handoff the snapshot reports `waiting_for_engine`, interaction enumeration rejects with `popup_transition_pending`, and replaying the old choice is rejected as `stale_state`, `popup_transition_pending`, or `popup_unavailable` after the exact object closes. Never acknowledge the same label twice. Some native sequences close a `BasePop` and immediately open a different modal class while leaving the old script label cached; the bridge tracks the exact window object and will expose the new semantic interaction when it is ready.
 
-A capability-gap report is audited against the exact session and creates a process-lifetime development latch with no agent-callable clear action. Observations, knowledge reads, save listing, and status remain available for developer diagnosis; commands, launch, new-game, and load operations are blocked. After implementing and deploying coverage, an owner or administrator uses **Retry from verified checkpoint**. The control plane parks the preserved process, refreshes every managed seat onto the current immutable worker/bridge/MCP images, loads the verified save into a fresh `session_id`, and only then marks the capability incident and any derivative clean-yield incident recovered. A failed retry remains latched. Normal match and revision guards govern the new session.
+A capability-gap report is audited against the exact session and creates a
+process-lifetime development latch with no agent-callable clear action.
+Observation and memory remain available for diagnosis; opaque execution is
+blocked. After implementing and deploying coverage, an owner or administrator
+uses **Retry from verified checkpoint**. The control plane parks the preserved
+process, refreshes every managed seat onto the current immutable
+worker/bridge/MCP images, loads the verified save into a fresh `session_id`,
+and only then marks the incident recovered. A failed retry remains latched.
 
-`move_unit`, `open_diplomacy`, `convene_council`, and probe missions cross the native event loop. They receive an `action_id`; `smac_command` normally waits and returns `completed: true` with the native result. If the bounded wait expires, do not overlap an ordinary turn action. Staged interactions are expected: a Council proposal menu is resolved with `choose_council_proposal` and its bundled ballot; targeted sabotage is resolved only through the returned native `VIRUS` target and optional security-warning choices; a protected movement/combat action may pause for a territorial or hostility response. Resolve the active interaction, then observe until the original `last_deferred_action` completes. A rejected deferred action did not perform its intended move/combat and requires fresh choices.
+Movement, diplomacy, Council, and probe choices may cross the native event
+loop. The bound native operation receives an `action_id`; opaque execution
+normally waits and reports `completed: true`. If the bounded wait expires, do
+not overlap an ordinary turn action. Resolve each newly enumerated staged
+interaction, then observe until the original deferred action completes.
+
+When any semantic result reports `turn_handoff_required`, native control has
+passed. This includes a direct end-turn result and the next decision frame when
+native automation moved from one turn into the next without exposing a stable
+wait phase. No legal choices are returned across that boundary. Make no more
+tool calls in that Hermes episode. The player emits one assistant message
+headed `TURN HANDOFF`, under 120 words, with `Outcome`,
+`Reasoning`, `What changed`, `Next turn`, and `Uncertainty`. Hermes retains and
+later compresses this durable decision summary. Raw interleaved reasoning is
+kept throughout the active episode but stripped after the next user/episode
+boundary. The supervisor treats the handoff as a clean yield and resumes the
+same campaign conversation; it is not match completion.
 
 Alien Artifact entry is another staged movement interaction. `ARTIFACT` exposes `no_action`, technology linking, and—only when natively present—acceleration of the exact current Secret Project or unprototyped unit. The two consuming choices require `confirm_consume_artifact=1`. A link can open a following technology notice; acknowledge it and keep waiting until the original move reports `native_artifact_consumed`.
 
@@ -108,6 +150,8 @@ Economic victory is initiated only from a fresh `game_management` family. Review
 
 Record learned player behavior and strategic facts through `smac_knowledge`, not a free-form cross-game memory. A `put` requires the current match, session, and observation revision and automatically records the turn/year provenance. Stable keys hold the latest correction while `history` preserves every prior value. While a game is running, reads for any other match are rejected so another playthrough's intelligence cannot leak into the current one.
 
-To load safely: save through `smac_choices(kind="game_management")` and guarded `smac_command(command="save_game", slot=...)`; call `smac_stop`; then call `smac_saves(action="load", match_id=..., slot=...)`. Loading refuses to replace a running game.
+Save/load, process stop, checkpoint recovery, and worker replacement are
+authenticated Control Center operations. They are deliberately absent from a
+managed player's MCP surface.
 
 The spectator window is output only. Screenshots, coordinates, mouse input, keyboard input, and raw UI text entry are not MCP capabilities.

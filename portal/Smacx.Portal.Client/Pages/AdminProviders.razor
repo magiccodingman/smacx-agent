@@ -164,6 +164,13 @@ else
                                     <MudSelectItem Value="@value">@value</MudSelectItem>
                                 }
                             </MudSelect>
+                            <MudSelect T="string" @bind-Value="reasoningContinuity"
+                                       Label="Active tool-chain reasoning" Variant="Variant.Outlined"
+                                       HelperText="Automatic retains current-episode reasoning only when chat_template_kwargs enables thinking. Completed earlier reasoning is always removed from managed requests.">
+                                <MudSelectItem T="string" Value="@("automatic")">Automatic · recommended</MudSelectItem>
+                                <MudSelectItem T="string" Value="@("current_episode")">Retain current tool episode</MudSelectItem>
+                                <MudSelectItem T="string" Value="@("off")">Do not replay reasoning</MudSelectItem>
+                            </MudSelect>
                             @if (!string.IsNullOrWhiteSpace(ReasoningCompatibilityWarning))
                             {
                                 <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-3">@ReasoningCompatibilityWarning</MudAlert>
@@ -373,6 +380,7 @@ else
     private string selectedProvider = "";
     private string selectedModel = "";
     private string reasoning = "low";
+    private string reasoningContinuity = "automatic";
     private string generationPreset = "provider-default";
     private string profileNotes = "";
     private int? contextLength;
@@ -883,6 +891,7 @@ else
         repetitionPenalty = generation.RepetitionPenalty;
         maxOutputTokens = generation.MaxOutputTokens;
         seed = generation.Seed;
+        reasoningContinuity = generation.ReasoningContinuity;
         extraParameters.Clear();
         if (generation.ExtraParameters is not null)
             extraParameters.AddRange(generation.ExtraParameters.Select(item =>
@@ -911,11 +920,19 @@ else
         topK = null;
         maxOutputTokens = seed = null;
         extraParameters.Clear();
+        reasoningContinuity = "automatic";
         if (value is "qwen38-low" or "qwen38-medium" or "qwen38-high" or "qwen38-xhigh")
         {
             temperature = 1.0; topP = 0.95; topK = 20; minP = 0.0;
             presencePenalty = 0.0; repetitionPenalty = 1.0;
             reasoning = value[7..];
+            maxOutputTokens = value switch
+            {
+                "qwen38-low" => 8192,
+                "qwen38-medium" => 12288,
+                "qwen38-high" => 16384,
+                _ => 24576,
+            };
             extraParameters.Add(new("chat_template_kwargs",
                 "{\"enable_thinking\":true,\"preserve_thinking\":false}"));
         }
@@ -923,6 +940,7 @@ else
         {
             temperature = 0.7; topP = 0.80; topK = 20; minP = 0.0;
             presencePenalty = 1.5; repetitionPenalty = 1.0;
+            maxOutputTokens = 2048;
             reasoning = "none";
             extraParameters.Add(new("chat_template_kwargs",
                 "{\"enable_thinking\":false,\"preserve_thinking\":false}"));
@@ -944,7 +962,7 @@ else
         return new ModelGenerationSettings(
             generationPreset, temperature, topP, topK, minP, presencePenalty,
             frequencyPenalty, repetitionPenalty, maxOutputTokens, seed,
-            ExtraParameters: extras);
+            ExtraParameters: extras, ReasoningContinuity: reasoningContinuity);
     }
 
     private void AddExtraParameter() => extraParameters.Add(new("", "true"));

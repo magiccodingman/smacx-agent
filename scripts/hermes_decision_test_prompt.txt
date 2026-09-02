@@ -4,7 +4,7 @@ Use ONLY the SMACX MCP tools. Never use screenshots, vision, mouse, keyboard, co
 
 1. Call smac_decision.
 2. Follow its directive and inspect only the choices it returns.
-3. Execute at most one returned choice through smac_command, using its exact match_id, session_id, revision, command, and parameters.
+3. Execute at most one returned opaque choice through smac_execute_choice using only its exact decision_id and choice_id.
 4. Discard the old frame and call smac_decision again.
 
 Do not substitute the older snapshot/choices loop unless smac_decision itself explicitly instructs you to use another SMACX tool. Do not invent commands, parameters, IDs, coordinates, targets, or game state. Never retry a stale choice. If a necessary action is absent, a modal cannot be handled semantically, the decision frame is repeatedly unstable, or the bridge reports an unsupported condition, call smac_report_capability_gap exactly once with a concise description and STOP. The gap latch will mechanically reject further game commands.
