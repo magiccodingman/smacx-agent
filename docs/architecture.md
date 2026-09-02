@@ -211,10 +211,15 @@ Managed Qwen thinking profiles explicitly disable unlimited historical
 `preserve_thinking`. The derived harness retains all interleaved reasoning after
 the current episode's latest user boundary, so `think -> tool -> result ->
 think` remains coherent. Before the next episode request it removes completed
-reasoning fields and serialized think blocks while retaining assistant output,
-tool history, and the newest state frame. A streaming repetition fuse turns a
-large degenerate generation into Hermes's ordinary recoverable repetition
-error.
+reasoning fields and serialized think blocks. It retains durable ordinary
+assistant output such as `TURN HANDOFF`, but omits completed tool-call/result
+protocol pairs from the provider projection; those remain available in Hermes
+SQLite and the campaign journal. Within the active episode it keeps every tool
+pair while replacing superseded state payloads with compact markers and keeping
+the newest state frame intact. The parser understands Hermes's real generic
+`tool_call` dispatcher envelope as well as direct namespaced calls. A streaming
+repetition fuse turns a large degenerate generation into Hermes's ordinary
+recoverable repetition error.
 
 A successful native turn end asks the model for one bounded `TURN HANDOFF`
 assistant message: outcome, concise rationale, changed conclusions, next-turn

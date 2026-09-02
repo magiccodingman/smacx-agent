@@ -103,8 +103,11 @@ headed `TURN HANDOFF`, under 120 words, with `Outcome`,
 `Reasoning`, `What changed`, `Next turn`, and `Uncertainty`. Hermes retains and
 later compresses this durable decision summary. Raw interleaved reasoning is
 kept throughout the active episode but stripped after the next user/episode
-boundary. The supervisor treats the handoff as a clean yield and resumes the
-same campaign conversation; it is not match completion.
+boundary. Completed tool protocol from earlier episodes is likewise omitted
+from later provider requests while remaining in durable diagnostics. Current
+episode tool calls/results stay coherent, and only superseded state payloads
+inside that episode are compacted. The supervisor treats the handoff as a clean
+yield and resumes the same campaign conversation; it is not match completion.
 
 Alien Artifact entry is another staged movement interaction. `ARTIFACT` exposes `no_action`, technology linking, and—only when natively present—acceleration of the exact current Secret Project or unprototyped unit. The two consuming choices require `confirm_consume_artifact=1`. A link can open a following technology notice; acknowledge it and keep waiting until the original move reports `native_artifact_consumed`.
 
