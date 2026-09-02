@@ -52,9 +52,10 @@ mcp = MCPServer(
         "when smac_decision reports a changed configuration thereafter. "
         "There are deliberately no screenshot, click, keyboard, or raw text-entry tools. "
         "If a needed capability is absent, call smac_report_capability_gap once and stop. "
+        "Treat stale_state and revision churn as transient concurrency, never as capability gaps. "
         "Observations are restricted to the current human faction's legitimate perspective."
     ),
-    version="0.46.0",
+    version="0.47.0",
 )
 
 GAP_LOG = Path(os.environ.get(
@@ -68,6 +69,38 @@ MATCH_BRIEFING_CACHE: dict[tuple[str, str], str] = {}
 MATCH_CONFIGURATION_CACHE: dict[tuple[str, str, str], dict] = {}
 MATCH_BRIEFING_RESUME_NOTICES: set[tuple[str, str]] = set()
 MATCH_BRIEFING_LOCK = threading.Lock()
+
+STALE_REBASE_UNIT_COMMANDS = {
+    "auto_explore_unit", "hold_unit", "sentry_unit", "skip_unit",
+}
+
+
+def _revision_conflict_report(*values: str) -> bool:
+    text = " ".join(values).lower()
+    return any(marker in text for marker in (
+        "stale_state", "stale state", "expected_revision", "current_revision",
+        "revision guard", "revision counter", "revision mismatch",
+    ))
+
+
+def _fresh_unit_choice_for_stale_command(
+    command: str, unit_id: int, target_tile_id: int, target_unit_id: int,
+) -> dict | None:
+    if command not in STALE_REBASE_UNIT_COMMANDS or unit_id < 0:
+        return None
+    refreshed = _call(
+        "semantic_choices", kind="unit_actions", unit_id=unit_id,
+        target_tile_id=target_tile_id, target_unit_id=target_unit_id,
+    )
+    if not refreshed.get("ok"):
+        return None
+    for choice in refreshed.get("choices", []):
+        if not isinstance(choice, dict) or choice.get("command") != command:
+            continue
+        if int(choice.get("unit_id", unit_id)) != unit_id:
+            continue
+        return refreshed
+    return None
 SESSION_LOCAL_KNOWLEDGE_REFERENCE = re.compile(
     r"(?:\b(?:unit|vehicle|base|prototype)[ _-]?ids?\b"
     r"|\(\s*id\s*[:=#-]?\s*\d+\s*\)"
@@ -1272,8 +1305,7 @@ def smac_command(
     briefing_block = _match_briefing_gate(match_id, session_id)
     if briefing_block:
         return briefing_block
-    result = _call(
-        "semantic_command",
+    command_arguments = dict(
         command=command,
         match_id=match_id,
         session_id=session_id,
@@ -1360,6 +1392,36 @@ def smac_command(
         name=name,
         slot=slot,
     )
+    result = _call("semantic_command", **command_arguments)
+    if result.get("error", {}).get("code") == "stale_state":
+        refreshed = _fresh_unit_choice_for_stale_command(
+            command, unit_id, target_tile_id, target_unit_id,
+        )
+        if refreshed is not None:
+            fresh_revision = str(refreshed.get("revision", ""))
+            if fresh_revision and fresh_revision != expected_revision:
+                command_arguments["expected_revision"] = fresh_revision
+                retried = _call("semantic_command", **command_arguments)
+                if retried.get("ok"):
+                    result = {
+                        **retried,
+                        "guard_revalidated": True,
+                        "previous_revision": expected_revision,
+                        "executed_revision": fresh_revision,
+                    }
+                else:
+                    result = retried
+        if result.get("error", {}).get("code") == "stale_state":
+            result = {
+                **result,
+                "transient": True,
+                "capability_gap": False,
+                "instruction": (
+                    "This is concurrency, not a missing semantic capability. "
+                    "Call smac_wait briefly, then obtain a fresh smac_decision. "
+                    "Never report stale_state or revision churn as a capability gap."
+                ),
+            }
     if command == "convene_council" and result.get("ok") and result.get("queued"):
         return {
             **result,
@@ -1656,6 +1718,29 @@ def smac_report_capability_gap(
     snapshot = snapshot_result.get("snapshot", {}) if isinstance(snapshot_result, dict) else {}
     if not isinstance(snapshot, dict):
         snapshot = {}
+    protocol = snapshot.get("protocol", {})
+    explicit_gap = isinstance(protocol, dict) and protocol.get("phase") == "capability_gap"
+    if not explicit_gap and _revision_conflict_report(
+        screen_or_state, intended_decision, required_observation,
+        required_action, why_blocked,
+    ):
+        return {
+            "ok": False,
+            "error": {
+                "code": "transient_revision_conflict_not_capability_gap",
+                "message": (
+                    "Revision churn is an optimistic-concurrency conflict, not a missing "
+                    "semantic capability, and must not latch or stop the match."
+                ),
+            },
+            "recorded": False,
+            "gameplay_mutations_blocked": False,
+            "instruction": (
+                "Call smac_wait briefly and then obtain a fresh smac_decision. "
+                "Report a capability gap only when smac_decision explicitly returns "
+                "phase=capability_gap or a stable choice family lacks a required action."
+            ),
+        }
     match_id = str(snapshot.get("match_id", ""))
     session_id = str(snapshot.get("session_id", ""))
     key = (match_id, session_id) if match_id and session_id else None

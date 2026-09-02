@@ -1167,6 +1167,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         }
         if spec["network"].get("view_enabled"):
             exposed_ports["6080/tcp"] = {}
+            exposed_ports["6081/tcp"] = {}
             port_bindings["6080/tcp"] = [{
                 "HostIp": self.view_publish_ip, "HostPort": "",
             }]
@@ -3442,7 +3443,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "final_score_completed": outcome.get("final_score_completed") is True,
         }
 
-    def spectator_access(self, instance_id: str, *, interactive: bool = False) -> dict[str, Any]:
+    def spectator_access(
+        self, instance_id: str, *, interactive: bool = False,
+        compatibility: bool = False,
+    ) -> dict[str, Any]:
         """Return one short-lived caller's upstream stream credential."""
         spec = self.control.get_worker_spec(instance_id)
         if not spec["network"].get("view_enabled") or not spec.get("view_secret_id"):
@@ -3468,8 +3472,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "access_mode": "interactive" if interactive else "view-only",
             "password": credentials["control"] if interactive else credentials["viewer"],
             "container_name": spec["container_name"],
-            "internal_port": 6080,
-            "internal_base_url": f"http://{spec['container_name']}:6080",
+            "internal_port": 6081 if compatibility else 6080,
+            "internal_base_url": (
+                f"http://{spec['container_name']}:{6081 if compatibility else 6080}"
+            ),
+            "compatibility": compatibility,
         }
 
     def compact_worker_state(self, instance_id: str, *, completed: bool = False) -> dict[str, Any]:

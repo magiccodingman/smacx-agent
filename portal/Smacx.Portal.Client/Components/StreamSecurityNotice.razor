@@ -1,0 +1,28 @@
+@inject NavigationManager Navigation
+
+@if (UsesLanCompatibilityMode)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="@CssClass">
+        This device opened the table over plain LAN HTTP. Video and controls use compatibility mode; game audio and app installation require a trusted HTTPS address.
+    </MudAlert>
+}
+
+@code {
+    [Parameter] public bool Overlay { get; set; }
+    private string CssClass => Overlay ? "stream-security-notice stream-security-notice-overlay" : "stream-security-notice";
+
+    private bool UsesLanCompatibilityMode
+    {
+        get
+        {
+            if (!System.Uri.TryCreate(Navigation.Uri, UriKind.Absolute, out var uri) ||
+                uri.Scheme.Equals(System.Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return !uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) &&
+                   !(System.Net.IPAddress.TryParse(uri.Host, out var address) && System.Net.IPAddress.IsLoopback(address));
+        }
+    }
+}

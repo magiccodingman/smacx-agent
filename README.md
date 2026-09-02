@@ -81,9 +81,11 @@ remains attached to your private host—gameplay and authentication are never
 pretended to be offline.
 
 On the host, loopback works immediately. Phones, tablets, and other LAN
-devices can use the ordinary HTTP portal; PWA installation on another device
-needs the trusted HTTPS origin supplied by a configured invited-friends
-hostname (or another trusted local certificate). Once installed, Planet can sit beside any
+devices can use the ordinary HTTP portal, including browser play and
+spectating through an automatic video compatibility path. Browser audio and
+PWA installation on another device need the trusted HTTPS origin supplied by
+a configured invited-friends hostname (or another trusted local certificate).
+Once installed, Planet can sit beside any
 other game in a launcher even though the original Windows executable remains
 isolated on the Linux host.
 

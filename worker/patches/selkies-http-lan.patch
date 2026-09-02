@@ -1,0 +1,50 @@
+diff --git a/addons/selkies-web-core/selkies-ws-core.js b/addons/selkies-web-core/selkies-ws-core.js
+index 1603bbc..d94af6d 100644
+--- a/addons/selkies-web-core/selkies-ws-core.js
++++ b/addons/selkies-web-core/selkies-ws-core.js
+@@ -4957,9 +4957,14 @@ function initWebsockets() {
+             // scarce hardware decode session for nothing.
+         }
+ 
+-        initializeAudio().then(() => {
+-          initializeDecoderAudio();
+-        });
++        if (audioEnabled) {
++          initializeAudio().then(() => {
++            initializeDecoderAudio();
++          });
++        } else {
++          isAudioPipelineActive = false;
++          window.postMessage({ type: 'pipelineStatusUpdate', audio: false }, window.location.origin);
++        }
+ 
+         if (isTokenAuthMode) {
+             initializeInput();
+@@ -6333,14 +6338,20 @@ function initiateFallback(error, context) {
+ 
+ function runPreflightChecks() {
+     initializeUI();
++
++    // Chromium exposes WebCodecs only in a secure context. A trusted-LAN HTTP
++    // origin can still use Selkies' JPEG-over-WebSocket renderer, which relies
++    // on createImageBitmap rather than VideoDecoder. Keep the browser seat
++    // usable without pretending that WebCodecs audio is available.
+     if (!window.isSecureContext) {
+-        console.error("FATAL: Not in a secure context. WebCodecs require HTTPS.");
+-        if (statusDisplayElement) {
+-            statusDisplayElement.textContent = 'Error: This application requires a secure connection (HTTPS). Please check the URL.';
+-            statusDisplayElement.classList.remove('hidden');
+-        }
+-        if (playButtonElement) playButtonElement.classList.add('hidden');
+-        return false;
++        console.warn("Insecure LAN origin detected; using JPEG video without browser audio.");
++        currentEncoderMode = 'jpeg';
++        setStringParam('encoder', 'jpeg');
++        audioEnabled = false;
++        isAudioPipelineActive = false;
++        window.__SELKIES_INSECURE_HTTP_COMPAT__ = true;
++        window.postMessage({ type: 'pipelineStatusUpdate', audio: false }, window.location.origin);
++        return true;
+     }
+ 
+     if (typeof window.VideoDecoder === 'undefined') {

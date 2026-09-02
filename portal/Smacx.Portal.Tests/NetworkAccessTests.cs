@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Smacx.Portal.Data;
 using Smacx.Portal.Services;
@@ -7,6 +8,21 @@ namespace Smacx.Portal.Tests;
 
 public sealed class NetworkAccessTests
 {
+    [Theory]
+    [InlineData("http", "10.26.26.104", true)]
+    [InlineData("http", "192.168.1.20", true)]
+    [InlineData("http", "localhost", false)]
+    [InlineData("http", "127.0.0.1", false)]
+    [InlineData("http", "::1", false)]
+    [InlineData("https", "10.26.26.104", false)]
+    public void LanHttpUsesCompatibilityStream(string scheme, string host, bool expected)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Scheme = scheme;
+        context.Request.Host = new HostString(host);
+        Assert.Equal(expected, StreamProxyService.UsesLanCompatibilityStream(context.Request));
+    }
+
     [Theory]
     [InlineData("127.0.0.1", true)]
     [InlineData("10.40.2.8", true)]

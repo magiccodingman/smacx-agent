@@ -128,19 +128,22 @@ public sealed class ControlPlaneClient(
     }
 
     public async Task<ControlStreamAccess> GetStreamAccessAsync(
-        string instanceId, bool interactive, CancellationToken cancellationToken = default)
+        string instanceId, bool interactive, bool compatibility,
+        CancellationToken cancellationToken = default)
     {
         using var document = await SendAsync(
             HttpMethod.Post,
             $"api/v1/workers/{Uri.EscapeDataString(instanceId)}/spectator",
-            new { interactive }, cancellationToken);
+            new { interactive, compatibility }, cancellationToken);
         var root = document.RootElement;
         return new ControlStreamAccess(
             root.GetProperty("instance_id").GetString()!,
             root.GetProperty("access_mode").GetString()!,
             root.GetProperty("internal_base_url").GetString()!,
             root.GetProperty("path").GetString()!,
-            root.GetProperty("password").GetString()!);
+            root.GetProperty("password").GetString()!,
+            root.TryGetProperty("compatibility", out var compatibilityElement)
+                && compatibilityElement.GetBoolean());
     }
 
     public async Task<IReadOnlyList<ControlAsset>> ListGameSourcesAsync(
@@ -312,7 +315,8 @@ public sealed record ControlMatchDetails(ControlMatch Match, IReadOnlyList<Contr
 public sealed record ControlAgent(string AgentId, string DisplayName, string Status);
 public sealed record ControlAsset(string Id, string DisplayName, string Status);
 public sealed record ControlStreamAccess(
-    string InstanceId, string AccessMode, string InternalBaseUrl, string Path, string Password);
+    string InstanceId, string AccessMode, string InternalBaseUrl, string Path, string Password,
+    bool Compatibility);
 public sealed record ControlMatchOperation(
     ControlMatch Match, bool AwaitingExternalHumans, string? NetworkSessionId,
     JsonElement? ExternalJoin);

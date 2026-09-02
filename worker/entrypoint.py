@@ -318,6 +318,31 @@ def start(command: list[str], environment: dict[str, str], **kwargs: Any) -> sub
     return process
 
 
+def selkies_command(
+    *, port: str, password: str, view_only_password: str, subfolder: str,
+    width: int, height: int, encoder: str, audio_enabled: bool,
+) -> list[str]:
+    """Build one authenticated stream endpoint for the shared game display."""
+    return [
+        "selkies", "--addr=0.0.0.0", f"--port={port}",
+        "--enable-https=false", "--enable-basic-auth=true",
+        "--basic-auth-user=smacx", f"--basic-auth-password={password}",
+        f"--basic-auth-viewonly-password={view_only_password}",
+        f"--subfolder={subfolder}", "--mode=websocket",
+        f"--encoder={encoder}", "--framerate=30",
+        f"--video-bitrate={os.environ.get('SMACX_STREAM_VIDEO_BITRATE', '3500')}",
+        f"--audio-enabled={'true' if audio_enabled else 'false'}", "--enable-resize=false",
+        "--microphone-enabled=false", "--webcam-enabled=false",
+        "--gamepad-enabled=false", "--enable-clipboard=false",
+        "--file-transfers=none", "--command-enabled=false",
+        "--enable-sharing=false", "--enable-collab=false",
+        "--ui-title=SMACX Agent", "--ui-show-logo=false",
+        "--ui-show-core-buttons=false", "--ui-show-sidebar=false",
+        "--is-manual-resolution-mode=true",
+        f"--manual-width={width}", f"--manual-height={height}",
+    ]
+
+
 def wait_for_x(display: str, environment: dict[str, str]) -> None:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
@@ -582,29 +607,29 @@ def main() -> int:
                     break
                 time.sleep(0.1)
             subfolder = os.environ.get("SMACX_STREAM_SUBFOLDER", "")
-            stream = start([
-                "selkies", "--addr=0.0.0.0",
-                f"--port={os.environ.get('SMACX_VIEW_PORT', '6080')}",
-                "--enable-https=false", "--enable-basic-auth=true",
-                "--basic-auth-user=smacx", f"--basic-auth-password={password}",
-                f"--basic-auth-viewonly-password={view_only_password}",
-                f"--subfolder={subfolder}", "--mode=websocket",
-                "--encoder=h264enc", "--framerate=30",
-                f"--video-bitrate={os.environ.get('SMACX_STREAM_VIDEO_BITRATE', '3500')}",
-                "--audio-enabled=true", "--enable-resize=false",
-                "--microphone-enabled=false", "--webcam-enabled=false",
-                "--gamepad-enabled=false", "--enable-clipboard=false",
-                "--file-transfers=none", "--command-enabled=false",
-                "--enable-sharing=false", "--enable-collab=false",
-                "--ui-title=SMACX Agent", "--ui-show-logo=false",
-                "--ui-show-core-buttons=false", "--ui-show-sidebar=false",
-                "--is-manual-resolution-mode=true",
-                f"--manual-width={width}", f"--manual-height={height}",
-            ], environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stream = start(selkies_command(
+                port=os.environ.get("SMACX_VIEW_PORT", "6080"),
+                password=password, view_only_password=view_only_password,
+                subfolder=subfolder, width=width, height=height,
+                encoder="h264enc", audio_enabled=True,
+            ), environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(1)
             stream_started = stream.poll() is None
             if not stream_started:
                 emit("selkies_unavailable", fallback="novnc")
+            else:
+                # Browsers do not expose WebCodecs on a non-loopback HTTP
+                # origin.  A second server watches the same X display using
+                # JPEG/WebSocket so LAN clients can still play or spectate.
+                compatibility_stream = start(selkies_command(
+                    port=os.environ.get("SMACX_COMPAT_VIEW_PORT", "6081"),
+                    password=password, view_only_password=view_only_password,
+                    subfolder=subfolder, width=width, height=height,
+                    encoder="jpeg", audio_enabled=False,
+                ), environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(1)
+                if compatibility_stream.poll() is not None:
+                    emit("selkies_compatibility_unavailable")
         if not stream_started:
             password_file = worker_root / "view-password"
             run_checked(["x11vnc", "-storepasswd", password, str(password_file)], environment)

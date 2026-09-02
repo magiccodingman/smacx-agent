@@ -266,6 +266,13 @@ def test_distribution_contract() -> None:
     assert "inspect_source.py" in dockerfile
     assert "fluxbox-init" in dockerfile
     assert "fluxbox-overlay" in dockerfile
+    assert "selkies-http-lan.patch" in dockerfile
+    selkies_patch = (ROOT / "worker" / "patches" / "selkies-http-lan.patch").read_text(
+        encoding="utf-8"
+    )
+    assert "currentEncoderMode = 'jpeg'" in selkies_patch
+    assert "audioEnabled = false" in selkies_patch
+    assert "return true;" in selkies_patch
     entrypoint_source = (ROOT / "worker" / "entrypoint.py").read_text(encoding="utf-8")
     manager_source = (ROOT / "src" / "smacx_worker_manager.py").read_text(encoding="utf-8")
     assert '"fluxbox", "-rc", "/opt/smacx/fluxbox-init", "-no-toolbar"' in entrypoint_source
@@ -273,6 +280,10 @@ def test_distribution_contract() -> None:
     assert '"--is-manual-resolution-mode=true"' in entrypoint_source
     assert 'f"--manual-width={width}"' in entrypoint_source
     assert 'f"--manual-height={height}"' in entrypoint_source
+    assert 'SMACX_COMPAT_VIEW_PORT' in entrypoint_source
+    assert 'encoder="jpeg", audio_enabled=False' in entrypoint_source
+    assert 'exposed_ports["6081/tcp"]' in manager_source
+    assert '6081 if compatibility else 6080' in manager_source
     assert 'emit("worker_stopped", reason="signal")' in entrypoint_source
     assert 'windows_process_ids("terranx.exe")' in entrypoint_source
     assert 'emit(\n                            "game_process_exited"' in entrypoint_source

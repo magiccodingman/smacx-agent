@@ -27,6 +27,9 @@ RUN git init \
     && git remote add origin https://github.com/selkies-project/selkies.git \
     && git fetch --depth 1 origin "${SELKIES_COMMIT}" \
     && git checkout --detach FETCH_HEAD
+COPY worker/patches/selkies-http-lan.patch /tmp/selkies-http-lan.patch
+RUN git apply --check /tmp/selkies-http-lan.patch \
+    && git apply /tmp/selkies-http-lan.patch
 RUN sh scripts/ci/build-web.sh
 
 FROM python:3-slim AS selkies-python-build
@@ -126,12 +129,13 @@ ENV DISPLAY=:99 \
     SMACX_AGENT_PORT=47813 \
     SMACX_BRIDGE_PROXY_PORT=47814 \
     SMACX_VIEW_PORT=6080 \
+    SMACX_COMPAT_VIEW_PORT=6081 \
     SMACX_VIEW_ENABLE=0 \
     SMACX_VIEW_MODE=view-only \
     SMACX_STREAM_BACKEND=selkies
 
 VOLUME ["/var/lib/smacx"]
-EXPOSE 47814 6080
+EXPOSE 47814 6080 6081
 HEALTHCHECK --interval=10s --timeout=3s --start-period=90s --retries=6 \
     CMD ["python3", "/opt/smacx/healthcheck.py"]
 

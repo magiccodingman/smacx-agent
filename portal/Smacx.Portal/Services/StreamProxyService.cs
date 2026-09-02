@@ -77,7 +77,9 @@ public sealed class StreamProxyService(
         ControlStreamAccess access;
         try
         {
-            access = await control.GetStreamAccessAsync(instanceId, interactive, context.RequestAborted);
+            access = await control.GetStreamAccessAsync(
+                instanceId, interactive, UsesLanCompatibilityStream(context.Request),
+                context.RequestAborted);
         }
         catch (OperationCanceledException) when (accountRevoked.IsCancellationRequested)
         {
@@ -126,6 +128,16 @@ public sealed class StreamProxyService(
             logger.LogWarning(feature?.Exception,
                 "Stream proxy failed for {InstanceId}: {ForwarderError}", instanceId, error);
         }
+    }
+
+    internal static bool UsesLanCompatibilityStream(HttpRequest request)
+    {
+        if (request.IsHttps)
+            return false;
+        var host = request.Host.Host;
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return !IPAddress.TryParse(host, out var address) || !IPAddress.IsLoopback(address);
     }
 
     private sealed class StreamTransformer(string password) : HttpTransformer

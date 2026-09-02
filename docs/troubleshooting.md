@@ -282,6 +282,17 @@ read-only at the worker transport.
 Click once inside the stream to focus it. Browser-reserved shortcuts may not be
 forwarded; ordinary game shortcuts and text input are.
 
+### A LAN stream asks for HTTPS
+
+Refresh the play or spectator page after updating the platform. Plain
+`http://HOST_LAN_IP:8080` automatically uses JPEG/WebSocket video because
+WebCodecs is unavailable on a non-loopback HTTP origin. The stream remains
+interactive for a player and read-only for a spectator. A small portal notice
+explains that game audio and PWA installation still require the configured
+trusted HTTPS address. Seeing Selkies' old fatal “requires a secure connection”
+message means the active worker predates this compatibility build; park and
+resume that campaign, or recreate the worker from the current image.
+
 If the same seat is open in two tabs, only one is the controller. The other
 shows a read-only card. Select **Take control here** to move input deliberately;
 the previous stream connection is revoked and its page becomes view-only. If a

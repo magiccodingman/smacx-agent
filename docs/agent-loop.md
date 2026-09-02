@@ -51,6 +51,13 @@ The native bridge independently enforces that phase boundary. While any popup, r
 
 The game can advance between the snapshot and a later choice-family read, especially while the native AI turn is settling. If the family carries a different `revision` from the snapshot, discard the entire plan and restart at step 1. Likewise, `turn:end_blocked` is structured state—not a missing tool—and means that a fresh observation has ready units to resolve. Diagnose a capability gap only when the interaction is explicitly unsupported or a stable, same-revision state has no semantic choice for its required decision.
 
+`stale_state` and revision churn are concurrency signals, never capability
+gaps. The MCP may transparently re-enumerate and execute one harmless unit
+state command when that exact command is still present in a fresh choice
+family. Otherwise wait briefly and obtain a new decision frame. Capability-gap
+reporting mechanically refuses revision-conflict reports so a settling native
+session cannot permanently latch an otherwise playable campaign.
+
 Every submitted popup action enters an exact native-window transition. During that handoff the snapshot reports `waiting_for_engine`, interaction enumeration rejects with `popup_transition_pending`, and replaying the old choice is rejected as `stale_state`, `popup_transition_pending`, or `popup_unavailable` after the exact object closes. Never acknowledge the same label twice. Some native sequences close a `BasePop` and immediately open a different modal class while leaving the old script label cached; the bridge tracks the exact window object and will expose the new semantic interaction when it is ready.
 
 A capability-gap report is audited against the exact session and creates a process-lifetime development latch with no MCP clear action. Observations, knowledge reads, save listing, and status remain available for developer diagnosis, and `smac_stop` remains available for cleanup; commands, launch, new-game, and load operations are blocked. After implementing and testing coverage, the developer restarts MCP and starts/loads a fresh `session_id`; normal match and revision guards then govern play again.

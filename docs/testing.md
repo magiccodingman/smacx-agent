@@ -30,6 +30,7 @@ PYTHONPATH=src python3 scripts/control_http_test.py
 PYTHONPATH=src python3 scripts/worker_contract_test.py
 PYTHONPATH=src python3 scripts/capability_manifest_test.py
 PYTHONPATH=src python3 scripts/mcp_command_schema_test.py
+PYTHONPATH=src python3 scripts/stale_revision_recovery_test.py
 PYTHONPATH=src python3 scripts/match_briefing_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
@@ -46,6 +47,7 @@ controller, MCP schema, worker, or portal behavior.
 
 ```bash
 node scripts/pwa_install_test.mjs
+node scripts/incident_actions_test.mjs
 python3 scripts/human_ui_safety_test.py
 ```
 
