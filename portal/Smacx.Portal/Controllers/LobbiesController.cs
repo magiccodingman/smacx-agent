@@ -591,17 +591,59 @@ public sealed class LobbiesController(
                         return BadRequest(ApiResponse<LobbyDetails>.Failure(
                             "capability_incident_required",
                             "Choose the active capability incident to retry."));
+                    var activeIncident = await control.GetActiveCapabilityIncidentAsync(
+                        matchId, HttpContext.RequestAborted);
+                    if (activeIncident is null || !string.Equals(
+                            activeIncident.IncidentId, request.IncidentId,
+                            StringComparison.Ordinal))
+                        return Conflict(ApiResponse<LobbyDetails>.Failure(
+                            "capability_incident_changed",
+                            "The active incident changed before recovery was queued. Refresh and review the current report."));
+                    var nativeMatch = await control.GetMatchAsync(
+                        matchId, HttpContext.RequestAborted);
+                    if (!nativeMatch.Match.HasVerifiedRecoveryCheckpoint)
+                        return Conflict(ApiResponse<LobbyDetails>.Failure(
+                            "verified_recovery_checkpoint_required",
+                            "This match does not have a bridge-verified recovery checkpoint."));
+                    var existingRecovery = await database.PortalMaintenanceOperations
+                        .AnyAsync(item => item.MatchId == matchId &&
+                            item.Kind == "capability_recovery" &&
+                            (item.Status == "queued" || item.Status == "running"),
+                            HttpContext.RequestAborted);
+                    if (existingRecovery)
+                        return Conflict(ApiResponse<LobbyDetails>.Failure(
+                            "capability_recovery_in_progress",
+                            "This campaign already has a durable recovery operation in progress."));
+                    database.PortalMaintenanceOperations.Add(new PortalMaintenanceOperation
+                    {
+                        MatchId = matchId,
+                        Kind = "capability_recovery",
+                        Status = "queued",
+                        Phase = "queued",
+                        Summary = "Recovery is queued. You may leave this page while the platform rebuilds the current runtime.",
+                        PayloadJson = JsonSerializer.Serialize(new
+                        {
+                            incidentId = request.IncidentId,
+                        }),
+                        CompletedSteps = 0,
+                        TotalSteps = 5,
+                        CanCancel = false,
+                    });
                     profile.Status = "recovering";
                     profile.LastError = null;
                     profile.UpdatedAt = DateTimeOffset.UtcNow;
                     await database.SaveChangesAsync(HttpContext.RequestAborted);
                     await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
                         "LobbyChanged", matchId, HttpContext.RequestAborted);
-                    await StopAgentRunsAsync(matchId, HttpContext.RequestAborted);
-                    await control.PostRawAsync(
-                        $"api/v1/matches/{matchId}/retry-after-update",
-                        new { incident_id = request.IncidentId }, HttpContext.RequestAborted);
-                    break;
+                    database.PortalMatchEvents.Add(new PortalMatchEvent
+                    {
+                        MatchId = matchId,
+                        EventType = "incident_recovery_queued",
+                        Summary = "Durable capability recovery was queued from the verified checkpoint.",
+                    });
+                    await database.SaveChangesAsync(HttpContext.RequestAborted);
+                    return Accepted(ApiResponse<LobbyDetails>.Success(
+                        await MapDetailsAsync(profile)));
                 case "end":
                     if (profile.Status != "parked")
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
@@ -1376,6 +1418,8 @@ public sealed class LobbiesController(
         }).ToArray();
         var nativeJoin = await ReadNativeJoinAsync(profile.MatchId);
         var incident = await ReadCapabilityIncidentAsync(profile.MatchId);
+        var runtimeGeneration = await ReadRuntimeGenerationAsync(profile.MatchId);
+        var maintenance = await ReadMaintenanceAsync(profile.MatchId);
         return new LobbyDetails(
             profile.MatchId, profile.DisplayName, profile.Mode, profile.Status,
             profile.LanProfile, profile.CurrentTurn, profile.CurrentYear, profile.IsListed,
@@ -1383,7 +1427,32 @@ public sealed class LobbiesController(
             profile.RankingMode, profile.GraphitiEnabled, profile.PersonalityCardId,
             CanManage(profile), seats, ReadSettings(profile.SettingsJson), nativeJoin, profile.LastError,
             profile.CreatedAt, profile.UpdatedAt,
-            Presence(profile, seatEntities), incident);
+            Presence(profile, seatEntities), incident, runtimeGeneration, maintenance);
+    }
+
+    private async Task<MaintenanceProgress?> ReadMaintenanceAsync(string matchId)
+    {
+        var row = await database.PortalMaintenanceOperations.AsNoTracking()
+            .Where(item => item.MatchId == matchId)
+            .OrderByDescending(item => item.UpdatedAt)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+        return row is null ? null : new MaintenanceProgress(
+            row.OperationId, row.MatchId, row.Kind, row.Status, row.Phase,
+            row.Summary, row.CompletedSteps, row.TotalSteps, row.StableTurn,
+            row.StableYear, row.UpdatedAt, row.CanCancel);
+    }
+
+    private async Task<double> ReadRuntimeGenerationAsync(string matchId)
+    {
+        try
+        {
+            return (await control.GetMatchAsync(
+                matchId, HttpContext.RequestAborted)).Match.RuntimeGeneration;
+        }
+        catch (ControlPlaneException)
+        {
+            return 0;
+        }
     }
 
     private async Task<CapabilityGapIncident?> ReadCapabilityIncidentAsync(string matchId)

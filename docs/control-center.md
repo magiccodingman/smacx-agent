@@ -517,6 +517,15 @@ Hermes run. The incident is cleared only after native recovery succeeds; a
 failed attempt stays visible and fail-closed. **Stop & park** remains available
 when the operator does not want to retry yet.
 
+Retry is a durable background maintenance operation. The click returns as soon
+as the operation is queued; closing or refreshing that browser does not stop
+it. The lobby and observation deck display its current phase. Portal restarts
+requeue an interrupted operation, native-state reconciliation recognizes work
+that completed across a disconnected HTTP request, and worker/MCP lifecycle
+mutations are serialized so the supervisor cannot race a deliberate rebuild.
+Once native recovery is verified, normal supervision launches the missing
+Hermes run and stream views remount against the new runtime generation.
+
 The Campaign Library is paginated and searchable, with active, resumable, and
 completed filters. Completed games disappear from the public lobby directory
 but remain visible to participants and administrators. This keeps years of

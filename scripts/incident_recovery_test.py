@@ -63,7 +63,8 @@ def main() -> int:
 
         manager = object.__new__(WorkerManager)
         manager.control = control
-        manager._incident_recovery_lock = threading.Lock()
+        manager._lifecycle_lock = threading.RLock()
+        manager._incident_recovery_lock = manager._lifecycle_lock
         manager.ensure_prepared_worker_image = lambda game_source_id: (
             "smacx-agent-prepared:current"
         )

@@ -63,16 +63,38 @@ public sealed class PortalMatchSupervisor(
         var interruptedRecovery = await database.PortalMatches
             .Where(item => item.Status == "recovering")
             .ToArrayAsync(cancellationToken);
+        var interruptedRecoveryOperations = await database.PortalMaintenanceOperations
+            .Where(item => item.Kind == "capability_recovery" && item.Status == "running")
+            .ToArrayAsync(cancellationToken);
+        foreach (var operation in interruptedRecoveryOperations)
+        {
+            operation.Status = "queued";
+            operation.Phase = "reconciling_after_restart";
+            operation.Summary = "The portal restarted during recovery. Native state is being reconciled and the operation will resume automatically.";
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+        }
         foreach (var match in interruptedRecovery)
         {
+            var activeOperation = interruptedRecoveryOperations.Any(item =>
+                item.MatchId == match.MatchId) || await database.PortalMaintenanceOperations
+                .AnyAsync(item => item.MatchId == match.MatchId &&
+                    item.Kind == "capability_recovery" && item.Status == "queued",
+                    cancellationToken);
+            if (activeOperation)
+            {
+                match.UpdatedAt = DateTimeOffset.UtcNow;
+                continue;
+            }
             try
             {
                 var native = await control.GetMatchAsync(match.MatchId, cancellationToken);
-                match.Status = native.Match.Status == "parked" ? "parked" : "running";
                 var incident = await control.GetActiveCapabilityIncidentAsync(
                     match.MatchId, cancellationToken);
-                match.LastError = incident is null ? null
-                    : "Recovery was interrupted before the capability incident could be cleared. The native state remains preserved and operator attention is still required.";
+                match.Status = incident is null
+                    ? native.Match.Status == "parked" ? "parked" : "running"
+                    : "error";
+                match.LastError = incident is null ? null :
+                    "Recovery was interrupted before the capability incident could be cleared. The native state remains preserved and operator attention is still required.";
             }
             catch (ControlPlaneException exception)
             {
@@ -87,6 +109,7 @@ public sealed class PortalMatchSupervisor(
         foreach (var match in waitingWithoutPresence)
             match.WaitingVacantSince = DateTimeOffset.UtcNow;
         if (interrupted.Length > 0 || interruptedRecovery.Length > 0 ||
+            interruptedRecoveryOperations.Length > 0 ||
             waitingWithoutPresence.Length > 0)
         {
             await database.SaveChangesAsync(cancellationToken);
@@ -99,6 +122,7 @@ public sealed class PortalMatchSupervisor(
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var control = scope.ServiceProvider.GetRequiredService<ControlPlaneClient>();
         await ReconcileDormantMatchesAsync(database, control, cancellationToken);
+        await ReconcileRecoveringMatchesAsync(database, control, cancellationToken);
         await SynchronizeWaitingSeatsAsync(database, cancellationToken);
         var match = await database.PortalMatches
             .OrderBy(item => item.UpdatedAt)
@@ -139,6 +163,69 @@ public sealed class PortalMatchSupervisor(
         }
         await AutoParkIdleBrowserMatchesAsync(database, control, cancellationToken);
         await ExpireWaitingLobbiesAsync(database, cancellationToken);
+    }
+
+    private async Task ReconcileRecoveringMatchesAsync(
+        ApplicationDbContext database, ControlPlaneClient control,
+        CancellationToken cancellationToken)
+    {
+        var recovering = await database.PortalMatches
+            .Where(item => item.Status == "recovering")
+            .OrderBy(item => item.UpdatedAt)
+            .Take(8)
+            .ToArrayAsync(cancellationToken);
+        foreach (var match in recovering)
+        {
+            try
+            {
+                var native = await control.GetMatchAsync(match.MatchId, cancellationToken);
+                var incident = await control.GetActiveCapabilityIncidentAsync(
+                    match.MatchId, cancellationToken);
+                var operation = await database.PortalMaintenanceOperations
+                    .Where(item => item.MatchId == match.MatchId &&
+                        item.Kind == "capability_recovery")
+                    .OrderByDescending(item => item.UpdatedAt)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (native.Match.Status == "running" && incident is null)
+                {
+                    match.Status = "running";
+                    match.LastError = null;
+                    match.UpdatedAt = DateTimeOffset.UtcNow;
+                    if (operation is not null && operation.Status is "queued" or "running")
+                    {
+                        operation.Status = "completed";
+                        operation.Phase = "complete";
+                        operation.Summary = "Recovery completed and native state was reconciled successfully.";
+                        operation.CompletedSteps = operation.TotalSteps;
+                        operation.CanCancel = false;
+                        operation.CompletedAt = DateTimeOffset.UtcNow;
+                        operation.UpdatedAt = DateTimeOffset.UtcNow;
+                    }
+                    await database.SaveChangesAsync(cancellationToken);
+                    await NotifyAsync(match.MatchId, cancellationToken);
+                    continue;
+                }
+
+                var operationActive = operation is not null &&
+                    operation.Status is "queued" or "running";
+                if (operationActive) continue;
+
+                match.Status = native.Match.Status == "parked" ? "parked" : "error";
+                match.LastError = incident is null
+                    ? "Recovery did not reach a running native session. The preserved campaign needs operator review."
+                    : "Recovery is not running and the capability incident still requires operator attention.";
+                match.UpdatedAt = DateTimeOffset.UtcNow;
+                await database.SaveChangesAsync(cancellationToken);
+                await NotifyAsync(match.MatchId, cancellationToken);
+            }
+            catch (ControlPlaneException exception)
+            {
+                logger.LogDebug(exception,
+                    "Recovery reconciliation is waiting for native control state for {MatchId}",
+                    match.MatchId);
+            }
+        }
     }
 
     private async Task SynchronizeWaitingSeatsAsync(

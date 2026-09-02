@@ -264,8 +264,13 @@ dismissal as resolution. After bridge coverage is deployed, **Retry from
 verified checkpoint** parks the preserved old session, refreshes the managed
 runtime image, restores the save, and acknowledges the capability/no-progress
 incidents only after the new native session is healthy. If recovery is
-interrupted, startup reconciliation derives running/parked state from the
-control plane and retains the unresolved incident.
+interrupted, its persisted maintenance operation resumes after portal restart.
+Navigation and browser disconnects cannot cancel it. Lobby and spectator pages
+show the current phase and reconnect their stream frame when the replacement
+worker generation becomes healthy. Continuous reconciliation derives truth
+from the native control plane, clears a stranded portal `recovering` state, and
+lets ordinary supervision start a fresh Hermes run. The unresolved incident
+remains fail-closed if the native rebuild does not succeed.
 
 When every human is a managed browser player and all have been absent for ten
 minutes, the platform checkpoints and parks the match. It does not auto-park an

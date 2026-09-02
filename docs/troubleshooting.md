@@ -506,6 +506,15 @@ incident remain active. **Stop & park** is the non-resuming alternative. A
 capability gap is expected fail-closed behavior, not permission to fall back to
 screenshots or mouse input.
 
+The retry button queues work and should respond promptly; the rebuild itself
+can take a few minutes while Docker refreshes the prepared runtime and the game
+loads its verified save. Progress remains visible on both the lobby and
+observation deck, and it continues after navigation or a portal restart. If a
+container removal is still settling, the operation reports that phase and
+retries automatically instead of abandoning the campaign. A terminal failure
+returns the match to visible operator review with its checkpoint and incident
+preserved.
+
 ## Cleanup
 
 Stop persistent services without deleting data:
