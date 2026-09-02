@@ -47,6 +47,11 @@ public sealed class LobbiesController(
             .GroupBy(seat => seat.MatchId)
             .Select(group => new { MatchId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(item => item.MatchId, item => item.Count, HttpContext.RequestAborted);
+        var matchesWithHumanPlayers = (await database.PortalLobbySeats.AsNoTracking()
+            .Where(seat => seat.ControllerKind == "human")
+            .Select(seat => seat.MatchId)
+            .Distinct()
+            .ToArrayAsync(HttpContext.RequestAborted)).ToHashSet(StringComparer.Ordinal);
         var userId = userManager.GetUserId(User);
         var participantIds = userId is null ? new HashSet<string>() : (await database.PortalMatchParticipants
             .AsNoTracking().Where(item => item.UserId == userId).Select(item => item.MatchId)
@@ -66,7 +71,9 @@ public sealed class LobbiesController(
             match.Status == "waiting" && match.WaitingVacantSince is not null
                 ? match.WaitingVacantSince + waitingLobbyPolicy.AbandonLifetime
                 : null,
-            !participantIds.Contains(match.MatchId) && (administrator || match.AllowSpectators)))
+            match.Status == "running" && !participantIds.Contains(match.MatchId) &&
+                (administrator || match.AllowSpectators ||
+                    !matchesWithHumanPlayers.Contains(match.MatchId))))
             .ToArray();
         return ApiResponse<IReadOnlyList<PublicLobbySummary>>.Success(results);
     }
@@ -86,7 +93,8 @@ public sealed class LobbiesController(
         var participant = await matchAccess.IsParticipantAsync(
             profile.MatchId, userId, HttpContext.RequestAborted);
         var activeCampaign = profile.Status is not ("waiting" or "closed" or "completed");
-        if (activeCampaign && !participant && !await matchAccess.CanSpectateAsync(
+        if (activeCampaign && !participant && !CanManage(profile) &&
+            !await matchAccess.CanSpectateAsync(
                 profile, userId, User.IsInRole(PortalRoles.Administrator),
                 HttpContext.RequestAborted))
             return Forbid();
@@ -1282,10 +1290,8 @@ public sealed class LobbiesController(
             .ToArrayAsync(HttpContext.RequestAborted);
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var administrator = User.IsInRole("Administrator");
-        var participant = await matchAccess.IsParticipantAsync(
-            profile.MatchId, userId, HttpContext.RequestAborted);
-        var maySpectate = userId is not null && !participant &&
-            (administrator || profile.AllowSpectators);
+        var maySpectate = await matchAccess.CanSpectateAsync(
+            profile, userId, administrator, HttpContext.RequestAborted);
         var seats = seatEntities.Select(seat =>
         {
             var live = profile.Status == "running";

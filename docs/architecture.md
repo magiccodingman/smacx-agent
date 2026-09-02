@@ -232,7 +232,8 @@ Authorization happens before proxying:
 - member controls their exact browser seat only while its per-tab lease is the
   active generation;
 - administrator may control their own seat and, only when not a campaign participant, observe any seat;
-- lobby opt-in permits signed-in non-participants to request spectator access;
+- lobby opt-in permits signed-in non-participants to request spectator access
+  in human games, while running AI-only simulations always permit it;
 - participant identity is retained durably so leaving cannot unlock enemy views;
 - observer mode is enforced read-only at transport; and
 - direct worker credentials/passwords are not exposed.

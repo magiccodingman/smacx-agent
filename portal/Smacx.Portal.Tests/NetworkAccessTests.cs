@@ -48,6 +48,62 @@ public sealed class NetworkAccessTests
         Assert.False(await service.CanSpectateAsync(match, null, true));
     }
 
+    [Fact]
+    public async Task RunningAiOnlyCampaignIsVisibleToEveryAuthenticatedNonParticipant()
+    {
+        await using var database = await DatabaseAsync();
+        var service = new MatchAccessService(database);
+        var match = await database.PortalMatches.SingleAsync();
+        match.AllowSpectators = false;
+        match.Status = "running";
+        database.PortalLobbySeats.Add(new PortalLobbySeat
+        {
+            MatchId = match.MatchId,
+            SeatIndex = 0,
+            ControllerKind = "agent",
+            Status = "ready",
+        });
+        await database.SaveChangesAsync();
+
+        Assert.True(await service.CanSpectateAsync(match, "owner", false));
+        Assert.True(await service.CanSpectateAsync(match, "observer", false));
+        Assert.False(await service.CanSpectateAsync(match, "participant", true));
+        Assert.False(await service.CanSpectateAsync(match, null, true));
+    }
+
+    [Fact]
+    public async Task AiOnlyVisibilityStartsOnlyAfterTheCampaignStarts()
+    {
+        await using var database = await DatabaseAsync();
+        var service = new MatchAccessService(database);
+        var match = await database.PortalMatches.SingleAsync();
+        match.AllowSpectators = false;
+
+        Assert.False(await service.CanSpectateAsync(match, "observer", false));
+    }
+
+    [Fact]
+    public async Task HumanCampaignStillRequiresSpectatorOptIn()
+    {
+        await using var database = await DatabaseAsync();
+        var service = new MatchAccessService(database);
+        var match = await database.PortalMatches.SingleAsync();
+        match.AllowSpectators = false;
+        match.Status = "running";
+        database.PortalLobbySeats.Add(new PortalLobbySeat
+        {
+            MatchId = match.MatchId,
+            SeatIndex = 0,
+            ControllerKind = "human",
+            UserId = "owner",
+            Status = "ready",
+        });
+        await database.SaveChangesAsync();
+
+        Assert.False(await service.CanSpectateAsync(match, "observer", false));
+        Assert.True(await service.CanSpectateAsync(match, "observer", true));
+    }
+
     private static async Task<ApplicationDbContext> DatabaseAsync()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

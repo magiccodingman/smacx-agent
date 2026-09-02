@@ -31,7 +31,15 @@ public sealed class MatchAccessService(ApplicationDbContext database)
     {
         if (userId is null || await IsParticipantAsync(match.MatchId, userId, cancellationToken))
             return false;
-        return administrator || match.AllowSpectators;
+        if (administrator || match.AllowSpectators) return true;
+
+        // An unattended simulation must never become an opaque process that its
+        // owner cannot observe. This is an effective access rule rather than a
+        // mutation of the lobby's preference: if a human later joins a restored
+        // campaign, the ordinary opt-in spectator policy applies again.
+        return match.Status == "running" && !await database.PortalLobbySeats.AsNoTracking()
+            .AnyAsync(item => item.MatchId == match.MatchId &&
+                item.ControllerKind == "human", cancellationToken);
     }
 
     public async Task RecordAssignedPlayersAsync(
