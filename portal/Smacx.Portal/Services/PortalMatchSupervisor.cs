@@ -659,6 +659,14 @@ public sealed class PortalMatchSupervisor(
         ApplicationDbContext database, ControlPlaneClient control,
         PortalMatchProfile match, CancellationToken cancellationToken)
     {
+        // A capability incident is a deliberate fail-closed latch. The control
+        // plane stops the active run, and the portal must not mistake that
+        // absence for an invitation to create a replacement run every cycle.
+        // The preserved native worker remains observable until the operator
+        // parks/ends the match and explicitly recovers after a bridge update.
+        if (await control.GetActiveCapabilityIncidentAsync(
+                match.MatchId, cancellationToken) is not null)
+            return;
         using var runsDocument = await control.GetRawAsync("api/v1/harness-runs", cancellationToken);
         var runs = runsDocument.RootElement.GetProperty("harness_runs").EnumerateArray().ToArray();
         var controlMatch = await control.GetMatchAsync(match.MatchId, cancellationToken);
