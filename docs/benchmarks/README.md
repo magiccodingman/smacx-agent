@@ -1,0 +1,48 @@
+# Autonomous-play benchmarks
+
+This directory holds small, sanitized evidence reports for repeatable agent
+runtime regressions. It is not a validation diary and never contains game
+files, screenshots, model conversations, chat, prompts, responses, reasoning,
+tool arguments, provider addresses, credentials, or private host details.
+
+## Required test conditions
+
+- Use a test-owned match and isolated managed workers.
+- Set the native multiplayer turn clock to **None**.
+- Record the game profile, participant mix, AI profile intent, target duration,
+  code revision, and explicit pass criteria.
+- Treat only journaled agent actions with observed native before/after progress
+  as causal success. A turn number moving by itself is insufficient.
+- Preserve failures in aggregate form: malformed call counts, error codes,
+  repetition circuits, supervision incidents, and missing handoffs.
+
+## Report artifacts
+
+`scripts/agent_simulation_report.py` verifies each perspective's hash chain and
+summarizes causal actions, turn advancement, stale rebases, checkpoints,
+incidents, and portal turn telemetry.
+
+`scripts/hermes_session_audit.py` reads one Hermes state database and emits only
+counts: sessions, token/API totals, tool names, safe error-code labels, malformed
+records, exact repetition runs, compression health, and bounded `TURN HANDOFF`
+compliance.
+
+Commit the generated JSON under `results/` alongside a short Markdown report
+that names the exact Git commit, conditions, observed limitations, and commands
+needed to reproduce it. Do not hand-edit generated JSON.
+
+Published reports:
+
+- [2026-09-02 bounded runtime no-timer smoke test](2026-09-02-bounded-runtime.md)
+
+## Interpreting results
+
+A smoke test passes only when the agent—not a native timer—causes multiple
+turns of progress, every executed operation came from an opaque legal choice,
+no unresolved repetition/capability circuit remains, and turn handoffs remain
+bounded. Strategy quality is reported separately from runtime correctness.
+
+Token totals are cumulative provider work, not context-window occupancy.
+Compare per-session and per-turn deltas rather than dividing a lifetime total by
+the latest game turn. Large prompt totals combined with low semantic progress
+indicate repeated context transmission or a loop and require investigation.

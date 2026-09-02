@@ -159,6 +159,9 @@ malformed records, exact repetition, compression health, handoff compliance,
 and token totals. Neither tool emits prompts, responses, chat, reasoning text,
 arguments, endpoints, secrets, game assets, or saves.
 
+The first published comparison using this procedure is the
+[bounded-runtime no-timer smoke test](benchmarks/2026-09-02-bounded-runtime.md).
+
 ## Repository boundaries
 
 Before opening a pull request, confirm that the diff contains none of the
