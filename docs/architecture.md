@@ -11,36 +11,30 @@ tested and secured independently.
 trusted LAN or invited HTTPS browser
        |
        v
-Caddy edge (HTTP LAN; automatic TLS for configured public hostname)
+Caddy edge (HTTP LAN; automatic TLS for configured invited-friends hostname)
        |
-       | accounts, lobbies, reports, ephemeral controller leases
+       | authenticated portal/API and authorized stream proxy
        v
-.NET 10 Blazor portal + controllers + SignalR
+.NET 10 Blazor portal + controllers + SignalR ----> portal SQLite
+       |                                                accounts/access/
+       | purpose service token                         lobbies/projections
+       v
+Python control API --------------------------------> control SQLite
+       |                                                native matches/saves/
+       | Docker lifecycle                              memory/operations
+       v
+one isolated seat
        |
-       | purpose service token, private Docker network
-       v
-Python control API ------------------------------------+
-       |                                                |
-       | Docker lifecycle                               | SQLite authority
-       |                                                | matches/seats/saves/
-       |                                                | memory/operations
-       +------------------+-----------------------------+
-                          |
-                 one isolated seat
-                          |
-          +---------------+----------------+
-          |                                |
-          v                                v
-Proton + terranx.exe + bridge       MCP sidecar
-          |                                ^
-          | typed native state/actions     |
-          +--------------------------------+
-          |
-          +--> Selkies video/audio/input (portal proxied)
+       +--> Proton + terranx.exe + semantic bridge <--> exact-seat MCP
+       |                |
+       |                +--> Selkies video/audio/input (portal proxied)
+       |
+       +--> isolated SMACX-derived Hermes <--> OpenAI-compatible provider
 
-OpenAI-compatible provider <--> isolated SMACX-derived Hermes container
-                                      |
-                                      +--> exact seat MCP only
+portal/MCP ----> private .NET knowledge service ----> private acquired corpus
+                       |                                + shared embeddings
+                       |
+control event cursor -> optional Graphiti projector -> private FalkorDB
 ```
 
 Optional Graphiti/FalkorDB reads committed authoritative events through a cursor
@@ -64,8 +58,9 @@ proxy escape hatch.
 
 ### Portal authority
 
-The portal is the only ordinary browser/LAN entry point and the only writer of
-its canonical pre-release SQLite schema:
+The Caddy edge is the only ordinary browser entry point. It serves trusted-LAN
+HTTP and invitation-gated Internet HTTPS, then proxies to the portal. The portal
+is the only writer of its canonical pre-release SQLite schema:
 
 - ASP.NET Core Identity users/roles/password-reset grants;
 - trusted-network classification behind the private Caddy proxy, single-use
@@ -80,6 +75,12 @@ its canonical pre-release SQLite schema:
 Client-side Blazor state is not an authorization boundary. Controllers recheck
 the principal, role, match ownership/membership, seat, lobby policy, and stream
 mode. SignalR carries notifications/presence, not game video.
+
+Remote registration requires a single-use expiring invitation. A first remote
+sign-in requires a content-free, browser-local installation fingerprint. These
+Internet gates do not apply to ordinary trusted-LAN registration unless an
+administrator explicitly enables the equivalent LAN policies. See [Network
+access and play modes](network-access.md).
 
 ### Control authority
 

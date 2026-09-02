@@ -1,8 +1,9 @@
 # Encrypted remote player LAN
 
 SMACX Agent supports a Linux-first Tailscale subnet-router deployment for
-private games across the Internet. It does not publish DirectPlay or the
-Control Center to the public Internet. Each game worker keeps a distinct IP on
+private native-client games across the Internet. It does not publish DirectPlay
+to the public Internet. Invitation-gated browser play is a separate supported
+HTTPS path through the included Caddy edge. Each game worker keeps a distinct IP on
 the operator's macvlan/ipvlan player subnet, and remote Tailscale members join
 the exact worker IPv4 shown by the Control Center.
 
@@ -78,6 +79,7 @@ remote game also depends on the operator's Tailscale account, ACL and route
 approval, ISP path, and client machine. Test the displayed worker address from
 each participating client before starting a long campaign.
 
-Do not use Tailscale Funnel, public port forwarding, or a public Control Center
-for gameplay. The supported remote path is a private tailnet with explicit
-participants.
+Do not use Tailscale Funnel or public port forwarding for DirectPlay. The
+supported native-client path is a private tailnet with explicit participants.
+For managed browser players, use the separate [Internet hosting for invited
+friends](internet-hosting.md) flow and forward only HTTPS TCP 443.

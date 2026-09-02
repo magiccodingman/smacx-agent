@@ -82,8 +82,8 @@ pretended to be offline.
 
 On the host, loopback works immediately. Phones, tablets, and other LAN
 devices can use the ordinary HTTP portal; PWA installation on another device
-needs the trusted HTTPS origin supplied by a configured public hostname (or
-another trusted local certificate). Once installed, Planet can sit beside any
+needs the trusted HTTPS origin supplied by a configured invited-friends
+hostname (or another trusted local certificate). Once installed, Planet can sit beside any
 other game in a launcher even though the original Windows executable remains
 isolated on the Linux host.
 
@@ -333,8 +333,9 @@ also need:
 - an existing Alien Crossfire directory containing `terranx.exe`; and
 - Docker Engine with Compose v2.
 
-See the focused [localhost/LAN installation guide](docs/lan-installation.md)
-for the persistent first-run flow.
+Follow [Getting started: localhost and LAN](docs/lan-installation.md) for the
+complete first-run flow—from Docker and locating `terranx.exe` through the
+administrator account and first lobby.
 
 The worker image fetches checksum-pinned, open-source GE-Proton and the
 archived original Microsoft DirectX redistributable during its reproducible
@@ -373,6 +374,12 @@ check of the player's own installation. No game file is uploaded. See
 [Internet hosting for friends](docs/internet-hosting.md). The service is a
 private game table, not public matchmaking.
 
+Use [Network access and play modes](docs/network-access.md) for one precise
+comparison of localhost, trusted-LAN browsers, invited Internet browsers,
+physical-LAN native clients, and private Tailscale native clients. Friends who
+only need to play can follow the short [Joining a SMACX Agent
+server](docs/joining-a-server.md) guide.
+
 For complete prerequisites, runtime registration, networking, accounts,
 providers, lobbies, streams, saves, and recovery, use the
 [operator guide](docs/control-center.md).
@@ -391,9 +398,14 @@ notice](docs/privacy.md).
 ## Go deeper
 
 The front page tells the product story. Operator and developer documentation
-goes deeper where needed:
+goes deeper where needed. The [documentation index](docs/README.md) routes
+hosts, invited players, operators, AI configurators, and contributors separately:
 
 - [Operator guide](docs/control-center.md)
+- [Getting started: localhost and LAN](docs/lan-installation.md)
+- [Network access and play modes](docs/network-access.md)
+- [Internet hosting for invited friends](docs/internet-hosting.md)
+- [Joining a SMACX Agent server](docs/joining-a-server.md)
 - [Managed play, display, chat, voting, and recovery](docs/managed-play.md)
 - [Installable app and trusted HTTPS](docs/installable-app.md)
 - [Architecture and trust boundaries](docs/architecture.md)

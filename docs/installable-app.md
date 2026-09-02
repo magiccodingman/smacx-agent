@@ -35,9 +35,11 @@ development exceptions `localhost` and `127.0.0.1`. Therefore:
 - durable installation on another LAN device requires terminating HTTPS for
   the portal with a certificate that device trusts.
 
-The included Caddy edge supplies trusted HTTPS when an invited-friends public
-hostname is configured. Keep the host private and invitation-gated; HTTPS does
-not turn the Control Center into public matchmaking or anonymous streaming.
+The included Caddy edge supplies trusted HTTPS when an invited-friends Internet
+hostname is configured. “Internet hostname” describes reachability, not open
+access: registration stays invitation-gated, spectating stays authenticated,
+and HTTPS does not turn the Control Center into public matchmaking. See
+[Internet hosting for invited friends](internet-hosting.md).
 
 Current browser behavior is documented by
 [MDN's installability guide](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)

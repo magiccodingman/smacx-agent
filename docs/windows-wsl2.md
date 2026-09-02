@@ -29,12 +29,14 @@ legal executable, and an actual read-only Docker bind of that path. GE-Proton
 and the bundled DirectPlay redistributable are built into the worker image. It
 changes no game files.
 
-Then run `scripts/control-center-up.sh` for solo or same-host AI games. Visit
-`http://localhost:8080`, use the one-time token printed by the bootstrap
-instructions, configure an optional model endpoint, create AI profiles if
-wanted, and leave the Control Center running across games.
+Then run `scripts/control-center-up.sh`. Visit `http://localhost:8080`, use the
+one-time token printed by the bootstrap instructions, configure an optional
+model endpoint, create AI profiles if wanted, and leave the Control Center
+running across games. Managed browser players use the same LAN and invited-HTTPS
+model described in [Network access and play modes](network-access.md), subject to
+the Windows/WSL firewall and port-forwarding path on that host.
 
-## Human and remote multiplayer
+## Native human and remote multiplayer
 
 Docker Desktop does not support Linux macvlan. Create a dedicated labeled
 bridge and advertise only that subnet through the packaged, firewalled
@@ -50,6 +52,10 @@ The router permits inbound tailnet forwarding only to DirectPlay TCP 47624 and
 TCP/UDP 2300–2400; other routed access to Control Center/MCP/container ports is
 rejected. Its state volume persists authentication. Approve the exact subnet
 route in Tailscale, then join the worker IPv4 displayed by the Control Center.
+
+This Tailscale section is only for original-game native clients. Remote managed
+browser players use the included Caddy edge and [Internet hosting for invited
+friends](internet-hosting.md).
 
 WSL2 networking and Docker Desktop versions change independently. Run the
 packaged preflight on the target host and confirm that its routed DirectPlay

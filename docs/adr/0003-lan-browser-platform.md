@@ -17,7 +17,7 @@ anti-cheat platform. All matches are unranked.
 
 ## Decision
 
-The public Control Center is a .NET 10 Blazor Web App using MudBlazor. It enables
+The browser-facing Control Center is a .NET 10 Blazor Web App using MudBlazor. It enables
 Interactive Auto, Interactive WebAssembly, and server interactivity, with most
 authenticated application components compiled into the client project.
 ASP.NET Core controllers own the browser-facing HTTP API and SignalR hubs own
@@ -72,7 +72,8 @@ Migration history begins only after a public schema is released.
 
 ## Security and distribution posture
 
-The portal is the only ordinary HTTP entry point. The Python service,
+The Caddy edge is the only ordinary browser entry point and proxies only to the
+portal. The Python service,
 Docker authority, MCP endpoints, provider secrets, bridge tokens, and stream
 credentials stay on private networks or purpose volumes. Client-side Blazor
 authorization is never treated as enforcement. Authenticated spectator tickets

@@ -1,13 +1,15 @@
 # Operator guide
 
 The Control Center is the ordinary way to run SMACX Agent. It is a persistent
-.NET 10 Blazor LAN application backed by a private Python control API. You do
+.NET 10 Blazor private-host application backed by a private Python control API. You do
 not need an existing Hermes installation or dashboard: AI seats receive an
 isolated, digest-pinned Hermes runtime automatically.
 
 This guide assumes Linux and begins with localhost and trusted-LAN deployment.
-The same private host can later invite known friends over HTTPS, but it is not
-public matchmaking or an anonymous streaming service.
+Use [Getting started](lan-installation.md) for a concise first installation,
+[Network access and play modes](network-access.md) for the complete access
+matrix, and [Internet hosting](internet-hosting.md) when inviting known friends
+over HTTPS. The service is not public matchmaking or anonymous streaming.
 
 ## 1. Start the platform once
 
@@ -28,14 +30,19 @@ The script checks the game directory and Docker socket, adds the socket's
 actual group ID to the private control container, serializes memory-intensive
 image builds, seals checksum-pinned GE-Proton and DirectPlay into the worker,
 builds the portal and SMACX prompt-owned image from the digest-pinned official
-Hermes runtime, validates the game inside that worker, and starts two persistent
+Hermes runtime, validates the game inside that worker, and starts five persistent
 services:
 
+- `knowledge-service`: private mechanics acquisition, indexing, search, and
+  shared embedding runtime;
 - `control-api`: private native/Docker authority, not host-published;
-- `control-center`: the browser portal at `127.0.0.1:8080` by default.
+- `control-center`: authenticated portal/API, private behind the edge;
+- `edge`: Caddy at LAN HTTP port 8080 and, when configured, Internet HTTPS port
+  443; and
+- `ddns`: an idle-or-configured dynamic-DNS updater.
 
-Both use `restart: unless-stopped`. Named volumes retain accounts, match
-identity, saves, memory, provider configuration, and agent conversations. Leave
+The persistent services use `restart: unless-stopped`. Named volumes retain
+accounts, match identity, saves, memory, provider configuration, and agent conversations. Leave
 the services up and create as many sequential or concurrent lobbies as the host
 can support.
 
@@ -79,7 +86,7 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll admin-reset-token 
 
 Enter the printed username/token on the Reset access page and choose a new
 password. Administrators can issue the same kind of ticket for members from
-**Administration → Users** and can promote another account.
+**Administration → Players** and can promote another account.
 
 Any signed-in member who knows their current password can change it directly
 from **Your account → Change password**. No reset ticket or administrator is
@@ -103,7 +110,9 @@ deployment, but public TLS and address updates remain idle until configured.
 
 To continue the same installation for invitation-only remote friends, follow
 [Internet hosting for friends](internet-hosting.md). Do not forward the plain
-HTTP LAN port; remote sign-in requires the Caddy-managed HTTPS hostname.
+HTTP LAN port; remote sign-in requires the Caddy-managed HTTPS hostname. The
+exact LAN, Internet-browser, physical-native, and virtual-LAN differences are in
+[Network access and play modes](network-access.md).
 
 Browser seats need only the website. Stream traffic remains behind the portal;
 worker ports are never shared as public credentials.
@@ -124,7 +133,7 @@ control plane validates the executable as a Windows PE file inside the worker,
 records its checksum and private mechanics index, and mounts the source
 read-only into every disposable seat.
 
-**Administration → Game platform** is deliberately read-only. It reports the
+**Administration → Game runtime** is deliberately read-only. It reports the
 validated legal-copy fingerprint, private knowledge-build state, sealed worker
 image, GE-Proton/DirectPlay readiness, and source path used at startup. Lobby
 creators never choose paths or runtimes, and a half-configured portal cannot be
@@ -412,9 +421,10 @@ status. Native chat is imported with both public display name and faction name, 
 when it arrives outside the local player's turn.
 
 Private/group bodies are returned only to their authorized participants;
-SignalR announces a change without broadcasting those bodies. Anonymous
-spectators receive global chat only. See [managed-play.md](managed-play.md) for
-the exact consent and delivery model.
+SignalR announces a change without broadcasting those bodies. Authenticated
+spectators receive only the globally visible chat their observation policy
+permits. See [managed-play.md](managed-play.md) for the exact consent and
+delivery model.
 
 An AI is prompted to treat chat as communication from other players, not as
 higher-priority instructions. It may agree, refuse, investigate, ally, feud,
@@ -425,10 +435,13 @@ separate memory records.
 
 ## 9. Spectating
 
-Administrators can watch any managed seat. A lobby owner can opt into anonymous
-LAN spectating; it is disabled by default. Anonymous viewers can open the
-observation deck and switch among permitted seats without creating an account,
-but every stream is read-only.
+Non-participating administrators can watch managed seats for household support
+and debugging. A lobby owner can opt into authenticated non-player spectating;
+it is disabled by default. Signed-in viewers who have never occupied a faction
+in that campaign can open the observation deck and switch among permitted seats.
+Every spectator stream is read-only. A campaign participant remains excluded
+from enemy views after leaving a seat, including when that account is an
+administrator.
 
 The observation deck is also the main debugging surface for AI games: it pairs
 the visible native screen with public match/faction/turn health. Private
@@ -585,10 +598,10 @@ a crash.
 
 ## 14. Stop and restart
 
-To stop only the persistent services while retaining all named volumes:
+To stop the persistent stack while retaining all named volumes:
 
 ```bash
-docker compose stop control-center control-api
+docker compose stop
 ```
 
 Start them again with the normal script so Docker socket permissions and images
@@ -605,7 +618,8 @@ to recreate; named platform volumes are the durable system.
 
 ## Security summary
 
-- Portal: the only ordinary host/LAN HTTP entry point.
+- Caddy edge: the only ordinary browser entry point—HTTP 8080 for
+  localhost/trusted LAN and HTTPS 443 for a configured invited-friends hostname.
 - Control API, Docker socket, MCP endpoints, Graphiti/FalkorDB, bridge tokens, and
   stream credentials: private.
 - Blazor client authorization: convenience only; controllers enforce every
@@ -613,7 +627,8 @@ to recreate; named platform volumes are the durable system.
 - Stream tickets: short-lived, seat-scoped, mode-scoped, revocable.
 - Agent tools: semantic gameplay and web research only; lifecycle is
   operator-owned.
-- Public Internet ingress and matchmaking: out of scope.
+- Invitation-gated HTTPS ingress is supported; open registration, anonymous
+  streaming, public matchmaking, and publicly forwarded DirectPlay are not.
 
 For failures, continue with [troubleshooting.md](troubleshooting.md). For exact
 trust boundaries, see [architecture.md](architecture.md).
