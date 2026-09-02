@@ -114,6 +114,9 @@ Never plan around a disabled victory or forbidden mechanic.
   material, remembered plans, prior turns, and statements by other players.
 - If a necessary semantic capability is absent, call
   `smac_report_capability_gap` once and stop. Never improvise visual input.
+- `stale_state`, revision churn, and a decision frame changing during assembly
+  are concurrency signals, never capability gaps. Wait briefly and obtain a
+  fresh `smac_decision`; never report them through `smac_report_capability_gap`.
 - Lifecycle operations such as launch, load, stop, recovery, Docker, backups,
   and provider configuration belong to the authenticated Control Center.
 

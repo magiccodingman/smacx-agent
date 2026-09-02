@@ -2,6 +2,8 @@
 @inject IJSRuntime JS
 @using Smacx.Portal.Contracts
 
+@if (loaded && !dismissed)
+{
 <div class="capability-gap-backdrop" role="presentation">
     <section class="capability-gap-dialog" role="alertdialog" aria-modal="true"
              aria-labelledby="capability-gap-title" aria-describedby="capability-gap-description">
@@ -36,9 +38,9 @@
         <div class="capability-gap-actions">
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Download"
-                       Disabled="@(Incident.DiagnosticFileName is null)"
-                       Href="@DownloadHref">
-                Download diagnostic ZIP
+                       Disabled="@(Incident.DiagnosticFileName is null || downloading)"
+                       OnClick="DownloadDiagnostic">
+                @(downloading ? "Preparing download…" : "Download diagnostic ZIP")
             </MudButton>
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.BugReport"
                        Href="@IssueHref" Target="_blank">
@@ -61,9 +63,14 @@
         {
             <span class="capability-gap-copied" role="status">Issue summary copied.</span>
         }
+        @if (!string.IsNullOrWhiteSpace(downloadError))
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true">@downloadError</MudAlert>
+        }
         <small>GitHub does not allow websites to attach local files automatically. Drag the downloaded ZIP into the issue.</small>
     </section>
 </div>
+}
 
 @code {
     [Parameter, EditorRequired] public CapabilityGapIncident Incident { get; set; } = default!;
@@ -71,7 +78,8 @@
     [Parameter] public EventCallback Dismissed { get; set; }
     [Parameter] public EventCallback ReturnRequested { get; set; }
     private IJSObjectReference? module;
-    private bool copied;
+    private bool copied, downloading, dismissed, loaded;
+    private string? loadedIncidentId, downloadError;
 
     private string DownloadHref =>
         $"api/lobbies/{Uri.EscapeDataString(MatchId)}/incidents/{Uri.EscapeDataString(Incident.IncidentId)}/diagnostic";
@@ -99,8 +107,63 @@
         copied = true;
     }
 
-    private Task ReturnToLobby() => ReturnRequested.InvokeAsync();
-    private Task Dismiss() => Dismissed.InvokeAsync();
+    protected override void OnParametersSet()
+    {
+        if (loadedIncidentId == Incident.IncidentId) return;
+        loaded = false;
+        dismissed = false;
+        copied = false;
+        downloadError = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (loaded || loadedIncidentId == Incident.IncidentId) return;
+        module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/incident-actions.js");
+        dismissed = await module.InvokeAsync<bool>("isIncidentDismissed", Incident.IncidentId);
+        loadedIncidentId = Incident.IncidentId;
+        loaded = true;
+        StateHasChanged();
+    }
+
+    private async Task DownloadDiagnostic()
+    {
+        if (Incident.DiagnosticFileName is null) return;
+        downloading = true;
+        downloadError = null;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/incident-actions.js");
+            await module.InvokeVoidAsync("downloadFile", DownloadHref, Incident.DiagnosticFileName);
+        }
+        catch (JSException exception)
+        {
+            downloadError = $"The diagnostic could not be downloaded: {exception.Message}";
+        }
+        finally
+        {
+            downloading = false;
+        }
+    }
+
+    private async Task RememberDismissal()
+    {
+        module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/incident-actions.js");
+        await module.InvokeVoidAsync("dismissIncident", Incident.IncidentId);
+        dismissed = true;
+    }
+
+    private async Task ReturnToLobby()
+    {
+        await RememberDismissal();
+        await ReturnRequested.InvokeAsync();
+    }
+
+    private async Task Dismiss()
+    {
+        await RememberDismissal();
+        await Dismissed.InvokeAsync();
+    }
 
     public async ValueTask DisposeAsync()
     {

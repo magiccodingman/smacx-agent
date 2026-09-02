@@ -3990,6 +3990,47 @@ bool semantic_interaction_command(const std::string& command) {
     return false;
 }
 
+uint32_t semantic_base_state_flags(const BASE& base) {
+    // Several native/Thinker bookkeeping bits change while the event loop is
+    // settling even though no fair-play choice has changed. Only retain flags
+    // which are observed by the semantic surface or alter a command's native
+    // legality. This keeps the optimistic-concurrency token meaningful rather
+    // than turning repaint/repair bookkeeping into a false stale state.
+    return static_cast<uint32_t>(base.state_flags) & (
+        BSTATE_DRONE_RIOTS_ACTIVE
+        | BSTATE_GOLDEN_AGE_ACTIVE
+        | BSTATE_COMBAT_LOSS_LAST_TURN
+        | BSTATE_RESEARCH_DATA_STOLEN
+        | BSTATE_FACILITY_SCRAPPED
+        | BSTATE_ARTIFACT_LINKED
+        | BSTATE_RENAME_BASE
+        | BSTATE_GENETIC_PLAGUE_INTRO
+        | BSTATE_ENERGY_RESERVES_DRAINED
+        | BSTATE_PRODUCTION_DONE
+        | BSTATE_NET_LOCKED
+        | BSTATE_PSI_GATE_USED
+        | BSTATE_HURRY_PRODUCTION);
+}
+
+uint32_t semantic_vehicle_state_flags(const VEH& veh) {
+    // Unknown repair/animation/AI bookkeeping bits are deliberately omitted.
+    // Patrol is mixed separately as a derived predicate so its unknown native
+    // bit cannot churn the revision while the unit is not actually patrolling.
+    return static_cast<uint32_t>(veh.state) & (
+        VSTATE_IN_TRANSPORT
+        | VSTATE_HAS_MOVED
+        | VSTATE_REQUIRES_SUPPORT
+        | VSTATE_MADE_AIRDROP
+        | VSTATE_DESIGNATE_DEFENDER
+        | VSTATE_MONOLITH_UPGRADED
+        | VSTATE_ON_ALERT
+        | VSTATE_EXPLORE
+        | VSTATE_USED_NERVE_GAS
+        | VSTATE_PACIFISM_DRONE
+        | VSTATE_PACIFISM_FREE_SKIP
+        | VSTATE_WORKING);
+}
+
 std::string semantic_revision() {
     // Opaque optimistic-concurrency token over fair, action-relevant state.
     // Clear a completed popup handoff before hashing so clients do not retain a
@@ -4178,7 +4219,7 @@ std::string semantic_revision() {
             }
             mix(static_cast<uint32_t>(base.minerals_accumulated));
             mix(static_cast<uint32_t>(base.mineral_surplus));
-            mix(static_cast<uint32_t>(base.state_flags));
+            mix(semantic_base_state_flags(base));
             mix(static_cast<uint32_t>(base.governor_flags));
             mix(static_cast<uint32_t>(base.worked_tiles));
             mix(static_cast<uint32_t>(base.specialist_total));
@@ -4205,11 +4246,14 @@ std::string semantic_revision() {
             }
             if (veh.faction_id == faction_id) {
                 mix(static_cast<uint32_t>(veh.order));
+                mix(static_cast<uint32_t>(veh.order_auto_type));
+                mix(static_cast<uint32_t>(veh.waypoint_count));
+                mix(static_cast<uint32_t>(veh.is_patrol_order() ? 1 : 0));
                 mix(static_cast<uint32_t>(veh.moves_spent));
                 mix(static_cast<uint32_t>(veh.home_base_id + 1));
                 mix(static_cast<uint32_t>(veh.waypoint_x[0] + 2));
                 mix(static_cast<uint32_t>(veh.waypoint_y[0] + 2));
-                mix(static_cast<uint32_t>(veh.state));
+                mix(semantic_vehicle_state_flags(veh));
             }
             mix(static_cast<uint32_t>(veh.cur_hitpoints()));
         }

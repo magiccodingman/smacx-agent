@@ -17,6 +17,7 @@ def main() -> int:
     original_launch_game = smacx_mcp.launch_game
     original_new_game = smacx_mcp.new_game
     original_load_saved_game = smacx_mcp.load_saved_game
+    original_briefing_gate = smacx_mcp._match_briefing_gate
     calls: list[tuple[str, dict[str, object]]] = []
     lifecycle_calls: list[str] = []
     match_id = "match-gap-test"
@@ -51,6 +52,23 @@ def main() -> int:
             smacx_mcp.load_saved_game = (
                 lambda *args, **kwargs: lifecycle_calls.append("load") or {"ok": True}
             )
+            smacx_mcp._match_briefing_gate = lambda match_id, session_id: None
+
+            transient = smacx_mcp.smac_report_capability_gap(
+                screen_or_state="stable turn with a ready unit",
+                intended_decision="skip the ready unit",
+                required_observation="a matching expected_revision",
+                required_action="skip_unit",
+                why_blocked="smac_command repeatedly returned stale_state",
+            )
+            if transient.get("error", {}).get("code") != \
+                    "transient_revision_conflict_not_capability_gap" \
+                    or transient.get("recorded") is not False \
+                    or smacx_mcp.CAPABILITY_GAPS \
+                    or smacx_mcp.GAP_LOG.exists():
+                raise AssertionError(
+                    f"revision churn incorrectly created a capability gap: {transient}"
+                )
 
             report_args = {
                 "screen_or_state": "fixture modal",
@@ -124,6 +142,7 @@ def main() -> int:
                     "launch_new_and_load_blocked": True,
                     "fresh_session_cannot_bypass_unresolved_gap": True,
                     "developer_restart_restores_native_guards": True,
+                    "revision_churn_cannot_create_gap": True,
                     "agent_clear_tool_exposed": False,
                 },
             }, separators=(",", ":")))
@@ -134,6 +153,7 @@ def main() -> int:
         smacx_mcp.launch_game = original_launch_game
         smacx_mcp.new_game = original_new_game
         smacx_mcp.load_saved_game = original_load_saved_game
+        smacx_mcp._match_briefing_gate = original_briefing_gate
         smacx_mcp.CAPABILITY_GAPS.clear()
         smacx_mcp.CAPABILITY_GAPS.update(original_gaps)
 

@@ -84,6 +84,9 @@ participant, not merely optimize isolated turns.
   use a menu or visual fallback; current native choices remain authoritative.
 - If a required semantic capability is absent, call
   `smac_report_capability_gap` once and stop. Never improvise a visual fallback.
+- `stale_state` and revision churn are transient concurrency signals, not
+  missing capabilities. Wait briefly and obtain a fresh `smac_decision`; never
+  report them through `smac_report_capability_gap`.
 - Launch, load, stop, worker, Docker, and harness lifecycle are operator-owned.
   Ask the operator when recovery is required.
 """
