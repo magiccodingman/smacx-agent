@@ -482,7 +482,10 @@ reconciliation can continue the conversation, the operations supervisor:
 3. leaves the native worker at the failing state for operator inspection; and
 4. creates a bounded diagnostic ZIP in the persistent control volume.
 
-Lobby and managed-player pages show **The AI stopped safely**. Download the ZIP,
+Lobby, managed-player, and spectator pages show **The AI stopped safely**.
+Dismissal closes the detailed modal but leaves a persistent **AI paused · needs
+attention** banner; it does not restart Hermes or acknowledge the incident.
+Download the ZIP,
 open the prefilled issue at
 <https://github.com/magiccodingman/smacx-agent/issues>, and attach the file. The
 bundle contains the redacted gap, environment fingerprints, match settings,
@@ -493,9 +496,15 @@ paths, user/account data, chat, and full model reasoning.
 
 GitHub does not permit the local portal to attach a downloaded file to a new
 issue automatically. Drag the ZIP into the issue after the prefilled page opens.
-Add a typed adapter with fair-state and rejection tests, rebuild, then recover
-into a fresh native session. A capability gap is expected fail-closed behavior,
-not permission to fall back to screenshots or mouse input.
+Add a typed adapter with fair-state and rejection tests and rebuild. Then, as
+the match owner or an administrator, open its lobby and choose **Retry from
+verified checkpoint**. The platform parks the preserved old process, refreshes
+the seat onto the current worker/bridge/MCP images, loads the verified save,
+and only then marks the capability and derivative no-progress incidents
+recovered and starts a fresh Hermes run. If any step fails, the banner and
+incident remain active. **Stop & park** is the non-resuming alternative. A
+capability gap is expected fail-closed behavior, not permission to fall back to
+screenshots or mouse input.
 
 ## Cleanup
 

@@ -41,6 +41,8 @@ const actions = await import(moduleUrl.href);
 assert.equal(actions.isIncidentDismissed("incident-one"), false);
 actions.dismissIncident("incident-one");
 assert.equal(actions.isIncidentDismissed("incident-one"), true);
+actions.restoreIncident("incident-one");
+assert.equal(actions.isIncidentDismissed("incident-one"), false);
 
 await actions.downloadFile("api/incidents/one/diagnostic", "incident-one.zip");
 assert.equal(requestedUrl, "api/incidents/one/diagnostic");
@@ -53,6 +55,7 @@ console.log(JSON.stringify({
   event: "pass",
   payload: {
     dismissal_persists: true,
+    incident_can_be_reopened: true,
     explicit_fetch_download: true,
     same_origin_credentials: true,
     navigation_not_used: true,

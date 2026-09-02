@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import secrets
 import tarfile
+import threading
 import time
 from typing import Any, Mapping
 import uuid
@@ -123,6 +124,7 @@ class WorkerManager:
         if view_publish_ip not in {"127.0.0.1", "0.0.0.0"}:
             raise InvalidRecord("invalid_view_publish_ip")
         self.view_publish_ip = view_publish_ip
+        self._incident_recovery_lock = threading.Lock()
         installation_hash = hashlib.sha256(
             self.store.installation_id().encode("utf-8")
         ).hexdigest()[:12]
@@ -3116,7 +3118,32 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )
         return {"ok": True, "match": updated, "checkpoint": checkpoint}
 
-    def recover_match(self, match_id: str) -> dict[str, Any]:
+    def _refresh_match_worker_images(self, match_id: str) -> list[dict[str, Any]]:
+        """Rebase parked managed seats onto the current immutable worker image."""
+        refreshed: list[dict[str, Any]] = []
+        prepared_by_source: dict[str, str] = {}
+        for seat in self.control.list_seats(match_id):
+            instance_id = seat.get("instance_id")
+            if not isinstance(instance_id, str) or not instance_id:
+                continue
+            spec = self.control.get_worker_spec(instance_id)
+            source_id = str(spec["game_source_id"])
+            image_ref = prepared_by_source.get(source_id)
+            if image_ref is None:
+                image_ref = self.ensure_prepared_worker_image(source_id)
+                prepared_by_source[source_id] = image_ref
+            previous = str(spec["image_ref"])
+            if previous != image_ref:
+                self.control.update_worker_image_ref(instance_id, image_ref)
+            refreshed.append({
+                "instance_id": instance_id,
+                "previous_image_ref": previous,
+                "image_ref": image_ref,
+                "changed": previous != image_ref,
+            })
+        return refreshed
+
+    def recover_match(self, match_id: str, *, refresh_runtime: bool = False) -> dict[str, Any]:
         """Resume a managed match only from its last bridge-verified checkpoint."""
         match = self.control.get_match(match_id)
         checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
@@ -3133,6 +3160,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if not seats or host_seat is None or not host_seat.get("instance_id"):
             raise WorkerManagerError("external_human_host_recovery_required")
         self.park_match(match_id)
+        runtime_refresh = self._refresh_match_worker_images(match_id) if refresh_runtime else []
         if match["mode"] == "lan":
             # A fresh typed/custom lobby records the descriptive profile as
             # `custom`, but a recovery loads an already-serialized native save
@@ -3185,7 +3213,49 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                                            "last_recovered_unix": time.time(),
                                            "last_recovered_slot": slot},
         )
+        if refresh_runtime:
+            result["runtime_refresh"] = runtime_refresh
         return result
+
+    def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:
+        """Recover a capability-stopped match using current runtime images.
+
+        The active incident remains latched throughout checkpoint restoration.
+        It is marked recovered only after every managed native seat has
+        restarted successfully from the verified save.  A failed attempt is
+        therefore visible and safe to retry rather than silently resuming an
+        autonomous caller against a partially restored match.
+        """
+        with self._incident_recovery_lock:
+            return self._retry_match_after_update_locked(match_id, incident_id)
+
+    def _retry_match_after_update_locked(
+        self, match_id: str, incident_id: str,
+    ) -> dict[str, Any]:
+        incident = self.control.get_supervision_incident(incident_id)
+        if incident["match_id"] != match_id:
+            raise WorkerManagerError("incident_match_mismatch")
+        if not str(incident["incident_kind"]).startswith("capability_gap:"):
+            raise WorkerManagerError("capability_incident_required")
+        if incident["status"] not in {"open", "operator_required"}:
+            match = self.control.get_match(match_id)
+            if incident["status"] == "recovered" and match["status"] == "running":
+                return {
+                    "ok": True, "match": match, "already_recovered": True,
+                    "recovered_incidents": [incident], "runtime_refresh": [],
+                }
+            raise WorkerManagerError("active_capability_incident_required")
+        recovered = self.recover_match(match_id, refresh_runtime=True)
+        incidents = self.control.recover_supervision_incidents(
+            match_id,
+            kinds=(str(incident["incident_kind"]), "harness_clean_yield_no_progress"),
+        )
+        recovered.update({
+            "incident_id": incident_id,
+            "recovered_incidents": incidents,
+            "operator_attention_cleared": True,
+        })
+        return recovered
 
     def start_mcp_sidecar(self, instance_id: str, *, timeout: float = 90.0) -> dict[str, Any]:
         if not self.control_data_volume:

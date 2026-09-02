@@ -257,6 +257,16 @@ game-process crash uses the same durable recovery authority. If no verified
 checkpoint exists, the platform stops in operator review rather than inventing
 a safe state.
 
+A semantic capability incident is also an explicit operator-review state. The
+full report may be dismissed, but a compact paused banner remains on the lobby,
+managed game, and spectator views. Restarting the portal or host never treats
+dismissal as resolution. After bridge coverage is deployed, **Retry from
+verified checkpoint** parks the preserved old session, refreshes the managed
+runtime image, restores the save, and acknowledges the capability/no-progress
+incidents only after the new native session is healthy. If recovery is
+interrupted, startup reconciliation derives running/parked state from the
+control plane and retains the unresolved incident.
+
 When every human is a managed browser player and all have been absent for ten
 minutes, the platform checkpoints and parks the match. It does not auto-park an
 AI-only simulation and does not infer browser presence for external/native

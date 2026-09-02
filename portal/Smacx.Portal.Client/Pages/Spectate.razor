@@ -1,6 +1,7 @@
 @page "/spectate"
 @page "/spectate/{MatchId}"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @inject Services.PortalApiClient Api
 <PageTitle>Spectate · SMACX Agent</PageTitle>
 
@@ -25,6 +26,7 @@ else if (lobby is null)
 else
 {
     <PageHeader Kicker="OBSERVATION DECK" Title="@lobby.DisplayName" Description="Switch between isolated seat perspectives. This view cannot send game input." />
+    @if(lobby.NeedsAttention is not null){<CapabilityGapDialog Incident="lobby.NeedsAttention" MatchId="@(MatchId ?? string.Empty)" RecoveryHref="@($"/lobbies/{MatchId}")" />}
     <StreamSecurityNotice />
     <div class="stream-shell surface-panel">
         <div class="stream-toolbar">
@@ -52,12 +54,14 @@ else
 @code {
     [Parameter] public string? MatchId { get; set; }
     [SupplyParameterFromQuery(Name="seat")] public int? RequestedSeat { get; set; }
-    private bool loading=true; private string? error; private LobbyDetails? lobby; private List<PublicLobbySummary> lobbies=[]; private int selectedSeat;
+    private bool loading=true; private string? error; private LobbyDetails? lobby; private List<PublicLobbySummary> lobbies=[]; private int selectedSeat; private PeriodicTimer? refreshTimer; private CancellationTokenSource? refreshCancellation;
     private IEnumerable<LobbySeatSummary> WatchableSeats => lobby?.Seats.Where(seat=>seat.CanSpectate&&seat.InstanceId is not null)??[];
     private LobbySeatSummary? Selected => WatchableSeats.FirstOrDefault(seat=>seat.SeatIndex==selectedSeat)??WatchableSeats.FirstOrDefault();
-    protected override async Task OnParametersSetAsync(){loading=true;error=null;try{if(string.IsNullOrWhiteSpace(MatchId)){lobbies=((await Api.GetAsync<IReadOnlyList<PublicLobbySummary>>("api/lobbies"))?.Data??[]).ToList();}else{lobby=(await Api.GetAsync<LobbyDetails>($"api/lobbies/{MatchId}"))?.Data;selectedSeat=RequestedSeat??lobby?.Seats.FirstOrDefault(seat=>seat.CanSpectate)?.SeatIndex??0;}}catch(HttpRequestException){error="The stream directory could not be loaded.";}loading=false;}
+    protected override async Task OnParametersSetAsync(){refreshCancellation?.Cancel();refreshCancellation?.Dispose();refreshTimer?.Dispose();loading=true;error=null;try{if(string.IsNullOrWhiteSpace(MatchId)){lobbies=((await Api.GetAsync<IReadOnlyList<PublicLobbySummary>>("api/lobbies"))?.Data??[]).ToList();}else{lobby=(await Api.GetAsync<LobbyDetails>($"api/lobbies/{MatchId}"))?.Data;selectedSeat=RequestedSeat??lobby?.Seats.FirstOrDefault(seat=>seat.CanSpectate)?.SeatIndex??0;refreshCancellation=new();refreshTimer=new(TimeSpan.FromSeconds(5));_=RefreshMatch(refreshCancellation.Token);}}catch(HttpRequestException){error="The stream directory could not be loaded.";}loading=false;}
+    private async Task RefreshMatch(CancellationToken token){try{while(refreshTimer is not null&&await refreshTimer.WaitForNextTickAsync(token)){try{var latest=(await Api.GetAsync<LobbyDetails>($"api/lobbies/{MatchId}",token))?.Data;if(latest is not null)lobby=latest;await InvokeAsync(StateHasChanged);}catch(Exception)when(!token.IsCancellationRequested){}}}catch(OperationCanceledException)when(token.IsCancellationRequested){}}
     private void Select(int seat){selectedSeat=seat;}
     private static string SeatName(LobbySeatSummary seat)=>seat.PlayerHandle??(seat.ControllerKind=="agent"?"AI player":$"Seat {seat.SeatIndex+1}");
     private static string SeatIcon(string kind)=>kind=="agent"?Icons.Material.Filled.SmartToy:Icons.Material.Filled.Person;
     private static string StreamUrl(LobbySeatSummary seat)=> $"/stream/{seat.InstanceId}/?view=1";
+    public ValueTask DisposeAsync(){refreshCancellation?.Cancel();refreshCancellation?.Dispose();refreshTimer?.Dispose();return ValueTask.CompletedTask;}
 }

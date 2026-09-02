@@ -507,6 +507,16 @@ irreversible, releases the large disposable game prefix plus runtime secrets,
 and keeps the campaign record, events, outcomes, metrics, chat, durable
 knowledge, and compact Hermes conversation evidence for history and reports.
 
+If an AI reports a semantic capability gap, the match remains durably marked
+**AI paused · needs attention** even after the detailed report is dismissed.
+The native worker and diagnostic state stay preserved. After installing a fix,
+the owner or an administrator can choose **Retry from verified checkpoint**.
+That explicit action replaces the old worker, bridge, and MCP layers with the
+current managed images, restores the last verified save, and starts one fresh
+Hermes run. The incident is cleared only after native recovery succeeds; a
+failed attempt stays visible and fail-closed. **Stop & park** remains available
+when the operator does not want to retry yet.
+
 The Campaign Library is paginated and searchable, with active, resumable, and
 completed filters. Completed games disappear from the public lobby directory
 but remain visible to participants and administrators. This keeps years of

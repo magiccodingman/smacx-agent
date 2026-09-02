@@ -310,7 +310,10 @@ Watch the screen when a model surprises you, inspect its scoped game records,
 and turn a capability gap into a reproducible engineering task. Unsupported
 native states stop the affected AI before it can loop, alert the lobby and
 browser player, preserve the game for diagnosis, and produce a one-click,
-redacted ZIP ready to attach to a GitHub issue.
+redacted ZIP ready to attach to a GitHub issue. The paused state remains
+visible after the report is dismissed; once an update is installed, the owner
+can rebuild that seat on the current runtime and retry from its verified
+checkpoint without silently discarding the campaign.
 
 This makes it possible to ask more interesting questions than “did the bot
 win?” Did extra reasoning matter? Did the model negotiate? Did it remember the

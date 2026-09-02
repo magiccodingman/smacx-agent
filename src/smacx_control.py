@@ -1265,6 +1265,30 @@ class ControlPlane:
             )
         return self.get_worker_spec(instance_id)
 
+    def update_worker_image_ref(self, instance_id: str, image_ref: str) -> dict[str, Any]:
+        """Move a stopped worker specification onto a newly prepared runtime image.
+
+        Campaign state remains in the worker's durable data volume.  Only the
+        immutable runtime/game layer changes, which is required when an
+        operator retries a preserved match after updating the semantic bridge.
+        """
+        _require_id(instance_id, "instance_id")
+        image_ref = _bounded(image_ref, "worker_image_ref", 512)
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT desired_status, observed_status FROM worker_specs WHERE instance_id=?",
+                (instance_id,),
+            ).fetchone()
+            if not row:
+                raise ScopeViolation("unknown_worker_instance")
+            if row["observed_status"] == "running" or row["desired_status"] == "running":
+                raise InvalidRecord("worker_image_refresh_requires_stopped_worker")
+            connection.execute(
+                "UPDATE worker_specs SET image_ref=?, updated_unix=? WHERE instance_id=?",
+                (image_ref, time.time(), instance_id),
+            )
+        return self.get_worker_spec(instance_id)
+
     def update_worker_network(self, instance_id: str, network: Mapping[str, Any]) -> dict[str, Any]:
         _require_id(instance_id, "instance_id")
         encoded = _json(network)
@@ -2255,6 +2279,43 @@ class ControlPlane:
                 "SELECT incident_id FROM supervision_incidents" + where
                 + " ORDER BY last_seen_unix DESC, incident_id DESC", values,
             ).fetchall()]
+        return [self.get_supervision_incident(identifier) for identifier in identifiers]
+
+    def recover_supervision_incidents(
+        self, match_id: str, *, kinds: tuple[str, ...],
+    ) -> list[dict[str, Any]]:
+        """Mark selected active incident kinds recovered after verified recovery.
+
+        Prefixes ending in ``:`` intentionally match namespaced incidents such
+        as ``capability_gap:<gap-id>``.  This method does not clear unrelated
+        operational failures for the same match.
+        """
+        _require_id(match_id, "match_id")
+        if not kinds or any(not isinstance(kind, str) or not kind for kind in kinds):
+            raise InvalidRecord("incident_recovery_kind_required")
+        now = time.time()
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT incident_id, incident_kind FROM supervision_incidents "
+                "WHERE match_id=? AND status IN ('open','operator_required')",
+                (match_id,),
+            ).fetchall()
+            identifiers = [
+                str(row["incident_id"])
+                for row in rows
+                if any(
+                    str(row["incident_kind"]).startswith(kind)
+                    if kind.endswith(":") else str(row["incident_kind"]) == kind
+                    for kind in kinds
+                )
+            ]
+            if identifiers:
+                placeholders = ",".join("?" for _ in identifiers)
+                connection.execute(
+                    f"UPDATE supervision_incidents SET status='recovered', "
+                    f"recovered_unix=?, last_seen_unix=? WHERE incident_id IN ({placeholders})",
+                    (now, now, *identifiers),
+                )
         return [self.get_supervision_incident(identifier) for identifier in identifiers]
 
     def get_harness_profile(self, harness_profile_id: str) -> dict[str, Any]:
