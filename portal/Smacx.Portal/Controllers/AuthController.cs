@@ -4,11 +4,13 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Smacx.Portal.Contracts;
 using Smacx.Portal.Data;
 using Smacx.Portal.Infrastructure;
+using Smacx.Portal.Services;
 
 namespace Smacx.Portal.Controllers;
 
@@ -19,10 +21,13 @@ public sealed partial class AuthController(
     SignInManager<ApplicationUser> signInManager,
     ApplicationDbContext database,
     BootstrapTokenStore bootstrapTokens,
+    PortalAccessPolicy accessPolicy,
+    PortalSecurityTicketService securityTickets,
     IAntiforgery antiforgery,
     IOptions<IdentityOptions> identityOptions) : ControllerBase
 {
     private static readonly SemaphoreSlim BootstrapGate = new(1, 1);
+    private static readonly SemaphoreSlim RegistrationGate = new(1, 1);
 
     [HttpGet("csrf")]
     [AllowAnonymous]
@@ -38,12 +43,16 @@ public sealed partial class AuthController(
     {
         await bootstrapTokens.EnsureAsync(HttpContext.RequestAborted);
         var registrationEnabled = await IsRegistrationEnabledAsync();
+        var requiresInvitation = await accessPolicy.RegistrationRequiresInvitationAsync(
+            HttpContext, HttpContext.RequestAborted);
         return ApiResponse<PortalSetupState>.Success(new(
             await bootstrapTokens.IsSetupRequiredAsync(),
             registrationEnabled,
             "admin",
             bootstrapTokens.BootstrapCommand,
-            identityOptions.Value.Password.RequiredLength));
+            identityOptions.Value.Password.RequiredLength,
+            accessPolicy.Zone(HttpContext) == PortalRequestZone.Trusted ? "trusted" : "remote",
+            requiresInvitation));
     }
 
     [HttpGet("session")]
@@ -66,8 +75,14 @@ public sealed partial class AuthController(
 
     [HttpPost("bootstrap")]
     [AllowAnonymous]
+    [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<PortalSession>>> Bootstrap(BootstrapRequest request)
     {
+        if (accessPolicy.Zone(HttpContext) == PortalRequestZone.Remote)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<PortalSession>.Failure(
+                    "trusted_bootstrap_required",
+                    "Initial administrator setup is available only from a trusted network."));
         if (request.Password != request.ConfirmPassword)
         {
             return BadRequest(ApiResponse<PortalSession>.Failure(
@@ -89,6 +104,10 @@ public sealed partial class AuthController(
             }
 
             var admin = NewUser("admin", "Administrator");
+            admin.IsPrimaryAdministrator = true;
+            admin.InstallationVerifiedAt = DateTimeOffset.UtcNow;
+            admin.InstallationVerificationSource = "server_game_source";
+            admin.InstallationFingerprintId = "server-game-source";
             var result = await userManager.CreateAsync(admin, request.Password);
             if (!result.Succeeded)
             {
@@ -117,155 +136,232 @@ public sealed partial class AuthController(
 
     [HttpPost("register")]
     [AllowAnonymous]
-    public async Task<ActionResult<ApiResponse<PortalSession>>> Register(RegistrationRequest request)
+    [EnableRateLimiting("authentication")]
+    public async Task<ActionResult<ApiResponse<RegistrationResult>>> Register(RegistrationRequest request)
     {
+        if (accessPolicy.Zone(HttpContext) == PortalRequestZone.Remote && !Request.IsHttps)
+            return StatusCode(StatusCodes.Status426UpgradeRequired,
+                ApiResponse<RegistrationResult>.Failure("remote_https_required",
+                    "Remote registration requires HTTPS. Configure a public hostname in the Internet hosting guide."));
         if (!await IsRegistrationEnabledAsync())
         {
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<PortalSession>.Failure(
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<RegistrationResult>.Failure(
                 "registration_disabled", "New account registration is disabled."));
         }
-        if (request.Password != request.ConfirmPassword)
+        await RegistrationGate.WaitAsync(HttpContext.RequestAborted);
+        try
         {
-            return BadRequest(ApiResponse<PortalSession>.Failure(
-                "password_confirmation_mismatch", "The password confirmation does not match."));
-        }
-        if (!ValidUsername().IsMatch(request.Username))
-        {
-            return BadRequest(ApiResponse<PortalSession>.Failure(
-                "invalid_username",
-                "Use 3–31 letters, numbers, periods, underscores, or hyphens; begin with a letter or number."));
-        }
-        var user = await userManager.FindByNameAsync(request.Username);
-        if (user is null)
-        {
-            var requestedDisplay = NormalizeDisplayName(request.DisplayName);
-            user = await database.Users.SingleOrDefaultAsync(item =>
-                item.IsProvisional && item.NormalizedDisplayName == requestedDisplay,
-                HttpContext.RequestAborted);
-        }
-        if (user is { IsProvisional: true } &&
-            user.NormalizedDisplayName != NormalizeDisplayName(request.DisplayName))
-            return Conflict(ApiResponse<PortalSession>.Failure(
-                "invitation_display_name_mismatch",
-                "Claim this invited seat with its reserved public display name."));
-        var displayValidation = await ValidateDisplayNameAsync(
-            request.DisplayName, user is { IsProvisional: true } ? user.Id : null);
-        if (displayValidation is not null)
-        {
-            return BadRequest(ApiResponse<PortalSession>.Failure(
-                displayValidation.Value.Code, displayValidation.Value.Message));
-        }
-
-        IdentityResult result;
-        if (user is { IsProvisional: true })
-        {
-            var renamed = await userManager.SetUserNameAsync(user, request.Username);
-            if (!renamed.Succeeded)
-                return Conflict(ApiResponse<PortalSession>.Failure(
-                    "username_unavailable", FormatIdentityErrors(renamed)));
-            user.DisplayName = request.DisplayName.Trim();
-            user.NormalizedDisplayName = NormalizeDisplayName(request.DisplayName);
-            user.GameHandle = request.DisplayName.Trim();
-            user.NormalizedGameHandle = userManager.NormalizeName(request.DisplayName)!;
-            user.IsProvisional = false;
-            user.UpdatedAt = DateTimeOffset.UtcNow;
-            result = await userManager.AddPasswordAsync(user, request.Password);
-            if (result.Succeeded) result = await userManager.UpdateAsync(user);
-        }
-        else if (user is null)
-        {
-            user = NewUser(request.Username, request.DisplayName.Trim());
-            result = await userManager.CreateAsync(user, request.Password);
-        }
-        else
-        {
-            return Conflict(ApiResponse<PortalSession>.Failure(
-                "username_unavailable", "That sign-in username already has an account."));
-        }
-        if (!result.Succeeded)
-        {
-            return BadRequest(ApiResponse<PortalSession>.Failure(
-                "registration_failed", FormatIdentityErrors(result)));
-        }
-        var roleResult = await userManager.IsInRoleAsync(user, PortalRoles.Member)
-            ? IdentityResult.Success
-            : await userManager.AddToRoleAsync(user, PortalRoles.Member);
-        if (!roleResult.Succeeded)
-        {
-            return BadRequest(ApiResponse<PortalSession>.Failure(
-                "registration_role_failed", FormatIdentityErrors(roleResult)));
-        }
-
-        // A lobby invitation can arrive from the native game before this LAN
-        // account exists. Claim every still-unclaimed seat with the same public
-        // display name so reconnects and history attach to one durable identity.
-        var normalizedHandle = user.NormalizedDisplayName;
-        var invitedSeats = await database.PortalLobbySeats
-            .Where(seat => seat.UserId == null && seat.ControllerKind == "human" &&
-                seat.PlayerHandle != null && seat.PlayerHandle.ToUpper() == normalizedHandle)
-            .ToArrayAsync(HttpContext.RequestAborted);
-        foreach (var seat in invitedSeats)
-        {
-            seat.UserId = user.Id;
-            seat.Status = "ready";
-            seat.UpdatedAt = DateTimeOffset.UtcNow;
-            if (!await database.PortalMatchMembers.AnyAsync(
-                    member => member.MatchId == seat.MatchId && member.UserId == user.Id,
-                    HttpContext.RequestAborted))
+            RegistrationInvitation? registrationInvitation = null;
+            if (await accessPolicy.RegistrationRequiresInvitationAsync(
+                    HttpContext, HttpContext.RequestAborted))
             {
-                database.PortalMatchMembers.Add(new PortalMatchMember
-                {
-                    MatchId = seat.MatchId, UserId = user.Id, SeatIndex = seat.SeatIndex,
-                    Role = "player", JoinMode = seat.JoinMode,
-                });
+                var grant = securityTickets.ReadRegistrationGrant(HttpContext);
+                if (grant is null)
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        ApiResponse<RegistrationResult>.Failure(
+                            "registration_invitation_required",
+                            "A valid registration invitation is required."));
+                registrationInvitation = await database.RegistrationInvitations.SingleOrDefaultAsync(
+                    item => item.Id == grant.InvitationId, HttpContext.RequestAborted);
+                if (registrationInvitation is null ||
+                    registrationInvitation.ExpiresAt <= DateTimeOffset.UtcNow ||
+                    registrationInvitation.UsedAt is not null ||
+                    registrationInvitation.RevokedAt is not null)
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        ApiResponse<RegistrationResult>.Failure(
+                            "registration_invitation_invalid",
+                            "The registration invitation is invalid, expired, or already used."));
             }
-        }
-        if (invitedSeats.Length > 0)
-        {
-            await database.SaveChangesAsync(HttpContext.RequestAborted);
-        }
+            if (request.Password != request.ConfirmPassword)
+            {
+                return BadRequest(ApiResponse<RegistrationResult>.Failure(
+                    "password_confirmation_mismatch", "The password confirmation does not match."));
+            }
+            if (!ValidUsername().IsMatch(request.Username))
+            {
+                return BadRequest(ApiResponse<RegistrationResult>.Failure(
+                    "invalid_username",
+                    "Use 3–31 letters, numbers, periods, underscores, or hyphens; begin with a letter or number."));
+            }
+            var user = await userManager.FindByNameAsync(request.Username);
+            if (user is null)
+            {
+                var requestedDisplay = NormalizeDisplayName(request.DisplayName);
+                user = await database.Users.SingleOrDefaultAsync(item =>
+                    item.IsProvisional && item.NormalizedDisplayName == requestedDisplay,
+                    HttpContext.RequestAborted);
+            }
+            if (user is { IsProvisional: true } &&
+                user.NormalizedDisplayName != NormalizeDisplayName(request.DisplayName))
+                return Conflict(ApiResponse<RegistrationResult>.Failure(
+                    "invitation_display_name_mismatch",
+                    "Claim this invited seat with its reserved public display name."));
+            var displayValidation = await ValidateDisplayNameAsync(
+                request.DisplayName, user is { IsProvisional: true } ? user.Id : null);
+            if (displayValidation is not null)
+            {
+                return BadRequest(ApiResponse<RegistrationResult>.Failure(
+                    displayValidation.Value.Code, displayValidation.Value.Message));
+            }
 
-        await signInManager.SignInAsync(user, isPersistent: false);
-        return ApiResponse<PortalSession>.Success(new(true, await ToPortalUserAsync(user)));
+            IdentityResult result;
+            if (user is { IsProvisional: true })
+            {
+                var renamed = await userManager.SetUserNameAsync(user, request.Username);
+                if (!renamed.Succeeded)
+                    return Conflict(ApiResponse<RegistrationResult>.Failure(
+                        "username_unavailable", FormatIdentityErrors(renamed)));
+                user.DisplayName = request.DisplayName.Trim();
+                user.NormalizedDisplayName = NormalizeDisplayName(request.DisplayName);
+                user.GameHandle = request.DisplayName.Trim();
+                user.NormalizedGameHandle = userManager.NormalizeName(request.DisplayName)!;
+                user.IsProvisional = false;
+                user.UpdatedAt = DateTimeOffset.UtcNow;
+                result = await userManager.AddPasswordAsync(user, request.Password);
+                if (result.Succeeded) result = await userManager.UpdateAsync(user);
+            }
+            else if (user is null)
+            {
+                user = NewUser(request.Username, request.DisplayName.Trim());
+                result = await userManager.CreateAsync(user, request.Password);
+            }
+            else
+            {
+                return Conflict(ApiResponse<RegistrationResult>.Failure(
+                    "username_unavailable", "That sign-in username already has an account."));
+            }
+            if (!result.Succeeded)
+            {
+                return BadRequest(ApiResponse<RegistrationResult>.Failure(
+                    "registration_failed", FormatIdentityErrors(result)));
+            }
+            var roleResult = await userManager.IsInRoleAsync(user, PortalRoles.Member)
+                ? IdentityResult.Success
+                : await userManager.AddToRoleAsync(user, PortalRoles.Member);
+            if (!roleResult.Succeeded)
+            {
+                return BadRequest(ApiResponse<RegistrationResult>.Failure(
+                    "registration_role_failed", FormatIdentityErrors(roleResult)));
+            }
+
+            // A lobby invitation can arrive from the native game before this LAN
+            // account exists. Claim every still-unclaimed seat with the same public
+            // display name so reconnects and history attach to one durable identity.
+            var normalizedHandle = user.NormalizedDisplayName;
+            var invitedSeats = await database.PortalLobbySeats
+                .Where(seat => seat.UserId == null && seat.ControllerKind == "human" &&
+                    seat.PlayerHandle != null && seat.PlayerHandle.ToUpper() == normalizedHandle)
+                .ToArrayAsync(HttpContext.RequestAborted);
+            foreach (var seat in invitedSeats)
+            {
+                seat.UserId = user.Id;
+                seat.Status = "ready";
+                seat.UpdatedAt = DateTimeOffset.UtcNow;
+                if (!await database.PortalMatchMembers.AnyAsync(
+                        member => member.MatchId == seat.MatchId && member.UserId == user.Id,
+                        HttpContext.RequestAborted))
+                {
+                    database.PortalMatchMembers.Add(new PortalMatchMember
+                    {
+                        MatchId = seat.MatchId,
+                        UserId = user.Id,
+                        SeatIndex = seat.SeatIndex,
+                        Role = "player",
+                        JoinMode = seat.JoinMode,
+                    });
+                }
+            }
+            if (invitedSeats.Length > 0)
+            {
+                await database.SaveChangesAsync(HttpContext.RequestAborted);
+            }
+            if (registrationInvitation is not null)
+            {
+                registrationInvitation.UsedAt = DateTimeOffset.UtcNow;
+                registrationInvitation.UsedByUserId = user.Id;
+                await database.SaveChangesAsync(HttpContext.RequestAborted);
+                securityTickets.ClearRegistrationGrant(HttpContext);
+            }
+            return ApiResponse<RegistrationResult>.Success(new(
+                user.UserName ?? request.Username,
+                true,
+                "Your account is ready. Sign in to continue."));
+        }
+        finally
+        {
+            RegistrationGate.Release();
+        }
     }
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<PortalSession>>> Login(LoginRequest request)
     {
-        var result = await signInManager.PasswordSignInAsync(
-            request.Username, request.Password, request.RememberMe, lockoutOnFailure: true);
-        if (!result.Succeeded)
-        {
+        if (accessPolicy.Zone(HttpContext) == PortalRequestZone.Remote && !Request.IsHttps)
+            return StatusCode(StatusCodes.Status426UpgradeRequired,
+                ApiResponse<PortalSession>.Failure("remote_https_required",
+                    "Remote sign-in requires HTTPS. Use this server's secure public address."));
+        var user = await userManager.FindByNameAsync(request.Username);
+        if (user is null || !user.IsActive)
             return Unauthorized(ApiResponse<PortalSession>.Failure(
-                result.IsLockedOut ? "account_locked" : "invalid_credentials",
-                result.IsLockedOut
+                "invalid_credentials", "The username or password is incorrect."));
+        if (await userManager.IsLockedOutAsync(user))
+            return Unauthorized(ApiResponse<PortalSession>.Failure(
+                "account_locked", "This account is temporarily locked."));
+        if (!await userManager.CheckPasswordAsync(user, request.Password))
+        {
+            await userManager.AccessFailedAsync(user);
+            return Unauthorized(ApiResponse<PortalSession>.Failure(
+                await userManager.IsLockedOutAsync(user) ? "account_locked" : "invalid_credentials",
+                await userManager.IsLockedOutAsync(user)
                     ? "This account is temporarily locked."
                     : "The username or password is incorrect."));
         }
-
-        var user = await userManager.FindByNameAsync(request.Username);
+        await userManager.ResetAccessFailedCountAsync(user);
         if (user?.MustResetPassword == true)
         {
-            await signInManager.SignOutAsync();
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<PortalSession>.Failure(
                 "password_reset_required", "An administrator requested a password reset for this account."));
         }
+        var remote = accessPolicy.Zone(HttpContext) == PortalRequestZone.Remote;
+        if (remote && user!.IsPrimaryAdministrator &&
+            !accessPolicy.PrimaryAdministratorRemoteLoginAllowed)
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<PortalSession>.Failure(
+                "primary_administrator_remote_login_disabled",
+                "The primary administrator is restricted to trusted networks by server configuration."));
+        var verificationRequired = await accessPolicy.InstallationVerificationRequiredAsync(
+            HttpContext, HttpContext.RequestAborted);
+        if (verificationRequired && !user!.IsPrimaryAdministrator &&
+            user.InstallationVerifiedAt is null)
+        {
+            securityTickets.SetPendingVerification(
+                HttpContext, user.Id, request.RememberMe, DateTimeOffset.UtcNow.AddMinutes(30));
+            return ApiResponse<PortalSession>.Success(new(
+                false, null, true, "/verify-installation"));
+        }
+        await signInManager.SignInAsync(user!, request.RememberMe);
         return ApiResponse<PortalSession>.Success(new(true, await ToPortalUserAsync(user!)));
     }
 
     [HttpPost("reset/complete")]
     [AllowAnonymous]
+    [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<PortalSession>>> CompleteReset(
         CompletePasswordResetRequest request)
     {
+        var remote = accessPolicy.Zone(HttpContext) == PortalRequestZone.Remote;
+        if (remote && !Request.IsHttps)
+            return StatusCode(StatusCodes.Status426UpgradeRequired,
+                ApiResponse<PortalSession>.Failure("remote_https_required",
+                    "Remote password reset requires HTTPS. Use this server's secure public address."));
         if (request.Password != request.ConfirmPassword)
         {
             return BadRequest(ApiResponse<PortalSession>.Failure(
                 "password_confirmation_mismatch", "The password confirmation does not match."));
         }
         var user = await userManager.FindByNameAsync(request.Username);
-        if (user is null)
+        if (user is null || !user.IsActive)
         {
             return Unauthorized(ApiResponse<PortalSession>.Failure(
                 "invalid_reset_ticket", "The reset ticket is invalid or expired."));
@@ -280,6 +376,12 @@ public sealed partial class AuthController(
             return Unauthorized(ApiResponse<PortalSession>.Failure(
                 "invalid_reset_ticket", "The reset ticket is invalid or expired."));
         }
+        if (remote && user.IsPrimaryAdministrator &&
+            !accessPolicy.PrimaryAdministratorRemoteLoginAllowed)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<PortalSession>.Failure(
+                    "primary_administrator_remote_login_disabled",
+                    "The primary administrator is restricted to trusted networks by server configuration."));
         var identityToken = await userManager.GeneratePasswordResetTokenAsync(user);
         var result = await userManager.ResetPasswordAsync(user, identityToken, request.Password);
         if (!result.Succeeded)
@@ -291,6 +393,16 @@ public sealed partial class AuthController(
         user.MustResetPassword = false;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         await database.SaveChangesAsync(HttpContext.RequestAborted);
+        var verificationRequired = await accessPolicy.InstallationVerificationRequiredAsync(
+            HttpContext, HttpContext.RequestAborted);
+        if (verificationRequired && !user.IsPrimaryAdministrator &&
+            user.InstallationVerifiedAt is null)
+        {
+            securityTickets.SetPendingVerification(
+                HttpContext, user.Id, false, DateTimeOffset.UtcNow.AddMinutes(30));
+            return ApiResponse<PortalSession>.Success(new(
+                false, null, true, "/verify-installation"));
+        }
         await signInManager.SignInAsync(user, isPersistent: false);
         return ApiResponse<PortalSession>.Success(new(true, await ToPortalUserAsync(user)));
     }
@@ -368,6 +480,7 @@ public sealed partial class AuthController(
             GameHandle = gameHandle,
             NormalizedGameHandle = userManager.NormalizeName(gameHandle)!,
             EmailConfirmed = true,
+            IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
@@ -383,7 +496,11 @@ public sealed partial class AuthController(
             user.GameHandle,
             roles.ToArray(),
             roles.Contains(PortalRoles.Administrator, StringComparer.Ordinal),
-            user.MustResetPassword);
+            user.MustResetPassword,
+            user.IsActive,
+            user.IsPrimaryAdministrator,
+            user.InstallationVerifiedAt is not null,
+            user.InstallationVerifiedAt);
     }
 
     private async Task<bool> IsRegistrationEnabledAsync()

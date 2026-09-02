@@ -9,6 +9,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<PasswordResetGrant> PasswordResetGrants => Set<PasswordResetGrant>();
 
+    public DbSet<RegistrationInvitation> RegistrationInvitations => Set<RegistrationInvitation>();
+
+    public DbSet<PortalMatchParticipant> PortalMatchParticipants => Set<PortalMatchParticipant>();
+
     public DbSet<PortalMatchProfile> PortalMatches => Set<PortalMatchProfile>();
 
     public DbSet<PortalMatchMember> PortalMatchMembers => Set<PortalMatchMember>();
@@ -47,6 +51,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(user => user.NormalizedDisplayName).HasMaxLength(31);
             entity.Property(user => user.GameHandle).HasMaxLength(31);
             entity.Property(user => user.NormalizedGameHandle).HasMaxLength(31);
+            entity.Property(user => user.InstallationVerificationSource).HasMaxLength(48);
+            entity.Property(user => user.InstallationFingerprintId).HasMaxLength(96);
+            entity.Property(user => user.InstallationVerifiedAt).HasConversion<long?>();
             entity.HasIndex(user => user.NormalizedGameHandle).IsUnique();
             entity.HasIndex(user => user.NormalizedDisplayName).IsUnique()
                 .HasFilter("NormalizedDisplayName <> ''");
@@ -75,6 +82,21 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        builder.Entity<RegistrationInvitation>(entity =>
+        {
+            entity.HasKey(invitation => invitation.Id);
+            entity.Property(invitation => invitation.TokenHash).HasMaxLength(64);
+            entity.Property(invitation => invitation.CreatedByUserId).HasMaxLength(450);
+            entity.Property(invitation => invitation.UsedByUserId).HasMaxLength(450);
+            entity.Property(invitation => invitation.Label).HasMaxLength(120);
+            entity.Property(invitation => invitation.CreatedAt).HasConversion<long>();
+            entity.Property(invitation => invitation.ExpiresAt).HasConversion<long>();
+            entity.Property(invitation => invitation.UsedAt).HasConversion<long?>();
+            entity.Property(invitation => invitation.RevokedAt).HasConversion<long?>();
+            entity.HasIndex(invitation => invitation.TokenHash).IsUnique();
+            entity.HasIndex(invitation => new { invitation.ExpiresAt, invitation.UsedAt, invitation.RevokedAt });
+        });
+
         builder.Entity<PortalMatchProfile>(entity =>
         {
             entity.HasKey(match => match.MatchId);
@@ -93,12 +115,28 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(match => match.ResumeSlot).HasMaxLength(32);
             entity.Property(match => match.CreatedAt).HasConversion<long>();
             entity.Property(match => match.UpdatedAt).HasConversion<long>();
+            entity.Property(match => match.WaitingVacantSince).HasConversion<long?>();
             entity.Property(match => match.RankingMode).HasMaxLength(16);
             entity.Property(match => match.PersonalityCardId).HasMaxLength(96);
+            entity.Property(match => match.AllowSpectators)
+                .HasColumnName("AllowAnonymousSpectators");
             entity.HasIndex(match => new { match.IsListed, match.UpdatedAt });
             entity.HasOne<ApplicationUser>()
                 .WithMany()
                 .HasForeignKey(match => match.OwnerUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PortalMatchParticipant>(entity =>
+        {
+            entity.HasKey(participant => new { participant.MatchId, participant.UserId });
+            entity.Property(participant => participant.MatchId).HasMaxLength(96);
+            entity.Property(participant => participant.UserId).HasMaxLength(450);
+            entity.Property(participant => participant.FirstSeatIndex);
+            entity.Property(participant => participant.RecordedAt).HasConversion<long>();
+            entity.HasOne<PortalMatchProfile>().WithMany().HasForeignKey(participant => participant.MatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(participant => participant.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -364,6 +402,19 @@ public sealed class PasswordResetGrant
     public DateTimeOffset? UsedAt { get; set; }
 }
 
+public sealed class RegistrationInvitation
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string TokenHash { get; set; } = string.Empty;
+    public string CreatedByUserId { get; set; } = string.Empty;
+    public string? UsedByUserId { get; set; }
+    public string? Label { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? UsedAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+}
+
 public sealed class PortalMatchProfile
 {
     public string MatchId { get; set; } = string.Empty;
@@ -382,13 +433,22 @@ public sealed class PortalMatchProfile
     public string? ScenarioId { get; set; }
     public string? ResumeSlot { get; set; }
     public bool IsListed { get; set; } = true;
-    public bool AllowAnonymousSpectators { get; set; }
+    public bool AllowSpectators { get; set; }
     public bool ManagedClientsOnly { get; set; }
     public string RankingMode { get; set; } = "unranked";
     public bool GraphitiEnabled { get; set; } = true;
     public string PersonalityCardId { get; set; } = "none";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? WaitingVacantSince { get; set; }
+}
+
+public sealed class PortalMatchParticipant
+{
+    public string MatchId { get; set; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
+    public int FirstSeatIndex { get; set; }
+    public DateTimeOffset RecordedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class PortalMatchMember

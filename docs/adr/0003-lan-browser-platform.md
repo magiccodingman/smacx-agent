@@ -42,9 +42,11 @@ using its single-port WebSocket mode first; noVNC remains a view-only fallback.
 The streaming backend is never exposed directly. The portal issues short-lived,
 seat-scoped tickets after checking ownership or spectator policy.
 
-Administrators may view every managed seat. A lobby may opt into anonymous LAN
-spectating; the default is disabled. Anonymous viewers receive read-only,
-revocable access and may switch among permitted seat streams. A separate
+Only non-participating administrators may view every managed seat. A lobby may
+opt into authenticated non-player spectating; the default is disabled. Anyone
+who has controlled a faction in the campaign remains excluded from enemy views.
+Authorized viewers receive read-only, revocable access and may switch among
+permitted seat streams. A separate
 `managed clients only` option disallows external native clients when operators
 want one reproducible runtime for every human seat.
 

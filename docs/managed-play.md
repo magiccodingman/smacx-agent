@@ -163,7 +163,8 @@ into three apparently independent observations.
 
 Private and group message bodies are never sent through the broad SignalR lobby
 group. SignalR announces that state changed; each client refetches through the
-member/faction authorization filter. Anonymous spectators see only global chat.
+member/faction authorization filter. Authenticated, eligible spectators see
+only global chat; former participants cannot enter spectator mode.
 
 Chat text is bounded to the printable ASCII supported reliably by the stock
 game transport. Voice chat is not managed by this milestone.
@@ -295,11 +296,12 @@ password and claim that provisional account later.
 
 ## Spectators and human-only games
 
-An administrator may cross-seat spectate any managed worker. A lobby may opt
-into anonymous LAN spectating; it is disabled by default. Every observer ticket
-is read-only in the stream transport itself, so a modified client cannot turn a
-watch URL into game input. Spectators receive CSS fitting only and can never
-request native resolution changes or vote as players.
+A non-participating administrator may cross-seat spectate any managed worker. A
+lobby may opt into signed-in non-player spectating; it is disabled by default.
+Campaign participation is durable, so leaving a faction never unlocks enemy
+views. Every observer ticket is read-only in the stream transport itself, so a
+modified client cannot turn a watch URL into game input. Spectators receive CSS
+fitting only and can never request native resolution changes or vote as players.
 
 Nothing in managed play requires a model provider. A human-only match uses the
 same typed lobby, worker isolation, display profiles, chat, checkpoints,
@@ -308,13 +310,13 @@ created only for assigned agent seats.
 
 ## Boundaries
 
-- This is a trusted-localhost/private-LAN portal, not public matchmaking.
+- This is a private household/friends portal, not public matchmaking. Remote
+  access uses one-time invitations, HTTPS, and one-time installation verification.
 - Direct/native players remain subject to legacy DirectPlay reconnect behavior;
   managed browser reconnect is the seamless path.
 - Native profile changes replace worker lifetimes; they are intentionally not
   live X11 resizes of a running DirectDraw surface.
-- Authored personality cards, ranked play, microphone/voice management, and
-  public-Internet service are outside this milestone.
+- Ranked play and microphone/voice management are outside this milestone.
 - The application does not include or distribute the game.
 
 ## Reproducible evidence

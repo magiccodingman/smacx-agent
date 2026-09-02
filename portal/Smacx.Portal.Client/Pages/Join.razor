@@ -1,0 +1,35 @@
+@page "/join"
+@inject Services.PortalApiClient Api
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+<PageTitle>Accept invitation · SMACX Agent</PageTitle>
+<div class="auth-stage"><section class="auth-card">
+    <div class="auth-sigil">⌁</div><span class="panel-kicker">PRIVATE INVITATION</span>
+    <h1>Join this planetary network</h1>
+    <p>Remote registration uses a one-time invitation from the server administrator. The invitation expires after 24 hours and is consumed when your account is created.</p>
+    @if (loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" /> }
+    else
+    {
+        <MudTextField @bind-Value="invitation" Label="Invitation code" Variant="Variant.Outlined" Immediate="true" />
+        <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="busy" OnClick="Redeem">Continue</MudButton>
+    }
+    @if (!string.IsNullOrEmpty(error)) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@error</MudAlert> }
+</section></div>
+@code {
+    private string invitation=""; private string? error; private bool loading=true; private bool busy;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if(!firstRender)return;
+        invitation=await Js.InvokeAsync<string>("smacxAccess.takeInvitationFragment")??"";
+        loading=false; StateHasChanged();
+        if(!string.IsNullOrWhiteSpace(invitation))await Redeem();
+    }
+    private async Task Redeem()
+    {
+        busy=true;error=null;
+        var result=await Api.PostAsync<InvitationGrantResult>("api/access/invitations/redeem",new InvitationGrantRequest(invitation));
+        busy=false;
+        if(result.Payload?.Ok==true)Navigation.NavigateTo(result.Payload.Data?.RegistrationPath??"/register",true);
+        else error=result.Payload?.Error?.Message??"This invitation could not be accepted.";
+    }
+}

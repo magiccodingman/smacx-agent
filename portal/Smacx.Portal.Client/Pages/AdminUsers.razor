@@ -1,8 +1,42 @@
 @page "/admin/users"
 @attribute [Authorize(Roles="Administrator")]
 @inject Services.PortalApiClient Api
-<PageTitle>LAN users · SMACX Agent</PageTitle>
-<PageHeader Kicker="IDENTITY ADMINISTRATION" Title="LAN users" Description="Manage local roles and issue short-lived password reset tickets. Accounts are never emailed or sent off this control center." />
-@if(loading){<MudProgressLinear Indeterminate="true" Color="Color.Primary"/>}else{<div class="surface-panel user-table">@foreach(var user in users){<div class="user-row"><div class="profile-avatar small">@user.Username[0].ToString().ToUpperInvariant()</div><div class="user-copy"><strong>@user.DisplayName</strong><span>@@@user.Username · public game name @user.DisplayName</span></div><div class="user-flags">@if(user.IsAdministrator){<MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Admin</MudChip>}@if(user.IsProvisional){<MudChip T="string" Size="Size.Small">Claim pending</MudChip>}@if(user.MustResetPassword){<MudChip T="string" Size="Size.Small" Color="Color.Warning">Reset pending</MudChip>}</div><MudMenu Icon="@Icons.Material.Filled.MoreVert"><MudMenuItem OnClick="@(()=>Reset(user))">Issue password reset</MudMenuItem><MudMenuItem OnClick="@(()=>ToggleAdmin(user))">@(user.IsAdministrator?"Remove administrator":"Make administrator")</MudMenuItem></MudMenu></div>}</div>}
-@if(ticket is not null){<MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-4"><strong>Reset ticket for @ticket.Username</strong><br/><code>@ticket.Token</code><br/>It expires @ticket.ExpiresAt.ToLocalTime().ToString("t"). Share it directly with the player; it is shown only now.</MudAlert>}@if(!string.IsNullOrEmpty(error)){<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>}
-@code { private IReadOnlyList<AdminUserSummary> users=[];private PasswordResetTicket? ticket;private bool loading=true;private string? error;protected override async Task OnInitializedAsync(){await Reload();loading=false;}private async Task Reload(){users=(await Api.GetAsync<IReadOnlyList<AdminUserSummary>>("api/admin/users"))?.Data??[];}private async Task Reset(AdminUserSummary user){ticket=null;error=null;var result=await Api.PostAsync<PasswordResetTicket>($"api/admin/users/{user.Id}/password-reset",new{});if(result.Payload?.Ok==true){ticket=result.Payload.Data;await Reload();}else error=result.Payload?.Error?.Message??"Reset failed.";}private async Task ToggleAdmin(AdminUserSummary user){error=null;var result=await Api.PostAsync<AdminUserSummary>($"api/admin/users/{user.Id}/administrator",new SetAdministratorRequest(!user.IsAdministrator));if(result.Payload?.Ok==true)await Reload();else error=result.Payload?.Error?.Message??"Role update failed.";} }
+<PageTitle>Players · SMACX Agent</PageTitle>
+<PageHeader Kicker="IDENTITY ADMINISTRATION" Title="Players" Description="Manage roles, account access, one-time installation approval, and short-lived password reset tickets." />
+@if(loading){<MudProgressLinear Indeterminate="true" Color="Color.Primary"/>}
+else
+{
+ <div class="surface-panel user-table">
+ @foreach(var user in users)
+ {
+  <div class="user-row">
+   <div class="profile-avatar small">@user.Username[0].ToString().ToUpperInvariant()</div>
+   <div class="user-copy"><strong>@user.DisplayName</strong><span>@@@user.Username · game handle @user.GameHandle</span></div>
+   <div class="user-flags">
+    @if(user.IsPrimaryAdministrator){<MudChip T="string" Size="Size.Small" Color="Color.Secondary">Primary admin</MudChip>}
+    else if(user.IsAdministrator){<MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Admin</MudChip>}
+    <MudChip T="string" Size="Size.Small" Color="@(user.IsActive?Color.Success:Color.Error)">@(user.IsActive?"Active":"Deactivated")</MudChip>
+    <MudChip T="string" Size="Size.Small" Color="@(user.InstallationVerified?Color.Success:Color.Default)">@(user.InstallationVerified?"Installation verified":"Verification needed")</MudChip>
+    @if(user.IsProvisional){<MudChip T="string" Size="Size.Small">Claim pending</MudChip>}
+    @if(user.MustResetPassword){<MudChip T="string" Size="Size.Small" Color="Color.Warning">Reset pending</MudChip>}
+   </div>
+   <MudMenu Icon="@Icons.Material.Filled.MoreVert">
+    <MudMenuItem OnClick="@(()=>Reset(user))">Issue password reset</MudMenuItem>
+    @if(!user.InstallationVerified){<MudMenuItem OnClick="@(()=>Approve(user))">Approve installation manually</MudMenuItem>}
+    @if(!user.IsPrimaryAdministrator){<MudMenuItem OnClick="@(()=>ToggleActive(user))">@(user.IsActive?"Deactivate account":"Reactivate account")</MudMenuItem><MudMenuItem OnClick="@(()=>ToggleAdmin(user))">@(user.IsAdministrator?"Remove administrator":"Make administrator")</MudMenuItem>}
+   </MudMenu>
+  </div>
+ }
+ </div>
+}
+@if(ticket is not null){<MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-4"><strong>Reset ticket for @ticket.Username</strong><br/><code>@ticket.Token</code><br/>It expires @ticket.ExpiresAt.ToLocalTime().ToString("t"). Share it directly with the player; it is shown only now.</MudAlert>}
+@if(!string.IsNullOrEmpty(error)){<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>}
+@code {
+ private IReadOnlyList<AdminUserSummary> users=[];private PasswordResetTicket? ticket;private bool loading=true;private string? error;
+ protected override async Task OnInitializedAsync(){await Reload();loading=false;}
+ private async Task Reload()=>users=(await Api.GetAsync<IReadOnlyList<AdminUserSummary>>("api/admin/users"))?.Data??[];
+ private async Task Reset(AdminUserSummary user){ticket=null;error=null;var result=await Api.PostAsync<PasswordResetTicket>($"api/admin/users/{user.Id}/password-reset",new{});if(result.Payload?.Ok==true){ticket=result.Payload.Data;await Reload();}else error=result.Payload?.Error?.Message??"Reset failed.";}
+ private async Task ToggleAdmin(AdminUserSummary user){error=null;var result=await Api.PostAsync<AdminUserSummary>($"api/admin/users/{user.Id}/administrator",new SetAdministratorRequest(!user.IsAdministrator));if(result.Payload?.Ok==true)await Reload();else error=result.Payload?.Error?.Message??"Role update failed.";}
+ private async Task ToggleActive(AdminUserSummary user){error=null;var result=await Api.PostAsync<AdminUserSummary>($"api/admin/users/{user.Id}/active",new SetAccountActiveRequest(!user.IsActive));if(result.Payload?.Ok==true)await Reload();else error=result.Payload?.Error?.Message??"Account update failed.";}
+ private async Task Approve(AdminUserSummary user){error=null;var result=await Api.PostAsync<AdminUserSummary>($"api/admin/users/{user.Id}/installation-verification",new{});if(result.Payload?.Ok==true)await Reload();else error=result.Payload?.Error?.Message??"Approval failed.";}
+}

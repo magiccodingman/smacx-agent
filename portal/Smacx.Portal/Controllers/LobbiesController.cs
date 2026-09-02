@@ -25,11 +25,12 @@ public sealed class LobbiesController(
     StreamPresenceTracker presence,
     WaitingLobbyPresenceTracker waitingPresence,
     WaitingLobbyPolicy waitingLobbyPolicy,
+    MatchAccessService matchAccess,
     PersonalityCardLibrary personalityCards) : ControllerBase
 {
     private static readonly SemaphoreSlim WaitingLobbyCreationGate = new(1, 1);
     [HttpGet]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<PublicLobbySummary>>>> List()
     {
         var profiles = await database.PortalMatches.AsNoTracking()
@@ -41,15 +42,37 @@ public sealed class LobbiesController(
             .GroupBy(seat => seat.MatchId)
             .Select(group => new { MatchId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(item => item.MatchId, item => item.Count, HttpContext.RequestAborted);
+        var openCounts = await database.PortalLobbySeats.AsNoTracking()
+            .Where(seat => seat.ControllerKind == "open")
+            .GroupBy(seat => seat.MatchId)
+            .Select(group => new { MatchId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.MatchId, item => item.Count, HttpContext.RequestAborted);
+        var userId = userManager.GetUserId(User);
+        var participantIds = userId is null ? new HashSet<string>() : (await database.PortalMatchParticipants
+            .AsNoTracking().Where(item => item.UserId == userId).Select(item => item.MatchId)
+            .ToArrayAsync(HttpContext.RequestAborted)).ToHashSet(StringComparer.Ordinal);
+        if (userId is not null)
+        {
+            var legacyParticipantIds = await database.PortalMatchMembers.AsNoTracking()
+                .Where(item => item.UserId == userId && item.Role == "player" && item.SeatIndex != null)
+                .Select(item => item.MatchId).ToArrayAsync(HttpContext.RequestAborted);
+            participantIds.UnionWith(legacyParticipantIds);
+        }
+        var administrator = User.IsInRole(PortalRoles.Administrator);
         var results = profiles.Select(match => new PublicLobbySummary(
             match.MatchId, match.DisplayName, match.Status, match.CurrentTurn ?? 0,
-            counts.GetValueOrDefault(match.MatchId), match.AllowAnonymousSpectators,
-            match.UpdatedAt)).ToArray();
+            counts.GetValueOrDefault(match.MatchId), match.AllowSpectators,
+            match.UpdatedAt, openCounts.GetValueOrDefault(match.MatchId),
+            match.Status == "waiting" && match.WaitingVacantSince is not null
+                ? match.WaitingVacantSince + waitingLobbyPolicy.AbandonLifetime
+                : null,
+            !participantIds.Contains(match.MatchId) && (administrator || match.AllowSpectators)))
+            .ToArray();
         return ApiResponse<IReadOnlyList<PublicLobbySummary>>.Success(results);
     }
 
     [HttpGet("{matchId}")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<ActionResult<ApiResponse<LobbyDetails>>> Get(string matchId)
     {
         var profile = await database.PortalMatches.AsNoTracking()
@@ -59,6 +82,14 @@ public sealed class LobbiesController(
         {
             return NotFound(ApiResponse<LobbyDetails>.Failure("lobby_not_found", "The lobby was not found."));
         }
+        var userId = userManager.GetUserId(User);
+        var participant = await matchAccess.IsParticipantAsync(
+            profile.MatchId, userId, HttpContext.RequestAborted);
+        var activeCampaign = profile.Status is not ("waiting" or "closed" or "completed");
+        if (activeCampaign && !participant && !await matchAccess.CanSpectateAsync(
+                profile, userId, User.IsInRole(PortalRoles.Administrator),
+                HttpContext.RequestAborted))
+            return Forbid();
         return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
     }
 
@@ -185,7 +216,7 @@ public sealed class LobbiesController(
                     time_warp = Rule(request, "time_warp", false),
                     ironman = Rule(request, "ironman", false),
                 }),
-                AllowAnonymousSpectators = request.AllowAnonymousSpectators,
+                AllowSpectators = request.AllowSpectators,
                 ManagedClientsOnly = request.ManagedClientsOnly,
                 RankingMode = "unranked",
                 GraphitiEnabled = request.GraphitiEnabled,
@@ -194,6 +225,7 @@ public sealed class LobbiesController(
                 ResumeSlot = string.IsNullOrWhiteSpace(request.ResumeSlot) ? null : request.ResumeSlot,
                 CreatedAt = now,
                 UpdatedAt = now,
+                WaitingVacantSince = now,
             };
             database.PortalMatches.Add(profile);
             database.PortalMatchMembers.Add(new PortalMatchMember
@@ -632,13 +664,14 @@ public sealed class LobbiesController(
             return StatusCode(failure.Value.Status,
                 ApiResponse<LobbyDetails>.Failure(failure.Value.Code, failure.Value.Message));
         }
+        await matchAccess.RecordAssignedPlayersAsync(matchId, HttpContext.RequestAborted);
         await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
             "LobbyChanged", matchId, HttpContext.RequestAborted);
         return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
     }
 
     [HttpGet("{matchId}/messages")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<LobbyMessage>>>> Messages(string matchId)
     {
         var profile = await database.PortalMatches.AsNoTracking().SingleOrDefaultAsync(
@@ -652,8 +685,9 @@ public sealed class LobbiesController(
         var member = userId is not null && await database.PortalMatchMembers.AsNoTracking()
             .AnyAsync(item => item.MatchId == matchId && item.UserId == userId &&
                 item.LeftAt == null, HttpContext.RequestAborted);
-        if (!member && !User.IsInRole("Administrator") &&
-            !(profile.IsListed && profile.AllowAnonymousSpectators)) return Forbid();
+        var maySpectate = await matchAccess.CanSpectateAsync(
+            profile, userId, User.IsInRole("Administrator"), HttpContext.RequestAborted);
+        if (!member && !maySpectate) return Forbid();
         var localFaction = member ? await database.PortalLobbySeats.AsNoTracking()
             .Where(item => item.MatchId == matchId && item.UserId == userId)
             .Select(item => item.FactionId).SingleOrDefaultAsync(HttpContext.RequestAborted) : null;
@@ -1248,6 +1282,10 @@ public sealed class LobbiesController(
             .ToArrayAsync(HttpContext.RequestAborted);
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var administrator = User.IsInRole("Administrator");
+        var participant = await matchAccess.IsParticipantAsync(
+            profile.MatchId, userId, HttpContext.RequestAborted);
+        var maySpectate = userId is not null && !participant &&
+            (administrator || profile.AllowSpectators);
         var seats = seatEntities.Select(seat =>
         {
             var live = profile.Status == "running";
@@ -1255,8 +1293,7 @@ public sealed class LobbiesController(
                 userId is not null && seat.UserId == userId
                 && seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
                 seat.Status == "ready";
-            var canSpectate = live && seat.ControlInstanceId is not null
-                && (canControl || administrator || profile.AllowAnonymousSpectators);
+            var canSpectate = live && seat.ControlInstanceId is not null && maySpectate;
             var canJoin = profile.Status == "waiting" && userId is not null &&
                 (seat.ControllerKind == "open" || seat.ControllerKind == "human" &&
                     seat.JoinMode == "browser" && seat.UserId == userId &&
@@ -1286,7 +1323,7 @@ public sealed class LobbiesController(
         return new LobbyDetails(
             profile.MatchId, profile.DisplayName, profile.Mode, profile.Status,
             profile.LanProfile, profile.CurrentTurn, profile.CurrentYear, profile.IsListed,
-            profile.AllowAnonymousSpectators, profile.ManagedClientsOnly,
+            profile.AllowSpectators, profile.ManagedClientsOnly,
             profile.RankingMode, profile.GraphitiEnabled, profile.PersonalityCardId,
             CanManage(profile), seats, ReadSettings(profile.SettingsJson), nativeJoin, profile.LastError,
             profile.CreatedAt, profile.UpdatedAt,

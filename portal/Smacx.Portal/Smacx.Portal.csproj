@@ -35,6 +35,9 @@
     <Content Include="..\..\docs\personality-cards.md" Link="personality-cards.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Update="installation-fingerprints.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

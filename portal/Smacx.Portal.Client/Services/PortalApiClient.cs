@@ -6,6 +6,7 @@ namespace Smacx.Portal.Client.Services;
 
 public sealed class PortalApiClient(HttpClient http)
 {
+    public Uri BaseAddress => http.BaseAddress ?? new Uri("/", UriKind.Relative);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private string? csrfToken;
 

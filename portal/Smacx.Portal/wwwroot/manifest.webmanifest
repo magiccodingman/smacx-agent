@@ -2,7 +2,7 @@
   "id": "/",
   "name": "SMACX Agent Planetary Network",
   "short_name": "SMACX Agent",
-  "description": "A private-LAN command deck for Alpha Centauri matches, browser play, spectators, and agentic players.",
+  "description": "A private command deck for Alpha Centauri matches, browser play, invited friends, spectators, and agentic players.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

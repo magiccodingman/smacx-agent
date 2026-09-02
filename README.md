@@ -13,7 +13,7 @@ player disconnects, a long campaign needs to be resumed, or somebody wants to
 join from a machine where the game was never configured.
 
 SMACX Agent turns one Linux host and your existing Alien Crossfire installation
-into a persistent private-LAN game table. Open a website, create the lobby you
+into a persistent private game table for your household and invited friends. Open a website, create the lobby you
 actually want, and play the real game from a browser—or join with a traditional
 native client. Add humans, stock computer factions, autonomous LLM players, or
 no AI at all.
@@ -22,11 +22,11 @@ This is not a remake. It is the original game, made dramatically easier to
 host, watch, resume, explore, and share.
 
 <p align="center">
-  <img src="docs/images/command-deck.jpg" alt="SMACX Agent command deck showing the private-LAN lobby and match controls" width="100%">
+  <img src="docs/images/command-deck.jpg" alt="SMACX Agent command deck showing private lobby and match controls" width="100%">
 </p>
-<p align="center"><sub><strong>The command deck:</strong> one private-LAN home for creating, joining, recovering, and watching games.</sub></p>
+<p align="center"><sub><strong>The command deck:</strong> one private home for creating, joining, recovering, and watching games.</sub></p>
 
-> Linux-first and built for localhost or a trusted private LAN. This project
+> Linux-first, effortless on a trusted LAN, and invitation-gated over the Internet. This project
 > does not include or distribute Sid Meier's Alpha Centauri, Alien Crossfire,
 > or other proprietary game assets. You provide your own installation.
 
@@ -61,9 +61,11 @@ fullscreen, and reconnect support.
 - Keep one durable public display name and campaign history whether you prefer the
   managed browser path or a traditional native seat.
 
-Your wife does not need to learn Wine prefixes to join from the next room. Your
-friend does not need your carefully tuned Linux setup. They open the LAN site,
-claim their display name, and take their seat.
+Your wife does not need to learn Wine prefixes to join from the next room. A
+remote friend proves ownership once from a desktop browser, without uploading
+game content, and still never needs your carefully tuned Linux setup. After
+that, they can open your private site from any of their devices and take their
+seat.
 
 <p align="center">
   <img src="docs/images/browser-gameplay-mobile-landscape.jpg" alt="Alien Crossfire fitted into an 844 by 390 phone landscape viewport" width="72%">
@@ -79,9 +81,11 @@ remains attached to your private host—gameplay and authentication are never
 pretended to be offline.
 
 On the host, loopback works immediately. Phones, tablets, and other LAN
-devices use HTTPS so browsers can trust and install the app. Once installed,
-Planet can sit beside any other game in a launcher even though the original
-Windows executable remains isolated on the Linux host.
+devices can use the ordinary HTTP portal; PWA installation on another device
+needs the trusted HTTPS origin supplied by a configured public hostname (or
+another trusted local certificate). Once installed, Planet can sit beside any
+other game in a launcher even though the original Windows executable remains
+isolated on the Linux host.
 
 The original MENU button also becomes the doorway to managed play. While its
 plain root menu is open, a compact human-only control rail appears for
@@ -162,8 +166,9 @@ Lobby setup is equally deliberate: create the world and rules first, then
 assemble all seven seats in one staging room. Take or leave a faction, reserve
 friends, add or remove AI and stock opponents, and choose every faction before
 anything launches. Regular members can keep up to five waiting rooms;
-administrators are unlimited for simulations, and forgotten never-started rooms
-expire after a day without activity.
+administrators are unlimited for simulations. A waiting room remains live while
+at least one signed-in human has its staging page open; after the final viewer
+leaves, a visible 30-minute expiration begins.
 
 Disruptive changes are treated like table decisions, not surprise process
 kills. Native resolution changes, temporary computer control for an absent
@@ -182,7 +187,7 @@ in artificial intelligence to use SMACX Agent.
 As a modern human game host it already gives you:
 
 - one responsive lobby directory for standard, custom, and scenario games;
-- lightweight private-LAN accounts with durable, case-insensitive public display names;
+- lightweight private-host accounts with durable, case-insensitive public display names;
 - browser play that removes per-player game installation and compatibility
   setup;
 - installable desktop/mobile command deck with a guided cross-browser PWA
@@ -197,8 +202,9 @@ As a modern human game host it already gives you:
 - reconnectable seats, safe player-approved temporary bot delegation,
   verified saves, parking, and automatic recovery;
 - concurrent lobbies and campaigns;
-- administrator cross-seat viewing; and
-- optional anonymous, read-only spectating for a lobby.
+- non-playing administrator observation; and
+- optional authenticated, read-only spectating for a lobby, with campaign
+  participants permanently excluded from enemy views.
 
 An AI-only tournament is possible. So is a completely ordinary game with your
 family. So is watching friends finish a match from your phone without taking a
@@ -278,10 +284,12 @@ vectors, credentials, chat, or model reasoning.
 
 ## Watch the game—or the experiment
 
-Every managed seat renders independently. An administrator can switch between
-players and watch a human or AI screen without disturbing it. A lobby can also
-opt into anonymous LAN spectating, with read-only enforcement at the stream
-transport rather than a decorative disabled button.
+Every managed seat renders independently. A non-playing administrator can switch
+between players and watch a human or AI screen without disturbing it. A lobby can
+also opt into authenticated spectating, with read-only enforcement at the stream
+transport rather than a decorative disabled button. Anyone assigned a player
+faction in that campaign—including an administrator—can never use the spectator
+deck to inspect another perspective.
 
 The same Control Center makes SMACX Agent useful as an AI game laboratory.
 Create durable named model identities, vary reasoning, official or custom
@@ -312,7 +320,7 @@ deal? Was it strong, merely expensive, or—most importantly—fun to play with?
 | **Create** | Typed standard/custom/scenario setup, durable waiting lobbies, seven-seat composition, human/AI/native-bot mixing |
 | **Play** | Installable command deck; real game streaming with audio/input/fullscreen; true 800×600-to-5120×1440 profiles; adaptive bitrate; one-controller tab safety; instant fit, reconnect, or native-client joining |
 | **Host** | Isolated game workers, prepared Proton environments, DirectPlay setup, exact player identity, concurrent matches |
-| **Watch** | Admin seat switching, AI observation, opt-in anonymous spectator deck, worker-enforced read-only streams |
+| **Watch** | Non-player admin seat switching, AI observation, opt-in authenticated spectator deck, permanent participant exclusion, worker-enforced read-only streams |
 | **Continue** | Connected-player votes, stable-boundary checkpoints, safe temporary bot delegation/reclaim, crash reconciliation, faction restoration |
 | **Remember** | Chat history and scoped AI facts, beliefs, relationships, promises, goals, and summaries |
 | **Experiment** | Stable named model profiles with editable templates, advanced provider parameters, honest acceptance checks, telemetry, outcomes, analytics, CSV, and constrained SQL reports |
@@ -324,6 +332,9 @@ also need:
 
 - an existing Alien Crossfire directory containing `terranx.exe`; and
 - Docker Engine with Compose v2.
+
+See the focused [localhost/LAN installation guide](docs/lan-installation.md)
+for the persistent first-run flow.
 
 The worker image fetches checksum-pinned, open-source GE-Proton and the
 archived original Microsoft DirectX redistributable during its reproducible
@@ -345,24 +356,22 @@ docker compose exec -T control-center dotnet Smacx.Portal.dll bootstrap-token
 ```
 
 Open <http://127.0.0.1:8080>, finish the one-time administrator setup, and
-create a lobby. The configured game source is validated automatically at
-startup and the portal shows the complete managed stack as one readiness
-check. Publish the portal to a trusted household LAN when other devices should
-join:
-
-```bash
-SMACX_PORTAL_PUBLISH=0.0.0.0:8080 \
-SMACX_GAME_SOURCE="/absolute/path/to/Sid Meier's Alpha Centauri" \
-  ./scripts/control-center-up.sh
-```
+create a lobby. The same address is published on the host's private interfaces,
+so another household device opens `http://HOST-LAN-IP:8080`. The configured game
+source is validated automatically at startup and the portal shows the complete
+managed stack as one readiness check.
 
 Browser players need only that private URL. Native players use their own game
 installation and may still need the community compatibility work appropriate
 to their operating system. AI seats are optional; add a model provider only if
 you want them.
 
-The portal is designed for localhost and trusted private LANs, not public
-Internet hosting or matchmaking. Do not port-forward it as a public service.
+For invited Internet play, keep this same installation and add a hostname to
+the included Caddy edge. Remote account creation requires a single-use,
+24-hour invitation; remote sign-in requires HTTPS and a one-time local browser
+check of the player's own installation. No game file is uploaded. See
+[Internet hosting for friends](docs/internet-hosting.md). The service is a
+private game table, not public matchmaking.
 
 For complete prerequisites, runtime registration, networking, accounts,
 providers, lobbies, streams, saves, and recovery, use the
@@ -376,7 +385,7 @@ evidence live where they can stay precise:
 - [Project status and validation](docs/project-status.md)
 - [Operator guide](docs/control-center.md)
 - [Managed play, display, chat, voting, and recovery](docs/managed-play.md)
-- [Installable app and LAN HTTPS](docs/installable-app.md)
+- [Installable app and trusted HTTPS](docs/installable-app.md)
 - [Architecture and trust boundaries](docs/architecture.md)
 - [Semantic gameplay coverage](docs/coverage.md)
 - [Agent loop and fair-play contract](docs/agent-loop.md)

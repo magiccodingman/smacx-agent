@@ -52,8 +52,105 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
         Assert.Equal("/login?ReturnUrl=%2Flobbies%2Fnew", challenge.Headers.Location?.PathAndQuery);
 
+        using var spectate = await client.GetAsync("/spectate");
+        Assert.Equal(HttpStatusCode.Redirect, spectate.StatusCode);
+        Assert.Equal("/login?ReturnUrl=%2Fspectate", spectate.Headers.Location?.PathAndQuery);
+
+        using var lobbyDirectory = await client.GetAsync("/api/lobbies");
+        Assert.Equal(HttpStatusCode.Unauthorized, lobbyDirectory.StatusCode);
+
         using var legacy = await client.GetAsync("/Account/Login");
         Assert.Equal(HttpStatusCode.NotFound, legacy.StatusCode);
+    }
+
+    [Fact]
+    public async Task InvitationRegistrationIsSingleUseAndDoesNotSignInAutomatically()
+    {
+        var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var bootstrapToken = (await File.ReadAllTextAsync(
+            Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        await PostAsync<PortalSession>("api/auth/bootstrap",
+            new BootstrapRequest(bootstrapToken, "StrongP1", "StrongP1"), csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var administrators = await GetDataAsync<IReadOnlyList<AdminUserSummary>>("api/admin/users");
+        var primaryAdministrator = Assert.Single(administrators, item => item.IsPrimaryAdministrator);
+        var deactivatePrimary = await PostAsync<AdminUserSummary>(
+            $"api/admin/users/{primaryAdministrator.Id}/active",
+            new SetAccountActiveRequest(false), csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, deactivatePrimary.Response.StatusCode);
+        var demotePrimary = await PostAsync<AdminUserSummary>(
+            $"api/admin/users/{primaryAdministrator.Id}/administrator",
+            new SetAdministratorRequest(false), csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, demotePrimary.Response.StatusCode);
+        var invitation = await PostAsync<CreatedInvitation>("api/access/invitations",
+            new CreateInvitationRequest("test invitation"), csrf.Token);
+        Assert.True(invitation.Payload.Ok);
+        await PostAsync<NetworkAccessSettings>("api/access/settings",
+            new UpdateNetworkAccessSettingsRequest(true, false), csrf.Token);
+        await PostAsync<bool>("api/auth/logout", new { }, csrf.Token);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var blocked = await PostAsync<RegistrationResult>("api/auth/register",
+            new RegistrationRequest("invitee", "Invitee", "Invitee1", "Invitee1"), csrf.Token);
+        Assert.Equal(HttpStatusCode.Forbidden, blocked.Response.StatusCode);
+        Assert.Equal("registration_invitation_required", blocked.Payload.Error?.Code);
+
+        var redeemed = await PostAsync<InvitationGrantResult>("api/access/invitations/redeem",
+            new InvitationGrantRequest(invitation.Payload.Data!.Secret), csrf.Token);
+        Assert.True(redeemed.Payload.Ok);
+        var registered = await PostAsync<RegistrationResult>("api/auth/register",
+            new RegistrationRequest("invitee", "Invitee", "Invitee1", "Invitee1"), csrf.Token);
+        Assert.True(registered.Payload.Data?.Created);
+        var session = await GetDataAsync<PortalSession>("api/auth/session");
+        Assert.False(session.Authenticated);
+
+        var replay = await PostAsync<InvitationGrantResult>("api/access/invitations/redeem",
+            new InvitationGrantRequest(invitation.Payload.Data.Secret), csrf.Token);
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.Response.StatusCode);
+
+        var adminLogin = await PostAsync<PortalSession>("api/auth/login",
+            new LoginRequest("admin", "StrongP1"), csrf.Token);
+        Assert.True(adminLogin.Payload.Data?.Authenticated);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        await PostAsync<NetworkAccessSettings>("api/access/settings",
+            new UpdateNetworkAccessSettingsRequest(true, true), csrf.Token);
+        await PostAsync<bool>("api/auth/logout", new { }, csrf.Token);
+
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var gatedLogin = await PostAsync<PortalSession>("api/auth/login",
+            new LoginRequest("invitee", "Invitee1"), csrf.Token);
+        Assert.True(gatedLogin.Payload.Data?.RequiresInstallationVerification);
+        Assert.False(gatedLogin.Payload.Data?.Authenticated);
+
+        adminLogin = await PostAsync<PortalSession>("api/auth/login",
+            new LoginRequest("admin", "StrongP1"), csrf.Token);
+        Assert.True(adminLogin.Payload.Data?.Authenticated);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var users = await GetDataAsync<IReadOnlyList<AdminUserSummary>>("api/admin/users");
+        var invitee = Assert.Single(users, item => item.Username == "invitee");
+        var resetTicket = await PostAsync<PasswordResetTicket>(
+            $"api/admin/users/{invitee.Id}/password-reset", new { }, csrf.Token);
+        await PostAsync<bool>("api/auth/logout", new { }, csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var gatedReset = await PostAsync<PortalSession>("api/auth/reset/complete",
+            new CompletePasswordResetRequest(
+                "invitee", resetTicket.Payload.Data!.Token, "Invitee2", "Invitee2"), csrf.Token);
+        Assert.True(gatedReset.Payload.Data?.RequiresInstallationVerification);
+        Assert.False(gatedReset.Payload.Data?.Authenticated);
+
+        var manifest = await GetDataAsync<InstallationFingerprintManifest>(
+            "api/installation-verification/manifest");
+        var verified = await PostAsync<InstallationVerificationResult>(manifest.SubmitPath,
+            new InstallationVerificationRequest(manifest.ChallengeId, manifest.ManifestId,
+            [
+                new("alien-sound-library", 1, "ac272e244b3f1339d9ce63bc2e7acf76605c6ac2695bba3230e72ea59039a3f5"),
+                new("alien-opening-a", 1, "a8b1734e4c39e7bd6644f6c4b27f6ca2c9883abdbd44b665a88ef7ff21eb1db6"),
+                new("alien-opening-b", 1, "f5453042a7e06fb01781b60f659a672ae85db467b0dc1a56d355da5c5329ca44"),
+            ]), csrf.Token);
+        Assert.True(verified.Payload.Data?.Verified);
+        session = await GetDataAsync<PortalSession>("api/auth/session");
+        Assert.True(session.Authenticated);
+        Assert.True(session.User?.InstallationVerified);
     }
 
     [Fact]
@@ -76,7 +173,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
         var tracker = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.WaitingLobbyPresenceTracker>();
         var policy = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.WaitingLobbyPolicy>();
         var match = await database.PortalMatches.SingleAsync(item => item.MatchId == matchId);
-        match.UpdatedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(25);
+        match.WaitingVacantSince = DateTimeOffset.UtcNow - policy.AbandonLifetime - TimeSpan.FromMinutes(1);
         await database.SaveChangesAsync();
 
         tracker.Join(matchId, "test-connection");
@@ -346,11 +443,17 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.DoesNotContain("StableProfileId", columns);
 
         csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
-        var claimed = await PostAsync<PortalSession>("api/auth/register",
+        var claimed = await PostAsync<RegistrationResult>("api/auth/register",
             new RegistrationRequest("guestone", "GuestOne", "GuestA1b", "GuestA1b"),
             csrf.Token);
-        Assert.Equal("GuestOne", claimed.Payload.Data?.User?.GameHandle);
-        Assert.Equal("GuestOne", claimed.Payload.Data?.User?.DisplayName);
+        Assert.True(claimed.Payload.Data?.Created);
+        Assert.Equal("guestone", claimed.Payload.Data?.Username);
+        await PostAsync<bool>("api/auth/logout", new { }, csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var signedIn = await PostAsync<PortalSession>("api/auth/login",
+            new LoginRequest("guestone", "GuestA1b"), csrf.Token);
+        Assert.Equal("GuestOne", signedIn.Payload.Data?.User?.GameHandle);
+        Assert.Equal("GuestOne", signedIn.Payload.Data?.User?.DisplayName);
         var claimedLobby = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Contains(claimedLobby.Seats,
             seat => seat.PlayerHandle == "GuestOne" && seat.CanJoin && !seat.CanLeave);

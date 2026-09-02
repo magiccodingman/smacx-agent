@@ -1,0 +1,40 @@
+@page "/verify-installation"
+@inject Services.PortalApiClient Api
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+<PageTitle>Verify installation · SMACX Agent</PageTitle>
+<div class="auth-stage"><section class="auth-card installation-card">
+    <div class="auth-sigil">✓</div><span class="panel-kicker">LOCAL OWNERSHIP CHECK</span>
+    <h1>Select your Alpha Centauri installation</h1>
+    <p>The browser hashes a small set of characteristic files on this device. Only file names, sizes, and SHA-256 fingerprints are sent; game files never leave your computer. Mods are welcome.</p>
+    @if(loading){<MudProgressLinear Indeterminate="true" Color="Color.Primary"/>}
+    else if(manifest is not null)
+    {
+        <label class="directory-picker">
+            <span>@(selected?"Installation folder selected":"Choose installation folder")</span>
+            <input id="smacx-installation-directory" type="file" webkitdirectory directory multiple @onchange="Selected" />
+        </label>
+        <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Disabled="@(!selected||busy)" OnClick="Verify">Verify locally</MudButton>
+        <div class="auth-hint">Use a desktop browser for this one-time check. After approval, this account may play from phones, tablets, and other devices.</div>
+    }
+    @if(busy){<MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-4"/>}
+    @if(!string.IsNullOrEmpty(message)){<MudAlert Severity="@(verified?Severity.Success:Severity.Error)" Variant="Variant.Outlined" Class="mt-4">@message</MudAlert>}
+</section></div>
+@code {
+    private InstallationFingerprintManifest? manifest; private bool loading=true;private bool selected;private bool busy;private bool verified;private string? message;
+    protected override async Task OnInitializedAsync(){var response=await Api.GetAsync<InstallationFingerprintManifest>("api/installation-verification/manifest");manifest=response?.Data;message=response?.Ok==true?null:response?.Error?.Message;loading=false;}
+    private void Selected(ChangeEventArgs _){selected=true;message=null;}
+    private async Task Verify()
+    {
+        if(manifest is null)return;busy=true;message=null;
+        try
+        {
+            var evidence=await Js.InvokeAsync<IReadOnlyList<InstallationFingerprintEvidence>>("smacxAccess.hashInstallation","smacx-installation-directory",manifest.Files);
+            var result=await Api.PostAsync<InstallationVerificationResult>(manifest.SubmitPath,new InstallationVerificationRequest(manifest.ChallengeId,manifest.ManifestId,evidence));
+            verified=result.Payload?.Data?.Verified==true;message=result.Payload?.Data?.Message??result.Payload?.Error?.Message??"Verification failed.";
+            if(verified){await Task.Delay(900);Navigation.NavigateTo("/",true);}
+        }
+        catch(JSException ex){message=ex.Message;}
+        finally{busy=false;}
+    }
+}

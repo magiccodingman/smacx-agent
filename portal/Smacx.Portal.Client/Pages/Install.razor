@@ -6,7 +6,7 @@
 
 <PageHeader Kicker="INSTALL PLANETARY NETWORK"
             Title="Put mission control on this device"
-            Description="Install the LAN command deck like an app—without changing how your host runs matches." />
+            Description="Install the private command deck like an app—without changing how your host runs matches." />
 
 <div class="install-grid">
     <section class="surface-panel install-hero">
@@ -36,7 +36,7 @@
                 <MudAlert Severity="@(state.SecureContext ? Severity.Info : Severity.Warning)" Variant="Variant.Outlined">
                     @(state.SecureContext
                         ? "This browser uses its own install menu. Follow the device-specific steps below."
-                        : "App installation requires HTTPS on a LAN address. The ordinary HTTP site still works in your browser.")
+                        : "App installation requires HTTPS away from localhost. The ordinary HTTP LAN site still works in your browser.")
                 </MudAlert>
             }
             @if (!string.IsNullOrWhiteSpace(message))
@@ -55,7 +55,7 @@
                 <li>@step</li>
             }
         </ol>
-        <p class="section-copy">The installed app stays connected to this same private-LAN host. It does not copy the game, make gameplay offline, or expose the server to the internet.</p>
+        <p class="section-copy">The installed app stays connected to this same private host. It does not copy the game or make gameplay offline; it works on the LAN address and on an administrator-configured HTTPS hostname.</p>
         <MudButton Href="@HelpUrl" Target="_blank" Variant="Variant.Text" EndIcon="@Icons.Material.Filled.OpenInNew">
             Official @BrowserLabel install help
         </MudButton>
@@ -63,7 +63,7 @@
 
     <section class="surface-panel install-note">
         <MudIcon Icon="@Icons.Material.Filled.Security" />
-        <div><strong>LAN HTTPS is the durable mobile path</strong><span>Localhost is trusted automatically on the host machine. Phones and tablets visiting a private IP need the documented HTTPS setup before browsers can offer a reliable install prompt.</span></div>
+        <div><strong>HTTPS is the durable mobile path</strong><span>Localhost is trusted automatically on the host machine. Phones and tablets use the Caddy-managed HTTPS hostname before browsers can offer a reliable install prompt.</span></div>
     </section>
 </div>
 

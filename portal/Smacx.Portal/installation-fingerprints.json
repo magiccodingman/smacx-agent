@@ -1,0 +1,28 @@
+{
+  "manifestId": "smacx-ownership-2026-09",
+  "edition": "Sid Meier's Alien Crossfire",
+  "requiredRecognizedAnchors": 3,
+  "files": [
+    { "id": "alien-sound-library", "relativePaths": ["soundx.dll"] },
+    { "id": "alien-opening-a", "relativePaths": ["xopeninga.pcx"] },
+    { "id": "alien-opening-b", "relativePaths": ["xopeningb.pcx"] },
+    { "id": "monument-library", "relativePaths": ["monicons.pcx"] },
+    { "id": "terrain-library", "relativePaths": ["ter1.pcx"] },
+    { "id": "texture-library", "relativePaths": ["texture.pcx"] },
+    { "id": "alien-executable", "relativePaths": ["terranx.exe"] }
+  ],
+  "fingerprints": [
+    {
+      "id": "classic-alien-crossfire-content-family-2026-09",
+      "anchors": {
+        "alien-sound-library": ["ac272e244b3f1339d9ce63bc2e7acf76605c6ac2695bba3230e72ea59039a3f5"],
+        "alien-opening-a": ["a8b1734e4c39e7bd6644f6c4b27f6ca2c9883abdbd44b665a88ef7ff21eb1db6"],
+        "alien-opening-b": ["f5453042a7e06fb01781b60f659a672ae85db467b0dc1a56d355da5c5329ca44"],
+        "monument-library": ["27d7d251fd285f01f32ff06a64017afca768c8abaa1b1b665049c15b0759e40f"],
+        "terrain-library": ["82ef33e48f40d00a60e08fbcc403b1ecd9b340bd065830e2658ba3bacbf5b327"],
+        "texture-library": ["3dfa56f9eaa2a13af4fac199a0ac9ff3bf59effed17871a24f15b1b553b7c0ab"],
+        "alien-executable": ["573fd44cf18392da7cd048e2d8c24a8e130034364f374647e34e79a6c621d6f4"]
+      }
+    }
+  ]
+}

@@ -10,6 +10,15 @@ fi
 SMACX_DOCKER_GID=$(stat -c '%g' "$docker_socket")
 export SMACX_DOCKER_GID
 
+edge_secret_dir=${SMACX_EDGE_SECRET_DIR:-./runtime/edge-secrets}
+mkdir -p "$edge_secret_dir"
+SMACX_EDGE_SECRET_GID=${SMACX_EDGE_SECRET_GID:-$(id -g)}
+export SMACX_EDGE_SECRET_GID
+if [ ! -e "$edge_secret_dir/ddns-token" ]; then
+    : > "$edge_secret_dir/ddns-token"
+    chmod 640 "$edge_secret_dir/ddns-token"
+fi
+
 # Compose understands spaces and apostrophes in its .env parser; POSIX shell
 # sourcing does not. Resolve the mounted source through Compose when the caller
 # did not export it explicitly, so the ordinary checked-in launcher works with
@@ -25,7 +34,7 @@ if [ ! -f "$SMACX_GAME_SOURCE/terranx.exe" ]; then
     exit 2
 fi
 
-services="knowledge-service control-api control-center"
+services="knowledge-service control-api control-center edge ddns"
 # Proton sealing and Blazor AOT-style optimization are memory-intensive build
 # phases. Keep first-run builds deterministic on small home-lab hosts instead
 # of letting Compose build all images concurrently.
@@ -45,7 +54,7 @@ case "${SMACX_VIRTUAL_LAN:-none}" in
             exit 2
         fi
         set -- "$@" -f compose.tailscale.yaml
-        services="knowledge-service control-api control-center tailscale-router"
+        services="knowledge-service control-api control-center edge ddns tailscale-router"
         ;;
     *)
         echo "Unsupported SMACX_VIRTUAL_LAN: ${SMACX_VIRTUAL_LAN}" >&2
@@ -56,6 +65,8 @@ esac
 docker compose "$@" --profile build build knowledge-service
 docker compose "$@" --profile build build control-api
 docker compose "$@" --profile build build control-center
+docker compose "$@" --profile build build edge
+docker compose "$@" --profile build build ddns
 docker compose "$@" --profile build build worker-image
 docker compose "$@" --profile build build harness-image
 # Word splitting is deliberate: this is a fixed internal service list, never

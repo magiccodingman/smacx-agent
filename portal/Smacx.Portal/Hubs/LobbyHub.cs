@@ -7,12 +7,27 @@ using Smacx.Portal.Services;
 
 namespace Smacx.Portal.Hubs;
 
+[Authorize]
 public sealed class LobbyHub(
     ApplicationDbContext database,
-    WaitingLobbyPresenceTracker waitingPresence) : Hub
+    WaitingLobbyPresenceTracker waitingPresence,
+    AccountConnectionRegistry accountConnections) : Hub
 {
     private const string JoinedLobbyKey = "joined-waiting-lobbies";
+    private const string AccountRevocationKey = "account-revocation-registration";
     public static string GroupName(string matchId) => $"match:{matchId}";
+    public const string DirectoryGroup = "lobby-directory";
+
+    public Task JoinDirectory() => Groups.AddToGroupAsync(Context.ConnectionId, DirectoryGroup);
+
+    public override Task OnConnectedAsync()
+    {
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is not null)
+            Context.Items[AccountRevocationKey] = accountConnections.Token(userId)
+                .Register(Context.Abort);
+        return base.OnConnectedAsync();
+    }
 
     public async Task JoinLobby(string matchId)
     {
@@ -23,7 +38,7 @@ public sealed class LobbyHub(
         var lobby = await database.PortalMatches.SingleOrDefaultAsync(
             match => match.MatchId == matchId, Context.ConnectionAborted);
         if (lobby is null || !lobby.IsListed ||
-            Context.User?.Identity?.IsAuthenticated != true && !lobby.AllowAnonymousSpectators)
+            Context.User?.Identity?.IsAuthenticated != true)
         {
             throw new HubException("lobby_access_denied");
         }
@@ -33,6 +48,7 @@ public sealed class LobbyHub(
         JoinedLobbies.Add(matchId);
         if (lobby.Status == "waiting")
         {
+            lobby.WaitingVacantSince = null;
             if (userId is not null)
             {
                 var seat = await database.PortalLobbySeats
@@ -52,6 +68,8 @@ public sealed class LobbyHub(
             await database.SaveChangesAsync(Context.ConnectionAborted);
             await Clients.Group(GroupName(matchId)).SendAsync(
                 "LobbyChanged", matchId, Context.ConnectionAborted);
+            await Clients.Group(DirectoryGroup).SendAsync(
+                "LobbyDirectoryChanged", matchId, Context.ConnectionAborted);
         }
     }
 
@@ -70,6 +88,9 @@ public sealed class LobbyHub(
             waitingPresence.Leave(matchId, Context.ConnectionId);
             await MarkDisconnectedAsync(matchId, CancellationToken.None);
         }
+        if (Context.Items.Remove(AccountRevocationKey, out var registration) &&
+            registration is CancellationTokenRegistration tokenRegistration)
+            tokenRegistration.Dispose();
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -95,10 +116,13 @@ public sealed class LobbyHub(
                 seat.UpdatedAt = now;
             }
         }
+        if (!waitingPresence.IsActive(matchId)) lobby.WaitingVacantSince ??= now;
         lobby.UpdatedAt = now;
         await database.SaveChangesAsync(cancellationToken);
         await Clients.Group(GroupName(matchId)).SendAsync(
             "LobbyChanged", matchId, cancellationToken);
+        await Clients.Group(DirectoryGroup).SendAsync(
+            "LobbyDirectoryChanged", matchId, cancellationToken);
     }
 
     private HashSet<string> JoinedLobbies

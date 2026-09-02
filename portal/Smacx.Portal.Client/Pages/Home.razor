@@ -7,7 +7,7 @@
     <section class="hero-copy">
         <div class="eyebrow"><span></span> PLANETARY NETWORK ONLINE</div>
         <h1>Your Alpha Centauri<br/><em>command deck.</em></h1>
-        <p>Launch reliable LAN matches, bring humans and agentic players together, and return everyone to their seat after the unexpected.</p>
+        <p>Launch reliable private matches, bring local or invited humans and agentic players together, and return everyone to their seat after the unexpected.</p>
         <div class="hero-actions">
             <MudButton Href="lobbies/new" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.RocketLaunch">Create a match</MudButton>
             <MudButton Href="lobbies" Variant="Variant.Outlined" Size="Size.Large" StartIcon="@Icons.Material.Filled.Groups">Browse lobbies</MudButton>
@@ -22,7 +22,7 @@
 
 <section class="metric-grid">
     <MetricCard Label="ACTIVE MATCHES" Value="@(status?.ActiveMatches ?? 0)" Detail="Running now" Icon="@Icons.Material.Filled.Public" Tone="mint" />
-    <MetricCard Label="PLAYERS ONLINE" Value="@(status?.OnlinePlayers ?? 0)" Detail="Across this LAN" Icon="@Icons.Material.Filled.Group" Tone="gold" />
+    <MetricCard Label="PLAYERS ONLINE" Value="@(status?.OnlinePlayers ?? 0)" Detail="Across this host" Icon="@Icons.Material.Filled.Group" Tone="gold" />
     <MetricCard Label="AI SEATS" Value="@(status?.RunningAiSeats ?? 0)" Detail="Agent-controlled" Icon="@Icons.Material.Filled.SmartToy" Tone="violet" />
     <MetricCard Label="RECOVERABLE" Value="@(status?.RecoverableMatches ?? 0)" Detail="Ready to resume" Icon="@Icons.Material.Filled.RestartAlt" Tone="blue" />
 </section>
@@ -48,7 +48,7 @@
     </div>
     <div class="surface-panel quick-panel">
         <div class="panel-heading"><div><span class="panel-kicker">QUICK START</span><h2>Begin a mission</h2></div></div>
-        <a class="quick-link" href="lobbies/new"><span class="quick-icon mint"><MudIcon Icon="@Icons.Material.Filled.AddCircle"/></span><span><strong>New LAN lobby</strong><small>Humans, native bots, or AI seats</small></span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>
+        <a class="quick-link" href="lobbies/new"><span class="quick-icon mint"><MudIcon Icon="@Icons.Material.Filled.AddCircle"/></span><span><strong>New lobby</strong><small>Humans, native bots, or AI seats</small></span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>
         <a class="quick-link" href="history"><span class="quick-icon gold"><MudIcon Icon="@Icons.Material.Filled.PlayCircle"/></span><span><strong>Resume a game</strong><small>Restore seats from a checkpoint</small></span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>
         <a class="quick-link" href="analytics"><span class="quick-icon violet"><MudIcon Icon="@Icons.Material.Filled.Science"/></span><span><strong>Run a simulation</strong><small>Compare agents and native difficulty</small></span><MudIcon Icon="@Icons.Material.Filled.ChevronRight"/></a>
     </div>

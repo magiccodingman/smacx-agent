@@ -11,8 +11,8 @@
         <MudText Typo="Typo.caption">Planetary network</MudText>
     </div>
     <MudSpacer />
-    <div class="network-pill"><span></span> LAN ONLY</div>
-    <AuthorizeView Roles="Administrator">
+    <div class="network-pill"><span></span> PRIVATE NETWORK</div>
+    <AuthorizeView>
         <MudBadge Content="@warnings.Count" Color="@(warnings.Count>0?Color.Warning:Color.Success)" Overlap="true" Visible="true">
             <MudMenu Icon="@Icons.Material.Filled.Notifications" AriaLabel="System notices" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                 @if(warnings.Count==0){<MudMenuItem Icon="@Icons.Material.Filled.CheckCircle">All configured systems look ready</MudMenuItem>}
@@ -45,12 +45,15 @@
     private async Task RefreshWarnings()
     {
         var auth=await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        if(auth.User.Identity?.IsAuthenticated!=true||!auth.User.IsInRole("Administrator"))return;
+        warnings.Clear();
+        if(auth.User.Identity?.IsAuthenticated!=true)return;
         try
         {
+            var session=(await Api.GetAsync<PortalSession>("api/auth/session"))?.Data;
+            if(session?.User?.InstallationVerified!=true)warnings.Add(new("Verify your local game installation for future remote play","verify-installation"));
+            if(!auth.User.IsInRole("Administrator"))return;
             var snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;
             var profiles=(await Api.GetAsync<IReadOnlyList<AiProfile>>("api/admin/ai-profiles"))?.Data??[];
-            warnings.Clear();
             if(snapshot is null)return;
             if(snapshot.Providers.ValueKind!=JsonValueKind.Array||snapshot.Providers.GetArrayLength()==0)warnings.Add(new("No model endpoint is configured","admin/providers"));
             else foreach(var provider in snapshot.Providers.EnumerateArray())if(Text(provider,"status") is "unreachable" or "disabled")warnings.Add(new($"Model endpoint {Text(provider,"display_name")} is {Text(provider,"status")}","admin/providers"));
