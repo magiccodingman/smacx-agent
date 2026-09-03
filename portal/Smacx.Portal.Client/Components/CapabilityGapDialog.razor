@@ -9,16 +9,23 @@
              aria-labelledby="capability-gap-title" aria-describedby="capability-gap-description">
         <div class="capability-gap-mark"><MudIcon Icon="@Icons.Material.Filled.ReportProblem" /></div>
         <div class="capability-gap-heading">
-            <span class="panel-kicker">SEMANTIC BRIDGE · NEEDS ATTENTION</span>
+            <span class="panel-kicker">@(IsSemanticGap ? "SEMANTIC BRIDGE" : "MANAGED RUNTIME") · NEEDS ATTENTION</span>
             <h2 id="capability-gap-title">The AI stopped safely</h2>
             <p id="capability-gap-description">
-                It found a game state the semantic bridge cannot yet understand or control. Automatic
-                continuation is off, and the native game is preserved for diagnosis.
+                @if (IsSemanticGap)
+                {
+                    <text>It found a game state the semantic bridge cannot yet understand or control.</text>
+                }
+                else
+                {
+                    <text>The managed game runtime stopped and automatic recovery could not continue safely.</text>
+                }
+                Autonomous continuation is off until an owner or administrator resolves the incident.
             </p>
         </div>
 
         <div class="capability-gap-summary">
-            <div><span>Gap ID</span><code>@Incident.GapId</code></div>
+            <div><span>@(IsSemanticGap ? "Gap ID" : "Incident ID")</span><code>@Incident.GapId</code></div>
             <div><span>Turn</span><strong>@(Incident.Turn?.ToString() ?? "Unknown")</strong></div>
             <div><span>Native state</span><strong>@Incident.ScreenOrState</strong></div>
             <div><span>Reported</span><strong>@Incident.ReportedAt.ToLocalTime().ToString("g")</strong></div>
@@ -31,14 +38,20 @@
         <div class="capability-gap-detail"><span>Why it stopped</span><p>@Incident.WhyBlocked</p></div>
 
         <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
-            The diagnostic ZIP is redacted. It contains no game binaries, credentials, private provider
-            addresses, chat history, account data, or full model reasoning.
+            @if (Incident.DiagnosticFileName is not null)
+            {
+                <text>The diagnostic ZIP is redacted. It contains no game binaries, credentials, private provider addresses, chat history, account data, or full model reasoning.</text>
+            }
+            else
+            {
+                <text>No downloadable diagnostic bundle was produced for this operational incident. Its durable incident ID and explanation remain available below for a bug report.</text>
+            }
         </MudAlert>
         @if (!Incident.VerifiedCheckpointAvailable)
         {
             <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-2">
-                No bridge-verified checkpoint is available yet. Keep the native worker preserved or use
-                Stop &amp; park; automatic retry remains disabled rather than guessing at game state.
+                No bridge-verified checkpoint is available. Resume and retry remain disabled rather than
+                restoring native game state with mismatched AI memory. An owner can end the campaign from its lobby.
             </MudAlert>
         }
 
@@ -93,7 +106,7 @@ else if (loaded && dismissed)
         <div class="capability-gap-banner-copy">
             <span class="panel-kicker">AI PAUSED · OPERATOR ATTENTION REQUIRED</span>
             <strong>Autonomous play is stopped at turn @(Incident.Turn?.ToString() ?? "unknown").</strong>
-            <p>The native game is preserved. Dismissing the report does not resume the AI.</p>
+            <p>Dismissing the report does not resume the AI or clear the durable incident.</p>
             <code>@Incident.GapId</code>
         </div>
         <div class="capability-gap-banner-actions">
@@ -130,13 +143,16 @@ else if (loaded && dismissed)
     private IJSObjectReference? module;
     private bool copied, downloading, dismissed, loaded;
     private string? loadedIncidentId, downloadError;
+    private bool IsSemanticGap => Incident.IncidentKind.StartsWith(
+        "capability_gap:", StringComparison.Ordinal);
 
     private string DownloadHref =>
         $"api/lobbies/{Uri.EscapeDataString(MatchId)}/incidents/{Uri.EscapeDataString(Incident.IncidentId)}/diagnostic";
 
     private string IssueSummary => string.Join("\n", new[]
     {
-        "SMACX semantic capability gap", "", $"Gap ID: {Incident.GapId}",
+        IsSemanticGap ? "SMACX semantic capability gap" : "SMACX managed runtime incident", "",
+        $"{(IsSemanticGap ? "Gap" : "Incident")} ID: {Incident.GapId}",
         $"Match ID: {MatchId}", $"Turn: {Incident.Turn?.ToString() ?? "unknown"}",
         $"Native state: {Incident.ScreenOrState}",
         $"Intended decision: {Incident.IntendedDecision}",
@@ -147,7 +163,7 @@ else if (loaded && dismissed)
 
     private string IssueHref =>
         "https://github.com/magiccodingman/smacx-agent/issues/new?" +
-        $"title={Uri.EscapeDataString($"Capability gap {Incident.GapId}")}&" +
+        $"title={Uri.EscapeDataString($"{(IsSemanticGap ? "Capability gap" : "Runtime incident")} {Incident.GapId}")}&" +
         $"body={Uri.EscapeDataString(IssueSummary)}";
 
     private async Task CopyIssueSummary()

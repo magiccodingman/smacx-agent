@@ -598,11 +598,17 @@ public sealed class LobbiesController(
                         await MapDetailsAsync(profile)));
                 case "checkpoint": await control.PostRawAsync($"api/v1/matches/{matchId}/checkpoint", new { slot = request.Slot ?? "control_recovery" }); break;
                 case "recover":
-                    if (await control.GetActiveCapabilityIncidentAsync(
+                    if (await control.GetActiveOperatorIncidentAsync(
                             matchId, HttpContext.RequestAborted) is not null)
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
-                            "capability_incident_requires_explicit_retry",
-                            "Use Retry from verified checkpoint so the current runtime is installed and the incident remains fail-closed during recovery."));
+                            "operator_incident_requires_resolution",
+                            "This campaign has an active operator incident. Review it in the lobby; checkpoint recovery is available only when the incident and checkpoint type support it."));
+                    var recoverableMatch = await control.GetMatchAsync(
+                        matchId, HttpContext.RequestAborted);
+                    if (!recoverableMatch.Match.HasVerifiedRecoveryCheckpoint)
+                        return Conflict(ApiResponse<LobbyDetails>.Failure(
+                            "verified_recovery_checkpoint_required",
+                            "This campaign has no bridge-verified checkpoint and cannot be resumed safely."));
                     await control.PostRawAsync($"api/v1/matches/{matchId}/recover", new { });
                     break;
                 case "retry-after-update":
@@ -672,7 +678,16 @@ public sealed class LobbiesController(
                     return Accepted(ApiResponse<LobbyDetails>.Success(
                         await MapDetailsAsync(profile)));
                 case "end":
-                    if (profile.Status != "parked")
+                    if (profile.Status == "error")
+                    {
+                        // An unrecoverable operator incident may have no
+                        // checkpoint by definition. Explicitly retiring it is
+                        // still safe: stop/compact the preserved worker first,
+                        // then seal the now-parked campaign as completed.
+                        await control.PostRawAsync(
+                            $"api/v1/matches/{matchId}/park", new { });
+                    }
+                    else if (profile.Status != "parked")
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
                             "end_requires_parked_match",
                             "Park the campaign at a verified checkpoint before ending it permanently."));
@@ -1460,9 +1475,14 @@ public sealed class LobbiesController(
                 stagingPresenceExpiresAt);
         }).ToArray();
         var nativeJoin = await ReadNativeJoinAsync(profile.MatchId);
-        var incident = await ReadCapabilityIncidentAsync(profile.MatchId);
-        var runtimeGeneration = await ReadRuntimeGenerationAsync(profile.MatchId);
+        var runtime = await ReadRuntimeStateAsync(profile.MatchId);
+        var incident = await ReadOperatorIncidentAsync(
+            profile.MatchId, profile.CurrentTurn, runtime.HasVerifiedRecoveryCheckpoint);
         var maintenance = await ReadMaintenanceAsync(profile.MatchId);
+        var recoveryBlockedReason = profile.Status is "parked" or "error" &&
+            !runtime.HasVerifiedRecoveryCheckpoint
+                ? "No bridge-verified recovery checkpoint exists for this campaign. It cannot be resumed safely; end the campaign or preserve it for diagnosis."
+                : null;
         return new LobbyDetails(
             profile.MatchId, profile.DisplayName, profile.Mode, profile.Status,
             profile.LanProfile, profile.CurrentTurn, profile.CurrentYear, profile.IsListed,
@@ -1470,7 +1490,8 @@ public sealed class LobbiesController(
             profile.RankingMode, profile.GraphitiEnabled, profile.PersonalityCardId,
             CanManage(profile), seats, ReadSettings(profile.SettingsJson), nativeJoin, profile.LastError,
             profile.CreatedAt, profile.UpdatedAt,
-            Presence(profile, seatEntities), incident, runtimeGeneration, maintenance);
+            Presence(profile, seatEntities), incident, runtime.RuntimeGeneration, maintenance,
+            runtime.HasVerifiedRecoveryCheckpoint, recoveryBlockedReason);
     }
 
     private async Task<MaintenanceProgress?> ReadMaintenanceAsync(string matchId)
@@ -1485,27 +1506,32 @@ public sealed class LobbiesController(
             row.StableYear, row.UpdatedAt, row.CanCancel);
     }
 
-    private async Task<double> ReadRuntimeGenerationAsync(string matchId)
+    private async Task<RuntimeState> ReadRuntimeStateAsync(string matchId)
     {
         try
         {
-            return (await control.GetMatchAsync(
-                matchId, HttpContext.RequestAborted)).Match.RuntimeGeneration;
+            var match = (await control.GetMatchAsync(
+                matchId, HttpContext.RequestAborted)).Match;
+            return new RuntimeState(
+                match.RuntimeGeneration, match.HasVerifiedRecoveryCheckpoint);
         }
         catch (ControlPlaneException)
         {
-            return 0;
+            return new RuntimeState(0, false);
         }
     }
 
-    private async Task<CapabilityGapIncident?> ReadCapabilityIncidentAsync(string matchId)
+    private async Task<CapabilityGapIncident?> ReadOperatorIncidentAsync(
+        string matchId, int? currentTurn, bool verifiedCheckpointAvailable)
     {
         try
         {
-            var incident = await control.GetActiveCapabilityIncidentAsync(
+            var incident = await control.GetActiveOperatorIncidentAsync(
                 matchId, HttpContext.RequestAborted);
             if (incident is null) return null;
             var detail = incident.Details;
+            var semanticGap = incident.IncidentKind.StartsWith(
+                "capability_gap:", StringComparison.Ordinal);
             string Text(string name, string fallback = "") =>
                 detail.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
                     ? value.GetString() ?? fallback : fallback;
@@ -1526,23 +1552,35 @@ public sealed class LobbiesController(
                 reportedValue.TryGetDouble(out var unix)
                     ? DateTimeOffset.FromUnixTimeMilliseconds((long)(unix * 1000))
                     : DateTimeOffset.FromUnixTimeMilliseconds((long)(incident.FirstSeenUnix * 1000));
-            var verifiedCheckpointAvailable = false;
-            try
+            var fallbackSummary = incident.IncidentKind switch
             {
-                verifiedCheckpointAvailable = (await control.GetMatchAsync(
-                    matchId, HttpContext.RequestAborted)).Match.HasVerifiedRecoveryCheckpoint;
-            }
-            catch (ControlPlaneException)
+                "worker_lost" => "The managed game worker stopped.",
+                "supervisor_error" => "Managed recovery requires operator attention.",
+                _ => "AI play needs operator attention.",
+            };
+            var fallbackState = incident.IncidentKind switch
             {
-                // Incident visibility is more important than enabling recovery.
-                // A transient match-detail failure leaves retry safely disabled.
-            }
+                "worker_lost" => "Managed game worker unavailable",
+                _ => "Unknown managed runtime state",
+            };
+            var fallbackReason = incident.IncidentKind switch
+            {
+                "worker_lost" when !verifiedCheckpointAvailable =>
+                    "The managed worker stopped before the platform had a bridge-verified recovery checkpoint. Resuming would risk restoring mismatched native and AI memory state.",
+                "worker_lost" => "The managed worker stopped and requires operator recovery.",
+                "supervisor_error" => Text("error", "The runtime supervisor could not complete automatic recovery."),
+                _ => "The platform stopped autonomous play rather than guessing at an unsafe state.",
+            };
             return new CapabilityGapIncident(
-                incident.IncidentId, Text("gap_id", incident.IncidentKind["capability_gap:".Length..]),
-                incident.Status, Text("summary", "AI play needs operator attention."),
-                Text("screen_or_state", "Unknown native state"), Text("intended_decision"),
-                Text("required_observation"), Text("required_action"), Text("why_blocked"),
-                Number("turn"), reported,
+                incident.IncidentId, incident.IncidentKind,
+                Text("gap_id", semanticGap
+                    ? incident.IncidentKind["capability_gap:".Length..]
+                    : incident.IncidentId),
+                incident.Status, Text("summary", fallbackSummary),
+                Text("screen_or_state", fallbackState), Text("intended_decision"),
+                Text("required_observation"), Text("required_action"),
+                Text("why_blocked", fallbackReason),
+                Number("turn") ?? currentTurn, reported,
                 detail.TryGetProperty("native_worker_preserved", out var preserved) &&
                     preserved.ValueKind == JsonValueKind.True,
                 verifiedCheckpointAvailable,
@@ -1553,6 +1591,9 @@ public sealed class LobbiesController(
             return null;
         }
     }
+
+    private sealed record RuntimeState(
+        double RuntimeGeneration, bool HasVerifiedRecoveryCheckpoint);
 
     private void ResolveFactionSeats(string matchId, IReadOnlyList<PortalLobbySeat> seats)
     {

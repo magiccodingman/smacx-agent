@@ -138,6 +138,71 @@ public sealed class ResponseHandlingTests
     }
 
     [Fact]
+    public async Task ServerClientSurfacesGenericOperatorIncidentToPortal()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"smacx-control-client-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var tokenFile = Path.Combine(root, "portal-service-token");
+        await File.WriteAllTextAsync(tokenFile, "test-service-token");
+        try
+        {
+            var json = """
+                {"ok":true,"incidents":[{"incident_id":"incident-worker1234","match_id":"match-test1234","instance_id":"instance-test1234","incident_kind":"worker_lost","status":"operator_required","details":{"checkpoint_available":false},"first_seen_unix":1800000000,"last_seen_unix":1800000001}]}
+                """;
+            using var http = new HttpClient(new SequenceHandler(JsonResponse(json)))
+            {
+                BaseAddress = new Uri("http://control.test/"),
+            };
+            var client = new ControlPlaneClient(
+                http,
+                Options.Create(new ControlPlaneOptions { ServiceTokenFile = tokenFile }),
+                NullLogger<ControlPlaneClient>.Instance);
+
+            var incident = await client.GetActiveOperatorIncidentAsync("match-test1234");
+
+            Assert.NotNull(incident);
+            Assert.Equal("worker_lost", incident.IncidentKind);
+            Assert.Equal("operator_required", incident.Status);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ServerClientPrefersCapabilityGapOverGenericOperatorIncident()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"smacx-control-client-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var tokenFile = Path.Combine(root, "portal-service-token");
+        await File.WriteAllTextAsync(tokenFile, "test-service-token");
+        try
+        {
+            var json = """
+                {"ok":true,"incidents":[{"incident_id":"incident-worker1234","match_id":"match-test1234","instance_id":"instance-test1234","incident_kind":"worker_lost","status":"operator_required","details":{},"first_seen_unix":1800000000,"last_seen_unix":1800000001},{"incident_id":"incident-gap1234","match_id":"match-test1234","instance_id":"instance-test1234","incident_kind":"capability_gap:gap-cccccccccccccccccccccccccccccccc","status":"operator_required","details":{},"first_seen_unix":1800000002,"last_seen_unix":1800000003}]}
+                """;
+            using var http = new HttpClient(new SequenceHandler(JsonResponse(json)))
+            {
+                BaseAddress = new Uri("http://control.test/"),
+            };
+            var client = new ControlPlaneClient(
+                http,
+                Options.Create(new ControlPlaneOptions { ServiceTokenFile = tokenFile }),
+                NullLogger<ControlPlaneClient>.Instance);
+
+            var incident = await client.GetActiveOperatorIncidentAsync("match-test1234");
+
+            Assert.NotNull(incident);
+            Assert.StartsWith("capability_gap:", incident.IncidentKind);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ServerClientReportsOnlyVerifiedRecoveryCheckpoints()
     {
         var root = Path.Combine(Path.GetTempPath(), $"smacx-control-client-{Guid.NewGuid():N}");
