@@ -54,6 +54,11 @@ COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_mcp.py src/smacx_reference.py src/smacx_capabilities.py \
     src/smacx_game_settings.py src/smacx_prompt.py src/smacx_generation.py /opt/smacx/src/
 COPY src/smacx_journal.py /opt/smacx/src/
+COPY src/smacx_attention.py src/smacx_entitlements.py src/smacx_mechanics.py \
+    src/smacx_observation.py src/smacx_regions.py src/smacx_runtime_context.py \
+    src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \
+    src/smacx_world.py src/smacx_world_model.py src/smacx_world_store.py \
+    src/smacx_world_types.py /opt/smacx/src/
 COPY knowledge/ /opt/smacx/knowledge/
 COPY control_center/static/ /opt/smacx/control_center/static/
 COPY --chmod=0755 control_center/smacx-control /usr/local/bin/smacx-control

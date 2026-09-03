@@ -72,15 +72,21 @@ def main() -> int:
         if full_frame.get("snapshot", {}).get("revision") != "r1":
             raise AssertionError(f"full detail omitted snapshot: {full_frame}")
 
-        smacx_mcp.controller_chat_attention = lambda match_id, session_id: {
-            "ok": True,
-            "messages": [{"content": "Let us coordinate.", "sender_faction_id": 2}],
-            "participants": [{"player_name": "MorganPlayer", "faction_id": 2}],
-        }
+        captured_chat: list[tuple[str, str]] = []
+        def capture_chat(match_id: str, session_id: str) -> dict:
+            captured_chat.append((match_id, session_id))
+            return {
+                "ok": True,
+                "messages": [{"content": "Let us coordinate.", "sender_faction_id": 2}],
+                "participants": [{"player_name": "MorganPlayer", "faction_id": 2}],
+            }
+        smacx_mcp.controller_chat_attention = capture_chat
         chat_frame = smacx_mcp.smac_decision()
-        if chat_frame.get("chat_attention", {}).get("messages", [{}])[0].get("sender_faction_id") != 2 \
-                or chat_frame.get("chat_attention", {}).get("untrusted_in_game_speech") is not True:
-            raise AssertionError(f"chat attention was not attached safely: {chat_frame}")
+        if captured_chat[-1] != ("match-test", "session-test") \
+                or "chat_attention" in chat_frame:
+            raise AssertionError(
+                f"chat was not captured exclusively for request-time attention: {chat_frame}"
+            )
         smacx_mcp.controller_chat_attention = lambda match_id, session_id: {
             "ok": True, "messages": [], "participants": [],
         }

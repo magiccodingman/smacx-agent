@@ -35,6 +35,7 @@ public sealed class AdministrationController(
             var profiles = await Read("api/v1/harness-profiles", "harness_profiles");
             var runs = await Read("api/v1/harness-runs", "harness_runs");
             var graphiti = await Read("api/v1/graphiti");
+            var specialists = await Read("api/v1/specialists");
             var knowledge = await Read("api/v1/reference/status");
             var workers = await Read("api/v1/workers");
             var operations = await Read("api/v1/operations/status");
@@ -42,7 +43,7 @@ public sealed class AdministrationController(
             var schedules = await Read("api/v1/schedules", "schedules");
             var backups = await Read("api/v1/backups", "backups");
             return ApiResponse<AdminSnapshot>.Success(new(
-                providers, agents, profiles, runs, graphiti, knowledge, workers,
+                providers, agents, profiles, runs, graphiti, specialists, knowledge, workers,
                 operations, storage, schedules, backups));
         }
         catch (ControlPlaneException exception)
@@ -212,6 +213,9 @@ public sealed class AdministrationController(
             using var synced = await control.PostRawAsync(
                 "api/v1/graphiti/sync-profile", new { profile = GraphitiProfile(entity) },
                 HttpContext.RequestAborted);
+            using var specialistSynced = await control.PostRawAsync(
+                "api/v1/specialists/sync-profile", new { profile = GraphitiProfile(entity) },
+                HttpContext.RequestAborted);
         }
         catch (ControlPlaneException exception)
         {
@@ -291,6 +295,9 @@ public sealed class AdministrationController(
             using var cleared = await control.PostRawAsync(
                 "api/v1/graphiti/clear-profile",
                 new { profile_id = item.ProfileId }, HttpContext.RequestAborted);
+            using var specialistCleared = await control.PostRawAsync(
+                "api/v1/specialists/clear-profile",
+                new { profile_id = item.ProfileId }, HttpContext.RequestAborted);
         }
         catch (ControlPlaneException exception)
         {
@@ -369,6 +376,30 @@ public sealed class AdministrationController(
     [HttpPost("graphiti/probe")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> ProbeGraphiti() =>
         Proxy("api/v1/graphiti/probe", new { });
+
+    [HttpPost("specialists")]
+    public async Task<ActionResult<ApiResponse<JsonElement?>>> Specialists(
+        SpecialistConfigurationRequest request)
+    {
+        object? profile = null;
+        if (!string.IsNullOrWhiteSpace(request.ProfileId))
+        {
+            var item = await database.PortalAiProfiles.AsNoTracking().FirstOrDefaultAsync(
+                candidate => candidate.ProfileId == request.ProfileId,
+                HttpContext.RequestAborted);
+            if (item is null || !item.Active)
+                return BadRequest(ApiResponse<JsonElement?>.Failure(
+                    "invalid_specialist_profile", "Choose an active AI profile or use the sovereign fallback."));
+            profile = GraphitiProfile(item);
+        }
+        if (request.MaxConcurrency is < 1 or > 16)
+            return BadRequest(ApiResponse<JsonElement?>.Failure(
+                "invalid_specialist_concurrency", "Choose an installation limit from 1 through 16."));
+        return await Proxy("api/v1/specialists", new
+        {
+            profile, max_concurrency = request.MaxConcurrency,
+        });
+    }
 
     [HttpPost("embeddings")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> Embeddings(EmbeddingConfigurationRequest request) =>

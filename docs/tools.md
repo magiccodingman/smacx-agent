@@ -1,6 +1,6 @@
 # MCP tool reference
 
-Managed AI seats receive a deliberately bounded 14-tool surface. Game launch,
+Managed AI seats receive a deliberately bounded 17-tool surface. Game launch,
 native setup, lifecycle, raw snapshots, saves, and process stop are private
 operator/control operations and are not advertised to the model.
 
@@ -14,10 +14,25 @@ operator/control operations and are not advertised to the model.
   briefing.
 - `smac_decision(..., detail="compact")` — preferred action-ordered loop: a revision-stable player-state headline plus exactly one active interaction, selected ready unit, wait/gap directive, or game-management focus. Executable choices expose only short labels, observable context, and opaque IDs. Compact is the default; use `detail="full"` only for a decision that genuinely needs the larger fair-play document.
 - `smac_execute_choice(decision_id, choice_id)` — consume exactly one opaque choice. The server restores its private native command, parameters, confirmations, match/session identity, and revision guard; permits one semantic stale-state rebase; journals the outcome; and rejects replay. A completed native turn returns `turn_handoff_required`; `smac_decision` can return the same no-choice boundary if native automation completed the turn between observations.
-- `smac_list(kind, ...)` — bases, units, factions, technologies, or known/visible tiles.
+- `smac_world(...)` — inspect the current perspective through one bounded
+  semantic-zoom facade: overview, area, relation, route, reachability, compare,
+  base, forces, logistics, intel, changes, global, or non-authoritative semantic
+  render. Results carry world/timeline identity, epistemics, dependencies,
+  truncation, and retention metadata. Compact, standard, and deep have fixed
+  ceilings. Reuse a valid result rather than polling it repeatedly.
+- `smac_attention_ack(...)` — batch-acknowledge genuinely processed items from
+  the current at-least-once attention lease. An aborted provider request leaves
+  the same IDs eligible for redelivery; acknowledgement never resolves a modal
+  or platform incident.
+- `smac_cognition(...)` — create/close a bounded typed watch or create/update/
+  complete one disposable operation. These scopes are useful for real ongoing
+  concerns, not required rituals. Durable goals and plans remain journaled
+  sovereign cognition.
 - `smac_choices(kind, ...)` — bounded specialist enumeration for interaction, research, allocation, Social Engineering, diplomacy, Council, Unit Workshop, production, base management, citizens, units, or game management. Executable results remain opaque.
 - `smac_wait(seconds)` — bounded wait while the engine or another faction owns the turn.
 - `smac_chat(...)` — list or send guarded native LAN chat scoped to the current match/session and optional recipient faction. It persists delivered speech with network-player/faction associations and exactly-once attention state.
+- `smac_group_chat(...)` — maintain consented private groups and fan one message
+  out through native per-recipient chat without inventing a hidden side channel.
 - `smac_knowledge(action, match_id, ...)` — list/get/history or record a durable named match fact. Successful changes enter the canonical hash-linked campaign journal; SQLite/FTS files are rebuildable query projections. Session-local unit/base/prototype engine IDs are rejected.
 - `smac_memory(...)` — retrieve the bounded journal-derived working state, scoped search, batched recall, chat/events, structured histories, optional Graphiti status, or an exact-scope `graph_recall`. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.
 - `smac_reference(action, ...)` — browse the recursive semantic collection
@@ -26,13 +41,23 @@ operator/control operations and are not advertised to the model.
   searches. Collection titles, descriptions, and tags are retrieval evidence,
   not pagination labels. Document evidence is token-bounded; runtime-acquired
   content contains no match state and never overrides fresh native choices.
-- `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
+- `smac_specialist(...)` — ask one disposable, read-only
+  `reference_researcher` or `world_analyst` to compress a large legitimate
+  evidence package. The child has no sovereign history, personality, tools,
+  chat, memory writer, filesystem, or mutation authority. Its strict result is
+  fallible cited evidence and becomes stale with its pinned dependencies.
+- `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, plan, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
 - `smac_notebook(...)` — list, read, revise, or delete bounded named campaign notes, plans, territories, and other agent-authored records in the same canonical perspective timeline.
 - `smac_report_capability_gap(...)` — record one missing semantic capability, deduplicate repeated reports for that session, and latch commands plus launch/new/load. Only a developer MCP restart followed by a fresh session after bridge development can resume play.
 
 Prefer `smac_decision`; use `smac_choices` only for a deliberate specialist
 query. Never guess command strings, confirmation flags, coordinates, or engine
 IDs: select one opaque ID and obtain a new frame after execution.
+
+`smac_list` remains available only to standalone compatibility clients. It is
+intentionally absent from managed provider schemas; managed players obtain
+current strategic objects and geometry through `smac_world` and executable
+object references through fresh decision/choice frames.
 
 An executable choice must already bind every native argument. If an older or
 unfinished semantic family exposes a parameter schema instead of concrete
@@ -50,7 +75,7 @@ lifecycle choices out of every provider request.
 
 Human LAN diplomacy uses the native paired `DiploWindow`, not chat or UI input. A fresh diplomacy family marks a contacted human target with `human_controlled=true`; `open_diplomacy` queues the stock `0x1502` handshake. Because that 1999 protocol has no receiver-ready acknowledgment, re-observe the queued action: if a collision returns both clients to their ordinary phases, enumerate a fresh channel and retry rather than replaying an old request. The `human_diplomacy` interaction returns exact participants, acceptance state, and structured clauses. `propose_human_relationship` returns only relationships legal from current public state: Treaty without another peaceful relationship, Pact from Treaty, or Truce from Vendetta. `propose_human_technology` enumerates only caller-owned named technologies the counterpart does not own. One compact `propose_human_energy` descriptor supplies `amount_min=1` and a fresh `amount_max` equal to the caller's treasury; pass the chosen integer as `amount`. `propose_human_joint_attack` enumerates only live third factions for which the caller already has a commlink and carries the exact `target_faction_id`; it never reveals an uncontacted faction. Each outgoing proposal command atomically adds, network-drains, verifies, and commits its exact clause so the proposer cannot strand itself between separate compose/accept calls. The peer must inspect the synchronized clauses and use its fresh `respond_human_diplomacy` accept or decline choice. `finish_human_diplomacy` only ends a still-open transmission. A received technology becomes a queued `technology_presentation` advanced with its returned semantic command; LAN does not enter SMACX's bridge-starving private presentation loop. Once a paired window closes, snapshots temporarily return `waiting_for_engine`; this mechanically blocks ordinary mutations while final DirectPlay packets settle. On `stale_state`, re-enumerate and execute only if the same intended choice is still returned. Re-observe ownership, treasuries, relationships, and phase before continuing. The stock paired-human clause record contains technology, energy, Pact, Treaty, Truce, and joint attack; it has no map-transfer clause. AI negotiation map exchanges remain supported through their separate typed native dialogs.
 
-Map locations cross the MCP boundary only as opaque match-local `tile_id` values. They are stable within a running map, but their numeric values are identifiers—not coordinates: do not calculate distance, direction, or adjacency from them. Obtain IDs from `ready_unit_refs`, base/unit records, `smac_list(kind="tiles")`, or an exact action choice. Use `center_tile_id` when listing a neighborhood and `target_tile_id` when querying or executing a map-targeted unit action. Native x/y coordinates are neither returned nor accepted; the DLL alone resolves a valid tile ID and rechecks visibility, knowledge, range, terrain, diplomacy, and unit rules.
+Map locations cross the MCP boundary only as opaque match-local `tile_id` values. They are stable within a running map, but their numeric values are identifiers—not coordinates: do not calculate distance, direction, or adjacency from them. Obtain IDs from `ready_unit_refs`, `smac_world` results, or an exact action choice. Native x/y coordinates are neither returned nor accepted; the DLL alone resolves a valid tile ID and rechecks visibility, knowledge, range, terrain, diplomacy, and unit rules.
 
 `smac_snapshot` includes `ready_unit_refs` whenever owned units still require a decision. Each entry is deliberately compact—current unit ID, name, opaque tile ID, and role flags—and shares the snapshot revision. It eliminates a separate full-unit listing for the ordinary action loop while preventing guessed IDs after production, founding, combat, or capture reorders the native unit array.
 
@@ -72,7 +97,7 @@ Endgame decisions and passive native presentation windows remain semantic. `ACCE
 
 When economic victory is enabled, its prerequisite technology is owned, and the faction has a Headquarters, `game_management` exposes the same aggregate Global Energy Market cost available through the native HQ menu. An affordable plan returns `corner_global_energy_market` with `confirm_corner_market=1`, exact cost, Headquarters, and countdown length. After commitment, the exact treasury deduction and completion turn/year are returned; later `game_management` families report the active plan. Capturing the Headquarters can still foil the plan under native rules.
 
-Native `ENERGYLOAN*` and `ASKFORLOAN*` interactions expose the principal, payment per turn, term, scheduled total, direction, counterpart, and current affordability. Accept, reject, or the returned half-principal counteroffer only through `respond_to_diplomatic_offer`. `smac_list(kind="factions")` reports both sides' known outstanding balance and payment for each contacted faction, so the model can track obligations without remembering hidden engine state.
+Native `ENERGYLOAN*` and `ASKFORLOAN*` interactions expose the principal, payment per turn, term, scheduled total, direction, counterpart, and current affordability. Accept, reject, or the returned half-principal counteroffer only through `respond_to_diplomatic_offer`. `smac_world(mode="intel")` reports perspective-known outstanding balances and payments for contacted factions, so the model can inspect obligations without copying hidden engine state into memory.
 
 When the native `COUNTER1` gift menu contains its energy-payment row, that row is exposed as `give_energy_gift` rather than as a free-form text dialog. Copy an amount within the fresh `amount_min`/`amount_max` bounds. The bridge closes the suspended selector safely, invokes the game's native `make_gift` path, drives its nested amount and receipt windows on the UI thread, restores the unoffered treasury balance, and verifies both factions' exact deltas before returning success.
 
@@ -110,7 +135,7 @@ Ready units may set `patrol_unit` to one known, native-validated waypoint. Ready
 
 A ready combat unit may select `auto_explore_unit`. This invokes the game's native Explore automation rather than bridge pathfinding, so discovery, movement costs, encounters, and future destinations remain engine-controlled. The unit reports `order_name="auto_explore"`, is removed from the ready-decision gate, and exposes only `activate_unit` until native waking cancels the automation. This is a fair-play player order: it grants no map knowledge to the agent and uses no pixels or coordinate input.
 
-An off-base ready land or sea unit may receive one `return_to_base` tuple naming the native-selected nearest compatible known owned or Pact base. The command takes the returned `base_id`, never map coordinates, invokes the original `Console::go_home`, and verifies that its native waypoint exactly matches the fair-play candidate. Any unknown or changed destination is rolled back and rejected. The resulting `go_to` is persistent and activate-only. The broader object-ID route is two-stage: request `unit_actions` without `base_id` to receive `base_target:query`, choose one owned base from `smac_list(kind="bases")`, then request that same unit with the candidate `base_id`. A returned `go_to_base` resolves the coordinates internally and revalidates ownership, knowledge, land region or sea access, and aircraft remaining safe fuel range. The choice and command contain no destination coordinates.
+An off-base ready land or sea unit may receive one `return_to_base` tuple naming the native-selected nearest compatible known owned or Pact base. The command takes the returned `base_id`, never map coordinates, invokes the original `Console::go_home`, and verifies that its native waypoint exactly matches the fair-play candidate. Any unknown or changed destination is rolled back and rejected. The resulting `go_to` is persistent and activate-only. The broader object-ID route is two-stage: request `unit_actions` without `base_id` to receive `base_target:query`, choose one owned base from `smac_world(mode="base")`, then request that same unit with the candidate `base_id`. A returned `go_to_base` resolves the coordinates internally and revalidates ownership, knowledge, land region or sea access, and aircraft remaining safe fuel range. The choice and command contain no destination coordinates.
 
 Aircraft may also query a visible friendly standalone airbase through its `tile_id`. A returned `go_to` marks `destination_refuels=true` and `route_kind="air_recovery"`; it is exposed only within the aircraft's remaining safe fuel range. A non-refueling air destination is classified as `air_round_trip` and is limited to half the remaining range while departing a friendly refueling tile. Once an aircraft is away from such a tile, persistent non-refueling routes are withheld until it recovers. These checks are repeated during execution, so generic `go_to` cannot bypass a rejected `go_to_base`.
 

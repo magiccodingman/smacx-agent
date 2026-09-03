@@ -434,9 +434,11 @@ class CampaignJournal:
     def _empty_state() -> dict[str, Any]:
         return {
             "facts": {}, "claims": {}, "beliefs": {}, "relationships": {},
-            "commitments": {}, "goals": {}, "summaries": {}, "notebook": {},
+            "commitments": {}, "goals": {}, "plans": {}, "summaries": {}, "notebook": {},
             "chat": {}, "chat_groups": {}, "chat_groups_snapshot_seen": False,
-            "recent_actions": [], "lifecycle": [],
+            "recent_actions": [], "lifecycle": [], "world_objects": {},
+            "world_observations": [], "world_continuity": "complete",
+            "world_observation_cursor": 0,
         }
 
     def _materialize_timeline(
@@ -489,7 +491,7 @@ class CampaignJournal:
             memory_kind = {
                 "claim": "claims", "belief": "beliefs",
                 "relationship": "relationships", "commitment": "commitments",
-                "goal": "goals", "summary": "summaries",
+                "goal": "goals", "plan": "plans", "summary": "summaries",
             }.get(memory_kind, memory_kind)
             record = payload.get("record")
             supplied = payload.get("record_input")
@@ -537,6 +539,32 @@ class CampaignJournal:
         elif kind == "game.action":
             state["recent_actions"].append(payload)
             state["recent_actions"] = state["recent_actions"][-100:]
+        elif kind == "observation.world_object":
+            object_ref = str(payload.get("object_ref") or "")
+            change = str(payload.get("change") or "")
+            if object_ref and change == "removed":
+                state["world_objects"].pop(object_ref, None)
+            elif object_ref and isinstance(payload.get("current"), Mapping):
+                state["world_objects"][object_ref] = dict(payload["current"])
+            state["world_observation_cursor"] = max(
+                int(state.get("world_observation_cursor") or 0),
+                int(payload.get("observation_sequence") or 0),
+            )
+        elif kind.startswith("observation."):
+            state["world_observations"].append({
+                "event_type": kind, "journal_event_id": event.get("event_id"),
+                "turn": event.get("turn"), "year": event.get("year"),
+                "payload": payload,
+            })
+            state["world_observations"] = state["world_observations"][-500:]
+            state["world_observation_cursor"] = max(
+                int(state.get("world_observation_cursor") or 0),
+                int(payload.get("observation_sequence") or 0),
+            )
+            if kind == "observation.continuity_gap":
+                state["world_continuity"] = "incomplete"
+            elif kind == "observation.reconciled":
+                state["world_continuity"] = str(payload.get("continuity") or "complete")
         elif kind.startswith(("agent.", "checkpoint.", "incident.",
                               "lifecycle.", "recovery.")):
             state["lifecycle"].append({
@@ -582,13 +610,17 @@ class CampaignJournal:
             -int(item.get("priority") or 0), -float(item.get("created_unix") or 0),
         ))[:100]
         commitments = records("commitments")[:100]
+        plans = records("plans")[:100]
+        beliefs = records("beliefs")[:100]
         relationships = records("relationships")[:100]
         summaries = records("summaries")
         chat = list(reversed(list(replayed.get("chat", {}).values())[-50:]))
         sections: dict[str, Any] = {
             "situation": {"summaries": summaries, "facts": facts[:200]},
+            "beliefs": beliefs,
             "relationships": relationships,
             "goals": goals,
+            "plans": plans,
             "commitments": commitments,
             "recent_events": list(reversed(replayed.get("recent_actions", [])[-50:])),
             "chat": chat,
@@ -667,7 +699,7 @@ class CampaignJournal:
         self, scope: MemoryScope, kind: str, *, limit: int = 200,
     ) -> list[dict[str, Any]]:
         """Read a structured projection exclusively from the active journal timeline."""
-        allowed = {"claims", "beliefs", "relationships", "commitments", "goals", "summaries"}
+        allowed = {"claims", "beliefs", "relationships", "commitments", "goals", "plans", "summaries"}
         if kind not in allowed:
             raise JournalError("invalid_projection_kind")
         return self._current_records(self.replay(scope), kind)[:min(max(int(limit), 1), 1000)]
@@ -721,7 +753,7 @@ class CampaignJournal:
         singular = {
             "facts": "fact", "claims": "claim", "beliefs": "belief",
             "relationships": "relationship", "commitments": "commitment",
-            "goals": "goal", "summaries": "summary", "chat": "chat",
+            "goals": "goal", "plans": "plan", "summaries": "summary", "chat": "chat",
             "notebook": "notebook", "recent_actions": "event", "lifecycle": "event",
         }
         replayed = self.replay(scope)
@@ -755,7 +787,7 @@ class CampaignJournal:
             })
 
         for kind in ("facts", "claims", "beliefs", "relationships", "commitments",
-                     "goals", "summaries", "chat"):
+                     "goals", "plans", "summaries", "chat"):
             values = replayed.get(kind, {})
             if isinstance(values, Mapping):
                 for key, value in values.items():
@@ -844,7 +876,7 @@ class CampaignJournal:
             """)
             count = 0
             for kind in ("facts", "claims", "beliefs", "relationships", "commitments",
-                         "goals", "summaries", "chat"):
+                         "goals", "plans", "summaries", "chat"):
                 values = state.get(kind, {})
                 if not isinstance(values, dict):
                     continue

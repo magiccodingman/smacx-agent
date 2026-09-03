@@ -19,6 +19,10 @@ from smacx_game_settings import game_settings_environment, normalize_game_settin
 from smacx_journal import CampaignJournal, JournalError
 from smacx_store import MemoryScope, SmacxStore, StoreError
 from smacx_reference import read_reference as read_reference_store
+from smacx_attention import AttentionService
+from smacx_observation import ObservationCollector
+from smacx_world import WorldService
+from smacx_world_store import WorldStore
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -58,6 +62,8 @@ _store_instance: SmacxStore | None = None
 _store_instance_path: Path | None = None
 _journal_instance: CampaignJournal | None = None
 _journal_instance_root: Path | None = None
+_observation_collectors: dict[tuple[str, str, str], ObservationCollector] = {}
+_observation_collectors_lock = threading.Lock()
 
 
 class BridgeUnavailable(ConnectionError):
@@ -93,6 +99,57 @@ def _journal_working_state(scope: MemoryScope) -> dict[str, Any]:
             for row in connection.execute("SELECT section, max_tokens FROM memory_budgets")
         }
     return _journal().working_state(scope, token_budgets=budgets)
+
+
+def world_service(
+    match_id: str, *, session_id: str = "", agent_id: str = "",
+    perspective_id: str = "",
+) -> tuple[MemoryScope, WorldService, AttentionService]:
+    """Resolve one exact seat's world/attention services without widening scope."""
+    scope = _scope_for_match(
+        match_id, session_id=session_id or None, agent_id=agent_id or None,
+        perspective_id=perspective_id or None,
+    )
+    if scope is None:
+        raise StoreError("unknown_or_invalid_match_id")
+    world_store = WorldStore(_store())
+    return scope, WorldService(world_store, scope), AttentionService(_store(), _journal(), scope)
+
+
+def collect_perspective_world(
+    match_id: str, session_id: str, *, agent_id: str = "", perspective_id: str = "",
+    background: bool = False,
+) -> dict[str, Any]:
+    """Start or run the external observer; it never executes on the native UI stack."""
+    scope = _scope_for_match(
+        match_id, session_id=session_id, agent_id=agent_id or None,
+        perspective_id=perspective_id or None, create_legacy_session=True,
+    )
+    if scope is None:
+        raise StoreError("unknown_or_invalid_match_id")
+    key = (scope.match_id, scope.agent_id, scope.perspective_id)
+    with _observation_collectors_lock:
+        collector = _observation_collectors.get(key)
+        if collector is None or collector.session_id != session_id:
+            if collector is not None:
+                collector.stop()
+            collector = ObservationCollector(
+                scope=scope, session_id=session_id, bridge_call=bridge_request,
+                journal=_journal(), world_store=WorldStore(_store()),
+                attention=AttentionService(_store(), _journal(), scope),
+                chat_capture=lambda: chat_attention(
+                    match_id, session_id, agent_id=scope.agent_id,
+                    perspective_id=scope.perspective_id,
+                ),
+            )
+            _observation_collectors[key] = collector
+        if background:
+            collector.start()
+            return {"ok": True, "background": True, "scope": {
+                "match_id": scope.match_id, "agent_id": scope.agent_id,
+                "perspective_id": scope.perspective_id,
+            }}
+    return collector.collect_once()
 
 
 def _token() -> str:
@@ -720,6 +777,43 @@ def write_platform_memory(
         store = _store()
         turn = snapshot.get("turn")
         year = snapshot.get("year")
+        encoded_record = json.dumps(record, ensure_ascii=False, sort_keys=True,
+                                    separators=(",", ":"))
+        mechanical_keys = {
+            "tiles", "units", "bases", "snapshot", "world", "net_deltas",
+            "action_revision", "world_revision", "observation_cursor", "fields",
+            "epistemic_status", "provenance_ref", "ready_unit_refs",
+        }
+        seen_keys: list[str] = []
+
+        def inspect_memory_shape(value: object) -> None:
+            if isinstance(value, Mapping):
+                for key, child in value.items():
+                    seen_keys.append(str(key))
+                    inspect_memory_shape(child)
+            elif isinstance(value, list):
+                for child in value[:512]:
+                    inspect_memory_shape(child)
+
+        inspect_memory_shape(record)
+        mechanical_hits = sum(key in mechanical_keys for key in seen_keys)
+        hygiene = "clean"
+        if len(encoded_record) > 8_000 and mechanical_hits >= 4:
+            WorldStore(store).telemetry(
+                "cognition_hygiene", "rejected_mechanical_copy", len(encoded_record),
+                scope=scope, timeline_id=store.active_timeline_id(scope),
+                dimensions={"action": action, "mechanical_key_hits": mechanical_hits},
+            )
+            raise StoreError(
+                "mechanical_world_copy_rejected_use_world_references_and_interpretation"
+            )
+        if len(encoded_record) > 3_000 and mechanical_hits:
+            hygiene = "flagged_possible_mechanical_duplication"
+            WorldStore(store).telemetry(
+                "cognition_hygiene", "flagged_possible_copy", len(encoded_record),
+                scope=scope, timeline_id=store.active_timeline_id(scope),
+                dimensions={"action": action, "mechanical_key_hits": mechanical_hits},
+            )
         source_event_id = str(record.get("source_event_id") or "") or None
         if action == "claim":
             status = str(record.get("status") or "unverified")
@@ -831,9 +925,36 @@ def write_platform_memory(
                 turn=turn,
                 year=year,
             )
+        elif action == "plan":
+            status = str(record.get("status") or "active")
+            sequence_fields = (
+                "target_refs", "participants", "dependencies", "contingencies",
+                "linked_commitments", "contradictory_evidence",
+            )
+            for field in sequence_fields:
+                if not isinstance(record.get(field, []), list):
+                    raise StoreError(f"invalid_plan_{field}")
+            for field in ("timing", "last_confirmation"):
+                if not isinstance(record.get(field, {}), Mapping):
+                    raise StoreError(f"invalid_plan_{field}")
+            stored = store.put_plan(
+                scope, str(record.get("plan_key") or ""),
+                str(record.get("title") or ""), str(record.get("objective") or ""),
+                status=status, target_refs=[str(value) for value in record.get("target_refs", [])],
+                participants=[dict(value) for value in record.get("participants", [])
+                              if isinstance(value, Mapping)],
+                timing=dict(record.get("timing", {})),
+                dependencies=[str(value) for value in record.get("dependencies", [])],
+                intended_role=str(record.get("intended_role") or ""),
+                contingencies=[str(value) for value in record.get("contingencies", [])],
+                last_confirmation=dict(record.get("last_confirmation", {})),
+                linked_commitments=[str(value) for value in record.get("linked_commitments", [])],
+                contradictory_evidence=[str(value) for value in record.get("contradictory_evidence", [])],
+                source_event_id=source_event_id, session_id=session_id, turn=turn, year=year,
+            )
         elif action == "summary":
             section = str(record.get("section") or "")
-            if section not in {"situation", "relationships", "goals", "commitments", "recent_events", "chat"}:
+            if section not in {"situation", "relationships", "goals", "plans", "commitments", "recent_events", "chat"}:
                 raise StoreError("invalid_summary_section")
             stored = store.add_summary(
                 scope,
@@ -863,6 +984,7 @@ def write_platform_memory(
             "observed_turn": turn,
             "observed_year": year,
             "journal_event_id": journal_event["event_id"],
+            "cognition_hygiene": hygiene,
         }
     except BridgeUnavailable:
         return {"ok": False, "error": "game_not_connected"}
@@ -1044,6 +1166,7 @@ def read_platform_memory(
             "relationships": "relationships",
             "commitments": "commitments",
             "goals": "goals",
+            "plans": "plans",
             "summaries": "summaries",
         }.get(action)
         if projection:
@@ -1531,7 +1654,7 @@ def chat_attention(
     agent_id: str = "",
     perspective_id: str = "",
 ) -> dict[str, Any]:
-    """Poll native chat and return each newly delivered message exactly once."""
+    """Capture native chat into durable at-least-once sovereign attention."""
     try:
         result = semantic_chat(
             "list",
@@ -1539,17 +1662,43 @@ def chat_attention(
             session_id=session_id,
             agent_id=agent_id,
             perspective_id=perspective_id,
-            acknowledge=True,
+            acknowledge=False,
         )
     except BridgeUnavailable as exc:
         return {"ok": False, "error": "game_not_connected", "message": str(exc)}
     durable = result.get("durable")
     messages = durable.get("attention", []) if isinstance(durable, dict) else []
+    queued = []
+    try:
+        scope = _scope_for_match(
+            match_id, session_id=session_id, agent_id=agent_id or None,
+            perspective_id=perspective_id or None,
+        )
+        if scope is not None:
+            service = AttentionService(_store(), _journal(), scope)
+            for message in messages:
+                if not isinstance(message, Mapping):
+                    continue
+                sequence = int(message.get("metadata", {}).get("native_sequence") or 0) \
+                    if isinstance(message.get("metadata"), Mapping) else 0
+                uid = str(message.get("message_uid") or "")
+                if not uid:
+                    continue
+                item = service.enqueue(
+                    "chat", {"message": dict(message), "untrusted_in_game_speech": True},
+                    observation_cursor=sequence, priority=90,
+                    critical=str(message.get("direction") or "") == "inbound",
+                    turn=message.get("turn"), session_id=session_id, dedupe_key=uid,
+                )
+                queued.append(item["attention_id"])
+    except (StoreError, JournalError, ValueError):
+        pass
     return {
         "ok": bool(result.get("ok")),
         "messages": messages,
         "participants": result.get("participants", []),
         "latest_sequence": result.get("latest_sequence"),
+        "attention_ids": queued,
         "untrusted_in_game_speech": True,
     }
 

@@ -247,6 +247,15 @@ world, manage bases and units, research, terraform, trade, negotiate, use
 public or private chat, participate in the Planetary Council, pursue enabled
 victories, and continue across an extremely long campaign.
 
+That perception is strategic, not a firehose of tiles. Each player gets a
+continuously maintained fair-play world model with fronts, regions, routes,
+reachability, logistics, threats, rendezvous windows, bases, forces, and global
+systems. A quiet Huge map stays compact; active wars and contested regions gain
+detail automatically. The model can deliberately zoom into what matters while
+its current focus, meaningful changes, critical chat, plans, commitments, and
+uncertainty remain in view. The result is an AI that can reason about a peninsula
+defense or a two-front reserve problem—not merely click whatever unit is awake.
+
 Fog of war remains fog. The AI receives its own faction's perspective, not
 omniscient save data. It cannot escape into mouse automation when confused.
 Every consequential action is checked against current native state, and a

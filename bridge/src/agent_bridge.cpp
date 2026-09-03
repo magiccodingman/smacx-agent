@@ -90,6 +90,41 @@ int semantic_tile_id(int x, int y);
 // state hash can repeat when an action is applied and then cancelled, which
 // would make an older optimistic-concurrency token valid again.
 uint64_t semantic_mutation_generation = 0;
+const size_t MaxObservationEvents = 1024;
+struct NativeObservationEvent {
+    uint64_t sequence;
+    int turn;
+    int subject_a;
+    int subject_b;
+    char kind[32];
+};
+NativeObservationEvent observation_events[MaxObservationEvents] = {};
+size_t observation_event_start = 0;
+size_t observation_event_count = 0;
+uint64_t next_observation_sequence = 1;
+uint64_t lost_after_observation_sequence = 0;
+std::string last_observed_action_revision;
+
+void append_observation_event(const char* kind, int turn, int subject_a = -1,
+int subject_b = -1) {
+    if (!kind || !kind[0]) return;
+    size_t index = 0;
+    if (observation_event_count < MaxObservationEvents) {
+        index = (observation_event_start + observation_event_count) % MaxObservationEvents;
+        ++observation_event_count;
+    } else {
+        lost_after_observation_sequence = observation_events[observation_event_start].sequence;
+        observation_event_start = (observation_event_start + 1) % MaxObservationEvents;
+        index = (observation_event_start + observation_event_count - 1) % MaxObservationEvents;
+    }
+    NativeObservationEvent& event = observation_events[index];
+    event.sequence = next_observation_sequence++;
+    event.turn = turn;
+    event.subject_a = subject_a;
+    event.subject_b = subject_b;
+    lstrcpynA(event.kind, kind, static_cast<int>(sizeof(event.kind)));
+}
+
 const size_t MaxChatEvents = 64;
 struct ChatEvent {
     uint64_t sequence;
@@ -714,6 +749,8 @@ int recipient_faction_id, const char* text, const char* client_message_id = "") 
     event.turn = game_active() ? *CurrentTurn : -1;
     event.text = text ? text : "";
     event.client_message_id = client_message_id ? client_message_id : "";
+    append_observation_event(outbound ? "chat_outbound" : "chat_inbound",
+        event.turn, sender_faction_id, recipient_faction_id);
 }
 
 const ChatEvent* find_outbound_chat(const std::string& client_message_id) {
@@ -760,6 +797,8 @@ int origin_x = -1, int origin_y = -1, int target_x = -1, int target_y = -1) {
     deferred_action.observed_x = origin_x;
     deferred_action.observed_y = origin_y;
     deferred_action.resolution.clear();
+    append_observation_event("deferred_action_queued", *CurrentTurn,
+        static_cast<int>(deferred_action.id), unit_id);
 }
 
 std::string deferred_action_response(uint32_t requested_id = 0) {
@@ -4317,6 +4356,58 @@ std::string semantic_revision() {
     return std::to_string(hash);
 }
 
+std::string observation_feed_response(const std::string& request) {
+    // The collector calls this independently of sovereign decisions. Capturing
+    // a revision transition is bounded and records no full native structures.
+    std::string current_revision = game_active() ? semantic_revision() : "menu";
+    if (current_revision != last_observed_action_revision) {
+        append_observation_event("perspective_changed",
+            game_active() ? *CurrentTurn : -1);
+        last_observed_action_revision = current_revision;
+    }
+    uint64_t after = static_cast<uint64_t>(std::max(0,
+        field_int(request, "after_sequence", 0)));
+    int limit = std::min(256, std::max(1, field_int(request, "limit", 128)));
+    uint64_t oldest = observation_event_count
+        ? observation_events[observation_event_start].sequence
+        : next_observation_sequence;
+    bool incomplete = after && after + 1 < oldest;
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.native-observation-feed.v1\""
+        << ",\"action_revision\":" << json_string(current_revision.c_str())
+        << ",\"continuity\":" << json_string(incomplete ? "incomplete" : "complete")
+        << ",\"lost_after_observation_sequence\":";
+    if (incomplete) out << after;
+    else if (lost_after_observation_sequence) out << lost_after_observation_sequence;
+    else out << "null";
+    out << ",\"reconciliation_required\":" << (incomplete ? "true" : "false")
+        << ",\"events\":[";
+    int emitted = 0;
+    uint64_t last = after;
+    for (size_t offset = 0; offset < observation_event_count && emitted < limit; ++offset) {
+        const NativeObservationEvent& event = observation_events[
+            (observation_event_start + offset) % MaxObservationEvents];
+        if (event.sequence <= after) continue;
+        if (emitted++) out << ',';
+        out << "{\"sequence\":" << event.sequence
+            << ",\"kind\":" << json_string(event.kind)
+            << ",\"turn\":" << event.turn
+            << ",\"subject_a\":" << event.subject_a
+            << ",\"subject_b\":" << event.subject_b << '}';
+        last = event.sequence;
+    }
+    out << "],\"next_sequence\":" << last
+        << ",\"has_more\":";
+    bool has_more = false;
+    if (observation_event_count) {
+        const NativeObservationEvent& newest = observation_events[
+            (observation_event_start + observation_event_count - 1) % MaxObservationEvents];
+        has_more = newest.sequence > last;
+    }
+    out << (has_more ? "true" : "false") << '}';
+    return out.str();
+}
+
 std::string validate_semantic_guard(const std::string& request) {
     std::string session = field_string(request, "session_id");
     std::string match = field_string(request, "match_id");
@@ -6855,6 +6946,7 @@ std::string bases_response() {
             << ",\"eco_damage\":" << base.eco_damage
             << ",\"production_id\":" << base.queue_items[0]
             << ",\"production_name\":" << json_string(production_name(base.queue_items[0]).c_str())
+            << ",\"production_cost\":" << mineral_cost(i, base.queue_items[0])
             << ",\"production_queue\":[";
         for (int queue_index = 0; queue_index <= base.queue_size && queue_index < 10; ++queue_index) {
             if (queue_index) out << ',';
@@ -6955,6 +7047,8 @@ std::string units_response() {
             }
             out << ",\"prototype_id\":" << veh.unit_id
                 << ",\"triad\":" << json_string(triad)
+                << ",\"movement_points\":" << veh_speed(i, 0)
+                << ",\"air_range\":" << static_cast<int>(veh.range())
                 << ",\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
                 << ",\"former\":" << (veh.is_former() ? "true" : "false")
                 << ",\"combat\":" << (veh.is_combat_unit() ? "true" : "false")
@@ -6986,6 +7080,8 @@ std::string units_response() {
                 << ",\"order_auto_type\":" << static_cast<int>(veh.order_auto_type)
                 << ",\"moves_spent\":" << static_cast<int>(veh.moves_spent)
                 << ",\"home_base_id\":" << veh.home_base_id
+                << ",\"requires_support\":"
+                << ((veh.state & VSTATE_REQUIRES_SUPPORT) ? "true" : "false")
                 << ",\"transport_unit_id\":" << boarded_on
                 << ",\"designated_defender\":"
                 << ((veh.state & VSTATE_DESIGNATE_DEFENDER) ? "true" : "false")
@@ -7684,6 +7780,154 @@ std::string tiles_response(const std::string& request) {
         }
     }
     out << "],\"fair_play_note\":\"Non-visible tiles expose only remembered features; current terrain and owner are omitted.\"}";
+    return out.str();
+}
+
+std::string perspective_world_page_response(const std::string& request) {
+    if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    const std::string domain = field_string(request, "domain");
+    const int cursor = std::max(0, field_int(request, "cursor", 0));
+    const int limit = std::min(256, std::max(1, field_int(request, "limit", 128)));
+    const std::string revision = semantic_revision();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.perspective-world-page.v1\""
+        << ",\"domain\":" << json_string(domain.c_str())
+        << ",\"action_revision\":" << json_string(revision.c_str())
+        << ",\"turn\":" << *CurrentTurn << ",\"year\":" << *CurrentMissionYear
+        << ",\"faction_id\":" << faction_id;
+    if (domain == "summary") {
+        out << ",\"map\":{\"width\":" << *MapAreaX
+            << ",\"height\":" << *MapAreaY
+            << ",\"horizontal_wrap\":" << (map_is_flat() ? "false" : "true")
+            << ",\"known_all\":" << (map_is_known(faction_id) ? "true" : "false")
+            << "},\"items\":[],\"next_cursor\":null}";
+        return out.str();
+    }
+    out << ",\"items\":[";
+    int emitted = 0;
+    int next_cursor = -1;
+    if (domain == "tiles") {
+        int index = cursor;
+        for (; index < *MapAreaTiles && emitted < limit; ++index) {
+            int x = -1, y = -1;
+            if (!semantic_tile_coords(index, &x, &y) || !is_known(x, y, faction_id)) continue;
+            MAP* sq = mapsq(x, y);
+            if (!sq) continue;
+            if (emitted++) out << ',';
+            const bool visible = sq->is_visible(faction_id);
+            const uint32_t remembered = visible ? sq->items : sq->visible_items[faction_id - 1];
+            out << "{\"tile_id\":" << index << ",\"x\":" << x << ",\"y\":" << y
+                << ",\"visible_now\":" << (visible ? "true" : "false")
+                << ",\"features\":" << item_names(remembered);
+            if (visible) {
+                out << ",\"altitude\":" << sq->alt_level()
+                    << ",\"is_ocean\":" << (is_ocean(sq) ? "true" : "false")
+                    << ",\"rainfall\":" << ((sq->climate >> 3) & 3)
+                    << ",\"temperature\":" << (sq->climate & 7)
+                    << ",\"rockiness\":" << sq->rocky_level()
+                    << ",\"owner_ref\":";
+                if (sq->owner >= 0 && sq->owner < MaxPlayerNum) {
+                    out << json_string((std::string("faction-")
+                        + std::to_string(static_cast<int>(sq->owner))).c_str());
+                } else out << "null";
+            }
+            out << '}';
+        }
+        next_cursor = index < *MapAreaTiles ? index : -1;
+    } else if (domain == "bases") {
+        int index = cursor;
+        for (; index < *BaseCount && emitted < limit; ++index) {
+            BASE& base = Bases[index];
+            MAP* square = mapsq(base.x, base.y);
+            const bool owned = base.faction_id == faction_id;
+            const bool visible = square && square->is_visible(faction_id);
+            if (!owned && !visible) continue;
+            if (emitted++) out << ',';
+            out << "{\"id\":" << index << ",\"base_ref\":\"base-location-"
+                << semantic_tile_id(base.x, base.y) << "\",\"tile_id\":"
+                << semantic_tile_id(base.x, base.y) << ",\"owned\":"
+                << (owned ? "true" : "false") << ",\"visible_now\":"
+                << (visible ? "true" : "false") << ",\"name\":"
+                << json_string(base.name) << ",\"owner_ref\":\"faction-"
+                << static_cast<int>(base.faction_id) << "\"";
+            if (owned) {
+                out << ",\"population\":" << static_cast<int>(base.pop_size)
+                    << ",\"nutrient_surplus\":" << base.nutrient_surplus
+                    << ",\"mineral_surplus\":" << base.mineral_surplus
+                    << ",\"energy_surplus\":" << base.energy_surplus
+                    << ",\"minerals_accumulated\":" << base.minerals_accumulated
+                    << ",\"production_id\":" << base.queue_items[0]
+                    << ",\"production_name\":"
+                    << json_string(production_name(base.queue_items[0]).c_str())
+                    << ",\"eco_damage\":" << base.eco_damage
+                    << ",\"drone_riots\":"
+                    << (base.drone_riots_active() ? "true" : "false");
+            }
+            out << '}';
+        }
+        next_cursor = index < *BaseCount ? index : -1;
+    } else if (domain == "units") {
+        int index = cursor;
+        for (; index < *VehCount && emitted < limit; ++index) {
+            VEH& veh = Vehs[index];
+            const bool owned = veh.faction_id == faction_id;
+            const bool visible = owned || (veh.visibility & (1 << faction_id));
+            if (!visible) continue;
+            if (emitted++) out << ',';
+            out << "{\"id\":" << index
+                << ",\"native_observation_key\":" << json_string(
+                    (std::string("visible-") + std::to_string(index)).c_str())
+                << ",\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
+                << ",\"owned\":" << (owned ? "true" : "false")
+                << ",\"owner_ref\":\"faction-" << static_cast<int>(veh.faction_id)
+                << "\",\"name\":" << json_string(veh.name())
+                << ",\"hp\":" << veh.cur_hitpoints()
+                << ",\"max_hp\":" << veh.max_hitpoints();
+            if (owned) {
+                out << ",\"triad\":" << json_string(
+                    veh.triad() == TRIAD_LAND ? "land" : veh.triad() == TRIAD_SEA ? "sea" : "air")
+                    << ",\"moves_spent\":" << static_cast<int>(veh.moves_spent)
+                    << ",\"home_base_ref\":";
+                if (veh.home_base_id >= 0 && veh.home_base_id < *BaseCount) {
+                    out << "\"base-location-"
+                        << semantic_tile_id(Bases[veh.home_base_id].x, Bases[veh.home_base_id].y)
+                        << "\"";
+                } else out << "null";
+                out << ",\"order_name\":" << json_string(semantic_unit_order_name(veh));
+            }
+            out << '}';
+        }
+        next_cursor = index < *VehCount ? index : -1;
+    } else if (domain == "factions") {
+        int index = std::max(1, cursor);
+        for (; index < MaxPlayerNum && emitted < limit; ++index) {
+            if (index != faction_id && (!is_alive(index)
+            || !has_treaty(faction_id, index, DIPLO_COMMLINK))) continue;
+            if (emitted++) out << ',';
+            const int status = Factions[faction_id].diplo_status[index];
+            out << "{\"id\":" << index << ",\"faction_ref\":\"faction-" << index
+                << "\",\"owned\":" << (index == faction_id ? "true" : "false")
+                << ",\"faction_name\":" << json_string(MFactions[index].formal_name_faction)
+                << ",\"leader_name\":" << json_string(MFactions[index].name_leader)
+                << ",\"relations\":{\"commlink\":"
+                << ((status & DIPLO_COMMLINK) ? "true" : "false")
+                << ",\"vendetta\":" << ((status & DIPLO_VENDETTA) ? "true" : "false")
+                << ",\"truce\":" << ((status & DIPLO_TRUCE) ? "true" : "false")
+                << ",\"treaty\":" << ((status & DIPLO_TREATY) ? "true" : "false")
+                << ",\"pact\":" << ((status & DIPLO_PACT) ? "true" : "false")
+                << ",\"infiltrated\":"
+                << ((status & DIPLO_HAVE_INFILTRATOR) ? "true" : "false") << "}}";
+        }
+        next_cursor = index < MaxPlayerNum ? index : -1;
+    } else {
+        return error_response("invalid_world_domain",
+            "Use summary, tiles, bases, units, or factions.");
+    }
+    out << "],\"next_cursor\":";
+    if (next_cursor >= 0) out << next_cursor;
+    else out << "null";
+    out << ",\"bounded_native_page\":true}";
     return out.str();
 }
 
@@ -15505,6 +15749,7 @@ std::string execute_request(const std::string& request) {
     if (op == "human_ui_state") return human_ui_state_response();
     if (op == "human_ui_control") return human_ui_control_response(request);
     if (op == "observe") return observe_response();
+    if (op == "observation_feed") return observation_feed_response(request);
     if (op == "list_bases") return bases_response();
     if (op == "list_units") return units_response();
     if (op == "list_factions") return factions_response();
@@ -15531,6 +15776,7 @@ std::string execute_request(const std::string& request) {
         return test_lan_ai_contact_fixture_response(request);
     }
     if (op == "list_tiles") return tiles_response(request);
+    if (op == "perspective_world_page") return perspective_world_page_response(request);
     if (op == "semantic_snapshot") return semantic_snapshot_response();
     if (op == "semantic_chat") return semantic_chat_response(request);
     if (op == "semantic_lan") {

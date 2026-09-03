@@ -291,6 +291,80 @@ class ControlPlane:
             self._set_setting("embeddings.configuration", {"mode": "local"})
         return self.graphiti_status()
 
+    def specialist_status(self) -> dict[str, Any]:
+        """Return the optional installation-wide helper override.
+
+        A missing override is healthy: each sovereign seat then supplies its
+        own compatible profile as the isolated specialist fallback.
+        """
+        profile = self._setting("specialist.profile")
+        cap = self._setting("specialist.max_concurrency")
+        return {
+            "ok": True, "mode": "dedicated" if isinstance(profile, Mapping) else "sovereign_fallback",
+            "profile": dict(profile) if isinstance(profile, Mapping) else None,
+            "max_concurrency": min(max(int(cap or 2), 1), 16),
+        }
+
+    def set_specialist_profile(self, profile: Mapping[str, Any] | None, *,
+                               max_concurrency: int = 2) -> dict[str, Any]:
+        if not 1 <= int(max_concurrency) <= 16:
+            raise InvalidRecord("invalid_specialist_concurrency")
+        if profile is None:
+            with self.store.transaction() as connection:
+                connection.execute(
+                    "DELETE FROM control_settings WHERE setting_key='specialist.profile'"
+                )
+        else:
+            self._set_setting("specialist.profile", self._normalize_graphiti_profile(profile))
+        self._set_setting("specialist.max_concurrency", int(max_concurrency))
+        return self.specialist_status()
+
+    def sync_specialist_profile(self, profile: Mapping[str, Any]) -> dict[str, Any]:
+        current = self._setting("specialist.profile")
+        requested_id = str(profile.get("profile_id", ""))
+        if not isinstance(current, Mapping) or current.get("profile_id") != requested_id:
+            return {**self.specialist_status(), "synced": False, "changed": False}
+        normalized = self._normalize_graphiti_profile(profile)
+        changed = dict(current) != normalized
+        if changed:
+            self._set_setting("specialist.profile", normalized)
+        return {**self.specialist_status(), "synced": True, "changed": changed}
+
+    def clear_specialist_profile(self, profile_id: str) -> dict[str, Any]:
+        current = self._setting("specialist.profile")
+        if isinstance(current, Mapping) and current.get("profile_id") == profile_id:
+            with self.store.transaction() as connection:
+                connection.execute(
+                    "DELETE FROM control_settings WHERE setting_key='specialist.profile'"
+                )
+        return self.specialist_status()
+
+    def world_observability(self) -> dict[str, Any]:
+        """Content-free aggregates for operator diagnosis."""
+        with self.store._connect() as connection:
+            metrics = [dict(row) for row in connection.execute(
+                "SELECT category,metric,COUNT(*) AS samples,AVG(value_real) AS average," \
+                "MAX(value_real) AS maximum,SUM(value_real) AS total FROM world_telemetry " \
+                "GROUP BY category,metric ORDER BY category,metric"
+            ).fetchall()]
+            specialists = [dict(row) for row in connection.execute(
+                "SELECT status,COUNT(*) AS count,AVG(latency_ms) AS average_latency_ms " \
+                "FROM specialist_jobs GROUP BY status ORDER BY status"
+            ).fetchall()]
+            worlds = dict(connection.execute(
+                "SELECT COUNT(*) AS perspectives,COALESCE(MAX(world_revision),0) AS max_revision," \
+                "COALESCE(MAX(observation_cursor),0) AS max_observation_cursor FROM world_heads"
+            ).fetchone())
+            attention = dict(connection.execute(
+                "SELECT COUNT(*) AS total," \
+                "SUM(CASE WHEN status='queued' THEN 1 ELSE 0 END) AS queued," \
+                "SUM(CASE WHEN critical=1 AND status!='acknowledged' THEN 1 ELSE 0 END) AS critical_pending " \
+                "FROM attention_items"
+            ).fetchone())
+        return {"ok": True, "world": worlds, "attention": attention,
+                "specialists": specialists, "metrics": metrics,
+                "content_retained": False}
+
     def set_graphiti_enabled(self, enabled: bool, *, profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
         if not isinstance(enabled, bool):
             raise InvalidRecord("invalid_graphiti_enabled")

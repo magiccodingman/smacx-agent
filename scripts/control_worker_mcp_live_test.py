@@ -28,6 +28,33 @@ def docker(*arguments: str, check: bool = True) -> str:
     return completed.stdout.strip()
 
 
+def runtime_context(container_name: str, episode_id: str, *, end: bool = False) -> dict:
+    script = r'''
+import json, pathlib, sys, urllib.error, urllib.parse, urllib.request
+token = pathlib.Path('/run/secrets/bridge-token').read_text(encoding='ascii').strip()
+base = 'http://127.0.0.1:47816/runtime-context'
+headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
+if sys.argv[2] == 'end':
+    request = urllib.request.Request(
+        base + '/episode-ended',
+        data=json.dumps({'episode_id': sys.argv[1], 'committed': True}).encode(),
+        headers=headers, method='POST')
+else:
+    query = urllib.parse.urlencode({
+        'episode_id': sys.argv[1], 'episode_mode': 'gameplay', 'context_length': 65536})
+    request = urllib.request.Request(base + '?' + query, headers=headers)
+try:
+    with urllib.request.urlopen(request, timeout=30) as response:
+        print(response.read().decode())
+except urllib.error.HTTPError as exc:
+    print(exc.read().decode())
+'''
+    return json.loads(docker(
+        "exec", container_name, "python3", "-c", script,
+        episode_id, "end" if end else "start",
+    ))
+
+
 def api(opener, base_url: str, method: str, path: str, body: dict | None = None,
         csrf: str | None = None, timeout: float = 60.0) -> dict:
     data = json.dumps(body or {}, separators=(",", ":")).encode() if method != "GET" else None
@@ -54,9 +81,7 @@ async def inspect_mcp(url: str, expected_match: str) -> dict:
             await session.initialize()
             tools = await session.list_tools()
             names = {tool.name for tool in tools.tools}
-            status = await session.call_tool("smac_status", {})
-            snapshot = await session.call_tool("smac_snapshot", {})
-            launch = await session.call_tool("smac_launch", {})
+            briefing = await session.call_tool("smac_match_briefing", {"action": "read"})
     def value(result) -> dict:
         structured = getattr(result, "structured_content", None)
         if isinstance(structured, dict):
@@ -72,48 +97,73 @@ async def inspect_mcp(url: str, expected_match: str) -> dict:
                     return decoded
         return {}
 
-    status_value = value(status)
-    snapshot_value = value(snapshot)
-    launch_value = value(launch)
-    if len(names) < 10 or any(token in name for name in names for token in ("screenshot", "mouse", "keyboard")):
+    decision_value = value(briefing)
+    if len(names) < 14 or any(token in name for name in names for token in ("screenshot", "mouse", "keyboard")):
         raise AssertionError(f"unsafe or incomplete MCP tool surface: {sorted(names)}")
-    identity = status_value.get("identity", {})
-    if not status_value.get("ok") or identity.get("match_id") != expected_match:
-        raise AssertionError(f"MCP sidecar was not bound to the expected live match: {status_value}")
-    if launch_value.get("error", {}).get("code") != "managed_lifecycle_operator_only":
-        raise AssertionError("managed MCP allowed agent-controlled process launch")
+    forbidden = {"smac_status", "smac_snapshot", "smac_launch", "smac_command", "smac_list"}
+    if names & forbidden:
+        raise AssertionError(f"managed MCP leaked operator/legacy tools: {sorted(names & forbidden)}")
+    body = decision_value.get("briefing") if isinstance(decision_value.get("briefing"), dict) else {}
+    identity = body.get("identity", {})
+    if not decision_value.get("ok") or identity.get("match_id") != expected_match:
+        raise AssertionError(
+            "MCP sidecar was not bound to the expected live match: "
+            f"decoded={decision_value!r}, content={getattr(briefing, 'content', None)!r}, "
+            f"structured={getattr(briefing, 'structured_content', None)!r}"
+        )
     return {
-        "tool_count": len(names), "status": status_value,
-        "snapshot": snapshot_value, "launch": launch_value,
+        "tool_count": len(names), "decision": decision_value,
+        "snapshot": decision_value, "managed_lifecycle_hidden": True,
     }
 
 
 async def prepare_checkpoint(url: str) -> dict:
-    allowed_parameters = {"response", "option", "phase", "priority", "name", "tech_id"}
     latest: dict = {}
     for _ in range(30):
         latest = await mcp_tool(url, "smac_decision", {"finish_ready_units": True})
         if not latest.get("ok"):
             raise AssertionError(f"decision failed before checkpoint: {latest}")
+        if latest.get("kind") == "match_briefing_required":
+            briefing = await mcp_tool(url, "smac_match_briefing", {"action": "read"})
+            if not briefing.get("ok"):
+                raise AssertionError(f"briefing read failed before checkpoint: {briefing}")
+            acknowledged = await mcp_tool(url, "smac_match_briefing", {
+                "action": "acknowledge", "briefing_hash": briefing["briefing_hash"],
+            })
+            if not acknowledged.get("ok"):
+                raise AssertionError(f"briefing acknowledgement failed: {acknowledged}")
+            continue
         if latest.get("phase") == "turn":
             return latest
         if latest.get("phase") == "wait":
             await mcp_tool(url, "smac_wait", {"seconds": 1})
             continue
-        choice = next((item for item in latest.get("choices", []) if item.get("command") in {
-            "acknowledge_popup", "choose_research_priority", "advance_technology_presentation",
-            "set_first_base_name",
-        }), None)
+        choice = next((item for item in latest.get("choices", []) if item.get("choice_id")), None)
         if not choice:
             raise AssertionError(f"unexpected interaction before checkpoint: {latest}")
-        arguments = {"command": choice["command"], **latest["required_next"]["guard"]}
-        arguments.update({key: choice[key] for key in allowed_parameters if key in choice})
-        if choice["command"] == "set_first_base_name":
-            arguments["name"] = str(choice.get("suggested_name") or "Alpha Prime")
-        result = await mcp_tool(url, "smac_command", arguments)
+        result = await mcp_tool(url, "smac_execute_choice", {
+            "decision_id": latest["decision_id"], "choice_id": choice["choice_id"],
+        })
         if not result.get("ok"):
             raise AssertionError(f"opening interaction failed before checkpoint: {result}")
     raise AssertionError(f"game never became checkpointable: {latest}")
+
+
+async def current_decision(url: str) -> dict:
+    """Read one fresh, non-mutating semantic frame after any briefing gate."""
+    for _ in range(3):
+        decision = await mcp_tool(url, "smac_decision", {"finish_ready_units": False})
+        if decision.get("kind") != "match_briefing_required":
+            return decision
+        briefing = await mcp_tool(url, "smac_match_briefing", {"action": "read"})
+        if not briefing.get("ok"):
+            return briefing
+        acknowledged = await mcp_tool(url, "smac_match_briefing", {
+            "action": "acknowledge", "briefing_hash": briefing["briefing_hash"],
+        })
+        if not acknowledged.get("ok"):
+            return acknowledged
+    return {"ok": False, "error": {"code": "briefing_gate_did_not_clear"}}
 
 
 async def mcp_tool(url: str, name: str, arguments: dict | None = None) -> dict:
@@ -133,21 +183,26 @@ async def mcp_tool(url: str, name: str, arguments: dict | None = None) -> dict:
                 continue
             if isinstance(decoded, dict):
                 return decoded
-    return {}
+    return {
+        "ok": False,
+        "_unparsed_mcp_result": repr(getattr(result, "content", None)),
+        "_structured_mcp_result": repr(getattr(result, "structured_content", None)),
+    }
 
 
 def main() -> int:
     game = os.environ.get("SMACX_TEST_GAME_SOURCE")
-    proton = os.environ.get("SMACX_TEST_PROTON_SOURCE")
-    directx = os.environ.get("SMACX_TEST_DIRECTX_REDIST")
-    if not all((game, proton, directx)):
-        print(json.dumps({"event": "skip", "reason": "missing_live_assets"}))
+    if not game:
+        print(json.dumps({"event": "skip", "reason": "missing_live_game_source"}))
         return 0
-    for path in (game, proton, directx):
-        if not Path(path).is_absolute():
-            raise SystemExit("live asset paths must be absolute")
+    if not Path(game).is_absolute():
+        raise SystemExit("live game source path must be absolute")
 
     suffix = uuid.uuid4().hex[:12]
+    control_image = os.environ.get("SMACX_TEST_CONTROL_IMAGE", "smacx-agent-control:dev")
+    worker_image = os.environ.get("SMACX_TEST_WORKER_IMAGE", "smacx-agent-worker:dev")
+    mcp_image = os.environ.get("SMACX_TEST_MCP_IMAGE", control_image)
+    harness_image = os.environ.get("SMACX_TEST_HERMES_IMAGE", "smacx-agent-harness:dev")
     control_name = f"smacx-control-mcp-live-{suffix}"
     control_volume = f"smacx-control-mcp-live-data-{suffix}"
     network = f"smacx-control-mcp-live-net-{suffix}"
@@ -173,16 +228,18 @@ def main() -> int:
             "-e", "SMACX_DOCKER_ENABLED=1",
             "-e", "SMACX_DOCKER_SOCKET=/var/run/docker.sock",
             "-e", f"SMACX_DOCKER_NETWORK={network}",
-            "-e", "SMACX_WORKER_IMAGE=smacx-agent-worker:dev",
-            "-e", "SMACX_MCP_IMAGE=smacx-agent-control:dev",
+            "-e", f"SMACX_GAME_SOURCE={game}",
+            "-e", f"SMACX_WORKER_IMAGE={worker_image}",
+            "-e", f"SMACX_MCP_IMAGE={mcp_image}",
+            "-e", f"SMACX_HERMES_IMAGE={harness_image}",
             "-e", f"SMACX_CONTROL_DATA_VOLUME={control_volume}",
-            "-e", f"SMACX_DIRECTX_REDIST_HOST={directx}",
             "-v", f"{control_volume}:/var/lib/smacx",
             "-v", "/var/run/docker.sock:/var/run/docker.sock",
-            "-p", "127.0.0.1::8080", "--read-only",
+            "-v", f"{game}:{game}:ro",
+            "-p", "127.0.0.1::8081", "--read-only",
             "--tmpfs", "/tmp:size=64m,mode=1777", "--tmpfs", "/run:size=16m,mode=0755",
             "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
-            "smacx-agent-control:dev",
+            control_image,
         )
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
@@ -191,9 +248,13 @@ def main() -> int:
             time.sleep(0.25)
         else:
             raise AssertionError("Control Center did not become healthy")
-        port = docker("port", control_name, "8080/tcp").rsplit(":", 1)[-1]
+        port = docker("port", control_name, "8081/tcp").rsplit(":", 1)[-1]
         base_url = f"http://127.0.0.1:{port}"
         token = docker("exec", control_name, "smacx-control", "bootstrap-token")
+        # The one-shot CLI briefly contends with the server's SQLite bootstrap
+        # connection on very fast hosts.  Let that read-only process fully
+        # release its descriptor before the first state-changing HTTP request.
+        time.sleep(1)
         cookies = CookieJar()
         opener = build_opener(HTTPCookieProcessor(cookies))
         api(opener, base_url, "POST", "/api/v1/setup/bootstrap", {
@@ -203,12 +264,10 @@ def main() -> int:
         csrf = next(cookie.value for cookie in cookies if cookie.name == "smacx_csrf")
         status = api(opener, base_url, "GET", "/api/v1/status")
         installation_id = status["installation_id"]
-        source = api(opener, base_url, "POST", "/api/v1/game-sources/validate", {
-            "display_name": "Live legal source", "host_path": game,
-        }, csrf, 180)["game_source"]
-        runtime = api(opener, base_url, "POST", "/api/v1/runtimes/import-proton", {
-            "display_name": "Live private Proton", "source_host_path": proton,
-        }, csrf, 1800)["runtime"]
+        sources = api(opener, base_url, "GET", "/api/v1/game-sources")["game_sources"]
+        source = next(item for item in sources if item.get("host_path") == game)
+        runtimes = api(opener, base_url, "GET", "/api/v1/runtimes")["runtimes"]
+        runtime = next(item for item in runtimes if item.get("status") == "ready")
         agent = api(opener, base_url, "POST", "/api/v1/agents", {
             "display_name": "MCP live agent",
         }, csrf)["agent"]
@@ -219,7 +278,7 @@ def main() -> int:
             "runtime_id": runtime["runtime_id"],
             "faction_id": 1,
             "autostart": {"enabled": True, "difficulty": 0, "world_size": 0, "faction_id": 1},
-        }, csrf)
+        }, csrf, 1800)
         worker = created["worker"]
         started = api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/start",
@@ -228,8 +287,14 @@ def main() -> int:
         endpoint = started.get("mcp") or {}
         if endpoint.get("status") != "running" or not endpoint.get("url"):
             raise AssertionError(f"worker did not receive an MCP sidecar: {started}")
+        worker.setdefault("network", {})["mcp_container_name"] = endpoint.get("container_name")
         mcp_result = asyncio.run(inspect_mcp(endpoint["url"], created["match"]["match_id"]))
+        test_episode_id = "episode-live-" + suffix
+        runtime_started = runtime_context(endpoint["container_name"], test_episode_id)
+        if not runtime_started.get("ok"):
+            raise AssertionError(f"runtime context lease failed: {runtime_started}")
         asyncio.run(prepare_checkpoint(endpoint["url"]))
+        runtime_context(endpoint["container_name"], test_episode_id, end=True)
         checkpoint = api(
             opener, base_url, "POST",
             f"/api/v1/matches/{created['match']['match_id']}/checkpoint",
@@ -274,7 +339,18 @@ def main() -> int:
         recovered_mcp = asyncio.run(inspect_mcp(
             recovered_endpoint, created["match"]["match_id"],
         ))
-        recovered_turn = recovered_mcp.get("snapshot", {}).get("snapshot", {}).get("turn")
+        recovered_sidecar = recovered_worker.get("network", {}).get("mcp_container_name")
+        if not recovered_sidecar:
+            raise AssertionError("recovered worker did not publish its MCP container identity")
+        recovery_probe_episode = "episode-recovery-probe-" + suffix
+        recovery_lease = runtime_context(recovered_sidecar, recovery_probe_episode)
+        if not recovery_lease.get("ok"):
+            raise AssertionError(f"recovered runtime context lease failed: {recovery_lease}")
+        recovered_decision = asyncio.run(current_decision(recovered_endpoint))
+        runtime_context(recovered_sidecar, recovery_probe_episode, end=True)
+        if not recovered_decision.get("ok"):
+            raise AssertionError(f"recovered semantic decision failed: {recovered_decision}")
+        recovered_turn = recovered_decision.get("turn")
         if checkpoint_turn is not None and recovered_turn != checkpoint_turn:
             raise AssertionError(
                 f"supervisor recovered the wrong checkpoint turn: {checkpoint_turn} -> {recovered_turn}"
@@ -302,8 +378,9 @@ def main() -> int:
                 raise AssertionError("Control descriptor did not use the exact live MCP sidecar")
             prompt = (
                 "This is a bounded semantic integration test in a fresh tiny Citizen game. "
-                "Do not use the web. Call smac_status and smac_decision. Then execute exactly one "
-                "legal command returned by smac_decision that advances the current opening interaction. "
+                "Do not use the web. Read and acknowledge the match briefing if required, then call "
+                "smac_decision. Execute exactly one opaque legal choice returned by smac_decision "
+                "that advances the current opening interaction. "
                 "Obtain one fresh semantic frame afterward and stop with a short report. Never use or "
                 "request screenshots, vision, mouse, keyboard, terminal, or desktop control."
             )
@@ -325,15 +402,40 @@ def main() -> int:
                 raise AssertionError("managed secret mount/config contract regressed")
             run_deadline = time.monotonic() + 300
             final_run = managed
+            provider_progress: dict = {}
+            starting_revision = recovered_decision.get("identity", {}).get("revision")
             while time.monotonic() < run_deadline:
                 runs = api(opener, base_url, "GET", "/api/v1/harness-runs")["harness_runs"]
                 final_run = next(item for item in runs if item["run_id"] == managed["run_id"])
-                if final_run["status"] in {"completed", "error"}:
+                if final_run["status"] == "error":
+                    break
+                metadata = final_run.get("metadata") \
+                    if isinstance(final_run.get("metadata"), dict) else {}
+                progress = metadata.get("semantic_progress") \
+                    if isinstance(metadata.get("semantic_progress"), dict) else {}
+                if progress.get("available") and progress.get("revision") \
+                        and progress.get("revision") != starting_revision:
+                    provider_progress = progress
                     break
                 time.sleep(2)
-            if final_run["status"] != "completed":
+            if not provider_progress:
                 logs = docker("logs", "--tail", "200", managed_name, check=False)
-                raise AssertionError(f"managed Hermes run failed: {final_run}; {logs[-4000:]}")
+                raise AssertionError(
+                    f"managed Hermes run did not advance semantic state: {final_run}; "
+                    f"{logs[-4000:]}"
+                )
+            telemetry_result = api(
+                opener, base_url, "POST",
+                f"/api/v1/harness-runs/{managed['run_id']}/telemetry", {}, csrf, 60,
+            )["result"]
+            provider_usage = telemetry_result.get("telemetry") \
+                if isinstance(telemetry_result.get("telemetry"), dict) else {}
+            stopped_run = api(
+                opener, base_url, "POST",
+                f"/api/v1/harness-runs/{managed['run_id']}/stop", {}, csrf, 120,
+            )["result"]
+            if stopped_run.get("status") != "stopped":
+                raise AssertionError(f"managed Hermes run did not stop cleanly: {stopped_run}")
             session_backup = api(
                 opener, base_url, "POST", "/api/v1/backups",
                 {"include_secrets": True, "include_workers": True}, csrf, 1800,
@@ -353,10 +455,25 @@ def main() -> int:
                 "reasoning_effort": descriptor["reasoning_effort"],
                 "managed_container": True,
                 "session_backup_verified": True,
+                "semantic_progress": provider_progress,
+                "usage": {
+                    key: int(provider_usage.get(key) or 0)
+                    for key in (
+                        "api_calls", "input_tokens", "output_tokens",
+                        "reasoning_tokens", "cache_read_tokens", "cache_write_tokens",
+                    )
+                },
             }
-            after = asyncio.run(inspect_mcp(recovered_endpoint, created["match"]["match_id"]))
-            before_revision = recovered_mcp["snapshot"].get("snapshot", {}).get("revision")
-            after_revision = after["snapshot"].get("snapshot", {}).get("revision")
+            after_probe_episode = "episode-after-hermes-" + suffix
+            after_lease = runtime_context(recovered_sidecar, after_probe_episode)
+            if not after_lease.get("ok"):
+                raise AssertionError(f"post-Hermes runtime context lease failed: {after_lease}")
+            after = asyncio.run(current_decision(recovered_endpoint))
+            runtime_context(recovered_sidecar, after_probe_episode, end=True)
+            if not after.get("ok"):
+                raise AssertionError(f"post-Hermes semantic decision failed: {after}")
+            before_revision = recovered_decision.get("identity", {}).get("revision")
+            after_revision = after.get("identity", {}).get("revision")
             if not before_revision or before_revision == after_revision:
                 raise AssertionError(
                     f"Hermes semantic command did not advance native game revision: "
@@ -393,9 +510,16 @@ def main() -> int:
                 "hermes_session_backup_verified": bool(
                     hermes_result and hermes_result.get("session_backup_verified")
                 ),
+                "hermes_usage": hermes_result.get("usage") if hermes_result else None,
             },
         }, separators=(",", ":")))
     except Exception:
+        if worker:
+            sidecar_name = worker.get("network", {}).get("mcp_container_name")
+            if sidecar_name:
+                sidecar_logs = docker("logs", "--tail", "200", str(sidecar_name), check=False)
+                if sidecar_logs:
+                    print(json.dumps({"event": "mcp_logs", "tail": sidecar_logs[-12000:]}, separators=(",", ":")))
         logs = docker("logs", "--tail", "100", control_name, check=False)
         if logs:
             print(json.dumps({"event": "control_logs", "tail": logs[-4000:]}, separators=(",", ":")))
@@ -422,11 +546,11 @@ def main() -> int:
         if runtime:
             docker("volume", "rm", str(runtime.get("storage_ref")), check=False)
         if installation_id:
-            harness_containers = docker(
+            managed_containers = docker(
                 "ps", "-aq", "--filter", f"label=io.smacx.installation={installation_id}",
-                "--filter", "label=io.smacx.purpose=harness-run", check=False,
+                "--filter", "label=io.smacx.managed=true", check=False,
             ).splitlines()
-            for container in harness_containers:
+            for container in managed_containers:
                 if container:
                     docker("rm", "-f", container, check=False)
             for purpose in ("harness-data", "harness-secret"):
@@ -438,6 +562,13 @@ def main() -> int:
                 for volume in volumes:
                     if volume:
                         docker("volume", "rm", volume, check=False)
+            prepared_images = docker(
+                "images", "-q", "--filter", f"label=io.smacx.installation={installation_id}",
+                "--filter", "label=io.smacx.purpose=prepared-worker-image", check=False,
+            ).splitlines()
+            for image_id in dict.fromkeys(prepared_images):
+                if image_id:
+                    docker("image", "rm", image_id, check=False)
         docker("volume", "rm", control_volume, check=False)
         docker("network", "rm", network, check=False)
     return 0

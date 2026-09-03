@@ -1,0 +1,494 @@
+"""Single provider-facing semantic world facade over separated calculators."""
+
+from __future__ import annotations
+
+from typing import Any, Iterable, Mapping
+
+from smacx_mechanics import (
+    base_mechanics, connector_analysis, logistics as logistics_projection,
+    location_affordances, lost_contact_envelopes, mobility_profile, rendezvous_matrix,
+    response_matrix,
+)
+from smacx_regions import RegionBuilder, build_theaters
+from smacx_semantic_map import render_svg
+from smacx_store import MemoryScope
+from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
+from smacx_world_model import CALCULATOR_VERSION, SemanticLodProjector, estimate_tokens
+from smacx_world_store import WorldStore
+from smacx_world_types import WorldContractError, WorldIdentity, content_hash, material_hash
+
+
+WORLD_MODES = frozenset({
+    "overview", "area", "relation", "route", "reachability", "compare",
+    "base", "forces", "logistics", "intel", "changes", "global", "render",
+})
+DETAIL_LIMITS = {"compact": 512, "standard": 2048}
+
+
+class WorldQueryError(ValueError):
+    pass
+
+
+def _value(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
+    fields = item.get("fields") if isinstance(item.get("fields"), Mapping) else {}
+    field = fields.get(name)
+    return field.get("value", default) if isinstance(field, Mapping) else default
+
+
+def _public_object(item: Mapping[str, Any], *, include_fields: bool = True) -> dict[str, Any]:
+    result = {key: item.get(key) for key in
+              ("object_ref", "kind", "location_ref", "parent_ref", "status")
+              if item.get(key) is not None}
+    if include_fields:
+        result["fields"] = item.get("fields", {})
+    return result
+
+
+class WorldService:
+    """Read-only facade. It calculates facts and never chooses strategy."""
+
+    def __init__(self, store: WorldStore, scope: MemoryScope, *, ruleset_hash: str = "smacx") -> None:
+        self.store = store
+        self.scope = scope
+        self.ruleset_hash = ruleset_hash
+
+    def _projection(self) -> tuple[WorldIdentity, dict[str, Any]]:
+        timeline = self.store.store.active_timeline_id(self.scope)
+        projection = self.store.load(self.scope, timeline)
+        if not projection:
+            raise WorldQueryError("world_projection_unavailable")
+        identity = WorldIdentity(**projection["identity"])
+        return identity, projection
+
+    @staticmethod
+    def _objects(projection: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+        return {str(item["object_ref"]): dict(item) for item in projection.get("objects", ())}
+
+    @staticmethod
+    def _topology(projection: Mapping[str, Any]) -> PerspectiveTopology:
+        objects = WorldService._objects(projection)
+        locations = []
+        for item in objects.values():
+            if item.get("kind") != "location":
+                continue
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), Mapping) else {}
+            if "native_x" not in metadata or "native_y" not in metadata:
+                continue
+            locations.append(KnownSquare(
+                str(item["object_ref"]), int(metadata["native_x"]), int(metadata["native_y"]),
+                str(_value(item, "terrain", "land")),
+                str(item.get("fields", {}).get("terrain", {}).get("epistemic_status")) == "current",
+                frozenset(str(value) for value in (_value(item, "features", []) or [])),
+                _value(item, "owner_ref"), bool(_value(item, "hostile_zoc", False)),
+            ))
+        shape_data = projection.get("map_shape")
+        if not isinstance(shape_data, Mapping):
+            map_state = next((item for item in objects.values()
+                              if item.get("kind") == "map_state"), None)
+            if map_state:
+                shape_data = {
+                    "width": int(_value(map_state, "width", 2)),
+                    "height": int(_value(map_state, "height", 1)),
+                    "horizontal_wrap": bool(_value(map_state, "horizontal_wrap", True)),
+                }
+        if not isinstance(shape_data, Mapping):
+            # Older reconstructed projections retain coordinates but not the
+            # explicit shape. Derive the smallest valid bounded shape.
+            width = max((item.x for item in locations), default=1) + 1
+            width += width % 2
+            height = max((item.y for item in locations), default=0) + 1
+            shape_data = {"width": max(2, width), "height": max(1, height),
+                          "horizontal_wrap": True}
+        return PerspectiveTopology(MapShape(**shape_data), locations)
+
+    def _dependency_refs(self, mode: str, objects: Mapping[str, Mapping[str, Any]], *,
+                         subjects: tuple[str, ...], origin_ref: str, target_ref: str,
+                         radius: int) -> tuple[str, ...]:
+        if subjects:
+            refs = set(subjects)
+            for ref in subjects:
+                location = objects.get(ref, {}).get("location_ref")
+                if location:
+                    refs.add(str(location))
+            return tuple(sorted(refs))
+        kinds = {
+            "base": {"base"}, "forces": {"own_unit", "foreign_contact"},
+            "intel": {"faction", "foreign_contact", "claim"},
+            "global": {"global_system", "game_settings", "scenario_rules", "economy_state",
+                       "research_state", "social_state", "council_state", "victory_state",
+                       "technology_state", "global_event", "project", "victory"},
+            "logistics": {"own_unit", "base", "route", "convoy"},
+        }.get(mode)
+        if kinds is not None:
+            return tuple(sorted(ref for ref, item in objects.items() if item.get("kind") in kinds))
+        if mode == "relation":
+            return tuple(sorted({value for value in (origin_ref, target_ref,
+                str(objects.get(origin_ref, {}).get("location_ref") or ""),
+                str(objects.get(target_ref, {}).get("location_ref") or "")) if value}))
+        if mode == "area":
+            # Radius membership itself depends on the known map geometry.
+            return tuple(sorted(objects))
+        # Routing, frontier/render, changes, and the planet anchor depend on
+        # the currently known topology or the whole projection.
+        return tuple(sorted(objects))
+
+    def anchor(self, *, context_length: int, focus_ref: str | None = None,
+               operation_refs: Iterable[str] = (), triggered_watch_refs: Iterable[str] = ()) -> dict[str, Any]:
+        identity, projection = self._projection()
+        tier = "64k" if int(context_length) < 131072 else "256k"
+        current = self.store.current_anchor(self.scope, identity.timeline_id, tier)
+        now = {str(item["object_ref"]): item for item in projection["objects"]}
+        preliminary_deltas: list[dict[str, Any]] = []
+        if current is not None:
+            preliminary_baseline = self.store.anchor_baseline(str(current["world_anchor_id"]))
+            for ref in sorted(set(preliminary_baseline) | set(now)):
+                digest = material_hash(now[ref]) if ref in now else None
+                if preliminary_baseline.get(ref) != digest:
+                    preliminary_deltas.append({
+                        "object_ref": ref,
+                        "change": "removed" if ref not in now else
+                                  ("appeared" if ref not in preliminary_baseline else "changed"),
+                        **({"current": _public_object(now[ref])} if ref in now else {}),
+                    })
+        promotion_refs = sorted({str(value) for value in (
+            *((focus_ref,) if focus_ref else ()), *operation_refs, *triggered_watch_refs,
+        ) if value})
+        turn = next((_value(item, "turn") for item in projection.get("objects", ())
+                     if item.get("kind") == "turn_state"), None)
+        regenerate = current is None or current["world_epoch"] != identity.world_epoch \
+            or current["payload"].get("turn") != turn \
+            or int(projection["observation_cursor"]) - int(
+                current["anchor_observation_cursor"] if current else 0) > 128 \
+            or len(preliminary_deltas) > 64 \
+            or estimate_tokens(preliminary_deltas) > (1200 if tier == "64k" else 3200) \
+            or list(current["payload"].get("lod", {}).get("promotion_refs", ())) != promotion_refs
+        if not regenerate:
+            # One changed coastline, road/tube, base, faction relationship, or
+            # global structure can invalidate strategic regions even when the
+            # raw delta chain is small.
+            for delta in preliminary_deltas:
+                current_item = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
+                if current_item.get("kind") in {
+                    "location", "base", "faction", "game_settings", "scenario_rules",
+                    "council_state", "victory_state", "global_event", "project",
+                }:
+                    regenerate = True
+                    break
+        if regenerate:
+            location_objects = [item for item in projection["objects"] if item.get("kind") == "location"]
+            squares = []
+            for item in location_objects:
+                metadata = item.get("metadata", {})
+                squares.append(KnownSquare(
+                    str(item["object_ref"]), int(metadata["native_x"]), int(metadata["native_y"]),
+                    str(_value(item, "terrain", "land")),
+                    item.get("fields", {}).get("terrain", {}).get("epistemic_status") == "current",
+                    frozenset(_value(item, "features", []) or []), _value(item, "owner_ref"),
+                    bool(_value(item, "hostile_zoc", False)),
+                ))
+            model_projection = {
+                **projection, "known_squares": squares,
+                "map_shape": projection.get("map_shape") or self._topology(projection).shape.__dict__,
+                "turn": turn,
+            }
+            previous_regions = [
+                *self.store.load_regions(self.scope, identity.timeline_id,
+                                         "mobility-land-default"),
+                *self.store.load_regions(self.scope, identity.timeline_id,
+                                         "mobility-sea-default"),
+            ]
+            payload = SemanticLodProjector(context_tier=tier).build(
+                model_projection, previous_regions=previous_regions,
+                focus_ref=focus_ref, operation_refs=operation_refs,
+                triggered_watch_refs=triggered_watch_refs,
+            )
+            region_projection = payload.pop("_region_projection", [])
+            self.store.save_regions(
+                self.scope, identity.timeline_id, region_projection,
+                int(projection["world_revision"]),
+            )
+            hashes = {str(item["object_ref"]): material_hash(item)
+                      for item in projection["objects"]}
+            current = self.store.save_anchor(
+                self.scope, identity, world_revision=int(projection["world_revision"]),
+                observation_cursor=int(projection["observation_cursor"]), context_tier=tier,
+                payload=payload, token_estimate=estimate_tokens(payload), object_hashes=hashes,
+            )
+        baseline = self.store.anchor_baseline(str(current["world_anchor_id"]))
+        deltas = []
+        for ref in sorted(set(baseline) | set(now)):
+            digest = material_hash(now[ref]) if ref in now else None
+            if baseline.get(ref) == digest:
+                continue
+            deltas.append({
+                "object_ref": ref,
+                "change": "removed" if ref not in now else
+                          ("appeared" if ref not in baseline else "changed"),
+                **({"current": _public_object(now[ref])} if ref in now else {}),
+            })
+        return {**current, "net_deltas": deltas,
+                "net_deltas_truncated": False}
+
+    def _budget(self, detail: str, context_length: int) -> int:
+        if detail == "deep":
+            return min(8192, max(512, int(context_length * 0.05)))
+        if detail not in DETAIL_LIMITS:
+            raise WorldQueryError("invalid_world_detail")
+        return DETAIL_LIMITS[detail]
+
+    @staticmethod
+    def _trim(result: dict[str, Any], budget: int) -> dict[str, Any]:
+        dependency_refs = result.get("dependency_refs")
+        if isinstance(dependency_refs, list):
+            result["dependency_ref_count"] = len(dependency_refs)
+            # The cache binds the complete server-held dependency hash. The
+            # provider needs representative/queryable references, not a linear
+            # copy of every quiet tile merely to validate that hash.
+            while len(dependency_refs) > 8 and estimate_tokens(result) > budget:
+                dependency_refs.pop()
+                result["dependency_refs_truncated"] = True
+        body = result.get("items")
+        if not isinstance(body, list):
+            anchor = result.get("anchor")
+            if isinstance(anchor, dict):
+                payload = anchor.get("payload")
+                while isinstance(payload, dict) and estimate_tokens(result) > budget:
+                    reduced = False
+                    for field in ("active_detail", "frontiers", "active_theaters",
+                                  "strategic_objects", "regions"):
+                        values = payload.get(field)
+                        if isinstance(values, list) and values:
+                            values.pop()
+                            result["truncated"] = True
+                            reduced = True
+                            break
+                    deltas = anchor.get("net_deltas")
+                    if not reduced and isinstance(deltas, list) and deltas:
+                        deltas.pop()
+                        result["truncated"] = True
+                        reduced = True
+                    if not reduced:
+                        break
+            result["result_token_estimate"] = estimate_tokens(result)
+            if result["result_token_estimate"] > budget:
+                raise WorldQueryError("world_result_budget_exhausted")
+            return result
+        while body and estimate_tokens(result) > budget:
+            body.pop()
+            result["truncated"] = True
+        result["result_token_estimate"] = estimate_tokens(result)
+        return result
+
+    def query(
+        self, *, mode: str, subject_refs: Iterable[str] = (), origin_ref: str = "",
+        target_ref: str = "", movement_profile_ref: str = "mobility-land-default",
+        radius: int = 3, since_cursor: int = 0, detail: str = "standard",
+        continuation: str = "", context_length: int = 65536,
+    ) -> dict[str, Any]:
+        if mode not in WORLD_MODES:
+            raise WorldQueryError("invalid_world_mode")
+        if not 65536 <= int(context_length) <= 16_777_216:
+            raise WorldQueryError("invalid_world_context_length")
+        budget = self._budget(detail, context_length)
+        radius = min(max(int(radius), 0), 32)
+        subjects = tuple(dict.fromkeys(str(item) for item in subject_refs))[:32]
+        identity, projection = self._projection()
+        objects = self._objects(projection)
+        request = {
+            "mode": mode, "subject_refs": subjects, "origin_ref": origin_ref,
+            "target_ref": target_ref, "movement_profile_ref": movement_profile_ref,
+            "radius": radius, "since_cursor": int(since_cursor), "detail": detail,
+            "continuation": continuation,
+        }
+        if continuation and not continuation.startswith("cursor-"):
+            raise WorldQueryError("invalid_world_continuation")
+        try:
+            continuation_offset = int(continuation.removeprefix("cursor-")) if continuation else 0
+        except ValueError as exc:
+            raise WorldQueryError("invalid_world_continuation") from exc
+        if continuation_offset < 0 or continuation_offset > 1_000_000:
+            raise WorldQueryError("invalid_world_continuation")
+        dependency_refs = self._dependency_refs(
+            mode, objects, subjects=subjects, origin_ref=origin_ref,
+            target_ref=target_ref, radius=radius,
+        )
+        dependency_hash = content_hash({
+            ref: objects.get(ref) for ref in dependency_refs
+        })
+        fingerprint = content_hash({
+            "scope": identity.as_dict(),
+            "ruleset_hash": self.ruleset_hash, "calculator_version": CALCULATOR_VERSION,
+            "request": request,
+        })
+        cached = self.store.cached_query(fingerprint, dependency_hash)
+        if cached:
+            cached["world_revision"] = projection["world_revision"]
+            cached["observation_cursor"] = projection["observation_cursor"]
+            cached["valid_while"] = {
+                "timeline_id": identity.timeline_id, "world_epoch": identity.world_epoch,
+                "world_revision": projection["world_revision"],
+                "condition": "listed dependency_refs retain dependency_hash",
+            }
+            self.store.telemetry("world_query", "cache_hit", 1, scope=self.scope,
+                                 timeline_id=identity.timeline_id, dimensions={"mode": mode})
+            return cached
+        result: dict[str, Any] = {
+            "ok": True, "schema": "smacx.world-result.v1", "mode": mode,
+            "identity": identity.as_dict(), "world_revision": projection["world_revision"],
+            "observation_cursor": projection["observation_cursor"],
+            "continuity": projection["continuity"], "dependency_hash": dependency_hash,
+            "dependency_refs": list(dependency_refs)[:64],
+            "retention_class": "query_scoped",
+            "valid_while": {
+                "timeline_id": identity.timeline_id, "world_epoch": identity.world_epoch,
+                "world_revision": projection["world_revision"],
+                "condition": "listed dependency_refs retain dependency_hash",
+            },
+            "epistemic_note": "Unknown and stale evidence remain explicit; absence is not negative evidence.",
+            "truncated": False,
+        }
+        topology: PerspectiveTopology | None = None
+        if mode == "overview":
+            result["anchor"] = self.anchor(context_length=context_length)
+        elif mode in {"base", "forces", "intel", "global", "logistics"}:
+            kinds = {
+                "base": {"base"}, "forces": {"own_unit", "foreign_contact"},
+                "intel": {"faction", "foreign_contact", "claim"},
+                "global": {"global_system", "game_settings", "scenario_rules", "economy_state",
+                           "research_state", "social_state", "council_state", "victory_state",
+                           "technology_state", "global_event", "project", "victory"},
+                "logistics": {"own_unit", "base", "route", "convoy"},
+            }[mode]
+            selected = [item for item in objects.values() if item.get("kind") in kinds]
+            if subjects:
+                selected = [item for item in selected if item.get("object_ref") in subjects]
+            if mode == "base":
+                topology = self._topology(projection)
+                result["items"] = base_mechanics(topology, objects, subjects)
+                result["objects"] = [_public_object(item) for item in selected]
+            elif mode == "logistics":
+                result["logistics"] = logistics_projection(objects)
+                result["items"] = [_public_object(item) for item in selected]
+            elif mode == "intel":
+                topology = self._topology(projection)
+                turn_state = objects.get("world-turn", {})
+                result["lost_contact_envelopes"] = lost_contact_envelopes(
+                    topology, objects, current_turn=_value(turn_state, "turn"),
+                )
+                result["items"] = [_public_object(item) for item in selected]
+            else:
+                result["items"] = [_public_object(item) for item in selected]
+        elif mode == "area":
+            center = objects.get(origin_ref or (subjects[0] if subjects else ""))
+            center_ref = str(center.get("location_ref") if center and center.get("location_ref")
+                             else center.get("object_ref") if center else origin_ref)
+            topology = self._topology(projection)
+            if center_ref not in topology.by_ref:
+                raise WorldQueryError("unknown_area_origin")
+            origin = topology.by_ref[center_ref]
+            in_area = {ref for ref, square in topology.by_ref.items()
+                       if topology.shape.distance((origin.x, origin.y), (square.x, square.y)) <= radius}
+            result["origin_ref"] = center_ref
+            result["coverage"] = {"radius": radius, "unknown_not_enumerated": True}
+            result["items"] = [_public_object(item) for item in objects.values()
+                               if item.get("object_ref") in in_area
+                               or item.get("location_ref") in in_area]
+        elif mode == "relation":
+            topology = self._topology(projection)
+            origin_location = objects.get(origin_ref, {}).get("location_ref") or origin_ref
+            target_location = objects.get(target_ref, {}).get("location_ref") or target_ref
+            if origin_location not in topology.by_ref or target_location not in topology.by_ref:
+                raise WorldQueryError("unknown_relation_endpoint")
+            a, b = topology.by_ref[origin_location], topology.by_ref[target_location]
+            result["relation"] = {
+                "origin_ref": origin_ref, "target_ref": target_ref,
+                "geometric_distance": topology.shape.distance((a.x, a.y), (b.x, b.y)),
+                "bearing": topology.shape.bearing((a.x, a.y), (b.x, b.y)),
+            }
+            profile = mobility_profile(objects, movement_profile_ref, subject_ref=origin_ref)
+            route = topology.route(origin_location, target_location, profile)
+            result["relation"].update({
+                "known_world_reachable": route.reachable,
+                "eta_turns": route.turns, "movement_cost": route.movement_cost,
+                "uncertainty": list(route.uncertainty),
+            })
+        elif mode in {"route", "reachability", "compare"}:
+            topology = self._topology(projection)
+            profile = mobility_profile(objects, movement_profile_ref, subject_ref=origin_ref)
+            if mode == "route":
+                origin_location = objects.get(origin_ref, {}).get("location_ref") or origin_ref
+                target_location = objects.get(target_ref, {}).get("location_ref") or target_ref
+                result["route"] = topology.route(origin_location, target_location, profile).as_dict()
+            elif mode == "compare":
+                if not subjects:
+                    raise WorldQueryError("compare_requires_subjects")
+                if origin_ref:
+                    result["items"] = response_matrix(
+                        topology, objects, [origin_ref], subjects, movement_profile_ref,
+                    )[0]["responses"]
+                    result["connectors"] = connector_analysis(topology, profile)[:24]
+                elif target_ref:
+                    result["items"] = rendezvous_matrix(
+                        topology, objects, subjects, [target_ref], movement_profile_ref,
+                    )
+                else:
+                    result["items"] = location_affordances(topology, objects, subjects)
+            else:
+                start = objects.get(origin_ref, {}).get("location_ref") or origin_ref
+                if start not in topology.by_ref:
+                    raise WorldQueryError("unknown_reachability_origin")
+                reached = topology.reachable_costs(
+                    start, profile, max_cost=float(radius * profile.movement_points),
+                )
+                result["items"] = [{
+                    "location_ref": ref, "minimum_movement_cost": cost,
+                    "minimum_turns": int((cost + profile.movement_points - 1)
+                                         // profile.movement_points),
+                } for ref, cost in sorted(reached.items(), key=lambda item: (item[1], item[0]))]
+                result["coverage"] = {"known_world_only": True, "unknown_not_traversed": True}
+        elif mode == "changes":
+            anchor = self.anchor(context_length=context_length)
+            result["anchor_identity"] = {
+                "world_anchor_id": anchor["world_anchor_id"],
+                "world_anchor_revision": anchor["world_anchor_revision"],
+                "anchor_observation_cursor": anchor["anchor_observation_cursor"],
+            }
+            result["items"] = self.store.changes_since(
+                self.scope, identity.timeline_id, int(since_cursor), limit=512,
+            )
+        elif mode == "render":
+            topology = self._topology(projection)
+            point_limit = min(
+                {"compact": 96, "standard": 384, "deep": 1000}.get(detail, 384),
+                max(1, budget * 4 // 140),
+            )
+            result["rendering"] = render_svg(topology, objects, max_cells=point_limit)
+            while estimate_tokens(result) > budget and point_limit > 1:
+                point_limit = max(1, point_limit // 2)
+                result["rendering"] = render_svg(
+                    topology, objects, max_cells=point_limit,
+                )
+                result["truncated"] = True
+        if isinstance(result.get("items"), list) and continuation_offset:
+            result["items"] = result["items"][continuation_offset:]
+        available_before_trim = len(result.get("items", [])) \
+            if isinstance(result.get("items"), list) else 0
+        result = self._trim(result, budget)
+        returned = len(result.get("items", [])) if isinstance(result.get("items"), list) else 0
+        if returned < available_before_trim:
+            result["continuation"] = f"cursor-{continuation_offset + returned}"
+        else:
+            result["continuation"] = None
+        token_estimate = int(result["result_token_estimate"])
+        self.store.put_cached_query(
+            self.scope, identity, world_revision=int(projection["world_revision"]),
+            observation_cursor=int(projection["observation_cursor"]),
+            ruleset_hash=self.ruleset_hash, calculator_version=CALCULATOR_VERSION,
+            dependency_hash=dependency_hash, request=request, result=result,
+            token_estimate=token_estimate,
+        )
+        self.store.telemetry("world_query", "result_tokens", token_estimate,
+                             scope=self.scope, timeline_id=identity.timeline_id,
+                             dimensions={"mode": mode, "detail": detail, "cache": False})
+        result["cache"] = {"hit": False, "query_fingerprint": fingerprint}
+        return result

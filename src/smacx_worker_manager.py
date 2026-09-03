@@ -26,6 +26,9 @@ from smacx_game_settings import (
 )
 from smacx_journal import CampaignJournal, JournalError
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, StoreError
+from smacx_world_model import CALCULATOR_VERSION
+from smacx_world_store import WorldStore, WorldStoreError
+from smacx_world_types import WorldIdentity
 
 
 RESOURCE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$")
@@ -3580,6 +3583,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "managed_peer_count": len(managed_instances),
             }
             journal_checkpoints: list[dict[str, Any]] = []
+            world_snapshots: list[dict[str, Any]] = []
             checkpoint_chat_groups = self.store.export_chat_groups(match_id)
             for scope in self.store.scopes_for_match(match_id):
                 timeline_id = self.store.active_timeline_id(scope)
@@ -3610,7 +3614,21 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "event_id": event["event_id"],
                     "head_hash": event["event_hash"],
                 })
+                world_store = WorldStore(self.store)
+                projection = world_store.load(scope, timeline_id)
+                if projection:
+                    world_snapshots.append(world_store.snapshot(
+                        scope,
+                        WorldIdentity(
+                            scope.match_id, scope.perspective_id, timeline_id,
+                            str(projection["identity"]["world_epoch"]),
+                        ),
+                        journal_head_hash=str(event["event_hash"]),
+                        journal_sequence=int(event["sequence"]),
+                        calculator_versions={"world": CALCULATOR_VERSION},
+                    ))
             checkpoint["campaign_journal"] = journal_checkpoints
+            checkpoint["world_snapshots"] = world_snapshots
             checkpoint["chat_group_count"] = len(checkpoint_chat_groups)
             checkpoint["ai_memory"] = {
                 "schema": "smacx.ai-memory-checkpoint.v1",
@@ -3694,6 +3712,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         scopes = self.store.scopes_for_match(match_id)
         if set(by_scope) != {(scope.agent_id, scope.perspective_id) for scope in scopes}:
             raise WorkerManagerError("journal_checkpoint_scope_mismatch")
+        snapshot_rows = checkpoint.get("world_snapshots")
+        if not isinstance(snapshot_rows, list):
+            raise WorkerManagerError("world_snapshot_checkpoint_required")
+        snapshots_by_scope = {
+            (str(item.get("agent_id") or ""), str(item.get("perspective_id") or "")): item
+            for item in snapshot_rows if isinstance(item, Mapping)
+        }
 
         match_before_restore = self.control.get_match(match_id)
         prior_restore = match_before_restore.get("metadata", {}).get("memory_restore", {})
@@ -3717,12 +3742,24 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )) + 1
         timeline_id = f"timeline-restore-{uuid.uuid4().hex[:24]}"
         forks: list[dict[str, Any]] = []
+        verified_world_payloads: dict[tuple[str, str], dict[str, Any]] = {}
         for scope in scopes:
             row = by_scope[(scope.agent_id, scope.perspective_id)]
             parent_timeline = str(row.get("timeline_id") or "")
             head_hash = str(row.get("head_hash") or "")
             if not re.fullmatch(r"[0-9a-f]{64}", head_hash):
                 raise WorkerManagerError("invalid_journal_checkpoint_head")
+            snapshot_row = snapshots_by_scope.get((scope.agent_id, scope.perspective_id))
+            if snapshot_row is not None:
+                snapshot_id = str(snapshot_row.get("snapshot_id") or "")
+                try:
+                    verified_world_payloads[(scope.agent_id, scope.perspective_id)] = \
+                        WorldStore(self.store).verify_snapshot(
+                            snapshot_id, journal_head_hash=head_hash,
+                            journal_sequence=int(snapshot_row.get("journal_sequence") or 0),
+                        )
+                except (ValueError, WorldStoreError) as exc:
+                    raise WorkerManagerError("world_snapshot_checkpoint_mismatch") from exc
             fork = self.journal.fork_timeline(
                 scope, timeline_id, native_save_sha256=native_digest,
                 from_event_hash=head_hash, parent_timeline_id=parent_timeline,
@@ -3779,6 +3816,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )
         rebuilds: list[dict[str, Any]] = []
         for scope in scopes:
+            # All world/attention/specialist state is derived from the active
+            # journal head. No future-timeline cache, lease, watch, or result
+            # may survive the fork.
+            world_store = WorldStore(self.store)
+            source_row = by_scope[(scope.agent_id, scope.perspective_id)]
+            source_head = str(source_row.get("head_hash") or "")
+            payload = verified_world_payloads.get((scope.agent_id, scope.perspective_id))
+            if payload is not None:
+                world_store.restore_projection_from_snapshot(
+                    scope, payload, target_timeline_id=timeline_id,
+                    journal_head_hash=source_head,
+                )
+            world_store.discard_future(scope, timeline_id)
             old_namespace = old_namespaces[(scope.agent_id, scope.perspective_id)]
             event = self.journal.append(
                 scope, "recovery.timeline_activated", {
@@ -3790,6 +3840,18 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 year=(int(checkpoint["year"]) if checkpoint.get("year") is not None else None),
                 commit_reason=f"Restore checkpoint generation {generation}",
             )
+            restored_projection = world_store.load(scope, timeline_id)
+            if restored_projection:
+                world_store.snapshot(
+                    scope,
+                    WorldIdentity(
+                        scope.match_id, scope.perspective_id, timeline_id,
+                        str(restored_projection["identity"]["world_epoch"]),
+                    ),
+                    journal_head_hash=str(event["event_hash"]),
+                    journal_sequence=int(event["sequence"]),
+                    calculator_versions={"world": CALCULATOR_VERSION},
+                )
             rebuild = self.control.request_graphiti_rebuild(
                 match_id, scope.agent_id, scope.perspective_id,
                 retired_namespaces=retired_by_scope[
@@ -3964,6 +4026,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         self.docker.require_owned(game, self.installation_id, purpose="game-worker")
         if not game.get("State", {}).get("Running"):
             raise WorkerManagerError("game_worker_not_running")
+        session_id = str(
+            game.get("Config", {}).get("Labels", {}).get("io.smacx.session") or ""
+        )
+        if not session_id:
+            raise WorkerManagerError("game_worker_session_identity_unavailable")
         self.docker.inspect_image(self.mcp_image)
         self.docker.inspect_volume(self.control_data_volume)
         for volume_name, purpose in (
@@ -4037,6 +4104,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 f"SMACX_REFERENCE_URL={os.environ.get('SMACX_REFERENCE_URL', 'http://knowledge-service:8090')}",
                 f"SMACX_GRAPHITI_RECALL_URL={os.environ.get('SMACX_GRAPHITI_RECALL_URL', 'http://graphiti-projector:8091')}",
                 "SMACX_CAPABILITY_GAP_LOG=/var/lib/smacx/capability-gaps.jsonl",
+                f"SMACX_AGENT_MATCH_ID={spec['match_id']}",
+                f"SMACX_AGENT_SESSION_ID={session_id}",
                 f"SMACX_AGENT_ID={spec['agent_id']}",
                 f"SMACX_PERSPECTIVE_ID={spec['perspective_id']}",
                 f"SMACX_GAME_SOURCE_ID={spec['game_source_id']}",
@@ -4044,7 +4113,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             ],
             "Tty": True,
             "Labels": labels,
-            "ExposedPorts": {"47815/tcp": {}},
+            "ExposedPorts": {"47815/tcp": {}, "47816/tcp": {}},
             "Healthcheck": {
                 "Test": [
                     "CMD", "python3", "-c",

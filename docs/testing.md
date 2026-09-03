@@ -43,6 +43,16 @@ PYTHONPATH=src python3 scripts/campaign_journal_test.py
 PYTHONPATH=src python3 scripts/ai_memory_checkpoint_test.py
 PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
 PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
+PYTHONPATH=src python3 scripts/world_model_contract_test.py
+PYTHONPATH=src python3 scripts/native_observation_contract_test.py
+PYTHONPATH=src python3 scripts/fair_play_world_test.py
+PYTHONPATH=src python3 scripts/strategic_world_fixtures_test.py
+PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
+PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_contract_test.py
+PYTHONPATH=src python3 scripts/rollback_world_contract_test.py
+PYTHONPATH=src python3 scripts/provider_schema_budget_test.py
+PYTHONPATH=src python3 scripts/world_context_benchmark.py
 ```
 
 The provider-wire context policy must run inside the built Hermes image because
@@ -116,6 +126,25 @@ Tests against a real OpenAI-compatible provider are opt-in. Supply credentials
 through ignored environment variables or secret files, never command output,
 fixtures, snapshots, or commits.
 
+The v6 prompt and `smac_world` gates use the provider's exact tokenizer when
+available, and the prefix-cache test reads content-free vLLM counters:
+
+```bash
+SMACX_QWEN_TOKENIZE_URL=http://provider.example/v1/tokenize \
+  SMACX_QWEN_TOKENIZE_MODEL=model-id \
+  PYTHONPATH=src python3 scripts/provider_schema_budget_test.py
+
+PYTHONPATH=src python3 scripts/provider_prefix_cache_live_test.py \
+  --base-url http://provider.example/v1 --model model-id
+
+PYTHONPATH=src python3 scripts/specialist_provider_live_test.py \
+  --base-url http://provider.example/v1 --model model-id
+```
+
+The specialist gate sends no tools, personality, sovereign transcript, chat,
+filesystem, or mutation authority and validates the child's strict cited result
+schema. The scripts print only content-free usage/cache/latency aggregates.
+
 ## Native game integration
 
 Native semantic tests require the user's installed game, the built bridge, and
@@ -142,6 +171,29 @@ Native tests must use an isolated display and test-owned match/data roots. They
 must never send input to the developer's normal desktop or reuse a live player
 campaign.
 
+The whole managed path has one opt-in, self-cleaning integration fixture. The
+worker contains the pinned Proton/DirectX runtime, so the only acquired runtime
+input is the absolute game-directory path. Use distinct test image tags; the
+fixture binds its control API to an ephemeral loopback port and does not touch a
+running portal stack:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/your/game \
+SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+SMACX_TEST_MCP_IMAGE=smacx-agent-control:test \
+SMACX_TEST_HERMES_IMAGE=smacx-agent-harness:test \
+  PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
+```
+
+To add the managed-provider gate, also set `SMACX_TEST_PROVIDER_URL` and
+`SMACX_TEST_PROVIDER_MODEL` through the local environment. The provider run is
+successful only after a journal-observed semantic revision changes; merely
+starting Hermes or allowing native time to pass is not success. The test also
+checks exact-seat sidecar binding, the 17-tool managed surface, checkpoint and
+backup integrity, native crash recovery, a fresh recovery-side sovereign lease,
+low-reasoning profile selection, and clean parking. Output is content-free.
+
 Every autonomous-play benchmark must set the native multiplayer turn clock to
 **None**. A timed game can advance on the model's behalf and is not evidence of
 successful agent control. Generate a content-free causal report with:
@@ -164,7 +216,10 @@ malformed records, exact repetition, compression health, handoff compliance,
 and token totals. Neither tool emits prompts, responses, chat, reasoning text,
 arguments, endpoints, secrets, game assets, or saves.
 
-The first published comparison using this procedure is the
+The strategic-world rebuild additionally has a deterministic 64K/256K and Huge
+map acceptance report in
+[Strategic world and provider context](benchmarks/2026-09-03-strategic-world-rebuild.md).
+The first published gameplay comparison using this procedure is the
 [bounded-runtime no-timer smoke test](benchmarks/2026-09-02-bounded-runtime.md).
 
 ## Repository boundaries

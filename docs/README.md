@@ -28,6 +28,7 @@ prevents deployment instructions from polluting game-knowledge retrieval.
 ## I configure AI players or knowledge
 
 - [Agent loop and fair-play contract](agent-loop.md)
+- [Strategic perception and sovereign cognition](strategic-world.md)
 - [MCP tool reference](tools.md)
 - [Mechanics encyclopedia and copyright boundary](reference-knowledge.md)
 - [Optional Graphiti temporal memory](graphiti.md)
@@ -39,6 +40,7 @@ prevents deployment instructions from polluting game-knowledge retrieval.
 
 - [Architecture](architecture.md)
 - [Contributor testing](testing.md)
+- [Game Semantics Coverage Matrix](game-semantics-coverage.md)
 - [Reproducible no-timer agent benchmarks](benchmarks/README.md)
 - [Architecture decisions](adr/)
 

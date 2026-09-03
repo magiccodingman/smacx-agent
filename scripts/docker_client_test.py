@@ -45,8 +45,13 @@ def main() -> int:
         config = {
             "Image": "smacx-agent-control:dev",
             "Entrypoint": ["/bin/sh", "-c"],
-            "Cmd": ["test \"$(cat /target/probe)\" = archive-ok && echo archive-ok"],
-            "Tty": True,
+            "Cmd": [
+                "test \"$(cat /target/probe)\" = archive-ok "
+                "&& echo archive-ok && echo stderr-ok >&2"
+            ],
+            # Managed helpers run without a TTY. This intentionally exercises
+            # Docker's multiplexed stdout/stderr framing.
+            "Tty": False,
             "Labels": labels,
             "HostConfig": {
                 "NetworkMode": "none",
@@ -68,7 +73,9 @@ def main() -> int:
         docker.put_archive(container_id, "/target", archive())
         docker.start_container(container_id)
         finished = docker.wait_container(container_id, timeout=30)
-        if finished["State"]["ExitCode"] != 0 or "archive-ok" not in docker.container_logs(container_id):
+        logs = docker.container_logs(container_id)
+        if finished["State"]["ExitCode"] != 0 \
+                or "archive-ok" not in logs or "stderr-ok" not in logs:
             raise AssertionError("archive upload or container execution failed")
         print(json.dumps({
             "event": "pass",
@@ -79,6 +86,7 @@ def main() -> int:
                 "owned_resource_guard": True,
                 "archive_secret_transport": True,
                 "container_wait_and_logs": True,
+                "multiplexed_logs_demuxed": True,
                 "cleanup": True,
             },
         }, separators=(",", ":")))

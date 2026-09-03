@@ -526,6 +526,7 @@ public sealed record StoragePolicyRequest(
     int MilestoneInterval = 25,
     bool RetainFullTurnHistory = false);
 public sealed record GraphitiConfigurationRequest(bool Enabled, string? ProfileId = null);
+public sealed record SpecialistConfigurationRequest(string? ProfileId = null, int MaxConcurrency = 2);
 public sealed record EmbeddingConfigurationRequest(
     string Mode, string? ProviderId = null, string? ModelId = null,
     int? Dimensions = null, string? SpaceId = null);
@@ -536,6 +537,7 @@ public sealed record AdminSnapshot(
     System.Text.Json.JsonElement HarnessProfiles,
     System.Text.Json.JsonElement HarnessRuns,
     System.Text.Json.JsonElement Graphiti,
+    System.Text.Json.JsonElement Specialists,
     System.Text.Json.JsonElement Knowledge,
     System.Text.Json.JsonElement Workers,
     System.Text.Json.JsonElement Operations,

@@ -1,0 +1,743 @@
+"""Durable at-least-once sovereign attention, watches, operations, and leases."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import secrets
+import time
+from typing import Any, Iterable, Mapping
+import uuid
+
+from smacx_journal import CampaignJournal
+from smacx_store import MemoryScope, SmacxStore
+from smacx_world_types import canonical_json, content_hash, require_ref
+from smacx_world_store import WorldStore
+
+
+WATCH_KINDS = frozenset({
+    "base_status", "base_threat", "faction_relationship", "faction_activity",
+    "region_entry", "region_exit", "frontier_contact", "rendezvous_progress",
+    "route_disruption", "project_progress", "global_system_progress",
+    "resource_threshold", "economic_threshold",
+})
+OPERATION_STATUSES = frozenset({"active", "stale", "completed", "expired", "invalid"})
+
+
+class AttentionError(ValueError):
+    pass
+
+
+class AttentionService:
+    def __init__(self, store: SmacxStore, journal: CampaignJournal, scope: MemoryScope) -> None:
+        self.store = store
+        self.journal = journal
+        self.scope = scope
+        self.world_store = WorldStore(store)
+
+    @property
+    def timeline_id(self) -> str:
+        return self.store.active_timeline_id(self.scope)
+
+    def enqueue(
+        self, kind: str, payload: Mapping[str, Any], *, observation_cursor: int,
+        priority: int = 50, critical: bool = False, turn: int | None = None,
+        session_id: str | None = None, dedupe_key: str = "",
+    ) -> dict[str, Any]:
+        priority = min(max(int(priority), 0), 100)
+        timeline = self.timeline_id
+        normalized = {"kind": kind, "payload": payload, "cursor": observation_cursor,
+                      "dedupe_key": dedupe_key}
+        dependency = content_hash(normalized)
+        if dedupe_key:
+            with self.store._connect() as connection:
+                duplicate = connection.execute(
+                    "SELECT * FROM attention_items WHERE match_id=? AND agent_id=? "
+                    "AND perspective_id=? AND timeline_id=? AND dependency_hash=? "
+                    "AND status IN ('queued','leased','responded','acknowledged') "
+                    "ORDER BY captured_unix DESC LIMIT 1",
+                    (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id,
+                     timeline, dependency),
+                ).fetchone()
+            if duplicate:
+                return {**dict(duplicate), "deduplicated": True}
+        captured = time.time()
+        journal_event = self.journal.append(
+            self.scope, "attention.captured", {
+                "kind": kind, "payload": dict(payload), "observation_cursor": observation_cursor,
+                "priority": priority, "critical": bool(critical), "dependency_hash": dependency,
+            }, session_id=session_id, turn=turn,
+        )
+        attention_id = "attention-" + uuid.uuid4().hex
+        with self.store.transaction() as connection:
+            head = connection.execute(
+                "SELECT next_sequence FROM attention_heads WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=?", self._key(timeline),
+            ).fetchone()
+            attention_sequence = int(head["next_sequence"]) if head else 1
+            connection.execute(
+                "INSERT INTO attention_heads(match_id,agent_id,perspective_id,timeline_id," \
+                "next_sequence,acknowledged_cursor,updated_unix) VALUES(?,?,?,?,?,0,?) " \
+                "ON CONFLICT(match_id,agent_id,perspective_id,timeline_id) DO UPDATE SET " \
+                "next_sequence=excluded.next_sequence,updated_unix=excluded.updated_unix",
+                (*self._key(timeline), attention_sequence + 1, captured),
+            )
+            connection.execute(
+                "INSERT INTO attention_items(attention_id,match_id,agent_id,perspective_id," \
+                "timeline_id,attention_sequence,observation_cursor,attention_kind,priority,critical,payload_json," \
+                "dependency_hash,captured_unix,persisted_unix,status) " \
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued')",
+                (attention_id, self.scope.match_id, self.scope.agent_id,
+                 self.scope.perspective_id, timeline, attention_sequence,
+                 int(observation_cursor), kind, priority,
+                 int(bool(critical)), canonical_json(payload), dependency, captured,
+                 journal_event["recorded_unix"]),
+            )
+            queue_depth = int(connection.execute(
+                "SELECT COUNT(*) AS count FROM attention_items WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status='queued'",
+                self._key(timeline),
+            ).fetchone()["count"])
+        self.world_store.telemetry(
+            "attention", "queue_depth", queue_depth, scope=self.scope,
+            timeline_id=timeline, dimensions={"kind": kind, "critical": bool(critical)},
+        )
+        return {"attention_id": attention_id, "status": "queued",
+                "attention_sequence": attention_sequence,
+                "journal_event_id": journal_event["event_id"], "deduplicated": False}
+
+    def lease(self, episode_id: str, *, limit: int = 32, ttl_seconds: int = 300) -> dict[str, Any]:
+        require_ref(episode_id, "episode_id")
+        timeline = self.timeline_id
+        now = time.time()
+        lease_id = "attention-lease-" + uuid.uuid4().hex
+        with self.store.transaction() as connection:
+            # Process loss makes prior placed/leased items eligible for
+            # redelivery without changing their attention identity.
+            expired = connection.execute(
+                "SELECT attention_lease_id FROM attention_leases WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status IN ('leased','placed') "
+                "AND expires_unix<=?", (*self._key(timeline), now),
+            ).fetchall()
+            for row in expired:
+                self._abandon_locked(connection, str(row["attention_lease_id"]))
+            existing = connection.execute(
+                "SELECT * FROM attention_leases WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND episode_id=? "
+                "AND status IN ('leased','placed','responded') AND expires_unix>? "
+                "ORDER BY leased_unix DESC LIMIT 1",
+                (*self._key(timeline), episode_id, now),
+            ).fetchone()
+            if existing:
+                rows = connection.execute(
+                    "SELECT i.*,li.redelivery_count FROM attention_items i JOIN "
+                    "attention_lease_items li ON li.attention_id=i.attention_id "
+                    "WHERE li.attention_lease_id=? ORDER BY i.critical DESC,i.priority DESC,"
+                    "i.attention_sequence", (existing["attention_lease_id"],),
+                ).fetchall()
+                items = []
+                for row in rows:
+                    item = dict(row)
+                    item["payload"] = json.loads(item.pop("payload_json"))
+                    item["redelivered"] = int(item.pop("redelivery_count")) > 0
+                    items.append(item)
+                return {
+                    "attention_lease_id": str(existing["attention_lease_id"]),
+                    "through_cursor": int(existing["through_cursor"]),
+                    "items": items, "status": str(existing["status"]), "reused": True,
+                }
+            rows = connection.execute(
+                "SELECT * FROM attention_items WHERE match_id=? AND agent_id=? AND perspective_id=? "
+                "AND timeline_id=? AND status='queued' ORDER BY critical DESC,priority DESC,"
+                "attention_sequence ASC LIMIT ?", (*self._key(timeline), min(max(limit, 1), 64)),
+            ).fetchall()
+            through = max((int(row["attention_sequence"]) for row in rows), default=0)
+            connection.execute(
+                "INSERT INTO attention_leases(attention_lease_id,match_id,agent_id,perspective_id," \
+                "timeline_id,episode_id,through_cursor,status,leased_unix,expires_unix) " \
+                "VALUES(?,?,?,?,?,?,?,'leased',?,?)",
+                (lease_id, *self._key(timeline), episode_id, through, now,
+                 now + min(max(ttl_seconds, 30), 3600)),
+            )
+            for row in rows:
+                prior_count = connection.execute(
+                    "SELECT COALESCE(MAX(redelivery_count),-1) AS value FROM attention_lease_items "
+                    "WHERE attention_id=?", (row["attention_id"],),
+                ).fetchone()["value"]
+                connection.execute(
+                    "INSERT INTO attention_lease_items(attention_lease_id,attention_id,redelivery_count) "
+                    "VALUES(?,?,?)", (lease_id, row["attention_id"], int(prior_count) + 1),
+                )
+                connection.execute("UPDATE attention_items SET status='leased' WHERE attention_id=?",
+                                   (row["attention_id"],))
+        items = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item.pop("payload_json"))
+            item["redelivered"] = self._redelivery_count(lease_id, item["attention_id"]) > 0
+            items.append(item)
+        redeliveries = sum(1 for item in items if item["redelivered"])
+        self.world_store.telemetry(
+            "attention", "lease_size", len(items), scope=self.scope, timeline_id=timeline,
+            dimensions={"redeliveries": redeliveries},
+        )
+        return {"attention_lease_id": lease_id, "through_cursor": through, "items": items}
+
+    def runtime_state(self, *, current_world_revision: int | None = None,
+                      current_world_epoch: str | None = None,
+                      object_dependency_hashes: Mapping[str, str] | None = None,
+                      current_turn: int | None = None) -> dict[str, Any]:
+        """Return only active, bounded cognition that belongs in runtime context."""
+        timeline = self.timeline_id
+        if current_turn is not None:
+            self.gc_watches(current_turn)
+        with self.store.transaction() as connection:
+            operations = connection.execute(
+                "SELECT operation_id,operation_kind,objective,referenced_world_objects_json,"
+                "linked_plan_id,linked_goal_id,last_renewed_turn,source_world_revision,status,"
+                "foreground,compact_outcome,source_dependency_hash,source_world_epoch FROM cognitive_operations WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                "AND status IN ('active','stale') ORDER BY foreground DESC,updated_unix DESC LIMIT 8",
+                self._key(timeline),
+            ).fetchall()
+            watch_count = int(connection.execute(
+                "SELECT COUNT(*) AS count FROM world_watches WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status='active'",
+                self._key(timeline),
+            ).fetchone()["count"])
+        values = []
+        for row in operations:
+            item = dict(row)
+            item["referenced_world_objects"] = json.loads(
+                item.pop("referenced_world_objects_json"),
+            )
+            current_dependency = content_hash({
+                ref: (object_dependency_hashes or {}).get(ref)
+                for ref in item["referenced_world_objects"]
+            })
+            if current_world_epoch is not None and item.pop("source_world_epoch") != current_world_epoch:
+                item["status"] = "invalid"
+                with self.store.transaction() as connection:
+                    connection.execute(
+                        "UPDATE cognitive_operations SET status='invalid',foreground=0,updated_unix=? "
+                        "WHERE operation_id=?", (time.time(), item["operation_id"]),
+                    )
+                # Invalid operations are collected immediately. They describe
+                # a different loaded world and must never survive into the
+                # provider-facing runtime merely as an annotated stale row.
+                continue
+            elif item["status"] == "active" and object_dependency_hashes is not None \
+                    and current_dependency != item.pop("source_dependency_hash"):
+                item["status"] = "stale"
+                with self.store.transaction() as connection:
+                    connection.execute(
+                        "UPDATE cognitive_operations SET status='stale',updated_unix=? "
+                        "WHERE operation_id=?", (time.time(), item["operation_id"]),
+                    )
+            else:
+                item.pop("source_dependency_hash", None)
+            item["foreground"] = bool(item["foreground"])
+            values.append(item)
+        return {"operations": values, "active_watch_count": watch_count}
+
+    def pending_summary(self) -> dict[str, Any]:
+        with self.store._connect() as connection:
+            rows = connection.execute(
+                "SELECT attention_kind,critical,COUNT(*) AS count,MAX(priority) AS priority "
+                "FROM attention_items WHERE match_id=? AND agent_id=? AND perspective_id=? "
+                "AND timeline_id=? AND status='queued' GROUP BY attention_kind,critical",
+                self._key(self.timeline_id),
+            ).fetchall()
+        groups = [dict(row) for row in rows]
+        return {"count": sum(int(row["count"]) for row in groups), "groups": groups,
+                "has_chat": any(row["attention_kind"] == "chat" for row in groups),
+                "has_critical": any(bool(row["critical"]) for row in groups)}
+
+    def _key(self, timeline: str) -> tuple[str, str, str, str]:
+        return self.scope.match_id, self.scope.agent_id, self.scope.perspective_id, timeline
+
+    def _redelivery_count(self, lease_id: str, attention_id: str) -> int:
+        with self.store._connect() as connection:
+            row = connection.execute(
+                "SELECT redelivery_count FROM attention_lease_items "
+                "WHERE attention_lease_id=? AND attention_id=?", (lease_id, attention_id),
+            ).fetchone()
+        return int(row["redelivery_count"]) if row else 0
+
+    def placed(self, lease_id: str) -> None:
+        self._transition_lease(lease_id, "leased", "placed", "placed_unix")
+
+    def responded(self, lease_id: str) -> None:
+        self._transition_lease(lease_id, "placed", "responded", "responded_unix")
+        with self.store.transaction() as connection:
+            connection.execute(
+                "UPDATE attention_items SET status='responded' WHERE attention_id IN "
+                "(SELECT attention_id FROM attention_lease_items WHERE attention_lease_id=?)",
+                (lease_id,),
+            )
+
+    def _transition_lease(self, lease_id: str, expected: str, status: str, timestamp: str) -> None:
+        with self.store.transaction() as connection:
+            changed = connection.execute(
+                f"UPDATE attention_leases SET status=?,{timestamp}=? WHERE attention_lease_id=? "
+                "AND match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                "AND status=?", (status, time.time(), lease_id,
+                                  *self._key(self.timeline_id), expected),
+            ).rowcount
+            if changed != 1:
+                raise AttentionError("invalid_attention_lease_transition")
+
+    def acknowledge(self, lease_id: str, *, through_cursor: int,
+                    acknowledged_ids: Iterable[str] = ()) -> dict[str, Any]:
+        ids = set(str(value) for value in acknowledged_ids)
+        now = time.time()
+        with self.store.transaction() as connection:
+            lease = connection.execute(
+                "SELECT * FROM attention_leases WHERE attention_lease_id=? AND match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=?",
+                (lease_id, *self._key(self.timeline_id)),
+            ).fetchone()
+            if not lease or lease["status"] not in {"responded", "acknowledged"}:
+                raise AttentionError("attention_not_cognitively_responded")
+            rows = connection.execute(
+                "SELECT i.attention_id,i.attention_sequence,i.observation_cursor," \
+                "i.attention_kind,i.payload_json,i.captured_unix FROM attention_items i JOIN "
+                "attention_lease_items li ON li.attention_id=i.attention_id "
+                "WHERE li.attention_lease_id=? ORDER BY i.attention_sequence", (lease_id,),
+            ).fetchall()
+            eligible = [str(row["attention_id"]) for row in rows
+                        if int(row["attention_sequence"]) <= int(through_cursor)
+                        or str(row["attention_id"]) in ids]
+            if eligible:
+                placeholders = ",".join("?" for _ in eligible)
+                connection.execute(
+                    f"UPDATE attention_items SET status='acknowledged',acknowledged_unix=? "
+                    f"WHERE attention_id IN ({placeholders})", (now, *eligible),
+                )
+            connection.execute(
+                "UPDATE attention_leases SET status='acknowledged',acknowledged_unix=? "
+                "WHERE attention_lease_id=?", (now, lease_id),
+            )
+            head = connection.execute(
+                "SELECT acknowledged_cursor FROM attention_heads WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=?", self._key(str(lease["timeline_id"])),
+            ).fetchone()
+            contiguous = int(head["acknowledged_cursor"]) if head else 0
+            while True:
+                following = connection.execute(
+                    "SELECT status FROM attention_items WHERE match_id=? AND agent_id=? "
+                    "AND perspective_id=? AND timeline_id=? AND attention_sequence=?",
+                    (*self._key(str(lease["timeline_id"])), contiguous + 1),
+                ).fetchone()
+                if not following or following["status"] not in {"acknowledged", "superseded"}:
+                    break
+                contiguous += 1
+            connection.execute(
+                "UPDATE attention_heads SET acknowledged_cursor=?,updated_unix=? WHERE " \
+                "match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=?",
+                (contiguous, now, *self._key(str(lease["timeline_id"]))),
+            )
+        self.journal.append(self.scope, "attention.acknowledged", {
+            "attention_lease_id": lease_id, "through_cursor": int(through_cursor),
+            "acknowledged_ids": eligible,
+        })
+        chat_uids = []
+        for row in rows:
+            if str(row["attention_id"]) not in eligible or row["attention_kind"] != "chat":
+                continue
+            value = json.loads(row["payload_json"])
+            message = value.get("message") if isinstance(value, Mapping) else None
+            if isinstance(message, Mapping) and message.get("message_uid"):
+                chat_uids.append(str(message["message_uid"]))
+        if chat_uids:
+            self.journal.append(self.scope, "chat.acknowledged", {
+                "message_uids": sorted(set(chat_uids)),
+                "attention_lease_id": lease_id,
+            })
+        acknowledged_rows = [row for row in rows if str(row["attention_id"]) in eligible]
+        lag = max((now - float(row["captured_unix"]) for row in acknowledged_rows), default=0.0)
+        self.world_store.telemetry(
+            "attention", "acknowledgement_lag_seconds", lag, scope=self.scope,
+            timeline_id=str(lease["timeline_id"]),
+            dimensions={"count": len(eligible), "attention_cursor": contiguous},
+        )
+        return {"ok": True, "attention_lease_id": lease_id,
+                "acknowledged_ids": eligible, "through_cursor": int(through_cursor),
+                "attention_cursor": contiguous}
+
+    def abandon(self, lease_id: str) -> None:
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM attention_leases WHERE attention_lease_id=? AND match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=?",
+                (lease_id, *self._key(self.timeline_id)),
+            ).fetchone()
+            if not row:
+                raise AttentionError("unknown_attention_lease")
+            self._abandon_locked(connection, lease_id)
+
+    @staticmethod
+    def _abandon_locked(connection, lease_id: str) -> None:  # noqa: ANN001
+        connection.execute(
+            "UPDATE attention_items SET status='queued' WHERE attention_id IN "
+            "(SELECT attention_id FROM attention_lease_items WHERE attention_lease_id=?) "
+            "AND status IN ('leased','responded')", (lease_id,),
+        )
+        connection.execute(
+            "UPDATE attention_leases SET status='abandoned' WHERE attention_lease_id=? "
+            "AND status IN ('leased','placed','responded')", (lease_id,),
+        )
+
+    def create_watch(
+        self, watch_kind: str, subject_refs: Iterable[str], predicate: Mapping[str, Any],
+        *, priority: int = 50, current_turn: int | None = None,
+        expires_turn: int | None = None, linked_goal_id: str | None = None,
+        linked_plan_id: str | None = None,
+    ) -> dict[str, Any]:
+        if watch_kind not in WATCH_KINDS:
+            raise AttentionError("invalid_watch_kind")
+        subjects = tuple(sorted(set(str(item) for item in subject_refs)))
+        if not subjects or len(subjects) > 16:
+            raise AttentionError("invalid_watch_subjects")
+        timeline = self.timeline_id
+        projection = self.world_store.load(self.scope, timeline)
+        if not projection:
+            raise AttentionError("world_projection_unavailable")
+        world_epoch = str(projection["identity"]["world_epoch"])
+        with self.store._connect() as connection:
+            if linked_plan_id and not connection.execute(
+                "SELECT 1 FROM plans WHERE plan_id=? AND match_id=? AND agent_id=? "
+                "AND perspective_id=? AND status='active'",
+                (linked_plan_id, self.scope.match_id, self.scope.agent_id,
+                 self.scope.perspective_id),
+            ).fetchone():
+                raise AttentionError("linked_plan_not_active")
+            if linked_goal_id and not connection.execute(
+                "SELECT 1 FROM goals WHERE goal_id=? AND match_id=? AND agent_id=? "
+                "AND perspective_id=? AND status='active'",
+                (linked_goal_id, self.scope.match_id, self.scope.agent_id,
+                 self.scope.perspective_id),
+            ).fetchone():
+                raise AttentionError("linked_goal_not_active")
+        expires = expires_turn if expires_turn is not None else \
+            (current_turn + 10 if current_turn is not None else None)
+        normalized = content_hash({"kind": watch_kind, "subjects": subjects,
+                                   "predicate": predicate, "goal": linked_goal_id,
+                                   "plan": linked_plan_id})
+        with self.store.transaction() as connection:
+            count = int(connection.execute(
+                "SELECT COUNT(*) AS count FROM world_watches WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status='active'",
+                self._key(timeline),
+            ).fetchone()["count"])
+            existing = connection.execute(
+                "SELECT * FROM world_watches WHERE match_id=? AND agent_id=? AND perspective_id=? "
+                "AND timeline_id=? AND normalized_hash=? AND status='active'",
+                (*self._key(timeline), normalized),
+            ).fetchone()
+            if existing:
+                connection.execute(
+                    "UPDATE world_watches SET expires_turn=?,last_renewed_turn=?,updated_unix=? "
+                    "WHERE watch_id=?", (expires, current_turn, time.time(), existing["watch_id"]),
+                )
+                return {"watch_id": existing["watch_id"], "merged": True}
+            if count >= 32:
+                raise AttentionError("watch_limit_reached")
+            watch_id = "watch-" + uuid.uuid4().hex
+            now = time.time()
+            connection.execute(
+                "INSERT INTO world_watches(watch_id,match_id,agent_id,perspective_id,timeline_id,world_epoch," \
+                "watch_kind,subject_refs_json,typed_predicate_json,priority,created_turn,expires_turn," \
+                "last_renewed_turn,linked_goal_id,linked_plan_id,status,normalized_hash,created_unix," \
+                "updated_unix) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?)",
+                (watch_id, *self._key(timeline), world_epoch, watch_kind, canonical_json(subjects),
+                 canonical_json(predicate), min(max(priority, 0), 100), current_turn, expires,
+                 current_turn, linked_goal_id, linked_plan_id, normalized, now, now),
+            )
+        self.journal.append(self.scope, "attention.watch_created", {
+            "watch_id": watch_id, "watch_kind": watch_kind, "subject_refs": subjects,
+            "typed_predicate": dict(predicate), "expires_turn": expires,
+            "linked_goal_id": linked_goal_id, "linked_plan_id": linked_plan_id,
+        }, turn=current_turn)
+        return {"watch_id": watch_id, "merged": False, "expires_turn": expires}
+
+    def gc_watches(self, current_turn: int) -> int:
+        projection = self.world_store.load(self.scope, self.timeline_id)
+        current_epoch = str(projection["identity"]["world_epoch"]) if projection else ""
+        with self.store.transaction() as connection:
+            expired = connection.execute(
+                "UPDATE world_watches SET status='expired',updated_unix=? WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND status='active' "
+                "AND (world_epoch<>? OR "
+                "(expires_turn IS NOT NULL AND expires_turn<?) OR "
+                "(linked_plan_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM plans p "
+                " WHERE p.plan_id=world_watches.linked_plan_id AND p.status='active')) OR "
+                "(linked_goal_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM goals g "
+                " WHERE g.goal_id=world_watches.linked_goal_id AND g.status='active')))",
+                (time.time(), *self._key(self.timeline_id), current_epoch, int(current_turn)),
+            ).rowcount
+        if expired:
+            self.journal.append(self.scope, "attention.watches_expired", {
+                "count": expired, "through_turn": int(current_turn),
+            }, turn=current_turn)
+        return expired
+
+    def close_watch(self, watch_id: str, *, current_turn: int | None = None) -> None:
+        with self.store.transaction() as connection:
+            changed = connection.execute(
+                "UPDATE world_watches SET status='closed',updated_unix=? WHERE watch_id=? "
+                "AND match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                "AND status='active'",
+                (time.time(), watch_id, *self._key(self.timeline_id)),
+            ).rowcount
+        if changed != 1:
+            raise AttentionError("unknown_watch")
+        self.journal.append(self.scope, "attention.watch_closed", {
+            "watch_id": watch_id,
+        }, turn=current_turn)
+
+    @staticmethod
+    def _watch_predicate_matches(predicate: Mapping[str, Any], delta: Mapping[str, Any]) -> bool:
+        change = str(delta.get("change") or "")
+        requested_change = predicate.get("change")
+        if requested_change is not None and str(requested_change) != change:
+            return False
+        field = str(predicate.get("field") or "")
+        if not field:
+            return True
+        current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
+        fields = current.get("fields") if isinstance(current.get("fields"), Mapping) else {}
+        envelope = fields.get(field) if isinstance(fields.get(field), Mapping) else None
+        actual = envelope.get("value") if envelope is not None else current.get(field)
+        expected = predicate.get("value", predicate.get("equals"))
+        operator = str(predicate.get("operator") or "eq")
+        if operator == "changed":
+            return change == "changed"
+        if operator == "exists":
+            return actual is not None
+        try:
+            return {
+                "eq": actual == expected, "ne": actual != expected,
+                "gt": actual > expected, "gte": actual >= expected,
+                "lt": actual < expected, "lte": actual <= expected,
+            }[operator]
+        except (KeyError, TypeError):
+            return False
+
+    def evaluate_watches(self, deltas: Iterable[Mapping[str, Any]], *,
+                         observation_cursor: int, turn: int | None,
+                         session_id: str | None = None) -> list[dict[str, Any]]:
+        """Elevate matching perspective-safe changes; never performs automation."""
+        timeline = self.timeline_id
+        with self.store._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM world_watches WHERE match_id=? AND agent_id=? AND "
+                "perspective_id=? AND timeline_id=? AND status='active' ORDER BY priority DESC",
+                self._key(timeline),
+            ).fetchall()
+        changes = [dict(item) for item in deltas if isinstance(item, Mapping)]
+        triggered: list[dict[str, Any]] = []
+        for row in rows:
+            subjects = set(json.loads(row["subject_refs_json"]))
+            predicate = json.loads(row["typed_predicate_json"])
+            matches = []
+            for delta in changes:
+                current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
+                candidate_refs = {
+                    str(delta.get("object_ref") or ""),
+                    str(current.get("location_ref") or ""),
+                    str(current.get("parent_ref") or ""),
+                }
+                if subjects.isdisjoint(candidate_refs):
+                    continue
+                if self._watch_predicate_matches(predicate, delta):
+                    matches.append(delta)
+            if not matches:
+                continue
+            prior_cursor = row["last_triggered_cursor"]
+            if prior_cursor is not None and int(prior_cursor) >= int(observation_cursor):
+                continue
+            payload = {
+                "watch_id": str(row["watch_id"]), "watch_kind": str(row["watch_kind"]),
+                "subject_refs": sorted(subjects), "matches": matches[:8],
+            }
+            queued = self.enqueue(
+                "watch_trigger", payload, observation_cursor=observation_cursor,
+                priority=int(row["priority"]), critical=False, turn=turn,
+                session_id=session_id,
+                dedupe_key=f"{row['watch_id']}:{observation_cursor}",
+            )
+            with self.store.transaction() as connection:
+                connection.execute(
+                    "UPDATE world_watches SET last_triggered_cursor=?,updated_unix=? "
+                    "WHERE watch_id=? AND status='active'",
+                    (int(observation_cursor), time.time(), row["watch_id"]),
+                )
+            triggered.append({**payload, "attention_id": queued["attention_id"]})
+        return triggered
+
+    def upsert_operation(
+        self, *, operation_id: str | None, kind: str, objective: str,
+        referenced_world_objects: Iterable[str], source_world_revision: int,
+        source_world_epoch: str,
+        source_dependency_hash: str,
+        current_turn: int | None, linked_plan_id: str | None = None,
+        linked_goal_id: str | None = None, foreground: bool = True,
+    ) -> dict[str, Any]:
+        refs = tuple(dict.fromkeys(str(item) for item in referenced_world_objects))[:64]
+        timeline = self.timeline_id
+        now = time.time()
+        with self.store.transaction() as connection:
+            if operation_id is None:
+                count = int(connection.execute(
+                    "SELECT COUNT(*) AS count FROM cognitive_operations WHERE match_id=? "
+                    "AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                    "AND status IN ('active','stale')", self._key(timeline),
+                ).fetchone()["count"])
+                if count >= 8:
+                    raise AttentionError("operation_limit_reached")
+                operation_id = "operation-" + uuid.uuid4().hex
+            else:
+                existing = connection.execute(
+                    "SELECT match_id,agent_id,perspective_id,timeline_id FROM "
+                    "cognitive_operations WHERE operation_id=?", (operation_id,),
+                ).fetchone()
+                if not existing or tuple(existing) != self._key(timeline):
+                    raise AttentionError("unknown_operation")
+            if foreground:
+                connection.execute(
+                    "UPDATE cognitive_operations SET foreground=0 WHERE match_id=? AND agent_id=? "
+                    "AND perspective_id=? AND timeline_id=?", self._key(timeline),
+                )
+            connection.execute(
+                "INSERT INTO cognitive_operations(operation_id,match_id,agent_id,perspective_id," \
+                "timeline_id,operation_kind,objective,referenced_world_objects_json,linked_plan_id," \
+                "linked_goal_id,created_turn,last_renewed_turn,source_world_revision," \
+                "source_world_epoch,source_dependency_hash,status,foreground,created_unix,updated_unix) " \
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?) " \
+                "ON CONFLICT(operation_id) DO UPDATE SET objective=excluded.objective," \
+                "referenced_world_objects_json=excluded.referenced_world_objects_json," \
+                "linked_plan_id=excluded.linked_plan_id,linked_goal_id=excluded.linked_goal_id," \
+                "last_renewed_turn=excluded.last_renewed_turn," \
+                "source_world_revision=excluded.source_world_revision," \
+                "source_world_epoch=excluded.source_world_epoch," \
+                "source_dependency_hash=excluded.source_dependency_hash,status='active'," \
+                "foreground=excluded.foreground,updated_unix=excluded.updated_unix",
+                (operation_id, *self._key(timeline), kind, objective[:2000], canonical_json(refs),
+                 linked_plan_id, linked_goal_id, current_turn, current_turn,
+                 int(source_world_revision), source_world_epoch, source_dependency_hash,
+                 int(foreground), now, now),
+            )
+        self.journal.append(self.scope, "cognition.operation_upserted", {
+            "operation_id": operation_id, "kind": kind, "objective": objective[:2000],
+            "referenced_world_objects": list(refs), "linked_plan_id": linked_plan_id,
+            "linked_goal_id": linked_goal_id, "source_world_revision": source_world_revision,
+            "source_world_epoch": source_world_epoch,
+            "source_dependency_hash": source_dependency_hash, "foreground": bool(foreground),
+        }, turn=current_turn)
+        return {"operation_id": operation_id, "status": "active", "foreground": foreground}
+
+    def complete_operation(self, operation_id: str, outcome: str = "") -> None:
+        with self.store.transaction() as connection:
+            changed = connection.execute(
+                "UPDATE cognitive_operations SET status='completed',foreground=0,"
+                "compact_outcome=?,updated_unix=? WHERE operation_id=? AND match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=?",
+                (outcome[:2000], time.time(), operation_id, *self._key(self.timeline_id)),
+            ).rowcount
+        if changed != 1:
+            raise AttentionError("unknown_operation")
+        self.journal.append(self.scope, "cognition.operation_completed", {
+            "operation_id": operation_id, "compact_outcome": outcome[:2000],
+        })
+
+    def turn_handoff(self, current_turn: int) -> dict[str, int]:
+        """Expire disposable work; retain only renewed plan-linked summaries."""
+        now = time.time()
+        with self.store.transaction() as connection:
+            expired = connection.execute(
+                "UPDATE cognitive_operations SET status='expired',foreground=0,updated_unix=? "
+                "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                "AND status IN ('active','stale') AND linked_plan_id IS NULL",
+                (now, *self._key(self.timeline_id)),
+            ).rowcount
+            demoted = connection.execute(
+                "UPDATE cognitive_operations SET foreground=0,updated_unix=? WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND status IN "
+                "('active','stale') AND linked_plan_id IS NOT NULL AND last_renewed_turn<?",
+                (now, *self._key(self.timeline_id), int(current_turn)),
+            ).rowcount
+        watches = self.gc_watches(current_turn)
+        if expired or demoted:
+            self.journal.append(self.scope, "cognition.turn_scope_collected", {
+                "expired_operations": expired, "demoted_operations": demoted,
+            }, turn=current_turn)
+        return {"expired_operations": expired, "demoted_operations": demoted,
+                "expired_watches": watches}
+
+    def acquire_sovereign(self, episode_id: str, episode_mode: str,
+                          *, ttl_seconds: int = 900) -> str:
+        if episode_mode not in {"gameplay", "communication", "recovery"}:
+            raise AttentionError("invalid_episode_mode")
+        token = secrets.token_urlsafe(32)
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        now = time.time()
+        key = self._key(self.timeline_id)
+        with self.store.transaction() as connection:
+            current = connection.execute(
+                "SELECT episode_id,episode_mode,status,expires_unix FROM sovereign_leases WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=?", key,
+            ).fetchone()
+            if current and current["status"] == "active" and float(current["expires_unix"]) > now:
+                if current["episode_id"] != episode_id or current["episode_mode"] != episode_mode:
+                    raise AttentionError("sovereign_invocation_already_active")
+            connection.execute(
+                "INSERT OR REPLACE INTO sovereign_leases(match_id,agent_id,perspective_id," \
+                "timeline_id,episode_id,episode_mode,lease_token_hash,status,acquired_unix," \
+                "expires_unix) VALUES(?,?,?,?,?,?,?,'active',?,?)",
+                (*key, episode_id, episode_mode, digest, now,
+                 now + min(max(ttl_seconds, 30), 3600)),
+            )
+        return token
+
+    def sovereign_state(self) -> dict[str, Any] | None:
+        """Return the active writer lease without exposing its capability token."""
+        now = time.time()
+        with self.store.transaction() as connection:
+            connection.execute(
+                "UPDATE sovereign_leases SET status='expired' WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status='active' AND expires_unix<=?",
+                (*self._key(self.timeline_id), now),
+            )
+            row = connection.execute(
+                "SELECT episode_id,episode_mode,status,acquired_unix,expires_unix FROM "
+                "sovereign_leases WHERE match_id=? AND agent_id=? AND perspective_id=? "
+                "AND timeline_id=? AND status='active'",
+                self._key(self.timeline_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def release_sovereign(self, token: str, *, committed: bool) -> None:
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        with self.store.transaction() as connection:
+            changed = connection.execute(
+                "UPDATE sovereign_leases SET status=? WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND lease_token_hash=? AND status='active'",
+                ("committed" if committed else "cancelled", *self._key(self.timeline_id), digest),
+            ).rowcount
+        if changed != 1:
+            raise AttentionError("invalid_sovereign_lease")
+
+    def cancel_active_sovereign(self, reason: str) -> bool:
+        """Operator recovery hook, called only after the provider process is stopped."""
+        with self.store.transaction() as connection:
+            changed = connection.execute(
+                "UPDATE sovereign_leases SET status='cancelled' WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status='active'",
+                self._key(self.timeline_id),
+            ).rowcount
+        if changed:
+            self.journal.append(self.scope, "agent.sovereign_lease_cancelled", {
+                "reason": str(reason)[:500], "timeline_id": self.timeline_id,
+            })
+        return bool(changed)

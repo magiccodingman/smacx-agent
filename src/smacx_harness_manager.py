@@ -19,6 +19,7 @@ from smacx_hermes import configure_profile
 from smacx_journal import CampaignJournal
 from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager
+from smacx_attention import AttentionService
 
 
 HERMES_IMAGE = "smacx-agent-harness:dev"
@@ -94,6 +95,30 @@ class HarnessManager:
         with path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(dict(report), ensure_ascii=False,
                                     separators=(",", ":")) + "\n")
+
+    def _cancel_sovereign_after_process_stop(self, run: Mapping[str, Any], reason: str) -> None:
+        journal = CampaignJournal(
+            self.store.path.parent / "campaigns",
+            timeline_resolver=self.store.active_timeline_id,
+        )
+        for scope in self.store.scopes_for_match(str(run["match_id"])):
+            if scope.agent_id == str(run.get("agent_id") or ""):
+                AttentionService(self.store, journal, scope).cancel_active_sovereign(reason)
+
+    def _episode_mode(self, run: Mapping[str, Any], progress: Mapping[str, Any]) -> str:
+        phase = str(progress.get("phase") or "")
+        if phase in {"turn", "interaction", "handoff"}:
+            return "gameplay"
+        journal = CampaignJournal(
+            self.store.path.parent / "campaigns",
+            timeline_resolver=self.store.active_timeline_id,
+        )
+        for scope in self.store.scopes_for_match(str(run["match_id"])):
+            if scope.agent_id == str(run.get("agent_id") or "") \
+                    and scope.perspective_id == str(run.get("perspective_id") or ""):
+                if AttentionService(self.store, journal, scope).pending_summary()["has_chat"]:
+                    return "communication"
+        return "gameplay"
 
     def _name(self, kind: str, identity: str) -> str:
         import hashlib
@@ -304,16 +329,66 @@ class HarnessManager:
                 secret_volume, self._archive_file("provider-api-key", api_key),
                 purpose="provider-key", identity=harness_profile_id,
             )
+        worker = self.control.get_worker_spec(str(internal["instance_id"]))
+        # The worker-side specialist adapter receives only a bounded provider
+        # profile and purpose-specific credential.  It never receives Hermes
+        # history, personality, sovereign memory, or generic tools.  The seat
+        # profile is the fallback helper profile; deployments may replace this
+        # file with a separately selected compatible helper profile later.
+        worker_secret_volume = str(worker["network"]["secret_volume"])
+        specialist_setting = self.control.specialist_status()
+        configured_helper = specialist_setting.get("profile")
+        if isinstance(configured_helper, Mapping):
+            helper_provider = self.control.get_provider(str(configured_helper["provider_id"]))
+            specialist_profile = {
+                **dict(configured_helper), "base_url": helper_provider["base_url"],
+                "max_concurrency": specialist_setting["max_concurrency"],
+            }
+            specialist_api_key = self.control.provider_api_key(
+                str(configured_helper["provider_id"])
+            )
+        else:
+            specialist_profile = {
+                "profile_id": internal["external_profile_id"],
+                "provider_id": internal["provider_id"],
+                "base_url": internal["provider_base_url"],
+                "model_id": internal["model_id"],
+                "reasoning_effort": internal["reasoning_effort"],
+                "generation_settings": internal.get("generation_settings") or {},
+                "max_concurrency": specialist_setting["max_concurrency"],
+            }
+            specialist_api_key = api_key
+        self.worker_manager._seed_secret_volume(  # isolated runtime provisioning seam
+            worker_secret_volume, str(internal["instance_id"]),
+            "specialist-provider.json",
+            json.dumps(specialist_profile, sort_keys=True, separators=(",", ":")),
+        )
+        if specialist_api_key:
+            self.worker_manager._seed_secret_volume(
+                worker_secret_volume, str(internal["instance_id"]),
+                "specialist-provider-key", specialist_api_key,
+            )
+        runtime_context_token = self.control.vault.read(
+            str(worker["bridge_secret_id"]),
+            purpose=f"worker.{internal['instance_id']}.bridge_token",
+        )
+        self._seed_volume(
+            secret_volume, self._archive_file("runtime-context-token", runtime_context_token),
+            purpose="runtime-context-token", identity=harness_profile_id,
+        )
         return self.control.put_harness_runtime_spec(
             harness_profile_id, image_ref=self.image_ref, data_volume=data_volume,
             secret_volume=secret_volume, container_name=container_name,
             metadata={
                 "agent_id": internal["agent_id"], "match_id": internal["match_id"],
+                "perspective_id": internal["perspective_id"],
+                "instance_id": internal["instance_id"],
                 "profile_id": internal["external_profile_id"],
                 "provider_id": internal["provider_id"],
                 "generation_settings": internal.get("generation_settings"),
                 "provider_secret_injected": bool(api_key),
                 "mcp_url": internal["mcp_url"],
+                "context_length": internal.get("context_length") or 65_536,
                 "strict_system_prompt": True,
                 "system_prompt_schema": harness_profile.get("metadata", {}).get(
                     "system_prompt_schema"
@@ -365,9 +440,14 @@ class HarnessManager:
         return self.start_run(str(run["run_id"]), runtime=runtime)
 
     def _container_config(self, run: Mapping[str, Any], runtime: Mapping[str, Any],
-                          prompt: str) -> dict[str, Any]:
+                          prompt: str, *, episode_mode: str = "gameplay") -> dict[str, Any]:
         policy = run["restart_policy"]
         profile = self.control.get_harness_profile(str(run["harness_profile_id"]))
+        runtime_metadata = runtime.get("metadata") if isinstance(runtime.get("metadata"), Mapping) else {}
+        runtime_context_url = re.sub(
+            r":47815/mcp$", ":47816/runtime-context",
+            str(runtime_metadata.get("mcp_url") or ""),
+        )
         profile_id = str(profile["external_profile_id"])
         workspace = f"/opt/data/profiles/{profile_id}/workspace/matches/{run['match_id']}"
         prompt_path = f"/opt/data/profiles/{profile_id}/SYSTEM.md"
@@ -394,6 +474,14 @@ class HarnessManager:
                 "SMACX_STRICT_SYSTEM_PROMPT=1",
                 f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
                 f"SMACX_SYSTEM_PROMPT_SHA256={prompt_hash}",
+                f"SMACX_AGENT_MATCH_ID={run['match_id']}",
+                f"SMACX_AGENT_ID={run['agent_id']}",
+                f"SMACX_AGENT_SESSION_ID={run.get('native_session_id') or ''}",
+                f"SMACX_PERSPECTIVE_ID={runtime_metadata.get('perspective_id') or ''}",
+                f"SMACX_CONTEXT_LENGTH={runtime_metadata.get('context_length') or 65536}",
+                f"SMACX_EPISODE_MODE={episode_mode}",
+                f"SMACX_RUNTIME_CONTEXT_URL={runtime_context_url}",
+                "SMACX_RUNTIME_CONTEXT_TOKEN_FILE=/run/secrets/runtime-context-token",
             ],
             "Labels": self._labels("harness-run", **{
                 "io.smacx.run": str(run["run_id"]),
@@ -439,12 +527,6 @@ class HarnessManager:
         metadata = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
         invocation_count = int(metadata.get("invocation_count") or 0)
         first_invocation = invocation_count == 0 and int(run["restart_count"]) == 0
-        prompt = run["initial_prompt"] if first_invocation else (
-            f"[SMACX_EPISODE_BOUNDARY kind=resume sequence={invocation_count + 1}] "
-            "Re-anchor with the newest authoritative smac_decision state. Continue "
-            "autonomous play until the next real boundary; produce a TURN HANDOFF only "
-            "when a semantic result requires it."
-        )
         container_name = str(runtime["container_name"])
         try:
             old = self.docker.inspect_container(container_name)
@@ -454,17 +536,39 @@ class HarnessManager:
             self.docker.remove_container(container_name)
         except DockerNotFound:
             pass
+        self._cancel_sovereign_after_process_stop(run, "provider_episode_restart")
         progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
+        episode_mode = self._episode_mode(run, progress)
+        if first_invocation:
+            prompt = run["initial_prompt"]
+        elif episode_mode == "communication":
+            prompt = (
+                f"[SMACX_EPISODE_BOUNDARY kind=communication sequence={invocation_count + 1}] "
+                "You are the same sovereign player. Process the delivered conversation, "
+                "reply or negotiate as you judge appropriate, update durable cognition when "
+                "material, acknowledge what you actually processed, then yield. Native gameplay "
+                "mutation is unavailable in this serialized communication episode."
+            )
+        else:
+            prompt = (
+                f"[SMACX_EPISODE_BOUNDARY kind=resume sequence={invocation_count + 1}] "
+                "Re-anchor with the newest authoritative smac_decision state. Continue "
+                "autonomous play until the next real boundary; produce a TURN HANDOFF only "
+                "when a semantic result requires it."
+            )
         self.control.update_harness_run(
             run_id, status="starting", container_name=container_name,
             metadata_update={
                 "invocation_count": invocation_count + 1,
                 "attempt_started_progress": progress,
                 "attempt_started_unix": time.time(),
+                "episode_mode": episode_mode,
             },
         )
         identifier = self.docker.create_container(
-            container_name, self._container_config(run, runtime, str(prompt)),
+            container_name, self._container_config(
+                run, runtime, str(prompt), episode_mode=episode_mode,
+            ),
         )
         try:
             self.docker.start_container(identifier)
@@ -475,6 +579,7 @@ class HarnessManager:
                     "external_session_id": run.get("external_session_id"),
                     "native_session_id": run.get("native_session_id"),
                     "invocation": invocation_count + 1,
+                    "episode_mode": episode_mode,
                     "reasoning_effort": self.control.get_harness_profile(
                         str(run["harness_profile_id"])
                     ).get("reasoning_effort"),
@@ -613,6 +718,7 @@ print(json.dumps(result,separators=(',',':')))
                     observed = None
                 if observed is not None and observed.get("State", {}).get("Running"):
                     raise
+        self._cancel_sovereign_after_process_stop(run, "provider_episode_stopped")
         return self.control.update_harness_run(run_id, status="stopped", exit_code=0)
 
     def reconcile_once(self) -> dict[str, Any]:

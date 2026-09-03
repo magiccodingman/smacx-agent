@@ -19,6 +19,13 @@ running seat still receives its own container, display, processes, registry
 changes, network identity, secrets, and copy-on-write layer. Only its small
 managed state volume is durable.
 
+The control database also stores rebuildable perspective projections: world
+heads, topology/region metadata, query dependencies, attention leases, watches,
+operations, cognition projections, specialist jobs, and one current materialized
+world anchor per perspective/context tier. It does not store a historical anchor
+copy for every decision. The hash-linked campaign journal remains the temporal
+authority; these tables accelerate current queries and can be rebuilt.
+
 Changing any supplied game/mod file (personal save folders are excluded) or
 rebuilding the worker image produces a new prepared image automatically;
 existing match records retain their exact image reference.
@@ -113,11 +120,25 @@ the campaign's autonomous callers and retires every seat. Only the managed host
 checkpoint is promoted to the completed archive; redundant client volumes are
 released. Repeated completion reconciliation is safe.
 
-A `.sav` is resumable world state, not a replay. Checkpoint recovery uses an
+A `.sav` is resumable native state, not a replay. Each verified checkpoint also
+names the exact campaign-journal head, observation cursor, world epoch/revision,
+Hermes boundary, Graphiti generation, and a content-addressed perspective-world
+snapshot. That snapshot is a replay accelerator, never a second source of
+truth. A checksum, version, or journal-head mismatch discards it and rebuilds
+the projection from authoritative journal evidence.
+
+Checkpoint recovery uses an
 explicit child timeline anchored to an immutable parent event hash and native
 save digest, rotates native sessions, restores Hermes, and rebuilds the derived
 Graphiti projection. The UI does not expose arbitrary turn rewind. Retaining
 native saves alone is never treated as safe AI-memory recovery.
+
+Rollback creates a new active timeline and removes every derived future fact:
+attention acknowledgements and leases, watch triggers, operations, foreign
+contact identities, query caches, specialist results, world snapshots/anchors,
+Graphiti projection, and Hermes provider-visible cognition beyond the restored
+boundary. The restored native save and journal head therefore cannot coexist
+with memories of actions that no longer happened.
 
 Prepared game and compatibility layers are paid once per distinct fingerprint.
 Running containers add only changed blocks; parked matches retain compressed

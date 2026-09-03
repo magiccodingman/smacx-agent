@@ -2,6 +2,16 @@
 
 SMACX Agent uses an explicit state machine and optimistic concurrency. The model does not send a stream of keys or clicks.
 
+Every sovereign provider call also receives one request-only runtime envelope.
+It supplies the current world anchor and net delta, immediate focus, leased
+attention, active operation summary, watches, and projected durable cognition.
+It is appended to the current request tail after semantic garbage collection;
+it is not a transcript message and never accumulates as historical world
+snapshots. The anchor is peripheral awareness. Use `smac_world` to zoom into a
+decision-relevant area, route, relationship, base, force, logistical problem,
+change, or global system, then reuse that evidence while its dependency and
+world metadata remain valid.
+
 Before this loop is available in a new match, the player calls
 `smac_match_briefing(action="read")`. The versioned configuration contract
 combines the exact faction, difficulty, generated map, victory toggles,
@@ -110,7 +120,7 @@ native automation moved from one turn into the next without exposing a stable
 wait phase. No legal choices are returned across that boundary. Make no more
 tool calls in that Hermes episode. The player emits one assistant message
 headed `TURN HANDOFF`, under 120 words, with `Outcome`,
-`Reasoning`, `What changed`, `Next turn`, and `Uncertainty`. Hermes retains and
+`Rationale`, `Changed conclusions`, `Next intent`, and `Uncertainty`. Hermes retains and
 later compresses this durable decision summary. Raw interleaved reasoning is
 kept throughout the active episode but stripped after the next user/episode
 boundary. Completed tool protocol from earlier episodes is likewise omitted
@@ -118,6 +128,13 @@ from later provider requests while remaining in durable diagnostics. Current
 episode tool calls/results stay coherent, and only superseded state payloads
 inside that episode are compacted. The supervisor treats the handoff as a clean
 yield and resumes the same campaign conversation; it is not match completion.
+
+The handoff preserves why consequential choices mattered and what the sovereign
+now believes or intends. Do not copy ordinary unit locations, raw map slices,
+or event lists into it. The campaign journal and world projection preserve
+mechanical observation history. Durable cognition is for beliefs, suspicions,
+strategic conclusions, relationships, commitments, goals, plans, named
+territories/concepts, and unresolved strategic questions.
 
 Alien Artifact entry is another staged movement interaction. `ARTIFACT` exposes `no_action`, technology linking, and—only when natively present—acceleration of the exact current Secret Project or unprototyped unit. The two consuming choices require `confirm_consume_artifact=1`. A link can open a following technology notice; acknowledge it and keep waiting until the original move reports `native_artifact_consumed`.
 

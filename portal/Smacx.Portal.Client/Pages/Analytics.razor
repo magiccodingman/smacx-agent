@@ -1,6 +1,7 @@
 @page "/analytics"
 @attribute [Authorize]
 @inject Services.PortalApiClient Api
+@using System.Text.Json
 <PageTitle>Analytics · SMACX Agent</PageTitle>
 <PageHeader Kicker="AFTER-ACTION INTELLIGENCE" Title="Match analytics" Description="Compare outcomes, non-errored turn timing, model usage, and recovery evidence without counting empty lobbies as human games."><MudButton Href="api/reports/analytics.csv" Target="_blank" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download">Export CSV</MudButton></PageHeader>
 @if(loading){<MudProgressLinear Indeterminate="true" Color="Color.Primary"/>}
@@ -25,15 +26,36 @@ else if(summary is not null){
  @if(LatestQuality is not null){<div class="quality-audit-card"><div><span class="panel-kicker">LATEST QUALITY CANARY</span><h3>@(LatestQuality.Passed?"Embedding space passed":"Embedding space needs review")</h3><small>@LatestQuality.CreatedAt.ToLocalTime().ToString("g") · @LatestQuality.DurationMilliseconds.ToString("0.0")ms · retrieved @LatestQuality.SearchTopTitle</small></div><div class="quality-checks">@foreach(var check in LatestQuality.Checks){<MudChip T="string" Size="Size.Small" Color="@(check.Value?Color.Success:Color.Error)" Variant="Variant.Outlined">@CheckName(check.Key)</MudChip>}</div><div class="quality-values"><span>Related @LatestQuality.RelatedSimilarity.ToString("0.000")</span><span>Unrelated @LatestQuality.UnrelatedSimilarity.ToString("0.000")</span><span>Margin @LatestQuality.SemanticMargin.ToString("0.000")</span><span>Repeat @LatestQuality.RepeatSimilarity.ToString("0.0000")</span></div></div>}
  <p class="section-copy">Privacy boundary: no prompt text, wiki prose, vectors, provider credentials, chat, or model reasoning is stored in this audit.</p>
 </section>}
+<AuthorizeView Roles="Administrator">
+ @if(worldObservability is { } world && world.ValueKind==JsonValueKind.Object)
+ {
+ <section class="surface-panel admin-list-panel mt-4">
+  <div class="panel-heading"><div><span class="panel-kicker">SOVEREIGN WORLD PIPELINE</span><h2>Perception & cognition telemetry</h2></div></div>
+  <p class="section-copy">Content-free measurements expose projection freshness, attention pressure, specialist cost, semantic-query size, and request-context composition without retaining prompts or reasoning.</p>
+  <div class="metric-grid">
+   <MetricCard Label="PERSPECTIVES" Value="@NestedNumber(world,"world","perspectives")" Detail="Materialized fair-play worlds" Icon="@Icons.Material.Filled.Public"/>
+   <MetricCard Label="OBSERVATIONS" Value="@NestedNumber(world,"world","max_observation_cursor")" Detail="Highest durable cursor" Icon="@Icons.Material.Filled.Visibility" Tone="blue"/>
+   <MetricCard Label="ATTENTION" Value="@NestedNumber(world,"attention","queued")" Detail="Queued for at-least-once delivery" Icon="@Icons.Material.Filled.NotificationsActive" Tone="gold"/>
+   <MetricCard Label="CRITICAL" Value="@NestedNumber(world,"attention","critical_pending")" Detail="Pending critical attention" Icon="@Icons.Material.Filled.PriorityHigh" Tone="violet"/>
+  </div>
+  @if(world.TryGetProperty("metrics",out var metrics)&&metrics.ValueKind==JsonValueKind.Array)
+  {@foreach(var metric in metrics.EnumerateArray()){
+   <div class="analytics-row"><div><strong>@Text(metric,"category") · @Text(metric,"metric")</strong><small>Content-free runtime measurement</small></div><span>@Text(metric,"samples") samples</span><span>@Text(metric,"average") avg</span><span>@Text(metric,"maximum") max</span><span>@Text(metric,"total") total</span></div>
+  }}
+ </section>
+ }
+</AuthorizeView>
 <AuthorizeView Roles="Administrator"><section class="surface-panel form-panel mt-4"><span class="panel-kicker">SANITIZED REPORT LAB</span><h2>Read-only SQL</h2><p class="section-copy">Query an isolated copy containing only <code>matches</code>, <code>turn_metrics</code>, <code>ai_profiles</code>, and <code>ai_outcomes</code>. Identity and secret tables are never attached.</p><MudTextField @bind-Value="sql" Lines="3" Variant="Variant.Outlined"/><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunQuery">Run query</MudButton>@if(queryResult is not null){<div class="query-table"><table><thead><tr>@foreach(var column in queryResult.Columns){<th>@column</th>}</tr></thead><tbody>@foreach(var row in queryResult.Rows){<tr>@foreach(var value in row){<td>@(value?.ToString()??"NULL")</td>}</tr>}</tbody></table>@if(queryResult.Truncated){<small>Results truncated to 1,000 rows.</small>}</div>}</section></AuthorizeView>}
 @if(!string.IsNullOrEmpty(error)){<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>}
 @code{
- private AnalyticsSummary? summary;private EmbeddingAuditSummary? embedding;private bool loading=true;private string sql="SELECT status, count(*) AS matches FROM matches GROUP BY status ORDER BY matches DESC";private AnalyticsQueryResult? queryResult;private string? error;
+ private AnalyticsSummary? summary;private EmbeddingAuditSummary? embedding;private JsonElement? worldObservability;private bool loading=true;private string sql="SELECT status, count(*) AS matches FROM matches GROUP BY status ORDER BY matches DESC";private AnalyticsQueryResult? queryResult;private string? error;
  private long EmbeddingCalls=>embedding?.Purposes.Sum(item=>item.Calls)??0;private long EmbeddingTokens=>embedding?.Purposes.Sum(item=>item.InputTokens)??0;private long EmbeddingErrors=>embedding?.Purposes.Sum(item=>item.Errors)??0;private EmbeddingQualityAudit? LatestQuality=>embedding?.QualityAudits.FirstOrDefault();private string ShortSpace=>embedding?.Configuration.SpaceId is {Length:>16} value?$"{value[..12]}…":embedding?.Configuration.SpaceId??"—";
- protected override async Task OnInitializedAsync(){var analyticsTask=Api.GetAsync<AnalyticsSummary>("api/reports/analytics");var embeddingTask=Api.GetAsync<EmbeddingAuditSummary>("api/reports/embedding-audit");await Task.WhenAll(analyticsTask,embeddingTask);summary=(await analyticsTask)?.Data;embedding=(await embeddingTask)?.Data;loading=false;}
+ protected override async Task OnInitializedAsync(){var analyticsTask=Api.GetAsync<AnalyticsSummary>("api/reports/analytics");var embeddingTask=Api.GetAsync<EmbeddingAuditSummary>("api/reports/embedding-audit");var worldTask=Api.GetAsync<JsonElement>("api/reports/world-observability");await Task.WhenAll(analyticsTask,embeddingTask,worldTask);summary=(await analyticsTask)?.Data;embedding=(await embeddingTask)?.Data;worldObservability=(await worldTask)?.Data;loading=false;}
  private async Task RunQuery(){var result=await Api.PostAsync<AnalyticsQueryResult>("api/reports/query",new AnalyticsQueryRequest(sql));if(result.Payload?.Ok==true)queryResult=result.Payload.Data;else error=result.Payload?.Error?.Message;}
  private static string PurposeName(string value)=>value switch{"wiki_initial_build"=>"Wiki · initial build","wiki_refresh"=>"Wiki · refresh","wiki_search"=>"Wiki · semantic search","graphiti_projection"=>"Graphiti · memory projection","graphiti_recall"=>"Graphiti · memory recall","quality_canary"=>"Quality · semantic canary",_=>value.Replace('_',' ')};
  private static string TokenKind(string value)=>value switch{"local_tokenizer"=>"exact local tokens","local_tokenizer_source"=>"exact source tokens","provider_reported"=>"provider-reported tokens","character_estimate"=>"estimated tokens",_=>value.Replace('_',' ')};
  private static string CheckName(string value)=>value.Replace('_',' ');
  private static bool IsCorpusSync(string purpose)=>purpose is "wiki_initial_build" or "wiki_refresh";
+ private static string Text(JsonElement item,string name,string fallback="—")=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)&&value.ValueKind!=JsonValueKind.Null?value.ToString():fallback;
+ private static string NestedNumber(JsonElement item,string parent,string name)=>item.TryGetProperty(parent,out var child)?Text(child,name,"0"):"0";
 }

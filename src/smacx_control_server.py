@@ -324,6 +324,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, self.server.control.graphiti_status())
                 return
+            if path == "/api/v1/specialists":
+                self._authentication()
+                self._json(200, self.server.control.specialist_status())
+                return
+            if path == "/api/v1/world-observability":
+                self._authentication()
+                self._json(200, self.server.control.world_observability())
+                return
             if path == "/api/v1/embeddings":
                 self._authentication()
                 self._json(200, {"ok": True, "configuration": self.server.control.embedding_configuration()})
@@ -770,6 +778,37 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     "success", {"enabled": body["enabled"]}, self.client_address[0],
                 )
                 self._json(200, result)
+                return
+            if path == "/api/v1/specialists":
+                auth = self._authorize_mutation()
+                body = self._body()
+                profile = body.get("profile")
+                if profile is not None and not isinstance(profile, dict):
+                    raise InvalidRecord("invalid_specialist_profile")
+                result = self.server.control.set_specialist_profile(
+                    profile, max_concurrency=int(body.get("max_concurrency", 2)),
+                )
+                self.server.control.audit(
+                    auth["admin_id"], "specialists.configure", "installation", None,
+                    "success", {"mode": result["mode"],
+                                "max_concurrency": result["max_concurrency"]},
+                    self.client_address[0],
+                )
+                self._json(200, result)
+                return
+            if path == "/api/v1/specialists/sync-profile":
+                self._authorize_mutation()
+                body = self._body()
+                profile = body.get("profile")
+                if not isinstance(profile, dict):
+                    raise InvalidRecord("invalid_specialist_profile")
+                self._json(200, self.server.control.sync_specialist_profile(profile))
+                return
+            if path == "/api/v1/specialists/clear-profile":
+                self._authorize_mutation()
+                body = self._body()
+                self._json(200, self.server.control.clear_specialist_profile(
+                    str(body.get("profile_id", ""))))
                 return
             if path == "/api/v1/graphiti/clear-profile":
                 auth = self._authorize_mutation()

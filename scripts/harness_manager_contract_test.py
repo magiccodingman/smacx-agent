@@ -21,12 +21,22 @@ class FakeStore:
 class FakeControl:
     def __init__(self) -> None:
         self.store = FakeStore()
+        self.vault = FakeVault()
         self.runtime = None
         self.runs: list[dict] = []
         self.key = "secret-provider-key"
 
     def get_worker_spec(self, _instance_id: str) -> dict:
-        return {"network": {"mcp_container_name": "mcp-harness-contract"}}
+        return {
+            "bridge_secret_id": "secret-worker-bridge",
+            "network": {
+                "mcp_container_name": "mcp-harness-contract",
+                "secret_volume": "worker-secret-contract",
+            },
+        }
+
+    def specialist_status(self) -> dict:
+        return {"enabled": True, "profile": None, "max_concurrency": 1}
 
     def list_harness_runs(self) -> list[dict]:
         return self.runs
@@ -131,6 +141,20 @@ class FakeWorkerManager:
     mcp_image = "smacx-agent-mcp:test"
     network_name = "smacx-private"
 
+    def __init__(self) -> None:
+        self.seeded: list[tuple[str, str, str, str]] = []
+
+    def _seed_secret_volume(self, volume: str, instance: str,
+                            name: str, value: str) -> None:
+        self.seeded.append((volume, instance, name, value))
+
+
+class FakeVault:
+    def read(self, secret_id: str, *, purpose: str) -> str:
+        if secret_id != "secret-worker-bridge" or not purpose.endswith(".bridge_token"):
+            raise AssertionError((secret_id, purpose))
+        return "runtime-context-token-value"
+
 
 def unpack(archive: bytes) -> dict[str, bytes]:
     result = {}
@@ -149,6 +173,7 @@ def descriptor(*, keyed: bool) -> dict:
         "instance_id": "instance-contract-worker",
         "agent_id": "agent-contract-player",
         "agent_name": "Contract Player",
+        "perspective_id": "perspective-contract-player",
         "match_id": "match-contract-game",
         "provider_id": "provider-contract-model",
         "provider_base_url": "http://models.internal:8000/v1",
@@ -162,12 +187,15 @@ def descriptor(*, keyed: bool) -> dict:
 def main() -> int:
     control = FakeControl()
     docker = FakeDocker()
-    manager = HarnessManager(control, docker, FakeWorkerManager())  # type: ignore[arg-type]
+    worker_manager = FakeWorkerManager()
+    manager = HarnessManager(control, docker, worker_manager)  # type: ignore[arg-type]
     prompt = control.get_harness_profile("harness-contract-profile")["system_prompt"]
     if "turn_handoff_required" not in prompt or "TURN HANDOFF" not in prompt \
             or "never exceed 120 words" not in prompt:
         raise AssertionError("managed system prompt omitted the bounded native-turn handoff")
     runtime = manager.provision_profile(descriptor(keyed=True))
+    if not any(row[2] == "specialist-provider.json" for row in worker_manager.seeded):
+        raise AssertionError("read-only specialist profile was not provisioned to the worker")
     data_archive = docker.contents[runtime["data_volume"]][-1]
     data_files = unpack(data_archive)
     owner_helpers = [config for config in docker.configs
@@ -184,8 +212,13 @@ def main() -> int:
     if control.key in serialized or config["custom_providers"][0].get("key_env") != \
             "SMACX_PROVIDER_API_KEY":
         raise AssertionError("managed profile persisted provider key or omitted key_env")
-    secret_files = unpack(docker.contents[runtime["secret_volume"]][-1])
-    if secret_files != {"provider-api-key": control.key.encode()}:
+    secret_files: dict[str, bytes] = {}
+    for seeded_archive in docker.contents[runtime["secret_volume"]]:
+        secret_files.update(unpack(seeded_archive))
+    if secret_files != {
+        "provider-api-key": control.key.encode(),
+        "runtime-context-token": b"runtime-context-token-value",
+    }:
         raise AssertionError("provider key was not isolated in the purpose secret volume")
 
     run_config = manager._container_config({  # noqa: SLF001
@@ -211,7 +244,12 @@ def main() -> int:
     old_secret_volume = runtime["secret_volume"]
     control.key = None
     manager.provision_profile(descriptor(keyed=False))
-    if docker.contents[old_secret_volume]:
+    reprovisioned_secret_files: dict[str, bytes] = {}
+    for seeded_archive in docker.contents[old_secret_volume]:
+        reprovisioned_secret_files.update(unpack(seeded_archive))
+    if "provider-api-key" in reprovisioned_secret_files \
+            or reprovisioned_secret_files.get("runtime-context-token") != \
+            b"runtime-context-token-value":
         raise AssertionError("reprovision retained an obsolete provider secret")
     if HERMES_IMAGE != "smacx-agent-harness:dev":
         raise AssertionError("managed harness did not select the SMACX-owned derived image")
