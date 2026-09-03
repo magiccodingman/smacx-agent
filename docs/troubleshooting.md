@@ -521,6 +521,20 @@ retries automatically instead of abandoning the campaign. A terminal failure
 returns the match to visible operator review with its checkpoint and incident
 preserved.
 
+## The AI stopped because its game bridge became unavailable
+
+One failed semantic probe may occur during an ordinary native transition and is
+retried. Three consecutive failures spanning at least one minute are treated as
+a lost game connection. The harness is stopped, the native worker is preserved,
+and the lobby, play view, and observation deck show a durable needs-attention
+incident. The background diagnostic builder adds recent distinct saves and
+redacted bridge, MCP, harness, and supervisor evidence to the downloadable ZIP.
+
+Do not repeatedly press browser controls or restart the container by hand. If a
+verified checkpoint is shown, deploy the fix and use **Retry from verified
+checkpoint**. Without one, download the diagnostic ZIP and preserve the worker
+for investigation; the platform intentionally refuses to guess at state.
+
 ## Cleanup
 
 Stop persistent services without deleting data:

@@ -24,6 +24,8 @@ public sealed class PortalMatchSupervisor(
     private bool dormantReconciled;
     private readonly Dictionary<string, string> announcedCapabilityIncidents =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> lastNativeStatusReads =
+        new(StringComparer.Ordinal);
     private DateTimeOffset nextWaitingLobbyExpirySweep;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -434,10 +436,13 @@ public sealed class PortalMatchSupervisor(
             // the agent. A ten-second cadence keeps the portal current without
             // competing with ordinary semantic decisions every supervisor tick.
             JsonDocument? nativeStatus = null;
-            if (DateTimeOffset.UtcNow - match.UpdatedAt >= TimeSpan.FromSeconds(10))
+            var nativePollNow = DateTimeOffset.UtcNow;
+            if (!lastNativeStatusReads.TryGetValue(match.MatchId, out var lastNativeRead) ||
+                nativePollNow - lastNativeRead >= TimeSpan.FromSeconds(10))
             {
                 nativeStatus = await control.GetRawAsync(
                     $"api/v1/matches/{match.MatchId}/status", cancellationToken);
+                lastNativeStatusReads[match.MatchId] = nativePollNow;
             }
             var observed = await control.GetMatchAsync(match.MatchId, cancellationToken);
             var previousStatus = match.Status;
@@ -502,9 +507,19 @@ public sealed class PortalMatchSupervisor(
                                     healthValue.GetString() == "healthy";
                                 if (running)
                                 {
-                                    seat.LastWorkerSeenAt = DateTimeOffset.UtcNow;
                                     if (seat.ControllerKind == "agent")
-                                        seat.ConnectionState = healthy ? "connected" : "starting";
+                                    {
+                                        if (healthy)
+                                        {
+                                            seat.LastWorkerSeenAt = DateTimeOffset.UtcNow;
+                                            seat.ConnectionState = "connected";
+                                        }
+                                        else
+                                        {
+                                            seat.ConnectionState = seat.LastWorkerSeenAt is null
+                                                ? "starting" : "bridge_unavailable";
+                                        }
+                                    }
                                 }
                                 else if (match.Status == "running" && seat.DelegationStatus != "active")
                                 {
@@ -585,6 +600,7 @@ public sealed class PortalMatchSupervisor(
             await database.SaveChangesAsync(cancellationToken);
             if (previousStatus != "completed" && match.Status == "completed")
             {
+                lastNativeStatusReads.Remove(match.MatchId);
                 // A native final-score screen changes the control lifecycle
                 // before the portal sees it. Complete is idempotent and stops
                 // autonomous callers before it releases bulky worker state.
@@ -606,11 +622,11 @@ public sealed class PortalMatchSupervisor(
                 }
                 else
                 {
-                    await EnsureAgentRunsAsync(database, control, match, cancellationToken);
-                    await ImportNativeChatAsync(database, control, match, cancellationToken);
                     if (match.CurrentTurn is not null)
                         await TryTurnCheckpointAsync(
                             database, control, match, cancellationToken);
+                    await EnsureAgentRunsAsync(database, control, match, cancellationToken);
+                    await ImportNativeChatAsync(database, control, match, cancellationToken);
                 }
             }
             if (previousStatus != match.Status || previousTurn != match.CurrentTurn)

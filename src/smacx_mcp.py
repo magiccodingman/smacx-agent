@@ -2512,16 +2512,44 @@ def smac_notebook(
 def smac_wait(seconds: int = 2) -> dict:
     seconds = min(max(seconds, 0), 30)
     before = _call("observe")
+    if not before.get("ok"):
+        return {
+            **before,
+            "wait_stage": "initial_observation",
+            "instruction": (
+                "STOP issuing gameplay actions. The native game bridge is unavailable; "
+                "wait for platform recovery or operator attention."
+            ),
+        }
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         time.sleep(0.25)
         after = _call("observe")
+        if not after.get("ok"):
+            return {
+                **after,
+                "wait_stage": "poll_observation",
+                "instruction": (
+                    "STOP issuing gameplay actions. The native game bridge became unavailable; "
+                    "wait for platform recovery or operator attention."
+                ),
+            }
         if after != before:
             result = {"ok": True, "changed": True, "observation": after}
             status = _call("status")
             identity = status.get("identity", {}) if isinstance(status, dict) else {}
             return _attach_chat_attention(result, identity if isinstance(identity, dict) else {})
-    result = {"ok": True, "changed": False, "observation": _call("observe")}
+    final = _call("observe")
+    if not final.get("ok"):
+        return {
+            **final,
+            "wait_stage": "final_observation",
+            "instruction": (
+                "STOP issuing gameplay actions. The native game bridge is unavailable; "
+                "wait for platform recovery or operator attention."
+            ),
+        }
+    result = {"ok": True, "changed": False, "observation": final}
     status = _call("status")
     identity = status.get("identity", {}) if isinstance(status, dict) else {}
     return _attach_chat_attention(result, identity if isinstance(identity, dict) else {})

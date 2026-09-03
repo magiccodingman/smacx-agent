@@ -1037,7 +1037,9 @@ game binaries/assets, credentials, private provider addresses, account data, cha
         ingested = ignored = errors = 0
         for report in self._capability_gap_records():
             gap_id = str(report["gap_id"])
-            if self._existing_gap_incident(gap_id) is not None:
+            existing = self._existing_gap_incident(gap_id)
+            if existing is not None and isinstance(existing.get("details"), Mapping) \
+                    and isinstance(existing["details"].get("diagnostic_bundle"), Mapping):
                 ignored += 1
                 continue
             instance_id = self._instance_for_gap(report)
@@ -1059,9 +1061,20 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                     "harness_runs_stopped": stopped_runs,
                     "native_worker_preserved": True,
                 }
-                incident = self._incident(
-                    instance_id, f"capability_gap:{gap_id}", "operator_required", detail,
-                )
+                if existing is not None and isinstance(existing.get("details"), Mapping):
+                    # A harness-detected bridge outage is published immediately
+                    # so the UI cannot stay silent. Enrich that same incident
+                    # asynchronously with the normal redacted diagnostic ZIP.
+                    detail = {**dict(existing["details"]), **detail}
+                    incident = existing
+                    existing_run = str(existing["details"].get("run_id") or "")
+                    if existing_run and existing_run not in stopped_runs:
+                        stopped_runs.append(existing_run)
+                    detail["harness_runs_stopped"] = stopped_runs
+                else:
+                    incident = self._incident(
+                        instance_id, f"capability_gap:{gap_id}", "operator_required", detail,
+                    )
                 bundle = self._create_gap_bundle(incident, report, instance_id, stopped_runs)
                 detail["diagnostic_bundle"] = bundle
                 self._incident(

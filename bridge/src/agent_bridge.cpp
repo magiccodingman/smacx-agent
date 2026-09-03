@@ -27,6 +27,9 @@ namespace {
 
 const int DefaultPort = 47813;
 const int MaxRequestBytes = 16384;
+// Console::on_key_click handles this stock semantic command by invoking
+// Console::end_my_turn (terranx.exe 0x518197..0x5181A8).
+const int NativeEndTurnCommand = 0x2000D;
 BasePop** const DefaultPopupA = reinterpret_cast<BasePop**>(0x9BC074);
 BasePop** const DefaultPopupB = reinterpret_cast<BasePop**>(0x9BC078);
 Win** const ModalStackCurrent = reinterpret_cast<Win**>(0x9B7AE0);
@@ -138,6 +141,9 @@ bool pending_endgame_presentation_advance = false;
 uint64_t endgame_presentation_generation = 0;
 int deferred_diplomacy_faction_id = -1;
 int deferred_council_faction_id = -1;
+int deferred_end_turn_faction_id = -1;
+int deferred_end_turn_source_turn = -1;
+UINT_PTR deferred_end_turn_timer_id = 0;
 int deferred_nerve_staple_base_id = -1;
 int deferred_obliterate_base_id = -1;
 int deferred_obliterate_unit_id = -1;
@@ -794,6 +800,48 @@ bool game_active() {
     int faction_id = 0;
     return active_faction(faction_id) && *MapAreaTiles > 0 && *MapAreaX > 0
         && *MapAreaY > 0 && *MapTiles != NULL && *BaseCount > 0;
+}
+
+void refresh_deferred_end_turn_state() {
+    if (deferred_end_turn_faction_id < 0) return;
+    if (!game_active()) {
+        deferred_end_turn_faction_id = -1;
+        deferred_end_turn_source_turn = -1;
+        deferred_action.status = "rejected";
+        deferred_action.resolution = "game_no_longer_active";
+        return;
+    }
+    if (*CurrentTurn == deferred_end_turn_source_turn) return;
+    deferred_end_turn_faction_id = -1;
+    deferred_end_turn_source_turn = -1;
+    deferred_action.native_result = 1;
+    deferred_action.status = "completed";
+    deferred_action.resolution = "native_turn_advanced";
+}
+
+void CALLBACK deferred_end_turn_timer_proc(HWND, UINT, UINT_PTR timer_id, DWORD) {
+    KillTimer(NULL, timer_id);
+    deferred_end_turn_timer_id = 0;
+    const int faction_id = deferred_end_turn_faction_id;
+    const int source_turn = deferred_end_turn_source_turn;
+    const bool actionable = game_active()
+        && faction_id == *CurrentPlayerFaction
+        && source_turn == *CurrentTurn
+        && human_turn_actionable(faction_id);
+    if (!actionable) {
+        deferred_end_turn_faction_id = -1;
+        deferred_end_turn_source_turn = -1;
+        deferred_action.status = "rejected";
+        deferred_action.resolution = "native_turn_no_longer_actionable";
+        return;
+    }
+    // Run through the same native semantic event as the Turn Complete control,
+    // but from a Windows timer dispatch after the bridge request has replied.
+    // Console::on_key_click may remain synchronous through bot turns and modal
+    // technology/research screens; with no bridge request frame underneath it,
+    // those interactions remain independently observable and resolvable.
+    Console_on_key_click(MapWin, 0, NativeEndTurnCommand);
+    refresh_deferred_end_turn_state();
 }
 
 bool end_turn_completion_pending() {
@@ -3841,6 +3889,7 @@ int technology_presentation_tech_id() {
 }
 
 std::string interaction_kind(int faction_id) {
+    refresh_deferred_end_turn_state();
     update_human_diplomacy_lifecycle();
     if (popup_transition_is_pending()) {
         return "waiting_for_engine";
@@ -3876,6 +3925,7 @@ std::string interaction_kind(int faction_id) {
         if (first_base_name_modal(faction_id)) return "first_base_name";
         return "unsupported_modal";
     }
+    if (deferred_end_turn_faction_id >= 0) return "waiting_for_engine";
     if (!endgame_presentation_phase.empty()) {
         if (endgame_presentation_phase == "victory_movie") {
             return "unsupported_modal";
@@ -7639,6 +7689,7 @@ std::string tiles_response(const std::string& request) {
 
 std::string semantic_snapshot_response() {
     if (!game_active()) return status_response();
+    refresh_deferred_end_turn_state();
     if (*MultiplayerActive && agent_modal_service_depth == 0) {
         pump_native_network_packets();
     }
@@ -12191,6 +12242,16 @@ std::string semantic_command_response(const std::string& request) {
         } else {
             pending_end_turn_completion = false;
             pending_end_turn_source_turn = -1;
+            if (deferred_end_turn_faction_id >= 0) {
+                if (deferred_end_turn_timer_id) {
+                    KillTimer(NULL, deferred_end_turn_timer_id);
+                    deferred_end_turn_timer_id = 0;
+                }
+                deferred_end_turn_faction_id = -1;
+                deferred_end_turn_source_turn = -1;
+                deferred_action.status = "rejected";
+                deferred_action.resolution = "cancelled_by_controller";
+            }
         }
         submit_popup_choice(active, response == "proceed" ? 1 : 0);
         return std::string("{\"ok\":true,\"command\":\"respond_to_end_turn_confirmation\","
@@ -13380,7 +13441,7 @@ std::string semantic_command_response(const std::string& request) {
             return error_response("council_unavailable",
                 "The native game reports that this faction cannot convene the Council now.");
         }
-        if (deferred_native_action_pending()) {
+        if (deferred_native_action_pending() || deferred_end_turn_faction_id >= 0) {
             return error_response("blocking_action_already_queued",
                 "A potentially blocking native action is already queued. Wait and observe.");
         }
@@ -13401,7 +13462,7 @@ std::string semantic_command_response(const std::string& request) {
             return error_response("unavailable_diplomacy_target",
                 "Choose a living contacted faction returned by diplomacy choices.");
         }
-        if (deferred_native_action_pending()) {
+        if (deferred_native_action_pending() || deferred_end_turn_faction_id >= 0) {
             return error_response("diplomacy_already_queued",
                 "A potentially blocking native action is already queued. Wait and observe.");
         }
@@ -13516,9 +13577,25 @@ std::string semantic_command_response(const std::string& request) {
         if (ready_units) {
             return error_response("units_still_ready", "Skip, move, order, or otherwise resolve all ready units before ending the turn.");
         }
-        int result = Console_end_my_turn(MapWin);
-        return std::string("{\"ok\":true,\"command\":\"end_turn\",\"result\":")
-            + std::to_string(result) + '}';
+        if (deferred_native_action_pending() || deferred_end_turn_faction_id >= 0) {
+            return error_response("action_already_queued",
+                "A potentially blocking native action is already queued. Wait and observe.");
+        }
+        deferred_end_turn_faction_id = faction_id;
+        deferred_end_turn_source_turn = *CurrentTurn;
+        begin_deferred_action("end_turn");
+        deferred_end_turn_timer_id = SetTimer(
+            NULL, 0, 1, deferred_end_turn_timer_proc);
+        if (!deferred_end_turn_timer_id) {
+            deferred_end_turn_faction_id = -1;
+            deferred_end_turn_source_turn = -1;
+            deferred_action.status = "rejected";
+            return error_response("end_turn_queue_failed",
+                "The game could not queue the native turn transition.");
+        }
+        return std::string("{\"ok\":true,\"command\":\"end_turn\",\"queued\":true,"
+            "\"source_turn\":") + std::to_string(deferred_end_turn_source_turn)
+            + ",\"action_id\":" + std::to_string(deferred_action.id) + '}';
     }
     if (command == "choose_research") {
         int tech_id = field_int(request, "tech_id", -1);
@@ -15482,6 +15559,7 @@ std::string execute_request(const std::string& request) {
         return semantic_chat_response("{\"action\":\"list\"}");
     }
     if (op == "action_status") {
+        refresh_deferred_end_turn_state();
         return deferred_action_response(static_cast<uint32_t>(field_int(request, "action_id", 0)));
     }
     if (op == "semantic_choices") return semantic_choices_response(request);
@@ -16629,6 +16707,10 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
 
 void agent_bridge_stop() {
     if (!lock_initialized) return;
+    if (deferred_end_turn_timer_id) {
+        KillTimer(NULL, deferred_end_turn_timer_id);
+        deferred_end_turn_timer_id = 0;
+    }
     clear_pending_council_vote();
     InterlockedExchange(&stopping, 1);
     if (listen_socket != INVALID_SOCKET) closesocket(listen_socket);

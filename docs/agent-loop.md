@@ -96,6 +96,14 @@ normally waits and reports `completed: true`. If the bounded wait expires, do
 not overlap an ordinary turn action. Resolve each newly enumerated staged
 interaction, then observe until the original deferred action completes.
 
+End-turn uses the same deferred ledger even though the stock game implements
+it as one long synchronous call. The bridge replies after queueing the native
+Turn Complete command and starts that command from a Windows timer only after
+the request frame has unwound. Any confirmation or technology presentation in
+the transition therefore becomes the current required interaction rather than
+starving the bridge. `smac_wait` propagates a lost bridge as an error; it never
+wraps an unavailable observation in `ok: true`.
+
 When any semantic result reports `turn_handoff_required`, native control has
 passed. This includes a direct end-turn result and the next decision frame when
 native automation moved from one turn into the next without exposing a stable
