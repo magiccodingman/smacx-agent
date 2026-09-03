@@ -238,10 +238,13 @@ public sealed record LobbyDetails(
     MatchPresenceState? Presence = null,
     CapabilityGapIncident? NeedsAttention = null,
     double RuntimeGeneration = 0,
-    MaintenanceProgress? Maintenance = null);
+    MaintenanceProgress? Maintenance = null,
+    bool HasVerifiedRecoveryCheckpoint = false,
+    string? RecoveryBlockedReason = null);
 
 public sealed record CapabilityGapIncident(
     string IncidentId,
+    string IncidentKind,
     string GapId,
     string Status,
     string Summary,

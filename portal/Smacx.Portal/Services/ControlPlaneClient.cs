@@ -118,6 +118,26 @@ public sealed class ControlPlaneClient(
         return null;
     }
 
+    public async Task<ControlIncident?> GetActiveOperatorIncidentAsync(
+        string matchId, CancellationToken cancellationToken = default)
+    {
+        using var document = await SendAsync(
+            HttpMethod.Get,
+            $"api/v1/incidents?match_id={Uri.EscapeDataString(matchId)}&active_only=true",
+            null, cancellationToken);
+        ControlIncident? firstOperatorIncident = null;
+        foreach (var item in document.RootElement.GetProperty("incidents").EnumerateArray())
+        {
+            var incident = ParseIncident(item);
+            if (!string.Equals(incident.Status, "operator_required", StringComparison.Ordinal))
+                continue;
+            if (incident.IncidentKind.StartsWith("capability_gap:", StringComparison.Ordinal))
+                return incident;
+            firstOperatorIncident ??= incident;
+        }
+        return firstOperatorIncident;
+    }
+
     public async Task<ControlIncident> GetIncidentAsync(
         string incidentId, CancellationToken cancellationToken = default)
     {
