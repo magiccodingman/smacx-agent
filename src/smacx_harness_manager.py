@@ -332,44 +332,6 @@ class HarnessManager:
                 purpose="provider-key", identity=harness_profile_id,
             )
         worker = self.control.get_worker_spec(str(internal["instance_id"]))
-        # The worker-side specialist adapter receives only a bounded provider
-        # profile and purpose-specific credential.  It never receives Hermes
-        # history, personality, sovereign memory, or generic tools.  The seat
-        # profile is the fallback helper profile; deployments may replace this
-        # file with a separately selected compatible helper profile later.
-        worker_secret_volume = str(worker["network"]["secret_volume"])
-        specialist_setting = self.control.specialist_status()
-        configured_helper = specialist_setting.get("profile")
-        if isinstance(configured_helper, Mapping):
-            helper_provider = self.control.get_provider(str(configured_helper["provider_id"]))
-            specialist_profile = {
-                **dict(configured_helper), "base_url": helper_provider["base_url"],
-                "max_concurrency": specialist_setting["max_concurrency"],
-            }
-            specialist_api_key = self.control.provider_api_key(
-                str(configured_helper["provider_id"])
-            )
-        else:
-            specialist_profile = {
-                "profile_id": internal["external_profile_id"],
-                "provider_id": internal["provider_id"],
-                "base_url": internal["provider_base_url"],
-                "model_id": internal["model_id"],
-                "reasoning_effort": internal["reasoning_effort"],
-                "generation_settings": internal.get("generation_settings") or {},
-                "max_concurrency": specialist_setting["max_concurrency"],
-            }
-            specialist_api_key = api_key
-        self.worker_manager._seed_secret_volume(  # isolated runtime provisioning seam
-            worker_secret_volume, str(internal["instance_id"]),
-            "specialist-provider.json",
-            json.dumps(specialist_profile, sort_keys=True, separators=(",", ":")),
-        )
-        if specialist_api_key:
-            self.worker_manager._seed_secret_volume(
-                worker_secret_volume, str(internal["instance_id"]),
-                "specialist-provider-key", specialist_api_key,
-            )
         runtime_context_token = self.control.vault.read(
             str(worker["bridge_secret_id"]),
             purpose=f"worker.{internal['instance_id']}.bridge_token",
@@ -478,6 +440,7 @@ class HarnessManager:
                 f"SMACX_SYSTEM_PROMPT_SHA256={prompt_hash}",
                 f"SMACX_AGENT_MATCH_ID={run['match_id']}",
                 f"SMACX_AGENT_ID={run['agent_id']}",
+                f"SMACX_HARNESS_PROFILE_ID={run['harness_profile_id']}",
                 f"SMACX_AGENT_SESSION_ID={run.get('native_session_id') or ''}",
                 f"SMACX_PERSPECTIVE_ID={runtime_metadata.get('perspective_id') or ''}",
                 f"SMACX_CONTEXT_LENGTH={runtime_metadata.get('context_length') or 65536}",
@@ -485,6 +448,7 @@ class HarnessManager:
                 f"SMACX_EPISODE_MODE={episode_mode}",
                 f"SMACX_RUNTIME_CONTEXT_URL={runtime_context_url}",
                 "SMACX_RUNTIME_CONTEXT_TOKEN_FILE=/run/secrets/runtime-context-token",
+                "SMACX_REFERENCE_URL=http://knowledge-service:8090",
             ],
             "Labels": self._labels("harness-run", **{
                 "io.smacx.run": str(run["run_id"]),

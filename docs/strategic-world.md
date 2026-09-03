@@ -209,24 +209,34 @@ not routine board narration.
 
 ## Disposable specialists
 
-`reference_researcher` and `world_analyst` jobs receive one immutable,
-perspective-filtered evidence package pinned to timeline, world epoch/revision,
-observation cursor, dependency references/hash, corpus revision, token budget,
-and time budget. They run directly against a configured provider with a separate
-system prompt and no tools, sovereign history, personality, chat, filesystem,
-memory writer, or mutation capability.
+`smac_investigate` commissions one durable mission for either the
+`reference_researcher` or `world_analyst` faculty. A long-lived supervisor starts
+a fresh Hermes process, home, workspace, session, profile, and capability for
+every attempt. The child receives its own short system contract and exactly one
+MCP instrument: `reference_query` or `world_query`. It can therefore conduct a
+bounded multi-step investigation instead of receiving a caller-curated evidence
+dump.
 
-These are deliberately one-shot evidence synthesizers. Despite their role
-names, they cannot independently browse the Datalinks corpus, call
-`smac_reference`, zoom the world, or conduct a multi-step investigation. The
-sovereign or deterministic caller selects every input item before dispatch.
+The child receives no sovereign transcript, personality, live runtime envelope,
+game/sovereign volume, terminal, files, web, chat, memory writer, delegation, or
+mutation tool. A world mission reads one immutable content-addressed perspective
+snapshot pinned to its timeline, epoch, revision, and observation cursor. A
+reference mission is pinned to one corpus revision. Actual child calls create
+the dependency set; the model cannot declare its own freshness boundary.
 
-The result schema requires cited claims, epistemic status, limitations,
-unresolved questions, and exact source/dependency echo. Results become stale if
-the timeline/world epoch or relevant dependencies changed. A child crash is
-retryable, one child may run per sovereign seat, and installation concurrency
-is operator-bounded. Results are fallible evidence; only the sovereign decides
-what they mean strategically.
+Missions and attempts are separate durable records. Each attempt has hard wall,
+tool-call, provider-call, cumulative-token, context, output, retry, and schema-
+repair limits. Cancellation reaps the process group. Successful output must
+match the strict cited-claim schema. Publication uses compare-and-swap and
+becomes stale or is rejected when an actual dependency, corpus revision,
+timeline, or world epoch no longer matches. Completion only queues at-least-once
+attention; it never starts a second sovereign invocation. Results remain
+fallible evidence and cannot own strategy or action.
+
+Compressed, secret-redacted attempt traces are diagnostics, not campaign state
+or model memory. Their manifests participate in normal backup/restore; success
+and failure generations have separate retention floors and an operator byte
+ceiling. See [Disposable specialists](specialists.md) for the full contract.
 
 ## Checkpoint and rollback
 

@@ -364,6 +364,21 @@ class RuntimeContextAssembler:
             payload["attention"]["truncated"] = len(items) != len(payload["attention"]["items"])
         if estimate_tokens(payload) > runtime_cap:
             raise RuntimeError("context_budget_exhausted:pinned_runtime_context")
+        # Only attention that is present in this final serialized envelope may
+        # transition to placed.  Anything removed by either local attention
+        # budgeting or whole-envelope pressure is detached and requeued with
+        # its original stable attention ID.
+        placement = self.attention.restrict_for_placement(
+            str(payload["attention"]["attention_lease_id"]),
+            [str(item["attention_id"]) for item in payload["attention"].get("items", ())],
+        )
+        payload["attention"]["through_cursor"] = placement["through_cursor"]
+        if placement["requeued_ids"]:
+            payload["attention"]["truncated"] = True
+            payload["attention"]["remaining_count"] = (
+                int(payload["attention"].get("remaining_count") or 0)
+                + len(placement["requeued_ids"])
+            )
         payload["token_composition"] = {
             "anchor": estimate_tokens(payload["world"]["anchor"]),
             "deltas": estimate_tokens(payload["world"]["net_deltas"]),

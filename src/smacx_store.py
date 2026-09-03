@@ -643,6 +643,14 @@ CREATE TABLE world_snapshots (
 CREATE INDEX world_snapshots_scope
     ON world_snapshots(match_id, perspective_id, timeline_id, journal_sequence DESC);
 
+CREATE TABLE world_snapshot_pins (
+    snapshot_id TEXT NOT NULL REFERENCES world_snapshots(snapshot_id) ON DELETE CASCADE,
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('specialist_mission','checkpoint','recovery')),
+    owner_id TEXT NOT NULL,
+    pinned_unix REAL NOT NULL,
+    PRIMARY KEY (snapshot_id, owner_kind, owner_id)
+);
+
 CREATE TABLE world_anchors (
     world_anchor_id TEXT PRIMARY KEY,
     match_id TEXT NOT NULL,
@@ -793,6 +801,7 @@ CREATE TABLE cognitive_operations (
     status TEXT NOT NULL CHECK (status IN ('active','stale','completed','expired','invalid')),
     foreground INTEGER NOT NULL DEFAULT 0 CHECK (foreground IN (0,1)),
     compact_outcome TEXT,
+    specialist_result_receipts_json TEXT NOT NULL DEFAULT '[]',
     created_unix REAL NOT NULL,
     updated_unix REAL NOT NULL
 );
@@ -814,33 +823,105 @@ CREATE TABLE sovereign_leases (
     PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id)
 );
 
-CREATE TABLE specialist_jobs (
-    specialist_job_id TEXT PRIMARY KEY,
+CREATE TABLE specialist_missions (
+    mission_id TEXT PRIMARY KEY,
     match_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     perspective_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     world_epoch TEXT NOT NULL,
-    world_revision INTEGER NOT NULL,
+    source_world_revision INTEGER NOT NULL,
     observation_cursor INTEGER NOT NULL,
-    specialist_kind TEXT NOT NULL,
-    question TEXT NOT NULL,
-    evidence_refs_json TEXT NOT NULL,
-    request_json TEXT NOT NULL,
+    world_snapshot_id TEXT REFERENCES world_snapshots(snapshot_id),
+    world_view_hash TEXT,
+    faculty TEXT NOT NULL CHECK (faculty IN ('reference','world')),
+    normalized_objective TEXT NOT NULL,
+    subject_refs_json TEXT NOT NULL DEFAULT '[]',
+    linked_operation_id TEXT,
+    parent_episode_id TEXT,
     corpus_revision TEXT,
-    input_hash TEXT NOT NULL,
+    system_prompt_version TEXT NOT NULL,
+    system_prompt_hash TEXT NOT NULL,
+    tool_contract_version TEXT NOT NULL,
+    tool_contract_hash TEXT NOT NULL,
+    execution_class TEXT NOT NULL CHECK (execution_class IN ('synthesis','investigation')),
+    model_profile_revision TEXT NOT NULL,
+    model_profile_json TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    associated_checkpoint_generation INTEGER NOT NULL DEFAULT 0,
+    tool_budget INTEGER NOT NULL,
+    provider_call_budget INTEGER NOT NULL,
+    provider_token_budget INTEGER NOT NULL,
+    context_token_ceiling INTEGER NOT NULL,
+    output_token_budget INTEGER NOT NULL,
+    deadline_unix REAL NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued','active','retry_wait','accepted','stale','failed','cancelled')),
+    result_scope TEXT NOT NULL CHECK (result_scope IN ('query','operation','turn')),
     result_json TEXT,
     result_hash TEXT,
-    dependency_hash TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('queued','running','accepted','stale','failed','abandoned')),
-    usage_json TEXT NOT NULL DEFAULT '{}',
-    provider_profile_json TEXT NOT NULL DEFAULT '{}',
-    latency_ms REAL,
+    result_preview TEXT,
+    accepted_attempt_id TEXT,
+    completion_journal_sequence INTEGER,
+    stale_reason TEXT,
+    cancellation_reason TEXT,
     created_unix REAL NOT NULL,
-    updated_unix REAL NOT NULL
+    updated_unix REAL NOT NULL,
+    UNIQUE (match_id,agent_id,perspective_id,timeline_id,idempotency_key)
 );
-CREATE INDEX specialist_jobs_scope
-    ON specialist_jobs(match_id, perspective_id, timeline_id, status, created_unix DESC);
+CREATE INDEX specialist_missions_scope
+    ON specialist_missions(match_id, perspective_id, timeline_id, status, created_unix DESC);
+
+CREATE TABLE specialist_attempts (
+    attempt_id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL REFERENCES specialist_missions(mission_id),
+    attempt_number INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('starting','running','validating','completed',
+        'provider_failed','mcp_failed','invalid_schema','token_budget_exhausted',
+        'tool_budget_exhausted','timed_out','orphaned','cancelled')),
+    runtime_owner TEXT,
+    process_id INTEGER,
+    heartbeat_expires_unix REAL,
+    provider_calls INTEGER NOT NULL DEFAULT 0,
+    tool_calls INTEGER NOT NULL DEFAULT 0,
+    provider_tokens INTEGER NOT NULL DEFAULT 0,
+    peak_context_tokens INTEGER NOT NULL DEFAULT 0,
+    result_bytes INTEGER NOT NULL DEFAULT 0,
+    failure_reason TEXT,
+    trace_path TEXT,
+    trace_hash TEXT,
+    trace_bytes INTEGER,
+    started_unix REAL NOT NULL,
+    completed_unix REAL,
+    UNIQUE (mission_id,attempt_number)
+);
+CREATE INDEX specialist_attempts_status
+    ON specialist_attempts(status, heartbeat_expires_unix);
+
+CREATE TABLE specialist_dependencies (
+    mission_id TEXT NOT NULL REFERENCES specialist_missions(mission_id),
+    attempt_id TEXT NOT NULL REFERENCES specialist_attempts(attempt_id),
+    dependency_kind TEXT NOT NULL,
+    dependency_ref TEXT NOT NULL,
+    dependency_hash TEXT NOT NULL,
+    dependency_payload_json TEXT NOT NULL DEFAULT '{}',
+    source_call_sequence INTEGER NOT NULL,
+    PRIMARY KEY (attempt_id,dependency_kind,dependency_ref)
+);
+
+CREATE TABLE specialist_trace_manifests (
+    attempt_id TEXT PRIMARY KEY REFERENCES specialist_attempts(attempt_id),
+    mission_id TEXT NOT NULL REFERENCES specialist_missions(mission_id),
+    timeline_id TEXT NOT NULL,
+    checkpoint_generation INTEGER NOT NULL,
+    outcome_class TEXT NOT NULL,
+    content_path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    model_visible INTEGER NOT NULL DEFAULT 0 CHECK (model_visible IN (0,1)),
+    rolled_back INTEGER NOT NULL DEFAULT 0 CHECK (rolled_back IN (0,1)),
+    created_unix REAL NOT NULL
+);
 
 CREATE TABLE world_telemetry (
     telemetry_id TEXT PRIMARY KEY,
@@ -1193,7 +1274,7 @@ INITIAL_SCHEMA = "\n".join((
     INITIAL_SCHEMA_HARNESS,
 ))
 SCHEMA_REVISION = 1
-CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260903-sovereign-world-v1"
+CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260903-sovereign-world-specialist-dependencies"
 
 
 def _new_id(kind: str) -> str:

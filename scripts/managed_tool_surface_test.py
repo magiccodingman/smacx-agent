@@ -24,14 +24,17 @@ def main() -> int:
         raise AssertionError(f"managed surface leaked tools: {sorted(names & forbidden)}")
     required = {
         "smac_decision", "smac_execute_choice", "smac_choices", "smac_world",
-        "smac_attention_ack", "smac_cognition", "smac_specialist",
-        "smac_memory", "smac_memory_update", "smac_notebook", "smac_reference",
+        "smac_attention_ack", "smac_cognition", "smac_investigate",
+        "smac_memory", "smac_memory_update", "smac_notebook",
         "smac_chat", "smac_group_chat", "smac_report_capability_gap",
     }
     if not required <= names:
         raise AssertionError(f"managed surface omitted tools: {sorted(required - names)}")
     if "smac_list" in names:
         raise AssertionError("legacy flat-list world surface leaked into managed provider tools")
+    retired = {"smac_reference", "smac_specialist", "smac_knowledge"}
+    if names & retired:
+        raise AssertionError(f"retired specialist instruments leaked: {sorted(names & retired)}")
     expected_scope = (
         "match-managed-scope", "session-managed-scope",
         "agent-managed-scope", "perspective-managed-scope",
@@ -45,10 +48,32 @@ def main() -> int:
             raise
     else:
         raise AssertionError("managed tool accepted a caller-nominated foreign scope")
+    chat_calls: list[dict] = []
+    memory_calls: list[dict] = []
+    original_chat = smacx_mcp.controller_semantic_chat
+    original_memory = smacx_mcp.read_platform_memory
+    smacx_mcp.controller_semantic_chat = lambda *_args, **kwargs: (
+        chat_calls.append(kwargs) or {"ok": True, "items": []}
+    )
+    smacx_mcp.read_platform_memory = lambda *_args, **kwargs: (
+        memory_calls.append(kwargs) or {"ok": True, "items": []}
+    )
+    try:
+        assert smacx_mcp.smac_chat(action="list", acknowledge=True).get("ok")
+        assert smacx_mcp.smac_memory(
+            action="chat", match_id="", acknowledge=True,
+        ).get("ok")
+    finally:
+        smacx_mcp.controller_semantic_chat = original_chat
+        smacx_mcp.read_platform_memory = original_memory
+    if chat_calls[0].get("acknowledge") is not False \
+            or memory_calls[0].get("acknowledge") is not False:
+        raise AssertionError("managed chat read bypassed attention acknowledgement")
     print(json.dumps({"event": "pass", "payload": {
         "tool_count": len(names), "opaque_executor_only": True,
         "lifecycle_hidden": True, "unbounded_snapshots_hidden": True,
         "immutable_managed_scope": True,
+        "managed_chat_acknowledgement_authority": "smac_attention_ack_only",
     }}, separators=(",", ":")))
     return 0
 

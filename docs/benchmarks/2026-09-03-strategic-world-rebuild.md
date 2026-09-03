@@ -13,17 +13,19 @@ conversation text, saves, credentials, or private endpoints.
 | Huge fragmented 64K anchor | 3,307 estimated tokens; 3,176 regions explicitly omitted |
 | Huge chaotic 64K anchor | 5,976 estimated tokens |
 | Huge chaotic 256K anchor | 15,980 estimated tokens |
-| Large-cognition 64K complete runtime context | 3,717 estimated tokens |
-| Same strategic truth at 256K | 7,086 estimated tokens |
+| Large-cognition 64K complete runtime context | 3,725 estimated tokens |
+| Same strategic truth at 256K | 7,094 estimated tokens |
 | Huge chaotic 256K complete runtime context | 21,979 estimated tokens: 15,918 anchor, 5,766 cognition, 26 attention |
 | Mature notebook scale | 240 notes of approximately 24KB each; metadata-only list/search and targeted full get remained bounded |
 | Semantic GC 50%-crossing gate | 45,697 → 2,436 estimated provider-wire tokens before Hermes generic compression |
 | Note/memory-heavy 500-action gate | 1,074,269 → 13,185 estimated provider-wire tokens with durable write receipts |
-| `smac_world` serialized schema | 1,475 bytes; 492 conservative tokens |
-| v6 system prompt | 5,020 bytes; 1,067 exact Qwen3.8 tokens |
-| Managed provider tools | 17 |
-| Live stable-prefix second request | 23,072 locally cached tokens of 25,943 prompt tokens |
-| Live read-only specialist | 449 prompt, 295 completion, 0 reasoning tokens; strict schema accepted |
+| `smac_world` serialized schema | 1,468 bytes; 490 conservative tokens |
+| v6 system prompt | 5,239 bytes; 1,747 conservative tokens |
+| Managed provider tools | 15 |
+| Live stable-prefix second request | 21,424 locally cached tokens of 23,843 prompt tokens |
+| Live Hermes world specialist | 4 provider calls, 10 world queries, 291,432 cumulative replay tokens, 93,740 peak prompt tokens, 5,394-byte strict result, 54.869 seconds |
+| Real-game no-timer specialist | accepted; 101.386 seconds; native bridge probe 182 ms; native turn unchanged; completion delivered through durable attention |
+| Real-game no-timer sovereign action | 5 calls; 46,036 input, 1,018 output, 479 reasoning tokens; guarded semantic revision advanced |
 | Native bridge build | current worker image built successfully, including the 32-bit bridge stage |
 | .NET tests | 63 passed |
 
@@ -35,11 +37,15 @@ use the provider tokenizer. `scripts/provider_prefix_cache_live_test.py` creates
 a unique stable prefix, changes only its final volatile tail, and reads vLLM's
 content-free local-cache counters. The live result proves the request layout is
 not merely structurally cache-friendly; the configured provider reused it.
-`scripts/specialist_provider_live_test.py` independently proves that a direct
-child call receives no tools or sovereign history and returns the strict cited
-result envelope without model reasoning. Specialists remain one-shot processors
-of caller-supplied immutable evidence; independent reference/world retrieval is
-not claimed.
+`scripts/specialist_provider_capture_test.py` starts real disposable Hermes
+children against a recording provider and proves iterative world/reference
+retrieval, exactly one faculty tool, stable system/tool prefixes, trace-derived
+citations, and no cross-mission or sovereign state. The independent live test
+uses the configured Qwen provider and immutable world snapshot. It accepted a
+strict result with zero sovereign-history rows. The 291,432-token figure sums
+replayed prompt plus completion usage across four requests; the largest single
+prompt was 93,740 tokens. This is aggregate inference cost, not simultaneous
+sovereign context occupancy.
 
 `scripts/runtime_context_contract_test.py` measures the complete request-only
 runtime envelope rather than the anchor alone. Its Huge-chaotic 256K fixture
@@ -64,13 +70,17 @@ installation and provider. It created an isolated control plane, prepared a
 fresh Tiny/Citizen game with multiplayer timer **None**, started the native
 worker and exact-seat MCP sidecar, acknowledged the match briefing, made and
 verified a checkpoint, killed the native process, recovered it without UI
-input, and confirmed the restored turn. A managed low-reasoning Hermes/Qwen
-seat then executed an opaque legal choice that advanced the native semantic
-revision. Its session and live worker volume survived a verified backup, and
-parking removed the sidecar. The correction-pass run also queried the real
-native Unity Survey and current Governor fields and the native owned-orbital and
-completed-project global adapters before recovery. This bounded gate made seven
-provider calls and used 57,639 input, 1,482 output, and 733 reasoning tokens.
+input, and confirmed the restored turn. It then commissioned a real disposable
+Hermes world analyst over a frozen native perspective. The child completed
+without changing the native turn, while an independent semantic-snapshot probe
+returned in 182 ms, and its completion was delivered through the repaired
+at-least-once attention channel. A managed low-reasoning Hermes/Qwen seat then
+executed an opaque legal choice that advanced the native semantic revision. Its
+session and live worker volume survived a verified backup, and parking removed
+the sidecar. The run also queried the real native Unity Survey and current
+Governor fields and the native owned-orbital and completed-project global
+adapters before recovery. The sovereign action made five provider calls and
+used 46,036 input, 1,018 output, and 479 reasoning tokens.
 The fixture is self-cleaning and never used the developer's normal portal stack
 or desktop.
 

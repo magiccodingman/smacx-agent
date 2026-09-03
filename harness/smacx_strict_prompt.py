@@ -49,7 +49,7 @@ _STATE_TOOL_NAMES = frozenset({
     "smac_execute_choice", "smac_match_briefing", "smac_snapshot", "smac_observe",
 })
 _DISPOSABLE_TOOL_NAMES = frozenset({
-    *_STATE_TOOL_NAMES, "smac_world", "smac_reference", "smac_specialist", "smac_list",
+    *_STATE_TOOL_NAMES, "smac_world", "smac_investigate", "smac_list",
     "smac_memory", "smac_memory_update", "smac_notebook",
 })
 _COGNITION_TOOL_NAMES = frozenset({"smac_memory_update", "smac_notebook"})
@@ -385,8 +385,12 @@ def _collect_old_disposable_pairs(messages, tool_names, *, keep: int = 24):  # n
 
 
 def _install() -> None:
-    if os.environ.get("SMACX_STRICT_SYSTEM_PROMPT") != "1":
+    sovereign_mode = os.environ.get("SMACX_STRICT_SYSTEM_PROMPT") == "1"
+    specialist_mode = os.environ.get("SMACX_SPECIALIST_STRICT_PROMPT") == "1"
+    if not sovereign_mode and not specialist_mode:
         return
+    if sovereign_mode and specialist_mode:
+        raise RuntimeError("smacx_prompt_mode_conflict")
     path_value = os.environ.get("SMACX_SYSTEM_PROMPT_FILE", "")
     expected = os.environ.get("SMACX_SYSTEM_PROMPT_SHA256", "")
     if not path_value or len(expected) != 64:
@@ -419,6 +423,12 @@ def _install() -> None:
 
     system_prompt.build_system_prompt_parts = build_parts
     system_prompt.build_system_prompt = build
+
+    # Specialists use the same Hermes runtime but must never receive the
+    # sovereign request-tail context, attention lease, or semantic-GC hooks.
+    # Their system prompt is still replaced fail-closed by the hash above.
+    if specialist_mode:
+        return
 
     # Hermes deliberately defaults reasoning echo off for unknown custom
     # providers. Managed Qwen profiles opt in through config, and this wire
@@ -504,7 +514,7 @@ def _install() -> None:
             if not isinstance(message, dict) or message.get("role") != "tool":
                 continue
             call_id = str(message.get("tool_call_id") or "")
-            if tool_names.get(call_id) not in {"smac_world", "smac_reference", "smac_specialist"}:
+            if tool_names.get(call_id) not in {"smac_world", "smac_investigate"}:
                 continue
             signature = tool_signatures.get(call_id, call_id)
             prior = newest_query.get(signature)
@@ -593,7 +603,7 @@ def _install() -> None:
                 message for message in filtered
                 if isinstance(message, dict) and message.get("role") == "tool"
                 and tool_names.get(str(message.get("tool_call_id") or ""))
-                in {"smac_world", "smac_reference", "smac_specialist"}
+                in {"smac_world", "smac_investigate"}
             ]
             for message in query_tool_rows[:-1]:
                 message["content"] = json.dumps({

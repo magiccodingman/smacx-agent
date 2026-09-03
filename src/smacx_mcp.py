@@ -37,11 +37,9 @@ from smacx_controller import (
     match_briefing_is_acknowledged as controller_match_briefing_is_acknowledged,
     new_game,
     scenario_game,
-    put_match_knowledge,
     record_campaign_action as controller_record_campaign_action,
     read_game_reference,
     read_platform_memory,
-    read_match_knowledge,
     semantic_chat as controller_semantic_chat,
     semantic_group_chat as controller_semantic_group_chat,
     stop_game,
@@ -52,9 +50,9 @@ from smacx_controller import (
 from smacx_attention import AttentionError, WATCH_KINDS
 from smacx_world import WORLD_MODES, WorldQueryError
 from smacx_runtime_context import RuntimeContextAssembler
-from smacx_world_types import WorldObject, content_hash
+from smacx_world_types import content_hash
 from smacx_specialists import (
-    SpecialistError, SpecialistService, invoke_openai_specialist,
+    SpecialistError, SpecialistService,
 )
 
 
@@ -375,11 +373,12 @@ def _semantic_turn_handoff_gc(identity: dict, next_turn: int) -> None:
         attention.turn_handoff(next_turn)
         # Regeneration is deterministic on the changed turn; no old anchor is
         # copied into durable Hermes history.
-        _, world, _ = controller_world_service(
+        scope, world, _ = controller_world_service(
             match_id, session_id=session_id,
             agent_id=os.environ.get("SMACX_AGENT_ID", ""),
             perspective_id=os.environ.get("SMACX_PERSPECTIVE_ID", ""),
         )
+        SpecialistService(world.store.store, world.store, scope).cancel_for_turn_handoff()
         world.anchor(context_length=int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536")))
     except Exception:
         # Native handoff remains authoritative. The next request retries world
@@ -1119,7 +1118,7 @@ def smac_chat(
     after_sequence: int = 0,
     agent_id: str = "",
     perspective_id: str = "",
-    acknowledge: bool = True,
+    acknowledge: bool = False,
 ) -> dict:
     if action == "send":
         blocked = _capability_gap_blocked("Chat send")
@@ -1139,7 +1138,10 @@ def smac_chat(
             after_sequence=max(0, after_sequence),
             agent_id=agent_id,
             perspective_id=perspective_id,
-            acknowledge=acknowledge,
+            # Managed sovereign cognition is acknowledged only through the
+            # at-least-once attention lease.  Keep the argument for wire
+            # compatibility, but never let a chat read consume awareness.
+            acknowledge=False,
         )
     except (BridgeUnavailable, ValueError) as exc:
         return {"ok": False, "error": "game_not_connected", "message": str(exc), "next": "Call smac_launch."}
@@ -1586,7 +1588,7 @@ def smac_world(
     movement_profile_ref: str = "mobility-land-default",
     radius: int = 3,
     since_cursor: int = 0,
-    detail: Literal["compact", "standard", "deep"] = "standard",
+    detail: Literal["compact", "standard"] = "standard",
     continuation: str = "",
 ) -> dict:
     """Provider-facing facade; internal calculators remain independently bounded."""
@@ -1661,14 +1663,14 @@ def smac_cognition(
 ) -> dict:
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
     try:
-        _, world, attention = controller_world_service(
+        scope, world, attention = controller_world_service(
             match_id, session_id=session_id, agent_id=agent_id,
             perspective_id=perspective_id,
         )
         projection_identity, projection = world._projection()
         objects = {str(item["object_ref"]) for item in projection.get("objects", [])}
         refs = tuple(subject_refs or ())
-        if action != "watch_close" and any(ref not in objects for ref in refs):
+        if action not in {"watch_create", "watch_close"} and any(ref not in objects for ref in refs):
             raise AttentionError("unknown_or_cross_perspective_subject_ref")
         turn_state = next((item for item in projection.get("objects", [])
                            if item.get("kind") == "turn_state"), {})
@@ -1695,7 +1697,11 @@ def smac_cognition(
             if not operation_id:
                 raise AttentionError("operation_id_required")
             attention.complete_operation(operation_id, compact_outcome)
-            return {"ok": True, "operation_id": operation_id, "status": "completed"}
+            cancelled = SpecialistService(
+                world.store.store, world.store, scope,
+            ).cancel_for_operation(operation_id)
+            return {"ok": True, "operation_id": operation_id, "status": "completed",
+                    "cancelled_specialist_missions": cancelled}
         if not kind or not objective:
             raise AttentionError("operation_kind_and_objective_required")
         return {"ok": True, **attention.upsert_operation(
@@ -2624,69 +2630,6 @@ def smac_saves(
 
 @mcp.tool(
     description=(
-        "Read or record durable fair-play knowledge scoped to exactly one match_id. "
-        "A put requires the current session_id and snapshot revision, records turn/year provenance, "
-        "and preserves an audit history when a key is corrected. Store stable facts, not session-local "
-        "unit/base/prototype IDs; obvious ephemeral object references are mechanically rejected. "
-        "It cannot access arbitrary paths."
-    )
-)
-def smac_knowledge(
-    action: Literal["list", "get", "history", "put"],
-    match_id: str,
-    key: str = "",
-    value: str = "",
-    category: str = "general",
-    subject: str = "",
-    session_id: str = "",
-    observed_revision: str = "",
-    agent_id: str = "",
-    perspective_id: str = "",
-) -> dict:
-    try:
-        match_id, session_id, agent_id, perspective_id = _bound_scope_identity(
-            match_id, session_id, agent_id, perspective_id,
-        )
-    except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
-    if action == "list":
-        return read_match_knowledge(
-            match_id, agent_id=agent_id, perspective_id=perspective_id,
-        )
-    if action in {"get", "history"}:
-        if not key:
-            return {"ok": False, "error": "knowledge_key_required"}
-        return read_match_knowledge(
-            match_id,
-            key=key,
-            include_history=action == "history",
-            agent_id=agent_id,
-            perspective_id=perspective_id,
-        )
-    if not key or not value:
-        return {"ok": False, "error": "knowledge_key_and_value_required"}
-    ephemeral_reference = SESSION_LOCAL_KNOWLEDGE_REFERENCE.search(value)
-    if ephemeral_reference:
-        return {
-            "ok": False,
-            "error": {
-                "code": "session_local_knowledge_reference",
-                "message": (
-                    "Durable match knowledge cannot contain session-local unit, base, or "
-                    "prototype IDs. Record the stable named fact without that engine object ID."
-                ),
-            },
-            "rejected_text": ephemeral_reference.group(0),
-        }
-    return put_match_knowledge(
-        match_id, session_id, observed_revision, key, value,
-        category=category, subject=subject,
-        agent_id=agent_id, perspective_id=perspective_id,
-    )
-
-
-@mcp.tool(
-    description=(
         "Read the authoritative, durable memory for exactly one match/agent/perspective. "
         "working_set returns bounded current facts, relationships, goals, plans, commitments, summaries, "
         "recent events, and chat. search uses a rebuildable scoped SQLite FTS5/BM25 projection. recall accepts a JSON array "
@@ -2714,6 +2657,7 @@ def smac_memory(
     unread_only: bool = False,
     acknowledge: bool = False,
     limit: int = 100,
+    cursor: str = "",
 ) -> dict:
     try:
         match_id, session_id, agent_id, perspective_id = _bound_scope_identity(
@@ -2757,64 +2701,29 @@ def smac_memory(
         total_token_budget=total_token_budget,
         include_history=include_history,
         unread_only=unread_only,
-        acknowledge=acknowledge,
+        # The managed MCP has one cognitive acknowledgement authority:
+        # smac_attention_ack.  A history read cannot consume queued speech.
+        acknowledge=False,
         limit=limit,
+        cursor=cursor,
     )
 
 
 @mcp.tool(
     description=(
-        "Search or read the local SemanticKnowledge Alien Crossfire mechanics encyclopedia. "
-        "topics lists major gameplay domains; tree exposes the recursive semantic collection hierarchy; "
-        "collection_documents lists the directly contained articles of one selected collection; search uses "
-        "Smart semantic collection routing plus weighted hybrid retrieval and returns bounded evidence; get "
-        "reads one selected document. lookup and related turn named mechanics into focused "
-        "semantic queries for compatibility. The corpus is built locally from the operator's installed game "
-        "and explicit canonical/Wayback sources, contains no hidden match state, excludes strategy-guide "
-        "sections, and is not distributed with the project."
+        "Commission or inspect one disposable read-only evidence faculty. Use reference for "
+        "multi-hop mechanics research and world for broad context-heavy analysis; cheap bounded "
+        "mechanical questions remain direct smac_world calls. The platform chooses model, budgets, "
+        "deadline, retries, and execution class. Completion arrives through durable attention."
     )
 )
-def smac_reference(
-    action: Literal["topics", "tree", "collection_documents", "search", "get", "lookup", "related"],
-    query: str = "",
-    topic: str = "",
-    document_id: str = "",
-    collection_id: str = "",
-    entity_kind: str = "",
-    entity_key: str = "",
-    entities_json: str = "[]",
-    ruleset_id: str = "smacx",
-    limit: int = 8,
-    include_body: bool = False,
-) -> dict:
-    try:
-        entities = json.loads(entities_json)
-    except json.JSONDecodeError:
-        return {"ok": False, "error": "invalid_reference_entities_json"}
-    if not isinstance(entities, list) or len(entities) > 30:
-        return {"ok": False, "error": "invalid_reference_entities_json"}
-    return read_game_reference(
-        action, query=query, topic=topic, document_id=document_id, collection_id=collection_id,
-        limit=limit, include_body=include_body, entity_kind=entity_kind,
-        entity_key=entity_key, entities=entities, ruleset_id=ruleset_id,
-    )
-
-
-@mcp.tool(
-    description=(
-        "Ask one disposable read-only evidence specialist to compress a large legitimate "
-        "world or mechanics evidence set. Use only when direct smac_world/smac_reference "
-        "retrieval would be unwieldy. The child has no game, chat, memory, filesystem, or "
-        "sovereign authority; its cited result is fallible evidence. One child may run per seat."
-    )
-)
-def smac_specialist(
-    action: Literal["analyze", "retry"],
-    kind: Literal["reference_researcher", "world_analyst"] = "world_analyst",
-    question: str = "",
+def smac_investigate(
+    action: Literal["commission", "result", "retry", "cancel"],
+    faculty: Literal["reference", "world"] = "world",
+    objective: str = "",
+    operation_id: str = "",
     subject_refs: list[str] | None = None,
-    specialist_job_id: str = "",
-    token_budget: int = 4096,
+    mission_id: str = "",
 ) -> dict:
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
     try:
@@ -2823,46 +2732,49 @@ def smac_specialist(
             perspective_id=perspective_id,
         )
         service = SpecialistService(world.store.store, world.store, scope)
+        if action == "result":
+            if not mission_id:
+                raise SpecialistError("mission_id_required")
+            return service.get(mission_id)
         if action == "retry":
-            service.retry(specialist_job_id)
-            request_payload = service.load_request(specialist_job_id)
-        else:
-            evidence: list[dict] = []
-            corpus_revision = None
-            if kind == "world_analyst":
-                _, projection = world._projection()
-                objects = {str(item["object_ref"]): item
-                           for item in projection.get("objects", ())}
-                requested = tuple(dict.fromkeys(subject_refs or ()))[:128]
-                if not requested:
-                    raise SpecialistError("world_specialist_requires_subject_refs")
-                missing = [ref for ref in requested if ref not in objects]
-                if missing:
-                    raise SpecialistError("unknown_specialist_evidence_ref")
-                evidence = [{
-                    "evidence_ref": ref,
-                    "value": WorldObject.from_dict(objects[ref]).as_dict(provider_safe=True),
-                }
-                            for ref in requested]
-            else:
-                reference = read_game_reference(
-                    "search", query=question, limit=12, include_body=True,
-                )
-                if not reference.get("ok"):
-                    raise SpecialistError("reference_specialist_evidence_unavailable")
-                corpus_revision = str(reference.get("corpus_revision") or "unknown")
-                rows = reference.get("results") or reference.get("documents") or []
-                if not isinstance(rows, list):
-                    rows = [reference]
-                evidence = [{
-                    "evidence_ref": str(item.get("document_id") or f"reference-{index}"),
-                    "value": item,
-                } for index, item in enumerate(rows[:24]) if isinstance(item, dict)]
-            request_payload = service.create(
-                kind=kind, question=question, evidence=evidence,
-                corpus_revision=corpus_revision, token_budget=token_budget,
-            )
-        return service.run(request_payload, invoke_openai_specialist)
+            if not mission_id:
+                raise SpecialistError("mission_id_required")
+            return service.retry(mission_id)
+        if action == "cancel":
+            if not mission_id:
+                raise SpecialistError("mission_id_required")
+            return service.cancel(mission_id)
+        if not objective.strip():
+            raise SpecialistError("specialist_objective_required")
+        corpus_revision = None
+        if faculty == "reference":
+            reference_status = read_game_reference("status")
+            state = reference_status.get("state") \
+                if isinstance(reference_status.get("state"), dict) else {}
+            corpus_revision = str(state.get("revision") or "")
+            if not reference_status.get("ok") or not corpus_revision:
+                raise SpecialistError("reference_corpus_revision_unavailable")
+        if faculty == "world" and subject_refs:
+            _, projection = world._projection()
+            known = {str(item["object_ref"]) for item in projection.get("objects", ())}
+            if any(ref not in known for ref in subject_refs):
+                raise SpecialistError("unknown_specialist_subject_ref")
+        commissioned = service.commission(
+            faculty=faculty, objective=objective, operation_id=operation_id or None,
+            subject_refs=subject_refs or (),
+            corpus_revision=corpus_revision,
+            model_profile_revision=os.environ.get(
+                "SMACX_HARNESS_PROFILE_ID", "installation-helper"),
+        )
+        # Tiny synthesis jobs often finish while the call is still in flight;
+        # never hold the sovereign indefinitely for background work.
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            current = service.get(str(commissioned["mission_id"]))
+            if current.get("status") != "mission_pending":
+                return current
+            time.sleep(0.05)
+        return commissioned
     except (SpecialistError, WorldQueryError, ValueError, RuntimeError) as exc:
         return {"ok": False, "error": str(exc)}
 

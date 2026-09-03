@@ -159,7 +159,7 @@ def main() -> int:
             searched = controller.read_platform_memory(
                 "search", match_id, session_id=session_id, query="western border",
             )
-            if not searched.get("results"):
+            if not searched.get("items"):
                 raise AssertionError(f"scoped search failed: {searched}")
 
             sent = controller.semantic_chat(
@@ -173,11 +173,11 @@ def main() -> int:
             stored_chat = controller.read_platform_memory(
                 "chat", match_id, session_id=session_id, limit=10,
             )
-            if not sent.get("ok") or len(stored_chat.get("messages", [])) != 2:
+            if not sent.get("ok") or len(stored_chat.get("items", [])) != 2:
                 raise AssertionError(f"outbound chat was not persisted: {sent} / {stored_chat}")
             if any(
                 row.get("direction") == "outbound" and row.get("acknowledged_unix") is None
-                for row in stored_chat["messages"]
+                for row in stored_chat["items"]
             ):
                 raise AssertionError("outbound chat incorrectly entered unread attention")
 

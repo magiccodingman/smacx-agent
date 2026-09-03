@@ -9,7 +9,7 @@ import tempfile
 
 from smacx_attention import AttentionError, AttentionService
 from smacx_journal import CampaignJournal
-from smacx_regions import RegionBuilder
+from smacx_regions import Region, RegionBuilder
 from smacx_store import MemoryScope, SmacxStore
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
 from smacx_world import WorldService
@@ -136,6 +136,20 @@ def main() -> int:
             retreat_bundle, observation_sequence=32)
         assert next(item.object_ref for item in retreated["objects"]
                     if item.kind == "foreign_contact" and item.status == "active") == contact["object_ref"]
+        loop_bundle = bundle()
+        loop_bundle["_continuous_visible_contact_moves"] = {
+            "hidden-engine-91": [
+                {"from": "location-17", "to": "location-18"},
+                {"from": "location-18", "to": "location-34"},
+                {"from": "location-34", "to": "location-17"},
+            ],
+        }
+        looped = PerspectiveProjector(identity, prior_projection=loaded).project(
+            loop_bundle, observation_sequence=321)
+        loop_event = next(item for item in looped["temporal_events"]
+                          if item["event_kind"] == "contact_moved")
+        assert loop_event["from_location_ref"] == loop_event["to_location_ref"] \
+            == "location-17" and len(loop_event["path"]) == 3
         unproven_bundle = bundle()
         unproven_bundle["units"][-1]["tile_id"] = 2 * 16 + 2
         unproven = PerspectiveProjector(identity, prior_projection=loaded).project(
@@ -203,6 +217,40 @@ def main() -> int:
                                  target_ref="own-unit-7", context_length=65536)
         assert repeated["cache"]["hit"] is True
         first_anchor = service.anchor(context_length=65536)
+        frontiers = first_anchor["payload"]["frontiers"]
+        if not frontiers:
+            # This fixture starts with a completely remembered map. Publish a
+            # deterministic provider-visible frontier registry entry so the
+            # watch validation contract is exercised independently from map
+            # exploration coverage.
+            anchor_payload = dict(first_anchor["payload"])
+            frontier_ref = "frontier-" + content_hash({
+                "region_ref": "region-issued", "boundary_refs": ["location-18"],
+            })[:16]
+            anchor_payload["frontiers"] = [{
+                "frontier_ref": frontier_ref, "region_ref": "region-issued",
+                "boundary_refs": ["location-18"], "unknown_neighbor_count": 1,
+                "may_connect_elsewhere": True,
+            }]
+            world_store.save_anchor(
+                scope, identity, world_revision=1, observation_cursor=2,
+                context_tier="64k", payload=anchor_payload,
+                token_estimate=int(first_anchor["token_estimate"]),
+            )
+            frontiers = anchor_payload["frontiers"]
+        frontier = frontiers[0]
+        frontier_watch = AttentionService(store, journal, scope).create_watch(
+            "frontier_contact", [frontier["frontier_ref"]], {}, current_turn=12,
+        )
+        frontier_trigger = AttentionService(store, journal, scope).evaluate_watches(
+            [], temporal_events=[{
+                "event_kind": "contact_moved", "contact_ref": "contact-visible",
+                "path": [{"from_location_ref": "unknown-outside",
+                          "to_location_ref": frontier["boundary_refs"][0]}],
+            }], observation_cursor=35, turn=12,
+        )
+        assert [item["watch_id"] for item in frontier_trigger] == [
+            frontier_watch["watch_id"]]
         promoted_anchor = service.anchor(context_length=65536, focus_ref="own-unit-7")
         assert promoted_anchor["world_anchor_id"] != first_anchor["world_anchor_id"]
         with store._connect() as connection:
@@ -243,7 +291,7 @@ def main() -> int:
         acknowledged = attention.acknowledge(
             redelivery["attention_lease_id"], through_cursor=2,
         )
-        assert acknowledged["acknowledged_ids"] == [queued["attention_id"]]
+        assert queued["attention_id"] in acknowledged["acknowledged_ids"]
 
         # Watch/operation bounds and sovereign writer serialization.
         watch = attention.create_watch("base_threat", ["base-alpha"],
@@ -257,6 +305,133 @@ def main() -> int:
             },
         }], observation_cursor=3, turn=12)
         assert triggered[0]["watch_id"] == watch["watch_id"]
+        # A transient crossing is meaningful even if the contact starts and
+        # ends outside the watched region before the next reconciliation.
+        watched_region = Region(
+            "region-test-v1", "region-test", 1, "mobility-land-default",
+            "location-18", frozenset({"location-18"}), (),
+        )
+        world_store.save_regions(scope, identity.timeline_id, [watched_region], 1)
+        entry_watch = attention.create_watch(
+            "region_entry", [watched_region.region_ref], {}, current_turn=12,
+        )
+        exit_watch = attention.create_watch(
+            "region_exit", [watched_region.region_ref], {}, current_turn=12,
+        )
+        transient = attention.evaluate_watches([], temporal_events=[loop_event],
+                                               observation_cursor=4, turn=12)
+        assert [item["watch_id"] for item in transient].count(entry_watch["watch_id"]) == 1
+        assert [item["watch_id"] for item in transient].count(exit_watch["watch_id"]) == 1
+
+        # Derived refs must have actually been issued to this perspective.
+        try:
+            attention.create_watch("route_disruption", ["route-invented"], {}, current_turn=12)
+            raise AssertionError("invented semantic handle admitted")
+        except AttentionError:
+            pass
+        route_ref = mode_results["route"]["route"]["route_ref"]
+        route_watch = attention.create_watch(
+            "route_disruption", [route_ref], {}, current_turn=12,
+        )
+        route_path = mode_results["route"]["route"]["path"]
+        disrupted = attention.evaluate_watches([], temporal_events=[{
+            "event_kind": "terrain_or_improvement_changed",
+            "location_ref": route_path[0],
+            "affected_location_refs": [route_path[0]],
+        }], observation_cursor=5, turn=12)
+        assert [item["watch_id"] for item in disrupted] == [route_watch["watch_id"]]
+
+        rendezvous = service.query(
+            mode="compare", subject_refs=["own-unit-7"], target_ref="base-alpha",
+            context_length=65536,
+        )["items"][0]
+        rendezvous_watch = attention.create_watch(
+            "rendezvous_progress", [rendezvous["rendezvous_ref"]], {}, current_turn=12,
+        )
+        rendezvous_progress = attention.evaluate_watches([], temporal_events=[{
+            "event_kind": "contact_moved", "rendezvous_ref": rendezvous["rendezvous_ref"],
+            "location_ref": rendezvous["candidate_ref"],
+        }], observation_cursor=6, turn=12)
+        assert [item["watch_id"] for item in rendezvous_progress] == [
+            rendezvous_watch["watch_id"]]
+
+        # One-to-one region supersession migrates; a split is ambiguous and
+        # invalidates instead of silently choosing a new region.
+        migrated_region = Region(
+            "region-test-v2", "region-test", 2, "mobility-land-default",
+            "location-18", frozenset({"location-18", "location-34"}),
+            (watched_region.region_ref,),
+        )
+        world_store.save_regions(scope, identity.timeline_id, [migrated_region], 2)
+        attention.gc_watches(13)
+        with store._connect() as connection:
+            migrated_subjects = json.loads(connection.execute(
+                "SELECT subject_refs_json FROM world_watches WHERE watch_id=?",
+                (entry_watch["watch_id"],),
+            ).fetchone()[0])
+        assert migrated_subjects == [migrated_region.region_ref]
+        split_a = Region(
+            "region-test-a-v3", "region-test", 3, "mobility-land-default",
+            "location-18", frozenset({"location-18"}), (migrated_region.region_ref,),
+        )
+        split_b = Region(
+            "region-test-b-v1", "region-test-b", 1, "mobility-land-default",
+            "location-34", frozenset({"location-34"}), (migrated_region.region_ref,),
+        )
+        world_store.save_regions(scope, identity.timeline_id, [split_a, split_b], 3)
+        attention.gc_watches(14)
+        with store._connect() as connection:
+            assert connection.execute(
+                "SELECT status FROM world_watches WHERE watch_id=?",
+                (entry_watch["watch_id"],),
+            ).fetchone()[0] == "invalid"
+
+        merge_a = Region(
+            "region-merge-a-v1", "region-merge-a", 1, "mobility-land-default",
+            "location-18", frozenset({"location-18"}), (),
+        )
+        merge_b = Region(
+            "region-merge-b-v1", "region-merge-b", 1, "mobility-land-default",
+            "location-34", frozenset({"location-34"}), (),
+        )
+        world_store.save_regions(scope, identity.timeline_id, [merge_a, merge_b], 4)
+        merge_watch = attention.create_watch(
+            "region_entry", [merge_a.region_ref, merge_b.region_ref], {}, current_turn=14,
+        )
+        merged = Region(
+            "region-merge-a-v2", "region-merge-a", 2, "mobility-land-default",
+            "location-18", frozenset({"location-18", "location-34"}),
+            (merge_a.region_ref, merge_b.region_ref),
+        )
+        world_store.save_regions(scope, identity.timeline_id, [merged], 5)
+        attention.gc_watches(15)
+        with store._connect() as connection:
+            merge_row = connection.execute(
+                "SELECT status,subject_refs_json FROM world_watches WHERE watch_id=?",
+                (merge_watch["watch_id"],),
+            ).fetchone()
+        assert merge_row["status"] == "active"
+        assert json.loads(merge_row["subject_refs_json"]) == [merged.region_ref]
+
+        # TTL and linked-plan lifecycle are enforced independently of model behavior.
+        ttl_watch = attention.create_watch(
+            "base_status", ["base-alpha"], {}, current_turn=20, expires_turn=21,
+        )
+        plan = store.put_plan(scope, "watch-plan", "Hold Alpha", "Keep Alpha secure")
+        linked_watch = attention.create_watch(
+            "base_threat", ["base-alpha"], {"field": "threatened"},
+            current_turn=20, linked_plan_id=plan["plan_id"],
+        )
+        store.put_plan(scope, "watch-plan", "Hold Alpha", "No longer active",
+                       status="completed")
+        attention.gc_watches(22)
+        with store._connect() as connection:
+            statuses = {row["watch_id"]: row["status"] for row in connection.execute(
+                "SELECT watch_id,status FROM world_watches WHERE watch_id IN (?,?)",
+                (ttl_watch["watch_id"], linked_watch["watch_id"]),
+            )}
+        assert statuses == {ttl_watch["watch_id"]: "expired",
+                            linked_watch["watch_id"]: "expired"}
         operation = attention.upsert_operation(
             operation_id=None, kind="compare_bases", objective="Compare defense windows",
             referenced_world_objects=["base-alpha"], source_world_revision=1,
@@ -287,6 +462,13 @@ def main() -> int:
         "huge_quiet_anchor_bounded": True, "attention_redelivery": True,
         "watch_operation_bounds": True, "single_sovereign_writer": True,
         "watch_trigger_delivery": True, "world_invalid_operation_collected": True,
+        "advance_retreat_path_preserved": True,
+        "transient_region_entry_watch": True,
+        "region_exit_watch": True, "semantic_handle_registry": True,
+        "frontier_temporal_watch": True,
+        "route_disruption_watch": True, "rendezvous_watch": True,
+        "region_watch_migration_split_and_merge": True,
+        "watch_ttl_and_plan_cleanup": True,
     }}, separators=(",", ":")))
     return 0
 

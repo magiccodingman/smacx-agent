@@ -232,6 +232,8 @@ def main() -> int:
     base_url = ""
     csrf = ""
     hermes_result: dict | None = None
+    specialist_result: dict | None = None
+    specialist_name: str | None = None
     try:
         docker("volume", "create", control_volume)
         docker("network", "create", *labels, network)
@@ -405,6 +407,120 @@ def main() -> int:
             )["descriptor"]
             if descriptor["mcp_url"] != recovered_endpoint:
                 raise AssertionError("Control descriptor did not use the exact live MCP sidecar")
+            specialist_profile = {
+                "profile_id": descriptor["external_profile_id"],
+                "display_name": "Live specialist helper",
+                "provider_id": provider["provider_id"],
+                "model_id": descriptor["model_id"],
+                "reasoning_effort": descriptor["reasoning_effort"],
+                "context_length": descriptor["context_length"],
+                "generation_settings": descriptor["generation_settings"],
+            }
+            api(opener, base_url, "POST", "/api/v1/specialists", {
+                "profile": specialist_profile, "max_concurrency": 1,
+                "policy": {
+                    "installation_concurrency": 1, "seat_concurrency": 1,
+                    "automatic_retries": 0, "schema_repairs": 1,
+                    "investigation": {
+                        "tool_budget": 8, "provider_call_budget": 8,
+                        "provider_token_budget": 512000,
+                        "context_token_ceiling": min(
+                            int(descriptor["context_length"]), 262144),
+                        "output_token_budget": 1500, "wall_seconds": 180,
+                    },
+                },
+            }, csrf)
+            specialist_name = f"smacx-specialist-live-{suffix}"
+            docker(
+                "run", "-d", "--name", specialist_name, *labels,
+                "--network", network,
+                "--user", "10001:10001",
+                "-e", "SMACX_DB_PATH=/var/lib/smacx/smacx.sqlite3",
+                "-e", "SMACX_SECRET_ROOT=/var/lib/smacx/secrets",
+                "-e", "SMACX_WORLD_SNAPSHOT_ROOT=/var/lib/smacx/world-snapshots",
+                "-e", "SMACX_SPECIALIST_TRACE_ROOT=/var/lib/smacx/specialist-traces",
+                "-e", "SMACX_REFERENCE_URL=http://127.0.0.1:9",
+                "-e", "SMACX_HERMES_EXECUTABLE=/opt/hermes/hermes",
+                "-e", "SMACX_SPECIALIST_PYTHON=/opt/hermes/.venv/bin/python",
+                "-e", "SMACX_SPECIALIST_MCP_SCRIPT=/opt/smacx/src/smacx_specialist_mcp.py",
+                "-v", f"{control_volume}:/var/lib/smacx",
+                "--read-only", "--tmpfs", "/tmp:size=512m,mode=1777",
+                "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
+                "--entrypoint", "/opt/hermes/.venv/bin/python", harness_image,
+                "/opt/smacx/src/smacx_specialist_supervisor.py",
+            )
+            health_deadline = time.monotonic() + 20
+            while time.monotonic() < health_deadline:
+                status_value = api(opener, base_url, "GET", "/api/v1/specialists")
+                health = status_value.get("runtime") \
+                    if isinstance(status_value.get("runtime"), dict) else {}
+                if health.get("status") == "ready":
+                    break
+                time.sleep(0.5)
+            else:
+                raise AssertionError("specialist supervisor did not publish ready health")
+
+            specialist_before = asyncio.run(current_decision(recovered_endpoint))
+            specialist_started = time.monotonic()
+            commissioned = asyncio.run(mcp_tool(recovered_endpoint, "smac_investigate", {
+                "action": "commission", "faculty": "world",
+                "objective": (
+                    "Investigate the current opening theater through multiple bounded mechanical "
+                    "views: inspect the owned base and units, the immediate known area, local "
+                    "route and reachability constraints, reinforcement relationships, logistics, "
+                    "and any visible frontier evidence. Compare the relevant evidence, preserve "
+                    "unknown and stale status, identify limitations, and return only a compact "
+                    "mechanical synthesis. Do not choose or execute any strategic or gameplay action."
+                ),
+            }))
+            mission_id = str(commissioned.get("mission_id") or "")
+            if not mission_id:
+                raise AssertionError(f"live specialist commission failed: {commissioned}")
+            # The native bridge must remain responsive while the disposable
+            # reader is reasoning; the specialist has no native/game volume.
+            ui_probe_started = time.monotonic()
+            ui_probe = bridge_operation(recovered_sidecar, "semantic_snapshot")
+            ui_probe_ms = (time.monotonic() - ui_probe_started) * 1000
+            if not ui_probe.get("ok") or ui_probe_ms > 5000:
+                raise AssertionError(
+                    f"specialist stalled the native bridge: {ui_probe_ms:.1f}ms {ui_probe}")
+            mission_value = commissioned
+            mission_deadline = time.monotonic() + 240
+            while time.monotonic() < mission_deadline:
+                mission_value = asyncio.run(mcp_tool(
+                    recovered_endpoint, "smac_investigate",
+                    {"action": "result", "mission_id": mission_id},
+                ))
+                if mission_value.get("status") != "mission_pending":
+                    break
+                time.sleep(1)
+            if mission_value.get("status") != "accepted":
+                diagnostic = api(
+                    opener, base_url, "GET", f"/api/v1/specialists/missions/{mission_id}",
+                )
+                raise AssertionError(
+                    f"live gameplay specialist failed: {mission_value}; {diagnostic}")
+            specialist_after = asyncio.run(current_decision(recovered_endpoint))
+            if specialist_before.get("turn") != specialist_after.get("turn"):
+                raise AssertionError("read-only specialist impersonated native turn progress")
+            attention_episode = "episode-specialist-attention-" + suffix
+            attention_context = runtime_context(recovered_sidecar, attention_episode)
+            runtime_payload = attention_context.get("runtime_context") \
+                if isinstance(attention_context.get("runtime_context"), dict) else {}
+            attention_items = runtime_payload.get("attention", {}).get("items", []) \
+                if isinstance(runtime_payload.get("attention"), dict) else []
+            completion = next((item for item in attention_items
+                               if item.get("attention_kind") == "specialist_completion"
+                               and item.get("payload", {}).get("mission_id") == mission_id), None)
+            if completion is None:
+                raise AssertionError("specialist completion did not reach durable attention")
+            runtime_context(recovered_sidecar, attention_episode, end=True)
+            specialist_result = {
+                "accepted": True, "mission_id": mission_id,
+                "latency_ms": round((time.monotonic() - specialist_started) * 1000, 3),
+                "native_bridge_probe_ms": round(ui_probe_ms, 3),
+                "native_turn_unchanged": True, "completion_attention": True,
+            }
             prompt = (
                 "This is a bounded semantic integration test in a fresh tiny Citizen game. "
                 "Do not use the web. Read and acknowledge the match briefing if required, then call "
@@ -542,6 +658,7 @@ def main() -> int:
                     hermes_result and hermes_result.get("session_backup_verified")
                 ),
                 "hermes_usage": hermes_result.get("usage") if hermes_result else None,
+                "specialist": specialist_result,
             },
         }, separators=(",", ":")))
     except Exception:
@@ -567,6 +684,8 @@ def main() -> int:
             ):
                 if container_name:
                     docker("rm", "-f", str(container_name), check=False)
+        if specialist_name:
+            docker("rm", "-f", specialist_name, check=False)
         docker("rm", "-f", control_name, check=False)
         if worker:
             for volume_name in (

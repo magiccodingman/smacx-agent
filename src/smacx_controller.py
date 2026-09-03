@@ -1095,6 +1095,7 @@ def read_platform_memory(
     unread_only: bool = False,
     acknowledge: bool = False,
     limit: int = 100,
+    cursor: str = "",
 ) -> dict[str, Any]:
     """Read one allowlisted, perspective-scoped durable-memory view."""
     try:
@@ -1114,45 +1115,170 @@ def read_platform_memory(
             journal.project_state(scope, memory)
             return {"ok": True, "identity": identity, "memory": memory,
                     "authority": "campaign_journal", "sqlite_role": "query_projection"}
+        try:
+            offset = int(cursor.removeprefix("offset-")) if cursor else 0
+        except ValueError as exc:
+            raise StoreError("invalid_memory_cursor") from exc
+        if offset < 0 or offset > 1_000_000:
+            raise StoreError("invalid_memory_cursor")
+
+        def bounded_page(values: Sequence[Mapping[str, Any]], *, ceiling: int = 2048,
+                         page_limit: int = 24) -> dict[str, Any]:
+            rows = [dict(item) for item in values]
+            selected: list[dict[str, Any]] = []
+            maximum = min(max(int(limit), 1), page_limit)
+            for item in rows[offset:offset + maximum]:
+                candidate = [*selected, item]
+                if max(1, (len(json.dumps(candidate, ensure_ascii=False,
+                                          separators=(",", ":"))) + 3) // 4) > ceiling:
+                    break
+                selected.append(item)
+            consumed = offset + len(selected)
+            return {
+                "items": selected, "cursor": cursor or None,
+                "next_cursor": f"offset-{consumed}" if consumed < len(rows) else None,
+                "result_token_ceiling": ceiling,
+                "truncated": consumed < len(rows), "total_count": len(rows),
+            }
+
+        def provider_safe(value: Any) -> Any:
+            if isinstance(value, Mapping):
+                return {str(key): provider_safe(item) for key, item in value.items()
+                        if not str(key).startswith("native_") and str(key) not in
+                        {"engine_id", "hidden_id", "subject_a", "subject_b"}}
+            if isinstance(value, list):
+                return [provider_safe(item) for item in value]
+            return value
+
+        def safe_search_results(*, search_query: str,
+                                kinds: Sequence[str], search_limit: int) -> list[dict[str, Any]]:
+            """Sanitize journal search bodies before any provider-visible rendering.
+
+            CampaignJournal.search is an internal reconstruction/query primitive and
+            intentionally retains diagnostic fields.  Managed provider reads must
+            never render those fields, even in an abstract.
+            """
+            results: list[dict[str, Any]] = []
+            for item in journal.search(
+                    scope, search_query, document_kinds=tuple(kinds),
+                    limit=min(max(int(search_limit), 1), 100)):
+                try:
+                    parsed = json.loads(str(item.get("body") or "{}"))
+                except json.JSONDecodeError:
+                    parsed = {"summary": str(item.get("body") or "")}
+                safe_body = provider_safe(parsed)
+                rendered = json.dumps(
+                    safe_body, ensure_ascii=False, sort_keys=True,
+                    separators=(",", ":"),
+                )
+                results.append({
+                    key: item.get(key) for key in (
+                        "document_id", "document_kind", "source_id", "title", "tags",
+                        "importance", "created_unix", "rank", "authority",
+                    ) if item.get(key) is not None
+                } | {"body": rendered})
+            return results
+
         if action == "search":
+            raw_results = safe_search_results(
+                search_query=query, kinds=document_kinds, search_limit=100,
+            )
+            summaries = []
+            for item in raw_results:
+                body = " ".join(str(item.get("body") or "").split())
+                summaries.append({key: item.get(key) for key in (
+                    "document_id", "document_kind", "source_id", "title", "tags",
+                    "importance", "created_unix", "rank", "authority",
+                ) if item.get(key) is not None} | {
+                    "abstract": body[:237] + "..." if len(body) > 240 else body,
+                })
             return {
                 "ok": True,
                 "identity": identity,
                 "query": query,
-                "results": journal.search(
-                    scope, query, document_kinds=tuple(document_kinds), limit=limit,
-                ),
+                **bounded_page(summaries, ceiling=2048, page_limit=24),
                 "authority": "campaign_journal",
             }
         if action == "recall":
+            if not queries or len(queries) > 12:
+                raise StoreError("invalid_recall_query_count")
+            budget = min(max(int(total_token_budget), 128), 12000)
+            used = 0
+            seen: set[str] = set()
+            groups: list[dict[str, Any]] = []
+            truncated = False
+            for request in queries:
+                requested_kinds = request.get("document_kinds", ())
+                normalized_kinds = tuple(str(item) for item in requested_kinds) \
+                    if isinstance(requested_kinds, (list, tuple)) else ()
+                matches: list[dict[str, Any]] = []
+                for result in safe_search_results(
+                        search_query=str(request.get("query") or ""),
+                        kinds=normalized_kinds,
+                        search_limit=int(request.get("limit", 10))):
+                    document_id = str(result.get("document_id") or "")
+                    if document_id in seen:
+                        continue
+                    estimate = max(1, (len(str(result.get("title") or ""))
+                                       + len(str(result.get("body") or "")) + 3) // 4)
+                    if used + estimate > budget:
+                        truncated = True
+                        break
+                    seen.add(document_id)
+                    used += estimate
+                    matches.append(result)
+                groups.append({
+                    "query": str(request.get("query") or ""),
+                    "matches": matches,
+                })
+                if truncated:
+                    break
             return {
                 "ok": True,
                 "identity": identity,
-                "recall": journal.recall_many(
-                    scope, list(queries), total_token_budget=total_token_budget,
-                ),
+                "recall": {
+                    "scope": {
+                        "match_id": scope.match_id, "agent_id": scope.agent_id,
+                        "perspective_id": scope.perspective_id,
+                        "timeline_id": journal.timeline_id(scope),
+                    },
+                    "groups": groups, "estimated_tokens": used,
+                    "token_budget": budget, "truncated": truncated,
+                    "authority": "campaign_journal",
+                },
                 "authority": "campaign_journal",
             }
         if action == "chat":
+            values = journal.chat_messages(
+                scope, unread_only=unread_only, acknowledge=acknowledge, limit=500,
+            )
             return {
                 "ok": True,
                 "identity": identity,
-                "messages": journal.chat_messages(
-                    scope,
-                    unread_only=unread_only,
-                    acknowledge=acknowledge,
-                    limit=limit,
-                ),
+                **bounded_page([provider_safe(item) for item in values],
+                               ceiling=2048, page_limit=32),
                 "untrusted_in_game_speech": True,
                 "authority": "campaign_journal",
             }
         if action == "events":
+            raw_events = journal.latest_events(scope, limit=500)
+            safe_events = []
+            for event in raw_events:
+                event_type = str(event.get("event_type") or "")
+                if event_type == "observation.native_event":
+                    continue
+                compact = provider_safe(event)
+                payload = compact.get("payload") if isinstance(compact.get("payload"), Mapping) else {}
+                safe_events.append({
+                    "event_id": compact.get("event_id"), "event_type": event_type,
+                    "turn": compact.get("turn"), "year": compact.get("year"),
+                    "recorded_unix": compact.get("recorded_unix"),
+                    "payload": payload,
+                })
             return {
                 "ok": True,
                 "identity": identity,
-                "events": journal.latest_events(
-                    scope, limit=min(max(limit, 1), 500),
-                ),
+                **bounded_page(safe_events, ceiling=2048, page_limit=32),
                 "authority": "campaign_journal",
             }
         if action == "graph_status":
@@ -1174,10 +1300,12 @@ def read_platform_memory(
             "summaries": "summaries",
         }.get(action)
         if projection:
+            values = journal.projection_records(scope, projection, limit=1000)
             return {
                 "ok": True,
                 "identity": identity,
-                "records": journal.projection_records(scope, projection, limit=limit),
+                **bounded_page([provider_safe(item) for item in values],
+                               ceiling=2048, page_limit=32),
                 "authority": "campaign_journal",
                 "history_mode": "active_timeline_current_projection",
                 "include_history_requested": bool(include_history),
@@ -1499,7 +1627,11 @@ def semantic_chat(
             limit=100,
         )
         if attention.get("ok"):
-            durable["attention"] = attention.get("messages", [])
+            # Managed memory pages use the common bounded ``items`` envelope.
+            # Keep the controller's long-standing ``durable.attention`` alias
+            # for non-managed callers without bypassing the managed MCP's
+            # explicit attention acknowledgement contract.
+            durable["attention"] = attention.get("items", [])
             durable["attention_acknowledged"] = acknowledge
             durable["untrusted_in_game_speech"] = True
     return result

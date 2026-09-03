@@ -171,6 +171,25 @@ class WorldStore:
             "delta": json.loads(row["payload_json"]),
         } for row in rows]
 
+    def temporal_events_since(self, scope: MemoryScope, timeline_id: str,
+                              since_cursor: int, *, limit: int = 256) -> list[dict[str, Any]]:
+        """Return bounded provider-safe semantic history, never native feed rows."""
+        with self.store._connect() as connection:
+            rows = connection.execute(
+                "SELECT observation_sequence,journal_event_id,turn,payload_json,continuity "
+                "FROM world_observation_projection WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND observation_kind='semantic_event' "
+                "AND observation_sequence>? ORDER BY observation_sequence,journal_event_id LIMIT ?",
+                (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)),
+                 min(max(int(limit), 1), 1024)),
+            ).fetchall()
+        return [{
+            "observation_cursor": int(row["observation_sequence"]),
+            "journal_event_id": str(row["journal_event_id"]), "turn": row["turn"],
+            "continuity": str(row["continuity"]),
+            "event": json.loads(row["payload_json"]),
+        } for row in rows]
+
     def current_anchor(self, scope: MemoryScope, timeline_id: str, context_tier: str) -> dict[str, Any] | None:
         with self.store._connect() as connection:
             row = connection.execute(
@@ -331,6 +350,11 @@ class WorldStore:
             "observation_cursor": projection["observation_cursor"],
             "projection_checksum": projection["projection_checksum"],
             "calculator_versions": dict(calculator_versions), "projection": projection,
+            # The frozen analyst view includes semantic, provider-safe temporal
+            # evidence only. Collector-private native rows never enter it.
+            "temporal_events": self.temporal_events_since(
+                scope, identity.timeline_id, 0, limit=1024,
+            ),
         }
         digest = content_hash(payload)
         directory = self.root / scope.match_id / scope.perspective_id / identity.timeline_id
@@ -400,6 +424,49 @@ class WorldStore:
             raise WorldStoreError("world_snapshot_manifest_mismatch")
         return payload
 
+    def pin_snapshot(self, snapshot_id: str, owner_kind: str, owner_id: str) -> None:
+        if owner_kind not in {"specialist_mission", "checkpoint", "recovery"}:
+            raise WorldStoreError("invalid_snapshot_pin_owner")
+        with self.store.transaction() as connection:
+            if not connection.execute(
+                "SELECT 1 FROM world_snapshots WHERE snapshot_id=?", (snapshot_id,),
+            ).fetchone():
+                raise WorldStoreError("world_snapshot_missing")
+            connection.execute(
+                "INSERT OR IGNORE INTO world_snapshot_pins(snapshot_id,owner_kind,owner_id,pinned_unix) "
+                "VALUES(?,?,?,?)", (snapshot_id, owner_kind, owner_id, time.time()),
+            )
+
+    def unpin_snapshot(self, snapshot_id: str, owner_kind: str, owner_id: str) -> None:
+        with self.store.transaction() as connection:
+            connection.execute(
+                "DELETE FROM world_snapshot_pins WHERE snapshot_id=? AND owner_kind=? AND owner_id=?",
+                (snapshot_id, owner_kind, owner_id),
+            )
+
+    def load_snapshot_content(self, snapshot_id: str) -> dict[str, Any]:
+        """Load a pinned immutable view without consulting the live projection."""
+        with self.store._connect() as connection:
+            row = connection.execute(
+                "SELECT content_path,content_sha256 FROM world_snapshots WHERE snapshot_id=?",
+                (snapshot_id,),
+            ).fetchone()
+        if not row:
+            raise WorldStoreError("world_snapshot_missing")
+        try:
+            raw = Path(str(row["content_path"])).read_bytes()
+        except OSError as exc:
+            raise WorldStoreError("world_snapshot_content_missing") from exc
+        if hashlib.sha256(raw).hexdigest() != str(row["content_sha256"]):
+            raise WorldStoreError("world_snapshot_integrity_failure")
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise WorldStoreError("world_snapshot_invalid") from exc
+        if not isinstance(value, dict):
+            raise WorldStoreError("world_snapshot_invalid")
+        return value
+
     def restore_projection_from_snapshot(
         self, scope: MemoryScope, payload: Mapping[str, Any], *,
         target_timeline_id: str, journal_head_hash: str,
@@ -455,10 +522,13 @@ class WorldStore:
             # Content-addressed checkpoint snapshots are deliberately retained:
             # a repeated restore of the same advertised checkpoint must remain
             # possible and deterministic. Checkpoint-retention GC owns them.
+            # Specialist missions/attempts/traces are diagnostic evidence and
+            # are never erased by rollback.  They are cancelled/marked
+            # non-model-visible by the specialist lifecycle reconciler.
             for table in ("attention_leases", "attention_items", "attention_heads", "world_query_cache",
                           "world_anchors", "world_observation_projection", "world_regions",
                           "world_watches", "cognitive_operations",
-                          "sovereign_leases", "specialist_jobs", "world_heads"):
+                          "sovereign_leases", "world_heads"):
                 connection.execute(
                     f"DELETE FROM {table} WHERE match_id=? AND agent_id=? AND perspective_id=? "
                     "AND timeline_id<>?", key,

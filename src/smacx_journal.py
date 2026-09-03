@@ -161,10 +161,13 @@ class CampaignJournal:
         year: int | None = None,
         timeline_id: str = "",
         commit_reason: str = "",
+        idempotency_key: str = "",
     ) -> dict[str, Any]:
         event_type = _safe_key(event_type, "journal_event_type")
         if session_id:
             _safe_identity(session_id, "session_id")
+        if idempotency_key:
+            _safe_key(idempotency_key, "journal_idempotency_key")
         timeline = self.timeline_id(scope, timeline_id)
         path = self.perspective_root(scope, timeline)
         candidate = dict(payload)
@@ -173,6 +176,30 @@ class CampaignJournal:
         # Backups take the exclusive form of the root lock. An archive can
         # therefore never split an event write from its manifest/head update.
         with self._locked(self.root, shared=True), self._locked(path):
+            if idempotency_key:
+                marker_name = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+                marker = self._load(path / "idempotency" / f"{marker_name}.json", {})
+                event_name = str(marker.get("event_file") or "") \
+                    if isinstance(marker, Mapping) else ""
+                existing = self._load(path / "events" / event_name, None) \
+                    if event_name else None
+                if isinstance(existing, dict) \
+                        and existing.get("idempotency_key") == idempotency_key:
+                    return existing
+                # Recover the narrow event/manifest -> marker crash window.
+                event_files = sorted((path / "events").glob("*.json"), reverse=True) \
+                    if (path / "events").is_dir() else []
+                for existing_path in event_files:
+                    existing = self._load(existing_path, None)
+                    if isinstance(existing, dict) \
+                            and existing.get("idempotency_key") == idempotency_key:
+                        _atomic_json(path / "idempotency" / f"{marker_name}.json", {
+                            "idempotency_key": idempotency_key,
+                            "event_file": existing_path.name,
+                            "event_id": existing.get("event_id"),
+                            "sequence": existing.get("sequence"),
+                        })
+                        return existing
             manifest = self._manifest(scope, timeline)
             sequence = int(manifest.get("sequence") or 0) + 1
             previous = str(manifest.get("head_hash") or "0" * 64)
@@ -190,6 +217,7 @@ class CampaignJournal:
                 "year": year,
                 "recorded_unix": time.time(),
                 "previous_hash": previous,
+                "idempotency_key": idempotency_key or None,
                 "payload": candidate,
             }
             body["event_hash"] = hashlib.sha256(previous.encode("ascii") + _canonical(body)).hexdigest()
@@ -204,6 +232,13 @@ class CampaignJournal:
                 "updated_unix": body["recorded_unix"],
             })
             _atomic_json(path / "manifest.json", manifest)
+            if idempotency_key:
+                _atomic_json(path / "idempotency" / f"{marker_name}.json", {
+                    "idempotency_key": idempotency_key,
+                    "event_file": event_path.name,
+                    "event_id": body["event_id"],
+                    "sequence": sequence,
+                })
             self._update_catalog(scope, timeline, manifest)
             cache_key = str(path)
             with self._cache_lock:
@@ -547,7 +582,7 @@ class CampaignJournal:
             supplied = payload.get("record_input")
             if memory_kind in state and isinstance(record, dict):
                 stable = next((str(record.get(name)) for name in (
-                    "goal_key", "commitment_key", "actor_id", "section", "topic",
+                    "goal_key", "plan_key", "commitment_key", "actor_id", "section", "topic",
                 ) if record.get(name) is not None), str(event["event_id"]))
                 state[memory_kind][stable] = {
                     "input": supplied, "record": record,
@@ -656,11 +691,36 @@ class CampaignJournal:
         facts.sort(key=lambda item: float(
             item.get("updated_unix") or item.get("created_unix") or 0
         ), reverse=True)
-        goals = sorted(records("goals"), key=lambda item: (
+        # Provider-facing working cognition is a live projection, not a newest-
+        # rows view.  Filter semantic dead history before applying section
+        # budgets; otherwise a burst of recently completed work can evict an
+        # older promise or plan that is still binding.  The journal and search
+        # projection retain every historical revision.
+        goals = [item for item in records("goals")
+                 if str(item.get("status") or "active") in {"active", "paused"}]
+        goals = sorted(goals, key=lambda item: (
             -int(item.get("priority") or 0), -float(item.get("created_unix") or 0),
         ))[:100]
-        commitments = records("commitments")[:100]
-        plans = records("plans")[:100]
+        commitment_status_rank = {
+            "accepted": 0, "binding": 0, "active": 0, "proposed": 1, "offered": 1,
+        }
+        commitments = [item for item in records("commitments")
+                       if str(item.get("status") or "proposed") in commitment_status_rank]
+        commitments.sort(key=lambda item: (
+            commitment_status_rank.get(str(item.get("status") or "proposed"), 2),
+            int(item.get("due_turn") or 2**31 - 1),
+            -float(item.get("created_unix") or 0),
+        ))
+        commitments = commitments[:100]
+        plans = [item for item in records("plans")
+                 if str(item.get("status") or "proposed") in {"proposed", "active", "paused"}]
+        plans.sort(key=lambda item: (
+            {"active": 0, "paused": 1, "proposed": 2}.get(
+                str(item.get("status") or "proposed"), 3,
+            ),
+            -float(item.get("created_unix") or 0),
+        ))
+        plans = plans[:100]
         beliefs = records("beliefs")[:100]
         relationships = records("relationships")[:100]
         summaries = records("summaries")

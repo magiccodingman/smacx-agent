@@ -81,6 +81,54 @@ def main() -> int:
         )
         if restored.search(scope, "western frontier"):
             raise AssertionError("post-checkpoint search memory leaked into restored timeline")
+
+        # Exercise the real journal projection rather than a handcrafted
+        # runtime fixture: newer dead records must not evict old still-live
+        # cognition before provider section budgeting, and plan_key is the
+        # canonical identity across repeated revisions.
+        pressure_scope = MemoryScope(
+            "match-journal-pressure", "agent-journal-pressure",
+            "perspective-journal-pressure",
+        )
+        journal.append(pressure_scope, "memory.commitment", {
+            "record": {"commitment_key": "old-binding", "title": "Defend our ally",
+                       "terms": "Hold the rendezvous", "status": "accepted",
+                       "created_unix": 1},
+        })
+        journal.append(pressure_scope, "memory.goal", {
+            "record": {"goal_key": "live-goal", "title": "Hold the peninsula",
+                       "status": "active", "priority": 100, "created_unix": 1},
+        })
+        journal.append(pressure_scope, "memory.plan", {
+            "record": {"plan_key": "reserve-plan", "title": "First revision",
+                       "objective": "Hold one reserve", "status": "active",
+                       "created_unix": 1},
+        })
+        for index in range(125):
+            journal.append(pressure_scope, "memory.commitment", {
+                "record": {"commitment_key": f"resolved-{index}", "title": "Resolved",
+                           "terms": "historical", "status": "fulfilled",
+                           "created_unix": 1000 + index},
+            })
+            journal.append(pressure_scope, "memory.goal", {
+                "record": {"goal_key": f"dead-{index}", "title": "Dead",
+                           "status": "completed", "priority": 100,
+                           "created_unix": 1000 + index},
+            })
+        journal.append(pressure_scope, "memory.plan", {
+            "record": {"plan_key": "reserve-plan", "title": "Current revision",
+                       "objective": "Hold two reserves", "status": "active",
+                       "created_unix": 9999},
+        })
+        pressured = journal.working_state(
+            pressure_scope,
+            token_budgets={"commitments": 250, "goals": 250, "plans": 250},
+        )["sections"]
+        assert [item["commitment_key"] for item in pressured["commitments"]] == ["old-binding"]
+        assert [item["goal_key"] for item in pressured["goals"]] == ["live-goal"]
+        assert len(pressured["plans"]) == 1
+        assert pressured["plans"][0]["title"] == "Current revision"
+        assert journal.search(pressure_scope, "historical", document_kinds=("commitment",))
         print(json.dumps({
             "event": "pass", "payload": {
                 "hash_chain": True, "portable_replay": True,
@@ -91,6 +139,9 @@ def main() -> int:
                 "timeline_parent_prefix_replayed": True,
                 "search_and_chat_journal_authoritative": True,
                 "post_checkpoint_search_memory_excluded": True,
+                "live_filter_before_real_budget": True,
+                "canonical_plan_key_projection": True,
+                "dead_history_searchable": True,
             },
         }, separators=(",", ":")))
     return 0

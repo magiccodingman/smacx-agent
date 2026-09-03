@@ -184,6 +184,7 @@ class PerspectiveProjector:
         revision_hint = int(self.prior_projection.get("world_revision", 0)) + 1
         provenance = f"observation-{observation_sequence}"
         objects: list[WorldObject] = []
+        temporal_events: list[dict[str, Any]] = []
         squares: list[KnownSquare] = []
         map_data = bundle.get("map") if isinstance(bundle.get("map"), Mapping) else {}
         shape = MapShape(int(map_data.get("width", 2)), int(map_data.get("height", 1)),
@@ -294,6 +295,7 @@ class PerspectiveProjector:
             else:
                 native_key = str(unit.get("native_observation_key") or unit.get("id"))
                 path = movement_proofs.get(native_key, ())
+                prior_contact = self.contacts.states.get(native_key)
                 ref = self.contacts.observe(
                     native_key, at, turn,
                     continuous_path=path if isinstance(path, Iterable)
@@ -301,6 +303,25 @@ class PerspectiveProjector:
                 )
                 kind = "foreign_contact"
                 metadata = {"native_observation_key": native_key}
+                safe_path = [
+                    {"from_location_ref": str(step.get("from")),
+                     "to_location_ref": str(step.get("to"))}
+                    for step in path
+                    if isinstance(step, Mapping) and step.get("from") and step.get("to")
+                ] if isinstance(path, Iterable) and not isinstance(path, (str, bytes, Mapping)) else []
+                if prior_contact is None:
+                    temporal_events.append({
+                        "event_kind": "contact_appeared", "contact_ref": ref,
+                        "location_ref": at, "turn": turn,
+                    })
+                if safe_path:
+                    temporal_events.append({
+                        "event_kind": "contact_moved", "contact_ref": ref,
+                        "path": safe_path,
+                        "from_location_ref": safe_path[0]["from_location_ref"],
+                        "to_location_ref": safe_path[-1]["to_location_ref"],
+                        "turn": turn,
+                    })
             fields = {name: _evidence(value, current=True, owned=owned, turn=turn,
                                       world_revision=revision_hint, provenance_ref=provenance)
                       for name, value in unit.items()
@@ -333,6 +354,10 @@ class PerspectiveProjector:
                 contact.contact_ref, "foreign_contact", stale_fields,
                 contact.last_location_ref, status="lost",
             ))
+            temporal_events.append({
+                "event_kind": "contact_lost", "contact_ref": contact.contact_ref,
+                "location_ref": contact.last_location_ref, "turn": turn,
+            })
         for faction in bundle.get("factions", ()):
             if not isinstance(faction, Mapping):
                 continue
@@ -392,6 +417,7 @@ class PerspectiveProjector:
             "observation_cursor": observation_sequence,
             "continuity": str(bundle.get("continuity", "complete")),
             "objects": objects, "known_squares": squares,
+            "temporal_events": temporal_events,
         }
 
 

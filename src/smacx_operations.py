@@ -118,6 +118,27 @@ def _validate_recovery_archive(path: Path) -> list[tarfile.TarInfo]:
     return members
 
 
+def _validate_specialist_trace_archive(path: Path) -> list[tarfile.TarInfo]:
+    """Validate retained specialist diagnostics without trusting archive paths."""
+    members: list[tarfile.TarInfo] = []
+    total = 0
+    try:
+        with tarfile.open(path, "r:gz") as archive:
+            for member in archive.getmembers():
+                name = PurePosixPath(member.name)
+                if name.is_absolute() or ".." in name.parts or not name.parts \
+                        or name.parts[0] != "specialist-traces" \
+                        or not (member.isfile() or member.isdir()):
+                    raise StoreError("backup_specialist_trace_archive_unsafe")
+                total += max(int(member.size), 0)
+                if total > 100 * 1024 * 1024 * 1024:
+                    raise StoreError("backup_specialist_trace_archive_too_large")
+                members.append(member)
+    except (OSError, tarfile.TarError) as exc:
+        raise StoreError("backup_specialist_trace_archive_invalid") from exc
+    return members
+
+
 class OperationsManager:
     """One-process coordinator backed by cross-process-safe SQLite claims."""
 
@@ -453,6 +474,18 @@ class OperationsManager:
                 self.data_root / "campaigns"
             ).archive_to(campaign_archive)
             os.chmod(campaign_archive, 0o600)
+            specialist_trace_archive = temporary_path / "specialist-traces.tar.gz"
+            specialist_trace_root = self.data_root / "specialist-traces"
+            specialist_trace_root.mkdir(parents=True, exist_ok=True, mode=0o750)
+            with tarfile.open(specialist_trace_archive, "w:gz") as archive:
+                archive.add(specialist_trace_root, arcname="specialist-traces",
+                            recursive=True)
+            os.chmod(specialist_trace_archive, 0o600)
+            specialist_trace_result = {
+                "path": "specialist-traces.tar.gz",
+                "sha256": _sha256(specialist_trace_archive),
+                "size_bytes": specialist_trace_archive.stat().st_size,
+            }
             secret_count = self._copy_secrets(temporary_path / "secrets") if include_secrets else 0
             workers: list[dict[str, Any]] = []
             harnesses: list[dict[str, Any]] = []
@@ -514,6 +547,7 @@ class OperationsManager:
                     "size_bytes": campaign_result["size_bytes"],
                 },
                 "recovery_snapshots": recovery_result,
+                "specialist_traces": specialist_trace_result,
                 "secrets": {"included": include_secrets, "count": secret_count},
                 "workers": workers,
                 "harnesses": harnesses,
@@ -602,6 +636,17 @@ class OperationsManager:
                     or _sha256(recovery_archive) != recovery_descriptor.get("sha256"):
                 raise StoreError("backup_recovery_archive_invalid")
             _validate_recovery_archive(recovery_archive)
+        specialist_trace_descriptor = manifest.get("specialist_traces")
+        if isinstance(specialist_trace_descriptor, Mapping):
+            specialist_trace_archive = path / str(
+                specialist_trace_descriptor.get("path") or "")
+            if specialist_trace_archive.parent != path.resolve() \
+                    or not specialist_trace_archive.is_file() \
+                    or specialist_trace_archive.name != "specialist-traces.tar.gz" \
+                    or _sha256(specialist_trace_archive) \
+                    != specialist_trace_descriptor.get("sha256"):
+                raise StoreError("backup_specialist_trace_archive_invalid")
+            _validate_specialist_trace_archive(specialist_trace_archive)
         for worker in manifest.get("workers", []):
             relative = worker.get("archive")
             if not isinstance(relative, str) or not re.fullmatch(
@@ -626,6 +671,7 @@ class OperationsManager:
             "harness_count": len(manifest.get("harnesses", [])),
             "campaigns_included": isinstance(campaign_descriptor, Mapping),
             "recovery_snapshots_included": isinstance(recovery_descriptor, Mapping),
+            "specialist_traces_included": isinstance(specialist_trace_descriptor, Mapping),
             "includes_secrets": bool(manifest.get("secrets", {}).get("included")),
             "size_bytes": _tree_size(path),
         }
@@ -1318,6 +1364,34 @@ def restore_backup_offline(control, data_root: Path | str, backup_id: str,
             raise
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+    specialist_trace_archive = source_root / "specialist-traces.tar.gz"
+    specialist_traces_restored = False
+    if specialist_trace_archive.is_file():
+        members = _validate_specialist_trace_archive(specialist_trace_archive)
+        root = Path(data_root).expanduser().resolve()
+        staging = Path(tempfile.mkdtemp(prefix=".specialist-trace-restore-", dir=root))
+        previous = root / f".specialist-traces-previous-{uuid.uuid4().hex}"
+        target = root / "specialist-traces"
+        moved_previous = False
+        try:
+            with tarfile.open(specialist_trace_archive, "r:gz") as archive:
+                archive.extractall(staging, members=members)
+            candidate = staging / "specialist-traces"
+            if not candidate.is_dir():
+                raise StoreError("backup_specialist_trace_archive_missing_root")
+            if target.exists():
+                os.replace(target, previous)
+                moved_previous = True
+            os.replace(candidate, target)
+            specialist_traces_restored = True
+            if moved_previous:
+                shutil.rmtree(previous)
+        except Exception:
+            if moved_previous and not target.exists() and previous.exists():
+                os.replace(previous, target)
+            raise
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
     with restored_store.transaction() as connection:
         connection.execute(
             "UPDATE backup_sets SET status='restored', restored_unix=? WHERE backup_id=?",
@@ -1326,4 +1400,5 @@ def restore_backup_offline(control, data_root: Path | str, backup_id: str,
     return {"ok": True, "backup_id": backup_id,
             "emergency_backup_id": emergency["backup_id"], "workers_restored": False,
             "campaigns_restored": campaigns_restored,
-            "recovery_snapshots_restored": recovery_snapshots_restored}
+            "recovery_snapshots_restored": recovery_snapshots_restored,
+            "specialist_traces_restored": specialist_traces_restored}

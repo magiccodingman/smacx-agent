@@ -195,7 +195,8 @@ class AttentionService:
             operations = connection.execute(
                 "SELECT operation_id,operation_kind,objective,referenced_world_objects_json,"
                 "linked_plan_id,linked_goal_id,last_renewed_turn,source_world_revision,status,"
-                "foreground,compact_outcome,source_dependency_hash,source_world_epoch FROM cognitive_operations WHERE match_id=? "
+                "foreground,compact_outcome,specialist_result_receipts_json,"
+                "source_dependency_hash,source_world_epoch FROM cognitive_operations WHERE match_id=? "
                 "AND agent_id=? AND perspective_id=? AND timeline_id=? "
                 "AND status IN ('active','stale') ORDER BY foreground DESC,updated_unix DESC LIMIT 8",
                 self._key(timeline),
@@ -211,6 +212,9 @@ class AttentionService:
             item["referenced_world_objects"] = json.loads(
                 item.pop("referenced_world_objects_json"),
             )
+            item["specialist_result_receipts"] = json.loads(
+                item.pop("specialist_result_receipts_json") or "[]",
+            )[-8:]
             current_dependency = content_hash({
                 ref: (object_dependency_hashes or {}).get(ref)
                 for ref in item["referenced_world_objects"]
@@ -267,6 +271,52 @@ class AttentionService:
     def placed(self, lease_id: str) -> None:
         self._transition_lease(lease_id, "leased", "placed", "placed_unix")
 
+    def restrict_for_placement(self, lease_id: str,
+                               visible_attention_ids: Iterable[str]) -> dict[str, Any]:
+        """Detach anything omitted by provider-context budgeting before placement.
+
+        Leasing is deliberately generous so critical/high-priority events can be
+        considered together.  Runtime serialization is the authority on what
+        the provider actually receives.  Omitted rows retain their identity and
+        return to the queue; the lease cursor is reduced to the visible set.
+        """
+        visible = tuple(dict.fromkeys(str(value) for value in visible_attention_ids))
+        with self.store.transaction() as connection:
+            lease = connection.execute(
+                "SELECT status FROM attention_leases WHERE attention_lease_id=? "
+                "AND match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=?",
+                (lease_id, *self._key(self.timeline_id)),
+            ).fetchone()
+            if not lease or lease["status"] not in {"leased", "placed", "responded"}:
+                raise AttentionError("invalid_attention_lease_transition")
+            rows = connection.execute(
+                "SELECT i.attention_id,i.attention_sequence FROM attention_items i JOIN "
+                "attention_lease_items li ON li.attention_id=i.attention_id "
+                "WHERE li.attention_lease_id=? ORDER BY i.attention_sequence", (lease_id,),
+            ).fetchall()
+            leased_ids = {str(row["attention_id"]) for row in rows}
+            if not set(visible).issubset(leased_ids):
+                raise AttentionError("attention_placement_scope_mismatch")
+            omitted = sorted(leased_ids - set(visible))
+            if omitted:
+                placeholders = ",".join("?" for _ in omitted)
+                connection.execute(
+                    f"UPDATE attention_items SET status='queued' WHERE attention_id IN ({placeholders}) "
+                    "AND status='leased'", tuple(omitted),
+                )
+                connection.execute(
+                    f"DELETE FROM attention_lease_items WHERE attention_lease_id=? "
+                    f"AND attention_id IN ({placeholders})", (lease_id, *omitted),
+                )
+            through = max((int(row["attention_sequence"]) for row in rows
+                           if str(row["attention_id"]) in set(visible)), default=0)
+            connection.execute(
+                "UPDATE attention_leases SET through_cursor=? WHERE attention_lease_id=?",
+                (through, lease_id),
+            )
+        return {"attention_lease_id": lease_id, "through_cursor": through,
+                "visible_ids": list(visible), "requeued_ids": omitted}
+
     def responded(self, lease_id: str) -> None:
         self._transition_lease(lease_id, "placed", "responded", "responded_unix")
         with self.store.transaction() as connection:
@@ -313,6 +363,14 @@ class AttentionService:
                 connection.execute(
                     f"UPDATE attention_items SET status='acknowledged',acknowledged_unix=? "
                     f"WHERE attention_id IN ({placeholders})", (now, *eligible),
+                )
+            remainder = [str(row["attention_id"]) for row in rows
+                         if str(row["attention_id"]) not in eligible]
+            if remainder:
+                placeholders = ",".join("?" for _ in remainder)
+                connection.execute(
+                    f"UPDATE attention_items SET status='queued' WHERE attention_id IN ({placeholders}) "
+                    "AND status IN ('leased','responded')", tuple(remainder),
                 )
             connection.execute(
                 "UPDATE attention_leases SET status='acknowledged',acknowledged_unix=? "
@@ -404,6 +462,28 @@ class AttentionService:
         if not projection:
             raise AttentionError("world_projection_unavailable")
         world_epoch = str(projection["identity"]["world_epoch"])
+        objects = {str(item.get("object_ref")) for item in projection.get("objects", ())
+                   if isinstance(item, Mapping) and item.get("object_ref")}
+        regions = [
+            *self.world_store.load_regions(self.scope, timeline, "mobility-land-default"),
+            *self.world_store.load_regions(self.scope, timeline, "mobility-sea-default"),
+        ]
+        region_refs = {item.region_ref for item in regions}
+        region_aliases = {old: item.region_ref for item in regions for old in item.supersedes}
+        normalized_subjects = tuple(region_aliases.get(item, item) for item in subjects)
+        registry = self._semantic_registry(projection, regions)
+        semantic_refs = set(objects) | region_refs | set(registry)
+        if any(item not in semantic_refs for item in normalized_subjects):
+            raise AttentionError("unknown_or_cross_perspective_subject_ref")
+        subjects = tuple(sorted(set(normalized_subjects)))
+        predicate = dict(predicate)
+        resolved_locations = sorted({
+            location for subject in subjects
+            for location in registry.get(subject, {}).get("location_refs", ())
+            if registry.get(subject, {}).get("kind") != "region"
+        })
+        if resolved_locations:
+            predicate["_subject_location_refs"] = resolved_locations
         with self.store._connect() as connection:
             if linked_plan_id and not connection.execute(
                 "SELECT 1 FROM plans WHERE plan_id=? AND match_id=? AND agent_id=? "
@@ -461,9 +541,102 @@ class AttentionService:
         }, turn=current_turn)
         return {"watch_id": watch_id, "merged": False, "expires_turn": expires}
 
+    def _semantic_registry(self, projection: Mapping[str, Any],
+                           regions: Iterable[Any]) -> dict[str, dict[str, Any]]:
+        """Resolve provider-safe derived handles actually issued to this perspective."""
+        registry: dict[str, dict[str, Any]] = {}
+        region_rows = list(regions)
+        for region in region_rows:
+            registry[region.region_ref] = {
+                "kind": "region", "location_refs": sorted(region.location_refs),
+            }
+        anchor = self.world_store.current_anchor(
+            self.scope, self.timeline_id, "256k",
+        ) or self.world_store.current_anchor(self.scope, self.timeline_id, "64k")
+        payload = anchor.get("payload", {}) if anchor else {}
+        if isinstance(payload, Mapping):
+            for frontier in payload.get("frontiers", ()):
+                if isinstance(frontier, Mapping) and frontier.get("frontier_ref"):
+                    registry[str(frontier["frontier_ref"])] = {
+                        "kind": "frontier",
+                        "location_refs": list(frontier.get("boundary_refs") or ()),
+                    }
+            regions_by_ref = {item.region_ref: item for item in region_rows}
+            for theater in payload.get("active_theaters", ()):
+                if not isinstance(theater, Mapping) or not theater.get("theater_ref"):
+                    continue
+                locations = {
+                    location
+                    for ref in theater.get("region_refs", ())
+                    for location in getattr(regions_by_ref.get(str(ref)), "location_refs", ())
+                }
+                registry[str(theater["theater_ref"])] = {
+                    "kind": "theater", "location_refs": sorted(locations),
+                    "subject_refs": list(theater.get("subject_refs") or ()),
+                }
+        with self.store._connect() as connection:
+            rows = connection.execute(
+                "SELECT result_json FROM world_query_cache WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND world_epoch=?",
+                (*self._key(self.timeline_id), str(projection["identity"]["world_epoch"])),
+            ).fetchall()
+        for row in rows:
+            result = json.loads(row["result_json"])
+            route = result.get("route")
+            if isinstance(route, Mapping) and route.get("route_ref"):
+                registry[str(route["route_ref"])] = {
+                    "kind": "route", "location_refs": list(route.get("path") or ()),
+                }
+            for item in result.get("items", ()) if isinstance(result.get("items"), list) else ():
+                if isinstance(item, Mapping) and item.get("rendezvous_ref"):
+                    registry[str(item["rendezvous_ref"])] = {
+                        "kind": "rendezvous",
+                        "location_refs": [str(item.get("candidate_ref"))]
+                        if item.get("candidate_ref") else [],
+                        "subject_refs": [str(value.get("participant_ref"))
+                                         for value in item.get("arrivals", ())
+                                         if isinstance(value, Mapping)],
+                    }
+        return registry
+
     def gc_watches(self, current_turn: int) -> int:
         projection = self.world_store.load(self.scope, self.timeline_id)
         current_epoch = str(projection["identity"]["world_epoch"]) if projection else ""
+        # Region identities are versioned. Migrate an active watch through a
+        # deterministic one-to-one supersession; ambiguous split/merge cases
+        # remain on the old ref and are invalidated for sovereign review.
+        regions = [
+            *self.world_store.load_regions(self.scope, self.timeline_id, "mobility-land-default"),
+            *self.world_store.load_regions(self.scope, self.timeline_id, "mobility-sea-default"),
+        ]
+        aliases: dict[str, list[str]] = {}
+        for region in regions:
+            for old in region.supersedes:
+                aliases.setdefault(old, []).append(region.region_ref)
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT watch_id,subject_refs_json FROM world_watches WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND status='active'",
+                self._key(self.timeline_id),
+            ).fetchall()
+            for row in rows:
+                subjects = list(json.loads(row["subject_refs_json"]))
+                migrated, ambiguous = [], False
+                for subject in subjects:
+                    targets = aliases.get(str(subject), [])
+                    if len(targets) > 1:
+                        ambiguous = True
+                    migrated.append(targets[0] if len(targets) == 1 else subject)
+                if ambiguous:
+                    connection.execute(
+                        "UPDATE world_watches SET status='invalid',updated_unix=? WHERE watch_id=?",
+                        (time.time(), row["watch_id"]),
+                    )
+                elif migrated != subjects:
+                    connection.execute(
+                        "UPDATE world_watches SET subject_refs_json=?,updated_unix=? WHERE watch_id=?",
+                        (canonical_json(sorted(set(migrated))), time.time(), row["watch_id"]),
+                    )
         with self.store.transaction() as connection:
             expired = connection.execute(
                 "UPDATE world_watches SET status='expired',updated_unix=? WHERE match_id=? "
@@ -525,6 +698,7 @@ class AttentionService:
             return False
 
     def evaluate_watches(self, deltas: Iterable[Mapping[str, Any]], *,
+                         temporal_events: Iterable[Mapping[str, Any]] = (),
                          observation_cursor: int, turn: int | None,
                          session_id: str | None = None) -> list[dict[str, Any]]:
         """Elevate matching perspective-safe changes; never performs automation."""
@@ -536,11 +710,67 @@ class AttentionService:
                 self._key(timeline),
             ).fetchall()
         changes = [dict(item) for item in deltas if isinstance(item, Mapping)]
+        temporal = [dict(item) for item in temporal_events if isinstance(item, Mapping)]
+        regions = {
+            item.region_ref: item for item in (
+                *self.world_store.load_regions(self.scope, timeline, "mobility-land-default"),
+                *self.world_store.load_regions(self.scope, timeline, "mobility-sea-default"),
+            )
+        }
         triggered: list[dict[str, Any]] = []
         for row in rows:
             subjects = set(json.loads(row["subject_refs_json"]))
             predicate = json.loads(row["typed_predicate_json"])
             matches = []
+            watch_kind = str(row["watch_kind"])
+            if watch_kind in {"region_entry", "region_exit", "frontier_contact",
+                              "route_disruption", "rendezvous_progress"}:
+                watched_locations = set(map(str, predicate.get("_subject_location_refs") or ()))
+                for subject in subjects:
+                    region = regions.get(subject)
+                    if region:
+                        watched_locations.update(region.location_refs)
+                    elif subject.startswith("location-"):
+                        watched_locations.add(subject)
+                for event in temporal:
+                    path = event.get("path") if isinstance(event.get("path"), list) else []
+                    segments = [(str(step.get("from_location_ref") or ""),
+                                 str(step.get("to_location_ref") or ""))
+                                for step in path if isinstance(step, Mapping)]
+                    if not segments:
+                        segments = [(str(event.get("from_location_ref") or ""),
+                                     str(event.get("to_location_ref")
+                                         or event.get("location_ref") or ""))]
+                    entered = any(before not in watched_locations and after in watched_locations
+                                  for before, after in segments)
+                    exited = any(before in watched_locations and after not in watched_locations
+                                 for before, after in segments)
+                    direct_refs = {str(event.get(key) or "") for key in
+                                   ("contact_ref", "base_ref", "location_ref", "frontier_ref",
+                                    "theater_ref", "route_ref", "rendezvous_ref")}
+                    event_locations = {
+                        str(event.get("from_location_ref") or ""),
+                        str(event.get("to_location_ref") or ""),
+                        str(event.get("location_ref") or ""),
+                        *(str(item) for item in event.get("affected_location_refs", ())
+                          if item),
+                    }
+                    matched = (
+                        watch_kind == "region_entry" and entered
+                        or watch_kind == "region_exit" and exited
+                        or watch_kind == "frontier_contact" and (entered or bool(subjects & direct_refs))
+                        or watch_kind == "route_disruption" and event.get("event_kind")
+                           == "terrain_or_improvement_changed"
+                           and (bool(subjects & direct_refs)
+                                or bool(watched_locations & event_locations))
+                        or watch_kind == "rendezvous_progress"
+                           and (bool(subjects & direct_refs)
+                                or bool(watched_locations & event_locations))
+                    )
+                    if matched and self._watch_predicate_matches(predicate, {
+                            "change": str(event.get("event_kind") or "changed"),
+                            "current": event}):
+                        matches.append({"temporal_event": event})
             for delta in changes:
                 current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
                 candidate_refs = {
@@ -691,6 +921,16 @@ class AttentionService:
             if current and current["status"] == "active" and float(current["expires_unix"]) > now:
                 if current["episode_id"] != episode_id or current["episode_mode"] != episode_mode:
                     raise AttentionError("sovereign_invocation_already_active")
+            if current and current["status"] == "active" \
+                    and float(current["expires_unix"]) <= now:
+                expired_leases = connection.execute(
+                    "SELECT attention_lease_id FROM attention_leases WHERE match_id=? "
+                    "AND agent_id=? AND perspective_id=? AND timeline_id=? AND episode_id=? "
+                    "AND status IN ('leased','placed','responded')",
+                    (*key, current["episode_id"]),
+                ).fetchall()
+                for lease in expired_leases:
+                    self._abandon_locked(connection, str(lease["attention_lease_id"]))
             connection.execute(
                 "INSERT OR REPLACE INTO sovereign_leases(match_id,agent_id,perspective_id," \
                 "timeline_id,episode_id,episode_mode,lease_token_hash,status,acquired_unix," \
@@ -720,22 +960,50 @@ class AttentionService:
     def release_sovereign(self, token: str, *, committed: bool) -> None:
         digest = hashlib.sha256(token.encode()).hexdigest()
         with self.store.transaction() as connection:
+            current = connection.execute(
+                "SELECT episode_id FROM sovereign_leases WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND lease_token_hash=? AND status='active'",
+                (*self._key(self.timeline_id), digest),
+            ).fetchone()
             changed = connection.execute(
                 "UPDATE sovereign_leases SET status=? WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=? AND lease_token_hash=? AND status='active'",
                 ("committed" if committed else "cancelled", *self._key(self.timeline_id), digest),
             ).rowcount
+            if current:
+                leases = connection.execute(
+                    "SELECT attention_lease_id FROM attention_leases WHERE match_id=? AND agent_id=? "
+                    "AND perspective_id=? AND timeline_id=? AND episode_id=? "
+                    "AND status IN ('leased','placed','responded')",
+                    (*self._key(self.timeline_id), current["episode_id"]),
+                ).fetchall()
+                for lease in leases:
+                    self._abandon_locked(connection, str(lease["attention_lease_id"]))
         if changed != 1:
             raise AttentionError("invalid_sovereign_lease")
 
     def cancel_active_sovereign(self, reason: str) -> bool:
         """Operator recovery hook, called only after the provider process is stopped."""
         with self.store.transaction() as connection:
+            active = connection.execute(
+                "SELECT episode_id FROM sovereign_leases WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status='active'",
+                self._key(self.timeline_id),
+            ).fetchone()
             changed = connection.execute(
                 "UPDATE sovereign_leases SET status='cancelled' WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=? AND status='active'",
                 self._key(self.timeline_id),
             ).rowcount
+            if active:
+                leases = connection.execute(
+                    "SELECT attention_lease_id FROM attention_leases WHERE match_id=? AND agent_id=? "
+                    "AND perspective_id=? AND timeline_id=? AND episode_id=? "
+                    "AND status IN ('leased','placed','responded')",
+                    (*self._key(self.timeline_id), active["episode_id"]),
+                ).fetchall()
+                for lease in leases:
+                    self._abandon_locked(connection, str(lease["attention_lease_id"]))
         if changed:
             self.journal.append(self.scope, "agent.sovereign_lease_cancelled", {
                 "reason": str(reason)[:500], "timeline_id": self.timeline_id,

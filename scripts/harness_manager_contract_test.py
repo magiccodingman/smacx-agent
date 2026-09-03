@@ -194,8 +194,8 @@ def main() -> int:
             or "never exceed 120 words" not in prompt:
         raise AssertionError("managed system prompt omitted the bounded native-turn handoff")
     runtime = manager.provision_profile(descriptor(keyed=True))
-    if not any(row[2] == "specialist-provider.json" for row in worker_manager.seeded):
-        raise AssertionError("read-only specialist profile was not provisioned to the worker")
+    if any(row[2].startswith("specialist-provider") for row in worker_manager.seeded):
+        raise AssertionError("specialist credentials leaked into the native game worker")
     data_archive = docker.contents[runtime["data_volume"]][-1]
     data_files = unpack(data_archive)
     owner_helpers = [config for config in docker.configs
@@ -256,6 +256,13 @@ def main() -> int:
     dockerfile = Path(__file__).resolve().parents[1] / "harness" / "Dockerfile"
     if "nousresearch/hermes-agent:v2026.8.31@sha256:" not in dockerfile.read_text(encoding="utf-8"):
         raise AssertionError("derived harness parent is not digest pinned")
+    launcher = (Path(__file__).resolve().parents[1] / "scripts" /
+                "control-center-up.sh").read_text(encoding="utf-8")
+    service_lists = [line for line in launcher.splitlines()
+                     if line.strip().startswith("services=")]
+    if not service_lists or any("specialist-supervisor" not in line
+                                for line in service_lists):
+        raise AssertionError("standard launcher omitted the specialist supervisor")
     print(json.dumps({
         "event": "pass",
         "payload": {
@@ -268,6 +275,7 @@ def main() -> int:
             "writable_unprivileged_data_root": True,
             "semantic_toolsets_only": True,
             "prompt_driven_native_turn_handoff": True,
+            "standard_launcher_starts_specialist_supervisor": True,
         },
     }, separators=(",", ":")))
     return 0

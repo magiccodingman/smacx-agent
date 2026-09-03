@@ -37,6 +37,10 @@ Published reports:
 - [2026-09-02 bounded runtime no-timer smoke test](2026-09-02-bounded-runtime.md)
 - [2026-09-02 AI-2 turn-transition regression](2026-09-02-ai2-turn-transition-regression.md)
 
+Content-free machine-readable acceptance artifacts include the
+[live disposable specialist run](results/2026-09-03-specialist-live.json) and
+[live prefix-cache measurement](results/2026-09-03-prefix-cache-live.json).
+
 ## Interpreting results
 
 A smoke test passes only when the agent—not a native timer—causes multiple

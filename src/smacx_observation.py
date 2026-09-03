@@ -47,6 +47,66 @@ def _delta_attention(delta: Mapping[str, Any]) -> tuple[bool, int] | None:
     return False, 45
 
 
+def _field_value(item: Mapping[str, Any], name: str) -> Any:
+    fields = item.get("fields") if isinstance(item.get("fields"), Mapping) else {}
+    value = fields.get(name)
+    return value.get("value") if isinstance(value, Mapping) else None
+
+
+def _provider_safe_temporal_events(
+    deltas: list[dict[str, Any]], projected: list[dict[str, Any]],
+    *, turn: int | None,
+) -> list[dict[str, Any]]:
+    """Convert observed transitions into semantic history with no native identity."""
+    events = [dict(item) for item in projected if isinstance(item, Mapping)]
+    for delta in deltas:
+        current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
+        previous = delta.get("previous") if isinstance(delta.get("previous"), Mapping) else {}
+        kind = str(current.get("kind") or delta.get("prior_kind") or previous.get("kind") or "")
+        change = str(delta.get("change") or "changed")
+        object_ref = str(delta.get("object_ref") or current.get("object_ref") or "")
+        if kind == "base":
+            if change == "appeared":
+                event_kind = "base_founded"
+            elif change == "removed":
+                event_kind = "base_destroyed"
+            elif _field_value(current, "owner_ref") != _field_value(previous, "owner_ref") \
+                    and _field_value(previous, "owner_ref") is not None:
+                event_kind = "base_captured"
+            else:
+                continue
+            events.append({
+                "event_kind": event_kind, "base_ref": object_ref,
+                "location_ref": current.get("location_ref") or previous.get("location_ref"),
+                "owner_ref": _field_value(current, "owner_ref"), "turn": turn,
+            })
+        elif kind == "foreign_contact" and change == "changed":
+            prior_hp, current_hp = _field_value(previous, "hp"), _field_value(current, "hp")
+            if isinstance(prior_hp, (int, float)) and isinstance(current_hp, (int, float)) \
+                    and current_hp < prior_hp:
+                events.append({
+                    "event_kind": "contact_damaged", "contact_ref": object_ref,
+                    "location_ref": current.get("location_ref"),
+                    "observed_hp_before": prior_hp, "observed_hp_after": current_hp,
+                    "turn": turn,
+                })
+        elif kind == "location" and change == "changed":
+            changed_fields = [name for name in ("terrain", "features", "owner_ref")
+                              if _field_value(current, name) != _field_value(previous, name)]
+            if changed_fields:
+                events.append({
+                    "event_kind": "terrain_or_improvement_changed",
+                    "location_ref": object_ref, "changed_fields": changed_fields,
+                    "turn": turn,
+                })
+    # Exact duplicates can arise when an appearance also has an ordinary
+    # projection delta.  Keep one deterministic semantic occurrence.
+    unique: dict[str, dict[str, Any]] = {}
+    for item in events:
+        unique[content_hash(item)] = item
+    return list(unique.values())
+
+
 class ObservationCollectorError(RuntimeError):
     pass
 
@@ -419,6 +479,17 @@ class ObservationCollector:
         prior_objects = current.get("objects", ()) if current else ()
         current_objects = [item.as_dict() for item in projection["objects"]]
         deltas = net_deltas(prior_objects, current_objects)
+        prior_by_ref = {str(item.get("object_ref")): item for item in prior_objects
+                        if isinstance(item, Mapping) and item.get("object_ref")}
+        semantic_deltas = [
+            {**delta, **({"previous": prior_by_ref[str(delta["object_ref"])]}
+                         if str(delta.get("object_ref")) in prior_by_ref else {})}
+            for delta in deltas
+        ]
+        temporal_events = _provider_safe_temporal_events(
+            semantic_deltas, list(projection.get("temporal_events", ())),
+            turn=bundle.get("turn"),
+        )
         for delta in deltas:
             event = self.journal.append(
                 self.scope, "observation.world_object", {
@@ -450,9 +521,26 @@ class ObservationCollector:
                         "delta": delta,
                     }),
                 )
-        if self.attention is not None and deltas:
+        for semantic in temporal_events:
+            semantic_payload = {
+                **semantic, "observation_sequence": self.observation_cursor,
+                "provenance": "direct_observation",
+            }
+            event = self.journal.append(
+                self.scope, "observation.semantic_event", semantic_payload,
+                session_id=self.session_id, turn=bundle.get("turn"), year=bundle.get("year"),
+            )
+            self.world_store.record_observation_projection(
+                self.scope, self.timeline_id,
+                {"sequence": self.observation_cursor, "kind": "semantic_event",
+                 "turn": bundle.get("turn"), "payload": semantic_payload,
+                 "continuity": str(feed.get("continuity", "complete"))},
+                event["event_id"],
+            )
+        if self.attention is not None and (deltas or temporal_events):
             self.attention.evaluate_watches(
-                deltas, observation_cursor=self.observation_cursor,
+                deltas, temporal_events=temporal_events,
+                observation_cursor=self.observation_cursor,
                 turn=bundle.get("turn"), session_id=self.session_id,
             )
         reconciled = self.journal.append(

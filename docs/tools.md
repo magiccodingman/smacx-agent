@@ -1,6 +1,6 @@
 # MCP tool reference
 
-Managed AI seats receive a deliberately bounded 17-tool surface. Game launch,
+Managed AI seats receive a deliberately bounded 15-tool surface. Game launch,
 native setup, lifecycle, raw snapshots, saves, and process stop are private
 operator/control operations and are not advertised to the model.
 
@@ -28,25 +28,21 @@ operator/control operations and are not advertised to the model.
   complete one disposable operation. These scopes are useful for real ongoing
   concerns, not required rituals. Durable goals and plans remain journaled
   sovereign cognition.
-- `smac_choices(kind, ...)` — bounded specialist enumeration for interaction, research, allocation, Social Engineering, diplomacy, Council, Unit Workshop, production, base management, citizens, units, or game management. Executable results remain opaque.
+- `smac_choices(kind, ...)` — bounded detailed enumeration for interaction, research, allocation, Social Engineering, diplomacy, Council, Unit Workshop, production, base management, citizens, units, or game management. Executable results remain opaque.
 - `smac_wait(seconds)` — bounded wait while the engine or another faction owns the turn.
 - `smac_chat(...)` — list or send guarded native LAN chat scoped to the current match/session and optional recipient faction. It persists delivered speech with network-player/faction associations and exactly-once attention state.
 - `smac_group_chat(...)` — maintain consented private groups and fan one message
   out through native per-recipient chat without inventing a hidden side channel.
-- `smac_knowledge(action, match_id, ...)` — list/get/history or record a durable named match fact. Successful changes enter the canonical hash-linked campaign journal; SQLite/FTS files are rebuildable query projections. Session-local unit/base/prototype engine IDs are rejected.
 - `smac_memory(...)` — retrieve the bounded journal-derived working state, scoped search, batched recall, chat/events, structured histories, optional Graphiti status, or an exact-scope `graph_recall`. It cannot widen `(match_id, agent_id, perspective_id)` or execute arbitrary SQL.
-- `smac_reference(action, ...)` — browse the recursive semantic collection
-  tree and a collection's direct articles, perform Smart weighted search,
-  fetch one selected document, or issue focused named-mechanic/related
-  searches. Collection titles, descriptions, and tags are retrieval evidence,
-  not pagination labels. Document evidence is token-bounded; runtime-acquired
-  content contains no match state and never overrides fresh native choices.
-- `smac_specialist(...)` — ask one disposable, read-only
-  `reference_researcher` or `world_analyst` to compress a large legitimate
-  caller-supplied evidence package. The one-shot child has no sovereign history,
-  personality, tools, independent Wiki/world retrieval, chat, memory writer,
-  filesystem, or mutation authority. Its strict result is
-  fallible cited evidence and becomes stale with its pinned dependencies.
+- `smac_investigate(action, faculty, objective, subject_refs, operation_id,
+  mission_id)` — commission, retrieve, explicitly retry, or cancel one bounded
+  disposable `reference_researcher` or
+  `world_analyst` mission. Every attempt is a fresh isolated Hermes process with
+  exactly one faculty-specific read-only MCP instrument. World research is
+  pinned to an immutable perspective snapshot; reference research is pinned to
+  one corpus revision. Actual child calls determine freshness dependencies.
+  Completion arrives through at-least-once attention; strict results are
+  fallible evidence, never sovereign strategy or action authority.
 - `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, plan, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
 - `smac_notebook(...)` — list, search, read, revise, or delete bounded named
   campaign notes, plans, territories, and other agent-authored records in the
@@ -55,8 +51,8 @@ operator/control operations and are not advertised to the model.
   one full entry. Every read has a hard result-token ceiling.
 - `smac_report_capability_gap(...)` — record one missing semantic capability, deduplicate repeated reports for that session, and latch commands plus launch/new/load. Only a developer MCP restart followed by a fresh session after bridge development can resume play.
 
-Prefer `smac_decision`; use `smac_choices` only for a deliberate specialist
-query. Never guess command strings, confirmation flags, coordinates, or engine
+Prefer `smac_decision`; use `smac_choices` only for a deliberate detailed
+choice-family query. Never guess command strings, confirmation flags, coordinates, or engine
 IDs: select one opaque ID and obtain a new frame after execution.
 
 `smac_list` remains available only to standalone compatibility clients. It is

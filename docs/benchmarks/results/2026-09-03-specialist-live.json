@@ -1,0 +1,17 @@
+{
+  "schema": "smacx.specialist-provider-live.v2",
+  "recorded_date": "2026-09-03",
+  "model": "Qwen3.8-27B",
+  "reasoning_effort": "low",
+  "passed": true,
+  "hermes_process": true,
+  "strict_result": true,
+  "tool_calls": 10,
+  "provider_calls": 4,
+  "provider_tokens": 291432,
+  "peak_context_tokens": 93740,
+  "result_bytes": 5394,
+  "sovereign_history_rows": 0,
+  "latency_ms": 54869.093,
+  "content_free": true
+}

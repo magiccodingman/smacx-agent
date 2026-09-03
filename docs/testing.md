@@ -51,6 +51,10 @@ PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
 PYTHONPATH=src python3 scripts/notebook_scale_test.py
 PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
 PYTHONPATH=src python3 scripts/specialist_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_supervisor_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_provider_capture_test.py
+PYTHONPATH=src python3 scripts/specialist_provider_meter_test.py
+PYTHONPATH=src python3 scripts/managed_memory_scale_test.py
 PYTHONPATH=src python3 scripts/rollback_world_contract_test.py
 PYTHONPATH=src python3 scripts/provider_schema_budget_test.py
 PYTHONPATH=src python3 scripts/world_context_benchmark.py
@@ -142,10 +146,16 @@ PYTHONPATH=src python3 scripts/specialist_provider_live_test.py \
   --base-url http://provider.example/v1 --model model-id
 ```
 
-The specialist gate sends no tools, personality, sovereign transcript, chat,
-filesystem, independent reference/world retrieval, or mutation authority and
-validates the one-shot child's strict cited result schema. The scripts print
-only content-free usage/cache/latency aggregates.
+The specialist capture and live gates start real disposable Hermes processes.
+Each child receives exactly one faculty instrument, no personality or sovereign
+transcript, no game volume, and no unrestricted terminal/files/web/chat/memory/
+delegation/mutation authority. The tests cover iterative retrieval, stable
+system/tool prefixes, actual-call dependency capture, strict results, fresh
+attempt isolation, hard leashes, cancellation, retry, schema repair, scheduling,
+and trace retention. `specialist_provider_meter_test.py` separately proves the
+attempt-local provider proxy enforces actual calls, cumulative usage,
+per-request context, and output reservations even when a failed response omits
+usage. Live scripts print only content-free usage/cache/latency aggregates.
 
 ## Native game integration
 
@@ -192,7 +202,7 @@ To add the managed-provider gate, also set `SMACX_TEST_PROVIDER_URL` and
 `SMACX_TEST_PROVIDER_MODEL` through the local environment. The provider run is
 successful only after a journal-observed semantic revision changes; merely
 starting Hermes or allowing native time to pass is not success. The test also
-checks exact-seat sidecar binding, the 17-tool managed surface, checkpoint and
+checks exact-seat sidecar binding, the 15-tool managed surface, checkpoint and
 backup integrity, native crash recovery, a fresh recovery-side sovereign lease,
 low-reasoning profile selection, and clean parking. Output is content-free.
 

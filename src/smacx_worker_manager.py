@@ -25,6 +25,7 @@ from smacx_game_settings import (
     normalize_lan_game_settings,
 )
 from smacx_journal import CampaignJournal, JournalError
+from smacx_specialists import SpecialistService
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, StoreError
 from smacx_world_model import CALCULATOR_VERSION
 from smacx_world_store import WorldStore, WorldStoreError
@@ -3828,6 +3829,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     scope, payload, target_timeline_id=timeline_id,
                     journal_head_hash=source_head,
                 )
+            # Specialist attempts are disposable, but their durable missions
+            # and traces remain diagnostic.  Revoke every future-timeline
+            # attempt before derived state is discarded so a late child can
+            # never publish into restored cognition.
+            SpecialistService(
+                self.store, world_store, scope, journal=self.journal,
+            ).cancel_for_rollback(timeline_id)
             world_store.discard_future(scope, timeline_id)
             old_namespace = old_namespaces[(scope.agent_id, scope.perspective_id)]
             event = self.journal.append(

@@ -284,6 +284,17 @@ fingerprint plus turn/year/phase/outcome markers across invocations. Three clean
 yields without meaningful progress stop the run and raise an operator-required
 incident. Actual nonzero exits retain their separate bounded restart budget.
 
+Context-heavy evidence work uses a separate long-lived specialist supervisor.
+It schedules durable missions fairly, but every attempt is a fresh disposable
+Hermes process with a new home/session/profile/capability and exactly one
+faculty MCP tool. World attempts read an immutable content-addressed perspective
+snapshot; reference attempts read one corpus revision. They never mount the
+game, sovereign Hermes state, or personality and cannot access mutation, chat,
+memory, terminal, files, web, or delegation. Actual tool calls establish the
+dependency set, strict publication is compare-and-swap, and completion enters
+the sovereign only as at-least-once attention. See
+[Disposable specialists](specialists.md).
+
 Capability-gap reports take priority over both continuation and error restart.
 The MCP sidecar appends one match/session-scoped report to the persistent control
 volume. The harness supervisor creates the same report automatically when three

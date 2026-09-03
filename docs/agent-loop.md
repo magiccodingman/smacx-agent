@@ -16,8 +16,9 @@ Before this loop is available in a new match, the player calls
 `smac_match_briefing(action="read")`. The versioned configuration contract
 combines the exact faction, difficulty, generated map, victory toggles,
 advanced rules, multiplayer clock, scenario restrictions, match policy, and
-game-artifact fingerprint. The player reviews unfamiliar non-default mechanics
-through `smac_reference`, then acknowledges the exact returned hash.
+game-artifact fingerprint. The player can investigate unfamiliar non-default
+mechanics through `smac_investigate(faculty="reference")`, then acknowledges the
+exact returned hash.
 `smac_decision` returns no choices and `smac_execute_choice` rejects mutation until
 that configuration is acknowledged.
 
@@ -46,8 +47,8 @@ revision-stable focus and returns short semantic labels plus opaque
 `choice_id` values. Native command names, confirmation flags, and raw revision
 guards stay server-side. Execute at most one returned choice through
 `smac_execute_choice(decision_id, choice_id)`, discard the frame, and call
-`smac_decision` again. `smac_choices` remains available for bounded specialist
-queries, but it also returns opaque executable choices.
+`smac_decision` again. `smac_choices` remains available for bounded detailed
+choice-family queries, but it also returns opaque executable choices.
 
 The managed loop is:
 
@@ -183,7 +184,13 @@ Hermes history, journal-backed search/recall/chat/notebook state, and derived
 Graphiti memory are restored together, so an action abandoned with the old
 native process cannot remain as an AI memory in the recovered world.
 
-Record learned player behavior and strategic facts through `smac_knowledge`, not a free-form cross-game memory. A `put` requires the current match, session, and observation revision and automatically records the turn/year provenance. Stable keys hold the latest correction while `history` preserves every prior value. While a game is running, reads for any other match are rejected so another playthrough's intelligence cannot leak into the current one.
+Record durable conclusions through typed `smac_memory_update` records or named
+`smac_notebook` entries, not free-form cross-game memory. Mechanical observed
+history already belongs to the world projection and campaign journal; do not
+duplicate raw map frames or ordinary unit positions merely to retain them.
+Stable keys create canonical revisions with turn/year provenance. Managed reads
+remain scoped to the active match, seat, perspective, and timeline so another
+playthrough's intelligence cannot leak into the current one.
 
 Save/load, process stop, checkpoint recovery, and worker replacement are
 authenticated Control Center operations. They are deliberately absent from a

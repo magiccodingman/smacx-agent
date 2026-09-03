@@ -503,16 +503,20 @@ minimum supported provider context.
 
 ## A specialist result is stale or unavailable
 
-Specialists are optional one-shot read-only evidence processors over an
-immutable caller-supplied package; they do not independently query the Wiki or
-world. `stale` means the
-pinned timeline/world epoch or one of the result's exact dependencies changed
-before completion. Re-query current evidence if the question still matters;
-never apply a stale specialist conclusion as mechanical truth. A failed child
-job may be retried with the same immutable request. Only one child may run per
-sovereign seat, and the installation-wide concurrency cap is configured under
-**Operations & recovery**. Gameplay and direct `smac_world`/`smac_reference`
-queries remain available when the specialist provider is down.
+Specialists are optional read-only Hermes investigators. Every attempt receives
+a fresh isolated process and exactly one bounded instrument over either a pinned
+world snapshot or the pinned Datalinks corpus. `stale` means the timeline,
+world epoch, corpus revision, or one of the dependencies recorded from actual
+child calls changed before publication. Re-investigate current evidence if the
+question still matters; never apply a stale conclusion as mechanical truth.
+
+Provider, MCP, timeout, schema, token, and cancellation failures are recorded as
+typed attempt outcomes. A bounded retry or strict-schema repair uses a new child
+process. Per-seat and installation concurrency are configured under
+**Operations & recovery**. Ordinary gameplay and bounded direct `smac_world`
+queries remain available if specialist capacity or its provider is unavailable.
+The Operations page exposes content-free mission status and retained redacted
+trace downloads for diagnosis.
 
 ## The game reaches an unsupported mandatory state
 

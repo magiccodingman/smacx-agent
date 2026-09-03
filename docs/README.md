@@ -29,6 +29,7 @@ prevents deployment instructions from polluting game-knowledge retrieval.
 
 - [Agent loop and fair-play contract](agent-loop.md)
 - [Strategic perception and sovereign cognition](strategic-world.md)
+- [Disposable specialist investigations](specialists.md)
 - [MCP tool reference](tools.md)
 - [Mechanics encyclopedia and copyright boundary](reference-knowledge.md)
 - [Optional Graphiti temporal memory](graphiti.md)

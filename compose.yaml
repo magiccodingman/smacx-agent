@@ -180,6 +180,42 @@ services:
     image: ${SMACX_HERMES_IMAGE:-smacx-agent-harness:dev}
     entrypoint: ["/bin/true"]
 
+  # Long-lived scheduler; every mission itself runs in a fresh disposable
+  # Hermes process/home with exactly one purpose-specific stdio MCP. It has no
+  # native game or sovereign Hermes volume.
+  specialist-supervisor:
+    build:
+      context: .
+      dockerfile: harness/Dockerfile
+    image: ${SMACX_HERMES_IMAGE:-smacx-agent-harness:dev}
+    restart: unless-stopped
+    depends_on:
+      control-api:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_started
+    entrypoint: ["/opt/hermes/.venv/bin/python", "/opt/smacx/src/smacx_specialist_supervisor.py"]
+    user: "10001:10001"
+    environment:
+      SMACX_DB_PATH: /var/lib/smacx/smacx.sqlite3
+      SMACX_SECRET_ROOT: /var/lib/smacx/secrets
+      SMACX_WORLD_SNAPSHOT_ROOT: /var/lib/smacx/world-snapshots
+      SMACX_SPECIALIST_TRACE_ROOT: /var/lib/smacx/specialist-traces
+      SMACX_REFERENCE_URL: http://knowledge-service:8090
+      SMACX_HERMES_EXECUTABLE: /opt/hermes/hermes
+      SMACX_SPECIALIST_PYTHON: /opt/hermes/.venv/bin/python
+      SMACX_SPECIALIST_MCP_SCRIPT: /opt/smacx/src/smacx_specialist_mcp.py
+    volumes:
+      - smacx-control-data:/var/lib/smacx
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 15s
+
   # Optional temporal-graph derivative. Nothing here is agent-facing and
   # neither service is published on the host. The campaign journal remains
   # authoritative; FalkorDB can always be rebuilt from it.

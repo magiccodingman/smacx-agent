@@ -128,6 +128,90 @@ def main() -> int:
         later = restarted.enqueue("chat", {"message": {"message_uid": "chat-later"}},
                                   observation_cursor=99, critical=True)
         assert later["attention_sequence"] == 3
+        later_lease = restarted.lease("episode-later")
+        restarted.placed(later_lease["attention_lease_id"])
+        restarted.responded(later_lease["attention_lease_id"])
+        restarted.acknowledge(
+            later_lease["attention_lease_id"],
+            through_cursor=later_lease["through_cursor"],
+        )
+
+        specialist = restarted.enqueue(
+            "specialist_completion", {
+                "mission_id": "mission-attention-contract", "faculty": "world",
+                "status": "accepted", "preview": "bounded result ready",
+            }, observation_cursor=100, priority=80,
+            dedupe_key="specialist-completion-contract",
+        )
+        specialist_token = restarted.acquire_sovereign(
+            "episode-specialist-delivery", "gameplay", ttl_seconds=30,
+        )
+        specialist_lease = restarted.lease("episode-specialist-delivery")
+        restarted.placed(specialist_lease["attention_lease_id"])
+        restarted.responded(specialist_lease["attention_lease_id"])
+        # Simulate a controller/provider process dying after a response but
+        # before explicit cognition acknowledgement.
+        with store.transaction() as connection:
+            connection.execute(
+                "UPDATE sovereign_leases SET expires_unix=0 WHERE lease_token_hash IS NOT NULL "
+                "AND status='active'",
+            )
+        after_crash = AttentionService(store, journal, scope)
+        recovery_token = after_crash.acquire_sovereign(
+            "episode-after-specialist-crash", "gameplay",
+        )
+        specialist_redelivery = after_crash.lease("episode-after-specialist-crash")
+        specialist_item = next(
+            item for item in specialist_redelivery["items"]
+            if item["attention_id"] == specialist["attention_id"]
+        )
+        assert specialist_item["redelivered"] is True
+        after_crash.placed(specialist_redelivery["attention_lease_id"])
+        after_crash.responded(specialist_redelivery["attention_lease_id"])
+        after_crash.acknowledge(
+            specialist_redelivery["attention_lease_id"],
+            through_cursor=specialist_redelivery["through_cursor"],
+        )
+        after_crash.release_sovereign(recovery_token, committed=True)
+        # The dead process token is intentionally unusable after replacement.
+        try:
+            restarted.release_sovereign(specialist_token, committed=True)
+            raise AssertionError("expired sovereign token remained valid")
+        except AttentionError:
+            pass
+
+        # Oversized runtime burst: leasing is generous, but only the exact
+        # serialized subset may be placed. Omitted IDs return to the queue;
+        # partially processed placed IDs redeliver with identity intact.
+        burst_ids = []
+        for index in range(32):
+            queued = restarted.enqueue(
+                "world_change", {"index": index, "detail": "x" * 2048},
+                observation_cursor=100 + index, priority=50 - (index % 10),
+                dedupe_key=f"burst-{index}",
+            )
+            burst_ids.append(queued["attention_id"])
+        burst = restarted.lease("episode-burst", limit=64)
+        visible = [item["attention_id"] for item in burst["items"][:5]]
+        restricted = restarted.restrict_for_placement(
+            burst["attention_lease_id"], visible,
+        )
+        assert restricted["visible_ids"] == visible
+        assert set(restricted["requeued_ids"]) == set(burst_ids) - set(visible)
+        restarted.placed(burst["attention_lease_id"])
+        restarted.responded(burst["attention_lease_id"])
+        partial = restarted.acknowledge(
+            burst["attention_lease_id"], through_cursor=0,
+            acknowledged_ids=visible[:2],
+        )
+        assert partial["acknowledged_ids"] == visible[:2]
+        next_burst = restarted.lease("episode-burst-next", limit=64)
+        next_ids = [item["attention_id"] for item in next_burst["items"]]
+        assert set(next_ids) == set(burst_ids) - set(visible[:2])
+        assert all(item["redelivered"] for item in next_burst["items"]
+                   if item["attention_id"] in visible[2:])
+        assert all(not item["redelivered"] for item in next_burst["items"]
+                   if item["attention_id"] in set(burst_ids) - set(visible))
 
     print(json.dumps({"event": "pass", "payload": {
         "mid_provider_capture_isolated": True,
@@ -138,6 +222,10 @@ def main() -> int:
         "communication_serializes_sovereign": True,
         "chat_deduplication": True,
         "attention_operation_scope_isolation": True,
+        "oversized_burst_only_visible_placed": True,
+        "partial_ack_requeues_remainder": True,
+        "specialist_completion_redelivery": True,
+        "responded_without_ack_restart_redelivery": True,
     }}, separators=(",", ":")))
     return 0
 

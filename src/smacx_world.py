@@ -103,7 +103,8 @@ class WorldService:
 
     def _dependency_refs(self, mode: str, objects: Mapping[str, Mapping[str, Any]], *,
                          subjects: tuple[str, ...], origin_ref: str, target_ref: str,
-                         radius: int) -> tuple[str, ...]:
+                         radius: int,
+                         projection: Mapping[str, Any] | None = None) -> tuple[str, ...]:
         if subjects:
             refs = set(subjects)
             for ref in subjects:
@@ -126,10 +127,39 @@ class WorldService:
                 str(objects.get(origin_ref, {}).get("location_ref") or ""),
                 str(objects.get(target_ref, {}).get("location_ref") or "")) if value}))
         if mode == "area":
-            # Radius membership itself depends on the known map geometry.
-            return tuple(sorted(objects))
-        # Routing, frontier/render, changes, and the planet anchor depend on
-        # the currently known topology or the whole projection.
+            center = objects.get(origin_ref or (subjects[0] if subjects else ""))
+            center_ref = str(center.get("location_ref") if center and center.get("location_ref")
+                             else center.get("object_ref") if center else origin_ref)
+            topology = self._topology(
+                projection or {"objects": list(objects.values())},
+            )
+            if center_ref not in topology.by_ref:
+                return tuple(sorted(value for value in (center_ref,) if value))
+            origin = topology.by_ref[center_ref]
+            locations = {
+                ref for ref, square in topology.by_ref.items()
+                if topology.shape.distance((origin.x, origin.y), (square.x, square.y)) <= radius
+            }
+            return tuple(sorted(
+                ref for ref, item in objects.items()
+                if ref in locations or str(item.get("location_ref") or "") in locations
+            ))
+        if mode in {"relation", "route", "reachability", "compare"}:
+            # Route answers depend on known topology, not every unrelated base,
+            # faction, project, or economic field in the perspective.
+            refs = {
+                ref for ref, item in objects.items()
+                if item.get("kind") in {"location", "mobility_profile", "route", "convoy"}
+            }
+            refs.update(subjects)
+            refs.update(value for value in (origin_ref, target_ref) if value)
+            for value in (origin_ref, target_ref, *subjects):
+                location = objects.get(value, {}).get("location_ref")
+                if location:
+                    refs.add(str(location))
+            return tuple(sorted(refs))
+        # Rendering, change history, and the strategic anchor deliberately
+        # carry perspective-wide coverage dependencies.
         return tuple(sorted(objects))
 
     def anchor(self, *, context_length: int, focus_ref: str | None = None,
@@ -320,7 +350,7 @@ class WorldService:
             raise WorldQueryError("invalid_world_continuation")
         dependency_refs = self._dependency_refs(
             mode, objects, subjects=subjects, origin_ref=origin_ref,
-            target_ref=target_ref, radius=radius,
+            target_ref=target_ref, radius=radius, projection=projection,
         )
         dependency_hash = content_hash({
             ref: objects.get(ref) for ref in dependency_refs
@@ -428,7 +458,13 @@ class WorldService:
             if mode == "route":
                 origin_location = objects.get(origin_ref, {}).get("location_ref") or origin_ref
                 target_location = objects.get(target_ref, {}).get("location_ref") or target_ref
-                result["route"] = topology.route(origin_location, target_location, profile).as_dict()
+                route = topology.route(origin_location, target_location, profile).as_dict()
+                route["route_ref"] = "route-" + content_hash({
+                    "origin_ref": origin_ref, "target_ref": target_ref,
+                    "movement_profile_ref": movement_profile_ref,
+                    "path": route["path"], "dependency_hash": route["dependency_hash"],
+                })[:24]
+                result["route"] = route
             elif mode == "compare":
                 if not subjects:
                     raise WorldQueryError("compare_requires_subjects")
@@ -441,6 +477,13 @@ class WorldService:
                     result["items"] = rendezvous_matrix(
                         topology, objects, subjects, [target_ref], movement_profile_ref,
                     )
+                    for item in result["items"]:
+                        item["rendezvous_ref"] = "rendezvous-" + content_hash({
+                            "participant_refs": subjects,
+                            "candidate_ref": item.get("candidate_ref"),
+                            "movement_profile_ref": movement_profile_ref,
+                            "arrivals": item.get("arrivals"),
+                        })[:24]
                 else:
                     result["items"] = location_affordances(topology, objects, subjects)
             else:
@@ -465,6 +508,9 @@ class WorldService:
             }
             result["items"] = self.store.changes_since(
                 self.scope, identity.timeline_id, int(since_cursor), limit=512,
+            )
+            result["temporal_events"] = self.store.temporal_events_since(
+                self.scope, identity.timeline_id, int(since_cursor), limit=256,
             )
         elif mode == "render":
             topology = self._topology(projection)

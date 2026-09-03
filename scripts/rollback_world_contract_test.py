@@ -75,16 +75,10 @@ def main() -> int:
         service = WorldService(worlds, scope)
         service.query(mode="forces", context_length=65536)
         specialist = SpecialistService(store, worlds, scope)
-        job = specialist.create(kind="world_analyst", question="future",
-                                evidence=[{"evidence_ref": "base-home", "value": {}}])
-        specialist.run(job, lambda _prompt, request: {
-            "specialist_job_id": request["specialist_job_id"],
-            "answer": "future", "claims": [], "limitations": [],
-            "unresolved_questions": [],
-            "source_revision": request["identity"]["world_revision"],
-            "dependency_refs": request["dependency_refs"],
-            "dependency_hash": request["dependency_hash"],
-        })
+        mission = specialist.commission(
+            faculty="world", objective="future", subject_refs=["base-home"],
+        )
+        specialist.begin_attempt(mission["mission_id"], "future-runtime")
 
         def restore(target: str) -> str:
             journal.fork_timeline(scope, target, native_save_sha256="a" * 64,
@@ -100,6 +94,7 @@ def main() -> int:
             restored = worlds.restore_projection_from_snapshot(
                 scope, payload, target_timeline_id=target,
                 journal_head_hash=checkpoint["event_hash"])
+            SpecialistService(store, worlds, scope, journal=journal).cancel_for_rollback(target)
             worlds.discard_future(scope, target)
             return str(restored["projection_checksum"])
 
@@ -114,7 +109,15 @@ def main() -> int:
         with store._connect() as connection:
             assert connection.execute("SELECT COUNT(*) FROM world_watches").fetchone()[0] == 0
             assert connection.execute("SELECT COUNT(*) FROM world_query_cache").fetchone()[0] == 0
-            assert connection.execute("SELECT COUNT(*) FROM specialist_jobs").fetchone()[0] == 0
+            mission_row = connection.execute(
+                "SELECT status,cancellation_reason FROM specialist_missions WHERE mission_id=?",
+                (mission["mission_id"],),
+            ).fetchone()
+            assert tuple(mission_row) == ("cancelled", "cancelled_by_rollback")
+            assert connection.execute(
+                "SELECT COUNT(*) FROM specialist_attempts WHERE mission_id=? AND status='cancelled'",
+                (mission["mission_id"],),
+            ).fetchone()[0] == 1
 
         # A second restore from the same authoritative checkpoint is byte-stable.
         second_checksum = restore("timeline-restore-two")
@@ -125,7 +128,7 @@ def main() -> int:
             "snapshot_journal_head_verified": True,
             "future_world_removed": True,
             "future_attention_watch_operation_removed": True,
-            "future_cache_specialist_removed": True,
+            "future_cache_removed_specialist_diagnostics_retained": True,
             "repeat_restore_deterministic": True,
         }}, separators=(",", ":")))
     return 0

@@ -63,6 +63,12 @@ HARNESS_RUN_PATH = re.compile(
 )
 SCENARIO_CATALOG_PATH = re.compile(r"^/api/v1/game-sources/([A-Za-z0-9_-]{8,96})/scenarios$")
 INCIDENT_PATH = re.compile(r"^/api/v1/incidents/([A-Za-z0-9_-]{8,96})$")
+SPECIALIST_MISSION_PATH = re.compile(
+    r"^/api/v1/specialists/missions/([A-Za-z0-9_-]{8,96})$"
+)
+SPECIALIST_TRACE_PATH = re.compile(
+    r"^/api/v1/specialists/traces/([A-Za-z0-9_-]{8,96})$"
+)
 
 
 class RequestRateLimiter:
@@ -327,6 +333,27 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/specialists":
                 self._authentication()
                 self._json(200, self.server.control.specialist_status())
+                return
+            if path == "/api/v1/specialists/missions":
+                self._authentication()
+                query = parse_qs(parts.query, keep_blank_values=True)
+                self._json(200, {"ok": True, "missions":
+                    self.server.control.list_specialist_missions(
+                        status=str(query.get("status", [""])[0]),
+                        limit=int(query.get("limit", ["100"])[0]),
+                    )})
+                return
+            specialist_mission = SPECIALIST_MISSION_PATH.fullmatch(path)
+            if specialist_mission:
+                self._authentication()
+                self._json(200, {"ok": True, "mission":
+                    self.server.control.specialist_mission(specialist_mission.group(1))})
+                return
+            specialist_trace = SPECIALIST_TRACE_PATH.fullmatch(path)
+            if specialist_trace:
+                self._authentication()
+                self._json(200, {"ok": True, "trace":
+                    self.server.control.specialist_trace(specialist_trace.group(1))})
                 return
             if path == "/api/v1/world-observability":
                 self._authentication()
@@ -787,6 +814,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     raise InvalidRecord("invalid_specialist_profile")
                 result = self.server.control.set_specialist_profile(
                     profile, max_concurrency=int(body.get("max_concurrency", 2)),
+                    policy=body.get("policy") if isinstance(body.get("policy"), dict) else None,
                 )
                 self.server.control.audit(
                     auth["admin_id"], "specialists.configure", "installation", None,
@@ -809,6 +837,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 body = self._body()
                 self._json(200, self.server.control.clear_specialist_profile(
                     str(body.get("profile_id", ""))))
+                return
+            if path == "/api/v1/specialists/traces/gc":
+                auth = self._authorize_mutation()
+                result = self.server.control.gc_specialist_traces()
+                self.server.control.audit(
+                    auth["admin_id"], "specialists.trace_gc", "installation", None,
+                    "success", {"removed": result["removed"],
+                                "bytes_removed": result["bytes_removed"]},
+                    self.client_address[0],
+                )
+                self._json(200, result)
                 return
             if path == "/api/v1/graphiti/clear-profile":
                 auth = self._authorize_mutation()

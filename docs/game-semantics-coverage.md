@@ -34,7 +34,7 @@ fixtures and the reproducible no-timer benchmark procedure. LAN-native mutation
 paths retain their dedicated two-client and mixed-LAN suites. Hidden-state
 differentials compare byte-identical visible positions with different hidden
 honeytokens across anchor, world query, region, route, render, attention, and
-specialist-input outputs. See [Contributor testing](testing.md) for exact commands.
+pinned specialist world inputs. See [Contributor testing](testing.md) for exact commands.
 
 “Partial” is intentional: the listed native subset is implemented and
 fair-play tested, while remaining human-visible report surfaces are not claimed

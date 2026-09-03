@@ -68,12 +68,20 @@ def projected(bundle: dict, root: Path) -> tuple[dict, dict, str, dict, dict]:
     topology = service._topology(world_store.load(scope, identity.timeline_id) or {})
     objects = service._objects(world_store.load(scope, identity.timeline_id) or {})
     rendering = render_svg(topology, objects, max_cells=100)
-    specialist = SpecialistService(store, world_store, scope).create(
-        kind="world_analyst", question="Describe only supplied strategic evidence.",
-        evidence=[{"evidence_ref": "base-home", "value": objects["base-home"]}],
+    mission = SpecialistService(store, world_store, scope).commission(
+        faculty="world", objective="Describe only supplied strategic evidence.",
+        subject_refs=["base-home"],
     )
-    for key in ("specialist_job_id", "identity"):
-        specialist.pop(key, None)
+    with store._connect() as connection:
+        mission_row = connection.execute(
+            "SELECT world_snapshot_id FROM specialist_missions WHERE mission_id=?",
+            (mission["mission_id"],),
+        ).fetchone()
+    specialist = world_store.load_snapshot_content(str(mission_row["world_snapshot_id"]))
+    specialist.pop("snapshot_id", None)
+    specialist.pop("created_unix", None)
+    specialist["identity"] = {}
+    specialist["projection"]["identity"] = {}
     attention = AttentionService(store, journal, scope)
     queued = attention.enqueue(
         "world_change", {"delta": {"object_ref": "base-home", "change": "appeared",

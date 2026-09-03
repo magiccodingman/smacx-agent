@@ -21,7 +21,8 @@ managed state volume is durable.
 
 The control database also stores rebuildable perspective projections: world
 heads, topology/region metadata, query dependencies, attention leases, watches,
-operations, cognition projections, specialist jobs, and one current materialized
+operations, cognition projections, specialist missions/attempts/dependencies,
+trace manifests, and one current materialized
 world anchor per perspective/context tier. It does not store a historical anchor
 copy for every decision. The hash-linked campaign journal remains the temporal
 authority; these tables accelerate current queries and can be rebuilt.
@@ -107,7 +108,10 @@ crash after publication can at worst leave an extra obsolete directory.
 
 Normal control backups freeze and include the complete campaign tree and Git
 history alongside the platform database, worker archives, Hermes volumes, and
-the exact recovery-snapshot files referenced by the captured database. Restore
+the exact recovery-snapshot files referenced by the captured database. Retained
+compressed specialist traces are included as one separately hashed archive;
+restore validates its entries and atomically restores that exact generation.
+Restore
 verifies hashes and rejects traversal, links, devices, and unexpected archive
 roots before replacing either the campaign tree or recovery-snapshot tree.
 
