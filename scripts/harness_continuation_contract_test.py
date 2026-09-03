@@ -88,6 +88,9 @@ class ContractHarnessManager(HarnessManager):
     def _journal_run_event(self, *_arguments, **_keywords) -> list[dict[str, str]]:
         return []
 
+    def _append_capability_gap_report(self, report: dict) -> None:
+        self.capability_report = dict(report)
+
     def telemetry(self, _run_id: str) -> dict:
         return {"ok": True, "telemetry": {
             "api_calls": 3, "output_tokens": 5000, "reasoning_tokens": 1000,
@@ -160,6 +163,34 @@ def main() -> int:
             or control.run["metadata"].get("semantic_stall_recoveries") != 1:
         raise AssertionError(f"live semantic stall was not recovered: {live_stall}")
 
+    # A live Hermes process whose native bridge remains unavailable must stop
+    # with a visible capability incident. AI-2 previously remained alive and
+    # silent forever in precisely this state.
+    control.incidents.clear()
+    control.run.update({
+        "desired_status": "running", "status": "running", "restart_count": 0,
+        "metadata": {
+            "semantic_sample_unix": time.time() - 61,
+            "semantic_unavailable_since_unix": time.time() - 90,
+            "semantic_unavailable_samples": 2,
+            "semantic_progress": marker("r2", 2),
+        },
+    })
+    manager.worker_manager.progress = {
+        "available": False, "reason": "worker_not_healthy",
+    }
+    unavailable = manager.reconcile_once()
+    if unavailable.get("operator_required") != 1 \
+            or control.run["status"] != "error" \
+            or control.run["desired_status"] != "stopped" \
+            or not str(control.run.get("last_error", "")).startswith("capability_gap:") \
+            or not control.incidents \
+            or not str(control.incidents[-1]["kind"]).startswith("capability_gap:"):
+        raise AssertionError(f"bridge outage was not surfaced safely: {unavailable}")
+    if manager.capability_report.get("supervisor_generated") is not True \
+            or manager.capability_report.get("match_id") != "match-continuation":
+        raise AssertionError("bridge outage did not queue a diagnostic report")
+
     print(json.dumps({
         "event": "pass",
         "payload": {
@@ -169,6 +200,7 @@ def main() -> int:
             "operator_incident_recorded": True,
             "error_restart_budget_independent": True,
             "live_token_spending_stall_recovered": True,
+            "persistent_bridge_outage_requires_operator": True,
         },
     }, separators=(",", ":")))
     return 0

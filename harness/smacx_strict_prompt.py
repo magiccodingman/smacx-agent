@@ -34,6 +34,11 @@ _HANDOFF_SECTIONS = (
 )
 _HANDOFF_MAX_WORDS = 120
 _HANDOFF_SECTION_WORDS = 19
+_STATE_TOOL_NAMES = frozenset({
+    "smac_decision", "smac_choices", "smac_wait",
+    "smac_execute_choice", "smac_match_briefing",
+})
+_SMACX_MCP_PREFIX = "mcp__smacx__"
 
 
 def _without_historical_thinking(content: str) -> tuple[str, int]:
@@ -85,6 +90,43 @@ def _compact_turn_handoff(content: str) -> str:
         value = " ".join(words[:_HANDOFF_SECTION_WORDS]).strip(" -*\n\t")
         lines.append(f"{label}: {value or 'Not specified.'}")
     return "\n".join(lines)
+
+
+def _managed_tool_name(call: object) -> str:
+    """Return the semantic SMACX name from direct or Hermes-dispatched calls.
+
+    Hermes exposes MCP through one generic ``tool_call`` function. The actual
+    operation is a nested ``name`` argument such as
+    ``mcp__smacx__smac_decision``. Keeping direct-name support makes the hook
+    tolerant of upstream transport changes, while requiring the namespace on
+    dispatched calls prevents unrelated tools from being treated as game
+    state merely because an untrusted argument resembles a SMACX operation.
+    """
+    if not isinstance(call, dict):
+        return ""
+    function = call.get("function")
+    if not isinstance(function, dict):
+        return ""
+    outer_name = function.get("name")
+    if not isinstance(outer_name, str):
+        return ""
+    if outer_name.startswith(_SMACX_MCP_PREFIX):
+        return outer_name.removeprefix(_SMACX_MCP_PREFIX)
+    if outer_name != "tool_call":
+        return outer_name
+    arguments = function.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            return ""
+    if not isinstance(arguments, dict):
+        return ""
+    dispatched_name = arguments.get("name")
+    if not isinstance(dispatched_name, str) \
+            or not dispatched_name.startswith(_SMACX_MCP_PREFIX):
+        return ""
+    return dispatched_name.removeprefix(_SMACX_MCP_PREFIX)
 
 
 def _install() -> None:
@@ -144,7 +186,9 @@ def _install() -> None:
         )
         compacted_reasoning = compacted_think_blocks = 0
         compacted_frames = compacted_boundaries = 0
+        pruned_tool_calls = pruned_tool_results = 0
         tool_names: dict[str, str] = {}
+        historical_tool_call_ids: set[str] = set()
         state_rows: list[int] = []
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict):
@@ -164,15 +208,13 @@ def _install() -> None:
                 for call in message.get("tool_calls") or []:
                     if not isinstance(call, dict):
                         continue
-                    function = call.get("function")
-                    if isinstance(function, dict) and isinstance(call.get("id"), str):
-                        tool_names[call["id"]] = str(function.get("name") or "")
+                    if isinstance(call.get("id"), str):
+                        tool_names[call["id"]] = _managed_tool_name(call)
+                        if index < last_user:
+                            historical_tool_call_ids.add(call["id"])
             elif message.get("role") == "tool":
                 name = tool_names.get(str(message.get("tool_call_id") or ""), "")
-                if name in {
-                    "smac_decision", "smac_choices", "smac_wait",
-                    "smac_execute_choice", "smac_match_briefing",
-                }:
+                if name in _STATE_TOOL_NAMES:
                     state_rows.append(index)
             elif message.get("role") == "user":
                 content = message.get("content")
@@ -188,15 +230,35 @@ def _install() -> None:
                 "instruction": "Use the newest decision/state tool result.",
             }, separators=(",", ":"))
             compacted_frames += 1
+        # A managed user boundary is emitted only after the prior native-turn
+        # episode has yielded its durable TURN HANDOFF. Retain that ordinary
+        # assistant summary, but remove the completed protocol pairs that led
+        # to it. Otherwise every opaque choice and full JSON result is replayed
+        # forever even though the journal and handoff already preserve the
+        # durable outcome. Current-episode pairs remain untouched so provider
+        # tool-call ordering stays valid while the turn is in progress.
+        filtered = []
+        for index, message in enumerate(sanitized):
+            if index < last_user and isinstance(message, dict):
+                if message.get("role") == "assistant" and message.get("tool_calls"):
+                    pruned_tool_calls += len(message.get("tool_calls") or [])
+                    continue
+                if message.get("role") == "tool" and str(
+                        message.get("tool_call_id") or "") in historical_tool_call_ids:
+                    pruned_tool_results += 1
+                    continue
+            filtered.append(message)
         if compacted_reasoning or compacted_think_blocks \
-                or compacted_frames or compacted_boundaries:
+                or compacted_frames or compacted_boundaries \
+                or pruned_tool_calls or pruned_tool_results:
             logger.debug(
                 "SMACX request compaction reasoning_fields=%d think_blocks=%d "
-                "state_frames=%d episode_boundaries=%d",
+                "state_frames=%d episode_boundaries=%d tool_calls=%d tool_results=%d",
                 compacted_reasoning, compacted_think_blocks,
                 compacted_frames, compacted_boundaries,
+                pruned_tool_calls, pruned_tool_results,
             )
-        return sanitized
+        return filtered
 
     run_agent.AIAgent._sanitize_api_messages = staticmethod(compact_managed_context)
 

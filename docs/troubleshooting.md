@@ -410,8 +410,10 @@ conversation after a tool schema change so discovery is refreshed.
 ## Park reports “native checkpoint not currently legal”
 
 The stock engine is in a native phase/modal where saving is illegal. The safe
-park sequence stops Hermes first, then attempts the checkpoint; if saving fails,
-the worker is retained and the match returns to `running` with `park_failed`.
+checkpoint sequence waits for stable native state, briefly pauses Hermes,
+rechecks that state, and then attempts the native save plus AI-memory snapshot.
+If any component fails, the worker is retained and the match returns to
+`running` with `park_failed`; no partial checkpoint replaces the previous one.
 
 Resolve or wait out the mandatory semantic state and retry. Do not destroy the
 worker or force a filesystem copy as a substitute for a native save.
@@ -426,9 +428,12 @@ Recovery requires a verified native checkpoint. Inspect Match history and the
 lobby error. A process crash before the first legal checkpoint cannot be
 invented into a safe save.
 
-Recovery starts a new process/session/revision. Agent commands captured before
-the crash must be discarded; Hermes continues its durable conversation but
-must call a fresh observation.
+Recovery starts a new process/session/revision. Agent commands captured after
+the checkpoint are discarded. Hermes is restored to its match-scoped snapshot,
+the journal forks at its recorded head, modern-chat groups return to that state,
+and Graphiti changes namespace. If Graphiti is enabled, a failed or incomplete
+rebuild keeps the new Hermes run blocked for operator review. The agent then
+calls a fresh observation.
 
 ## Turn/year or faction is blank
 
@@ -515,6 +520,20 @@ container removal is still settling, the operation reports that phase and
 retries automatically instead of abandoning the campaign. A terminal failure
 returns the match to visible operator review with its checkpoint and incident
 preserved.
+
+## The AI stopped because its game bridge became unavailable
+
+One failed semantic probe may occur during an ordinary native transition and is
+retried. Three consecutive failures spanning at least one minute are treated as
+a lost game connection. The harness is stopped, the native worker is preserved,
+and the lobby, play view, and observation deck show a durable needs-attention
+incident. The background diagnostic builder adds recent distinct saves and
+redacted bridge, MCP, harness, and supervisor evidence to the downloadable ZIP.
+
+Do not repeatedly press browser controls or restart the container by hand. If a
+verified checkpoint is shown, deploy the fix and use **Retry from verified
+checkpoint**. Without one, download the diagnostic ZIP and preserve the worker
+for investigation; the platform intentionally refuses to guess at state.
 
 ## Cleanup
 

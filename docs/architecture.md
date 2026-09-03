@@ -211,10 +211,15 @@ Managed Qwen thinking profiles explicitly disable unlimited historical
 `preserve_thinking`. The derived harness retains all interleaved reasoning after
 the current episode's latest user boundary, so `think -> tool -> result ->
 think` remains coherent. Before the next episode request it removes completed
-reasoning fields and serialized think blocks while retaining assistant output,
-tool history, and the newest state frame. A streaming repetition fuse turns a
-large degenerate generation into Hermes's ordinary recoverable repetition
-error.
+reasoning fields and serialized think blocks. It retains durable ordinary
+assistant output such as `TURN HANDOFF`, but omits completed tool-call/result
+protocol pairs from the provider projection; those remain available in Hermes
+SQLite and the campaign journal. Within the active episode it keeps every tool
+pair while replacing superseded state payloads with compact markers and keeping
+the newest state frame intact. The parser understands Hermes's real generic
+`tool_call` dispatcher envelope as well as direct namespaced calls. A streaming
+repetition fuse turns a large degenerate generation into Hermes's ordinary
+recoverable repetition error.
 
 A successful native turn end asks the model for one bounded `TURN HANDOFF`
 assistant message: outcome, concise rationale, changed conclusions, next-turn
@@ -228,7 +233,10 @@ incident. Actual nonzero exits retain their separate bounded restart budget.
 
 Capability-gap reports take priority over both continuation and error restart.
 The MCP sidecar appends one match/session-scoped report to the persistent control
-volume. The operations supervisor ingests it before harness reconciliation,
+volume. The harness supervisor creates the same report automatically when three
+consecutive semantic probes over at least one minute cannot reach a previously
+running worker. The agent is stopped instead of being allowed to wait or spend
+tokens forever. The operations supervisor ingests the report before further harness reconciliation,
 records an operator-required incident, stops that seat's harness, preserves the
 native worker, and publishes a redacted diagnostic archive. Portal polling and
 the lobby SignalR channel surface the same durable incident to connected humans;
@@ -240,6 +248,13 @@ refreshes its prepared runtime image, restores the verified save in a fresh
 native/MCP session, and then recovers only the capability incident plus the
 derived clean-yield incident. An unrelated operational incident is never
 cleared by that action.
+
+Portal native-health polling has its own monotonic cadence rather than borrowing
+the match row's general `UpdatedAt` value. A running but unhealthy worker that
+was previously connected is rendered as `bridge_unavailable`, not as perpetual
+startup. At a newly observed turn, checkpoint creation runs before the next
+autonomous episode is launched so recovery has first access to the stable turn
+boundary.
 
 Chat messages and web content remain untrusted game information. They do not
 become operator/system instructions. Lifecycle, Docker, backups, provider
@@ -302,8 +317,10 @@ Parking is an ordered transaction:
 
 ```text
 portal status=parking
-  -> stop active Hermes runs
-  -> native verified checkpoint
+  -> three stable native observations
+  -> pause active Hermes runs and verify the state once more
+  -> native verified checkpoint + digest
+  -> journal heads + group projection + match-scoped Hermes snapshots
   -> stop/remove MCP and worker containers
   -> authoritative match=parked
   -> portal match=parked
@@ -325,8 +342,12 @@ storage](storage-lifecycle.md).
 The control API independently stops harness callers for direct API park users.
 
 Recovery always assigns fresh native session/revision identities, loads the
-verified save, reclaims exact factions, restores MCP sidecars, and continues
-the durable Hermes conversation. A model must re-observe.
+verified save, reclaims exact factions, restores MCP sidecars, and restores the
+Hermes conversation to the same checkpoint. Every perspective moves to a new
+active journal timeline forked from the recorded hash. AI-visible working state,
+structured lists, search, recall, chat acknowledgement, and modern group state
+all read that timeline; older SQLite rows are disposable/admin projections and
+cannot leak an abandoned future. A model must re-observe.
 
 Portal governance rows are durable authorization records. Quorum is frozen from
 the other connected, non-delegated human seats when a proposal opens. Approval
@@ -360,7 +381,8 @@ The authoritative campaign journal separates:
 Journal replay produces a bounded current-state capsule. Each section has a
 token budget and newest/highest-priority selection; overflow shortens only the
 provider-facing projection and raises a compaction signal without deleting raw
-history. SQLite/FTS retrieval remains perspective-scoped and rebuildable.
+history. AI-visible retrieval is journal-backed. SQLite/FTS remains a
+perspective-scoped, rebuildable compatibility/admin projection.
 
 ## Knowledge system
 

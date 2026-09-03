@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import tarfile
 import threading
 import time
@@ -53,6 +54,176 @@ NATIVE_RESOLUTION_PROFILES: dict[str, tuple[int, int]] = {
     "3840x2160": (3840, 2160),
     "5120x1440": (5120, 1440),
 }
+
+HERMES_CHECKPOINT_SCRIPT = r'''import io,json,os,pathlib,sqlite3,tarfile,tempfile
+profile=os.environ["SMACX_HERMES_PROFILE_ID"]
+match_id=os.environ["SMACX_MATCH_ID"]
+target=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ["SMACX_CHECKPOINT_RELATIVE"]
+source=pathlib.Path(os.environ.get("SMACX_SOURCE_ROOT","/source"))/"profiles"/profile/"state.db"
+present=source.is_file()
+session_ids=[]
+with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+    stable=pathlib.Path(temporary)/"state.db"
+    if present:
+        origin=sqlite3.connect(f"file:{source}?mode=ro",uri=True)
+        destination=sqlite3.connect(stable)
+        try: origin.backup(destination)
+        finally: destination.close();origin.close()
+        copied=sqlite3.connect(stable)
+        try:
+            session_ids=[str(row[0]) for row in copied.execute("SELECT id FROM sessions WHERE title=?",(match_id,))]
+            tables={str(row[0]) for row in copied.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            marks=",".join("?" for _ in session_ids)
+            keep=(f" IN ({marks})" if session_ids else " IN (SELECT NULL WHERE 0)")
+            for table,column in (("messages","session_id"),("session_model_usage","session_id"),("compression_locks","session_id")):
+                if table in tables: copied.execute(f"DELETE FROM {table} WHERE {column} NOT {keep}",session_ids)
+            if "session_turn_leases" in tables: copied.execute(f"DELETE FROM session_turn_leases WHERE conversation_id NOT {keep}",session_ids)
+            if "async_delegations" in tables:
+                cols={str(row[1]) for row in copied.execute("PRAGMA table_info('async_delegations')")}
+                candidate=[field for field in ("origin_session_id","origin_session","parent_session_id") if field in cols]
+                if candidate and session_ids:
+                    clause=" OR ".join(f"{field} IN ({marks})" for field in candidate)
+                    copied.execute("DELETE FROM async_delegations WHERE NOT ("+clause+")",session_ids*len(candidate))
+                else: copied.execute("DELETE FROM async_delegations")
+            copied.execute(f"DELETE FROM sessions WHERE id NOT {keep}",session_ids)
+            if "gateway_heartbeats" in tables: copied.execute("DELETE FROM gateway_heartbeats")
+            for table in ("gateway_hygiene_state","gateway_routing"):
+                if table in tables: copied.execute(f"DELETE FROM {table} WHERE session_key!=?",(match_id,))
+            if "system_prompts" in tables:
+                copied.execute("DELETE FROM system_prompts WHERE hash NOT IN (SELECT system_prompt_hash FROM sessions WHERE system_prompt_hash IS NOT NULL)")
+            copied.commit();copied.execute("VACUUM")
+        except sqlite3.Error: session_ids=[]
+        finally: copied.close()
+    manifest={"schema":"smacx.hermes-checkpoint.v2","profile_id":profile,"match_id":match_id,"database_present":present,"session_ids":session_ids}
+    with tarfile.open(target,"w:gz",compresslevel=6) as archive:
+        payload=json.dumps(manifest,sort_keys=True,separators=(",",":")).encode()
+        info=tarfile.TarInfo("checkpoint.json");info.size=len(payload);info.mode=0o600
+        archive.addfile(info,io.BytesIO(payload))
+        if present: archive.add(stable,arcname="state.db",recursive=False)
+print(json.dumps({"ok":True,**manifest},separators=(",",":")))'''
+
+HERMES_RESTORE_SCRIPT = r'''import json,os,pathlib,shutil,sqlite3,tarfile,tempfile
+profile=os.environ["SMACX_HERMES_PROFILE_ID"]
+match_id=os.environ["SMACX_MATCH_ID"]
+archive_path=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ["SMACX_CHECKPOINT_RELATIVE"]
+profile_root=pathlib.Path(os.environ.get("SMACX_TARGET_ROOT","/target"))/"profiles"/profile
+profile_root.mkdir(parents=True,exist_ok=True)
+with tempfile.TemporaryDirectory(dir="/tmp") as work:
+    checkpoint=pathlib.Path(work)/"state.db"
+    with tarfile.open(archive_path,"r:gz") as archive:
+        members=archive.getmembers()
+        if any(m.name not in {"checkpoint.json","state.db"} or not m.isfile() for m in members):
+            raise RuntimeError("unsafe_hermes_checkpoint_archive")
+        manifest=json.loads(archive.extractfile("checkpoint.json").read())
+        if manifest.get("schema")!="smacx.hermes-checkpoint.v2" or manifest.get("profile_id")!=profile or manifest.get("match_id")!=match_id:
+            raise RuntimeError("hermes_checkpoint_identity_mismatch")
+        if manifest.get("database_present"):
+            with archive.extractfile("state.db") as source,checkpoint.open("wb") as target:
+                shutil.copyfileobj(source,target,1024*1024)
+    target_db=profile_root/"state.db"
+    for suffix in ("-wal","-shm"): (profile_root/("state.db"+suffix)).unlink(missing_ok=True)
+    if not target_db.exists() and checkpoint.exists():
+        shutil.copyfile(checkpoint,target_db);target_db.chmod(0o600)
+    elif target_db.exists():
+        db=sqlite3.connect(target_db)
+        try:
+            db.execute("PRAGMA foreign_keys=OFF")
+            db.execute("ATTACH DATABASE ? AS checkpoint",(str(checkpoint) if checkpoint.exists() else ":memory:",))
+            def exists(schema,table):
+                return db.execute(f"SELECT 1 FROM {schema}.sqlite_master WHERE type='table' AND name=?",(table,)).fetchone() is not None
+            def columns(schema,table):
+                return [str(row[1]) for row in db.execute(f"PRAGMA {schema}.table_info('{table}')")]
+            def marks(count): return ",".join("?" for _ in range(count))
+            current=[str(row[0]) for row in db.execute("SELECT id FROM sessions WHERE title=?",(match_id,))] if exists("main","sessions") else []
+            snapshot=[str(value) for value in manifest.get("session_ids",[]) if isinstance(value,str)]
+            if checkpoint.exists() and exists("checkpoint","sessions"):
+                verified=[str(row[0]) for row in db.execute("SELECT id FROM checkpoint.sessions WHERE title=?",(match_id,))]
+                if set(snapshot)!=set(verified): raise RuntimeError("hermes_checkpoint_session_identity_mismatch")
+            if current:
+                for table,column in (("messages","session_id"),("session_model_usage","session_id"),("compression_locks","session_id")):
+                    if exists("main",table): db.execute(f"DELETE FROM {table} WHERE {column} IN ({marks(len(current))})",current)
+                if exists("main","async_delegations"):
+                    fields=set(columns("main","async_delegations"))
+                    clauses=[];values=[]
+                    for field in ("origin_session_id","origin_session","parent_session_id"):
+                        if field in fields: clauses.append(f"{field} IN ({marks(len(current))})");values.extend(current)
+                    if clauses: db.execute("DELETE FROM async_delegations WHERE "+" OR ".join(clauses),values)
+                if exists("main","session_turn_leases"): db.execute(f"DELETE FROM session_turn_leases WHERE conversation_id IN ({marks(len(current))})",current)
+                db.execute(f"DELETE FROM sessions WHERE id IN ({marks(len(current))})",current)
+            for table in ("gateway_hygiene_state","gateway_routing"):
+                if exists("main",table) and "session_key" in columns("main",table): db.execute(f"DELETE FROM {table} WHERE session_key=?",(match_id,))
+            if checkpoint.exists() and snapshot:
+                if exists("main","system_prompts") and exists("checkpoint","system_prompts"):
+                    cols=[c for c in columns("main","system_prompts") if c in columns("checkpoint","system_prompts")]
+                    names=",".join('"'+c+'"' for c in cols)
+                    db.execute(f"INSERT OR IGNORE INTO system_prompts ({names}) SELECT {names} FROM checkpoint.system_prompts")
+                def copy_sessions(table,column="session_id"):
+                    if not exists("main",table) or not exists("checkpoint",table): return
+                    cols=[c for c in columns("main",table) if c in columns("checkpoint",table)]
+                    names=",".join('"'+c+'"' for c in cols)
+                    db.execute(f"INSERT INTO {table} ({names}) SELECT {names} FROM checkpoint.{table} WHERE {column} IN ({marks(len(snapshot))})",snapshot)
+                copy_sessions("sessions","id")
+                for table in ("messages","session_model_usage","compression_locks"): copy_sessions(table)
+                if exists("main","session_turn_leases") and exists("checkpoint","session_turn_leases"): copy_sessions("session_turn_leases","conversation_id")
+                if exists("main","async_delegations") and exists("checkpoint","async_delegations"):
+                    cols=[c for c in columns("main","async_delegations") if c in columns("checkpoint","async_delegations")]
+                    fields=[c for c in ("origin_session_id","origin_session","parent_session_id") if c in cols]
+                    if fields:
+                        names=",".join('"'+c+'"' for c in cols)
+                        clause=" OR ".join(f"{field} IN ({marks(len(snapshot))})" for field in fields)
+                        db.execute(f"INSERT INTO async_delegations ({names}) SELECT {names} FROM checkpoint.async_delegations WHERE "+clause,snapshot*len(fields))
+                for table in ("gateway_hygiene_state","gateway_routing"):
+                    if exists("main",table) and exists("checkpoint",table):
+                        cols=[c for c in columns("main",table) if c in columns("checkpoint",table)]
+                        names=",".join('"'+c+'"' for c in cols)
+                        db.execute(f"INSERT INTO {table} ({names}) SELECT {names} FROM checkpoint.{table} WHERE session_key=?",(match_id,))
+            db.commit()
+            if str(db.execute("PRAGMA integrity_check").fetchone()[0])!="ok": raise RuntimeError("restored_hermes_database_invalid")
+        finally: db.close()
+print(json.dumps({"ok":True,**manifest,"restored_session_count":len(manifest.get("session_ids",[]))},separators=(",",":")))'''
+
+HERMES_CLEAR_SCRIPT = r'''import json,os,pathlib,sqlite3
+profile=os.environ["SMACX_HERMES_PROFILE_ID"]
+match_id=os.environ["SMACX_MATCH_ID"]
+profile_root=pathlib.Path(os.environ.get("SMACX_TARGET_ROOT","/target"))/"profiles"/profile
+profile_root.mkdir(parents=True,exist_ok=True)
+database=profile_root/"state.db"
+removed=0
+if database.exists():
+    for suffix in ("-wal","-shm"): (profile_root/("state.db"+suffix)).unlink(missing_ok=True)
+    db=sqlite3.connect(database)
+    try:
+        ids=[str(row[0]) for row in db.execute("SELECT id FROM sessions WHERE title=?",(match_id,))]
+        if ids:
+            marks=",".join("?" for _ in ids)
+            for table,column in (("messages","session_id"),("session_model_usage","session_id"),("compression_locks","session_id")):
+                try: db.execute(f"DELETE FROM {table} WHERE {column} IN ({marks})",ids)
+                except sqlite3.Error: pass
+            try:
+                cols={str(row[1]) for row in db.execute("PRAGMA table_info('async_delegations')")}
+                fields=[field for field in ("origin_session_id","origin_session","parent_session_id") if field in cols]
+                if fields:
+                    clause=" OR ".join(f"{field} IN ({marks})" for field in fields)
+                    db.execute("DELETE FROM async_delegations WHERE "+clause,ids*len(fields))
+            except sqlite3.Error: pass
+            db.execute(f"DELETE FROM sessions WHERE id IN ({marks})",ids);removed=len(ids)
+        for table in ("gateway_hygiene_state","gateway_routing"):
+            try: db.execute(f"DELETE FROM {table} WHERE session_key=?",(match_id,))
+            except sqlite3.Error: pass
+        db.commit()
+    finally: db.close()
+print(json.dumps({"ok":True,"profile_id":profile,"match_id":match_id,"removed_sessions":removed},separators=(",",":")))'''
+
+SAVE_DIGEST_SCRIPT = r'''import hashlib,json,os,pathlib
+slot=os.environ["SMACX_SAVE_SLOT"].casefold()
+root=pathlib.Path(os.environ.get("SMACX_STATE_ROOT","/state"))/"game"/"saves"
+candidates=[p for p in root.rglob("*") if p.is_file() and p.name.casefold()==slot+".sav"]
+if not candidates: raise RuntimeError("checkpoint_save_file_missing")
+path=max(candidates,key=lambda p:p.stat().st_mtime_ns)
+digest=hashlib.sha256()
+with path.open("rb") as stream:
+    for block in iter(lambda:stream.read(1024*1024),b""): digest.update(block)
+print(json.dumps({"ok":True,"sha256":digest.hexdigest(),"bytes":path.stat().st_size},separators=(",",":")))'''
 
 
 def stream_bitrate_kbps(width: int, height: int) -> int:
@@ -129,7 +300,10 @@ class WorkerManager:
                  view_publish_ip: str = "127.0.0.1") -> None:
         self.control = control
         self.store = control.store
-        self.journal = CampaignJournal(self.store.path.parent / "campaigns")
+        self.journal = CampaignJournal(
+            self.store.path.parent / "campaigns",
+            timeline_resolver=self.store.active_timeline_id,
+        )
         self.docker = docker
         if not RESOURCE_NAME.fullmatch(worker_image.replace(":", "-", 1)):
             # Image references may contain one registry slash and colon. Keep
@@ -182,6 +356,238 @@ class WorkerManager:
             "managed_mcp_configured": bool(self.control_data_volume),
             "directplay_source_configured": True,
         }
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
+    def _run_checkpoint_helper(
+        self, purpose: str, identity: str, *, image: str, script: str,
+        environment: list[str], mounts: list[dict[str, Any]], user: str,
+        timeout: float = 300.0,
+    ) -> dict[str, Any]:
+        name = self._name(purpose, f"{identity}-{uuid.uuid4().hex}")
+        identifier = self.docker.create_container(name, {
+            "Image": image, "Entrypoint": ["python3"], "Cmd": ["-c", script],
+            "User": user, "Env": environment,
+            "Labels": self._labels(purpose, **{"io.smacx.checkpoint": identity}),
+            "HostConfig": {
+                "NetworkMode": "none", "ReadonlyRootfs": True,
+                "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges"],
+                "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=128m,mode=1777"},
+                "Mounts": mounts,
+            },
+        })
+        try:
+            self.docker.start_container(identifier)
+            stopped = self.docker.wait_container(identifier, timeout=timeout)
+            logs = _clean_log(self.docker.container_logs(identifier, tail=40))
+            if int(stopped.get("State", {}).get("ExitCode", -1)):
+                raise WorkerManagerError(
+                    f"{purpose}_failed:{logs[-1200:] or 'helper_failed'}"
+                )
+            result = self._last_json(logs)
+            if result.get("ok") is not True:
+                raise WorkerManagerError(f"{purpose}_invalid_result")
+            return result
+        finally:
+            self._cleanup_container(identifier, purpose)
+
+    def _pause_match_harnesses(self, match_id: str) -> list[str]:
+        paused: list[str] = []
+        try:
+            for run in self.control.list_harness_runs():
+                if str(run.get("match_id")) != match_id or run.get("status") not in {
+                        "queued", "starting", "running", "restarting"}:
+                    continue
+                name = run.get("container_name")
+                if not isinstance(name, str) or not name:
+                    continue
+                try:
+                    container = self.docker.inspect_container(name)
+                    self.docker.require_owned(
+                        container, self.installation_id, purpose="harness-run",
+                    )
+                    state = container.get("State", {})
+                    if state.get("Running") and not state.get("Paused"):
+                        self.docker.pause_container(name)
+                        paused.append(name)
+                except DockerNotFound:
+                    continue
+            return paused
+        except Exception:
+            self._unpause_harnesses(paused)
+            raise
+
+    def _unpause_harnesses(self, names: list[str]) -> None:
+        errors: list[str] = []
+        for name in reversed(names):
+            try:
+                self.docker.unpause_container(name)
+            except DockerNotFound:
+                continue
+            except DockerError as exc:
+                errors.append(str(exc)[:300])
+        if errors:
+            raise WorkerManagerError("checkpoint_harness_unpause_failed:" + ";".join(errors))
+
+    def _checkpoint_save_digest(self, instance_id: str, slot: str) -> dict[str, Any]:
+        spec = self.control.get_worker_spec(instance_id)
+        volume = self.docker.inspect_volume(str(spec["data_volume"]))
+        self.docker.require_owned(volume, self.installation_id, purpose="worker-data")
+        return self._run_checkpoint_helper(
+            "checkpoint-save-digest", f"{instance_id}-{slot}",
+            image=self.worker_image, script=SAVE_DIGEST_SCRIPT,
+            environment=[f"SMACX_SAVE_SLOT={slot}"], user="10001:10001",
+            mounts=[{"Type": "volume", "Source": spec["data_volume"],
+                     "Target": "/state", "ReadOnly": True}], timeout=60.0,
+        )
+
+    def _snapshot_hermes_state(self, match_id: str, checkpoint_id: str) -> list[dict[str, Any]]:
+        if not self.control_data_volume:
+            if any(seat.get("controller_kind") == "agent"
+                   for seat in self.control.list_seats(match_id)):
+                raise WorkerManagerError("managed_control_volume_required_for_ai_checkpoint")
+            return []
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for run in self.control.list_harness_runs():
+            if str(run.get("match_id")) != match_id:
+                continue
+            harness_profile_id = str(run.get("harness_profile_id") or "")
+            if not harness_profile_id or harness_profile_id in seen:
+                continue
+            seen.add(harness_profile_id)
+            runtime = self.control.get_harness_runtime_spec(harness_profile_id)
+            profile = self.control.get_harness_profile(harness_profile_id)
+            external_profile_id = str(profile["external_profile_id"])
+            volume = str(runtime["data_volume"])
+            owned = self.docker.inspect_volume(volume)
+            self.docker.require_owned(owned, self.installation_id, purpose="harness-data")
+            relative = (
+                f"recovery-snapshots/{match_id}/{checkpoint_id}/hermes/"
+                f"{harness_profile_id}.tar.gz"
+            )
+            target = (self.store.path.parent / relative).resolve()
+            if self.store.path.parent not in target.parents:
+                raise WorkerManagerError("checkpoint_archive_path_outside_control_root")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.chmod(target.parent, 0o770)
+            target.unlink(missing_ok=True)
+            target.touch(mode=0o660)
+            snapshot = self._run_checkpoint_helper(
+                "hermes-checkpoint", f"{harness_profile_id}-{checkpoint_id}",
+                image=self.mcp_image, script=HERMES_CHECKPOINT_SCRIPT,
+                environment=[
+                    f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
+                    f"SMACX_MATCH_ID={match_id}",
+                    f"SMACX_CHECKPOINT_RELATIVE={relative}",
+                ], user="10000:10001",
+                mounts=[
+                    {"Type": "volume", "Source": volume, "Target": "/source",
+                     "ReadOnly": True},
+                    {"Type": "volume", "Source": self.control_data_volume,
+                     "Target": "/control"},
+                ],
+            )
+            os.chmod(target, 0o600)
+            result.append({
+                "harness_profile_id": harness_profile_id,
+                "external_profile_id": external_profile_id,
+                "archive": relative,
+                "archive_sha256": self._file_sha256(target),
+                "archive_bytes": target.stat().st_size,
+                "database_present": snapshot.get("database_present") is True,
+            })
+        return result
+
+    def _restore_hermes_state(self, match_id: str,
+                              snapshots: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        current_profiles: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+        for run in self.control.list_harness_runs():
+            if str(run.get("match_id")) != match_id:
+                continue
+            harness_profile_id = str(run.get("harness_profile_id") or "")
+            if harness_profile_id and harness_profile_id not in current_profiles:
+                current_profiles[harness_profile_id] = (
+                    self.control.get_harness_runtime_spec(harness_profile_id),
+                    self.control.get_harness_profile(harness_profile_id),
+                )
+        if not self.control_data_volume and (snapshots or current_profiles):
+            raise WorkerManagerError("managed_control_volume_required_for_ai_restore")
+        restored: list[dict[str, Any]] = []
+        by_profile = {
+            str(item.get("harness_profile_id") or ""): item for item in snapshots
+        }
+        unknown = set(by_profile) - set(current_profiles)
+        if unknown:
+            raise WorkerManagerError("hermes_checkpoint_profile_unavailable")
+        for harness_profile_id, (runtime, profile) in current_profiles.items():
+            snapshot = by_profile.get(harness_profile_id)
+            external_profile_id = str(profile.get("external_profile_id") or "")
+            volume = str(runtime["data_volume"])
+            owned = self.docker.inspect_volume(volume)
+            self.docker.require_owned(owned, self.installation_id, purpose="harness-data")
+            if snapshot is None:
+                outcome = self._run_checkpoint_helper(
+                    "hermes-clear", f"{harness_profile_id}-{uuid.uuid4().hex}",
+                    image=self.mcp_image, script=HERMES_CLEAR_SCRIPT,
+                    environment=[f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
+                                 f"SMACX_MATCH_ID={match_id}"],
+                    user="10000:10001",
+                    mounts=[{"Type": "volume", "Source": volume, "Target": "/target"}],
+                )
+                restored.append({
+                    "harness_profile_id": harness_profile_id,
+                    "database_present": False, "cold_reset": True,
+                })
+                continue
+            checkpoint_profile_id = str(snapshot.get("external_profile_id") or "")
+            if checkpoint_profile_id != external_profile_id:
+                raise WorkerManagerError("hermes_profile_changed_since_checkpoint")
+            relative = str(snapshot.get("archive") or "")
+            if not re.fullmatch(
+                    rf"recovery-snapshots/{re.escape(match_id)}/checkpoint-[A-Za-z0-9_-]+/"
+                    r"hermes/[A-Za-z0-9_-]+\.tar\.gz", relative):
+                raise WorkerManagerError("invalid_hermes_checkpoint_path")
+            target = (self.store.path.parent / relative).resolve()
+            if not target.is_file() or self._file_sha256(target) != snapshot.get(
+                    "archive_sha256"):
+                raise WorkerManagerError("hermes_checkpoint_integrity_failure")
+            outcome = self._run_checkpoint_helper(
+                "hermes-restore", f"{harness_profile_id}-{uuid.uuid4().hex}",
+                image=self.mcp_image, script=HERMES_RESTORE_SCRIPT,
+                environment=[
+                    f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
+                    f"SMACX_MATCH_ID={match_id}",
+                    f"SMACX_CHECKPOINT_RELATIVE={relative}",
+                ], user="10000:10001",
+                mounts=[
+                    {"Type": "volume", "Source": self.control_data_volume,
+                     "Target": "/control", "ReadOnly": True},
+                    {"Type": "volume", "Source": volume, "Target": "/target"},
+                ],
+            )
+            restored.append({
+                "harness_profile_id": harness_profile_id,
+                "database_present": outcome.get("database_present") is True,
+            })
+        return restored
+
+    def _cleanup_recovery_snapshots(self, match_id: str, keep_checkpoint_id: str) -> int:
+        root = self.store.path.parent / "recovery-snapshots" / match_id
+        if not root.is_dir():
+            return 0
+        removed = 0
+        for path in root.iterdir():
+            if path.is_dir() and path.name != keep_checkpoint_id:
+                shutil.rmtree(path)
+                removed += 1
+        return removed
 
     def ensure_bundled_runtime(self) -> dict[str, Any]:
         """Register the compatibility stack already sealed in the worker image.
@@ -3043,7 +3449,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
 
     def checkpoint_match(self, match_id: str, *,
                          slot: str = "control_recovery") -> dict[str, Any]:
-        """Create and record one verified native checkpoint for managed recovery."""
+        """Capture one native and AI-memory-consistent recovery boundary."""
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
             raise InvalidRecord("invalid_save_slot")
         match = self.control.get_match(match_id)
@@ -3072,9 +3478,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             str(seat["instance_id"]): str(seat.get("controller_kind", "agent"))
             for seat in seats if seat.get("instance_id")
         }
-        stable_samples: list[dict[str, Any]] = []
-        previous_signature: tuple[tuple[str, int, int, str, str], ...] | None = None
-        for sample_index in range(3):
+        def observe_signature() -> tuple[tuple[str, int, int, str, str], ...]:
             observed: list[tuple[str, int, int, str, str]] = []
             for instance_id in managed_instances:
                 envelope = self._native_request(
@@ -3113,77 +3517,292 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     int(snapshot.get("year", -1)), str(phase),
                     str(snapshot.get("revision", "")),
                 ))
-            signature = tuple(observed)
-            # Every managed peer must agree on the serialized turn/year.  A
-            # revision may differ by perspective, so compare each exact peer
-            # with itself across three packet-pump intervals.
             if len({(row[1], row[2]) for row in observed}) != 1:
                 raise WorkerManagerError("checkpoint_peers_not_synchronized")
+            return tuple(observed)
+
+        stable_samples: list[dict[str, Any]] = []
+        previous_signature: tuple[tuple[str, int, int, str, str], ...] | None = None
+        for sample_index in range(3):
+            signature = observe_signature()
+            # Every managed peer must agree on the serialized turn/year. A
+            # revision may differ by perspective, so compare each exact peer
+            # with itself across three packet-pump intervals.
             stable_samples.append({
                 "index": sample_index + 1,
-                "turn": observed[0][1], "year": observed[0][2],
-                "peers": len(observed),
+                "turn": signature[0][1], "year": signature[0][2],
+                "peers": len(signature),
             })
             if previous_signature is not None and signature != previous_signature:
                 raise WorkerManagerError("checkpoint_state_changed_during_quiescence")
             previous_signature = signature
             if sample_index < 2:
                 time.sleep(0.35)
-        choices = self._native_request(
-            host_instance_id, "semantic_choices", kind="game_management",
-            timeout=30.0,
-        )
-        choice = next(
-            (item for item in choices.get("choices", [])
-             if isinstance(item, Mapping) and item.get("command") == "save_game"),
-            None,
-        )
-        if not choice:
-            raise WorkerManagerError("native_checkpoint_not_currently_legal")
-        saved = self._native_request(
-            host_instance_id, "semantic_command", command="save_game", slot=slot,
-            match_id=choices.get("match_id"), session_id=choices.get("session_id"),
-            expected_revision=choices.get("revision"), timeout=30.0,
-        )
-        if not saved.get("ok"):
-            raise WorkerManagerError("native_checkpoint_failed")
-        checkpoint = {
-            "slot": slot,
-            "verified": True,
-            "created_unix": time.time(),
-            "host_instance_id": host_instance_id,
-            "turn": saved.get("turn"),
-            "year": saved.get("year"),
-            "path": saved.get("path"),
-            "quiescence_samples": stable_samples,
-            "managed_peer_count": len(managed_instances),
-        }
-        journal_checkpoints: list[dict[str, Any]] = []
-        for scope in self.store.scopes_for_match(match_id):
-            event = self.journal.append(
-                scope, "checkpoint.native", {
-                    "slot": slot,
-                    "turn": checkpoint.get("turn"),
-                    "year": checkpoint.get("year"),
-                    "quiescence": "three_sample_verified_turn_boundary",
-                    "managed_peer_count": len(managed_instances),
-                    "logical_path": checkpoint.get("path"),
-                },
-                turn=checkpoint.get("turn"), year=checkpoint.get("year"),
-                commit_reason=f"Checkpoint turn {checkpoint.get('turn', '?')}",
+        paused_harnesses = self._pause_match_harnesses(match_id)
+        try:
+            # Close the final race between the stability samples and Docker's
+            # pause. If the agent committed an action in that interval, no
+            # checkpoint is advertised and the caller retries at a later safe
+            # boundary.
+            frozen_signature = observe_signature()
+            if frozen_signature != previous_signature:
+                raise WorkerManagerError("checkpoint_state_changed_before_ai_freeze")
+            choices = self._native_request(
+                host_instance_id, "semantic_choices", kind="game_management",
+                timeout=30.0,
             )
-            journal_checkpoints.append({
-                "agent_id": scope.agent_id,
-                "perspective_id": scope.perspective_id,
-                "event_id": event["event_id"],
-                "head_hash": event["event_hash"],
+            choice = next(
+                (item for item in choices.get("choices", [])
+                 if isinstance(item, Mapping) and item.get("command") == "save_game"),
+                None,
+            )
+            if not choice:
+                raise WorkerManagerError("native_checkpoint_not_currently_legal")
+            saved = self._native_request(
+                host_instance_id, "semantic_command", command="save_game", slot=slot,
+                match_id=choices.get("match_id"), session_id=choices.get("session_id"),
+                expected_revision=choices.get("revision"), timeout=30.0,
+            )
+            if not saved.get("ok"):
+                raise WorkerManagerError("native_checkpoint_failed")
+            save_digest = self._checkpoint_save_digest(host_instance_id, slot)
+            checkpoint_id = _new_id("checkpoint")
+            checkpoint = {
+                "checkpoint_id": checkpoint_id,
+                "slot": slot, "verified": True, "created_unix": time.time(),
+                "host_instance_id": host_instance_id,
+                "turn": saved.get("turn"), "year": saved.get("year"),
+                "path": saved.get("relative_path") or saved.get("path"),
+                "native_save_sha256": save_digest["sha256"],
+                "native_save_bytes": save_digest["bytes"],
+                "quiescence_samples": stable_samples,
+                "frozen_ai_controllers": len(paused_harnesses),
+                "managed_peer_count": len(managed_instances),
+            }
+            journal_checkpoints: list[dict[str, Any]] = []
+            checkpoint_chat_groups = self.store.export_chat_groups(match_id)
+            for scope in self.store.scopes_for_match(match_id):
+                timeline_id = self.store.active_timeline_id(scope)
+                self.journal.append(
+                    scope, "chat.groups_snapshot", {
+                        "checkpoint_id": checkpoint_id,
+                        "groups": checkpoint_chat_groups,
+                    }, turn=checkpoint.get("turn"), year=checkpoint.get("year"),
+                    timeline_id=timeline_id,
+                )
+                event = self.journal.append(
+                    scope, "checkpoint.native", {
+                        "checkpoint_id": checkpoint_id, "slot": slot,
+                        "turn": checkpoint.get("turn"), "year": checkpoint.get("year"),
+                        "quiescence": "three_sample_verified_plus_ai_freeze",
+                        "managed_peer_count": len(managed_instances),
+                        "logical_path": checkpoint.get("path"),
+                        "native_save_sha256": save_digest["sha256"],
+                    },
+                    turn=checkpoint.get("turn"), year=checkpoint.get("year"),
+                    timeline_id=timeline_id,
+                    commit_reason=f"Checkpoint turn {checkpoint.get('turn', '?')}",
+                )
+                journal_checkpoints.append({
+                    "agent_id": scope.agent_id,
+                    "perspective_id": scope.perspective_id,
+                    "timeline_id": timeline_id,
+                    "event_id": event["event_id"],
+                    "head_hash": event["event_hash"],
+                })
+            checkpoint["campaign_journal"] = journal_checkpoints
+            checkpoint["chat_group_count"] = len(checkpoint_chat_groups)
+            checkpoint["ai_memory"] = {
+                "schema": "smacx.ai-memory-checkpoint.v1",
+                "hermes": self._snapshot_hermes_state(match_id, checkpoint_id),
+                "graphiti": "rebuild_from_campaign_journal_head",
+                "journal": "fork_from_recorded_head",
+            }
+            checkpoint["garbage_collection"] = {
+                "status": "pending",
+                "obsolete_checkpoint_directories_removed": 0,
+            }
+            updated = self.control.update_match_lifecycle(
+                match_id, "running", metadata={
+                    "recovery_checkpoint": checkpoint, "recovery_required": False,
+                },
+            )
+            # Publish the new complete checkpoint before reclaiming the old
+            # one. A process failure can therefore leave harmless extra bytes,
+            # never metadata that points at an archive already deleted.
+            removed = self._cleanup_recovery_snapshots(match_id, checkpoint_id)
+            checkpoint["garbage_collection"] = {
+                "status": "complete",
+                "obsolete_checkpoint_directories_removed": removed,
+            }
+            updated = self.control.update_match_lifecycle(
+                match_id, "running", metadata={"recovery_checkpoint": checkpoint},
+            )
+            return {"ok": True, "match": updated, "checkpoint": checkpoint}
+        finally:
+            self._unpause_harnesses(paused_harnesses)
+
+    def _stop_match_harnesses_for_restore(self, match_id: str) -> list[str]:
+        stopped: list[str] = []
+        for run in self.control.list_harness_runs():
+            if str(run.get("match_id")) != match_id or run.get("status") not in {
+                    "queued", "starting", "running", "restarting"}:
+                continue
+            container_name = run.get("container_name")
+            if isinstance(container_name, str) and container_name:
+                try:
+                    container = self.docker.inspect_container(container_name)
+                    self.docker.require_owned(
+                        container, self.installation_id, purpose="harness-run",
+                    )
+                    if container.get("State", {}).get("Running"):
+                        self.docker.stop_container(container_name, timeout=20)
+                    self.docker.remove_container(container_name)
+                except DockerNotFound:
+                    pass
+            self.control.update_harness_run(
+                str(run["run_id"]), desired_status="stopped", status="stopped",
+                exit_code=0, metadata_update={
+                    "stopped_for_checkpoint_restore": True,
+                    "stopped_for_checkpoint_restore_unix": time.time(),
+                },
+            )
+            stopped.append(str(run["run_id"]))
+        return stopped
+
+    def _prepare_memory_restore(self, match_id: str,
+                                checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+        checkpoint_id = str(checkpoint.get("checkpoint_id") or "")
+        native_digest = str(checkpoint.get("native_save_sha256") or "")
+        if not re.fullmatch(r"checkpoint-[A-Za-z0-9_-]{8,96}", checkpoint_id) \
+                or not re.fullmatch(r"[0-9a-f]{64}", native_digest):
+            raise WorkerManagerError("complete_ai_memory_checkpoint_required")
+        memory = checkpoint.get("ai_memory")
+        if not isinstance(memory, Mapping) or memory.get(
+                "schema") != "smacx.ai-memory-checkpoint.v1":
+            raise WorkerManagerError("complete_ai_memory_checkpoint_required")
+        hermes = memory.get("hermes")
+        if not isinstance(hermes, list) or any(not isinstance(item, Mapping) for item in hermes):
+            raise WorkerManagerError("invalid_hermes_checkpoint_manifest")
+        journal_rows = checkpoint.get("campaign_journal")
+        if not isinstance(journal_rows, list):
+            raise WorkerManagerError("journal_checkpoint_required")
+        by_scope = {
+            (str(row.get("agent_id") or ""), str(row.get("perspective_id") or "")): row
+            for row in journal_rows if isinstance(row, Mapping)
+        }
+        scopes = self.store.scopes_for_match(match_id)
+        if set(by_scope) != {(scope.agent_id, scope.perspective_id) for scope in scopes}:
+            raise WorkerManagerError("journal_checkpoint_scope_mismatch")
+
+        match_before_restore = self.control.get_match(match_id)
+        prior_restore = match_before_restore.get("metadata", {}).get("memory_restore", {})
+        prior_retired: dict[tuple[str, str], list[str]] = {}
+        if isinstance(prior_restore, Mapping):
+            for item in prior_restore.get("retired_graphiti_namespaces", []):
+                if not isinstance(item, Mapping):
+                    continue
+                key = (str(item.get("agent_id") or ""),
+                       str(item.get("perspective_id") or ""))
+                namespaces = item.get("namespaces")
+                if isinstance(namespaces, list):
+                    prior_retired[key] = [str(value) for value in namespaces]
+        stopped_runs = self._stop_match_harnesses_for_restore(match_id)
+        old_namespaces = {
+            (scope.agent_id, scope.perspective_id): self.store.graph_namespace(scope)
+            for scope in scopes
+        }
+        generation = int(match_before_restore.get("metadata", {}).get(
+            "memory_restore_generation", 0
+        )) + 1
+        timeline_id = f"timeline-restore-{uuid.uuid4().hex[:24]}"
+        forks: list[dict[str, Any]] = []
+        for scope in scopes:
+            row = by_scope[(scope.agent_id, scope.perspective_id)]
+            parent_timeline = str(row.get("timeline_id") or "")
+            head_hash = str(row.get("head_hash") or "")
+            if not re.fullmatch(r"[0-9a-f]{64}", head_hash):
+                raise WorkerManagerError("invalid_journal_checkpoint_head")
+            fork = self.journal.fork_timeline(
+                scope, timeline_id, native_save_sha256=native_digest,
+                from_event_hash=head_hash, parent_timeline_id=parent_timeline,
+            )
+            forks.append({
+                "agent_id": scope.agent_id, "perspective_id": scope.perspective_id,
+                "parent_timeline_id": parent_timeline,
+                "forked_from_event_hash": head_hash,
+                "timeline_id": timeline_id,
+                "manifest_head_hash": fork.get("head_hash"),
             })
-        checkpoint["campaign_journal"] = journal_checkpoints
-        updated = self.control.update_match_lifecycle(
-            match_id, "running", metadata={"recovery_checkpoint": checkpoint,
-                                           "recovery_required": False},
+
+        restored_group_sets = [
+            self.journal.chat_groups(scope, timeline_id=timeline_id)["groups"]
+            for scope in scopes
+        ]
+        canonical_groups = json.dumps(
+            restored_group_sets[0] if restored_group_sets else [],
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         )
-        return {"ok": True, "match": updated, "checkpoint": checkpoint}
+        if any(json.dumps(value, ensure_ascii=False, sort_keys=True,
+                          separators=(",", ":")) != canonical_groups
+               for value in restored_group_sets[1:]):
+            raise WorkerManagerError("checkpoint_chat_group_projection_mismatch")
+        restored_group_count = self.store.replace_chat_groups(
+            match_id, restored_group_sets[0] if restored_group_sets else [],
+        )
+
+        retired_by_scope: dict[tuple[str, str], list[str]] = {}
+        for scope in scopes:
+            key = (scope.agent_id, scope.perspective_id)
+            retired_by_scope[key] = list(dict.fromkeys([
+                *prior_retired.get(key, []), old_namespaces[key],
+            ]))
+        restored_hermes = self._restore_hermes_state(match_id, hermes)
+        activated = self.control.update_match_lifecycle(
+            match_id, "parked", metadata={
+                "active_memory_timeline": timeline_id,
+                "memory_restore_generation": generation,
+                "memory_restore": {
+                    "checkpoint_id": checkpoint_id, "timeline_id": timeline_id,
+                    "generation": generation, "status": "graph_rebuild_queued",
+                    "restored_unix": time.time(), "hermes": restored_hermes,
+                    "restored_chat_groups": restored_group_count,
+                    "journal_forks": forks, "stopped_harness_runs": stopped_runs,
+                    "retired_graphiti_namespaces": [
+                        {"agent_id": agent_id, "perspective_id": perspective_id,
+                         "namespaces": namespaces}
+                        for (agent_id, perspective_id), namespaces
+                        in sorted(retired_by_scope.items())
+                    ],
+                },
+            },
+        )
+        rebuilds: list[dict[str, Any]] = []
+        for scope in scopes:
+            old_namespace = old_namespaces[(scope.agent_id, scope.perspective_id)]
+            event = self.journal.append(
+                scope, "recovery.timeline_activated", {
+                    "checkpoint_id": checkpoint_id, "timeline_id": timeline_id,
+                    "generation": generation,
+                    "retired_graphiti_namespace": old_namespace,
+                }, timeline_id=timeline_id,
+                turn=(int(checkpoint["turn"]) if checkpoint.get("turn") is not None else None),
+                year=(int(checkpoint["year"]) if checkpoint.get("year") is not None else None),
+                commit_reason=f"Restore checkpoint generation {generation}",
+            )
+            rebuild = self.control.request_graphiti_rebuild(
+                match_id, scope.agent_id, scope.perspective_id,
+                retired_namespaces=retired_by_scope[
+                    (scope.agent_id, scope.perspective_id)
+                ], reason="checkpoint_restore",
+            )
+            rebuilds.append({**rebuild, "activation_event_id": event["event_id"]})
+        return {
+            "checkpoint_id": checkpoint_id, "timeline_id": timeline_id,
+            "generation": generation, "journal_forks": forks,
+            "hermes": restored_hermes, "graphiti_rebuilds": rebuilds,
+            "match": activated,
+        }
 
     def _refresh_match_worker_images(self, match_id: str) -> list[dict[str, Any]]:
         """Rebase parked managed seats onto the current immutable worker image."""
@@ -3230,7 +3849,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )
         if not seats or host_seat is None or not host_seat.get("instance_id"):
             raise WorkerManagerError("external_human_host_recovery_required")
+        self._stop_match_harnesses_for_restore(match_id)
         self.park_match(match_id)
+        memory_restore = self._prepare_memory_restore(match_id, checkpoint)
         runtime_refresh = self._refresh_match_worker_images(match_id) if refresh_runtime else []
         if match["mode"] == "lan":
             # A fresh typed/custom lobby records the descriptive profile as
@@ -3286,6 +3907,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )
         if refresh_runtime:
             result["runtime_refresh"] = runtime_refresh
+        result["memory_restore"] = memory_restore
         return result
 
     def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:
@@ -3393,6 +4015,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "io.smacx.match": spec["match_id"],
             },
         )
+        active_timeline = self.store.active_timeline_id(MemoryScope(
+            str(spec["match_id"]), str(spec["agent_id"]), str(spec["perspective_id"]),
+        ))
         config = {
             "Image": self.mcp_image,
             "Entrypoint": ["/usr/bin/tini", "--", "/usr/local/bin/smacx-mcp"],
@@ -3415,6 +4040,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 f"SMACX_AGENT_ID={spec['agent_id']}",
                 f"SMACX_PERSPECTIVE_ID={spec['perspective_id']}",
                 f"SMACX_GAME_SOURCE_ID={spec['game_source_id']}",
+                f"SMACX_TIMELINE_ID={active_timeline}",
             ],
             "Tty": True,
             "Labels": labels,

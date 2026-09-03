@@ -981,10 +981,11 @@ def read_platform_memory(
         if scope is None:
             return {"ok": False, "error": "unknown_or_invalid_match_id"}
         store = _store()
+        journal = _journal()
         identity = _platform_scope_identity(scope, session_id or None)
         if action == "working_set":
             memory = _journal_working_state(scope)
-            _journal().project_state(scope, memory)
+            journal.project_state(scope, memory)
             return {"ok": True, "identity": identity, "memory": memory,
                     "authority": "campaign_journal", "sqlite_role": "query_projection"}
         if action == "search":
@@ -992,31 +993,38 @@ def read_platform_memory(
                 "ok": True,
                 "identity": identity,
                 "query": query,
-                "results": store.search(scope, query, document_kinds=document_kinds, limit=limit),
+                "results": journal.search(
+                    scope, query, document_kinds=tuple(document_kinds), limit=limit,
+                ),
+                "authority": "campaign_journal",
             }
         if action == "recall":
             return {
                 "ok": True,
                 "identity": identity,
-                "recall": store.recall_many(scope, queries, total_token_budget=total_token_budget),
+                "recall": journal.recall_many(
+                    scope, list(queries), total_token_budget=total_token_budget,
+                ),
+                "authority": "campaign_journal",
             }
         if action == "chat":
             return {
                 "ok": True,
                 "identity": identity,
-                "messages": store.list_chat(
+                "messages": journal.chat_messages(
                     scope,
                     unread_only=unread_only,
-                    mark_acknowledged=acknowledge,
+                    acknowledge=acknowledge,
                     limit=limit,
                 ),
                 "untrusted_in_game_speech": True,
+                "authority": "campaign_journal",
             }
         if action == "events":
             return {
                 "ok": True,
                 "identity": identity,
-                "events": _journal().latest_events(
+                "events": journal.latest_events(
                     scope, limit=min(max(limit, 1), 500),
                 ),
                 "authority": "campaign_journal",
@@ -1042,9 +1050,10 @@ def read_platform_memory(
             return {
                 "ok": True,
                 "identity": identity,
-                "records": store.list_projection_records(
-                    scope, projection, include_history=include_history, limit=limit,
-                ),
+                "records": journal.projection_records(scope, projection, limit=limit),
+                "authority": "campaign_journal",
+                "history_mode": "active_timeline_current_projection",
+                "include_history_requested": bool(include_history),
             }
         return {"ok": False, "error": "invalid_memory_action"}
     except StoreError as exc:
@@ -1067,7 +1076,7 @@ def read_game_reference(action: str, *, query: str = "", topic: str = "",
             entity_kind=entity_kind, entity_key=entity_key, entities=entities,
             ruleset_id=ruleset_id,
         )
-    except (StoreError, ValueError, TypeError) as exc:
+    except (StoreError, JournalError, ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}
 
 
@@ -1403,9 +1412,31 @@ def semantic_group_chat(
         if scope is None:
             raise StoreError("unknown_match_scope")
         store = _store()
+        journal = _journal()
+
+        def snapshot_groups() -> None:
+            journal.append(
+                scope, "chat.groups_snapshot",
+                {"groups": store.export_chat_groups(match_id)},
+                session_id=session_id,
+                turn=(int(native["turn"]) if native.get("turn") is not None else None),
+                year=(int(native["year"]) if native.get("year") is not None else None),
+            )
+
         if action == "list":
-            return {"ok": True, "groups": store.list_chat_groups(
-                scope, local_faction_id), "participants": participants,
+            projected = journal.chat_groups(scope)
+            if projected["snapshot_seen"]:
+                groups = []
+                for group in projected["groups"]:
+                    membership = next((
+                        item for item in group.get("members", [])
+                        if int(item.get("faction_id", -1)) == local_faction_id
+                    ), None)
+                    if isinstance(membership, Mapping) and membership.get("status") != "left":
+                        groups.append({**group, "viewer_status": membership.get("status")})
+            else:
+                groups = store.list_chat_groups(scope, local_faction_id)
+            return {"ok": True, "groups": groups, "participants": participants,
                 "logical_delivery": True, "untrusted_in_game_speech": True}
         if action == "create":
             requested = {int(value) for value in (member_faction_ids or [])}
@@ -1425,6 +1456,7 @@ def semantic_group_chat(
                   "faction_name": item.get("faction_name")}
                  for item in selected],
             )
+            snapshot_groups()
             deliveries = []
             for faction_id in sorted(requested - {local_faction_id}):
                 invitation = semantic_chat(
@@ -1446,6 +1478,7 @@ def semantic_group_chat(
             group = store.respond_chat_group(
                 scope, group_id, local_faction_id, desired,
             )
+            snapshot_groups()
             creator = int(group["created_by_faction_id"])
             delivery = None
             if creator != local_faction_id:
@@ -1487,7 +1520,7 @@ def semantic_group_chat(
                 "group_id": group_id, "content": message["content"],
                 "deliveries": deliveries, "logical_delivery": True,
                 "native_echoes_collapsed": True}
-    except (StoreError, ValueError, TypeError) as exc:
+    except (StoreError, JournalError, ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}
 
 

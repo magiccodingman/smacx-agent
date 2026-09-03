@@ -136,12 +136,50 @@ def main() -> int:
         repeated = operations.ingest_capability_gaps_once()
         if repeated["ingested"] != 0 or repeated["ignored"] != 1:
             raise AssertionError(f"gap ingestion was not idempotent: {repeated}")
+
+        # Harness supervision publishes the incident immediately, then the
+        # operations pass must enrich that same incident with a diagnostic ZIP
+        # instead of treating it as an already-finished duplicate.
+        supervisor_gap = {
+            **gap,
+            "gap_id": "gap-" + "d" * 32,
+            "why_blocked": "worker_not_healthy",
+            "supervisor_generated": True,
+        }
+        control.record_supervision_incident(
+            instance["instance_id"], f"capability_gap:{supervisor_gap['gap_id']}",
+            "operator_required", {
+                "schema": "smacx.capability-gap-incident.v1",
+                "gap_id": supervisor_gap["gap_id"],
+                "summary": "The AI stopped because its native game bridge became unavailable.",
+                "run_id": run["run_id"],
+                "native_worker_preserved": True,
+            },
+        )
+        with (root / "capability-gaps.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(supervisor_gap, separators=(",", ":")) + "\n")
+        enriched = operations.ingest_capability_gaps_once()
+        if enriched["ingested"] != 1 or enriched["errors"]:
+            raise AssertionError(f"supervisor incident was not enriched: {enriched}")
+        supervisor_incident = next(
+            item for item in control.list_supervision_incidents(
+                match_id=scope.match_id, active_only=True,
+            ) if item["incident_kind"].endswith(supervisor_gap["gap_id"])
+        )
+        supervisor_bundle = root / str(
+            supervisor_incident["details"].get("diagnostic_bundle", {}).get(
+                "relative_path", ""
+            )
+        )
+        if not supervisor_bundle.is_file():
+            raise AssertionError("supervisor incident diagnostic ZIP was not published")
         print(json.dumps({
             "event": "pass", "payload": {
                 "durable_operator_incident": True, "idempotent_ingestion": True,
                 "autonomous_restart_stopped": True,
                 "redacted_bundle": True, "bounded_zip": True,
                 "game_binaries_excluded": True, "private_conversations_excluded": True,
+                "supervisor_incident_enriched": True,
             },
         }, separators=(",", ":")))
     return 0

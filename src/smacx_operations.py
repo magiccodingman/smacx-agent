@@ -97,6 +97,27 @@ def _validate_campaign_archive(path: Path) -> list[tarfile.TarInfo]:
     return members
 
 
+def _validate_recovery_archive(path: Path) -> list[tarfile.TarInfo]:
+    """Validate the bounded checkpoint-memory archive used by offline backups."""
+    members: list[tarfile.TarInfo] = []
+    total = 0
+    try:
+        with tarfile.open(path, "r:gz") as archive:
+            for member in archive.getmembers():
+                name = PurePosixPath(member.name)
+                if name.is_absolute() or ".." in name.parts or not name.parts \
+                        or name.parts[0] != "recovery-snapshots" \
+                        or not (member.isfile() or member.isdir()):
+                    raise StoreError("backup_recovery_archive_unsafe")
+                total += max(int(member.size), 0)
+                if total > 20 * 1024 * 1024 * 1024:
+                    raise StoreError("backup_recovery_archive_too_large")
+                members.append(member)
+    except (OSError, tarfile.TarError) as exc:
+        raise StoreError("backup_recovery_archive_invalid") from exc
+    return members
+
+
 class OperationsManager:
     """One-process coordinator backed by cross-process-safe SQLite claims."""
 
@@ -349,6 +370,49 @@ class OperationsManager:
             source_user="10000:10001",
         )
 
+    def _archive_recovery_snapshots(self, database_path: Path,
+                                    target: Path) -> dict[str, Any]:
+        """Archive only checkpoint files referenced by the captured database."""
+        referenced: list[tuple[str, Path]] = []
+        with sqlite3.connect(database_path) as connection:
+            rows = connection.execute("SELECT metadata_json FROM matches").fetchall()
+        for row in rows:
+            try:
+                metadata = json.loads(str(row[0]))
+            except json.JSONDecodeError:
+                continue
+            checkpoint = metadata.get("recovery_checkpoint")
+            memory = checkpoint.get("ai_memory") if isinstance(checkpoint, Mapping) else None
+            snapshots = memory.get("hermes") if isinstance(memory, Mapping) else None
+            if not isinstance(snapshots, list):
+                continue
+            for snapshot in snapshots:
+                if not isinstance(snapshot, Mapping):
+                    raise StoreError("backup_recovery_snapshot_manifest_invalid")
+                relative = str(snapshot.get("archive") or "")
+                if not re.fullmatch(
+                        r"recovery-snapshots/match-[A-Za-z0-9_-]+/"
+                        r"checkpoint-[A-Za-z0-9_-]+/hermes/[A-Za-z0-9_-]+\.tar\.gz",
+                        relative):
+                    raise StoreError("backup_recovery_snapshot_path_invalid")
+                source = (self.data_root / relative).resolve()
+                if self.data_root not in source.parents or not source.is_file() \
+                        or _sha256(source) != snapshot.get("archive_sha256"):
+                    raise StoreError("backup_recovery_snapshot_integrity_failure")
+                referenced.append((relative, source))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(target, "w:gz", compresslevel=6) as archive:
+            root = tarfile.TarInfo("recovery-snapshots")
+            root.type = tarfile.DIRTYPE
+            root.mode = 0o700
+            archive.addfile(root)
+            for relative, source in sorted(dict(referenced).items()):
+                archive.add(source, arcname=relative, recursive=False)
+        return {
+            "path": target.name, "sha256": _sha256(target),
+            "size_bytes": target.stat().st_size, "file_count": len(referenced),
+        }
+
     def create_backup(self, *, include_secrets: bool = True,
                       include_workers: bool = True) -> dict[str, Any]:
         with self._operation_lock:
@@ -379,6 +443,11 @@ class OperationsManager:
             with sqlite3.connect(self.store.path) as source, sqlite3.connect(database_path) as target:
                 source.backup(target)
             os.chmod(database_path, 0o600)
+            recovery_archive = temporary_path / "recovery-snapshots.tar.gz"
+            recovery_result = self._archive_recovery_snapshots(
+                database_path, recovery_archive,
+            )
+            os.chmod(recovery_archive, 0o600)
             campaign_archive = temporary_path / "campaigns.tar.gz"
             campaign_result = CampaignJournal(
                 self.data_root / "campaigns"
@@ -444,6 +513,7 @@ class OperationsManager:
                     "sha256": campaign_result["sha256"],
                     "size_bytes": campaign_result["size_bytes"],
                 },
+                "recovery_snapshots": recovery_result,
                 "secrets": {"included": include_secrets, "count": secret_count},
                 "workers": workers,
                 "harnesses": harnesses,
@@ -524,6 +594,14 @@ class OperationsManager:
                     or _sha256(campaign_archive) != campaign_descriptor.get("sha256"):
                 raise StoreError("backup_campaign_archive_invalid")
             _validate_campaign_archive(campaign_archive)
+        recovery_descriptor = manifest.get("recovery_snapshots")
+        if isinstance(recovery_descriptor, Mapping):
+            recovery_archive = path / str(recovery_descriptor.get("path") or "")
+            if recovery_archive.parent != path.resolve() or not recovery_archive.is_file() \
+                    or recovery_archive.name != "recovery-snapshots.tar.gz" \
+                    or _sha256(recovery_archive) != recovery_descriptor.get("sha256"):
+                raise StoreError("backup_recovery_archive_invalid")
+            _validate_recovery_archive(recovery_archive)
         for worker in manifest.get("workers", []):
             relative = worker.get("archive")
             if not isinstance(relative, str) or not re.fullmatch(
@@ -547,6 +625,7 @@ class OperationsManager:
             "worker_count": len(manifest.get("workers", [])),
             "harness_count": len(manifest.get("harnesses", [])),
             "campaigns_included": isinstance(campaign_descriptor, Mapping),
+            "recovery_snapshots_included": isinstance(recovery_descriptor, Mapping),
             "includes_secrets": bool(manifest.get("secrets", {}).get("included")),
             "size_bytes": _tree_size(path),
         }
@@ -958,7 +1037,9 @@ game binaries/assets, credentials, private provider addresses, account data, cha
         ingested = ignored = errors = 0
         for report in self._capability_gap_records():
             gap_id = str(report["gap_id"])
-            if self._existing_gap_incident(gap_id) is not None:
+            existing = self._existing_gap_incident(gap_id)
+            if existing is not None and isinstance(existing.get("details"), Mapping) \
+                    and isinstance(existing["details"].get("diagnostic_bundle"), Mapping):
                 ignored += 1
                 continue
             instance_id = self._instance_for_gap(report)
@@ -980,9 +1061,20 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                     "harness_runs_stopped": stopped_runs,
                     "native_worker_preserved": True,
                 }
-                incident = self._incident(
-                    instance_id, f"capability_gap:{gap_id}", "operator_required", detail,
-                )
+                if existing is not None and isinstance(existing.get("details"), Mapping):
+                    # A harness-detected bridge outage is published immediately
+                    # so the UI cannot stay silent. Enrich that same incident
+                    # asynchronously with the normal redacted diagnostic ZIP.
+                    detail = {**dict(existing["details"]), **detail}
+                    incident = existing
+                    existing_run = str(existing["details"].get("run_id") or "")
+                    if existing_run and existing_run not in stopped_runs:
+                        stopped_runs.append(existing_run)
+                    detail["harness_runs_stopped"] = stopped_runs
+                else:
+                    incident = self._incident(
+                        instance_id, f"capability_gap:{gap_id}", "operator_required", detail,
+                    )
                 bundle = self._create_gap_bundle(incident, report, instance_id, stopped_runs)
                 detail["diagnostic_bundle"] = bundle
                 self._incident(
@@ -1198,6 +1290,34 @@ def restore_backup_offline(control, data_root: Path | str, backup_id: str,
             raise
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+    recovery_archive = source_root / "recovery-snapshots.tar.gz"
+    recovery_snapshots_restored = False
+    if recovery_archive.is_file():
+        members = _validate_recovery_archive(recovery_archive)
+        root = Path(data_root).expanduser().resolve()
+        staging = Path(tempfile.mkdtemp(prefix=".recovery-snapshot-restore-", dir=root))
+        previous = root / f".recovery-snapshots-previous-{uuid.uuid4().hex}"
+        target = root / "recovery-snapshots"
+        moved_previous = False
+        try:
+            with tarfile.open(recovery_archive, "r:gz") as archive:
+                archive.extractall(staging, members=members)
+            candidate = staging / "recovery-snapshots"
+            if not candidate.is_dir():
+                raise StoreError("backup_recovery_archive_missing_root")
+            if target.exists():
+                os.replace(target, previous)
+                moved_previous = True
+            os.replace(candidate, target)
+            recovery_snapshots_restored = True
+            if moved_previous:
+                shutil.rmtree(previous)
+        except Exception:
+            if moved_previous and not target.exists() and previous.exists():
+                os.replace(previous, target)
+            raise
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
     with restored_store.transaction() as connection:
         connection.execute(
             "UPDATE backup_sets SET status='restored', restored_unix=? WHERE backup_id=?",
@@ -1205,4 +1325,5 @@ def restore_backup_offline(control, data_root: Path | str, backup_id: str,
         )
     return {"ok": True, "backup_id": backup_id,
             "emergency_backup_id": emergency["backup_id"], "workers_restored": False,
-            "campaigns_restored": campaigns_restored}
+            "campaigns_restored": campaigns_restored,
+            "recovery_snapshots_restored": recovery_snapshots_restored}

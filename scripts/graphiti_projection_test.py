@@ -51,7 +51,9 @@ async def exercise() -> dict:
         )
         alpha = MemoryScope("match-graph-test", "agent-graph-alpha", "perspective-graph-alpha")
         beta = MemoryScope("match-graph-test", "agent-graph-beta", "perspective-graph-beta")
-        journal = CampaignJournal(Path(temporary) / "campaigns")
+        journal = CampaignJournal(
+            Path(temporary) / "campaigns", timeline_resolver=store.active_timeline_id,
+        )
         alpha_events = [
             journal.append(
                 alpha,
@@ -123,6 +125,36 @@ async def exercise() -> dict:
         if store.projection_cursor(beta, projector.projector_name).get("status") != "new":
             raise AssertionError("Alpha rebuild mutated Beta cursor")
 
+        checkpoint = journal.append(
+            alpha, "checkpoint.native", {"turn": 2}, turn=2, year=2102,
+        )
+        journal.append(
+            alpha, "memory.belief", {"belief": "future branch must disappear"},
+            turn=3, year=2103,
+        )
+        restored_timeline = "timeline-graph-restore"
+        journal.fork_timeline(
+            alpha, restored_timeline, native_save_sha256="b" * 64,
+            from_event_hash=checkpoint["event_hash"],
+            parent_timeline_id="timeline-main",
+        )
+        with store.transaction() as connection:
+            connection.execute(
+                "UPDATE matches SET metadata_json=json_set(metadata_json, "
+                "'$.active_memory_timeline', ?) WHERE match_id=?",
+                (restored_timeline, alpha.match_id),
+            )
+        restored_namespace = store.graph_namespace(alpha)
+        replaced = await projector.replace_timeline(
+            alpha, retired_namespaces=[alpha_namespace], limit=2,
+        )
+        if not replaced.get("ok") \
+                or replaced.get("retired_namespaces_cleared") != [alpha_namespace] \
+                or sink.cleared[-2:] != [restored_namespace, alpha_namespace] \
+                or any(item.group_id != restored_namespace for item in sink.episodes) \
+                or any("future branch must disappear" in item.body for item in sink.episodes):
+            raise AssertionError(f"timeline graph replacement was not atomic: {replaced}")
+
         return {
             "event_scope_isolated": True,
             "failure_does_not_advance": True,
@@ -131,6 +163,7 @@ async def exercise() -> dict:
             "group_rebuild_isolated": True,
             "sqlite_projection_cursor_is_rebuildable": True,
             "routine_events_excluded": True,
+            "restored_timeline_rebuilt_before_retired_graph_gc": True,
         }
 
 

@@ -223,10 +223,13 @@ An approved disruptive operation follows this order:
 approved proposal
   -> wait while ordinary play continues
   -> three-sample native quiescence
-  -> verified control_recovery save (turn/year recorded)
-  -> stop autonomous harness callers
+  -> pause autonomous callers and close the final state race
+  -> verified control_recovery save + SHA-256 (turn/year recorded)
+  -> capture journal heads, modern-chat groups, and match-scoped Hermes state
   -> park every managed worker
   -> apply resolution/controller/host change, if any
+  -> restore native state, Hermes state, and new journal timelines
+  -> rebuild Graphiti, then collect superseded graph generations
   -> recover exact seats and factions from the verified save
   -> publish completion and resume browser streams
 ```
@@ -240,6 +243,14 @@ temporarily unsafe, or records a bounded error for operator review.
 At ordinary turn boundaries the supervisor opportunistically records one
 verified recovery checkpoint per turn. Simultaneous-turn activity can defer a
 checkpoint; it is retried instead of rolling anyone's unsaved actions back.
+
+A checkpoint is a cross-layer recovery boundary, not merely a `.sav`. The
+platform briefly pauses each running Hermes caller, rechecks the native
+signature, saves and hashes the native world, appends a checkpoint event to
+every fair-play journal, snapshots only this match's Hermes sessions, and
+captures the modern group-chat projection. It advertises the checkpoint only
+after every part exists. The previous recovery snapshot is collected only
+after the replacement is durable.
 
 ## Disconnect, exit, crash, and reclaim
 
@@ -271,6 +282,15 @@ worker generation becomes healthy. Continuous reconciliation derives truth
 from the native control plane, clears a stranded portal `recovering` state, and
 lets ordinary supervision start a fresh Hermes run. The unresolved incident
 remains fail-closed if the native rebuild does not succeed.
+
+Recovery never continues the abandoned AI future. It stops the old harness,
+restores the checkpointed Hermes sessions while preserving that agent's other
+campaigns, forks every journal perspective at its recorded checkpoint hash,
+restores the group-chat projection, and rotates the active Graphiti namespace.
+When Graphiti is enabled, the replacement harness stays blocked until the new
+namespace has rebuilt successfully; only then is the old namespace deleted.
+Retrying the same checkpoint creates another clean recovery generation and
+also collects graph namespaces left by an earlier failed attempt.
 
 When every human is a managed browser player and all have been absent for ten
 minutes, the platform checkpoints and parks the match. It does not auto-park an

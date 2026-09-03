@@ -160,6 +160,19 @@ def main() -> int:
         if unstable_frame.get("error", {}).get("code") != "decision_frame_unstable" \
                 or unstable_calls != 3:
             raise AssertionError(f"bad unstable guard: {unstable_frame}")
+
+        # A bridge failure is not a successful unchanged observation. The
+        # caller must stop immediately so supervision can recover it instead
+        # of entering an invisible smac_wait loop.
+        smacx_mcp._call = lambda operation, **arguments: {
+            "ok": False, "error": "game_not_connected",
+            "message": "bridge unavailable",
+        }
+        wait_failure = smacx_mcp.smac_wait(seconds=2)
+        if wait_failure.get("ok") is not False \
+                or wait_failure.get("wait_stage") != "initial_observation" \
+                or "STOP issuing gameplay actions" not in wait_failure.get("instruction", ""):
+            raise AssertionError(f"bridge failure was hidden by smac_wait: {wait_failure}")
     finally:
         smacx_mcp._call = original
         smacx_mcp.controller_chat_attention = original_chat_attention

@@ -124,8 +124,10 @@ the durable thing and the running processes as replaceable.
 
 Checkpoint a game, park every managed player, and shut down the disposable game
 workers. Later, recover the verified save, restore the exact factions and
-seats, reconnect the browsers, and resume the same campaign. AI conversations
-and political memory return with it.
+seats, reconnect the browsers, and resume the same campaign. Each checkpoint
+binds the native save to the AI's Hermes conversation, journal head, modern-chat
+groups, and derived Graphiti generation. Recovery restores that whole boundary,
+so the AI cannot remember plans or actions that the restored world never kept.
 
 The Control Center stays running between games and host restarts. It keeps your
 accounts, lobby history, active and parked matches, player associations, saves,
@@ -149,6 +151,11 @@ players; active seats keep isolated copy-on-write state, parked saves are
 zstd-compressed under an administrator-controlled retention policy, and a
 completed campaign keeps one final verified checkpoint beside its history and
 analytics.
+
+This is recovery, not a turn-rewind feature. Only the latest verified recovery
+generation is retained: a replacement Hermes snapshot is published before its
+obsolete predecessor is collected, and Graphiti rebuilds the restored timeline
+before its superseded graph namespace is deleted.
 
 If a browser refreshes, reconnect it. A second tab opens safely as a viewer;
 it must explicitly take control, and doing so immediately revokes the old

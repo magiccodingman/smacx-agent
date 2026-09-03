@@ -86,13 +86,23 @@ blocked. After implementing and deploying coverage, an owner or administrator
 uses **Retry from verified checkpoint**. The control plane parks the preserved
 process, refreshes every managed seat onto the current immutable
 worker/bridge/MCP images, loads the verified save into a fresh `session_id`,
-and only then marks the incident recovered. A failed retry remains latched.
+restores this match's Hermes conversation and journal timeline to that same
+boundary, and rebuilds its Graphiti namespace before launching the agent. Only
+then is the incident marked recovered. A failed retry remains latched.
 
 Movement, diplomacy, Council, and probe choices may cross the native event
 loop. The bound native operation receives an `action_id`; opaque execution
 normally waits and reports `completed: true`. If the bounded wait expires, do
 not overlap an ordinary turn action. Resolve each newly enumerated staged
 interaction, then observe until the original deferred action completes.
+
+End-turn uses the same deferred ledger even though the stock game implements
+it as one long synchronous call. The bridge replies after queueing the native
+Turn Complete command and starts that command from a Windows timer only after
+the request frame has unwound. Any confirmation or technology presentation in
+the transition therefore becomes the current required interaction rather than
+starving the bridge. `smac_wait` propagates a lost bridge as an error; it never
+wraps an unavailable observation in `ok: true`.
 
 When any semantic result reports `turn_handoff_required`, native control has
 passed. This includes a direct end-turn result and the next decision frame when
@@ -103,8 +113,11 @@ headed `TURN HANDOFF`, under 120 words, with `Outcome`,
 `Reasoning`, `What changed`, `Next turn`, and `Uncertainty`. Hermes retains and
 later compresses this durable decision summary. Raw interleaved reasoning is
 kept throughout the active episode but stripped after the next user/episode
-boundary. The supervisor treats the handoff as a clean yield and resumes the
-same campaign conversation; it is not match completion.
+boundary. Completed tool protocol from earlier episodes is likewise omitted
+from later provider requests while remaining in durable diagnostics. Current
+episode tool calls/results stay coherent, and only superseded state payloads
+inside that episode are compacted. The supervisor treats the handoff as a clean
+yield and resumes the same campaign conversation; it is not match completion.
 
 Alien Artifact entry is another staged movement interaction. `ARTIFACT` exposes `no_action`, technology linking, and—only when natively present—acceleration of the exact current Secret Project or unprototyped unit. The two consuming choices require `confirm_consume_artifact=1`. A link can open a following technology notice; acknowledge it and keep waiting until the original move reports `native_artifact_consumed`.
 
@@ -147,6 +160,11 @@ A Supreme Leader vote can later open `ACCEDE` or `ACCEDECOOP`; use only the retu
 Economic victory is initiated only from a fresh `game_management` family. Review the returned aggregate cost, available credits, Headquarters, and countdown; copy `confirm_corner_market=1` only after deliberately choosing to commit. A successful command opens the information-only `CORNERING` notice. Acknowledge it once, then use fresh `game_management` state to track the plan rather than carrying the old quote forward.
 
 `match_id` is the durable namespace for one playthrough. `session_id` changes whenever the game process is relaunched. The managed control store owns match identity, lifecycle history, scoped knowledge, and save metadata. Standalone MCP launches may also maintain a compatibility `match.json` below their configured knowledge root. Named saves remain scoped to the match. Loading preserves `match_id`, creates a new `session_id`, and invalidates every old guard and engine object ID.
+
+Managed checkpoint recovery also changes the private memory `timeline_id`.
+Hermes history, journal-backed search/recall/chat/notebook state, and derived
+Graphiti memory are restored together, so an action abandoned with the old
+native process cannot remain as an AI memory in the recovered world.
 
 Record learned player behavior and strategic facts through `smac_knowledge`, not a free-form cross-game memory. A `put` requires the current match, session, and observation revision and automatically records the turn/year provenance. Stable keys hold the latest correction while `history` preserves every prior value. While a game is running, reads for any other match are rejected so another playthrough's intelligence cannot leak into the current one.
 

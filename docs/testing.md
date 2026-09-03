@@ -40,12 +40,17 @@ PYTHONPATH=src python3 scripts/worker_lifecycle_serialization_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 PYTHONPATH=src python3 scripts/campaign_journal_test.py
+PYTHONPATH=src python3 scripts/ai_memory_checkpoint_test.py
 PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
 PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
 ```
 
 The provider-wire context policy must run inside the built Hermes image because
-it deliberately tests the pinned harness's private message-construction hooks:
+it deliberately tests the pinned harness's private message-construction hooks.
+The fixture mirrors Hermes's generic MCP `tool_call` dispatcher envelope and
+asserts that completed episodes are pruned, current-episode reasoning and tool
+protocol remain coherent, superseded state frames collapse, and a long active
+episode stays below its provider-wire growth ceiling:
 
 ```bash
 docker run --rm --entrypoint /opt/hermes/.venv/bin/python \

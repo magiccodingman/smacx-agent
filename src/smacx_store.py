@@ -1000,14 +1000,29 @@ class SmacxStore:
             )
             return installation_id
 
-    def graph_namespace(self, scope: MemoryScope) -> str:
+    def active_timeline_id(self, scope: MemoryScope) -> str:
+        """Return the only campaign timeline visible to this perspective."""
+        self.require_scope(scope)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT metadata_json FROM matches WHERE match_id=?", (scope.match_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("unknown_match_id")
+        metadata = json.loads(str(row["metadata_json"]))
+        value = str(metadata.get("active_memory_timeline") or "timeline-main")
+        if not ID_PATTERN.fullmatch(value):
+            raise StoreError("invalid_active_memory_timeline")
+        return value
+
+    def graph_namespace(self, scope: MemoryScope, *, timeline_id: str | None = None) -> str:
         self.require_scope(scope)
         # FalkorDB graph names use a conservative portable character set. Keep
         # the exact fair-play tuple authoritative in SQLite and expose only its
         # deterministic, non-reversible namespace to the derived graph.
         material = "\x1f".join((
             self.installation_id(), scope.match_id, scope.agent_id, scope.perspective_id,
-            os.environ.get("SMACX_TIMELINE_ID", "timeline-main"),
+            timeline_id or self.active_timeline_id(scope),
         ))
         return "smacx_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:48]
 
@@ -2006,6 +2021,84 @@ class SmacxStore:
             ).fetchall()
         return [self.get_chat_group(scope, str(row["group_id"]), viewer_faction_id)
                 for row in ids]
+
+    def export_chat_groups(self, match_id: str) -> list[dict[str, Any]]:
+        """Export the complete match-local group overlay for a recovery checkpoint."""
+        _require_id(match_id, "match_id")
+        with self._connect() as connection:
+            groups = connection.execute(
+                "SELECT * FROM chat_groups WHERE match_id=? ORDER BY created_unix, group_id",
+                (match_id,),
+            ).fetchall()
+            result: list[dict[str, Any]] = []
+            for group in groups:
+                item = dict(group)
+                item["members"] = [dict(row) for row in connection.execute(
+                    "SELECT faction_id,display_name,faction_name,status,responded_unix "
+                    "FROM chat_group_members WHERE group_id=? ORDER BY faction_id",
+                    (group["group_id"],),
+                ).fetchall()]
+                result.append(item)
+        return result
+
+    def replace_chat_groups(self, match_id: str,
+                            groups: Sequence[Mapping[str, Any]]) -> int:
+        """Replace the disposable group projection from a checkpointed journal view."""
+        _require_id(match_id, "match_id")
+        normalized: list[dict[str, Any]] = []
+        for raw in groups:
+            group_id = _require_id(str(raw.get("group_id") or ""), "group_id")
+            if str(raw.get("match_id") or match_id) != match_id:
+                raise ScopeViolation("chat_group_match_mismatch")
+            members = raw.get("members")
+            if not isinstance(members, list):
+                raise InvalidRecord("invalid_chat_group_members")
+            normalized.append({**dict(raw), "group_id": group_id, "members": members})
+        with self.transaction() as connection:
+            if not connection.execute(
+                    "SELECT 1 FROM matches WHERE match_id=?", (match_id,)).fetchone():
+                raise ScopeViolation("unknown_match")
+            ids = [str(row[0]) for row in connection.execute(
+                "SELECT group_id FROM chat_groups WHERE match_id=?", (match_id,),
+            )]
+            if ids:
+                marks = ",".join("?" for _ in ids)
+                logical = [str(row[0]) for row in connection.execute(
+                    f"SELECT logical_message_id FROM chat_group_messages WHERE group_id IN ({marks})",
+                    ids,
+                )]
+                if logical:
+                    logical_marks = ",".join("?" for _ in logical)
+                    connection.execute(
+                        f"DELETE FROM chat_group_deliveries WHERE logical_message_id IN ({logical_marks})",
+                        logical,
+                    )
+                connection.execute(
+                    f"DELETE FROM chat_group_messages WHERE group_id IN ({marks})", ids,
+                )
+                connection.execute(
+                    f"DELETE FROM chat_group_members WHERE group_id IN ({marks})", ids,
+                )
+                connection.execute("DELETE FROM chat_groups WHERE match_id=?", (match_id,))
+            for group in normalized:
+                connection.execute(
+                    "INSERT INTO chat_groups(group_id,match_id,display_name,created_by_faction_id,"
+                    "status,version,created_unix,updated_unix) VALUES(?,?,?,?,?,?,?,?)",
+                    (group["group_id"], match_id, str(group.get("display_name") or "Group"),
+                     int(group.get("created_by_faction_id") or 1),
+                     str(group.get("status") or "inviting"), int(group.get("version") or 1),
+                     float(group.get("created_unix") or time.time()),
+                     float(group.get("updated_unix") or time.time())),
+                )
+                for member in group["members"]:
+                    connection.execute(
+                        "INSERT INTO chat_group_members(group_id,faction_id,display_name,faction_name,"
+                        "status,responded_unix) VALUES(?,?,?,?,?,?)",
+                        (group["group_id"], int(member.get("faction_id")),
+                         str(member.get("display_name") or "Player"), member.get("faction_name"),
+                         str(member.get("status") or "invited"), member.get("responded_unix")),
+                    )
+        return len(normalized)
 
     def respond_chat_group(
         self, scope: MemoryScope, group_id: str, faction_id: int, response: str,
