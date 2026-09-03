@@ -219,7 +219,32 @@ async def run(database: Path, *, interval: float, limit: int) -> int:
                             str(rebuild["match_id"]), str(rebuild["agent_id"]),
                             str(rebuild["perspective_id"]),
                         )
-                        result = await projector.rebuild(scope, limit=limit)
+                        request = {}
+                        try:
+                            stored = json.loads(str(rebuild.get("result_json") or "{}"))
+                            if isinstance(stored, dict) and isinstance(stored.get("request"), dict):
+                                request = stored["request"]
+                        except json.JSONDecodeError:
+                            request = {}
+                        retired = request.get("retired_namespaces", [])
+                        try:
+                            result = await projector.replace_timeline(
+                                scope,
+                                retired_namespaces=(
+                                    [str(item) for item in retired]
+                                    if isinstance(retired, list) else []
+                                ),
+                                limit=limit,
+                            )
+                        except Exception as exc:
+                            result = {
+                                "ok": False,
+                                "error": "graphiti_rebuild_exception",
+                                "error_detail": f"{type(exc).__name__}:{exc}"[:2000],
+                                "projected": 0,
+                            }
+                        if request:
+                            result["request"] = request
                         _finish_rebuild(store, str(rebuild["rebuild_id"]), result)
                         projected += int(result.get("projected", 0))
                         failed += int(not result.get("ok"))

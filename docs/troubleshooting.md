@@ -410,8 +410,10 @@ conversation after a tool schema change so discovery is refreshed.
 ## Park reports “native checkpoint not currently legal”
 
 The stock engine is in a native phase/modal where saving is illegal. The safe
-park sequence stops Hermes first, then attempts the checkpoint; if saving fails,
-the worker is retained and the match returns to `running` with `park_failed`.
+checkpoint sequence waits for stable native state, briefly pauses Hermes,
+rechecks that state, and then attempts the native save plus AI-memory snapshot.
+If any component fails, the worker is retained and the match returns to
+`running` with `park_failed`; no partial checkpoint replaces the previous one.
 
 Resolve or wait out the mandatory semantic state and retry. Do not destroy the
 worker or force a filesystem copy as a substitute for a native save.
@@ -426,9 +428,12 @@ Recovery requires a verified native checkpoint. Inspect Match history and the
 lobby error. A process crash before the first legal checkpoint cannot be
 invented into a safe save.
 
-Recovery starts a new process/session/revision. Agent commands captured before
-the crash must be discarded; Hermes continues its durable conversation but
-must call a fresh observation.
+Recovery starts a new process/session/revision. Agent commands captured after
+the checkpoint are discarded. Hermes is restored to its match-scoped snapshot,
+the journal forks at its recorded head, modern-chat groups return to that state,
+and Graphiti changes namespace. If Graphiti is enabled, a failed or incomplete
+rebuild keeps the new Hermes run blocked for operator review. The agent then
+calls a fresh observation.
 
 ## Turn/year or faction is blank
 

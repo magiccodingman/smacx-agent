@@ -86,7 +86,9 @@ blocked. After implementing and deploying coverage, an owner or administrator
 uses **Retry from verified checkpoint**. The control plane parks the preserved
 process, refreshes every managed seat onto the current immutable
 worker/bridge/MCP images, loads the verified save into a fresh `session_id`,
-and only then marks the incident recovered. A failed retry remains latched.
+restores this match's Hermes conversation and journal timeline to that same
+boundary, and rebuilds its Graphiti namespace before launching the agent. Only
+then is the incident marked recovered. A failed retry remains latched.
 
 Movement, diplomacy, Council, and probe choices may cross the native event
 loop. The bound native operation receives an `action_id`; opaque execution
@@ -150,6 +152,11 @@ A Supreme Leader vote can later open `ACCEDE` or `ACCEDECOOP`; use only the retu
 Economic victory is initiated only from a fresh `game_management` family. Review the returned aggregate cost, available credits, Headquarters, and countdown; copy `confirm_corner_market=1` only after deliberately choosing to commit. A successful command opens the information-only `CORNERING` notice. Acknowledge it once, then use fresh `game_management` state to track the plan rather than carrying the old quote forward.
 
 `match_id` is the durable namespace for one playthrough. `session_id` changes whenever the game process is relaunched. The managed control store owns match identity, lifecycle history, scoped knowledge, and save metadata. Standalone MCP launches may also maintain a compatibility `match.json` below their configured knowledge root. Named saves remain scoped to the match. Loading preserves `match_id`, creates a new `session_id`, and invalidates every old guard and engine object ID.
+
+Managed checkpoint recovery also changes the private memory `timeline_id`.
+Hermes history, journal-backed search/recall/chat/notebook state, and derived
+Graphiti memory are restored together, so an action abandoned with the old
+native process cannot remain as an AI memory in the recovered world.
 
 Record learned player behavior and strategic facts through `smac_knowledge`, not a free-form cross-game memory. A `put` requires the current match, session, and observation revision and automatically records the turn/year provenance. Stable keys hold the latest correction while `history` preserves every prior value. While a game is running, reads for any other match are rejected so another playthrough's intelligence cannot leak into the current one.
 

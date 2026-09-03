@@ -66,10 +66,37 @@ events are still atomically durable and join the next boundary commit.
 `working-state.json`, notebook entry files, SQLite/FTS indexes, and Graphiti are
 rebuildable projections of the journal.
 
+## Coherent AI recovery snapshots
+
+The `control_recovery.sav` file is only one member of a verified recovery
+boundary. While autonomous callers are paused, the platform also records the
+save's SHA-256 digest, every perspective's active timeline and journal head,
+the modern-chat group projection, and a compressed match-scoped slice of each
+Hermes profile database. These artifacts live under:
+
+```text
+recovery-snapshots/<match>/<checkpoint>/hermes/<profile>.tar.gz
+```
+
+Recovery stops the abandoned callers, validates every digest and identity,
+restores only the affected Hermes sessions, and forks a new active journal
+timeline at the checkpoint head. Other campaigns belonging to the same AI
+profile are not rolled back. All AI-facing memory reads follow the active
+timeline, so stale SQLite search rows cannot reintroduce post-checkpoint facts.
+Graphiti is rebuilt into a timeline-derived namespace before the retired graph
+is collected.
+
+This is intentionally bounded recovery storage rather than user-facing rewind.
+There is one usable native recovery slot, so after a replacement checkpoint has
+been fully published the preceding Hermes snapshot directory is obsolete and
+is removed. A crash before publication leaves the prior checkpoint intact; a
+crash after publication can at worst leave an extra obsolete directory.
+
 Normal control backups freeze and include the complete campaign tree and Git
-history alongside the platform database, worker archives, and Hermes volumes.
-Restore verifies hashes and rejects traversal, links, devices, and unexpected
-archive roots before replacing the campaign tree.
+history alongside the platform database, worker archives, Hermes volumes, and
+the exact recovery-snapshot files referenced by the captured database. Restore
+verifies hashes and rejects traversal, links, devices, and unexpected archive
+roots before replacing either the campaign tree or recovery-snapshot tree.
 
 ## Retention defaults
 
@@ -86,12 +113,11 @@ the campaign's autonomous callers and retires every seat. Only the managed host
 checkpoint is promoted to the completed archive; redundant client volumes are
 released. Repeated completion reconciliation is safe.
 
-A `.sav` is resumable world state, not a replay. The journal already supports
-an explicit child timeline anchored to an immutable parent event hash and
-native-save digest. The current UI does not expose rewind: future activation
-must restore that exact save, fork every affected perspective, rotate native
-sessions, and rebuild SQLite/Graphiti projections for the child timeline.
-Retaining native saves alone is never treated as safe rewind.
+A `.sav` is resumable world state, not a replay. Checkpoint recovery uses an
+explicit child timeline anchored to an immutable parent event hash and native
+save digest, rotates native sessions, restores Hermes, and rebuilds the derived
+Graphiti projection. The UI does not expose arbitrary turn rewind. Retaining
+native saves alone is never treated as safe AI-memory recovery.
 
 Prepared game and compatibility layers are paid once per distinct fingerprint.
 Running containers add only changed blocks; parked matches retain compressed

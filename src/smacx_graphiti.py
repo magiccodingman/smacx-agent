@@ -16,6 +16,7 @@ import json
 import hashlib
 import os
 from pathlib import Path
+import re
 from typing import Any, Mapping, Protocol
 import uuid
 
@@ -521,7 +522,10 @@ class GraphitiProjector:
         self.store = store
         self.sink = sink
         self.projector_name = projector_name
-        self.journal = CampaignJournal(store.path.parent / "campaigns")
+        self.journal = CampaignJournal(
+            store.path.parent / "campaigns",
+            timeline_resolver=store.active_timeline_id,
+        )
 
     @staticmethod
     def should_project(event: Mapping[str, Any]) -> bool:
@@ -570,6 +574,7 @@ class GraphitiProjector:
                 "match_id": scope.match_id,
                 "agent_id": scope.agent_id,
                 "perspective_id": scope.perspective_id,
+                "timeline_id": self.store.active_timeline_id(scope),
             },
         }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return GraphEpisode(
@@ -656,6 +661,22 @@ class GraphitiProjector:
                     "skipped": skipped,
                     "rebuild": True,
                 }
+
+    async def replace_timeline(
+        self, scope: MemoryScope, *, retired_namespaces: list[str], limit: int = 50,
+    ) -> dict[str, Any]:
+        """Build the active timeline before deleting inaccessible graph generations."""
+        result = await self.rebuild(scope, limit=limit)
+        if not result.get("ok"):
+            return result
+        current = self.store.graph_namespace(scope)
+        cleared: list[str] = []
+        for namespace in sorted(set(retired_namespaces)):
+            if namespace == current or not re.fullmatch(r"smacx_[0-9a-f]{48}", namespace):
+                continue
+            await self.sink.clear_group(namespace)
+            cleared.append(namespace)
+        return {**result, "retired_namespaces_cleared": cleared}
 
 
 async def _main_async(arguments: argparse.Namespace) -> int:

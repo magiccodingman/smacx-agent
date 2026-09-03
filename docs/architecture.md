@@ -307,8 +307,10 @@ Parking is an ordered transaction:
 
 ```text
 portal status=parking
-  -> stop active Hermes runs
-  -> native verified checkpoint
+  -> three stable native observations
+  -> pause active Hermes runs and verify the state once more
+  -> native verified checkpoint + digest
+  -> journal heads + group projection + match-scoped Hermes snapshots
   -> stop/remove MCP and worker containers
   -> authoritative match=parked
   -> portal match=parked
@@ -330,8 +332,12 @@ storage](storage-lifecycle.md).
 The control API independently stops harness callers for direct API park users.
 
 Recovery always assigns fresh native session/revision identities, loads the
-verified save, reclaims exact factions, restores MCP sidecars, and continues
-the durable Hermes conversation. A model must re-observe.
+verified save, reclaims exact factions, restores MCP sidecars, and restores the
+Hermes conversation to the same checkpoint. Every perspective moves to a new
+active journal timeline forked from the recorded hash. AI-visible working state,
+structured lists, search, recall, chat acknowledgement, and modern group state
+all read that timeline; older SQLite rows are disposable/admin projections and
+cannot leak an abandoned future. A model must re-observe.
 
 Portal governance rows are durable authorization records. Quorum is frozen from
 the other connected, non-delegated human seats when a proposal opens. Approval
@@ -365,7 +371,8 @@ The authoritative campaign journal separates:
 Journal replay produces a bounded current-state capsule. Each section has a
 token budget and newest/highest-priority selection; overflow shortens only the
 provider-facing projection and raises a compaction signal without deleting raw
-history. SQLite/FTS retrieval remains perspective-scoped and rebuildable.
+history. AI-visible retrieval is journal-backed. SQLite/FTS remains a
+perspective-scoped, rebuildable compatibility/admin projection.
 
 ## Knowledge system
 

@@ -20,7 +20,7 @@ import ssl
 import tempfile
 import threading
 import time
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -548,20 +548,36 @@ class ControlPlane:
 
     def request_graphiti_rebuild(self, match_id: str, agent_id: str,
                                  perspective_id: str, *,
-                                 admin_id: str | None = None) -> dict[str, Any]:
+                                 admin_id: str | None = None,
+                                 retired_namespaces: Sequence[str] | None = None,
+                                 reason: str = "manual") -> dict[str, Any]:
         scope = MemoryScope(match_id, agent_id, perspective_id)
         self.store.require_scope(scope)
+        retired = sorted({str(value) for value in (retired_namespaces or [])})
+        if any(not re.fullmatch(r"smacx_[0-9a-f]{48}", value) for value in retired):
+            raise InvalidRecord("invalid_retired_graphiti_namespace")
+        if len(retired) > 128:
+            raise InvalidRecord("too_many_retired_graphiti_namespaces")
+        reason = _bounded(reason, "graphiti_rebuild_reason", 120)
         identifier = _new_id("rebuild")
         now = time.time()
+        request = {"request": {
+            "reason": reason,
+            "retired_namespaces": retired,
+            "target_namespace": self.store.graph_namespace(scope),
+            "timeline_id": self.store.active_timeline_id(scope),
+        }}
         with self.store.transaction() as connection:
             connection.execute(
                 "INSERT INTO graphiti_rebuild_requests(rebuild_id, match_id, agent_id, "
-                "perspective_id, status, requested_by_admin_id, created_unix) "
-                "VALUES (?, ?, ?, ?, 'queued', ?, ?)",
-                (identifier, match_id, agent_id, perspective_id, admin_id, now),
+                "perspective_id, status, requested_by_admin_id, result_json, created_unix) "
+                "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
+                (identifier, match_id, agent_id, perspective_id, admin_id,
+                 _json(request), now),
             )
         return {"rebuild_id": identifier, "match_id": match_id, "agent_id": agent_id,
-                "perspective_id": perspective_id, "status": "queued", "created_unix": now}
+                "perspective_id": perspective_id, "status": "queued", "created_unix": now,
+                **request["request"]}
 
     def admin_exists(self) -> bool:
         with self.store.transaction() as connection:
@@ -1964,6 +1980,42 @@ class ControlPlane:
         if personality_id != PERSONALITY_NONE and not isinstance(personality_prompt, str):
             raise ScopeViolation("personality_card_content_not_available")
         match_metadata = json.loads(str(seat.pop("match_metadata_json")))
+        if match_metadata.get("graphiti_enabled", True) is True \
+                and self._setting("graphiti.enabled") is True:
+            restore_metadata = match_metadata.get("memory_restore")
+            restored_unix = float(restore_metadata.get("restored_unix") or 0) \
+                if isinstance(restore_metadata, Mapping) else 0.0
+            with self.store.transaction() as connection:
+                pending_memory = int(connection.execute(
+                    "SELECT count(*) FROM graphiti_rebuild_requests WHERE match_id=? "
+                    "AND status IN ('queued','running') "
+                    "AND json_extract(result_json, '$.request.reason')='checkpoint_restore'",
+                    (match_id,),
+                ).fetchone()[0])
+                failed_memory = int(connection.execute(
+                    "SELECT count(*) FROM graphiti_rebuild_requests WHERE match_id=? "
+                    "AND status='failed' "
+                    "AND json_extract(result_json, '$.request.reason')='checkpoint_restore' "
+                    "AND created_unix >= ?",
+                    (match_id, restored_unix),
+                ).fetchone()[0])
+                completed_memory = int(connection.execute(
+                    "SELECT count(*) FROM graphiti_rebuild_requests WHERE match_id=? "
+                    "AND status='completed' "
+                    "AND json_extract(result_json, '$.request.reason')='checkpoint_restore' "
+                    "AND created_unix >= ?",
+                    (match_id, restored_unix),
+                ).fetchone()[0])
+                expected_memory = int(connection.execute(
+                    "SELECT count(*) FROM perspectives WHERE match_id=?", (match_id,),
+                ).fetchone()[0])
+            if failed_memory:
+                raise ScopeViolation("ai_memory_graph_restore_failed")
+            if isinstance(restore_metadata, Mapping) and restored_unix > 0 \
+                    and completed_memory < expected_memory:
+                raise ScopeViolation("ai_memory_graph_restore_in_progress")
+            if pending_memory:
+                raise ScopeViolation("ai_memory_graph_restore_in_progress")
         policy_keys = (
             "host_controller_kind", "graphiti_enabled", "lan_profile",
             "scenario_id", "ranking_mode", "managed_clients_only",
@@ -2250,7 +2302,10 @@ class ControlPlane:
                      status, _json(details), now, now),
                 )
         result = {"incident_id": incident_id, "status": status}
-        journal = CampaignJournal(self.store.path.parent / "campaigns")
+        journal = CampaignJournal(
+            self.store.path.parent / "campaigns",
+            timeline_resolver=self.store.active_timeline_id,
+        )
         warnings: list[str] = []
         for scope in self.store.scopes_for_match(str(spec["match_id"])):
             try:
@@ -2336,7 +2391,10 @@ class ControlPlane:
                     (now, now, *identifiers),
                 )
         recovered = [self.get_supervision_incident(identifier) for identifier in identifiers]
-        journal = CampaignJournal(self.store.path.parent / "campaigns")
+        journal = CampaignJournal(
+            self.store.path.parent / "campaigns",
+            timeline_resolver=self.store.active_timeline_id,
+        )
         for scope in self.store.scopes_for_match(match_id):
             for incident in recovered:
                 try:

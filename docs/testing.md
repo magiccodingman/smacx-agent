@@ -40,6 +40,7 @@ PYTHONPATH=src python3 scripts/worker_lifecycle_serialization_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
 PYTHONPATH=src python3 scripts/campaign_journal_test.py
+PYTHONPATH=src python3 scripts/ai_memory_checkpoint_test.py
 PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
 PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
 ```

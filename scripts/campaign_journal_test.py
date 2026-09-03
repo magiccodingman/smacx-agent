@@ -23,13 +23,18 @@ def main() -> int:
             title="Gaian border posture", content="Watch the named western frontier.",
             session_id="session-journal-test", turn=1, year=2101,
         )
+        journal.append(scope, "chat.message", {
+            "message_uid": "native:session-journal-test:1",
+            "direction": "inbound", "channel": "global",
+            "content": "The western frontier is peaceful.",
+        }, session_id="session-journal-test", turn=1, year=2101)
         final = journal.append(
             scope, "game.action", {"selected_action": "end_turn"},
             session_id="session-journal-test", turn=2, year=2102,
             commit_reason="Complete turn 2",
         )
         verified = journal.verify(scope)
-        if not verified["ok"] or verified["events"] != 3:
+        if not verified["ok"] or verified["events"] != 4:
             raise AssertionError(verified)
         replay = journal.replay(scope)
         if replay["goals"]["expand"]["record"]["status"] != "active":
@@ -50,21 +55,32 @@ def main() -> int:
         projection = journal.rebuild_sqlite_projection(
             scope, Path(temporary) / "disposable-query-cache.sqlite3",
         )
-        if not projection["ok"] or projection["records"] != 2:
+        if not projection["ok"] or projection["records"] != 3:
             raise AssertionError(f"projection did not rebuild: {projection}")
+        search = journal.search(scope, "western frontier")
+        if not search or search[0]["authority"] != "campaign_journal":
+            raise AssertionError("active-timeline search did not find journal memory")
+        chat = journal.chat_messages(scope, unread_only=True, acknowledge=True)
+        if len(chat) != 1 or journal.chat_messages(scope, unread_only=True):
+            raise AssertionError("journal-backed chat acknowledgement failed")
         repository = Path(temporary) / scope.match_id
         if not (repository / ".git").is_dir():
             raise AssertionError("turn-boundary Git audit was not created")
         branch = journal.fork_timeline(
-            scope, "timeline-rewind-test",
+            scope, "timeline-recovery-test",
             native_save_sha256="a" * 64,
             from_event_hash=opening["event_hash"],
         )
-        branch_state = journal.replay(scope, "timeline-rewind-test")
+        branch_state = journal.replay(scope, "timeline-recovery-test")
         if branch_state["goals"]["expand"]["record"]["status"] != "active" \
                 or branch_state["notebook"].get("suspicions") \
                 or branch.get("forked_from_event_hash") != opening["event_hash"]:
             raise AssertionError("timeline parent-prefix replay is incorrect")
+        restored = CampaignJournal(
+            Path(temporary), timeline_resolver=lambda _scope: "timeline-recovery-test",
+        )
+        if restored.search(scope, "western frontier"):
+            raise AssertionError("post-checkpoint search memory leaked into restored timeline")
         print(json.dumps({
             "event": "pass", "payload": {
                 "hash_chain": True, "portable_replay": True,
@@ -73,6 +89,8 @@ def main() -> int:
                 "working_state_journal_backed": True,
                 "working_state_budget_pressure_visible": True,
                 "timeline_parent_prefix_replayed": True,
+                "search_and_chat_journal_authoritative": True,
+                "post_checkpoint_search_memory_excluded": True,
             },
         }, separators=(",", ":")))
     return 0

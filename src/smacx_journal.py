@@ -23,7 +23,7 @@ import tarfile
 import tempfile
 import threading
 import time
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 import uuid
 
 from smacx_store import MemoryScope
@@ -80,7 +80,8 @@ class CampaignJournal:
 
     schema = "smacx.campaign-journal.v1"
 
-    def __init__(self, root: Path | None = None) -> None:
+    def __init__(self, root: Path | None = None, *,
+                 timeline_resolver: Callable[[MemoryScope], str] | None = None) -> None:
         configured = os.environ.get("SMACX_CAMPAIGN_ROOT", "")
         if root is None:
             if configured:
@@ -89,6 +90,7 @@ class CampaignJournal:
                 database = Path(os.environ.get("SMACX_DB_PATH", "/var/lib/smacx/smacx.sqlite3"))
                 root = database.parent / "campaigns"
         self.root = root.expanduser().resolve()
+        self._timeline_resolver = timeline_resolver
         self._replay_cache: dict[str, dict[str, Any]] = {}
         self._cache_lock = threading.RLock()
 
@@ -96,7 +98,11 @@ class CampaignJournal:
         _safe_identity(scope.match_id, "match_id")
         _safe_identity(scope.agent_id, "agent_id")
         _safe_identity(scope.perspective_id, "perspective_id")
-        value = requested or os.environ.get("SMACX_TIMELINE_ID", "timeline-main")
+        value = requested
+        if not value and self._timeline_resolver is not None:
+            value = self._timeline_resolver(scope)
+        if not value:
+            value = os.environ.get("SMACX_TIMELINE_ID", "timeline-main")
         return _safe_identity(value, "timeline_id")
 
     def perspective_root(self, scope: MemoryScope, timeline_id: str = "") -> Path:
@@ -303,24 +309,35 @@ class CampaignJournal:
         *,
         native_save_sha256: str,
         from_event_hash: str = "",
+        parent_timeline_id: str = "",
     ) -> dict[str, Any]:
         new_timeline_id = _safe_identity(new_timeline_id, "timeline_id")
         if not re.fullmatch(r"[0-9a-f]{64}", native_save_sha256):
             raise JournalError("invalid_native_save_digest")
         path = self.perspective_root(scope, new_timeline_id)
         if path.exists():
+            existing = self._manifest(scope, new_timeline_id)
+            expected_parent = self.timeline_id(scope, parent_timeline_id)
+            expected_hash = from_event_hash or str(
+                self._manifest(scope, expected_parent)["head_hash"]
+            )
+            if existing.get("parent_timeline_id") == expected_parent \
+                    and existing.get("forked_from_event_hash") == expected_hash \
+                    and existing.get("native_save_sha256") == native_save_sha256:
+                return existing
             raise JournalError("timeline_already_exists")
-        current = self._manifest(scope, "timeline-main")
+        parent_timeline = self.timeline_id(scope, parent_timeline_id)
+        current = self._manifest(scope, parent_timeline)
         fork_hash = from_event_hash or str(current["head_hash"])
         # Refuse dangling branch points. A future rewind may choose any
         # checkpoint event in the parent, but the child must always have a
         # fully reconstructable ancestry before it is advertised.
         self._materialize_timeline(
-            scope, "timeline-main", target_hash=fork_hash, visited=set(),
+            scope, parent_timeline, target_hash=fork_hash, visited=set(),
         )
         manifest = self._manifest(scope, new_timeline_id)
         manifest.update({
-            "parent_timeline_id": current["timeline_id"],
+            "parent_timeline_id": parent_timeline,
             "forked_from_event_hash": fork_hash,
             "native_save_sha256": native_save_sha256,
         })
@@ -418,7 +435,8 @@ class CampaignJournal:
         return {
             "facts": {}, "claims": {}, "beliefs": {}, "relationships": {},
             "commitments": {}, "goals": {}, "summaries": {}, "notebook": {},
-            "chat": {}, "recent_actions": [], "lifecycle": [],
+            "chat": {}, "chat_groups": {}, "chat_groups_snapshot_seen": False,
+            "recent_actions": [], "lifecycle": [],
         }
 
     def _materialize_timeline(
@@ -490,7 +508,32 @@ class CampaignJournal:
                 key = str(entry.get("key") or event["event_id"])
                 state["notebook"].setdefault(collection, {})[key] = entry
         elif kind == "chat.message":
-            state["chat"][str(payload.get("message_uid") or event["event_id"])] = payload
+            message = dict(payload)
+            message.setdefault("received_unix", event.get("recorded_unix"))
+            message.setdefault("turn", event.get("turn"))
+            message.setdefault("year", event.get("year"))
+            message.setdefault(
+                "acknowledged_unix",
+                event.get("recorded_unix")
+                if str(message.get("direction") or "") in {"outbound", "outgoing"}
+                else None,
+            )
+            state["chat"][str(payload.get("message_uid") or event["event_id"])] = message
+        elif kind == "chat.acknowledged":
+            acknowledged = payload.get("message_uids")
+            if isinstance(acknowledged, list):
+                for message_uid in acknowledged:
+                    message = state["chat"].get(str(message_uid))
+                    if isinstance(message, dict):
+                        message["acknowledged_unix"] = event.get("recorded_unix")
+        elif kind == "chat.groups_snapshot":
+            groups = payload.get("groups")
+            if isinstance(groups, list):
+                state["chat_groups"] = {
+                    str(group.get("group_id")): dict(group)
+                    for group in groups if isinstance(group, Mapping) and group.get("group_id")
+                }
+                state["chat_groups_snapshot_seen"] = True
         elif kind == "game.action":
             state["recent_actions"].append(payload)
             state["recent_actions"] = state["recent_actions"][-100:]
@@ -599,6 +642,186 @@ class CampaignJournal:
             "compaction_required_sections": over_budget,
             "projection_truncated": bool(over_budget),
             "journal_head_hash": replayed["manifest"]["head_hash"],
+        }
+
+    @staticmethod
+    def _current_records(replayed: Mapping[str, Any], kind: str) -> list[dict[str, Any]]:
+        values = replayed.get(kind, {})
+        if not isinstance(values, Mapping):
+            return []
+        records: list[dict[str, Any]] = []
+        for stable_key, item in values.items():
+            if not isinstance(item, Mapping):
+                continue
+            record = item.get("record")
+            projected = dict(record) if isinstance(record, Mapping) else dict(item)
+            projected.setdefault("journal_stable_key", str(stable_key))
+            if item.get("journal_event_id"):
+                projected.setdefault("journal_event_id", item.get("journal_event_id"))
+            records.append(projected)
+        return sorted(records, key=lambda item: float(
+            item.get("updated_unix") or item.get("created_unix") or 0
+        ), reverse=True)
+
+    def projection_records(
+        self, scope: MemoryScope, kind: str, *, limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Read a structured projection exclusively from the active journal timeline."""
+        allowed = {"claims", "beliefs", "relationships", "commitments", "goals", "summaries"}
+        if kind not in allowed:
+            raise JournalError("invalid_projection_kind")
+        return self._current_records(self.replay(scope), kind)[:min(max(int(limit), 1), 1000)]
+
+    def chat_messages(
+        self, scope: MemoryScope, *, unread_only: bool = False,
+        acknowledge: bool = False, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Read and acknowledge chat without crossing the active timeline boundary."""
+        replayed = self.replay(scope)
+        values = replayed.get("chat", {})
+        messages = [dict(item) for item in values.values() if isinstance(item, Mapping)] \
+            if isinstance(values, Mapping) else []
+        messages.sort(key=lambda item: float(item.get("received_unix") or 0))
+        if unread_only:
+            messages = [item for item in messages if item.get("acknowledged_unix") is None]
+        messages = messages[:min(max(int(limit), 1), 500)]
+        if acknowledge:
+            pending = [str(item.get("message_uid") or "") for item in messages
+                       if item.get("acknowledged_unix") is None and item.get("message_uid")]
+            if pending:
+                event = self.append(scope, "chat.acknowledged", {"message_uids": pending})
+                timestamp = event.get("recorded_unix")
+                for item in messages:
+                    if item.get("message_uid") in pending:
+                        item["acknowledged_unix"] = timestamp
+        return messages
+
+    def chat_groups(self, scope: MemoryScope, *, timeline_id: str = "") -> dict[str, Any]:
+        """Return the checkpoint-consistent modern-chat group projection."""
+        replayed = self.replay(scope, timeline_id)
+        values = replayed.get("chat_groups", {})
+        groups = [dict(item) for item in values.values() if isinstance(item, Mapping)] \
+            if isinstance(values, Mapping) else []
+        groups.sort(key=lambda item: float(item.get("updated_unix") or 0), reverse=True)
+        return {
+            "groups": groups,
+            "snapshot_seen": replayed.get("chat_groups_snapshot_seen") is True,
+            "authority": "campaign_journal",
+        }
+
+    def search(
+        self, scope: MemoryScope, query: str, *,
+        document_kinds: tuple[str, ...] | list[str] = (), limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Run a bounded lexical search over the active canonical timeline."""
+        terms = [term.casefold() for term in re.findall(r"[\w'-]+", str(query), re.UNICODE)[:16]]
+        if not terms:
+            raise JournalError("empty_search_query")
+        allowed = {str(kind).casefold() for kind in document_kinds if str(kind).strip()}
+        singular = {
+            "facts": "fact", "claims": "claim", "beliefs": "belief",
+            "relationships": "relationship", "commitments": "commitment",
+            "goals": "goal", "summaries": "summary", "chat": "chat",
+            "notebook": "notebook", "recent_actions": "event", "lifecycle": "event",
+        }
+        replayed = self.replay(scope)
+        candidates: list[dict[str, Any]] = []
+
+        def add(kind: str, stable_key: str, value: Mapping[str, Any], importance: int = 50) -> None:
+            document_kind = singular[kind]
+            if allowed and document_kind not in allowed and kind not in allowed:
+                return
+            record = value.get("record") if isinstance(value.get("record"), Mapping) else value
+            title = next((str(record.get(name)) for name in (
+                "title", "topic", "section", "subject", "actor_id", "key", "message_uid",
+            ) if record.get(name)), f"{document_kind} {stable_key}")
+            body = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            folded_title = title.casefold()
+            folded_body = body.casefold()
+            score = sum((folded_title.count(term) * 4) + folded_body.count(term) for term in terms)
+            if score <= 0:
+                return
+            candidates.append({
+                "document_id": f"journal:{kind}:{stable_key}",
+                "document_kind": document_kind,
+                "source_id": stable_key,
+                "title": title,
+                "body": body,
+                "tags": f"campaign_journal {document_kind}",
+                "importance": importance,
+                "created_unix": record.get("created_unix") or value.get("recorded_unix") or 0,
+                "rank": -score,
+                "authority": "campaign_journal",
+            })
+
+        for kind in ("facts", "claims", "beliefs", "relationships", "commitments",
+                     "goals", "summaries", "chat"):
+            values = replayed.get(kind, {})
+            if isinstance(values, Mapping):
+                for key, value in values.items():
+                    if isinstance(value, Mapping):
+                        add(kind, str(key), value, 70 if kind in {"chat", "commitments"} else 60)
+        notebooks = replayed.get("notebook", {})
+        if isinstance(notebooks, Mapping):
+            for collection, values in notebooks.items():
+                if not isinstance(values, Mapping):
+                    continue
+                for key, value in values.items():
+                    if isinstance(value, Mapping) and value.get("status") != "deleted":
+                        add("notebook", f"{collection}:{key}", value, 65)
+        for kind in ("recent_actions", "lifecycle"):
+            values = replayed.get(kind, [])
+            if isinstance(values, list):
+                for index, value in enumerate(values):
+                    if isinstance(value, Mapping):
+                        add(kind, f"{index:06d}", value, 50)
+        candidates.sort(key=lambda item: (
+            int(item["rank"]), -int(item["importance"]), -float(item["created_unix"] or 0)
+        ))
+        return candidates[:min(max(int(limit), 1), 100)]
+
+    def recall_many(
+        self, scope: MemoryScope, queries: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+        *, total_token_budget: int = 2000,
+    ) -> dict[str, Any]:
+        """Run multiple active-timeline searches under one provider-facing token budget."""
+        if not queries or len(queries) > 12:
+            raise JournalError("invalid_recall_query_count")
+        budget = min(max(int(total_token_budget), 128), 12000)
+        used = 0
+        seen: set[str] = set()
+        groups: list[dict[str, Any]] = []
+        truncated = False
+        for request in queries:
+            kinds = request.get("document_kinds", ())
+            normalized_kinds = tuple(str(item) for item in kinds) \
+                if isinstance(kinds, (list, tuple)) else ()
+            matches: list[dict[str, Any]] = []
+            for result in self.search(
+                    scope, str(request.get("query") or ""),
+                    document_kinds=normalized_kinds,
+                    limit=int(request.get("limit", 10))):
+                if result["document_id"] in seen:
+                    continue
+                estimate = max(1, (len(result["title"]) + len(result["body"]) + 3) // 4)
+                if used + estimate > budget:
+                    truncated = True
+                    break
+                seen.add(str(result["document_id"]))
+                used += estimate
+                matches.append(result)
+            groups.append({"query": str(request.get("query") or ""), "matches": matches})
+            if truncated:
+                break
+        return {
+            "scope": {
+                "match_id": scope.match_id, "agent_id": scope.agent_id,
+                "perspective_id": scope.perspective_id,
+                "timeline_id": self.timeline_id(scope),
+            },
+            "groups": groups, "estimated_tokens": used,
+            "token_budget": budget, "truncated": truncated,
+            "authority": "campaign_journal",
         }
 
     def rebuild_sqlite_projection(

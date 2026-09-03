@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -58,12 +59,36 @@ def main() -> int:
                 "record_input": {"goal_key": "survive", "title": "Survive"},
             }, turn=1, commit_reason="Test backup boundary",
         )
+        recovery_relative = (
+            "recovery-snapshots/match-journal-backup/checkpoint-backup-test/"
+            "hermes/harness-backup-test.tar.gz"
+        )
+        recovery_file = root / recovery_relative
+        recovery_file.parent.mkdir(parents=True)
+        recovery_file.write_bytes(b"checkpointed Hermes state")
+        recovery_sha = hashlib.sha256(recovery_file.read_bytes()).hexdigest()
+        with store.transaction() as connection:
+            metadata = {
+                "recovery_checkpoint": {
+                    "checkpoint_id": "checkpoint-backup-test", "verified": True,
+                    "ai_memory": {
+                        "schema": "smacx.ai-memory-checkpoint.v1",
+                        "hermes": [{"archive": recovery_relative,
+                                    "archive_sha256": recovery_sha}],
+                    },
+                },
+            }
+            connection.execute(
+                "UPDATE matches SET metadata_json=? WHERE match_id=?",
+                (json.dumps(metadata), "match-journal-backup"),
+            )
         secret = control.vault.put("test.backup", "test-secret-value")
         backup_ops = OperationsManager(control, data_root=root)
         backup = backup_ops.create_backup(include_secrets=True, include_workers=False)
         verified = backup_ops.verify_backup(backup["backup_id"])
         if not verified["ok"] or not verified["includes_secrets"] \
-                or not verified.get("campaigns_included"):
+                or not verified.get("campaigns_included") \
+                or not verified.get("recovery_snapshots_included"):
             raise AssertionError("complete backup did not verify")
 
         fake = FakeWorkerManager()
@@ -104,6 +129,8 @@ def main() -> int:
             }, turn=2,
         )
         orphan = control.vault.put("test.orphan", "must-not-survive-restore")
+        obsolete_recovery = root / "recovery-snapshots" / "obsolete.bin"
+        obsolete_recovery.write_bytes(b"post-backup obsolete generation")
         restored = restore_backup_offline(
             control, root, backup["backup_id"], confirm_installation_id=installation_id,
         )
@@ -117,6 +144,10 @@ def main() -> int:
             raise AssertionError("offline restore retained an orphaned post-backup secret")
         if not restored.get("emergency_backup_id"):
             raise AssertionError("offline restore did not create a rollback backup")
+        if recovery_file.read_bytes() != b"checkpointed Hermes state" \
+                or obsolete_recovery.exists() \
+                or not restored.get("recovery_snapshots_restored"):
+            raise AssertionError("offline restore omitted checkpoint AI-memory snapshots")
         replayed = CampaignJournal(root / "campaigns").replay(journal_scope)
         if replayed["manifest"]["head_hash"] != before_event["event_hash"] \
                 or "expand" in replayed["goals"]:
@@ -142,6 +173,7 @@ def main() -> int:
                 "orphan_secret_removed": True,
                 "pre_restore_rollback_backup": True,
                 "campaign_journal_backup_and_restore": True,
+                "ai_memory_snapshots_backup_and_restore": True,
                 "tamper_detection": True,
                 "worker_archives_fail_closed_without_manager": True,
             },

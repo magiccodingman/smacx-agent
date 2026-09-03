@@ -65,7 +65,10 @@ class HarnessManager:
         transcript.  The campaign timeline stores only stable references and
         aggregate counters required to explain/rebuild an autonomous turn.
         """
-        journal = CampaignJournal(self.store.path.parent / "campaigns")
+        journal = CampaignJournal(
+            self.store.path.parent / "campaigns",
+            timeline_resolver=self.store.active_timeline_id,
+        )
         results: list[dict[str, str]] = []
         for scope in self.store.scopes_for_match(str(run["match_id"])):
             if scope.agent_id != str(run.get("agent_id") or ""):

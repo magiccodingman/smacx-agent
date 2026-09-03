@@ -465,8 +465,11 @@ interactive while it waits for synchronized semantic samples and only blocks
 the stream after a verified checkpoint has been captured.
 
 **Checkpoint** asks the native host to save into a bounded platform slot and
-verifies the resulting file/turn/year. Saving can honestly fail while the stock
-engine is in a native state where save is illegal.
+verifies the resulting file/turn/year and digest. It briefly pauses autonomous
+callers after native quiescence, closes the final observation race, and captures
+the matching journal heads, modern-chat groups, and per-match Hermes sessions.
+Saving can honestly fail while the stock engine is in a native state where save
+is illegal.
 
 **Park** is race-safe:
 
@@ -481,9 +484,11 @@ error, and may restart the AI; no worker is silently destroyed without a save.
 
 **Recover** creates fresh process/session identities, loads the verified slot,
 restores exact seat/faction ownership, starts only the MCP/Hermes sidecars
-assigned to agent seats, and continues each scoped conversation. Agents must
-re-observe; stale commands from the old process are rejected. Browser players
-reconnect to the same portal route.
+assigned to agent seats, and restores each scoped conversation to the captured
+boundary. It forks the active journal timelines, restores modern-chat groups,
+and rebuilds Graphiti into new namespaces before agents can start. Agents must
+re-observe; stale commands and memories from the abandoned process are rejected.
+Browser players reconnect to the same portal route.
 
 A browser disconnect does not retire its faction. After 30 seconds, connected
 humans may vote to delegate that browser-managed seat temporarily to the stock

@@ -129,9 +129,18 @@ events from its beginning.
 Runtime heartbeat, projected/failure counts, selected profile, and
 embedding mode are visible in the portal.
 
-Historical Graphiti group and Hermes conversation retention/garbage collection
-is intentionally deferred. It is tracked as future operations work; current
-match/event telemetry is small and should not be discarded implicitly.
+Checkpoint recovery changes the namespace because the journal timeline is part
+of its identity. The projector builds the complete restored namespace first;
+only a successful rebuild permits deletion of the superseded namespace. A
+failed rebuild remains observable and blocks that match's next Hermes start
+when Graphiti is enabled. Repeated recovery accumulates any uncleared retired
+namespaces so a later successful rebuild collects them too.
+
+Hermes recovery snapshots follow the same bounded policy. Only the latest
+verified checkpoint directory for a match is retained, and its archive contains
+only that match's sessions from the shared agent profile. The replacement is
+published before the prior archive is collected. This retention applies to
+recovery generations; canonical campaign history is not silently discarded.
 
 ## Tests
 
