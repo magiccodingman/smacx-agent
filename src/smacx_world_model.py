@@ -19,6 +19,17 @@ from smacx_world_types import (
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
 CALCULATOR_VERSION = "smacx.calculators.v1"
 
+ENTITLEMENT_EVIDENCE_SOURCES = {
+    "unity_survey": EvidenceSource.SURVEY,
+    "pact_shared": EvidenceSource.PACT,
+    "infiltration": EvidenceSource.INFILTRATION,
+    "governor": EvidenceSource.GOVERNOR,
+    "satellite_report": EvidenceSource.SATELLITE,
+    "scenario": EvidenceSource.SCENARIO,
+    "player_report": EvidenceSource.PLAYER_ASSERTION,
+    "public_report": EvidenceSource.PUBLIC_REPORT,
+}
+
 
 def estimate_tokens(value: Any) -> int:
     return max(1, (len(canonical_json(value).encode("utf-8")) + 3) // 4)
@@ -50,17 +61,27 @@ class ForeignContactRegistry:
         self._seen: set[str] = set()
 
     def observe(self, native_observation_key: str, location: str,
-                turn: int | None) -> str:
+                turn: int | None, *, continuous_path: Iterable[Mapping[str, Any]] = ()) -> str:
         # This key is collector-private and is never serialized provider-side.
         state = self.states.get(native_observation_key)
         # A reconciliation frame proves presence, not an unseen movement path.
         # Without a native coalesced continuously-visible move event, changing
         # locations cannot safely preserve a foreign mobile identity.
         if state is not None and state.last_location_ref != location:
-            self.states.pop(native_observation_key, None)
-            state.active = False
-            self.retired.append(state)
-            state = None
+            cursor = state.last_location_ref
+            proven = False
+            for step in continuous_path:
+                if not isinstance(step, Mapping) or str(step.get("from") or "") != cursor:
+                    break
+                cursor = str(step.get("to") or "")
+                if cursor == location:
+                    proven = True
+                    break
+            if not proven:
+                self.states.pop(native_observation_key, None)
+                state.active = False
+                self.retired.append(state)
+                state = None
         if state is None:
             state = ForeignContactState(
                 "contact-" + uuid.uuid4().hex, native_observation_key, turn, location,
@@ -253,7 +274,14 @@ class PerspectiveProjector:
                                              provenance_ref=provenance)
             objects.append(WorldObject(ref, "base", fields, at,
                                        metadata={"native_id": base.get("id")} if owned else {}))
+        # Native vehicle rows compact after destruction.  The feed marks that
+        # boundary explicitly so an opaque row key can never be reassigned to
+        # a different foreign unit at the same location.
+        if bundle.get("_contact_identity_reset"):
+            self.contacts = ForeignContactRegistry()
         self.contacts.begin_frame()
+        movement_proofs = bundle.get("_continuous_visible_contact_moves") \
+            if isinstance(bundle.get("_continuous_visible_contact_moves"), Mapping) else {}
         for unit in bundle.get("units", ()):
             if not isinstance(unit, Mapping) or "tile_id" not in unit:
                 continue
@@ -265,7 +293,12 @@ class PerspectiveProjector:
                 metadata = {"native_id": unit.get("id")}
             else:
                 native_key = str(unit.get("native_observation_key") or unit.get("id"))
-                ref = self.contacts.observe(native_key, at, turn)
+                path = movement_proofs.get(native_key, ())
+                ref = self.contacts.observe(
+                    native_key, at, turn,
+                    continuous_path=path if isinstance(path, Iterable)
+                    and not isinstance(path, (str, bytes, Mapping)) else (),
+                )
                 kind = "foreign_contact"
                 metadata = {"native_observation_key": native_key}
             fields = {name: _evidence(value, current=True, owned=owned, turn=turn,
@@ -306,20 +339,30 @@ class PerspectiveProjector:
             ref = str(faction.get("faction_ref") or f"faction-{faction.get('id')}")
             owned = bool(faction.get("owned"))
             source = EvidenceSource.OWNED_STATE if owned else EvidenceSource.PUBLIC_REPORT
-            fields = {name: EpistemicValue(value, EpistemicStatus.CURRENT, source,
+            channels = faction.get("_entitlement_channels") \
+                if isinstance(faction.get("_entitlement_channels"), Mapping) else {}
+            fields = {name: EpistemicValue(
+                                            value, EpistemicStatus.CURRENT,
+                                            ENTITLEMENT_EVIDENCE_SOURCES.get(
+                                                str(channels.get(name)), source),
                                             turn, turn, revision_hint, provenance)
                       for name, value in faction.items()
-                      if name not in {"id", "faction_ref", "owned"}}
+                      if name not in {"id", "faction_ref", "owned", "_entitlement_channels"}}
             objects.append(WorldObject(ref, "faction", fields))
         for item in bundle.get("global", ()):
             if not isinstance(item, Mapping):
                 continue
             ref = str(item.get("object_ref") or "global-" + content_hash(item)[:16])
             source = EvidenceSource(str(item.get("source", "public_report")))
-            fields = {name: EpistemicValue(value, EpistemicStatus.CURRENT, source,
+            channels = item.get("_entitlement_channels") \
+                if isinstance(item.get("_entitlement_channels"), Mapping) else {}
+            fields = {name: EpistemicValue(
+                                            value, EpistemicStatus.CURRENT,
+                                            ENTITLEMENT_EVIDENCE_SOURCES.get(
+                                                str(channels.get(name)), source),
                                             turn, turn, revision_hint, provenance)
                       for name, value in item.items()
-                      if name not in {"object_ref", "source"}}
+                      if name not in {"object_ref", "source", "_entitlement_channels"}}
             objects.append(WorldObject(ref, str(item.get("kind") or "global_system"), fields))
         present_refs = {item.object_ref for item in objects}
         current_locations = {square.location_ref for square in squares if square.current}

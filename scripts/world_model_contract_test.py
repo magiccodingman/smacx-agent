@@ -107,6 +107,47 @@ def main() -> int:
         } == {item["object_ref"]: item for item in loaded["objects"]}
         assert next(item.object_ref for item in continued["objects"]
                     if item.kind == "foreign_contact" and item.status == "active") == contact["object_ref"]
+        # Identity may cross tiles only when the native feed proves one
+        # uninterrupted visible path.  This includes advance/retreat and ally
+        # rendezvous trajectories; a bare reconciliation location change is
+        # deliberately insufficient.
+        moved_bundle = bundle()
+        moved_bundle["units"][-1]["tile_id"] = 2 * 16 + 2
+        moved_bundle["_continuous_visible_contact_moves"] = {
+            "hidden-engine-91": [
+                {"from": "location-17", "to": "location-18"},
+                {"from": "location-18", "to": "location-34"},
+            ],
+        }
+        moved = PerspectiveProjector(identity, prior_projection=loaded).project(
+            moved_bundle, observation_sequence=31)
+        assert next(item.object_ref for item in moved["objects"]
+                    if item.kind == "foreign_contact" and item.status == "active") == contact["object_ref"]
+        retreat_prior = {**loaded, "objects": [item.as_dict(provider_safe=False)
+                                                for item in moved["objects"]]}
+        retreat_bundle = bundle()
+        retreat_bundle["_continuous_visible_contact_moves"] = {
+            "hidden-engine-91": [
+                {"from": "location-34", "to": "location-18"},
+                {"from": "location-18", "to": "location-17"},
+            ],
+        }
+        retreated = PerspectiveProjector(identity, prior_projection=retreat_prior).project(
+            retreat_bundle, observation_sequence=32)
+        assert next(item.object_ref for item in retreated["objects"]
+                    if item.kind == "foreign_contact" and item.status == "active") == contact["object_ref"]
+        unproven_bundle = bundle()
+        unproven_bundle["units"][-1]["tile_id"] = 2 * 16 + 2
+        unproven = PerspectiveProjector(identity, prior_projection=loaded).project(
+            unproven_bundle, observation_sequence=33)
+        assert next(item.object_ref for item in unproven["objects"]
+                    if item.kind == "foreign_contact" and item.status == "active") != contact["object_ref"]
+        compacted_bundle = bundle()
+        compacted_bundle["_contact_identity_reset"] = True
+        compacted = PerspectiveProjector(identity, prior_projection=loaded).project(
+            compacted_bundle, observation_sequence=34)
+        assert next(item.object_ref for item in compacted["objects"]
+                    if item.kind == "foreign_contact" and item.status == "active") != contact["object_ref"]
         missing = PerspectiveProjector(identity, prior_projection=loaded).project(
             bundle(contact=False), observation_sequence=4)
         assert any(item.object_ref == contact["object_ref"] and item.status == "lost"

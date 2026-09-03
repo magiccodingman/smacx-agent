@@ -48,6 +48,7 @@ PYTHONPATH=src python3 scripts/native_observation_contract_test.py
 PYTHONPATH=src python3 scripts/fair_play_world_test.py
 PYTHONPATH=src python3 scripts/strategic_world_fixtures_test.py
 PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
+PYTHONPATH=src python3 scripts/notebook_scale_test.py
 PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
 PYTHONPATH=src python3 scripts/specialist_contract_test.py
 PYTHONPATH=src python3 scripts/rollback_world_contract_test.py
@@ -142,8 +143,9 @@ PYTHONPATH=src python3 scripts/specialist_provider_live_test.py \
 ```
 
 The specialist gate sends no tools, personality, sovereign transcript, chat,
-filesystem, or mutation authority and validates the child's strict cited result
-schema. The scripts print only content-free usage/cache/latency aggregates.
+filesystem, independent reference/world retrieval, or mutation authority and
+validates the one-shot child's strict cited result schema. The scripts print
+only content-free usage/cache/latency aggregates.
 
 ## Native game integration
 

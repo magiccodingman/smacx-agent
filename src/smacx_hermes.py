@@ -18,6 +18,9 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 from smacx_generation import normalize_generation_settings, openai_extra_body
+from smacx_context_policy import (
+    HERMES_COMPRESSION_TARGET_RATIO, HERMES_COMPRESSION_THRESHOLD_RATIO,
+)
 
 
 IDENTITY = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
@@ -179,8 +182,8 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "enabled": True,
             "checkpoint_required": False,
             "progress_notices": False,
-            "threshold": 0.5,
-            "target_ratio": 0.2,
+            "threshold": HERMES_COMPRESSION_THRESHOLD_RATIO,
+            "target_ratio": HERMES_COMPRESSION_TARGET_RATIO,
             "protect_last_n": 20,
             "protect_first_n": 3,
             "min_tail_user_messages": 1,

@@ -254,6 +254,9 @@ class CampaignJournal:
         year: int | None = None,
         session_id: str | None = None,
         timeline_id: str = "",
+        cursor: str = "",
+        limit: int = 24,
+        query: str = "",
     ) -> dict[str, Any]:
         if not COLLECTION.fullmatch(collection):
             raise JournalError("invalid_notebook_collection")
@@ -263,14 +266,61 @@ class CampaignJournal:
         if not isinstance(entries, dict):
             entries = {}
         if action == "list":
-            items = [dict(value) for value in entries.values()
-                     if isinstance(value, dict) and value.get("status") != "deleted"][:500]
-            return {"ok": True, "collection": collection, "items": items}
+            try:
+                offset = int(cursor.removeprefix("offset-")) if cursor else 0
+            except ValueError as exc:
+                raise JournalError("invalid_notebook_cursor") from exc
+            if offset < 0 or offset > 1_000_000:
+                raise JournalError("invalid_notebook_cursor")
+            page_size = min(max(int(limit), 1), 50)
+            terms = [term.casefold() for term in re.findall(
+                r"[\w'-]+", str(query), re.UNICODE,
+            )[:12]]
+            source = [dict(value) for value in entries.values()
+                      if isinstance(value, dict) and value.get("status") != "deleted"]
+            source.sort(key=lambda item: float(item.get("updated_unix") or 0), reverse=True)
+            if terms:
+                source = [item for item in source if all(
+                    term in " ".join((
+                        str(item.get("title") or ""),
+                        " ".join(str(tag) for tag in item.get("tags", ())),
+                        str(item.get("content") or ""),
+                    )).casefold() for term in terms
+                )]
+
+            def metadata(item: Mapping[str, Any]) -> dict[str, Any]:
+                content_value = " ".join(str(item.get("content") or "").split())
+                return {key: item.get(key) for key in (
+                    "schema", "collection", "key", "revision", "title", "tags",
+                    "status", "turn", "year", "updated_unix",
+                ) if item.get(key) is not None} | {
+                    "abstract": content_value[:237] + "..."
+                    if len(content_value) > 240 else content_value,
+                    "content_bytes": len(str(item.get("content") or "").encode("utf-8")),
+                }
+
+            items = [metadata(item) for item in source[offset:offset + page_size]]
+            result = {
+                "ok": True, "collection": collection, "items": items,
+                "total_count": len(source), "cursor": cursor or None,
+                "next_cursor": f"offset-{offset + len(items)}"
+                if offset + len(items) < len(source) else None,
+                "result_token_ceiling": 2048,
+            }
+            while items and max(1, (len(_canonical(result)) + 3) // 4) > 2048:
+                items.pop()
+                result["next_cursor"] = f"offset-{offset + len(items)}"
+                result["truncated_by_token_ceiling"] = True
+            return result
         key = _safe_key(key, "notebook_key")
         path = base / f"{key}.json"
         previous = entries.get(key, {})
         if action == "get":
-            return {"ok": bool(previous), "collection": collection, "item": previous or None}
+            result = {"ok": bool(previous), "collection": collection,
+                      "item": previous or None, "result_token_ceiling": 8192}
+            if max(1, (len(_canonical(result)) + 3) // 4) > 8192:
+                raise JournalError("notebook_result_budget_exhausted")
+            return result
         if action not in {"put", "delete"}:
             raise JournalError("invalid_notebook_action")
         if action == "put":

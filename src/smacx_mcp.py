@@ -2935,6 +2935,9 @@ def smac_notebook(
     observed_revision: str = "",
     agent_id: str = "",
     perspective_id: str = "",
+    cursor: str = "",
+    limit: int = 24,
+    query: str = "",
 ) -> dict:
     try:
         match_id, session_id, agent_id, perspective_id = _bound_scope_identity(
@@ -2957,6 +2960,7 @@ def smac_notebook(
         tags=tuple(item.strip() for item in tags_csv.split(",") if item.strip()),
         status=status, session_id=session_id, observed_revision=observed_revision,
         agent_id=agent_id, perspective_id=perspective_id,
+        cursor=cursor, limit=limit, query=query,
     )
 
 

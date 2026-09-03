@@ -100,13 +100,34 @@ def main() -> int:
         "shared": {"value": 7, "channel": "pact_shared"}}}]},
         PerspectiveEntitlements("faction-1", pact_factions=frozenset({"faction-2"}))) \
         ["factions"][0]["shared"] == 7
-    assert sanitize_bundle({"global": [{"entitled_fields": {
+    entitled_global = sanitize_bundle({"global": [{"entitled_fields": {
         "vote": {"value": 4, "channel": "governor"},
         "orbit": {"value": 2, "channel": "satellite_report", "subject": "orbital"},
         "objective": {"value": "x", "channel": "scenario", "subject": "objective"},
     }}]}, PerspectiveEntitlements("faction-1", governor=True,
-        satellite_channels=frozenset({"orbital"}), scenario_channels=frozenset({"objective"}))) \
-        ["global"][0] == {"vote": 4, "orbit": 2, "objective": "x"}
+        satellite_channels=frozenset({"orbital"}), scenario_channels=frozenset({"objective"})))
+    assert {key: entitled_global["global"][0][key]
+            for key in ("vote", "orbit", "objective")} == {
+                "vote": 4, "orbit": 2, "objective": "x",
+            }
+    assert entitled_global["global"][0]["_entitlement_channels"] == {
+        "vote": "governor", "orbit": "satellite_report", "objective": "scenario",
+    }
+    source_projection = PerspectiveProjector(WorldIdentity(
+        "match-source", "perspective-source", "timeline-source", "world-source",
+    )).project(infiltrated, observation_sequence=1)
+    foreign_faction = next(item for item in source_projection["objects"]
+                           if item.object_ref == "faction-2")
+    assert foreign_faction.fields["secret_plan"].source.value == "infiltration"
+    global_source_bundle = first | {"global": entitled_global["global"]}
+    global_projection = PerspectiveProjector(WorldIdentity(
+        "match-global", "perspective-global", "timeline-global", "world-global",
+    )).project(global_source_bundle, observation_sequence=1)
+    global_object = next(item for item in global_projection["objects"]
+                         if item.kind == "global_system")
+    assert global_object.fields["vote"].source.value == "governor"
+    assert global_object.fields["orbit"].source.value == "satellite"
+    assert global_object.fields["objective"].source.value == "scenario"
 
     try:
         sanitize_bundle({"spectator_state": {"honey": True}}, entitlements)

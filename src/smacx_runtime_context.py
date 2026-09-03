@@ -21,6 +21,23 @@ from smacx_world_types import canonical_json, content_hash
 
 RUNTIME_CONTEXT_SCHEMA = "smacx.runtime-context.v1"
 
+# One allocator owns the whole request-only envelope.  Component ceilings are
+# reservations, not independent promises: their actual use determines the
+# space offered to the anchor.  The rich envelope remains bounded at one eighth
+# of a 256K context and can still contain a maximal 16K semantic anchor.
+RUNTIME_BUDGETS = {
+    "64k": {
+        "total": 13_107, "anchor": 6_000, "cognition": 2_600,
+        "operations": 1_200, "attention": 1_800, "recall": 0,
+        "delta_reserve": 512,
+    },
+    "256k": {
+        "total": 32_768, "anchor": 16_000, "cognition": 6_000,
+        "operations": 2_500, "attention": 4_000, "recall": 1_000,
+        "delta_reserve": 1_500,
+    },
+}
+
 
 def _field(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
     value = item.get("fields", {}).get(name) if isinstance(item.get("fields"), Mapping) else None
@@ -69,18 +86,66 @@ def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _cognition(working: Mapping[str, Any], *, token_budget: int) -> dict[str, Any]:
+def _compact_cognition_record(item: Mapping[str, Any], *, text_limit: int = 1200) -> dict[str, Any]:
+    """Bound one routine runtime projection without changing durable truth."""
+    result = dict(item)
+    for field in ("terms", "description", "objective", "content", "reasons"):
+        value = result.get(field)
+        if isinstance(value, str) and len(value) > text_limit:
+            result[field] = value[:text_limit - 3] + "..."
+            result[f"{field}_truncated"] = True
+    return result
+
+
+def _cognition(working: Mapping[str, Any], *, token_budget: int,
+               current_turn: int | None = None,
+               current_year: int | None = None) -> dict[str, Any]:
     """Keep interpretations and intent; mechanical history stays in the world."""
     sections = working.get("sections") if isinstance(working.get("sections"), Mapping) else {}
     situation = sections.get("situation") \
         if isinstance(sections.get("situation"), Mapping) else {}
+    def rows(name: str) -> list[dict[str, Any]]:
+        value = sections.get(name)
+        return [_compact_cognition_record(item) for item in (value or ())
+                if isinstance(item, Mapping)]
+
+    goals = [item for item in rows("goals")
+             if str(item.get("status") or "active") in {"active", "paused"}]
+    goals.sort(key=lambda item: (
+        -int(item.get("priority") or 0),
+        int(item.get("due_turn")) if item.get("due_turn") is not None else 10**9,
+        -float(item.get("created_unix") or item.get("updated_unix") or 0),
+    ))
+    plans = [item for item in rows("plans")
+             if str(item.get("status") or "active") in {"proposed", "active", "paused"}]
+    commitments = [item for item in rows("commitments")
+                   if str(item.get("status") or "proposed") in {"proposed", "accepted"}]
+
+    def commitment_salience(item: Mapping[str, Any]) -> tuple[Any, ...]:
+        status = str(item.get("status") or "proposed")
+        due_turn = item.get("due_turn")
+        due_year = item.get("due_year")
+        if due_turn is not None and current_turn is not None:
+            urgency = abs(int(due_turn) - int(current_turn))
+        elif due_year is not None and current_year is not None:
+            urgency = abs(int(due_year) - int(current_year))
+        else:
+            urgency = 10**9
+        # Accepted promises are binding even when old.  Proposed commitments
+        # follow, then urgency and recency break ties.
+        return (0 if status == "accepted" else 1, urgency,
+                -float(item.get("created_unix") or item.get("updated_unix") or 0))
+
+    commitments.sort(key=commitment_salience)
     result = {
-        "goals": list(sections.get("goals") or [])[:12],
-        "plans": list(sections.get("plans") or [])[:12],
-        "commitments": list(sections.get("commitments") or [])[:12],
-        "relationships": list(sections.get("relationships") or [])[:12],
-        "beliefs": list(sections.get("beliefs") or [])[:12],
-        "summaries": list(situation.get("summaries") or [])[:6],
+        "goals": goals[:12],
+        "plans": plans[:12],
+        "commitments": commitments[:12],
+        "relationships": rows("relationships")[:12],
+        "beliefs": rows("beliefs")[:12],
+        "summaries": [_compact_cognition_record(item) for item in
+                      (situation.get("summaries") or ())
+                      if isinstance(item, Mapping)][:6],
     }
     # Durable cognition can be verbose on disk. Runtime carries the most recent
     # bounded interpretation/intent, never an unbounded notebook projection.
@@ -90,7 +155,10 @@ def _cognition(working: Mapping[str, Any], *, token_budget: int) -> dict[str, An
         for section in removal_order:
             values = result[section]
             if len(values) > 1:
-                values.pop(0)
+                # Journal projections are valuable-first (newest first, or
+                # highest-priority first for goals/commitments).  Remove the
+                # least valuable tail rather than the head.
+                values.pop()
                 reduced = True
                 break
         if not reduced:
@@ -209,18 +277,18 @@ class RuntimeContextAssembler:
         focus_unit = focus.get("unit") if isinstance(focus.get("unit"), Mapping) else {}
         if focus_unit.get("id") is not None:
             focus_ref = f"own-unit-{focus_unit['id']}"
-        anchor = self.world.anchor(
-            context_length=context_length, focus_ref=focus_ref or None,
-            operation_refs=operation_refs, triggered_watch_refs=triggered_watch_refs,
-        )
+        tier = "64k" if context_length < 131072 else "256k"
+        budgets = RUNTIME_BUDGETS[tier]
         cognition = _cognition(
-            self.working_state(), token_budget=3000 if context_length < 131072 else 7000,
+            self.working_state(), token_budget=budgets["cognition"],
+            current_turn=int(turn) if turn is not None else None,
+            current_year=int(snapshot["year"]) if snapshot.get("year") is not None else None,
         )
         operations = _operation_context(
-            active["operations"], token_budget=1600 if context_length < 131072 else 4000,
+            active["operations"], token_budget=budgets["operations"],
         )
         attention_context = _bounded_attention(
-            attention_lease, token_budget=2048 if context_length < 131072 else 6000,
+            attention_lease, token_budget=budgets["attention"],
         )
         recall_context: dict[str, Any] | None = None
         recall_terms = []
@@ -230,7 +298,7 @@ class RuntimeContextAssembler:
             message = item.get("payload", {}).get("message", {})
             if isinstance(message, Mapping) and message.get("content"):
                 recall_terms.append(str(message["content"]))
-        if recall_terms and self.interpretive_recall is not None:
+        if budgets["recall"] and recall_terms and self.interpretive_recall is not None:
             recalled = self.interpretive_recall("\n".join(recall_terms[-4:]))
             if recalled.get("ok") and isinstance(recalled.get("facts"), list):
                 recall_context = {
@@ -238,6 +306,8 @@ class RuntimeContextAssembler:
                     "facts": recalled["facts"][:8],
                     "authority": "fallible_history_not_current_mechanical_truth",
                 }
+        # Reserve all non-anchor mandatory/current cognition first.  Semantic
+        # LOD receives only the remaining coherent envelope budget.
         payload = {
             "schema": RUNTIME_CONTEXT_SCHEMA,
             "episode": {"episode_id": episode_id, "mode": episode_mode,
@@ -249,14 +319,7 @@ class RuntimeContextAssembler:
                 "action_revision": snapshot.get("revision"),
                 "continuity": projection.get("continuity", "incomplete"),
             },
-            "world": {
-                "world_anchor_id": anchor["world_anchor_id"],
-                "world_anchor_revision": anchor["world_anchor_revision"],
-                "anchor_observation_cursor": anchor["anchor_observation_cursor"],
-                "anchor": anchor["payload"],
-                "net_deltas": anchor.get("net_deltas", []),
-                "net_deltas_truncated": bool(anchor.get("net_deltas_truncated")),
-            },
+            "world": {},
             "focus": focus,
             "attention": attention_context,
             "working_cognition": cognition,
@@ -266,10 +329,30 @@ class RuntimeContextAssembler:
         }
         if recall_context is not None:
             payload["interpretive_recall"] = recall_context
+        non_anchor_tokens = estimate_tokens(payload)
+        anchor_cap = min(
+            budgets["anchor"],
+            budgets["total"] - non_anchor_tokens - budgets["delta_reserve"],
+        )
+        if anchor_cap < 512:
+            raise RuntimeError("context_budget_exhausted:mandatory_runtime_context")
+        anchor = self.world.anchor(
+            context_length=context_length, focus_ref=focus_ref or None,
+            operation_refs=operation_refs, triggered_watch_refs=triggered_watch_refs,
+            token_cap=anchor_cap,
+        )
+        payload["world"] = {
+            "world_anchor_id": anchor["world_anchor_id"],
+            "world_anchor_revision": anchor["world_anchor_revision"],
+            "anchor_observation_cursor": anchor["anchor_observation_cursor"],
+            "anchor": anchor["payload"],
+            "net_deltas": anchor.get("net_deltas", []),
+            "net_deltas_truncated": bool(anchor.get("net_deltas_truncated")),
+        }
         # The authoritative anchor/focus, binding commitments, and critical
         # attention are pinned. Optional interpretive recall is the first
         # runtime component discarded under pressure.
-        runtime_cap = min(16_000, max(8_000, int(context_length * 0.20)))
+        runtime_cap = budgets["total"]
         if estimate_tokens(payload) > runtime_cap:
             payload.pop("interpretive_recall", None)
             recall_context = None
@@ -290,7 +373,22 @@ class RuntimeContextAssembler:
             "operations": estimate_tokens(payload["operations"]),
             "interpretive_recall": estimate_tokens(recall_context or {}),
         }
-        payload["token_estimate"] = estimate_tokens(payload)
+        payload["budget"] = {
+            "tier": tier, "total": runtime_cap, "anchor_cap": anchor_cap,
+        }
+        payload["token_estimate"] = 0
+        # Reach a fixed point after serializing the estimate itself.  Comparing
+        # only the pre-value estimate can undercount a request exactly at the
+        # envelope boundary by the digits added to this field.
+        for _ in range(4):
+            actual_tokens = estimate_tokens(payload)
+            if payload["token_estimate"] == actual_tokens:
+                break
+            payload["token_estimate"] = actual_tokens
+        actual_tokens = estimate_tokens(payload)
+        payload["token_estimate"] = actual_tokens
+        if actual_tokens > runtime_cap:
+            raise RuntimeError("context_budget_exhausted:runtime_metadata")
         for component, value in payload["token_composition"].items():
             self.world.store.telemetry(
                 "runtime_context", f"tokens_{component}", value, scope=self.scope,

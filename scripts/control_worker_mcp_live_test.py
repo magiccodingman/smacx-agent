@@ -55,6 +55,20 @@ except urllib.error.HTTPError as exc:
     ))
 
 
+def bridge_operation(container_name: str, operation: str, **arguments: object) -> dict:
+    """Exercise the real sidecar-to-native adapter without provider content."""
+    script = r'''
+import json, sys
+from smacx_controller import bridge_request
+print(json.dumps(bridge_request(sys.argv[1], timeout=30, **json.loads(sys.argv[2])),
+                 separators=(',', ':')))
+'''
+    return json.loads(docker(
+        "exec", container_name, "python3", "-c", script,
+        operation, json.dumps(arguments, separators=(",", ":")),
+    ))
+
+
 def api(opener, base_url: str, method: str, path: str, body: dict | None = None,
         csrf: str | None = None, timeout: float = 60.0) -> dict:
     data = json.dumps(body or {}, separators=(",", ":")).encode() if method != "GET" else None
@@ -288,6 +302,21 @@ def main() -> int:
         if endpoint.get("status") != "running" or not endpoint.get("url"):
             raise AssertionError(f"worker did not receive an MCP sidecar: {started}")
         worker.setdefault("network", {})["mcp_container_name"] = endpoint.get("container_name")
+        native_summary = bridge_operation(
+            endpoint["container_name"], "perspective_world_page",
+            domain="summary", cursor=0, limit=1,
+        )
+        native_snapshot = bridge_operation(
+            endpoint["container_name"], "semantic_snapshot",
+        ).get("snapshot", {})
+        if not native_summary.get("ok") \
+                or not isinstance(native_summary.get("unity_survey"), bool) \
+                or not isinstance(native_summary.get("is_governor"), bool):
+            raise AssertionError(f"native entitlement summary is incomplete: {native_summary}")
+        if not isinstance(native_snapshot.get("own_orbitals"), dict) \
+                or not isinstance(native_snapshot.get("public_projects"), list) \
+                or not isinstance(native_snapshot.get("governor_faction_id"), int):
+            raise AssertionError(f"native global intelligence adapter is incomplete: {native_snapshot}")
         mcp_result = asyncio.run(inspect_mcp(endpoint["url"], created["match"]["match_id"]))
         test_episode_id = "episode-live-" + suffix
         runtime_started = runtime_context(endpoint["container_name"], test_episode_id)
@@ -491,6 +520,8 @@ def main() -> int:
                 "dedicated_mcp_sidecar": True,
                 "mcp_tool_count": mcp_result["tool_count"],
                 "mcp_bound_to_exact_match": True,
+                "native_unity_governor_entitlements": True,
+                "native_orbital_project_global_adapter": True,
                 "managed_lifecycle_blocked": True,
                 "bridge_verified_checkpoint": True,
                 "live_worker_volume_backup_verified": live_backup_verified,

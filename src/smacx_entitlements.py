@@ -75,6 +75,7 @@ def sanitize_enriched_fields(
     if any(key in row for key in ("hidden_state", "spectator_state", "admin_state")):
         raise ValueError("forbidden_perspective_payload")
     result = {key: value for key, value in row.items() if key != "entitled_fields"}
+    channels: dict[str, str] = {}
     fields = row.get("entitled_fields")
     if not isinstance(fields, Mapping):
         return result
@@ -86,6 +87,11 @@ def sanitize_enriched_fields(
         subject = str(envelope.get("subject") or name)
         if entitlements.permits(channel, owner_ref=owner_ref, subject=subject):
             result[name] = envelope.get("value")
+            channels[name] = channel
+    if channels:
+        # Collector-private provenance metadata.  The projector converts this
+        # to field-level evidence and never exposes the raw envelope.
+        result["_entitlement_channels"] = channels
     return result
 
 

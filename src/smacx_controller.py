@@ -1006,6 +1006,9 @@ def campaign_notebook(
     observed_revision: str = "",
     agent_id: str = "",
     perspective_id: str = "",
+    cursor: str = "",
+    limit: int = 24,
+    query: str = "",
 ) -> dict[str, Any]:
     """Read or mutate the canonical match-scoped AI notebook."""
     try:
@@ -1027,6 +1030,7 @@ def campaign_notebook(
                 content=content, tags=list(tags), status=status,
                 turn=snapshot.get("turn"), year=snapshot.get("year"),
                 session_id=session_id or None,
+                cursor=cursor, limit=limit, query=query,
             )
         if action in {"put", "delete"} and result.get("ok"):
             _store().append_event(

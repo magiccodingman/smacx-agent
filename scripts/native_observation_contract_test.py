@@ -21,6 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     source = (ROOT / "bridge/src/agent_bridge.cpp").read_text(encoding="utf-8")
+    base_source = (ROOT / "bridge/src/base.cpp").read_text(encoding="utf-8")
+    vehicle_source = (ROOT / "bridge/src/veh.cpp").read_text(encoding="utf-8")
+    patch_source = (ROOT / "bridge/src/patch.cpp").read_text(encoding="utf-8")
     collector_source = (ROOT / "src/smacx_observation.py").read_text(encoding="utf-8")
     manager_source = (ROOT / "src/smacx_worker_manager.py").read_text(encoding="utf-8")
     required = (
@@ -30,10 +33,32 @@ def main() -> int:
         'append_observation_event("perspective_changed"',
         'append_observation_event(outbound ? "chat_outbound" : "chat_inbound"',
         'append_observation_event("deferred_action_queued"',
+        '"visible_unit_moved"',
+        '"visible_unit_damaged"',
+        '"visible_unit_destroyed"',
+        '"contact_identity_reset"',
+        '"visible_base_founded"',
+        '"visible_base_captured"',
+        '"visible_base_destroyed"',
+        '"known_tile_changed"',
         'if (op == "observation_feed") return observation_feed_response(request);',
     )
     if any(value not in source for value in required):
         raise AssertionError("native observation ring or overflow contract drifted")
+    if any(value not in base_source for value in (
+        "agent_observe_base_founded(base_id)",
+        "agent_observe_base_destroyed(base_id)",
+        "agent_observe_base_captured(base_id, faction_id, faction_id_atk)",
+    )) or "agent_observe_unit_destroyed(veh_id)" not in vehicle_source:
+        raise AssertionError("native semantic lifecycle hooks are detached")
+    if any(value not in patch_source for value in (
+        "write_jump(0x5C08C0, (int)veh_kill)",
+        "write_call(0x4C9870, (int)mod_base_init)",
+        "write_call(0x4CD629, (int)mod_base_kill)",
+        "write_call(0x50AE77, (int)mod_base_kill)",
+        "write_call(0x598778, (int)mod_capture_base)",
+    )):
+        raise AssertionError("patched native mutation routes no longer reach lifecycle hooks")
     if any(value not in collector_source for value in (
         'self._semantic_items("list_bases"',
         'self._semantic_items("list_units"',
@@ -85,6 +110,28 @@ def main() -> int:
         assert json.loads(projected[0]["payload_json"])["reconciliation_required"] is True
         assert attention.pending_summary()["has_critical"] is True
 
+        collector._append_native_feed({
+            "continuity": "complete", "next_sequence": 1502,
+            "events": [
+                {"sequence": 1501, "kind": "visible_unit_moved", "turn": 30,
+                 "subject_a": 91, "subject_b": 2, "from_tile_id": 17,
+                 "to_tile_id": 18, "continuous_visibility": True},
+                {"sequence": 1502, "kind": "visible_unit_moved", "turn": 30,
+                 "subject_a": 91, "subject_b": 2, "from_tile_id": 18,
+                 "to_tile_id": 34, "continuous_visibility": True},
+            ],
+        })
+        assert collector._continuous_contact_moves["visible-91"] == [
+            {"from": "location-17", "to": "location-18", "native_sequence": 1501},
+            {"from": "location-18", "to": "location-34", "native_sequence": 1502},
+        ]
+        collector._append_native_feed({
+            "continuity": "complete", "next_sequence": 1503,
+            "events": [{"sequence": 1503, "kind": "visible_unit_lost", "turn": 30,
+                        "subject_a": 91, "subject_b": 2}],
+        })
+        assert "visible-91" not in collector._continuous_contact_moves
+
         # A provider request may demand a fresh projection while the observer
         # thread is polling. Both paths must share one serialized collector.
         active = 0
@@ -117,6 +164,9 @@ def main() -> int:
         "projection_marks_reconciliation": True,
         "overflow_enters_critical_attention": True,
         "chat_and_deferred_actions_emit_events": True,
+        "semantic_native_transition_events_present": True,
+        "native_lifecycle_hooks_attached": True,
+        "continuous_movement_path_collected": True,
         "collector_bridge_operations_valid": True,
         "managed_sidecar_identity_explicit": True,
         "collector_refresh_serialized": True,

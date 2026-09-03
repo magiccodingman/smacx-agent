@@ -11,7 +11,7 @@ from pathlib import Path
 import tempfile
 
 
-def dispatched_call(identifier: str, name: str) -> dict:
+def dispatched_call(identifier: str, name: str, arguments: dict | None = None) -> dict:
     """Mirror Hermes's real generic MCP dispatcher envelope."""
     return {
         "id": identifier,
@@ -20,7 +20,7 @@ def dispatched_call(identifier: str, name: str) -> dict:
             "name": "tool_call",
             "arguments": json.dumps({
                 "name": f"mcp__smacx__{name}",
-                "arguments": {},
+                "arguments": arguments or {},
             }, separators=(",", ":")),
         },
     }
@@ -148,6 +148,49 @@ def main() -> int:
         if surviving_pairs > 24 or smacx_strict_prompt._request_tokens(
                 bounded_five_hundred) > smacx_strict_prompt._semantic_ceiling(65536)[0]:
             raise AssertionError("500-action semantic context did not remain bounded")
+        generic_trigger = smacx_strict_prompt.hermes_compression_trigger_tokens(65536)
+        semantic_ceiling = smacx_strict_prompt._semantic_ceiling(65536)[0]
+        metrics = smacx_strict_prompt._RUNTIME_STATE.gc_metrics
+        if not semantic_ceiling < generic_trigger \
+                or metrics["before"] <= generic_trigger \
+                or metrics["after"] >= generic_trigger:
+            raise AssertionError("semantic GC did not precede the real Hermes 50% trigger")
+
+        note_heavy = [{"role": "user", "content": "one note-heavy native turn"}]
+        for index in range(500):
+            identifier = f"note-{index}"
+            if index % 3 == 0:
+                name = "smac_memory_update"
+                arguments = {"action": "belief", "match_id": "match-context-test",
+                             "record_json": json.dumps({"content": "z" * 4096})}
+            elif index % 3 == 1:
+                name = "smac_notebook"
+                arguments = {"action": "put", "match_id": "match-context-test",
+                             "collection": "notes", "key": f"note-{index}",
+                             "content": "z" * 4096}
+            else:
+                name = "smac_memory"
+                arguments = {"action": "recall", "query_json": "z" * 4096}
+            note_heavy.extend((
+                {"role": "assistant", "content": "", "tool_calls": [
+                    dispatched_call(identifier, name, arguments),
+                ]},
+                {"role": "tool", "tool_call_id": identifier,
+                 "content": json.dumps({"ok": True,
+                                        "journal_event_id": f"event-{index}",
+                                        "payload": "z" * 4096})},
+            ))
+        bounded_notes = AIAgent._sanitize_api_messages(note_heavy)
+        note_pairs = sum(
+            1 for item in bounded_notes if isinstance(item, dict)
+            and item.get("role") == "assistant" and item.get("tool_calls")
+        )
+        if note_pairs > 24 or smacx_strict_prompt._request_tokens(
+                bounded_notes) > semantic_ceiling:
+            raise AssertionError("500-action cognition/notebook context was not bounded")
+        if not any("durable_cognition_receipt" in str(item.get("content", ""))
+                   for item in bounded_notes if isinstance(item, dict)):
+            raise AssertionError("committed cognition did not retain a typed receipt")
         untrusted_dispatch = dispatched_call("foreign", "smac_decision")
         untrusted_dispatch["function"]["arguments"] = json.dumps({
             "name": "smac_decision", "arguments": {},
@@ -213,6 +256,9 @@ def main() -> int:
             "real_hermes_dispatcher_compacted": True,
             "provider_wire_growth_bounded": True,
             "five_hundred_action_turn_bounded": True,
+            "semantic_gc_precedes_real_half_window_compression": True,
+            "five_hundred_cognition_notebook_turn_bounded": True,
+            "durable_cognition_receipts": True,
             "unscoped_dispatcher_rejected": True,
             "turn_handoff_hard_ceiling": True,
             "ordinary_response_untouched": True,

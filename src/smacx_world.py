@@ -133,7 +133,8 @@ class WorldService:
         return tuple(sorted(objects))
 
     def anchor(self, *, context_length: int, focus_ref: str | None = None,
-               operation_refs: Iterable[str] = (), triggered_watch_refs: Iterable[str] = ()) -> dict[str, Any]:
+               operation_refs: Iterable[str] = (), triggered_watch_refs: Iterable[str] = (),
+               token_cap: int | None = None) -> dict[str, Any]:
         identity, projection = self._projection()
         tier = "64k" if int(context_length) < 131072 else "256k"
         current = self.store.current_anchor(self.scope, identity.timeline_id, tier)
@@ -155,8 +156,15 @@ class WorldService:
         ) if value})
         turn = next((_value(item, "turn") for item in projection.get("objects", ())
                      if item.get("kind") == "turn_state"), None)
+        effective_token_cap = min(
+            6000 if tier == "64k" else 16000,
+            max(512, int(token_cap)) if token_cap is not None else
+            (6000 if tier == "64k" else 16000),
+        )
         regenerate = current is None or current["world_epoch"] != identity.world_epoch \
             or current["payload"].get("turn") != turn \
+            or int(current.get("token_estimate") or estimate_tokens(current["payload"])) \
+                > effective_token_cap \
             or int(projection["observation_cursor"]) - int(
                 current["anchor_observation_cursor"] if current else 0) > 128 \
             or len(preliminary_deltas) > 64 \
@@ -197,7 +205,9 @@ class WorldService:
                 *self.store.load_regions(self.scope, identity.timeline_id,
                                          "mobility-sea-default"),
             ]
-            payload = SemanticLodProjector(context_tier=tier).build(
+            payload = SemanticLodProjector(
+                context_tier=tier, token_cap=effective_token_cap,
+            ).build(
                 model_projection, previous_regions=previous_regions,
                 focus_ref=focus_ref, operation_refs=operation_refs,
                 triggered_watch_refs=triggered_watch_refs,

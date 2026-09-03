@@ -78,6 +78,10 @@ class ObservationCollector:
         self._thread: threading.Thread | None = None
         self._collect_lock = threading.Lock()
         self._last_action_revision = ""
+        # Collector-private continuously-visible paths.  They are consumed by
+        # exactly one reconciliation and never become provider-facing state.
+        self._continuous_contact_moves: dict[str, list[dict[str, Any]]] = {}
+        self._contact_identity_reset = False
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -209,6 +213,9 @@ class ObservationCollector:
             ("social_engineering", "social_state", "owned_state"),
             ("last_council_result", "council_state", "public_report"),
             ("outcome", "victory_state", "public_report"),
+            ("public_projects", "project_state", "public_report"),
+            ("own_orbitals", "orbital_state", "owned_state"),
+            ("governor_faction_id", "governor_state", "public_report"),
         ):
             value = snapshot.get(key)
             if value is None:
@@ -227,6 +234,10 @@ class ObservationCollector:
             "action_revision": revision, "map": summary.get("map", {}),
             "own_faction_ref": f"faction-{summary.get('faction_id')}",
             "global": global_objects, **collected,
+            "_continuous_visible_contact_moves": {
+                key: list(value) for key, value in self._continuous_contact_moves.items()
+            },
+            "_contact_identity_reset": self._contact_identity_reset,
         }
         # All native rows are already perspective-filtered.  The explicit
         # entitlement pass is retained as an independently testable boundary
@@ -235,11 +246,14 @@ class ObservationCollector:
         pact = frozenset(
             str(item.get("faction_ref") or f"faction-{item.get('id')}")
             for item in collected["factions"]
-            if str(item.get("relationship") or item.get("treaty") or "").lower() == "pact"
+            if isinstance(item.get("relations"), Mapping)
+            and item["relations"].get("pact") is True
         )
         infiltrated = frozenset(
             str(item.get("faction_ref") or f"faction-{item.get('id')}")
-            for item in collected["factions"] if item.get("infiltrated") is True
+            for item in collected["factions"]
+            if isinstance(item.get("relations"), Mapping)
+            and item["relations"].get("infiltrated") is True
         )
         return sanitize_bundle(bundle, PerspectiveEntitlements(
             faction_ref=own_ref,
@@ -267,6 +281,8 @@ class ObservationCollector:
     def _append_native_feed(self, feed: Mapping[str, Any]) -> None:
         saw_inbound_chat = False
         if feed.get("continuity") == "incomplete":
+            self._continuous_contact_moves.clear()
+            self._contact_identity_reset = True
             self.observation_cursor += 1
             gap_payload = {
                 "observation_sequence": self.observation_cursor,
@@ -302,7 +318,32 @@ class ObservationCollector:
                 "native_sequence": int(item["sequence"]),
                 "native_kind": str(item.get("kind") or "unknown"),
                 "subject_a": item.get("subject_a"), "subject_b": item.get("subject_b"),
+                "from_tile_id": item.get("from_tile_id"),
+                "to_tile_id": item.get("to_tile_id"),
+                "value_before": item.get("value_before"),
+                "value_after": item.get("value_after"),
+                "continuous_visibility": bool(item.get("continuous_visibility", False)),
             }
+            if payload["native_kind"] == "visible_unit_moved" \
+                    and payload["continuous_visibility"] \
+                    and isinstance(payload["subject_a"], int) \
+                    and isinstance(payload["from_tile_id"], int) \
+                    and isinstance(payload["to_tile_id"], int):
+                key = f"visible-{payload['subject_a']}"
+                self._continuous_contact_moves.setdefault(key, []).append({
+                    "from": f"location-{payload['from_tile_id']}",
+                    "to": f"location-{payload['to_tile_id']}",
+                    "native_sequence": payload["native_sequence"],
+                })
+            elif payload["native_kind"] in {
+                "visible_unit_lost", "visible_unit_destroyed",
+            } and isinstance(payload["subject_a"], int):
+                self._continuous_contact_moves.pop(
+                    f"visible-{payload['subject_a']}", None,
+                )
+            if payload["native_kind"] == "contact_identity_reset":
+                self._continuous_contact_moves.clear()
+                self._contact_identity_reset = True
             saw_inbound_chat = saw_inbound_chat or payload["native_kind"] == "chat_inbound"
             event = self.journal.append(
                 self.scope, "observation.native_event", payload,
@@ -335,6 +376,8 @@ class ObservationCollector:
             )
             self.native_after_sequence = 0
             self._last_action_revision = ""
+            self._continuous_contact_moves.clear()
+            self._contact_identity_reset = True
         elif self.observation_cursor == 0:
             current_for_timeline = self.world_store.load(self.scope, self.timeline_id)
             if current_for_timeline:
@@ -371,6 +414,8 @@ class ObservationCollector:
                                  self.timeline_id, world_epoch)
         projector = PerspectiveProjector(identity, prior_projection=current)
         projection = projector.project(bundle, observation_sequence=self.observation_cursor)
+        self._continuous_contact_moves.clear()
+        self._contact_identity_reset = False
         prior_objects = current.get("objects", ()) if current else ()
         current_objects = [item.as_dict() for item in projection["objects"]]
         deltas = net_deltas(prior_objects, current_objects)

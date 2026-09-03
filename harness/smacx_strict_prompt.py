@@ -20,6 +20,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from smacx_context_policy import (
+    HERMES_COMPRESSION_THRESHOLD_RATIO, hermes_compression_trigger_tokens,
+    semantic_gc_ceiling_tokens,
+)
+
 
 _COMPLETED_THINK_BLOCK = re.compile(
     r"<think(?:\s[^>]*)?>.*?</think\s*>",
@@ -45,7 +50,9 @@ _STATE_TOOL_NAMES = frozenset({
 })
 _DISPOSABLE_TOOL_NAMES = frozenset({
     *_STATE_TOOL_NAMES, "smac_world", "smac_reference", "smac_specialist", "smac_list",
+    "smac_memory", "smac_memory_update", "smac_notebook",
 })
+_COGNITION_TOOL_NAMES = frozenset({"smac_memory_update", "smac_notebook"})
 _SMACX_MCP_PREFIX = "mcp__smacx__"
 _RUNTIME_OPEN = '<SMACX_RUNTIME_CONTEXT schema="smacx.runtime-context.v1">'
 _RUNTIME_CLOSE = "</SMACX_RUNTIME_CONTEXT>"
@@ -274,6 +281,51 @@ def _managed_tool_name(call: object) -> str:
     return dispatched_name.removeprefix(_SMACX_MCP_PREFIX)
 
 
+def _managed_tool_arguments(call: object) -> dict | None:
+    if not isinstance(call, dict):
+        return None
+    function = call.get("function")
+    if not isinstance(function, dict) or function.get("name") != "tool_call":
+        return None
+    outer = function.get("arguments")
+    if isinstance(outer, str):
+        try:
+            outer = json.loads(outer)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(outer, dict) or not str(outer.get("name") or "").startswith(
+            _SMACX_MCP_PREFIX):
+        return None
+    arguments = outer.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            return None
+    return arguments if isinstance(arguments, dict) else None
+
+
+def _replace_managed_tool_arguments(call: object, arguments: dict) -> None:
+    if not isinstance(call, dict):
+        return
+    function = call.get("function")
+    if not isinstance(function, dict) or function.get("name") != "tool_call":
+        return
+    outer = function.get("arguments")
+    outer_was_text = isinstance(outer, str)
+    if outer_was_text:
+        try:
+            outer = json.loads(outer)
+        except json.JSONDecodeError:
+            return
+    if not isinstance(outer, dict):
+        return
+    outer["arguments"] = arguments
+    function["arguments"] = json.dumps(
+        outer, sort_keys=True, separators=(",", ":"),
+    ) if outer_was_text else outer
+
+
 def _request_tokens(messages) -> int:  # noqa: ANN001
     return max(1, (len(json.dumps(
         messages, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str,
@@ -282,20 +334,23 @@ def _request_tokens(messages) -> int:  # noqa: ANN001
 
 def _semantic_ceiling(context_length: int) -> tuple[int, int]:
     """Return effective ceiling and cleanup target in estimated provider tokens."""
-    configured_trigger = int(os.environ.get(
-        "SMACX_HERMES_COMPRESSION_TRIGGER_TOKENS", str(int(context_length * 0.80)),
+    configured_ratio = float(os.environ.get(
+        "SMACX_HERMES_COMPRESSION_THRESHOLD_RATIO",
+        str(HERMES_COMPRESSION_THRESHOLD_RATIO),
     ))
+    if abs(configured_ratio - HERMES_COMPRESSION_THRESHOLD_RATIO) > 1e-9:
+        raise RuntimeError("smacx_hermes_compression_policy_mismatch")
     output_reserve = int(os.environ.get("SMACX_OUTPUT_TOKEN_RESERVE", "8192"))
     reasoning_reserve = int(os.environ.get(
         "SMACX_REASONING_TOKEN_RESERVE",
         "8192" if context_length < 131072 else "32768",
     ))
     system_tool_reserve = int(os.environ.get("SMACX_SYSTEM_TOOL_TOKEN_RESERVE", "12000"))
-    effective = min(
-        int(configured_trigger * 0.80),
-        context_length - output_reserve - reasoning_reserve - system_tool_reserve,
+    effective = semantic_gc_ceiling_tokens(
+        context_length, output_reserve=output_reserve,
+        reasoning_reserve=reasoning_reserve,
+        system_tool_reserve=system_tool_reserve,
     )
-    effective = max(8192, effective)
     return effective, max(4096, int(effective * 0.70))
 
 
@@ -392,6 +447,7 @@ def _install() -> None:
         pruned_tool_calls = pruned_tool_results = 0
         tool_names: dict[str, str] = {}
         tool_signatures: dict[str, str] = {}
+        tool_calls_by_id: dict[str, dict] = {}
         historical_tool_call_ids: set[str] = set()
         state_rows: list[int] = []
         for index, message in enumerate(sanitized):
@@ -414,6 +470,7 @@ def _install() -> None:
                         continue
                     if isinstance(call.get("id"), str):
                         tool_names[call["id"]] = _managed_tool_name(call)
+                        tool_calls_by_id[call["id"]] = call
                         function = call.get("function") if isinstance(call.get("function"), dict) else {}
                         tool_signatures[call["id"]] = json.dumps({
                             "name": tool_names[call["id"]],
@@ -490,6 +547,45 @@ def _install() -> None:
         semantic_ceiling, cleanup_target = _semantic_ceiling(context_length)
         predicted_tokens = _request_tokens(filtered)
         if predicted_tokens > semantic_ceiling:
+            # Successful durable cognition writes need not replay their full
+            # arguments/results during one pathological long turn.  Compact
+            # older pairs to journal receipts before considering pair eviction.
+            cognition_rows = [
+                message for message in filtered
+                if isinstance(message, dict) and message.get("role") == "tool"
+                and tool_names.get(str(message.get("tool_call_id") or ""))
+                in _COGNITION_TOOL_NAMES
+            ]
+            for message in cognition_rows[:-4]:
+                call_id = str(message.get("tool_call_id") or "")
+                call = tool_calls_by_id.get(call_id)
+                arguments = _managed_tool_arguments(call) if call else None
+                tool_name = tool_names.get(call_id)
+                is_durable_write = tool_name == "smac_memory_update" \
+                    or (tool_name == "smac_notebook"
+                        and isinstance(arguments, dict)
+                        and arguments.get("action") in {"put", "delete"})
+                if not is_durable_write:
+                    continue
+                try:
+                    result = json.loads(str(message.get("content") or "{}"))
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(result, dict) or result.get("ok") is not True:
+                    continue
+                message["content"] = json.dumps({
+                    "ok": True,
+                    "semantic_gc": "durable_cognition_receipt",
+                    "tool": tool_name,
+                    "journal_event_id": result.get("journal_event_id"),
+                    "retention": "Durably committed; use runtime cognition or targeted recall.",
+                }, separators=(",", ":"))
+                if call and isinstance(arguments, dict):
+                    retained = {key: arguments.get(key) for key in (
+                        "action", "match_id", "collection", "key",
+                    ) if arguments.get(key) not in (None, "")}
+                    retained["semantic_gc_receipt"] = True
+                    _replace_managed_tool_arguments(call, retained)
             # Emergency semantic trimming still preserves the current focus,
             # anchor, attention, and cognition because those arrive after GC
             # in the trusted runtime envelope.

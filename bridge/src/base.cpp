@@ -1,5 +1,6 @@
 
 #include "base.h"
+#include "agent_bridge.h"
 
 static bool delay_base_riot = false;
 static bool base_yield_active = false;
@@ -218,6 +219,7 @@ int __cdecl mod_base_init(int faction_id, int x, int y) {
     set_base(base_id);
     base_compute(1); // Always update
     *GameDrawState |= 2u;
+    agent_observe_base_founded(base_id);
     return base_id;
 }
 
@@ -227,6 +229,7 @@ void __cdecl mod_base_kill(int base_id) {
         return;
     }
     BASE* base = &Bases[base_id];
+    agent_observe_base_destroyed(base_id);
     int base_x = base->x;
     int base_y = base->y;
     int faction_id = base->faction_id;
@@ -982,6 +985,7 @@ void __cdecl mod_capture_base(int base_id, int faction_id_atk, int is_probe) {
             }
         }
     }
+    agent_observe_base_captured(base_id, faction_id, faction_id_atk);
 }
 
 void __cdecl mod_base_reset(int base_id, int has_gov) {
@@ -4972,6 +4976,5 @@ int __cdecl fac_maint(int facility_id, int faction_id) {
     }
     return facility.maint;
 }
-
 
 

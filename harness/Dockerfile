@@ -7,6 +7,7 @@ FROM docker.io/nousresearch/hermes-agent:v2026.8.31@sha256:64923faeae267792bf9bf
 
 USER root
 COPY harness/smacx_strict_prompt.py /opt/smacx-strict-prompt/smacx_strict_prompt.py
+COPY src/smacx_context_policy.py /opt/smacx-strict-prompt/smacx_context_policy.py
 COPY harness/patch_hermes_repetition.py /tmp/patch_hermes_repetition.py
 RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_repetition.py \
     && rm /tmp/patch_hermes_repetition.py \

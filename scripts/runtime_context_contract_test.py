@@ -65,10 +65,41 @@ def main() -> int:
                             "faction_id": 2},
         }
         working = {"sections": {
-            "goals": [{"goal_key": "survive", "title": "Survive"}],
-            "plans": [{"plan_key": "reserve", "title": "Keep one reserve"}],
-            "commitments": [{"key": "promise", "content": "Meet at the frontier"}],
-            "relationships": [], "beliefs": [], "situation": {"summaries": []},
+            "goals": [
+                {"goal_key": "survive", "title": "Survive", "status": "active",
+                 "priority": 100, "description": "Hold under pressure " * 400},
+                *({"goal_key": f"dead-{index}", "title": "Dead history",
+                   "status": "completed", "priority": 100}
+                  for index in range(40)),
+            ],
+            "plans": [
+                {"plan_key": "reserve", "title": "Keep one reserve", "status": "active"},
+                *({"plan_key": f"done-{index}", "title": "Done", "status": "completed"}
+                  for index in range(40)),
+            ],
+            "commitments": [
+                *({"commitment_key": f"resolved-{index}", "title": "Resolved",
+                   "terms": "no longer live", "status": "fulfilled",
+                   "created_unix": 1000 + index} for index in range(40)),
+                {"commitment_key": "old-binding-promise", "title": "Old binding promise",
+                 "terms": "Meet at the frontier and defend the ally.", "status": "accepted",
+                 "created_unix": 1, "due_turn": 10},
+                {"commitment_key": "new-proposal", "title": "New proposal",
+                 "terms": "Possible exchange", "status": "proposed",
+                 "created_unix": 9999},
+            ],
+            "relationships": [
+                {"actor_id": f"actor-{index}", "reasons": "r" * 1200,
+                 "updated_unix": 1000 - index} for index in range(30)
+            ],
+            "beliefs": [
+                {"topic": f"belief-{index}", "content": "b" * 1200,
+                 "updated_unix": 1000 - index} for index in range(30)
+            ],
+            "situation": {"summaries": [
+                {"content": "s" * 1200, "updated_unix": 1000 - index}
+                for index in range(20)
+            ]},
         }}
         assembler = RuntimeContextAssembler(
             scope=scope, world=WorldService(worlds, scope), attention=attention,
@@ -85,9 +116,14 @@ def main() -> int:
         assert any(item["attention_id"] == critical["attention_id"]
                    for item in compact["attention"]["items"])
         assert compact["token_estimate"] <= 13_107
-        assert rich["token_estimate"] <= 16_000
+        assert rich["token_estimate"] <= 32_768
         assert compact["working_cognition"]["commitments"] == \
             rich["working_cognition"]["commitments"]
+        cognition_text = json.dumps(compact["working_cognition"])
+        assert "old-binding-promise" in cognition_text
+        assert "survive" in cognition_text
+        assert "resolved-" not in cognition_text and "dead-" not in cognition_text
+        assert "actor-0" in cognition_text  # newest head survives tail trimming
         assert compact["operations"][0]["operation_id"] == operation["operation_id"]
 
         lease_id = compact["attention"]["attention_lease_id"]
@@ -109,6 +145,51 @@ def main() -> int:
         assert communication["episode"]["mutation_authority"] is False
         assert communication["identity"] == compact["identity"]
 
+        # An end-to-end Huge-chaotic rich runtime leaves room for focus,
+        # cognition, identity, attention and operations around a maximal anchor.
+        width, height = 320, 160
+        huge_tiles = [
+            {"tile_id": (x + width * y) // 2, "x": x, "y": y,
+             "terrain": "land", "visible_now": True}
+            for y in range(height) for x in range(y & 1, width, 2)
+        ]
+        huge_units = [
+            {"id": 1000 + index, "native_observation_key": f"enemy-{index}",
+             "tile_id": huge_tiles[index * 137 % len(huge_tiles)]["tile_id"],
+             "owned": False, "name": f"Contact {index}", "owner_ref": "faction-2"}
+            for index in range(420)
+        ]
+        huge_bases = [
+            {"id": index, "base_ref": f"base-chaos-{index}",
+             "tile_id": huge_tiles[index * 211 % len(huge_tiles)]["tile_id"],
+             "owned": index == 0, "visible_now": True,
+             "name": f"Base {index}", "owner_ref": f"faction-{1 + index % 7}"}
+            for index in range(120)
+        ]
+        huge_bundle = {
+            **bundle, "map": {"width": width, "height": height,
+                               "horizontal_wrap": True},
+            "tiles": huge_tiles, "units": huge_units, "bases": huge_bases,
+            "global": [{"object_ref": f"project-{index}", "kind": "project",
+                        "source": "public_report", "name": f"Project {index}",
+                        "state": "announced"} for index in range(40)],
+        }
+        huge_projection = PerspectiveProjector(identity).project(
+            huge_bundle, observation_sequence=10,
+        )
+        worlds.replace_projection(
+            scope, identity, huge_projection["objects"], observation_cursor=10,
+            action_revision="action-huge", continuity="complete",
+            journal_head_hash="0" * 64,
+        )
+        huge_runtime = assembler.build(
+            episode_id="episode-runtime-huge-chaotic",
+            episode_mode="gameplay", context_length=262144,
+        )
+        assert huge_runtime["token_estimate"] <= huge_runtime["budget"]["total"]
+        assert huge_runtime["token_composition"]["anchor"] <= 16_000
+        assert huge_runtime["working_cognition"]["commitments"]
+
     print(json.dumps({"event": "pass", "payload": {
         "64k_and_256k_same_truth": True,
         "tier_specific_detail_budget": True,
@@ -118,6 +199,17 @@ def main() -> int:
         "communication_same_sovereign_read_only": True,
         "runtime_token_composition_observed": True,
         "operation_retained_then_collected": True,
+        "large_cognition_live_selection": True,
+        "huge_chaotic_256k_runtime_bounded": True,
+        "runtime_tokens_64k": compact["token_estimate"],
+        "runtime_tokens_256k": rich["token_estimate"],
+        "huge_chaotic_runtime_tokens_256k": huge_runtime["token_estimate"],
+        "huge_chaotic_anchor_tokens_256k":
+            huge_runtime["token_composition"]["anchor"],
+        "huge_chaotic_cognition_tokens_256k":
+            huge_runtime["token_composition"]["cognition"],
+        "huge_chaotic_attention_tokens_256k":
+            huge_runtime["token_composition"]["attention"],
     }}, separators=(",", ":")))
     return 0
 

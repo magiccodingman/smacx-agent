@@ -503,7 +503,9 @@ minimum supported provider context.
 
 ## A specialist result is stale or unavailable
 
-Specialists are optional read-only evidence processors. `stale` means the
+Specialists are optional one-shot read-only evidence processors over an
+immutable caller-supplied package; they do not independently query the Wiki or
+world. `stale` means the
 pinned timeline/world epoch or one of the result's exact dependencies changed
 before completion. Re-query current evidence if the question still matters;
 never apply a stale specialist conclusion as mechanical truth. A failed child

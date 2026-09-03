@@ -73,6 +73,12 @@ events are still atomically durable and join the next boundary commit.
 `working-state.json`, notebook entry files, SQLite/FTS indexes, and Graphiti are
 rebuildable projections of the journal.
 
+Notebook enumeration is provider-safe at mature-campaign scale: list/search
+returns a paged metadata projection with short abstracts and a 2,048-token
+result ceiling. Full content is returned only by targeted key lookup and has an
+8,192-token ceiling. Hundreds of large durable notes therefore do not become
+one provider result or automatic runtime context.
+
 ## Coherent AI recovery snapshots
 
 The `control_recovery.sav` file is only one member of a verified recovery

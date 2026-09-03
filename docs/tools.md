@@ -43,11 +43,16 @@ operator/control operations and are not advertised to the model.
   content contains no match state and never overrides fresh native choices.
 - `smac_specialist(...)` — ask one disposable, read-only
   `reference_researcher` or `world_analyst` to compress a large legitimate
-  evidence package. The child has no sovereign history, personality, tools,
-  chat, memory writer, filesystem, or mutation authority. Its strict result is
+  caller-supplied evidence package. The one-shot child has no sovereign history,
+  personality, tools, independent Wiki/world retrieval, chat, memory writer,
+  filesystem, or mutation authority. Its strict result is
   fallible cited evidence and becomes stale with its pinned dependencies.
 - `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, plan, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
-- `smac_notebook(...)` — list, read, revise, or delete bounded named campaign notes, plans, territories, and other agent-authored records in the same canonical perspective timeline.
+- `smac_notebook(...)` — list, search, read, revise, or delete bounded named
+  campaign notes, plans, territories, and other agent-authored records in the
+  same canonical perspective timeline. `list` accepts a cursor, limit, and
+  query and returns metadata plus short abstracts only; use targeted `get` for
+  one full entry. Every read has a hard result-token ceiling.
 - `smac_report_capability_gap(...)` — record one missing semantic capability, deduplicate repeated reports for that session, and latch commands plus launch/new/load. Only a developer MCP restart followed by a fresh session after bridge development can resume play.
 
 Prefer `smac_decision`; use `smac_choices` only for a deliberate specialist

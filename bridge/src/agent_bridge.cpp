@@ -86,6 +86,7 @@ LPARAM message_pointer) {
     return CallNextHookEx(request_getmessage_hook, code, remove, message_pointer);
 }
 int semantic_tile_id(int x, int y);
+bool semantic_tile_coords(int tile_id, int* x, int* y);
 // Monotonic bridge-side generation for accepted semantic mutations.  A pure
 // state hash can repeat when an action is applied and then cancelled, which
 // would make an older optimistic-concurrency token valid again.
@@ -96,6 +97,11 @@ struct NativeObservationEvent {
     int turn;
     int subject_a;
     int subject_b;
+    int from_tile_id;
+    int to_tile_id;
+    int value_before;
+    int value_after;
+    bool continuous_visibility;
     char kind[32];
 };
 NativeObservationEvent observation_events[MaxObservationEvents] = {};
@@ -106,7 +112,9 @@ uint64_t lost_after_observation_sequence = 0;
 std::string last_observed_action_revision;
 
 void append_observation_event(const char* kind, int turn, int subject_a = -1,
-int subject_b = -1) {
+int subject_b = -1, int from_tile_id = -1, int to_tile_id = -1,
+int value_before = -1, int value_after = -1,
+bool continuous_visibility = false) {
     if (!kind || !kind[0]) return;
     size_t index = 0;
     if (observation_event_count < MaxObservationEvents) {
@@ -122,7 +130,61 @@ int subject_b = -1) {
     event.turn = turn;
     event.subject_a = subject_a;
     event.subject_b = subject_b;
+    event.from_tile_id = from_tile_id;
+    event.to_tile_id = to_tile_id;
+    event.value_before = value_before;
+    event.value_after = value_after;
+    event.continuous_visibility = continuous_visibility;
     lstrcpynA(event.kind, kind, static_cast<int>(sizeof(event.kind)));
+}
+
+struct ObservedVehicleState {
+    bool present = false;
+    bool visible = false;
+    int faction_id = -1;
+    int unit_id = -1;
+    int x = -1;
+    int y = -1;
+    int hitpoints = -1;
+};
+
+struct ObservedBaseState {
+    bool present = false;
+    bool visible = false;
+    int faction_id = -1;
+    int x = -1;
+    int y = -1;
+    int population = -1;
+};
+
+struct ObservedTileState {
+    bool sampled = false;
+    bool known = false;
+    uint32_t items = 0;
+    int altitude = -1;
+    int climate = -1;
+    int owner = -1;
+};
+
+std::vector<ObservedVehicleState> observed_vehicles;
+std::vector<ObservedBaseState> observed_bases;
+std::vector<ObservedTileState> observed_tiles;
+std::vector<ObservedVehicleState> sampled_vehicles;
+std::vector<ObservedBaseState> sampled_bases;
+size_t observed_tile_cursor = 0;
+bool semantic_observation_shadow_ready = false;
+int semantic_observation_faction = -1;
+UINT_PTR semantic_observation_timer_id = 0;
+
+void reset_semantic_observation_shadow() {
+    observed_vehicles.clear();
+    observed_bases.clear();
+    observed_tiles.clear();
+    sampled_vehicles.clear();
+    sampled_bases.clear();
+    observed_tile_cursor = 0;
+    semantic_observation_shadow_ready = false;
+    semantic_observation_faction = -1;
 }
 
 const size_t MaxChatEvents = 64;
@@ -4356,6 +4418,148 @@ std::string semantic_revision() {
     return std::to_string(hash);
 }
 
+void CALLBACK semantic_observation_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
+    // Runs only on the native UI thread.  It samples bounded semantic state,
+    // never waits, allocates no provider payload, and emits no animation rows.
+    if (!lock_initialized || !game_active()) {
+        reset_semantic_observation_shadow();
+        return;
+    }
+    const int faction_id = *CurrentPlayerFaction;
+    if (faction_id < 1 || faction_id >= MaxPlayerNum) {
+        reset_semantic_observation_shadow();
+        return;
+    }
+    if (semantic_observation_faction != faction_id) {
+        reset_semantic_observation_shadow();
+        semantic_observation_faction = faction_id;
+    }
+
+    sampled_vehicles.assign(
+        static_cast<size_t>(std::max(0, *VehCount)), ObservedVehicleState());
+    for (int index = 0; index < *VehCount; ++index) {
+        VEH& veh = Vehs[index];
+        ObservedVehicleState& current = sampled_vehicles[index];
+        current.present = true;
+        current.visible = veh.faction_id == faction_id
+            || (veh.visibility & (1 << faction_id));
+        current.faction_id = veh.faction_id;
+        current.unit_id = veh.unit_id;
+        current.x = veh.x;
+        current.y = veh.y;
+        current.hitpoints = veh.cur_hitpoints();
+        if (!semantic_observation_shadow_ready
+        || index >= static_cast<int>(observed_vehicles.size())) continue;
+        const ObservedVehicleState& prior = observed_vehicles[index];
+        const bool same_native_row = prior.present
+            && prior.faction_id == current.faction_id
+            && prior.unit_id == current.unit_id;
+        if (!same_native_row) {
+            if (current.visible) append_observation_event(
+                "visible_unit_appeared", *CurrentTurn, index, current.faction_id,
+                -1, semantic_tile_id(current.x, current.y));
+            continue;
+        }
+        if (prior.visible && current.visible
+        && (prior.x != current.x || prior.y != current.y)) {
+            append_observation_event(
+                "visible_unit_moved", *CurrentTurn, index, current.faction_id,
+                semantic_tile_id(prior.x, prior.y),
+                semantic_tile_id(current.x, current.y), -1, -1, true);
+        }
+        if (prior.visible && current.visible
+        && prior.hitpoints != current.hitpoints) {
+            append_observation_event(
+                "visible_unit_damaged", *CurrentTurn, index, current.faction_id,
+                semantic_tile_id(current.x, current.y),
+                semantic_tile_id(current.x, current.y),
+                prior.hitpoints, current.hitpoints, true);
+        }
+        if (prior.visible && !current.visible) {
+            append_observation_event(
+                "visible_unit_lost", *CurrentTurn, index, current.faction_id,
+                semantic_tile_id(prior.x, prior.y));
+        } else if (!prior.visible && current.visible) {
+            append_observation_event(
+                "visible_unit_appeared", *CurrentTurn, index, current.faction_id,
+                -1, semantic_tile_id(current.x, current.y));
+        }
+    }
+
+    sampled_bases.assign(
+        static_cast<size_t>(std::max(0, *BaseCount)), ObservedBaseState());
+    for (int index = 0; index < *BaseCount; ++index) {
+        BASE& base = Bases[index];
+        MAP* square = mapsq(base.x, base.y);
+        ObservedBaseState& current = sampled_bases[index];
+        current.present = true;
+        current.visible = base.faction_id == faction_id
+            || (square && square->is_visible(faction_id));
+        current.faction_id = base.faction_id;
+        current.x = base.x;
+        current.y = base.y;
+        current.population = base.pop_size;
+        if (!semantic_observation_shadow_ready
+        || index >= static_cast<int>(observed_bases.size())) continue;
+        const ObservedBaseState& prior = observed_bases[index];
+        if (prior.present && prior.x == current.x && prior.y == current.y
+        && prior.visible && current.visible) {
+            if (prior.faction_id != current.faction_id) {
+                append_observation_event(
+                    "visible_base_captured", *CurrentTurn, index, current.faction_id,
+                    semantic_tile_id(current.x, current.y),
+                    semantic_tile_id(current.x, current.y),
+                    prior.faction_id, current.faction_id, true);
+            } else if (prior.population != current.population) {
+                append_observation_event(
+                    "visible_base_changed", *CurrentTurn, index, current.faction_id,
+                    semantic_tile_id(current.x, current.y),
+                    semantic_tile_id(current.x, current.y),
+                    prior.population, current.population, true);
+            }
+        }
+    }
+
+    if (observed_tiles.size() != static_cast<size_t>(std::max(0, *MapAreaTiles))) {
+        observed_tiles.assign(static_cast<size_t>(std::max(0, *MapAreaTiles)), {});
+        observed_tile_cursor = 0;
+    }
+    const size_t tile_count = observed_tiles.size();
+    const size_t sample_count = std::min<size_t>(512, tile_count);
+    for (size_t scanned = 0; scanned < sample_count; ++scanned) {
+        const size_t tile_id = (observed_tile_cursor + scanned) % tile_count;
+        int x = -1, y = -1;
+        if (!semantic_tile_coords(static_cast<int>(tile_id), &x, &y)) continue;
+        MAP* square = mapsq(x, y);
+        if (!square) continue;
+        ObservedTileState current;
+        current.sampled = true;
+        current.known = is_known(x, y, faction_id);
+        if (current.known) {
+            const bool visible = square->is_visible(faction_id);
+            current.items = visible ? square->items : square->visible_items[faction_id - 1];
+            current.altitude = visible ? square->alt_level() : -1;
+            current.climate = visible ? square->climate : -1;
+            current.owner = visible ? square->owner : -1;
+        }
+        const ObservedTileState prior = observed_tiles[tile_id];
+        if (semantic_observation_shadow_ready && prior.sampled && prior.known
+        && current.known && (prior.items != current.items
+            || prior.altitude != current.altitude || prior.climate != current.climate
+            || prior.owner != current.owner)) {
+            append_observation_event(
+                "known_tile_changed", *CurrentTurn, static_cast<int>(tile_id), -1,
+                static_cast<int>(tile_id), static_cast<int>(tile_id),
+                static_cast<int>(prior.items), static_cast<int>(current.items), true);
+        }
+        observed_tiles[tile_id] = current;
+    }
+    if (tile_count) observed_tile_cursor = (observed_tile_cursor + sample_count) % tile_count;
+    observed_vehicles.swap(sampled_vehicles);
+    observed_bases.swap(sampled_bases);
+    semantic_observation_shadow_ready = true;
+}
+
 std::string observation_feed_response(const std::string& request) {
     // The collector calls this independently of sovereign decisions. Capturing
     // a revision transition is bounded and records no full native structures.
@@ -4393,7 +4597,13 @@ std::string observation_feed_response(const std::string& request) {
             << ",\"kind\":" << json_string(event.kind)
             << ",\"turn\":" << event.turn
             << ",\"subject_a\":" << event.subject_a
-            << ",\"subject_b\":" << event.subject_b << '}';
+            << ",\"subject_b\":" << event.subject_b
+            << ",\"from_tile_id\":" << event.from_tile_id
+            << ",\"to_tile_id\":" << event.to_tile_id
+            << ",\"value_before\":" << event.value_before
+            << ",\"value_after\":" << event.value_after
+            << ",\"continuous_visibility\":"
+            << (event.continuous_visibility ? "true" : "false") << '}';
         last = event.sequence;
     }
     out << "],\"next_sequence\":" << last
@@ -7801,7 +8011,11 @@ std::string perspective_world_page_response(const std::string& request) {
             << ",\"height\":" << *MapAreaY
             << ",\"horizontal_wrap\":" << (map_is_flat() ? "false" : "true")
             << ",\"known_all\":" << (map_is_known(faction_id) ? "true" : "false")
-            << "},\"items\":[],\"next_cursor\":null}";
+            << "},\"unity_survey\":"
+            << ((*GameRules & RULES_NO_UNITY_SURVEY) ? "false" : "true")
+            << ",\"is_governor\":"
+            << (*GovernorFaction == faction_id ? "true" : "false")
+            << ",\"items\":[],\"next_cursor\":null}";
         return out.str();
     }
     out << ",\"items\":[";
@@ -7917,7 +8131,22 @@ std::string perspective_world_page_response(const std::string& request) {
                 << ",\"treaty\":" << ((status & DIPLO_TREATY) ? "true" : "false")
                 << ",\"pact\":" << ((status & DIPLO_PACT) ? "true" : "false")
                 << ",\"infiltrated\":"
-                << ((status & DIPLO_HAVE_INFILTRATOR) ? "true" : "false") << "}}";
+                << ((status & DIPLO_HAVE_INFILTRATOR) ? "true" : "false") << "}"
+                << ",\"entitled_fields\":{"
+                << "\"pact_shared_vision\":{\"value\":true,\"channel\":\"pact_shared\",\"owner_ref\":\"faction-"
+                << index << "\"},"
+                << "\"foreign_energy_credits\":{\"value\":" << Factions[index].energy_credits
+                << ",\"channel\":\"infiltration\",\"owner_ref\":\"faction-" << index << "\"},"
+                << "\"foreign_research_technology_id\":{\"value\":" << Factions[index].tech_research_id
+                << ",\"channel\":\"infiltration\",\"owner_ref\":\"faction-" << index << "\"},"
+                << "\"foreign_research_accumulated\":{\"value\":" << Factions[index].tech_accumulated
+                << ",\"channel\":\"infiltration\",\"owner_ref\":\"faction-" << index << "\"},"
+                << "\"foreign_satellites\":{\"value\":{\"nutrient\":" << Factions[index].satellites_nutrient
+                << ",\"mineral\":" << Factions[index].satellites_mineral
+                << ",\"energy\":" << Factions[index].satellites_energy
+                << ",\"orbital_defense\":" << Factions[index].satellites_ODP
+                << "},\"channel\":\"infiltration\",\"owner_ref\":\"faction-" << index << "\"}"
+                << "}}";
         }
         next_cursor = index < MaxPlayerNum ? index : -1;
     } else {
@@ -8038,6 +8267,24 @@ std::string semantic_snapshot_response() {
         << ",\"objective_required\":" << *ObjectiveReqVictory
         << ",\"objective_sudden_death\":" << *ObjectivesSuddenDeathVictory
         << ",\"ending_mission_year\":" << *EndingMissionYear << '}'
+        << ",\"governor_faction_id\":" << *GovernorFaction
+        << ",\"own_orbitals\":{\"nutrient\":" << faction.satellites_nutrient
+        << ",\"mineral\":" << faction.satellites_mineral
+        << ",\"energy\":" << faction.satellites_energy
+        << ",\"orbital_defense\":" << faction.satellites_ODP << '}'
+        << ",\"public_projects\":[";
+    bool project_comma = false;
+    for (int project_id = SP_ID_First; project_id <= SP_ID_Last; ++project_id) {
+        const int project_base_id = SecretProjects[project_id - SP_ID_First];
+        if (project_base_id < 0 || project_base_id >= *BaseCount) continue;
+        if (project_comma) out << ',';
+        project_comma = true;
+        out << "{\"project_id\":" << project_id
+            << ",\"name\":" << json_string(Facility[project_id].name)
+            << ",\"owner_ref\":\"faction-"
+            << Bases[project_base_id].faction_id << "\"}";
+    }
+    out << ']'
         << ",\"ready_unit_refs\":[";
     bool ready_comma = false;
     for (int veh_id = 0; veh_id < *VehCount; ++veh_id) {
@@ -15942,6 +16189,73 @@ DWORD WINAPI server_worker(void*) {
 
 } // namespace
 
+void agent_observe_unit_destroyed(int veh_id) {
+    if (!lock_initialized || !game_active() || veh_id < 0
+    || veh_id >= *VehCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    VEH& veh = Vehs[veh_id];
+    if (perspective < 1 || perspective >= MaxPlayerNum
+    || (veh.faction_id != perspective
+        && !(veh.visibility & (1 << perspective)))) return;
+    const int tile_id = semantic_tile_id(veh.x, veh.y);
+    append_observation_event("visible_unit_destroyed", *CurrentTurn,
+        veh_id, veh.faction_id, tile_id, tile_id,
+        veh.cur_hitpoints(), 0, true);
+    append_observation_event("contact_identity_reset", *CurrentTurn);
+    // Native vehicle rows compact after destruction, so no row-index identity
+    // can safely survive this mutation.  Reconcile afresh on the next tick.
+    observed_vehicles.clear();
+    semantic_observation_shadow_ready = false;
+}
+
+void agent_observe_base_founded(int base_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    const BASE& base = Bases[base_id];
+    MAP* square = mapsq(base.x, base.y);
+    if (perspective < 1 || perspective >= MaxPlayerNum
+    || (base.faction_id != perspective
+        && !(square && square->is_visible(perspective)))) return;
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("visible_base_founded", *CurrentTurn,
+        base_id, base.faction_id, -1, tile_id, -1, base.pop_size, true);
+}
+
+void agent_observe_base_destroyed(int base_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    const BASE& base = Bases[base_id];
+    MAP* square = mapsq(base.x, base.y);
+    if (perspective < 1 || perspective >= MaxPlayerNum
+    || (base.faction_id != perspective
+        && !(square && square->is_visible(perspective)))) return;
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("visible_base_destroyed", *CurrentTurn,
+        base_id, base.faction_id, tile_id, tile_id, base.pop_size, 0, true);
+    observed_bases.clear();
+    semantic_observation_shadow_ready = false;
+}
+
+void agent_observe_base_captured(int base_id, int old_faction_id,
+int new_faction_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    const BASE& base = Bases[base_id];
+    MAP* square = mapsq(base.x, base.y);
+    if (perspective < 1 || perspective >= MaxPlayerNum
+    || (old_faction_id != perspective && new_faction_id != perspective
+        && !(square && square->is_visible(perspective)))) return;
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("visible_base_captured", *CurrentTurn,
+        base_id, new_faction_id, tile_id, tile_id,
+        old_faction_id, new_faction_id, true);
+    observed_bases.clear();
+    semantic_observation_shadow_ready = false;
+}
+
 void agent_set_probe_excuse_context(int offender_faction_id, int target_faction_id,
 int action_id, bool framed, bool pact) {
     probe_excuse_context.valid = true;
@@ -16185,6 +16499,8 @@ void agent_bridge_start_once(HWND hwnd) {
     request_getmessage_hook = SetWindowsHookExA(
         WH_GETMESSAGE, agent_request_getmessage_hook, NULL,
         GetCurrentThreadId());
+    semantic_observation_timer_id = SetTimer(
+        NULL, 0, 50, semantic_observation_timer_proc);
     worker_thread = CreateThread(NULL, 0, server_worker, NULL, 0, NULL);
 }
 
@@ -16957,6 +17273,11 @@ void agent_bridge_stop() {
         KillTimer(NULL, deferred_end_turn_timer_id);
         deferred_end_turn_timer_id = 0;
     }
+    if (semantic_observation_timer_id) {
+        KillTimer(NULL, semantic_observation_timer_id);
+        semantic_observation_timer_id = 0;
+    }
+    reset_semantic_observation_shadow();
     clear_pending_council_vote();
     InterlockedExchange(&stopping, 1);
     if (listen_socket != INVALID_SOCKET) closesocket(listen_socket);

@@ -13,6 +13,8 @@ import time
 import uuid
 from typing import Any, Mapping
 
+from smacx_context_policy import HERMES_COMPRESSION_THRESHOLD_RATIO
+
 from smacx_control import ControlPlane
 from smacx_docker import DockerClient, DockerError, DockerNotFound
 from smacx_hermes import configure_profile
@@ -479,6 +481,7 @@ class HarnessManager:
                 f"SMACX_AGENT_SESSION_ID={run.get('native_session_id') or ''}",
                 f"SMACX_PERSPECTIVE_ID={runtime_metadata.get('perspective_id') or ''}",
                 f"SMACX_CONTEXT_LENGTH={runtime_metadata.get('context_length') or 65536}",
+                f"SMACX_HERMES_COMPRESSION_THRESHOLD_RATIO={HERMES_COMPRESSION_THRESHOLD_RATIO}",
                 f"SMACX_EPISODE_MODE={episode_mode}",
                 f"SMACX_RUNTIME_CONTEXT_URL={runtime_context_url}",
                 "SMACX_RUNTIME_CONTEXT_TOKEN_FILE=/run/secrets/runtime-context-token",

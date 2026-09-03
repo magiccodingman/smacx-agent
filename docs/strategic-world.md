@@ -95,7 +95,12 @@ tile count:
    disappearing.
 
 The 64K tier caps the anchor at 6,000 estimated tokens; the 256K tier caps it at
-16,000. Both tiers derive from the same perspective facts. A Huge quiet map must
+16,000. These are ceilings inside one coherent runtime allocator, not separate
+full-envelope budgets. Identity, focus, live cognition, critical attention,
+operations, and delta reserve are allocated first; anchor generation receives
+the smaller of its tier ceiling and the remaining 13,107-token (64K) or
+32,768-token (256K) runtime envelope. Both tiers derive from the same
+perspective facts. A Huge quiet map must
 remain within 15 percent of an equivalent small quiet map. Active complexity,
 not raw tile count, earns detail.
 
@@ -122,8 +127,10 @@ results bind scope, timeline, world epoch/revision, ruleset hash, calculator
 version, request fingerprint, and dependency hash. Unrelated changes may retain
 a result; a changed dependency invalidates it.
 
-`render` returns an optional perspective-safe semantic SVG. It is explanatory,
-not authoritative, and has no native screenshot or pixel data.
+`render` returns an optional perspective-safe semantic SVG string inside the
+ordinary `smac_world` tool result. It is explanatory, not authoritative, and
+has no native screenshot or pixel data. It is not a PNG, image-content message,
+or completed multimodal-provider path.
 
 ## Focus, operations, plans, and watches
 
@@ -186,9 +193,14 @@ Within an episode, reasoning survives tool calls. After an episode boundary,
 historical reasoning and completed tool protocol leave provider replay, while
 ordinary durable assistant cognition remains. Superseded state frames and
 duplicate query evidence compact first; old complete disposable tool pairs are
-removed only under pressure. Current focus, anchor, commitments, critical
+removed only under pressure. Older committed cognition writes collapse to
+typed journal receipts, and mature memory/notebook reads become evictable query
+evidence while the newest active tool pairing remains intact. Current focus,
+anchor, commitments, critical
 attention, and the newest relevant evidence are reconstructed and cannot be
-evicted by this cleanup. Hermes generic compression is a fallback after the
+evicted by this cleanup. The shared policy runs semantic cleanup at no later
+than 40 percent of the provider window, ahead of Hermes's 50-percent generic
+compression trigger. Hermes compression is therefore a fallback after the
 SMACX semantic manager, not its primary current-game memory mechanism.
 
 The bounded `TURN HANDOFF` fields are `Outcome`, `Rationale`, `Changed
@@ -203,6 +215,11 @@ observation cursor, dependency references/hash, corpus revision, token budget,
 and time budget. They run directly against a configured provider with a separate
 system prompt and no tools, sovereign history, personality, chat, filesystem,
 memory writer, or mutation capability.
+
+These are deliberately one-shot evidence synthesizers. Despite their role
+names, they cannot independently browse the Datalinks corpus, call
+`smac_reference`, zoom the world, or conduct a multi-step investigation. The
+sovereign or deterministic caller selects every input item before dispatch.
 
 The result schema requires cited claims, epistemic status, limitations,
 unresolved questions, and exact source/dependency echo. Results become stale if
