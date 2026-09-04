@@ -79,6 +79,37 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
         return owner_ref in {None, "", subject_owner, "faction-0"} \
             or relationship_class(objects.get(str(owner_ref), {})) == "allied"
 
+    def subject_relationship(other_owner: Any) -> str:
+        """Return only diplomacy mechanically known for the moving faction.
+
+        A faction object's ordinary ``relationship`` field is relative to the
+        sovereign and is therefore unusable for a foreign mover. Tests and
+        future native public evidence may supply an explicit subject-relative
+        mapping; absence remains unknown rather than inheriting our stance.
+        """
+        if other_owner in {None, ""}:
+            return "none"
+        if other_owner == subject_owner:
+            return "allied"
+        if not subject_is_foreign:
+            return relationship_class(objects.get(str(other_owner), {}))
+        mappings = (
+            field_value(subject, "relationships_by_faction", {}),
+            field_value(objects.get(str(subject_owner), {}),
+                        "relationships_by_faction", {}),
+        )
+        for mapping in mappings:
+            if not isinstance(mapping, Mapping) or str(other_owner) not in mapping:
+                continue
+            value = str(mapping[str(other_owner)]).casefold()
+            if value in {"allied", "pact"}:
+                return "allied"
+            if value in {"hostile", "war", "vendetta"}:
+                return "hostile"
+            if value in {"neutral", "truce", "treaty"}:
+                return "neutral"
+        return "unknown"
+
     stationary_refuel = {
         object_location(item) for item in objects.values()
         if item.get("kind") == "base"
@@ -146,20 +177,40 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
                 continue
             occupying_base = next((item for item in objects.values()
                 if item.get("kind") == "base" and object_location(item) == location_ref), None)
-            if square.blocking_contact_occupied:
-                continue
             base_owner = field_value(occupying_base, "owner_ref") \
                 if occupying_base is not None else None
-            base_owner_object = objects.get(str(base_owner), {})
-            base_is_non_pact = base_owner not in {None, "", subject_owner} and (
-                subject_is_foreign
-                or relationship_class(base_owner_object) != "allied"
-            )
-            if not combat and (square.hostile_zoc or (
-                occupying_base is not None
-                and base_is_non_pact
-            )):
-                continue
+            if subject_is_foreign:
+                # Aggregate occupancy/ZOC flags describe danger to the
+                # sovereign, not to this foreign mover. Apply only explicit
+                # subject-relative owner facts; an unknown relation remains a
+                # conditional possible destination.
+                blocked_by_known_occupant = False
+                for occupant in objects.values():
+                    if occupant.get("kind") not in {"own_unit", "foreign_contact"} \
+                            or occupant.get("status", "active") != "active" \
+                            or object_location(occupant) != location_ref:
+                        continue
+                    relation = subject_relationship(field_value(occupant, "owner_ref"))
+                    if relation in {"hostile", "neutral"}:
+                        blocked_by_known_occupant = True
+                        break
+                if blocked_by_known_occupant:
+                    continue
+                base_relation = subject_relationship(base_owner)
+                if occupying_base is not None and (
+                    (not combat and base_relation in {"hostile", "neutral"})
+                    or (combat and base_relation == "neutral")
+                ):
+                    continue
+            else:
+                if square.blocking_contact_occupied:
+                    continue
+                base_is_non_pact = base_owner not in {None, "", subject_owner} \
+                    and relationship_class(objects.get(str(base_owner), {})) != "allied"
+                if not combat and (square.hostile_zoc or (
+                    occupying_base is not None and base_is_non_pact
+                )):
+                    continue
             candidates.add(location_ref)
         airdrop_destinations = frozenset(candidates)
     return MobilityProfile(
@@ -346,18 +397,16 @@ def transport_route(
     passenger_ref: str,
     target_ref: str,
 ) -> dict[str, Any] | None:
-    """Return the best known, capacity-valid land/sea/land schedule.
+    """Return the best bounded schedule executable by native semantic actions.
 
-    This is an exact schedule for SMACX Agent's serialized guarded phase
-    contract, not an implicit multi-unit command. Boarding, transport movement,
-    and disembarkation remain separate actions. A rendezvous/boarding boundary
-    and a disembark boundary end the participating unit's phase; fresh native
-    choices can still invalidate the schedule before execution.
+    Boarding requires an owned passenger and transport to be co-located on a
+    square both actors can legally occupy. It skips the passenger only. The
+    transport may therefore continue with its actual rendezvous-turn residual
+    movement. Disembarkation is one native land movement from the transport's
+    sea square and any remaining passenger movement may continue that turn.
     """
     passenger = objects.get(passenger_ref)
     target_location = object_location(objects.get(target_ref), target_ref)
-    # The sovereign can coordinate only its own passenger with its own
-    # transports.  Foreign threat estimates must never borrow our fleet.
     if not passenger or passenger.get("kind") != "own_unit" \
             or target_location not in topology.by_ref \
             or str(field_value(passenger, "triad", "")) != "land":
@@ -368,12 +417,14 @@ def transport_route(
     roles = field_value(passenger, "roles", {})
     amphibious = bool(isinstance(roles, Mapping) and roles.get("amphibious"))
     boarded_transport_ref = field_value(passenger, "transport_unit_ref")
-    land_profile = mobility_profile(
-        objects, "transport-passenger-land", subject_ref=passenger_ref,
-        topology=topology,
-    )
-    fresh_land_profile = replace(
-        land_profile, movement_remaining=land_profile.movement_points,
+    # A boarded unit remains a land actor even though ordinary map routing
+    # projects it with the carrier's sea triad.
+    land_profile = replace(
+        mobility_profile(
+            objects, "transport-passenger-land", subject_ref=passenger_ref,
+            topology=topology,
+        ),
+        triad="land",
     )
     transports = []
     for item in objects.values():
@@ -393,9 +444,8 @@ def transport_route(
         if object_location(item) not in topology.by_ref:
             continue
         transports.append((item, is_boarded_here, capacity, loaded))
-    # Known coast pairs are computed once.  Candidate frontiers are capped so
-    # this query scales as O(V) with small constants rather than repeated
-    # all-land x all-land routing.
+    # A sea-to-land coast edge is a legal disembark transition. It is not an
+    # embark transition: board_transport itself requires exact co-location.
     coast_pairs = sorted({
         (land_ref, neighbor.location_ref)
         for land_ref, land_square in topology.by_ref.items() if not land_square.ocean
@@ -417,10 +467,6 @@ def transport_route(
     )
     landing_candidate_cap = 8
     landing_candidates = ranked_landing_candidates[:landing_candidate_cap]
-    post_legs = {
-        land_ref: topology.route(land_ref, target_location, fresh_land_profile)
-        for land_ref, _sea_ref in landing_candidates
-    }
     hostile_at = {
         object_location(item)
         for item in objects.values()
@@ -430,6 +476,18 @@ def transport_route(
     best: tuple[tuple[int, float, str], dict[str, Any]] | None = None
     any_embark_truncated = False
     maximum_embark_candidates = 0
+
+    def relative_turn_offset(route: Any) -> int:
+        # Surface routes number movement in the current phase as turn 1 while
+        # a zero-edge arrival is turn 0. Convert both to absolute offset zero.
+        return max(0, int(route.turns or 0) - 1)
+
+    def arrival_remaining(route: Any, profile: MobilityProfile) -> float:
+        value = route.arrival_movement_remaining
+        if value is None:
+            return float(profile.movement_points)
+        return max(0.0, min(float(profile.movement_points), float(value)))
+
     for transport, already_boarded, capacity, loaded in transports:
         transport_ref = str(transport["object_ref"])
         transport_location = object_location(transport)
@@ -437,69 +495,160 @@ def transport_route(
             objects, "transport-sea", subject_ref=transport_ref,
             topology=topology,
         )
-        fresh_sea_profile = replace(
-            sea_profile, movement_remaining=sea_profile.movement_points,
-        )
         transport_arrivals = topology.arrival_map(
             transport_location, sea_profile, max_turns=search_turns,
         )
-        embark_pairs: list[tuple[str, str, Any, Any]] = []
+        embark_states: list[dict[str, Any]] = []
         if already_boarded:
-            embark_pairs.append((passenger_location, transport_location, None, None))
+            if passenger_location != transport_location:
+                continue
+            embark_states.append({
+                "location_ref": transport_location,
+                "passenger_leg": None,
+                "transport_leg": None,
+                "board_turn_offset": 0,
+                "transport_movement_remaining": float(
+                    sea_profile.movement_points if sea_profile.movement_remaining is None
+                    else sea_profile.movement_remaining
+                ),
+            })
+            maximum_embark_candidates = max(maximum_embark_candidates, 1)
         else:
-            ranked = []
-            for land_ref, sea_ref in coast_pairs:
-                passenger_arrival = passenger_arrivals.get(land_ref)
-                transport_arrival = transport_arrivals.get(sea_ref)
+            ranked: list[tuple[int, float, str, int, int]] = []
+            # The intersection of land- and sea-passable known squares is a
+            # coastal land base/port. This is the legal state from which the
+            # existing board_transport semantic action can execute. Merely
+            # marking a landlocked square as a base must not create naval
+            # rendezvous access.
+            for location_ref, square in topology.by_ref.items():
+                if square.ocean or "base" not in square.features \
+                        or not any(neighbor.ocean
+                                   for neighbor in topology.adjacent(location_ref).values()):
+                    continue
+                passenger_arrival = passenger_arrivals.get(location_ref)
+                transport_arrival = transport_arrivals.get(location_ref)
                 if passenger_arrival is None or transport_arrival is None:
                     continue
+                passenger_turn = max(0, int(
+                    passenger_arrival.get("arrival_state", {}).get("turn") or 0
+                ) - 1)
+                transport_turn = max(0, int(
+                    transport_arrival.get("arrival_state", {}).get("turn") or 0
+                ) - 1)
                 ranked.append((
-                    max(int(passenger_arrival["turns"]), int(transport_arrival["turns"])),
+                    max(passenger_turn, transport_turn),
                     float(passenger_arrival["movement_cost"])
                     + float(transport_arrival["movement_cost"]),
-                    land_ref, sea_ref,
+                    location_ref, passenger_turn, transport_turn,
                 ))
             embark_candidate_cap = 4
             maximum_embark_candidates = max(maximum_embark_candidates, len(ranked))
             any_embark_truncated = any_embark_truncated or len(ranked) > embark_candidate_cap
-            for _turns, _cost, land_ref, sea_ref in sorted(ranked)[:embark_candidate_cap]:
-                embark_pairs.append((
-                    land_ref, sea_ref,
-                    topology.route(passenger_location, land_ref, land_profile),
-                    topology.route(transport_location, sea_ref, sea_profile),
-                ))
-        for embark_land, embark_sea, passenger_leg, transport_leg in embark_pairs:
-            crossing_profile = sea_profile if already_boarded else fresh_sea_profile
+            for _turns, _cost, location_ref, passenger_turn, transport_turn \
+                    in sorted(ranked)[:embark_candidate_cap]:
+                passenger_leg = topology.route(
+                    passenger_location, location_ref, land_profile,
+                )
+                transport_leg = topology.route(
+                    transport_location, location_ref, sea_profile,
+                )
+                board_turn = max(passenger_turn, transport_turn)
+                passenger_at_board = (
+                    arrival_remaining(passenger_leg, land_profile)
+                    if passenger_turn == board_turn else float(land_profile.movement_points)
+                )
+                if passenger_at_board <= 1e-9:
+                    board_turn += 1
+                transport_at_board = (
+                    arrival_remaining(transport_leg, sea_profile)
+                    if transport_turn == board_turn else float(sea_profile.movement_points)
+                )
+                embark_states.append({
+                    "location_ref": location_ref,
+                    "passenger_leg": passenger_leg,
+                    "transport_leg": transport_leg,
+                    "board_turn_offset": board_turn,
+                    "transport_movement_remaining": transport_at_board,
+                })
+        for embark_state in embark_states:
+            embark_location = str(embark_state["location_ref"])
+            passenger_leg = embark_state["passenger_leg"]
+            transport_leg = embark_state["transport_leg"]
+            board_turn = int(embark_state["board_turn_offset"])
+            crossing_profile = replace(
+                sea_profile,
+                movement_remaining=float(
+                    embark_state["transport_movement_remaining"]
+                ),
+            )
             crossing_arrivals = topology.arrival_map(
-                embark_sea, crossing_profile, max_turns=search_turns,
+                embark_location, crossing_profile, max_turns=search_turns,
             )
             for landing_ref, landing_sea_ref in landing_candidates:
-                post_leg = post_legs[landing_ref]
-                if not post_leg.reachable:
-                    continue
                 if landing_sea_ref not in crossing_arrivals:
                     continue
                 opposed = landing_ref in hostile_at
                 if opposed and not amphibious:
                     continue
-                sea_leg = topology.route(embark_sea, landing_sea_ref, crossing_profile)
+                sea_leg = topology.route(
+                    embark_location, landing_sea_ref, crossing_profile,
+                )
                 if not sea_leg.reachable:
                     continue
                 try:
-                    rendezvous_turn = 0 if already_boarded else max(
-                        int(passenger_leg.turns or 0), int(transport_leg.turns or 0),
+                    sea_arrival_turn = board_turn + relative_turn_offset(sea_leg)
+                    if already_boarded:
+                        passenger_current = float(
+                            land_profile.movement_points
+                            if land_profile.movement_remaining is None
+                            else land_profile.movement_remaining
+                        )
+                        passenger_ready_turn = 0 if passenger_current > 1e-9 else 1
+                    else:
+                        # set_board_to followed by veh_skip consumes the
+                        # passenger's board-turn action independently of the
+                        # transport's remaining movement.
+                        passenger_ready_turn = board_turn + 1
+                    disembark_turn = max(sea_arrival_turn, passenger_ready_turn)
+                    passenger_before_disembark = (
+                        float(land_profile.movement_remaining or 0)
+                        if already_boarded and disembark_turn == 0
+                        else float(land_profile.movement_points)
                     )
-                    board_boundary = 0 if already_boarded else 1
-                    eta = rendezvous_turn + board_boundary + int(sea_leg.turns or 0) \
-                        + 1 + int(post_leg.turns or 0)
-                    cost_legs = [sea_leg, post_leg]
+                    disembark_profile = replace(
+                        land_profile,
+                        movement_remaining=passenger_before_disembark,
+                        can_airdrop=False, airdrop_origin_ref=None,
+                        airdrop_destination_refs=frozenset(),
+                        special_connections=(),
+                    )
+                    disembark_leg = topology.route(
+                        landing_sea_ref, landing_ref, disembark_profile,
+                    )
+                    if not disembark_leg.reachable \
+                            or tuple(disembark_leg.path) != (landing_sea_ref, landing_ref) \
+                            or relative_turn_offset(disembark_leg) != 0:
+                        continue
+                    passenger_after_disembark = arrival_remaining(
+                        disembark_leg, disembark_profile,
+                    )
+                    post_profile = replace(
+                        land_profile,
+                        movement_remaining=passenger_after_disembark,
+                    )
+                    post_leg = topology.route(landing_ref, target_location, post_profile)
+                    if not post_leg.reachable:
+                        continue
+                    final_turn = disembark_turn + relative_turn_offset(post_leg)
+                    eta = final_turn + 1
+                    cost_legs = [sea_leg, disembark_leg, post_leg]
                     if not already_boarded:
                         cost_legs.extend((passenger_leg, transport_leg))
                     raw_cost = sum(float(value.movement_cost or 0)
                                    for value in cost_legs if value is not None)
                     conditional = opposed or any(
                         value.eta_kind != "exact_known_state"
-                        for value in (sea_leg, post_leg)
+                        for value in (sea_leg, disembark_leg, post_leg)
                     )
                     if not already_boarded:
                         conditional = conditional or passenger_leg.eta_kind != "exact_known_state" \
@@ -517,22 +666,45 @@ def transport_route(
                         ),
                         "latest_turns": None if conditional else eta,
                         "embark": {
-                            "land_location_ref": embark_land,
-                            "sea_location_ref": embark_sea,
+                            "location_ref": embark_location,
+                            "co_located": True,
+                            "legal_state": "same_square_owned_transport_with_capacity",
                             "already_boarded": already_boarded,
-                            "passenger_arrival_turns": 0 if already_boarded
-                            else passenger_leg.turns,
-                            "transport_arrival_turns": 0 if already_boarded
-                            else transport_leg.turns,
+                            "board_turn_offset": board_turn,
+                            "passenger_arrival": None if already_boarded else {
+                                "turns": passenger_leg.turns,
+                                "arrival_state": passenger_leg.as_dict().get("arrival_state"),
+                            },
+                            "transport_arrival": None if already_boarded else {
+                                "turns": transport_leg.turns,
+                                "arrival_state": transport_leg.as_dict().get("arrival_state"),
+                            },
+                            "boarding_action": {
+                                "passenger_skipped": not already_boarded,
+                                "transport_skipped": False,
+                                "transport_movement_remaining_after": float(
+                                    embark_state["transport_movement_remaining"]
+                                ),
+                            },
                         },
                         "crossing": {
                             "path": list(sea_leg.path), "movement_cost": sea_leg.movement_cost,
                             "eta_turns": sea_leg.turns,
+                            "start_turn_offset": board_turn,
+                            "arrival_turn_offset": sea_arrival_turn,
+                            "arrival_state": sea_leg.as_dict().get("arrival_state"),
                         },
                         "disembark": {
                             "sea_location_ref": landing_sea_ref,
                             "land_location_ref": landing_ref,
+                            "turn_offset": disembark_turn,
+                            "movement_cost": disembark_leg.movement_cost,
+                            "passenger_movement_before": passenger_before_disembark,
+                            "passenger_movement_after": passenger_after_disembark,
                             "post_disembark_path": list(post_leg.path),
+                            "post_disembark_arrival_state": post_leg.as_dict().get(
+                                "arrival_state"
+                            ),
                             "amphibious": amphibious, "opposed": opposed,
                         },
                         "capacity": {"total": capacity, "loaded": loaded,
@@ -557,28 +729,47 @@ def transport_route(
                             "landing_candidate_cap": landing_candidate_cap,
                         },
                         "phase_mechanics": {
-                            "pre_rendezvous": "current residual movement",
-                            "boarding_boundary": (
-                                "already aboard; transport may use current residual movement"
+                            "pre_rendezvous": "both actors use current residual movement",
+                            "boarding": (
+                                "already aboard; no boarding action is repeated"
                                 if already_boarded else
-                                "explicit boarding ends the phase; crossing begins with fresh transport movement"
+                                "same-square board_transport skips passenger only"
+                            ),
+                            "transport_after_boarding": (
+                                "continues in the boarding turn with its actual rendezvous residual"
+                            ),
+                            "passenger_after_boarding": (
+                                "must refresh on a later native turn before disembarking"
+                                if not already_boarded else
+                                "uses current residual if still ready, otherwise refreshes next turn"
+                            ),
+                            "disembark": (
+                                "one native adjacent land move consumes its actual movement cost"
                             ),
                             "post_disembark": (
-                                "fresh passenger movement after the explicit disembark boundary"
+                                "continues in the same turn exactly when movement remains"
                             ),
                         },
                         "requirements": [
                             "Execute each phase through fresh guarded unit choices.",
+                            "Board only after passenger and owned transport are co-located.",
+                            "Order transport before its ready passenger on an arrival turn when same-turn disembark is intended.",
                             "A non-amphibious passenger cannot make an opposed amphibious attack.",
                             "Re-query if coast, transport readiness, cargo, diplomacy, or ZOC changes.",
                         ],
                         "dependency_hash": content_hash({
                             "passenger": passenger_ref, "transport": transport_ref,
-                            "target": target_ref, "embark": (embark_land, embark_sea),
+                            "target": target_ref, "embark": embark_location,
+                            "board_turn": board_turn,
+                            "transport_after_board": embark_state[
+                                "transport_movement_remaining"
+                            ],
                             "landing": (landing_sea_ref, landing_ref),
                             "passenger_leg": passenger_leg.as_dict() if passenger_leg else None,
                             "transport_leg": transport_leg.as_dict() if transport_leg else None,
-                            "sea_leg": sea_leg.as_dict(), "post_leg": post_leg.as_dict(),
+                            "sea_leg": sea_leg.as_dict(),
+                            "disembark_leg": disembark_leg.as_dict(),
+                            "post_leg": post_leg.as_dict(),
                             "cargo": (capacity, loaded), "amphibious": amphibious,
                         }),
                     }
@@ -626,7 +817,7 @@ def transport_route(
         },
         "limitations": ([
             "The fixed candidate frontier is a latency bound, not proof that no route exists.",
-            "Additional embark or landing candidates may contain a feasible or earlier schedule.",
+            "Additional legal co-location embark states or landing candidates may contain a feasible or earlier schedule.",
         ] if truncated else []),
     }
 

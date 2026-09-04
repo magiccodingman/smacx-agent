@@ -290,7 +290,8 @@ def main() -> int:
 
     # Transport, air recovery, and special connection mechanics.
     ocean_topology = PerspectiveTopology(MapShape(16, 8, False), [
-        KnownSquare("land-a", 0, 2, "land"), KnownSquare("sea-a", 2, 2, "ocean"),
+        KnownSquare("land-a", 0, 2, "land", features=frozenset({"base"})),
+        KnownSquare("sea-a", 2, 2, "ocean"),
         KnownSquare("sea-b", 4, 2, "ocean"), KnownSquare("land-b", 6, 2, "land"),
     ])
     assert not ocean_topology.route("land-a", "land-b", MobilityProfile("land", "land")).reachable
@@ -303,7 +304,7 @@ def main() -> int:
         "passenger": item("passenger", "own_unit", "land-a", owner_ref="faction-1",
                           triad="land", movement_points=1,
                           roles={"combat": True, "amphibious": False}),
-        "transport": item("transport", "own_unit", "sea-a", owner_ref="faction-1",
+        "transport": item("transport", "own_unit", "land-a", owner_ref="faction-1",
                           triad="sea", movement_points=2,
                           roles={"transport": True}, cargo={"capacity": 4, "loaded": 1}),
         "land-b": item("land-b", "location", None, terrain="land"),
@@ -315,7 +316,7 @@ def main() -> int:
     assert crossing["capacity"]["available"] == 3
     assert crossing["eta_kind"] == "exact_serialized_guarded_schedule"
     full_transport = {**crossing_objects, "transport": item(
-        "transport", "own_unit", "sea-a", owner_ref="faction-1", triad="sea",
+        "transport", "own_unit", "land-a", owner_ref="faction-1", triad="sea",
         movement_points=2, roles={"transport": True}, cargo={"capacity": 4, "loaded": 4},
     )}
     assert transport_route(

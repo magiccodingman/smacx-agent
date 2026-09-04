@@ -206,11 +206,16 @@ remaining movement, including residual disappearance phases and refreshed
 movement after unseen turn boundaries. It routes own, Pact, truce, hostile and
 epistemically unknown subjects under subject-relative access, including
 foreign aircraft refuelling/carrier/gate isolation. Transport fixtures cover
-0/partial/full residual movement before rendezvous, after future boarding, and
-after disembarkation. The amphibious benchmark separately enforces bounded
-coast/port frontiers, explicit search completeness/optimality, transport
-ownership and diplomatic access, capacity/boarding legality, and conditional
-opposed landing on a 4,096-square custom world.
+adjacent-coast rejection, same-square coastal-port rendezvous, passenger and
+transport arrivals, 0/partial/full residual movement, same-turn transport
+movement after boarding, the passenger's mandatory post-board refresh,
+charged disembark movement, same-turn land continuation, and final aggregate
+ETA. Foreign-airdrop fixtures cover same-owner, sovereign, Pact, war, treaty,
+and unknown occupants/bases without borrowing sovereign ZOC or diplomacy. The
+amphibious benchmark separately enforces bounded legal-embark/landing
+frontiers, explicit search completeness/optimality, transport ownership and
+diplomatic access, capacity/boarding legality, and conditional opposed landing
+on a 4,096-square custom world.
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:

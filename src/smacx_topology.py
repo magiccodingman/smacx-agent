@@ -140,6 +140,9 @@ class RouteResult:
     dependency_hash: str
     eta_kind: str = "exact_known_state"
     latest_turns: int | None = None
+    arrival_turn: int | None = None
+    arrival_movement_spent: float | None = None
+    arrival_movement_remaining: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -151,6 +154,11 @@ class RouteResult:
             "dependency_hash": self.dependency_hash,
             "eta_kind": self.eta_kind,
             "latest_turns": self.latest_turns,
+            "arrival_state": {
+                "turn": self.arrival_turn,
+                "movement_spent": self.arrival_movement_spent,
+                "movement_remaining": self.arrival_movement_remaining,
+            } if self.arrival_turn is not None else None,
         }
 
 
@@ -221,7 +229,12 @@ class PerspectiveTopology:
     def _edges(self, current: KnownSquare, profile: MobilityProfile) -> list[tuple[KnownSquare, float, str]]:
         edges = [(neighbor, self._cost(current, neighbor, profile), "surface")
                  for neighbor in self.adjacent(current.location_ref).values()
-                 if self._passable(neighbor, profile)]
+                 if self._passable(neighbor, profile)
+                 # A coastal base is a sea-passable endpoint, not a naval
+                 # road across adjacent land-base tiles. Native sea movement
+                 # must enter or leave it through an ocean edge.
+                 and not (profile.triad == "sea" and not current.ocean
+                          and not neighbor.ocean)]
         for origin, target, cost, kind in profile.special_connections:
             if origin != current.location_ref or target not in self.by_ref:
                 continue
@@ -428,7 +441,8 @@ class PerspectiveTopology:
             path.append(parents[path[-1]])
         path.reverse()
         movement_cost = raw_costs[target_ref]
-        turns = labels[target_ref][0]
+        arrival_turn, arrival_spent = labels[target_ref]
+        turns = arrival_turn
         uncertainty = self._arrival_uncertainty(path, parent_kinds, stochastic_paths,
                                                 target_ref, profile)
         stochastic = stochastic_paths.get(target_ref, False)
@@ -438,6 +452,8 @@ class PerspectiveTopology:
             ("conditional_minimum" if profile.constraint_mode == "subject_unknown"
              else "exact_known_state"),
             None if stochastic or profile.constraint_mode == "subject_unknown" else turns,
+            int(arrival_turn), float(arrival_spent),
+            max(0.0, float(profile.movement_points) - float(arrival_spent)),
         )
 
     def _surface_arrival_state(
@@ -635,6 +651,8 @@ class PerspectiveTopology:
                  else "exact_known_state"),
                 None if stochastic or profile.constraint_mode == "subject_unknown"
                 else int(label[0]),
+                int(label[0]), float(label[1]),
+                max(0.0, float(profile.movement_points) - float(label[1])),
             ).as_dict()
         return rows
 

@@ -106,13 +106,21 @@ minimum rather than becoming false impossibility or exact ETA. Lost-contact
 envelopes include residual movement in the disappearance turn plus refreshed
 movement at every crossed turn boundary.
 
-Amphibious schedules use current residual movement only before rendezvous (or
-for an already-boarded transport). Explicit future boarding and disembarkation
-boundaries begin their following phases with refreshed movement. The fixed
-embark/landing candidate frontier reports whether search coverage is complete,
-how many candidates were examined, and whether a result is globally earliest
-or only the best found within the bounded search; a bounded miss is never
-reported as proven mechanical unreachability.
+Amphibious schedules are a two-actor native state machine. An unboarded land
+unit and owned sea transport rendezvous on the same coastal base square;
+adjacent coast squares are not treated as boardable. `board_transport` skips
+the passenger but preserves the transport's actual rendezvous-turn residual,
+so the carrier can begin crossing immediately. The passenger refreshes only at
+its next native turn. Disembark is one charged adjacent land move, and the
+passenger may continue on land in that turn only when movement remains. An
+already-boarded passenger instead retains its current independent movement
+state. Endpoint arrival state records native turn, movement spent, and movement
+remaining so aggregate ETA is composed from executable transitions rather than
+integer leg estimates. The fixed legal-embark/landing candidate frontier
+reports whether search coverage is complete, how many candidates were
+examined, and whether a result is globally earliest or only the best found
+within the bounded search; a bounded miss is never reported as proven
+mechanical unreachability.
 
 The semantic mipmap makes prompt size track strategic complexity rather than
 tile count:

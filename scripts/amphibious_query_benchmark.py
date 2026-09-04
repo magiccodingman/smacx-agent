@@ -33,6 +33,9 @@ def main() -> int:
             squares.append(KnownSquare(
                 f"location-{(x + width * y) // 2}", x, y,
                 "ocean" if ocean else "land",
+                # A legal embark frontier is a shared land/sea base square;
+                # adjacent coast alone is not a native board_transport state.
+                features=frozenset({"base"}) if x == 38 else frozenset(),
             ))
     topology = PerspectiveTopology(MapShape(width, height, False), squares)
     origin = "location-0"
@@ -48,7 +51,7 @@ def main() -> int:
     started = time.perf_counter()
     route = transport_route(topology, objects, "passenger", target)
     elapsed_ms = (time.perf_counter() - started) * 1000
-    if route is None or elapsed_ms > 5_000:
+    if route is None or not route.get("reachable") or elapsed_ms > 5_000:
         raise AssertionError({"route": route, "elapsed_ms": elapsed_ms})
     print(json.dumps({"event": "pass", "payload": {
         "known_squares": len(squares), "elapsed_ms": round(elapsed_ms, 3),

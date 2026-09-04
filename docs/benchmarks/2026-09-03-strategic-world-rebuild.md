@@ -110,12 +110,14 @@ projection/deltas/events, then N+1 consumes the new activity once. The
 stress fixture beyond the stock Huge map, remains below the 30-second hard gate,
 and does not block native/UI responsiveness.
 
-The custom 4,096-square amphibious stress fixture completed in 1.76 seconds.
-Candidate pruning retained four embark and eight landing frontier
-states while enforcing transport ownership/access, phase-refreshed movement,
-capacity, current boarding state, and opposed-disembarkation legality. Search
-results expose coverage and optimality; an adversarial feasible landing beyond
-the first eight is reported as an incomplete bounded miss, never unreachable.
+The corrected custom 4,096-square amphibious stress fixture completed in 3.44
+seconds on the review host, below its 5-second hard gate. Candidate pruning
+retained four legal same-square coastal-port embark states and eight landing
+frontier states while enforcing transport ownership/access, independent
+passenger/transport residual movement, capacity, current boarding state,
+charged disembark movement, and opposed-disembarkation legality. Search results
+expose coverage and optimality; an adversarial feasible landing beyond the
+first eight is reported as an incomplete bounded miss, never unreachable.
 
 An earlier exploratory run of the same no-timer path continued from turn 1 to
 turn 3 before the integration fixture was tightened to stop on an observed

@@ -237,6 +237,10 @@ def main() -> int:
              "is_ocean": True, "altitude": 2, "features": []},
             {"tile_id": 4, "x": 8, "y": 0, "visible_now": True,
              "is_ocean": False, "altitude": 3, "features": []},
+            {"tile_id": 5, "x": 1, "y": 1, "visible_now": True,
+             "is_ocean": True, "altitude": 2, "features": []},
+            {"tile_id": 6, "x": 3, "y": 1, "visible_now": True,
+             "is_ocean": True, "altitude": 2, "features": []},
         ],
         "bases": [{"id": 0, "base_ref": "base-home", "tile_id": 0,
                    "owned": True, "owner_ref": "faction-1", "name": "Home",
@@ -261,7 +265,7 @@ def main() -> int:
              "convoy_destination_base_ref": "base-home",
              "convoy_base_effect": {"resource": "minerals", "amount": 2}},
             {"id": 4, "own_unit_ref": "transport", "native_observation_key": "vehicle-handle-4",
-             "tile_id": 2, "owned": True, "owner_ref": "faction-1", "triad": "sea",
+             "tile_id": 0, "owned": True, "owner_ref": "faction-1", "triad": "sea",
              "movement_points": 6, "movement_scale": 3, "moves_remaining": 6,
              "roles": {"transport": True}, "cargo": {"capacity": 4, "loaded": 0}},
         ],
@@ -299,65 +303,172 @@ def main() -> int:
         topology, opposed_objects, "supported", "location-4",
     )
     assert assault is not None
+    assert "eta_kind" in assault, assault
     assert assault["eta_kind"] == "conditional_guarded_amphibious_assault"
     assert assault["latest_turns"] is None and assault["disembark"]["opposed"] is True
     results["production_projection_support_convoy_transport"] = True
 
-    # Boarding and disembarkation are explicit phase boundaries. Future
-    # crossing/post-disembark legs use refreshed movement, while an
-    # already-boarded transport may use its current residual movement.
+    # The planner mirrors native board/disembark actions.  Boarding requires
+    # exact co-location (a normal port is shared land/sea topology), skips only
+    # the passenger, and leaves the transport's real residual movement intact.
+    # A newly boarded passenger cannot disembark before its next native turn.
+    # Disembarkation is one charged adjacent move and any residual may be used
+    # on land immediately.
     phase_topology = PerspectiveTopology(MapShape(14, 4, False), [
-        KnownSquare("phase-land-a", 0, 0, "land"),
-        KnownSquare("phase-sea-a", 1, 1, "ocean"),
-        KnownSquare("phase-sea-b", 3, 1, "ocean"),
-        KnownSquare("phase-sea-c", 5, 1, "ocean"),
-        KnownSquare("phase-sea-d", 7, 1, "ocean"),
+        KnownSquare("phase-before-port", 0, 0, "land"),
+        KnownSquare("phase-port", 2, 0, "land", features=frozenset({"base"})),
+        KnownSquare("phase-sea-a", 3, 1, "ocean"),
+        KnownSquare("phase-sea-b", 5, 1, "ocean"),
+        KnownSquare("phase-sea-c", 7, 1, "ocean"),
+        KnownSquare("phase-short-land", 4, 2, "land"),
         KnownSquare("phase-land-b", 8, 2, "land"),
         KnownSquare("phase-target", 10, 2, "land"),
     ])
-    future_etas = set()
-    for passenger_remaining in (0, 1, 2):
-        for transport_remaining in (0, 1, 2):
-            phase_objects = {
-                "phase-passenger": obj(
-                    "phase-passenger", "own_unit", "phase-land-a",
-                    owner_ref="faction-1", triad="land", movement_points=2,
-                    moves_remaining=passenger_remaining, roles={"combat": True},
-                ),
-                "phase-transport": obj(
-                    "phase-transport", "own_unit", "phase-sea-a",
-                    owner_ref="faction-1", triad="sea", movement_points=2,
-                    moves_remaining=transport_remaining, roles={"transport": True},
-                    cargo={"capacity": 4, "loaded": 0},
-                ),
-                "phase-target": obj("phase-target", "location", "phase-target"),
-            }
-            schedule = transport_route(
-                phase_topology, phase_objects, "phase-passenger", "phase-target",
-            )
-            assert schedule and schedule["reachable"]
-            assert schedule["phase_mechanics"]["pre_rendezvous"] == \
-                "current residual movement"
-            assert "fresh transport movement" in \
-                schedule["phase_mechanics"]["boarding_boundary"]
-            future_etas.add((passenger_remaining, schedule["crossing"]["eta_turns"]))
-    # Transport residual does not leak across a future boarding boundary.
-    for passenger_remaining in (0, 1, 2):
-        assert len({eta for remaining, eta in future_etas
-                    if remaining == passenger_remaining}) == 1
-    boarded_crossing = []
+    newly_boarded: dict[int, dict] = {}
     for transport_remaining in (0, 1, 2):
+        phase_objects = {
+            "phase-passenger": obj(
+                "phase-passenger", "own_unit", "phase-port",
+                owner_ref="faction-1", triad="land", movement_points=2,
+                moves_remaining=2, roles={"combat": True},
+            ),
+            "phase-transport": obj(
+                "phase-transport", "own_unit", "phase-port",
+                owner_ref="faction-1", triad="sea", movement_points=2,
+                moves_remaining=transport_remaining, roles={"transport": True},
+                cargo={"capacity": 4, "loaded": 0},
+            ),
+            "phase-target": obj("phase-target", "location", "phase-target"),
+        }
+        schedule = transport_route(
+            phase_topology, phase_objects, "phase-passenger", "phase-target",
+        )
+        assert schedule and schedule["reachable"]
+        assert schedule["embark"]["co_located"] is True
+        assert schedule["embark"]["boarding_action"] == {
+            "passenger_skipped": True,
+            "transport_skipped": False,
+            "transport_movement_remaining_after": float(transport_remaining),
+        }
+        assert schedule["disembark"]["turn_offset"] >= 1
+        newly_boarded[transport_remaining] = schedule
+    assert newly_boarded[0]["eta_turns"] > newly_boarded[2]["eta_turns"]
+    short_objects = {
+        "phase-passenger": obj(
+            "phase-passenger", "own_unit", "phase-port", owner_ref="faction-1",
+            triad="land", movement_points=2, moves_remaining=2,
+            roles={"combat": True},
+        ),
+        "phase-transport": obj(
+            "phase-transport", "own_unit", "phase-port", owner_ref="faction-1",
+            triad="sea", movement_points=2, moves_remaining=2,
+            roles={"transport": True}, cargo={"capacity": 4, "loaded": 0},
+        ),
+        "phase-short-land": obj(
+            "phase-short-land", "location", "phase-short-land",
+        ),
+    }
+    same_turn_crossing = transport_route(
+        phase_topology, short_objects, "phase-passenger", "phase-short-land",
+    )
+    assert same_turn_crossing and same_turn_crossing["reachable"]
+    assert same_turn_crossing["crossing"]["arrival_turn_offset"] == 0
+    assert same_turn_crossing["disembark"]["turn_offset"] == 1
+
+    # Arriving at a port with residual movement permits same-turn boarding;
+    # exhausting the passenger on arrival defers boarding by one turn.
+    arrival_schedules = {}
+    for passenger_remaining in (1, 2):
+        phase_objects = {
+            "phase-passenger": obj(
+                "phase-passenger", "own_unit", "phase-before-port",
+                owner_ref="faction-1", triad="land", movement_points=2,
+                moves_remaining=passenger_remaining, roles={"combat": True},
+            ),
+            "phase-transport": obj(
+                "phase-transport", "own_unit", "phase-port",
+                owner_ref="faction-1", triad="sea", movement_points=2,
+                moves_remaining=2, roles={"transport": True},
+                cargo={"capacity": 4, "loaded": 0},
+            ),
+            "phase-target": obj("phase-target", "location", "phase-target"),
+        }
+        arrival_schedules[passenger_remaining] = transport_route(
+            phase_topology, phase_objects, "phase-passenger", "phase-target",
+        )
+    assert arrival_schedules[2]["embark"]["board_turn_offset"] == 0
+    assert arrival_schedules[1]["embark"]["board_turn_offset"] == 1
+
+    # The transport can also arrive at the shared port, board there, and keep
+    # precisely the movement left by that rendezvous move.
+    arriving_transport_objects = {
+        "phase-passenger": obj(
+            "phase-passenger", "own_unit", "phase-port",
+            owner_ref="faction-1", triad="land", movement_points=2,
+            moves_remaining=2, roles={"combat": True},
+        ),
+        "phase-transport": obj(
+            "phase-transport", "own_unit", "phase-sea-a",
+            owner_ref="faction-1", triad="sea", movement_points=2,
+            moves_remaining=2, roles={"transport": True},
+            cargo={"capacity": 4, "loaded": 0},
+        ),
+        "phase-target": obj("phase-target", "location", "phase-target"),
+    }
+    arriving_transport = transport_route(
+        phase_topology, arriving_transport_objects,
+        "phase-passenger", "phase-target",
+    )
+    assert arriving_transport and arriving_transport["reachable"]
+    assert arriving_transport["embark"]["board_turn_offset"] == 0
+    assert arriving_transport["embark"]["transport_arrival"]["arrival_state"] == {
+        "turn": 1, "movement_spent": 1.0, "movement_remaining": 1.0,
+    }
+    assert arriving_transport["embark"]["boarding_action"][
+        "transport_movement_remaining_after"
+    ] == 1.0
+
+    # Merely being adjacent across a coast is not a legal embark state.
+    no_port_objects = {
+        "phase-passenger": obj(
+            "phase-passenger", "own_unit", "phase-before-port",
+            owner_ref="faction-1", triad="land", movement_points=2,
+            moves_remaining=2, roles={"combat": True},
+        ),
+        "phase-transport": obj(
+            "phase-transport", "own_unit", "phase-sea-a",
+            owner_ref="faction-1", triad="sea", movement_points=2,
+            moves_remaining=2, roles={"transport": True},
+            cargo={"capacity": 4, "loaded": 0},
+        ),
+        "phase-target": obj("phase-target", "location", "phase-target"),
+    }
+    without_port = PerspectiveTopology(MapShape(14, 4, False), [
+        KnownSquare("phase-before-port", 0, 0, "land"),
+        KnownSquare("phase-sea-a", 1, 1, "ocean"),
+        KnownSquare("phase-sea-b", 3, 1, "ocean"),
+        KnownSquare("phase-land-b", 4, 2, "land"),
+        KnownSquare("phase-target", 6, 2, "land"),
+    ])
+    illegal_adjacent = transport_route(
+        without_port, no_port_objects, "phase-passenger", "phase-target",
+    )
+    assert illegal_adjacent and illegal_adjacent["reachable"] is False
+    assert illegal_adjacent["status"] == "mechanically_unreachable_in_known_world"
+
+    boarded_schedules = {}
+    for passenger_remaining in (0, 1, 2):
         boarded_objects = {
             "phase-passenger": obj(
                 "phase-passenger", "own_unit", "phase-sea-a",
                 owner_ref="faction-1", triad="land", movement_points=2,
-                moves_remaining=0, roles={"combat": True},
+                moves_remaining=passenger_remaining, roles={"combat": True},
                 transport_unit_ref="phase-transport",
             ),
             "phase-transport": obj(
                 "phase-transport", "own_unit", "phase-sea-a",
                 owner_ref="faction-1", triad="sea", movement_points=2,
-                moves_remaining=transport_remaining, roles={"transport": True},
+                moves_remaining=2, roles={"transport": True},
                 cargo={"capacity": 4, "loaded": 1},
             ),
             "phase-target": obj("phase-target", "location", "phase-target"),
@@ -366,15 +477,25 @@ def main() -> int:
             phase_topology, boarded_objects, "phase-passenger", "phase-target",
         )
         assert schedule and schedule["reachable"]
-        boarded_crossing.append(schedule["crossing"]["eta_turns"])
-    assert boarded_crossing[0] > boarded_crossing[-1]
+        boarded_schedules[passenger_remaining] = schedule
+    # With full residual the unit pays one point to disembark and one to reach
+    # the target in the same native turn. Partial/zero residual need a boundary.
+    assert boarded_schedules[2]["eta_turns"] == 1
+    assert boarded_schedules[2]["disembark"]["movement_cost"] == 1.0
+    assert boarded_schedules[2]["disembark"]["passenger_movement_after"] == 1
+    assert boarded_schedules[1]["eta_turns"] == 2
+    assert boarded_schedules[1]["disembark"]["passenger_movement_after"] == 0
+    assert boarded_schedules[0]["eta_turns"] == 2
+    assert boarded_schedules[0]["disembark"]["turn_offset"] == 1
     results["transport_phase_correct_movement"] = True
 
     # Candidate caps are explicit coverage, never a false proof of
     # unreachability. Block the first eight geometrically ranked landings while
     # retaining feasible candidates beyond the frontier.
     frontier_squares = [
-        *(KnownSquare(f"upper-{x}", x, 0, "land") for x in range(0, 20, 2)),
+        *(KnownSquare(f"upper-{x}", x, 0, "land",
+                      features=frozenset({"base"}) if x == 0 else frozenset())
+          for x in range(0, 20, 2)),
         *(KnownSquare(f"water-{x}", x, 1, "ocean") for x in range(1, 20, 2)),
         *(KnownSquare(f"lower-{x}", x, 2, "land") for x in range(0, 20, 2)),
     ]
@@ -400,7 +521,7 @@ def main() -> int:
             roles={"combat": True, "amphibious": False},
         ),
         "frontier-transport": obj(
-            "frontier-transport", "own_unit", "water-1", owner_ref="faction-1",
+            "frontier-transport", "own_unit", "upper-0", owner_ref="faction-1",
             triad="sea", movement_points=3, moves_remaining=3,
             roles={"transport": True}, cargo={"capacity": 4, "loaded": 0},
         ),
@@ -469,6 +590,97 @@ def main() -> int:
         assert profile.constraint_mode == "subject_unknown"
         assert routed.reachable and routed.eta_kind == "conditional_minimum"
     results["subject_relative_zoc_and_occupancy"] = True
+
+    # Foreign airdrop candidates must never inherit sovereign aggregate ZOC
+    # or occupancy flags.  Prune only relations mechanically known from the
+    # moving faction's frame; preserve unknown third-party cases as
+    # conditional possibilities.  Combat may attack a known-war base but not
+    # silently break a treaty, while every known non-Pact occupant blocks the
+    # native landing square.
+    drop_refs = (
+        "fd-origin", "fd-sovereign-zoc", "fd-same-unit", "fd-hostile-unit", "fd-pact-unit",
+        "fd-neutral-unit", "fd-unknown-unit", "fd-own-base", "fd-pact-base",
+        "fd-hostile-base", "fd-neutral-base", "fd-unknown-base",
+    )
+    foreign_drop_topology = PerspectiveTopology(MapShape(24, 2, False), [
+        KnownSquare(
+            ref, index * 2, 0, "land",
+            hostile_zoc=ref == "fd-sovereign-zoc",
+            blocking_contact_occupied=ref in {
+                "fd-sovereign-zoc", "fd-unknown-unit",
+            },
+            features=frozenset({"base"}) if ref.endswith("-base") else frozenset(),
+        )
+        for index, ref in enumerate(drop_refs)
+    ])
+    foreign_drop_objects = {
+        "faction-2": obj("faction-2", "faction", relationship="hostile"),
+        "foreign-dropper": obj(
+            "foreign-dropper", "foreign_contact", "fd-origin",
+            owner_ref="faction-2", triad="land", movement_points=1,
+            moves_remaining=1, roles={"combat": False}, airdrop_ready=True,
+            airdrop_range=20,
+            relationships_by_faction={
+                "faction-1": "war", "faction-3": "pact", "faction-4": "treaty",
+            },
+        ),
+        "same-unit": obj("same-unit", "foreign_contact", "fd-same-unit",
+                         owner_ref="faction-2", triad="land", roles={}),
+        "hostile-unit": obj("hostile-unit", "own_unit", "fd-hostile-unit",
+                            owner_ref="faction-1", triad="land", roles={}),
+        "pact-unit": obj("pact-unit", "foreign_contact", "fd-pact-unit",
+                         owner_ref="faction-3", triad="land", roles={}),
+        "neutral-unit": obj("neutral-unit", "foreign_contact", "fd-neutral-unit",
+                            owner_ref="faction-4", triad="land", roles={}),
+        "unknown-unit": obj("unknown-unit", "foreign_contact", "fd-unknown-unit",
+                            owner_ref="faction-5", triad="land", roles={}),
+    }
+    for suffix, owner in (
+        ("own", "faction-2"), ("pact", "faction-3"),
+        ("hostile", "faction-1"), ("neutral", "faction-4"),
+        ("unknown", "faction-5"),
+    ):
+        foreign_drop_objects[f"{suffix}-base"] = obj(
+            f"{suffix}-base", "base", f"fd-{suffix}-base", owner_ref=owner,
+        )
+    noncombat_drop = mobility_profile(
+        foreign_drop_objects, "foreign-drop", subject_ref="foreign-dropper",
+        topology=foreign_drop_topology,
+    )
+    assert "fd-sovereign-zoc" in noncombat_drop.airdrop_destination_refs
+    assert "fd-same-unit" in noncombat_drop.airdrop_destination_refs
+    assert "fd-pact-unit" in noncombat_drop.airdrop_destination_refs
+    assert "fd-unknown-unit" in noncombat_drop.airdrop_destination_refs
+    assert "fd-own-base" in noncombat_drop.airdrop_destination_refs
+    assert "fd-pact-base" in noncombat_drop.airdrop_destination_refs
+    assert "fd-unknown-base" in noncombat_drop.airdrop_destination_refs
+    assert "fd-hostile-unit" not in noncombat_drop.airdrop_destination_refs
+    assert "fd-neutral-unit" not in noncombat_drop.airdrop_destination_refs
+    assert "fd-hostile-base" not in noncombat_drop.airdrop_destination_refs
+    assert "fd-neutral-base" not in noncombat_drop.airdrop_destination_refs
+    combat_objects = json.loads(json.dumps(foreign_drop_objects))
+    combat_objects["foreign-dropper"]["fields"]["roles"]["value"]["combat"] = True
+    combat_drop = mobility_profile(
+        combat_objects, "foreign-combat-drop", subject_ref="foreign-dropper",
+        topology=foreign_drop_topology,
+    )
+    assert "fd-hostile-base" in combat_drop.airdrop_destination_refs
+    assert "fd-neutral-base" not in combat_drop.airdrop_destination_refs
+    assert "fd-hostile-unit" not in combat_drop.airdrop_destination_refs
+    clean_foreign_drop_topology = PerspectiveTopology(MapShape(24, 2, False), [
+        KnownSquare(
+            ref, index * 2, 0, "land",
+            features=frozenset({"base"}) if ref.endswith("-base") else frozenset(),
+        )
+        for index, ref in enumerate(drop_refs)
+    ])
+    clean_noncombat_drop = mobility_profile(
+        foreign_drop_objects, "foreign-drop-clean", subject_ref="foreign-dropper",
+        topology=clean_foreign_drop_topology,
+    )
+    assert clean_noncombat_drop.airdrop_destination_refs \
+        == noncombat_drop.airdrop_destination_refs
+    results["subject_relative_foreign_airdrop_candidates"] = True
 
     # Lost-contact envelopes include the residual disappearance phase plus a
     # fresh phase for every crossed turn boundary. Exercise 0/partial/full
