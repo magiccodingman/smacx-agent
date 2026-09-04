@@ -88,6 +88,8 @@ MATCH_BRIEFING_LOCK = threading.Lock()
 DECISION_CACHE: dict[str, dict] = {}
 DECISION_LOCK = threading.Lock()
 DECISION_TTL_SECONDS = 180.0
+AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
+AIRDROP_RECEIPT_LOCK = threading.Lock()
 DECISION_CACHE_LIMIT = 128
 ACTION_PROGRESS: dict[tuple[str, str], dict] = {}
 ACTION_PROGRESS_LOCK = threading.RLock()
@@ -1624,12 +1626,49 @@ def smac_world(
             match_id, session_id=session_id, agent_id=agent_id,
             perspective_id=perspective_id,
         )
+        runtime_airdrop_receipt = None
+        if mode in {"relation", "route", "reachability"} \
+                and re.fullmatch(r"own-unit-[1-9][0-9]{0,9}", origin_ref):
+            identity, projection = world._projection()
+            action_revision = str(projection.get("action_revision") or "")
+            target_tile_id = -1
+            if mode in {"relation", "route"}:
+                target_location = str(
+                    world._objects(projection).get(target_ref, {}).get("location_ref")
+                    or target_ref
+                )
+                match = re.fullmatch(r"location-([0-9]+)", target_location)
+                if match:
+                    target_tile_id = int(match.group(1))
+            scope_key = str(target_tile_id) if target_tile_id >= 0 else "enumeration"
+            cache_key = (
+                match_id, session_id, agent_id, perspective_id,
+                identity.timeline_id, identity.world_epoch, action_revision,
+                origin_ref, scope_key,
+            )
+            with AIRDROP_RECEIPT_LOCK:
+                runtime_airdrop_receipt = AIRDROP_RECEIPT_CACHE.get(cache_key)
+            if runtime_airdrop_receipt is None:
+                native_id = _resolve_native_unit_id(origin_ref)
+                if native_id is not None:
+                    arguments: dict[str, object] = {"unit_id": native_id, "maximum_targets": 128}
+                    if target_tile_id >= 0:
+                        arguments["target_tile_id"] = target_tile_id
+                    candidate = _call("semantic_airdrop_targets", **arguments)
+                    if candidate.get("ok") is True \
+                            and str(candidate.get("action_revision") or "") == action_revision:
+                        runtime_airdrop_receipt = candidate
+                        with AIRDROP_RECEIPT_LOCK:
+                            AIRDROP_RECEIPT_CACHE[cache_key] = candidate
+                            while len(AIRDROP_RECEIPT_CACHE) > 64:
+                                AIRDROP_RECEIPT_CACHE.pop(next(iter(AIRDROP_RECEIPT_CACHE)))
         context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
         return world.query(
             mode=mode, subject_refs=subject_refs or (), origin_ref=origin_ref,
             target_ref=target_ref, movement_profile_ref=movement_profile_ref,
             radius=radius, since_cursor=since_cursor, detail=detail,
             continuation=continuation, context_length=context_length,
+            runtime_airdrop_receipt=runtime_airdrop_receipt,
         )
     except (WorldQueryError, ValueError, RuntimeError) as exc:
         return {"ok": False, "error": {"code": str(exc), "valid_modes": sorted(WORLD_MODES)}}

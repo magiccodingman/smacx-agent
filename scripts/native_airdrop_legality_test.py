@@ -16,7 +16,7 @@ def main() -> int:
         return 2
     result = bridge_request("test_airdrop_legality_fixture")
     expected = {
-        "hostile_combat": True,
+        "hostile_combat": False,
         "hostile_noncombat": False,
         "pact_combat": True,
         "pact_noncombat": True,

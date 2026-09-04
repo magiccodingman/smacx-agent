@@ -216,16 +216,19 @@ treaty, and unproven Pact ports. A winding-region adversary proves preparatory
 arrival search exhausts the finite known graph instead of stopping at
 `width + height`. Foreign-airdrop fixtures cover same-owner, sovereign, Pact,
 war, treaty, and unknown occupants/bases without borrowing sovereign ZOC or
-diplomacy; owned droppers consume a bounded native target receipt and expose
-truncation. The amphibious benchmark separately enforces bounded candidate
+diplomacy; owned Drop receipts are demand-driven per specific unit/action
+revision and expose truncation, while routine collection reports only readiness
+and range. The amphibious benchmark separately enforces bounded candidate
 frontiers, explicit search completeness/optimality, transport ownership and
 diplomatic access, capacity/boarding legality, and conditional opposed landing
 on a 4,096-square custom world. `native_airdrop_legality_test.py` is the focused
-entry point for an isolated native worker deliberately launched with
-`SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1`; production workers do not receive that
-flag. The managed worker test enables the same narrow fixture and runs the real
+entry point for an isolated native worker deliberately launched with both
+`SMACX_AGENT_TEST_MODE=1` and `SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1`; either flag
+alone is rejected by the destructive endpoint and production workers receive
+neither. The managed worker test enables the same narrow fixture and runs the real
 `allow_airdrop` diplomacy, Aerospace Complex, and stationed Air Superiority
-matrices before parking its disposable no-timer worker.
+matrices plus many-ready-orbital-Drop routine-page latency/payload checks before
+parking its disposable no-timer worker.
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:

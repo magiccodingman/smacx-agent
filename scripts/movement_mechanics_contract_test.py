@@ -531,6 +531,16 @@ def main() -> int:
     assert own_schedule["embark"]["base_dependency_hash"]
     assert own_schedule["search"]["search_turn_horizon"] is None
     assert own_schedule["search"]["search_horizon_complete"] is True
+    mixed_port_schedule = transport_route(
+        phase_topology,
+        {**access_core, "port-own": own_port,
+         "port-pact": obj("port-pact", "base", "phase-port",
+                          owner_ref="faction-4", coastal=True)},
+        "phase-passenger", "phase-target",
+    )
+    assert mixed_port_schedule and mixed_port_schedule["reachable"]
+    assert mixed_port_schedule["search"]["search_complete"] is False
+    assert mixed_port_schedule["search"]["unproven_pact_port_access"] is True
     disallowed_ports = {
         "missing": None,
         "enemy": obj("port-enemy", "base", "phase-port",
@@ -556,6 +566,10 @@ def main() -> int:
             phase_topology, candidate_objects, "phase-passenger", "phase-target",
         )
         assert rejected and rejected["reachable"] is False, (name, rejected)
+        if name == "pact":
+            assert rejected["search"]["search_complete"] is False
+            assert rejected["search"]["unproven_pact_port_access"] is True
+            assert rejected["status"] != "mechanically_unreachable_in_known_world"
     results["current_owned_embark_port_authority"] = True
 
     # A winding finite known graph can require more arrival turns than
@@ -790,17 +804,12 @@ def main() -> int:
     )
     assert "fd-hostile-base" in combat_drop.airdrop_destination_refs
     assert "fd-neutral-base" not in combat_drop.airdrop_destination_refs
-    assert "fd-hostile-unit" in combat_drop.airdrop_destination_refs
+    assert "fd-hostile-unit" not in combat_drop.airdrop_destination_refs
     assert "fd-pact-unit" in combat_drop.airdrop_destination_refs
     assert "fd-neutral-unit" not in combat_drop.airdrop_destination_refs
     assert "fd-unknown-unit" in combat_drop.airdrop_destination_refs
     assert not combat_drop.airdrop_targets_native_guarded
     assert not combat_drop.airdrop_targets_complete
-    hostile_drop_route = foreign_drop_topology.route(
-        "fd-origin", "fd-hostile-unit", combat_drop,
-    )
-    assert hostile_drop_route.reachable
-    assert hostile_drop_route.eta_kind == "conditional_minimum"
     clean_foreign_drop_topology = PerspectiveTopology(MapShape(24, 2, False), [
         KnownSquare(
             ref, index * 2, 0, "land",

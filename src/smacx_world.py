@@ -450,6 +450,7 @@ class WorldService:
         target_ref: str = "", movement_profile_ref: str = "mobility-land-default",
         radius: int = 3, since_cursor: int = 0, detail: str = "standard",
         continuation: str = "", context_length: int = 65536,
+        runtime_airdrop_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if mode not in WORLD_MODES:
             raise WorldQueryError("invalid_world_mode")
@@ -460,6 +461,34 @@ class WorldService:
         subjects = tuple(dict.fromkeys(str(item) for item in subject_refs))[:32]
         identity, projection = self._projection()
         objects = self._objects(projection)
+        if runtime_airdrop_receipt and origin_ref in objects:
+            receipt_revision = str(runtime_airdrop_receipt.get("action_revision") or "")
+            if receipt_revision == str(projection.get("action_revision") or ""):
+                origin = dict(objects[origin_ref])
+                fields = dict(origin.get("fields") or {})
+                template = dict(fields.get("airdrop_ready") or {})
+                epistemic = {
+                    "epistemic_status": "current", "source": "owned_state",
+                    "first_known_turn": template.get("first_known_turn"),
+                    "last_verified_turn": template.get("last_verified_turn"),
+                    "world_revision": int(projection.get("world_revision", 0)),
+                    "provenance_ref": "native-airdrop-receipt",
+                }
+                targets = [
+                    int(item["target_tile_id"])
+                    for item in runtime_airdrop_receipt.get("targets", ())
+                    if isinstance(item, Mapping)
+                    and isinstance(item.get("target_tile_id"), int)
+                ]
+                fields["airdrop_target_tile_ids"] = {**epistemic, "value": targets}
+                fields["airdrop_target_count"] = {
+                    **epistemic, "value": int(runtime_airdrop_receipt.get("target_count", len(targets))),
+                }
+                fields["airdrop_targets_truncated"] = {
+                    **epistemic, "value": bool(runtime_airdrop_receipt.get("targets_truncated", False)),
+                }
+                origin["fields"] = fields
+                objects[origin_ref] = origin
         known_refs = set(objects)
         supplied_refs = [*subjects]
         if mode in {"area", "relation", "route", "reachability", "compare"}:

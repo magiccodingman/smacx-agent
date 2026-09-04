@@ -125,17 +125,22 @@ assuming coordinate diameter is a valid turn horizon. The fixed embark/landing
 candidate frontier reports whether candidate coverage is complete, how many
 candidates were examined, and whether a result is globally earliest or only
 the best found within the bounded frontier; a bounded miss is never reported as
-proven mechanical unreachability.
+proven mechanical unreachability. A current Pact coastal candidate likewise
+forces `search_complete=false` and an explicit unproven-port limitation until
+native co-location access is independently established.
 
-For an owned current drop-capable unit, observation and executable choices share
-one native `allow_airdrop` target receipt. Exact route classification is allowed
-only for receipt members, and truncation is explicit so omission never becomes
-proof of illegality. Foreign and hypothetical drops expose only fair-play-safe
-conditional possibilities. Combat drops may enter an occupied at-war target;
-noncombat drops may share only own/Pact stacks. Treaty, truce, and unknown
-relations are not silently converted into hostility, and native anti-drop
-coverage such as an Aerospace Complex remains authoritative without exposing a
-hidden reason.
+Routine observation exposes only cheap Drop readiness, range, and action
+revision. An owned `smac_world` route/reachability query or `unit_actions`
+request obtains one demand-driven native `allow_airdrop` receipt for that
+specific unit; the world facade caches it only for the exact action revision.
+Exact route classification is allowed only for receipt members, and truncation
+is explicit so omission never becomes proof of illegality. Foreign and
+hypothetical drops expose only fair-play-safe conditional possibilities. Any
+known non-Pact occupant blocks a drop, whether the dropper is combat or
+noncombat; own/Pact stacks remain possible. An empty at-war base is governed by
+the distinct native base rule. Treaty, truce, and unknown hostility are never
+manufactured, and native anti-drop coverage remains authoritative without
+exposing a hidden reason.
 
 The semantic mipmap makes prompt size track strategic complexity rather than
 tile count:

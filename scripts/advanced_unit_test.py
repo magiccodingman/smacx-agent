@@ -120,6 +120,9 @@ def main() -> int:
         world_units = bridge_request(
             "perspective_world_page", domain="units", cursor=0, limit=256,
         )
+        native_receipt = bridge_request(
+            "semantic_airdrop_targets", unit_id=unit_id, maximum_targets=128,
+        )
         projected_unit = next(
             (item for item in world_units.get("items", [])
              if int(item.get("id", -1)) == unit_id),
@@ -128,15 +131,19 @@ def main() -> int:
         choice_target_ids = {
             int(item["target_tile_id"]) for item in airdrop.get("targets", [])
         }
+        receipt_target_ids = {
+            int(item["target_tile_id"]) for item in native_receipt.get("targets", [])
+        }
         if projected_unit is None or not projected_unit.get("airdrop_ready") \
-                or set(projected_unit.get("airdrop_target_tile_ids", [])) \
-                != choice_target_ids \
-                or bool(projected_unit.get("airdrop_targets_truncated")) \
+                or "airdrop_target_tile_ids" in projected_unit \
+                or receipt_target_ids != choice_target_ids \
+                or bool(native_receipt.get("targets_truncated")) \
                 != bool(airdrop.get("targets_truncated")):
             emit("failure", {
                 "stage": "airdrop_projection_receipt",
                 "projected_unit": projected_unit,
                 "choice": airdrop,
+                "native_receipt": native_receipt,
             })
             return 14
         dropped = command(

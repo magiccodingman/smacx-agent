@@ -361,7 +361,7 @@ def main() -> int:
             "game_source_id": source["game_source_id"],
             "runtime_id": runtime["runtime_id"],
             "faction_id": 1,
-            "autostart": {"enabled": True, "difficulty": 0, "world_size": 0, "faction_id": 1},
+            "autostart": {"enabled": True, "difficulty": 0, "world_size": 4, "faction_id": 1},
         }, csrf, 1800)
         worker = created["worker"]
         started = api(
@@ -689,7 +689,7 @@ def main() -> int:
                     accepted_attempt.get("peak_context_tokens") or 0),
             }
             prompt = (
-                "This is a bounded semantic integration test in a fresh tiny Citizen game. "
+                "This is a bounded semantic integration test in a fresh Huge Citizen game. "
                 "Do not use the web. Read and acknowledge the match briefing if required, then call "
                 "smac_decision. Execute exactly one opaque legal choice returned by smac_decision "
                 "that advances the current opening interaction. "
@@ -799,7 +799,7 @@ def main() -> int:
             recovered_sidecar, "test_airdrop_legality_fixture",
         )
         expected_airdrop = {
-            "hostile_combat": True,
+            "hostile_combat": False,
             "hostile_noncombat": False,
             "pact_combat": True,
             "pact_noncombat": True,
@@ -816,6 +816,75 @@ def main() -> int:
             raise AssertionError(
                 f"production-native airdrop legality drifted: {native_airdrop}"
             )
+        drop_stress = bridge_operation(
+            recovered_sidecar, "test_airdrop_collection_stress_fixture",
+        )
+        if not drop_stress.get("ok") or int(drop_stress.get("created", 0)) < 64:
+            raise AssertionError(f"native Drop stress setup failed: {drop_stress}")
+        drop_page_latencies: list[float] = []
+        drop_page_bytes: list[int] = []
+        drop_rows: list[dict] = []
+        cursor = 0
+        while True:
+            started_page = time.monotonic()
+            page = bridge_operation(
+                recovered_sidecar, "perspective_world_page",
+                domain="units", cursor=cursor, limit=256,
+            )
+            drop_page_latencies.append((time.monotonic() - started_page) * 1000)
+            drop_page_bytes.append(len(json.dumps(page, separators=(",", ":"))))
+            drop_rows.extend(page.get("items") or [])
+            next_cursor = page.get("next_cursor")
+            if not isinstance(next_cursor, int) or next_cursor <= cursor:
+                break
+            cursor = next_cursor
+        ready_drop_rows = [row for row in drop_rows if row.get("airdrop_ready") is True]
+        if len(ready_drop_rows) < 64 \
+                or any("airdrop_target_tile_ids" in row for row in ready_drop_rows) \
+                or max(drop_page_latencies, default=0) >= 500 \
+                or max(drop_page_bytes, default=0) >= 512_000:
+            raise AssertionError({
+                "message": "routine native Drop collection is not bounded",
+                "ready_drop_units": len(ready_drop_rows),
+                "page_latency_ms": drop_page_latencies,
+                "page_bytes": drop_page_bytes,
+            })
+        demanded_dropper = ready_drop_rows[0]
+        native_receipt = bridge_operation(
+            recovered_sidecar, "semantic_airdrop_targets",
+            unit_id=int(demanded_dropper["id"]), maximum_targets=128,
+        )
+        drop_choices = bridge_operation(
+            recovered_sidecar, "semantic_choices",
+            kind="unit_actions", unit_id=int(demanded_dropper["id"]),
+        )
+        airdrop_choice = next(
+            (choice for choice in drop_choices.get("choices", [])
+             if choice.get("command") == "airdrop_unit"), None,
+        )
+        receipt_ids = {int(item["target_tile_id"])
+                       for item in native_receipt.get("targets", [])}
+        choice_ids = {int(item["target_tile_id"])
+                      for item in (airdrop_choice or {}).get("targets", [])}
+        if not native_receipt.get("ok") or not receipt_ids or receipt_ids != choice_ids:
+            raise AssertionError({
+                "message": "demand receipt diverged from executable choices",
+                "receipt": native_receipt, "choice": airdrop_choice,
+            })
+        demanded_target = max(native_receipt["targets"], key=lambda item: int(item["range"]))
+        world_arguments = {
+            "mode": "route", "origin_ref": str(demanded_dropper["own_unit_ref"]),
+            "target_ref": f"location-{int(demanded_target['target_tile_id'])}",
+            "detail": "standard",
+        }
+        demanded_world = asyncio.run(mcp_tool(recovered_endpoint, "smac_world", world_arguments))
+        cached_world = asyncio.run(mcp_tool(recovered_endpoint, "smac_world", world_arguments))
+        if not demanded_world.get("ok") or not cached_world.get("ok") \
+                or cached_world.get("cache", {}).get("hit") is not True:
+            raise AssertionError({
+                "message": "demand receipt did not integrate with revision cache",
+                "first": demanded_world, "second": cached_world,
+            })
         api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park",
             {}, csrf, 120,
@@ -832,6 +901,14 @@ def main() -> int:
                 "native_orbital_project_global_adapter": True,
                 "native_base_geography_and_unit_traits": True,
                 "native_airdrop_diplomacy_and_anti_drop_guards": True,
+                "native_airdrop_collection_stress": {
+                    "ready_drop_units": len(ready_drop_rows),
+                    "maximum_page_latency_ms": round(max(drop_page_latencies), 3),
+                    "maximum_page_bytes": max(drop_page_bytes),
+                    "map_tiles": int(drop_stress.get("map_tiles", 0)),
+                    "demand_receipt_matches_actions": True,
+                    "revision_cache_hit": True,
+                },
                 "native_global_projection_world_runtime_path": True,
                 "managed_lifecycle_blocked": True,
                 "bridge_verified_checkpoint": True,

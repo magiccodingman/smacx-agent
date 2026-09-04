@@ -42,7 +42,9 @@ def bundle(width: int = 16, height: int = 8, *, contact: bool = True) -> dict:
                 "terrain": "ocean" if y == height - 1 else "land",
             })
     units = [{"id": 7, "tile_id": 1, "owned": True, "name": "Scout",
-              "triad": "land", "hp": 10, "max_hp": 10}]
+              "triad": "land", "hp": 10, "max_hp": 10,
+              "airdrop_ready": True, "airdrop_range": 8,
+              "roles": {"combat": True}}]
     if contact:
         units.append({"id": 91, "native_observation_key": "hidden-engine-91",
                       "tile_id": width + 1, "owned": False,
@@ -144,6 +146,31 @@ def main() -> int:
         assert stable["world_revision"] == 1 and not stable["changed"]
         loaded = world_store.load(scope, "timeline-main")
         assert loaded and loaded["action_revision"] == "action-b"
+        service = WorldService(world_store, scope)
+        receipt_query = service.query(
+            mode="route", origin_ref="own-unit-7", target_ref="base-alpha",
+            context_length=65536,
+            runtime_airdrop_receipt={
+                "action_revision": "action-b",
+                "targets": [{"target_tile_id": 0}],
+                "target_count": 1, "targets_truncated": False,
+            },
+        )
+        assert receipt_query["ok"] and receipt_query["cache"]["hit"] is False
+        receipt_hit = service.query(
+            mode="route", origin_ref="own-unit-7", target_ref="base-alpha",
+            context_length=65536,
+            runtime_airdrop_receipt={
+                "action_revision": "action-b",
+                "targets": [{"target_tile_id": 0}],
+                "target_count": 1, "targets_truncated": False,
+            },
+        )
+        assert receipt_hit["cache"]["hit"] is True
+        persisted_after_receipt = world_store.load(scope, "timeline-main")
+        persisted_dropper = next(item for item in persisted_after_receipt["objects"]
+                                 if item["object_ref"] == "own-unit-7")
+        assert "airdrop_target_tile_ids" not in persisted_dropper.get("fields", {})
         contact = next(item for item in loaded["objects"] if item["kind"] == "foreign_contact")
         assert "hidden-engine-91" not in json.dumps({
             key: value for key, value in contact.items() if key != "metadata"

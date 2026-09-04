@@ -97,9 +97,12 @@ Production-shaped collector measurements were:
 | Stock Huge quiet | 4,142 / 2,423 ms | 35 | 102 ms |
 | Stock Huge active | 5,032 / 2,637 ms | 36 | 99 ms |
 | 25,600-square custom quiet | 24,854 / 10,218 ms | 110 | 446 ms |
+| 25,600-square orbital Drop dense (128 ready) | 26,508 / 11,150 ms | 110 | 471 ms |
 | Dense overflow/reconciliation | 1,151 / 444 ms | 16 / 14 | 24 ms |
 
-The overflow case drains multi-page native events, reports deliberate
+The orbital-Drop case keeps its routine unit payload to 73,339 bytes and does
+not materialize any legal-target list; its maximum UI-probe gap remains below
+the existing 500 ms hard gate. The overflow case drains multi-page native events, reports deliberate
 continuity gaps, leaves no native backlog, and retains zero unchanged
 projection-object writes. A separate durability fixture stages 1,800 events,
 well beyond the native ring capacity, and replays both injected publication
@@ -124,12 +127,18 @@ valid rendezvous whose travel time exceeds `width + height` is still found.
 
 The isolated managed no-timer fixture also executes the production-native
 airdrop matrix after checkpoint, verified backup, forced native process
-recovery, and semantic-identity validation. Combat/noncombat behavior passed
-for at-war, Pact, treaty, and unknown occupants. Aerospace Complex coverage and
+recovery, and semantic-identity validation. Both combat and noncombat drops
+reject known non-Pact occupants; own/Pact sharing and the distinct empty-base
+rule remain native. Aerospace Complex coverage and
 a separately stationed Air Superiority defender each suppressed the drop
-through the real `allow_airdrop` path. The destructive fixture is available
-only behind a dedicated acceptance flag and runs immediately before its
-disposable worker is parked.
+through the real `allow_airdrop` path. The destructive fixture requires both
+test mode and its dedicated acceptance flag. A companion many-ready orbital
+Drop case measures routine page latency and payload without enumerating targets;
+the full target receipt is requested only for one demanded unit. On the native
+8,192-square Huge map, 128 simultaneously ready Drop units produced a maximum
+126,895-byte unit page and 215.162 ms page latency. Its demand receipt exactly
+matched executable `unit_actions`, and the repeated world query hit the
+action-revision cache.
 
 An earlier exploratory run of the same no-timer path continued from turn 1 to
 turn 3 before the integration fixture was tightened to stop on an observed

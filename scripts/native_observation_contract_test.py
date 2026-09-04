@@ -42,9 +42,10 @@ def main() -> int:
         'if (op == "semantic_identity_state") return semantic_identity_state_response(request);',
         'if (op == "test_identity_compaction_fixture")',
         'if (op == "test_airdrop_legality_fixture")',
+        'if (op == "test_airdrop_collection_stress_fixture")',
+        'if (op == "semantic_airdrop_targets")',
         '"smacx.private-vehicle-identity.v1"',
         "semantic_airdrop_target_receipt(",
-        '\\"airdrop_target_tile_ids\\"',
         '"visible_base_founded"',
         '"visible_base_captured"',
         '"visible_base_destroyed"',
@@ -57,8 +58,22 @@ def main() -> int:
     if any(value not in source for value in required):
         raise AssertionError("native observation ring or overflow contract drifted")
     move_source = (ROOT / "bridge/src/move.cpp").read_text(encoding="utf-8")
-    if "&& (!combat || !at_war(faction_id, veh->faction_id))" not in move_source:
-        raise AssertionError("native combat-airdrop vendetta occupancy contract drifted")
+    if "&& (!combat || !at_war(faction_id, veh->faction_id))" in move_source \
+            or "&& veh->faction_id != faction_id && !has_pact(faction_id, veh->faction_id))" not in move_source:
+        raise AssertionError("native non-Pact occupied-airdrop rejection drifted")
+    routine_units = source.split('} else if (domain == "units") {', 1)[1].split(
+        '} else if (domain == "factions") {', 1,
+    )[0]
+    if "semantic_airdrop_target_receipt(" in routine_units \
+            or '\\"airdrop_target_tile_ids\\"' in routine_units:
+        raise AssertionError("routine perspective collection enumerates Drop targets")
+    fixture_gate = source.split("std::string test_airdrop_legality_fixture_response()", 1)[1].split(
+        "if (!game_active())", 1,
+    )[0]
+    if 'GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE"' not in fixture_gate \
+            or 'GetEnvironmentVariableA("SMACX_ACCEPTANCE_AIRDROP_LEGALITY"' not in fixture_gate \
+            or "||" not in fixture_gate:
+        raise AssertionError("destructive airdrop fixture is not dual-gated")
     if any(value not in base_source for value in (
         "agent_observe_base_founded(base_id)",
         "agent_observe_base_destroyed(base_id)",
@@ -89,6 +104,7 @@ def main() -> int:
         'if os.environ.get("SMACX_AGENT_TEST_MODE") == "1"',
         'values["SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION"] = "1"',
         'values["SMACX_ACCEPTANCE_AIRDROP_LEGALITY"] = "1"',
+        'values["SMACX_AGENT_TEST_MODE"] = "1"',
     )):
         raise AssertionError("MCP sidecar identity wiring drifted")
     revision_source = source.split("std::string semantic_revision() {", 1)[1].split(
@@ -611,6 +627,10 @@ def main() -> int:
         "action_revision_ignores_native_row_layout": True,
         "confirmed_destruction_full_pipeline": True,
         "same_drain_visibility_gap_breaks_only_affected_contact": True,
+        "airdrop_fixture_acceptance_flag_alone_rejected": True,
+        "airdrop_fixture_test_mode_alone_rejected": True,
+        "airdrop_fixture_both_flags_required": True,
+        "routine_airdrop_receipts_absent": True,
     }}, separators=(",", ":")))
     return 0
 

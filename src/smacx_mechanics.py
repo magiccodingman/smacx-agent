@@ -215,7 +215,7 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
                             or object_location(occupant) != location_ref:
                         continue
                     relation = subject_relationship(field_value(occupant, "owner_ref"))
-                    if relation == "neutral" or (not combat and relation == "hostile"):
+                    if relation in {"neutral", "hostile"}:
                         blocked_by_known_occupant = True
                         break
                 if blocked_by_known_occupant:
@@ -493,6 +493,7 @@ def transport_route(
     }
     best: tuple[tuple[int, float, str], dict[str, Any]] | None = None
     any_embark_truncated = False
+    unproven_pact_embark = False
     maximum_embark_candidates = 0
 
     def relative_turn_offset(route: Any) -> int:
@@ -553,10 +554,19 @@ def transport_route(
                         or not field_is_current(base, "owner_ref") \
                         or not field_is_current(base, "coastal") \
                         or not bool(field_value(base, "coastal", False)) \
-                        or base_owner != passenger_owner \
-                        or base_owner != transport_owner \
                         or not any(neighbor.ocean
                                    for neighbor in topology.adjacent(location_ref).values()):
+                    continue
+                if base_owner != passenger_owner or base_owner != transport_owner:
+                    owner = objects.get(str(base_owner), {})
+                    if passenger_owner == transport_owner \
+                            and relationship_class(owner) == "allied" \
+                            and field_is_current(owner, "relationship"):
+                        # The native action surface suggests Pact-port access,
+                        # but no destructive native co-location fixture has
+                        # yet proven it. Its omission therefore invalidates a
+                        # global unreachability claim.
+                        unproven_pact_embark = True
                     continue
                 passenger_arrival = passenger_arrivals.get(location_ref)
                 transport_arrival = transport_arrivals.get(location_ref)
@@ -834,10 +844,15 @@ def transport_route(
         # transport that produced the selected schedule. A later truncated
         # embark frontier means an earlier or otherwise preferable schedule
         # may still exist outside the examined candidates.
-        if any_embark_truncated:
+        if any_embark_truncated or unproven_pact_embark:
             best[1]["search"]["search_complete"] = False
             best[1]["search"]["optimality"] = (
                 "best_schedule_within_bounded_candidates"
+            )
+        best[1]["search"]["unproven_pact_port_access"] = unproven_pact_embark
+        if unproven_pact_embark:
+            best[1].setdefault("limitations", []).append(
+                "A current Pact coastal port was omitted pending native co-location proof."
             )
         best[1]["search"]["maximum_embark_candidates_available"] = (
             maximum_embark_candidates
@@ -848,7 +863,7 @@ def transport_route(
     # unreachability.  Expose coverage so callers cannot silently conflate the
     # two conclusions.
     truncated = len(ranked_landing_candidates) > landing_candidate_cap \
-        or any_embark_truncated
+        or any_embark_truncated or unproven_pact_embark
     return {
         "reachable": False,
         "status": ("no_route_found_within_bounded_candidate_search" if truncated
@@ -867,10 +882,13 @@ def transport_route(
                 maximum_embark_candidates, 4,
             ),
             "transports_examined": len(transports),
+            "unproven_pact_port_access": unproven_pact_embark,
         },
         "limitations": ([
             "The fixed candidate frontier is a latency bound, not proof that no route exists.",
             "Additional legal co-location embark states or landing candidates may contain a feasible or earlier schedule.",
+            *(["A current Pact coastal port was not used because native co-location access is not yet mechanically proven."]
+              if unproven_pact_embark else []),
         ] if truncated else []),
     }
 

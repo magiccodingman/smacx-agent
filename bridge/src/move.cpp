@@ -2364,14 +2364,13 @@ bool allow_airdrop(int x, int y, int faction_id, bool combat, MAP* sq) {
     if (!combat && mod_zoc_move(x, y, faction_id)) {
         return false;
     }
-    // Noncombat drops may share only own/Pact stacks. Combat drops may target
-    // a stack already at war, but never manufacture hostility against a
-    // treaty/truce faction.
+    // Drops may share only own/Pact stacks. Occupied non-Pact squares are
+    // rejected for both combat and noncombat units; an empty hostile base is
+    // governed separately by the base rule above.
     for (int i = *VehCount - 1; i >= 0; --i) {
         VEH* veh = &Vehs[i];
         if (veh->x == x && veh->y == y
-        && veh->faction_id != faction_id && !has_pact(faction_id, veh->faction_id)
-        && (!combat || !at_war(faction_id, veh->faction_id))) {
+        && veh->faction_id != faction_id && !has_pact(faction_id, veh->faction_id)) {
             return false;
         }
     }

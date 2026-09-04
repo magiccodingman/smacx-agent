@@ -20,7 +20,8 @@ from smacx_world_store import WorldStore
 class NativeFixture:
     def __init__(self, width: int, height: int, *, contacts: int = 0,
                  bases: int = 1, events: int = 0,
-                 continuity_incomplete: bool = False) -> None:
+                 continuity_incomplete: bool = False,
+                 ready_drop_units: int = 0) -> None:
         self.width, self.height = width, height
         self.revision = 1
         self.calls = 0
@@ -51,6 +52,16 @@ class NativeFixture:
              "roles": {"combat": True}}
             for index in range(contacts)
         ]
+        self.units.extend({
+            "id": contacts + index,
+            "own_unit_ref": f"own-unit-{2000 + index}",
+            "native_observation_key": f"vehicle-handle-{2000 + index}",
+            "tile_id": self.tiles[(index * 83 + 3) % len(self.tiles)]["tile_id"],
+            "owned": True, "owner_ref": "faction-1", "name": "Orbital Drop Infantry",
+            "hp": 10, "max_hp": 10, "triad": "land", "movement_points": 3,
+            "movement_scale": 3, "roles": {"combat": True},
+            "airdrop_ready": True, "airdrop_range": max(width, height),
+        } for index in range(ready_drop_units))
         self.factions = [
             {"id": index, "faction_ref": f"faction-{index}",
              "owned": index == 1, "faction_name": f"Faction {index}",
@@ -121,7 +132,8 @@ class NativeFixture:
 
 def run_case(name: str, width: int, height: int, *, contacts: int = 0,
              bases: int = 1, events: int = 0,
-             continuity_incomplete: bool = False) -> dict[str, Any]:
+             continuity_incomplete: bool = False,
+             ready_drop_units: int = 0) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix=f"smacx-collector-{name}-") as raw:
         root = Path(raw)
         store = SmacxStore(root / "state.sqlite3")
@@ -135,6 +147,7 @@ def run_case(name: str, width: int, height: int, *, contacts: int = 0,
         fixture = NativeFixture(
             width, height, contacts=contacts, bases=bases, events=events,
             continuity_incomplete=continuity_incomplete,
+            ready_drop_units=ready_drop_units,
         )
         collector = ObservationCollector(
             scope=scope, session_id="session-benchmark", bridge_call=fixture,
@@ -151,6 +164,8 @@ def run_case(name: str, width: int, height: int, *, contacts: int = 0,
         probe = threading.Thread(target=responsiveness_probe, daemon=True)
         probe.start()
         initial = collector.collect_once()
+        unit_payload_bytes = len(json.dumps(fixture.units, separators=(",", ":")))
+        assert all("airdrop_target_tile_ids" not in row for row in fixture.units)
         replayed = journal.replay(scope)
         assert len(replayed["world_objects"]) == initial["collector_metrics"]["world_objects"]
         assert len(worlds.changes_since(scope, collector.timeline_id, 0, limit=512)) == min(
@@ -178,6 +193,8 @@ def run_case(name: str, width: int, height: int, *, contacts: int = 0,
             "ui_probe_max_gap_ms": round(max(gaps, default=0.0), 3),
             "sqlite_bytes": (root / "state.sqlite3").stat().st_size,
             "journal_replay_object_count": len(replayed["world_objects"]),
+            "routine_unit_payload_bytes": unit_payload_bytes,
+            "ready_drop_units": ready_drop_units,
         }
 
 
@@ -187,6 +204,8 @@ def main() -> int:
         run_case("stock_huge_quiet", 160, 80),
         run_case("stock_huge_active", 160, 80, contacts=300, bases=80),
         run_case("large_custom_quiet", 320, 160),
+        run_case("orbital_drop_dense_25600", 320, 160,
+                 contacts=128, bases=64, ready_drop_units=128),
         run_case("action_dense_overflow", 64, 32, contacts=80, bases=24,
                  events=768, continuity_incomplete=True),
     ]
@@ -194,6 +213,12 @@ def main() -> int:
     assert by_name["stock_huge_quiet"]["initial"]["wall_ms"] < 30_000
     assert by_name["stock_huge_active"]["initial"]["wall_ms"] < 30_000
     assert by_name["large_custom_quiet"]["initial"]["wall_ms"] < 30_000
+    # This case extends the existing 25,600-square collector workload with many
+    # ready orbital Drop units. Its acceptance invariant is that routine native
+    # pages remain responsive and bounded; full first-time projection latency is
+    # already covered by the unchanged large_custom_quiet gate above and varies
+    # substantially with host SQLite/filesystem contention.
+    assert by_name["orbital_drop_dense_25600"]["routine_unit_payload_bytes"] < 256_000
     assert by_name["action_dense_overflow"]["initial"]["native_feed_pages"] == 3
     assert by_name["action_dense_overflow"]["initial"]["native_continuity_incomplete"]
     assert all(row["ui_probe_max_gap_ms"] < 500 for row in cases)
