@@ -18,6 +18,7 @@ class Region:
     anchor_location_ref: str
     location_refs: frozenset[str]
     supersedes: tuple[str, ...] = ()
+    lineage_birth_revision: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -26,6 +27,7 @@ class Region:
             "anchor_location_ref": self.anchor_location_ref,
             "location_count": len(self.location_refs),
             "supersedes": list(self.supersedes),
+            "lineage_birth_revision": self.lineage_birth_revision,
         }
 
 
@@ -46,8 +48,13 @@ class Frontier:
         }
 
 
-def _lineage(profile_ref: str, anchor_ref: str) -> str:
-    digest = hashlib.sha256(f"{profile_ref}\x1f{anchor_ref}".encode()).hexdigest()[:16]
+def _lineage(profile_ref: str, anchor_ref: str, birth_revision: int) -> str:
+    # A component detached by a later split is a new lineage even if the same
+    # canonical location happened to anchor an older, subsequently merged
+    # branch.  Birth revision makes that temporal identity explicit.
+    digest = hashlib.sha256(
+        f"{profile_ref}\x1f{anchor_ref}\x1f{birth_revision}".encode()
+    ).hexdigest()[:16]
     return f"region-lineage-{digest}"
 
 
@@ -60,15 +67,18 @@ class RegionBuilder:
     ) -> tuple[list[Region], dict[str, str]]:
         old = list(previous)
         results: list[Region] = []
-        aliases: dict[str, str] = {}
         for component in sorted(topology.connected_components(profile), key=lambda item: min(item)):
             overlaps = [region for region in old if region.location_refs & component]
-            anchor_owner = next((region for region in overlaps
-                                 if region.anchor_location_ref in component), None)
-            if anchor_owner is None and overlaps:
-                anchor_owner = min(overlaps, key=lambda item: (item.version, item.lineage_ref))
+            anchor_candidates = [region for region in overlaps
+                                 if region.anchor_location_ref in component]
+            anchor_owner = min(
+                anchor_candidates,
+                key=lambda item: (item.lineage_birth_revision, item.lineage_ref),
+            ) if anchor_candidates else None
             anchor_ref = anchor_owner.anchor_location_ref if anchor_owner else min(component)
-            lineage_ref = anchor_owner.lineage_ref if anchor_owner else _lineage(profile.profile_ref, anchor_ref)
+            lineage_ref = anchor_owner.lineage_ref if anchor_owner else _lineage(
+                profile.profile_ref, anchor_ref, world_revision,
+            )
             old_same = next((region for region in old
                              if region.lineage_ref == lineage_ref
                              and region.location_refs == frozenset(component)), None)
@@ -79,11 +89,17 @@ class RegionBuilder:
             supersedes = tuple(sorted(region.region_ref for region in overlaps
                                       if region.region_ref != region_ref))
             current = Region(region_ref, lineage_ref, version, profile.profile_ref,
-                             anchor_ref, frozenset(component), supersedes)
+                             anchor_ref, frozenset(component), supersedes,
+                             anchor_owner.lineage_birth_revision if anchor_owner
+                             else world_revision)
             results.append(current)
-            for region in overlaps:
-                if region.region_ref != region_ref:
-                    aliases[region.region_ref] = region_ref
+        aliases: dict[str, str] = {}
+        for region in old:
+            successors = [item for item in results if item.location_refs & region.location_refs]
+            # Only deterministic one-to-one supersession is aliasable. Splits
+            # remain explicit and invalidate derived handles/watches.
+            if len(successors) == 1 and successors[0].region_ref != region.region_ref:
+                aliases[region.region_ref] = successors[0].region_ref
         return results, aliases
 
     def frontiers(self, topology: PerspectiveTopology, regions: Iterable[Region]) -> list[Frontier]:
@@ -142,8 +158,11 @@ def build_theaters(
         kind = str(item.get("kind") or "")
         fields = item.get("fields") if isinstance(item.get("fields"), Mapping) else {}
         hostile = fields.get("hostile") if isinstance(fields, Mapping) else None
+        relationship = fields.get("relationship") if isinstance(fields, Mapping) else None
         threatened = fields.get("threatened") if isinstance(fields, Mapping) else None
-        is_active = kind in {"foreign_contact", "combat", "global_event"} \
+        is_active = kind in {"combat", "global_event"} \
+            or (kind == "foreign_contact" and isinstance(relationship, Mapping)
+                and relationship.get("value") == "hostile") \
             or (isinstance(hostile, Mapping) and hostile.get("value") is True) \
             or (isinstance(threatened, Mapping) and threatened.get("value") is True)
         if is_active:

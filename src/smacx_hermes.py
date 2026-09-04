@@ -28,6 +28,22 @@ PROFILE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 REASONING = {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
 MARKER = ".smacx-profile.json"
 
+# Communication episodes are the same sovereign cognition with deliberately
+# narrower authority.  Keep this allowlist beside profile construction so the
+# provider-visible registry is reduced before Hermes snapshots its tools; the
+# MCP server still applies its independent call-time mutation gate.
+COMMUNICATION_MCP_TOOLS = (
+    "smac_world",
+    "smac_attention_ack",
+    "smac_cognition",
+    "smac_chat",
+    "smac_group_chat",
+    "smac_memory",
+    "smac_memory_update",
+    "smac_notebook",
+    "smac_investigate",
+)
+
 
 class HermesAdapterError(RuntimeError):
     pass
@@ -191,7 +207,17 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "memory": {"memory_enabled": False, "user_profile_enabled": False},
         "terminal": {"backend": "local", "cwd": str(runtime_workspace)},
         "platform_toolsets": {"cli": ["smacx"]},
-        "mcp_servers": {"smacx": {"url": mcp_url, "enabled": True}},
+        "mcp_servers": {
+            "smacx": {"url": mcp_url, "enabled": True},
+            "smacx-communication": {
+                "url": mcp_url, "enabled": True,
+                "tools": {
+                    "include": list(COMMUNICATION_MCP_TOOLS),
+                    "resources": False,
+                    "prompts": False,
+                },
+            },
+        },
         "display": {"show_reasoning": False, "streaming": True},
     }
     if provider_api_key_env:

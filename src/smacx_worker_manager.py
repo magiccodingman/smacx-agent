@@ -3646,6 +3646,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "recovery_checkpoint": checkpoint, "recovery_required": False,
                 },
             )
+            checkpoint["generation"] = self.store.complete_checkpoint_generation(
+                match_id, checkpoint_id,
+            )
             # Publish the new complete checkpoint before reclaiming the old
             # one. A process failure can therefore leave harmless extra bytes,
             # never metadata that points at an archive already deleted.

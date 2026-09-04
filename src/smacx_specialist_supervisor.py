@@ -66,6 +66,9 @@ class SpecialistSupervisor:
         return SpecialistService(self.store, self.world_store, self._scope(mission))
 
     def reconcile(self) -> int:
+        # Repair the narrow crash window between atomic snapshot+pin creation
+        # and specialist mission insertion before scanning mission lifecycles.
+        total = self.world_store.gc_orphaned_specialist_snapshot_pins()
         with self.store._connect() as connection:
             rows = [dict(row) for row in connection.execute(
                 "SELECT DISTINCT m.* FROM specialist_missions m JOIN specialist_attempts a "
@@ -73,7 +76,6 @@ class SpecialistSupervisor:
                 "('starting','running','validating') AND (a.runtime_owner<>? OR "
                 "a.heartbeat_expires_unix<=?)", (self.owner, time.time()),
             ).fetchall()]
-        total = 0
         for mission in rows:
             total += self._service(mission).reconcile_orphans(self.owner)
         with self.store._connect() as connection:
@@ -370,8 +372,17 @@ class SpecialistSupervisor:
                 hermes = os.environ.get("SMACX_HERMES_EXECUTABLE", "/opt/hermes/hermes")
                 if not Path(hermes).exists():
                     hermes = shutil.which("hermes") or hermes
-                command = ([sys.executable, hermes] if hermes.endswith(("/hermes", ".py"))
-                           and Path(hermes).is_file() else [hermes])
+                hermes_path = Path(hermes)
+                # Current Hermes installations may expose either an
+                # executable Python entry point or a shell wrapper that
+                # activates its private venv.  A basename of ``hermes`` does
+                # not identify its language.  Honor executable shebangs and
+                # use our interpreter only for a non-executable .py source.
+                command = ([sys.executable, hermes]
+                           if hermes_path.suffix == ".py"
+                           and hermes_path.is_file()
+                           and not os.access(hermes_path, os.X_OK)
+                           else [hermes])
                 command += ["-z", mission_prompt(mission), "--usage-file", str(files["usage"]),
                             "--reasoning", str(profile["reasoning_effort"]),
                             "--toolsets", f"specialist-{mission['faculty']}",
@@ -437,7 +448,8 @@ class SpecialistSupervisor:
                     })
                 usage["hermes_reported_usage"] = hermes_usage
                 process_result = {"returncode": process.returncode,
-                                  "stdout": stdout, "stderr": stderr, "usage": usage}
+                                  "stdout": stdout, "stderr": stderr, "usage": usage,
+                                  "provider_exchanges": proxy.trace_exchanges()}
                 if meter.snapshot().violation:
                     outcome, reason = "token_budget_exhausted", str(
                         meter.snapshot().violation)
@@ -469,8 +481,8 @@ class SpecialistSupervisor:
                                         mission, attempt_id, profile, files, process_result,
                                         validated_result=result,
                                     ),
-                                    outcome="completed", generation=int(
-                                        mission.get("associated_checkpoint_generation") or 0),
+                                    outcome="completed", generation=self.store.checkpoint_generation(
+                                        str(mission["match_id"])),
                                 )
                             service.accept_attempt(
                                 str(mission["mission_id"]), attempt_id, result,
@@ -505,8 +517,8 @@ class SpecialistSupervisor:
                     trace = self.trace_store.write(
                         mission, attempt_id,
                         self._trace_rows(mission, attempt_id, profile, files, process_result),
-                        outcome=outcome, generation=int(
-                            mission.get("associated_checkpoint_generation") or 0),
+                        outcome=outcome, generation=self.store.checkpoint_generation(
+                            str(mission["match_id"])),
                     )
             except SpecialistError as exc:
                 reason = str(exc)

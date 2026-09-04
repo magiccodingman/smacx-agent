@@ -11,6 +11,7 @@ from smacx_entitlements import PerspectiveEntitlements, sanitize_bundle
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
 from smacx_regions import RegionBuilder
+from smacx_runtime_context import _attention_payload
 from smacx_semantic_map import render_svg
 from smacx_store import MemoryScope, SmacxStore
 from smacx_specialists import SpecialistService
@@ -26,14 +27,21 @@ def visible_bundle(honeytoken: str) -> dict:
         "turn": 40, "year": 2240, "action_revision": "r1",
         "map": {"width": 16, "height": 8, "horizontal_wrap": True},
         "tiles": [
-            {"tile_id": 0, "x": 0, "y": 0, "visible_now": True, "terrain": "land"},
+            {"tile_id": 0, "x": 0, "y": 0, "visible_now": True, "terrain": "land",
+             "engine_id": "PRIVATE-TILE", "native_x": 9001},
             {"tile_id": 1, "x": 2, "y": 0, "visible_now": True, "terrain": "land"},
             {"tile_id": 8, "x": 1, "y": 1, "visible_now": False, "terrain": "land"},
         ],
         "bases": [{"id": 0, "base_ref": "base-home", "tile_id": 0,
                    "owned": True, "name": "Home", "owner_ref": "faction-1"}],
-        "units": [{"id": 1, "own_unit_ref": "own-unit-1", "tile_id": 0,
-                   "owned": True, "name": "Scout", "owner_ref": "faction-1"}],
+        "units": [
+            {"id": 1, "own_unit_ref": "own-unit-1", "tile_id": 0,
+             "owned": True, "name": "Scout", "owner_ref": "faction-1",
+             "engine_id": "PRIVATE-OWN", "transport_unit_id": 77},
+            {"id": 91, "native_observation_key": "vehicle-handle-91", "tile_id": 1,
+             "owned": False, "name": "Unknown", "owner_ref": "faction-2",
+             "hidden_id": "PRIVATE-CONTACT", "row_index": 91},
+        ],
         "factions": [
             {"id": 1, "faction_ref": "faction-1", "owned": True, "name": "Us"},
             {"id": 2, "faction_ref": "faction-2", "owned": False, "name": "Them",
@@ -62,11 +70,17 @@ def projected(bundle: dict, root: Path) -> tuple[dict, dict, str, dict, dict]:
                                    action_revision="r1", continuity="complete",
                                    journal_head_hash="0" * 64)
     service = WorldService(world_store, scope)
-    anchor = service.anchor(context_length=65536)
+    loaded_projection = world_store.load(scope, identity.timeline_id) or {}
+    objects = service._objects(loaded_projection)
+    contact_ref = next(ref for ref, item in objects.items()
+                       if item.get("kind") == "foreign_contact")
+    anchor = service.anchor(
+        context_length=65536, focus_ref="own-unit-1",
+        operation_refs=[contact_ref], triggered_watch_refs=["location-0"],
+    )
     route = service.query(mode="route", origin_ref="base-home", target_ref="location-1",
                           context_length=65536)
-    topology = service._topology(world_store.load(scope, identity.timeline_id) or {})
-    objects = service._objects(world_store.load(scope, identity.timeline_id) or {})
+    topology = service._topology(loaded_projection)
     rendering = render_svg(topology, objects, max_cells=100)
     mission = SpecialistService(store, world_store, scope).commission(
         faculty="world", objective="Describe only supplied strategic evidence.",
@@ -77,11 +91,11 @@ def projected(bundle: dict, root: Path) -> tuple[dict, dict, str, dict, dict]:
             "SELECT world_snapshot_id FROM specialist_missions WHERE mission_id=?",
             (mission["mission_id"],),
         ).fetchone()
-    specialist = world_store.load_snapshot_content(str(mission_row["world_snapshot_id"]))
-    specialist.pop("snapshot_id", None)
-    specialist.pop("created_unix", None)
-    specialist["identity"] = {}
-    specialist["projection"]["identity"] = {}
+    # The immutable snapshot intentionally retains private topology metadata;
+    # the specialist's model-facing instrument crosses WorldService's same
+    # canonical provider boundary.
+    specialist = service.query(mode="forces", context_length=65536)
+    specialist.pop("identity", None); specialist.pop("cache", None)
     attention = AttentionService(store, journal, scope)
     queued = attention.enqueue(
         "world_change", {"delta": {"object_ref": "base-home", "change": "appeared",
@@ -89,7 +103,7 @@ def projected(bundle: dict, root: Path) -> tuple[dict, dict, str, dict, dict]:
         observation_cursor=1, critical=True,
     )
     lease = attention.lease("episode-fair")
-    attention_payload = lease["items"][0]["payload"]
+    attention_payload = _attention_payload(lease["items"][0])
     assert lease["items"][0]["attention_id"] == queued["attention_id"]
     return anchor, route, rendering, specialist, attention_payload
 
@@ -108,6 +122,20 @@ def main() -> int:
         "shared": {"value": 7, "channel": "pact_shared"}}}]},
         PerspectiveEntitlements("faction-1", pact_factions=frozenset({"faction-2"}))) \
         ["factions"][0]["shared"] == 7
+    governor_report = sanitize_bundle({"factions": [{
+        "owner_ref": "faction-2", "entitled_fields": {
+            "profile": {"value": {"energy": 80, "orbitals": 2},
+                        "channel": "governor", "owner_ref": "faction-2"},
+        },
+    }]}, PerspectiveEntitlements("faction-1", governor=True))
+    assert governor_report["factions"][0]["profile"]["orbitals"] == 2
+    project_report = sanitize_bundle({"factions": [{
+        "owner_ref": "faction-2", "entitled_fields": {
+            "profile": {"value": {"energy": 81},
+                        "channel": "project_intelligence", "owner_ref": "faction-2"},
+        },
+    }]}, PerspectiveEntitlements("faction-1", project_intelligence=True))
+    assert project_report["factions"][0]["profile"]["energy"] == 81
     entitled_global = sanitize_bundle({"global": [{"entitled_fields": {
         "vote": {"value": 4, "channel": "governor"},
         "orbit": {"value": 2, "channel": "satellite_report", "subject": "orbital"},
@@ -156,6 +184,12 @@ def main() -> int:
             route.pop("identity", None); route.pop("cache", None)
         assert canonical_json(a) == canonical_json(b)
         assert "HONEY" not in canonical_json(a)
+        serialized = canonical_json(a)
+        for forbidden in (
+            "PRIVATE-", "native_", "engine_id", "hidden_id", "row_index",
+            "transport_unit_id", "native_x", "native_y",
+        ):
+            assert forbidden not in serialized
 
     # Regions/routes never bridge an unknown square.
     topology = PerspectiveTopology(MapShape(16, 8, False), [
@@ -171,6 +205,7 @@ def main() -> int:
         "provider_anchor_route_render_identical": True,
         "specialist_inputs_identical": True,
         "attention_payloads_identical": True,
+        "focus_operation_watch_provider_boundary": True,
     }}, separators=(",", ":")))
     return 0
 

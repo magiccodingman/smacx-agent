@@ -14,7 +14,7 @@ from smacx_store import MemoryScope, SmacxStore
 from smacx_world import WorldService
 from smacx_world_model import PerspectiveProjector
 from smacx_world_store import WorldStore
-from smacx_world_types import WorldIdentity
+from smacx_world_types import WorldIdentity, content_hash
 
 
 def bundle(turn: int, *, future: bool) -> dict:
@@ -56,16 +56,23 @@ def main() -> int:
                                    journal_head_hash=checkpoint["event_hash"],
                                    journal_sequence=checkpoint["sequence"],
                                    calculator_versions={"world": "v1"})
+        worlds.pin_snapshot(
+            snapshot["snapshot_id"], "checkpoint", checkpoint["event_id"],
+        )
 
         attention = AttentionService(store, journal, scope)
         attention.enqueue("chat", {"message": {"message_uid": "future-chat"}},
                           observation_cursor=6, priority=80, critical=True)
         attention.create_watch("base_threat", ["base-home"],
                                {"field": "threatened", "equals": True}, current_turn=6)
+        operation_refs = ["base-home"]
+        dependencies = attention.semantic_dependency_hashes()
         attention.upsert_operation(
             operation_id=None, kind="future", objective="Future branch",
-            referenced_world_objects=["base-home"], source_world_revision=1,
-            source_world_epoch="world-rollback", source_dependency_hash="future",
+            referenced_world_objects=operation_refs, source_world_revision=1,
+            source_world_epoch="world-rollback", source_dependency_hash=content_hash({
+                ref: dependencies[ref] for ref in operation_refs
+            }),
             current_turn=6)
         future_projection = PerspectiveProjector(identity, prior_projection=worlds.load(
             scope, identity.timeline_id)).project(bundle(6, future=True), observation_sequence=6)

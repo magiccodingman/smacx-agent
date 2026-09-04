@@ -7,8 +7,9 @@ import json
 
 from smacx_mechanics import (
     base_mechanics, connector_analysis, location_affordances, lost_contact_envelopes,
-    rendezvous_matrix, response_matrix,
+    mobility_profile, rendezvous_matrix, response_matrix, transport_route,
 )
+from smacx_regions import RegionBuilder
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
 from smacx_world_model import SemanticLodProjector
 
@@ -52,12 +53,54 @@ def main() -> int:
     assert set(flat.neighbors((2, 2))) == {"N", "NE", "E", "SE", "SW", "W", "NW"}
     results["parity_wrap_flat_boundaries"] = True
 
+    # Real region construction preserves exactly one old lineage through a
+    # split, lets the genuinely oldest lineage win a merge, and assigns a new
+    # lineage to every detached component.  Exercise the builder itself rather
+    # than constructing Region rows by hand.
+    region_builder = RegionBuilder()
+    region_profile = MobilityProfile("lineage-land", "land")
+    connected = PerspectiveTopology(MapShape(10, 2, False), [
+        KnownSquare("a", 0, 0, "land"), KnownSquare("b", 2, 0, "land"),
+        KnownSquare("c", 4, 0, "land"),
+    ])
+    initial, _ = region_builder.build(
+        connected, region_profile, world_revision=1,
+    )
+    assert len(initial) == 1 and initial[0].anchor_location_ref == "a"
+    split_topology = PerspectiveTopology(MapShape(10, 2, False), [
+        KnownSquare("a", 0, 0, "land"), KnownSquare("c", 4, 0, "land"),
+    ])
+    first_split, aliases = region_builder.build(
+        split_topology, region_profile, initial, world_revision=2,
+    )
+    by_anchor = {row.anchor_location_ref: row for row in first_split}
+    assert by_anchor["a"].lineage_ref == initial[0].lineage_ref
+    assert by_anchor["c"].lineage_ref != initial[0].lineage_ref
+    assert not aliases  # one old region has two successors: ambiguous split
+    merged, merge_aliases = region_builder.build(
+        connected, region_profile, first_split, world_revision=3,
+    )
+    assert len(merged) == 1
+    assert merged[0].lineage_ref == initial[0].lineage_ref
+    assert merged[0].lineage_birth_revision == 1
+    assert set(merge_aliases) == {row.region_ref for row in first_split
+                                  if row.region_ref != merged[0].region_ref}
+    second_split, _ = region_builder.build(
+        split_topology, region_profile, merged, world_revision=4,
+    )
+    second_by_anchor = {row.anchor_location_ref: row for row in second_split}
+    assert second_by_anchor["a"].lineage_ref == initial[0].lineage_ref
+    assert second_by_anchor["c"].lineage_ref not in {
+        initial[0].lineage_ref, by_anchor["c"].lineage_ref,
+    }
+    results["region_split_merge_split_lineage"] = True
+
     # Perspective-known mobility honors infrastructure, terrain cost, ZOC,
     # airdrops, and special connections without routing through missing tiles.
     mobility_squares = [
         KnownSquare("m0", 0, 0, "land", features=frozenset({"road", "magtube"})),
         KnownSquare("m1", 2, 0, "land", features=frozenset({"road", "magtube"})),
-        KnownSquare("m2", 4, 0, "land", features=frozenset({"fungus"})),
+        KnownSquare("m2", 4, 0, "land", features=frozenset({"fungus"}), hostile_zoc=True),
         KnownSquare("m3", 6, 0, "rocky", hostile_zoc=True),
         KnownSquare("r0", 1, 1, "land", features=frozenset({"road"})),
         KnownSquare("r1", 3, 1, "land", features=frozenset({"road"})),
@@ -68,14 +111,36 @@ def main() -> int:
         "m0", "m1", MobilityProfile("tube", "land", magtube_cost=0.0))
     fungus = mobility_topology.route("m1", "m2", MobilityProfile("fungus", "land"))
     blocked = mobility_topology.route("m0", "m3", MobilityProfile("zoc", "land"))
-    clean = mobility_topology.route(
-        "m0", "m3", MobilityProfile("clean", "land", ignores_zoc=True))
+    probe = mobility_topology.route(
+        "m0", "m3", MobilityProfile("probe", "land", ignores_zoc=True))
     assert road.movement_cost == 1 / 3
     assert tube.movement_cost == 0.0
-    assert fungus.movement_cost == 2.0
-    assert not blocked.reachable and clean.reachable
+    # Conventional land units pay three full terrain movement units in fungus
+    # absent Planet/Xeno/native modifiers.
+    assert fungus.movement_cost == 3.0
+    assert fungus.eta_kind == "stochastic_earliest"
+    assert fungus.latest_turns is None
+    # Native SMAC land movement permits a unit with at least one ordinary
+    # movement point left to enter a more expensive non-fungus square now and
+    # exhaust the turn.  It must not be delayed to a fictitious next turn.
+    rough_boundary = PerspectiveTopology(MapShape(6, 2, False), [
+        KnownSquare("rough-origin", 0, 0, "land"),
+        KnownSquare("rough-target", 2, 0, "rocky"),
+    ])
+    rough_now = rough_boundary.route(
+        "rough-origin", "rough-target",
+        MobilityProfile("rough-now", "land", movement_points=3, movement_remaining=1),
+    )
+    rough_later = rough_boundary.route(
+        "rough-origin", "rough-target",
+        MobilityProfile("rough-later", "land", movement_points=3, movement_remaining=0),
+    )
+    assert rough_now.turns == 1 and rough_now.latest_turns == 1
+    assert rough_later.turns == 2 and rough_later.latest_turns == 2
+    assert not blocked.reachable and probe.reachable
     drop = mobility_topology.route("m0", "m3", MobilityProfile(
         "drop", "land", can_airdrop=True,
+        airdrop_origin_ref="m0",
         airdrop_destination_refs=frozenset({"m3"}), ignores_zoc=True))
     gate = mobility_topology.route("m0", "m3", MobilityProfile(
         "gate", "land", special_connections=(("m0", "m3", 1.0, "psi_gate"),),
@@ -83,6 +148,66 @@ def main() -> int:
     assert drop.reachable and drop.movement_cost == 1.0
     assert gate.reachable and gate.movement_cost == 1.0
     results["roads_magtubes_fungus_zoc_airdrop_connections"] = True
+
+    # Relationship and movement authority are deliberately distinct. Native
+    # land ZOC applies to non-Pact combat units, while only Vendetta contacts
+    # enter hostile threat summaries. Identical geometry therefore yields a
+    # threat for Vendetta, no threat for Treaty/unknown/Pact, and movement ZOC
+    # for every non-Pact relationship.
+    def relationship_projection(relation: str) -> tuple[dict, dict]:
+        relation_bundle = {
+            "turn": 50, "year": 2250,
+            "map": {"width": 10, "height": 2, "horizontal_wrap": False},
+            "tiles": [
+                {"tile_id": 0, "x": 0, "y": 0, "terrain": "land", "visible_now": True},
+                {"tile_id": 1, "x": 2, "y": 0, "terrain": "land", "visible_now": True},
+                {"tile_id": 2, "x": 4, "y": 0, "terrain": "land", "visible_now": True},
+                {"tile_id": 3, "x": 6, "y": 0, "terrain": "land", "visible_now": True},
+                {"tile_id": 6, "x": 3, "y": 1, "terrain": "land", "visible_now": True},
+            ],
+            "bases": [{"id": 0, "base_ref": "base-home", "tile_id": 3,
+                       "owned": True, "owner_ref": "faction-1", "name": "Home"}],
+            "units": [{"id": 9, "native_observation_key": "relation-contact",
+                       "tile_id": 6, "owned": False, "owner_ref": "faction-2",
+                       "triad": "land", "movement_points": 1,
+                       "roles": {"combat": True, "probe": False}}],
+            "factions": [
+                {"id": 1, "faction_ref": "faction-1", "owned": True},
+                {"id": 2, "faction_ref": "faction-2", "owned": False,
+                 "relations": {
+                     "vendetta": relation == "hostile", "pact": relation == "allied",
+                     "treaty": relation == "neutral", "truce": False,
+                 }},
+            ],
+        }
+        from smacx_world_model import PerspectiveProjector
+        from smacx_world_types import WorldIdentity
+        projected = PerspectiveProjector(WorldIdentity(
+            "match-relation", "perspective-relation", "timeline-main",
+            f"world-{relation}",
+        )).project(relation_bundle, observation_sequence=1)
+        rows = {row.object_ref: row.as_dict(provider_safe=True)
+                for row in projected["objects"]}
+        relation_topology = PerspectiveTopology(
+            MapShape(10, 2, False), projected["known_squares"],
+        )
+        return rows, {
+            "route": relation_topology.route(
+                "location-1", "location-2", MobilityProfile("land", "land"),
+            ),
+            "bases": base_mechanics(relation_topology, rows, ["base-home"]),
+        }
+
+    relation_results = {name: relationship_projection(name)
+                        for name in ("hostile", "allied", "neutral", "unknown")}
+    assert relation_results["hostile"][1]["bases"][0]["visible_hostile_response"]
+    assert all(not relation_results[name][1]["bases"][0]["visible_hostile_response"]
+               for name in ("allied", "neutral", "unknown"))
+    assert not relation_results["hostile"][1]["route"].reachable
+    assert not relation_results["neutral"][1]["route"].reachable
+    assert not relation_results["unknown"][1]["route"].reachable
+    assert relation_results["allied"][1]["route"].reachable
+    results["relation_aware_threat_and_native_zoc"] = True
 
     # Peninsula defense: a single known connector is mechanical, not a verdict.
     shape = MapShape(16, 8, False)
@@ -108,9 +233,9 @@ def main() -> int:
         "reserve": item("reserve", "own_unit", "location-34", owner_ref="faction-1",
                         triad="land", movement_points=2, roles={"combat": True}),
         "threat-a": item("threat-a", "foreign_contact", "location-1", owner_ref="faction-2",
-                         triad="land", movement_points=2),
+                         triad="land", movement_points=2, relationship="hostile"),
         "threat-b": item("threat-b", "foreign_contact", "location-99", owner_ref="faction-2",
-                         triad="land", movement_points=1),
+                         triad="land", movement_points=1, relationship="hostile"),
     }
     bases = base_mechanics(topo, objects, ["base-a", "base-b"])
     response = response_matrix(topo, objects, ["reserve"], ["base-a", "base-b"], "land")
@@ -140,8 +265,10 @@ def main() -> int:
     # Multi-front and global races remain simultaneously represented.
     busy = [*squares]
     world_objects = [
-        item("front-a", "foreign_contact", "location-1", owner_ref="faction-2"),
-        item("front-b", "foreign_contact", "location-239", owner_ref="faction-3"),
+        item("front-a", "foreign_contact", "location-1", owner_ref="faction-2",
+             relationship="hostile"),
+        item("front-b", "foreign_contact", "location-239", owner_ref="faction-3",
+             relationship="hostile"),
         item("project-race", "project", None, name="Weather Paradigm", state="building"),
         item("council", "council_state", None, state={"governor_vote_due": True}),
     ]
@@ -168,9 +295,41 @@ def main() -> int:
     ])
     assert not ocean_topology.route("land-a", "land-b", MobilityProfile("land", "land")).reachable
     assert ocean_topology.route("sea-a", "sea-b", MobilityProfile("sea", "sea")).reachable
-    air = MobilityProfile("air", "air", movement_points=2, max_air_turns=1,
+    air = MobilityProfile("air", "air", movement_points=2, air_safe_range=4,
+                          air_origin_refuels=True,
                           refuel_location_refs=frozenset({"land-b"}))
     assert ocean_topology.route("land-a", "land-b", air).reachable
+    crossing_objects = {
+        "passenger": item("passenger", "own_unit", "land-a", owner_ref="faction-1",
+                          triad="land", movement_points=1,
+                          roles={"combat": True, "amphibious": False}),
+        "transport": item("transport", "own_unit", "sea-a", owner_ref="faction-1",
+                          triad="sea", movement_points=2,
+                          roles={"transport": True}, cargo={"capacity": 4, "loaded": 1}),
+        "land-b": item("land-b", "location", None, terrain="land"),
+    }
+    crossing = transport_route(
+        ocean_topology, crossing_objects, "passenger", "land-b",
+    )
+    assert crossing is not None and crossing["transport_ref"] == "transport"
+    assert crossing["capacity"]["available"] == 3
+    assert crossing["eta_kind"] == "exact_serialized_guarded_schedule"
+    full_transport = {**crossing_objects, "transport": item(
+        "transport", "own_unit", "sea-a", owner_ref="faction-1", triad="sea",
+        movement_points=2, roles={"transport": True}, cargo={"capacity": 4, "loaded": 4},
+    )}
+    assert transport_route(ocean_topology, full_transport, "passenger", "land-b") is None
+
+    drop_objects = {
+        "dropper": item("dropper", "own_unit", "land-a", owner_ref="faction-1",
+                        triad="land", movement_points=1,
+                        roles={"combat": True, "airdrop_capable": True},
+                        airdrop_ready=True, airdrop_range=3),
+    }
+    drop_profile = mobility_profile(
+        drop_objects, "drop", subject_ref="dropper", topology=ocean_topology,
+    )
+    assert drop_profile.can_airdrop and "land-b" in drop_profile.airdrop_destination_refs
     results["transport_island_logistics"] = results["air_carrier_refueling"] = True
 
     # Ecology changes produce a different region version/topology projection.
@@ -205,7 +364,7 @@ def main() -> int:
     for index in range(300):
         loc = huge[(index * 79) % len(huge)].location_ref
         chaotic_objects.append(item(f"contact-{index}", "foreign_contact", loc,
-                                      owner_ref=f"faction-{2 + index % 6}"))
+                                      owner_ref=f"faction-{2 + index % 6}", relationship="hostile"))
     for index in range(80):
         loc = huge[(index * 131) % len(huge)].location_ref
         chaotic_objects.append(item(f"base-{index}", "base", loc,

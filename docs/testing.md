@@ -47,6 +47,8 @@ PYTHONPATH=src python3 scripts/world_model_contract_test.py
 PYTHONPATH=src python3 scripts/native_observation_contract_test.py
 PYTHONPATH=src python3 scripts/fair_play_world_test.py
 PYTHONPATH=src python3 scripts/strategic_world_fixtures_test.py
+PYTHONPATH=src python3 scripts/global_world_pipeline_test.py
+PYTHONPATH=src python3 scripts/movement_mechanics_contract_test.py
 PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
 PYTHONPATH=src python3 scripts/notebook_scale_test.py
 PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
@@ -57,7 +59,10 @@ PYTHONPATH=src python3 scripts/specialist_provider_meter_test.py
 PYTHONPATH=src python3 scripts/managed_memory_scale_test.py
 PYTHONPATH=src python3 scripts/rollback_world_contract_test.py
 PYTHONPATH=src python3 scripts/provider_schema_budget_test.py
+PYTHONPATH=src python3 scripts/reference_bounding_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_snapshot_gc_scale_test.py
 PYTHONPATH=src python3 scripts/world_context_benchmark.py
+PYTHONPATH=src python3 scripts/observation_collector_benchmark.py
 ```
 
 The provider-wire context policy must run inside the built Hermes image because
@@ -156,6 +161,10 @@ and trace retention. `specialist_provider_meter_test.py` separately proves the
 attempt-local provider proxy enforces actual calls, cumulative usage,
 per-request context, and output reservations even when a failed response omits
 usage. Live scripts print only content-free usage/cache/latency aggregates.
+The provider-facing child evidence envelope contains a bounded semantic result
+and one opaque query receipt; internal object/material hashes and dependency
+graphs remain in the retained diagnostic trace rather than being replayed into
+the child's next prompt.
 
 ## Native game integration
 
@@ -168,6 +177,15 @@ PYTHONPATH=src python3 scripts/native_automation_turn_test.py
 PYTHONPATH=src python3 scripts/save_load_test.py
 PYTHONPATH=src python3 scripts/full_endgame_pipeline_test.py
 ```
+
+`native_observation_contract_test.py` checks the native observation adapters,
+including more than 256 events, cross-page visible movement continuity, visible
+destruction versus fog loss, capture/recapture, tile visibility transitions,
+chat, global events, and public Secret Project report transitions.
+`global_world_pipeline_test.py` carries legitimate global, intelligence,
+base-geography, support, convoy, native-life, orbital, project, ecology,
+victory, anchor, runtime, and frozen-specialist facts through the complete
+provider-safe projection path.
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import time
 from typing import Any, Iterable, Mapping
-import uuid
 
 from smacx_regions import Region, RegionBuilder, build_theaters
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
 from smacx_world_types import (
     EpistemicStatus, EpistemicValue, EvidenceSource, Observation, WorldContractError,
     WorldIdentity, WorldObject, canonical_json, content_hash, material_hash,
+    provider_safe,
 )
 
 
@@ -24,6 +24,7 @@ ENTITLEMENT_EVIDENCE_SOURCES = {
     "pact_shared": EvidenceSource.PACT,
     "infiltration": EvidenceSource.INFILTRATION,
     "governor": EvidenceSource.GOVERNOR,
+    "project_intelligence": EvidenceSource.PROJECT,
     "satellite_report": EvidenceSource.SATELLITE,
     "scenario": EvidenceSource.SCENARIO,
     "player_report": EvidenceSource.PLAYER_ASSERTION,
@@ -53,15 +54,17 @@ class ForeignContactState:
 class ForeignContactRegistry:
     """Keep identity only through continuously observable contact."""
 
-    def __init__(self, prior: Iterable[ForeignContactState] = ()) -> None:
+    def __init__(self, prior: Iterable[ForeignContactState] = (), *, namespace: str = "") -> None:
         self.states = {item.native_observation_key: item for item in prior if item.active}
         self.retired: list[ForeignContactState] = []
+        self.namespace = namespace
 
     def begin_frame(self) -> None:
         self._seen: set[str] = set()
 
     def observe(self, native_observation_key: str, location: str,
-                turn: int | None, *, continuous_path: Iterable[Mapping[str, Any]] = ()) -> str:
+                turn: int | None, *, creation_revision: int = 0,
+                continuous_path: Iterable[Mapping[str, Any]] = ()) -> str:
         # This key is collector-private and is never serialized provider-side.
         state = self.states.get(native_observation_key)
         # A reconciliation frame proves presence, not an unseen movement path.
@@ -83,8 +86,12 @@ class ForeignContactRegistry:
                 self.retired.append(state)
                 state = None
         if state is None:
+            digest = hashlib.sha256(
+                f"{self.namespace}\x1f{native_observation_key}\x1f{creation_revision}\x1f{location}"
+                .encode("utf-8")
+            ).hexdigest()[:32]
             state = ForeignContactState(
-                "contact-" + uuid.uuid4().hex, native_observation_key, turn, location,
+                "contact-" + digest, native_observation_key, turn, location,
             )
             self.states[native_observation_key] = state
         state.last_seen_turn = turn
@@ -143,7 +150,14 @@ class PerspectiveProjector:
                 last_seen.get("value") if isinstance(last_seen, Mapping) else None,
                 str(item["location_ref"]), True,
             ))
-        self.contacts = ForeignContactRegistry(prior_contacts)
+        self.contacts = ForeignContactRegistry(
+            prior_contacts,
+            namespace=canonical_json({
+                "match_id": identity.match_id,
+                "perspective_id": identity.perspective_id,
+                "world_epoch": identity.world_epoch,
+            }),
+        )
 
     def _stabilize_evidence(self, objects: Iterable[WorldObject]) -> list[WorldObject]:
         """Preserve evidence identity when the observed fact did not change.
@@ -166,9 +180,18 @@ class PerspectiveProjector:
                     and old.get("epistemic_status") == value.status.value
                     and old.get("source") == value.source.value
                     and old.get("known_bounds") == value.known_bounds
-                    and old.get("last_verified_turn") == value.last_verified_turn
                 ):
-                    fields[name] = EpistemicValue.from_dict(old)
+                    # Reverification advances freshness while retaining when the
+                    # fact was first learned.  Bookkeeping alone is not a
+                    # material world change.
+                    fields[name] = EpistemicValue.from_dict(old) \
+                        if old.get("last_verified_turn") == value.last_verified_turn \
+                        else EpistemicValue(
+                            value.value, value.status, value.source,
+                            old.get("first_known_turn"), value.last_verified_turn,
+                            value.world_revision, value.provenance_ref,
+                            value.known_bounds,
+                        )
                 else:
                     fields[name] = value
             stabilized.append(WorldObject(
@@ -186,6 +209,18 @@ class PerspectiveProjector:
         objects: list[WorldObject] = []
         temporal_events: list[dict[str, Any]] = []
         squares: list[KnownSquare] = []
+        relationship_by_faction: dict[str, str] = {}
+        for faction in bundle.get("factions", ()):
+            if not isinstance(faction, Mapping):
+                continue
+            faction_ref = str(faction.get("faction_ref") or f"faction-{faction.get('id')}")
+            relations = faction.get("relations") if isinstance(faction.get("relations"), Mapping) else {}
+            relationship_by_faction[faction_ref] = (
+                "allied" if relations.get("pact") is True else
+                "hostile" if relations.get("vendetta") is True else
+                "neutral" if relations.get("treaty") is True or relations.get("truce") is True else
+                "unknown"
+            )
         map_data = bundle.get("map") if isinstance(bundle.get("map"), Mapping) else {}
         shape = MapShape(int(map_data.get("width", 2)), int(map_data.get("height", 1)),
                          bool(map_data.get("horizontal_wrap", True)))
@@ -209,7 +244,14 @@ class PerspectiveProjector:
                 continue
             ref = location_ref(int(tile["tile_id"]))
             current = bool(tile.get("visible_now"))
-            features = frozenset(str(value) for value in tile.get("features", ()))
+            feature_values = {str(value).lower().replace(" ", "_")
+                              for value in tile.get("features", ())}
+            rockiness = tile.get("rockiness")
+            if rockiness == 2:
+                feature_values.add("rocky")
+            elif rockiness == 1:
+                feature_values.add("rolling")
+            features = frozenset(feature_values)
             prior_location = self._prior_objects.get(ref, {})
             prior_terrain = prior_location.get("fields", {}).get("terrain", {}) \
                 if isinstance(prior_location, Mapping) else {}
@@ -222,7 +264,8 @@ class PerspectiveProjector:
             square = KnownSquare(ref, int(tile["x"]), int(tile["y"]), terrain,
                                  current, features, str(tile.get("owner_ref"))
                                  if tile.get("owner_ref") else None,
-                                 bool(tile.get("hostile_zoc", False)))
+                                 bool(tile.get("hostile_zoc", False)), False,
+                                 int(tile["altitude"]) if tile.get("altitude") is not None else None)
             squares.append(square)
             fields = {
                 "features": _evidence(sorted(features), current=current, owned=False,
@@ -279,7 +322,11 @@ class PerspectiveProjector:
         # boundary explicitly so an opaque row key can never be reassigned to
         # a different foreign unit at the same location.
         if bundle.get("_contact_identity_reset"):
-            self.contacts = ForeignContactRegistry()
+            self.contacts = ForeignContactRegistry(namespace=canonical_json({
+                "match_id": self.identity.match_id,
+                "perspective_id": self.identity.perspective_id,
+                "world_epoch": self.identity.world_epoch,
+            }))
         self.contacts.begin_frame()
         movement_proofs = bundle.get("_continuous_visible_contact_moves") \
             if isinstance(bundle.get("_continuous_visible_contact_moves"), Mapping) else {}
@@ -291,13 +338,14 @@ class PerspectiveProjector:
             if owned:
                 ref = str(unit.get("own_unit_ref") or f"own-unit-{unit.get('id')}")
                 kind = "own_unit"
-                metadata = {"native_id": unit.get("id")}
+                handle = ref.removeprefix("own-unit-") if ref.startswith("own-unit-") else None
+                metadata = {"native_id": unit.get("id"), "native_handle": handle}
             else:
                 native_key = str(unit.get("native_observation_key") or unit.get("id"))
                 path = movement_proofs.get(native_key, ())
                 prior_contact = self.contacts.states.get(native_key)
                 ref = self.contacts.observe(
-                    native_key, at, turn,
+                    native_key, at, turn, creation_revision=revision_hint,
                     continuous_path=path if isinstance(path, Iterable)
                     and not isinstance(path, (str, bytes, Mapping)) else (),
                 )
@@ -327,6 +375,14 @@ class PerspectiveProjector:
                       for name, value in unit.items()
                       if name not in {"id", "native_observation_key", "own_unit_ref",
                                       "tile_id", "owned"}}
+            if not owned:
+                owner_ref = str(unit.get("owner_ref") or "")
+                fields["relationship"] = _evidence(
+                    "hostile" if owner_ref == "faction-0" else
+                    relationship_by_faction.get(owner_ref, "unknown"),
+                    current=True, owned=False, turn=turn,
+                    world_revision=revision_hint, provenance_ref=provenance,
+                )
             fields["last_seen_turn"] = _evidence(
                 turn, current=True, owned=owned, turn=turn,
                 world_revision=revision_hint, provenance_ref=provenance,
@@ -358,6 +414,62 @@ class PerspectiveProjector:
                 "event_kind": "contact_lost", "contact_ref": contact.contact_ref,
                 "location_ref": contact.last_location_ref, "turn": turn,
             })
+        # Native mod_zoc_move is a non-Pact movement restriction, not a
+        # Vendetta-only threat verdict. Treaty/truce/unknown contacts can
+        # therefore constrain movement while remaining excluded from hostile
+        # threat summaries. Keep those two semantics deliberately separate.
+        zoc_unit_locations = {
+            item.location_ref for item in objects
+            if item.kind == "foreign_contact" and item.status == "active"
+            and item.fields.get("relationship") is not None
+            and item.fields["relationship"].value != "allied"
+            and item.location_ref
+        }
+        hostile_positions = {
+            (square.x, square.y) for square in squares
+            if square.location_ref in zoc_unit_locations and not square.ocean
+        }
+        if hostile_positions:
+            squares = [replace(square, hostile_zoc=any(
+                neighbor in hostile_positions
+                for neighbor in shape.neighbors((square.x, square.y)).values()
+            ), blocking_contact_occupied=(square.x, square.y) in hostile_positions)
+                       for square in squares]
+        # Persist the derived, perspective-legitimate ZOC field on current
+        # locations.  Calculators reconstruct topology from stored objects;
+        # keeping this only on the transient KnownSquare list made production
+        # routes silently ignore ZOC while synthetic fixtures passed.
+        zoc_by_ref = {square.location_ref: square.hostile_zoc for square in squares}
+        occupied_by_ref = {
+            square.location_ref: square.blocking_contact_occupied for square in squares
+        }
+        rewritten: list[WorldObject] = []
+        for item in objects:
+            if item.kind != "location":
+                rewritten.append(item)
+                continue
+            current = item.fields.get("terrain") is not None \
+                and item.fields["terrain"].status is EpistemicStatus.CURRENT
+            fields = dict(item.fields)
+            fields["hostile_zoc"] = EpistemicValue(
+                bool(zoc_by_ref.get(item.object_ref, False)) if current else None,
+                EpistemicStatus.DERIVED if current else EpistemicStatus.UNKNOWN,
+                EvidenceSource.DIRECT_SIGHT if current else EvidenceSource.STALE_MAP,
+                turn if current else None, turn if current else None,
+                revision_hint, provenance,
+            )
+            fields["blocking_contact_occupied"] = EpistemicValue(
+                bool(occupied_by_ref.get(item.object_ref, False)) if current else None,
+                EpistemicStatus.DERIVED if current else EpistemicStatus.UNKNOWN,
+                EvidenceSource.DIRECT_SIGHT if current else EvidenceSource.STALE_MAP,
+                turn if current else None, turn if current else None,
+                revision_hint, provenance,
+            )
+            rewritten.append(WorldObject(
+                item.object_ref, item.kind, fields, item.location_ref,
+                item.parent_ref, item.status, dict(item.metadata),
+            ))
+        objects = rewritten
         for faction in bundle.get("factions", ()):
             if not isinstance(faction, Mapping):
                 continue
@@ -373,6 +485,10 @@ class PerspectiveProjector:
                                             turn, turn, revision_hint, provenance)
                       for name, value in faction.items()
                       if name not in {"id", "faction_ref", "owned", "_entitlement_channels"}}
+            fields["is_self"] = _evidence(
+                owned, current=True, owned=True, turn=turn,
+                world_revision=revision_hint, provenance_ref=provenance,
+            )
             objects.append(WorldObject(ref, "faction", fields))
         for item in bundle.get("global", ()):
             if not isinstance(item, Mapping):
@@ -447,6 +563,12 @@ class SemanticLodProjector:
             "economy_state": ("state",), "research_state": ("state",),
             "social_state": ("state",), "council_state": ("state",),
             "victory_state": ("state",), "project": ("name", "owner_ref", "state"),
+            "project_state": ("state",), "orbital_state": ("state",),
+            "governor_state": ("state",), "ecology_state": ("state",),
+            "intelligence_entitlement_state": ("state",),
+            "planetary_state": ("state",),
+            "project_race_state": ("state",), "movement_rules": ("state",),
+            "victory_posture": ("state",),
             "global_event": ("name", "state"), "victory": ("name", "state"),
         }.get(kind, ())
         fields = item.get("fields") if isinstance(item.get("fields"), Mapping) else {}
@@ -467,7 +589,7 @@ class SemanticLodProjector:
     def build(self, projection: Mapping[str, Any], *, previous_regions: Iterable[Region] = (),
               focus_ref: str | None = None, operation_refs: Iterable[str] = (),
               triggered_watch_refs: Iterable[str] = ()) -> dict[str, Any]:
-        objects = [item.as_dict() if isinstance(item, WorldObject) else dict(item)
+        objects = [provider_safe(item)
                    for item in projection.get("objects", ())]
         squares = list(projection.get("known_squares", ()))
         shape_data = projection["map_shape"]
@@ -512,7 +634,8 @@ class SemanticLodProjector:
                                 if str(item.get("object_ref")) in pinned]
             hostile_count = sum(1 for item in inhabitants
                                 if item.get("kind") == "foreign_contact"
-                                and item.get("status") == "active")
+                                and item.get("status") == "active"
+                                and self._field_value(item, "relationship") == "hostile")
             region_rows.append({
                 **region.as_dict(), "object_counts": kind_counts,
                 "base_refs": [str(item["object_ref"]) for item in inhabitants
@@ -525,7 +648,10 @@ class SemanticLodProjector:
         strategic_kinds = {
             "base", "faction", "game_settings", "scenario_rules", "economy_state",
             "research_state", "social_state", "council_state", "victory_state",
-            "technology_state", "project", "global_event", "victory",
+            "technology_state", "project", "project_state", "orbital_state",
+            "project_race_state", "governor_state", "movement_rules",
+            "intelligence_entitlement_state",
+            "ecology_state", "planetary_state", "victory_posture", "global_event", "victory",
         }
         strategic = [self._strategic_summary(item) for item in objects
                      if item.get("kind") in strategic_kinds]
@@ -611,9 +737,13 @@ class SemanticLodProjector:
         if estimate_tokens(anchor) > self.token_cap:
             raise WorldContractError("world_anchor_budget_exhausted")
         anchor["token_estimate"] = estimate_tokens(anchor)
-        anchor["projection_integrity_hash"] = content_hash(anchor)
+        anchor["projection_integrity_hash"] = content_hash(provider_safe(anchor))
         anchor["_region_projection"] = regions
-        return anchor
+        # _region_projection is collector persistence, not provider data.  The
+        # caller removes it before storage; all other content is safe here.
+        safe_anchor = provider_safe(anchor)
+        safe_anchor["_region_projection"] = regions
+        return safe_anchor
 
 
 def net_deltas(previous_objects: Iterable[Mapping[str, Any]],
@@ -624,9 +754,11 @@ def net_deltas(previous_objects: Iterable[Mapping[str, Any]],
     for ref in sorted(set(previous) | set(current)):
         before, after = previous.get(ref), current.get(ref)
         if before is None:
-            deltas.append({"object_ref": ref, "change": "appeared", "current": after})
+            deltas.append({"object_ref": ref, "change": "appeared",
+                           "current": provider_safe(after)})
         elif after is None:
             deltas.append({"object_ref": ref, "change": "removed"})
         elif material_hash(before) != material_hash(after):
-            deltas.append({"object_ref": ref, "change": "changed", "current": after})
+            deltas.append({"object_ref": ref, "change": "changed",
+                           "current": provider_safe(after)})
     return deltas

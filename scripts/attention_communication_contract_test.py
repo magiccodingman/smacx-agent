@@ -10,6 +10,9 @@ import tempfile
 from smacx_attention import AttentionError, AttentionService
 from smacx_journal import CampaignJournal
 from smacx_store import MemoryScope, SmacxStore
+from smacx_world_model import PerspectiveProjector
+from smacx_world_store import WorldStore
+from smacx_world_types import WorldIdentity, content_hash
 
 
 def main() -> int:
@@ -22,6 +25,21 @@ def main() -> int:
                                  perspective_id="perspective-attention")
         scope = MemoryScope("match-attention", "agent-attention", "perspective-attention")
         journal = CampaignJournal(root / "campaigns", timeline_resolver=store.active_timeline_id)
+        worlds = WorldStore(store, root / "world-snapshots")
+        identity = WorldIdentity(
+            scope.match_id, scope.perspective_id, journal.timeline_id(scope), "world-attention",
+        )
+        projection = PerspectiveProjector(identity).project({
+            "turn": 1,
+            "map": {"width": 8, "height": 4, "horizontal_wrap": False},
+            "tiles": [{"tile_id": 0, "x": 0, "y": 0, "visible_now": True,
+                       "terrain": "land"}],
+            "bases": [], "units": [], "factions": [], "global": [],
+        }, observation_sequence=1)
+        worlds.replace_projection(
+            scope, identity, projection["objects"], observation_cursor=1,
+            action_revision="r1", continuity="complete", journal_head_hash="0" * 64,
+        )
         attention = AttentionService(store, journal, scope)
 
         first = attention.enqueue(
@@ -98,10 +116,11 @@ def main() -> int:
             raise AssertionError("cross-perspective attention lease was accepted")
         except AttentionError:
             pass
+        empty_dependency_hash = content_hash({})
         operation = restarted.upsert_operation(
             operation_id=None, kind="front_defense", objective="Hold the current front",
             referenced_world_objects=[], source_world_revision=1,
-            source_world_epoch="world-attention", source_dependency_hash="empty",
+            source_world_epoch="world-attention", source_dependency_hash=empty_dependency_hash,
             current_turn=1,
         )
         try:
@@ -109,7 +128,7 @@ def main() -> int:
                 operation_id=operation["operation_id"], kind="front_defense",
                 objective="Cross-scope overwrite", referenced_world_objects=[],
                 source_world_revision=1, source_world_epoch="world-other",
-                source_dependency_hash="empty", current_turn=1,
+                source_dependency_hash=empty_dependency_hash, current_turn=1,
             )
             raise AssertionError("cross-perspective operation update was accepted")
         except AttentionError:

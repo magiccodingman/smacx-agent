@@ -26,9 +26,9 @@ from smacx_world_store import WorldStore
 from smacx_world_types import WorldIdentity, canonical_json, content_hash, material_hash
 
 
-REFERENCE_PROMPT_VERSION = "smacx.reference-specialist.v3"
-WORLD_PROMPT_VERSION = "smacx.world-specialist.v3"
-TOOL_CONTRACT_VERSION = "smacx.specialist-instruments.v2"
+REFERENCE_PROMPT_VERSION = "smacx.reference-specialist.v5"
+WORLD_PROMPT_VERSION = "smacx.world-specialist.v5"
+TOOL_CONTRACT_VERSION = "smacx.specialist-instruments.v3"
 FACULTIES = frozenset({"reference", "world"})
 ATTEMPT_FAILURES = frozenset({
     "provider_failed", "mcp_failed", "invalid_schema", "token_budget_exhausted",
@@ -46,8 +46,13 @@ REFERENCE_SYSTEM_PROMPT = """You are a disposable SMACX mechanics researcher, no
 Use only reference_query. Retrieve iteratively, follow material terminology,
 distinguish mechanics evidence from strategy, cite consequential claims, report
 conflicts and uncertainty, stop at diminishing value, and never infer match
-hidden state. Every claim citation must be copied exactly from an evidence_refs
-value returned by reference_query during this attempt; never invent a citation.
+hidden state. Only top-level evidence_refs/citation_receipts values returned by
+reference_query are valid citations. Copy one exactly for every material
+non-unknown claims[] fact. Document IDs, collection IDs, and other subject IDs
+are never citations. Never invent or transform a citation. An empty claims[] is
+valid: keep useful uncited synthesis in answer or limitations.
+Each result reports remaining_evidence_calls; synthesize before that bounded
+lease reaches zero rather than attempting another retrieval.
 Return only the required JSON result. The sovereign player alone
 chooses policy and strategy. You do not send chat, write memory, delegate,
 access terminal/files/the web, or mutate the game."""
@@ -58,9 +63,14 @@ Prefer deterministic evidence; preserve current/stale/reported/derived/estimated
 unknown status; validate geometry, timing, and dependencies; compare feasible
 alternatives and report constraints. Never infer hidden geography, unseen units,
 foreign identity continuity, or intentions as fact. Return only the required JSON
-result. Every claim citation must be copied exactly from an evidence_refs value
-returned by world_query during this attempt; never invent a citation. You provide
-evidence; the sovereign alone chooses strategy and actions.
+result. Only top-level evidence_refs/citation_receipt values returned by
+world_query are valid citations. Copy citation_receipt exactly for every
+material non-unknown claims[] fact. object_ref, location_ref, region_ref, and
+other subject IDs are never citations. Never invent or transform a citation.
+An empty claims[] is valid: keep useful uncited synthesis in answer or
+limitations. You provide evidence; the sovereign alone chooses strategy and actions.
+Each result reports remaining_evidence_calls; synthesize before that bounded
+lease reaches zero rather than attempting another query.
 Do not use terminal/files/web, chat, memory, delegation, or gameplay mutation."""
 
 RESULT_CONTRACT = {
@@ -74,7 +84,7 @@ RESULT_CONTRACT = {
 def default_specialist_policy() -> dict[str, Any]:
     """Return an independent copy of the bounded installation policy."""
     return {
-        "seat_concurrency": 2,
+        "seat_concurrency": 1,
         "installation_concurrency": 2,
         "synthesis": {"tool_budget": 4, "provider_call_budget": 4,
                       "provider_token_budget": 96000, "context_token_ceiling": 65536,
@@ -122,7 +132,8 @@ def normalize_specialist_policy(configured: Mapping[str, Any] | None = None) -> 
         result[workload]["context_token_ceiling"] = max(
             result[workload]["context_token_ceiling"], 65_536,
         )
-    result["seat_concurrency"] = min(max(int(result["seat_concurrency"]), 1), 8)
+    # Initial locked architecture: at most one disposable child per sovereign.
+    result["seat_concurrency"] = 1
     result["installation_concurrency"] = min(
         max(int(result["installation_concurrency"]), 1), 16,
     )
@@ -245,9 +256,7 @@ class SpecialistTraceStore:
         newest_by_match: dict[str, int] = {}
         with store._connect() as connection:
             for row in connection.execute(
-                    "SELECT m.match_id,MAX(t.checkpoint_generation) AS generation "
-                    "FROM specialist_trace_manifests t JOIN specialist_missions m "
-                    "ON m.mission_id=t.mission_id GROUP BY m.match_id"):
+                    "SELECT match_id,generation FROM campaign_checkpoint_generations"):
                 newest_by_match[str(row["match_id"])] = int(row["generation"] or 0)
         removable: list[dict[str, Any]] = []
         protected_failures: list[dict[str, Any]] = []
@@ -435,24 +444,11 @@ class SpecialistService:
         now = time.time()
         mission_id = "mission-" + uuid.uuid4().hex
         journal_manifest = self.journal.replay(self.scope)["manifest"]
+        checkpoint_generation = self.store.checkpoint_generation(self.scope.match_id)
+        # Admission precedes materializing a potentially Huge immutable world.
+        # This avoids creating an unowned full snapshot for an idempotent retry
+        # or a request rejected by the bounded queue.
         with self.store._connect() as connection:
-            checkpoint_generation = int(connection.execute(
-                "SELECT COUNT(*) FROM world_snapshots WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=?",
-                (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id,
-                 timeline),
-            ).fetchone()[0])
-        snapshot_id = world_view_hash = None
-        if faculty == "world":
-            snapshot = self.world_store.snapshot(
-                self.scope, identity,
-                journal_head_hash=str(journal_manifest["head_hash"]),
-                journal_sequence=int(journal_manifest["sequence"]),
-                calculator_versions={"world": CALCULATOR_VERSION},
-            )
-            snapshot_id = str(snapshot["snapshot_id"])
-            world_view_hash = str(snapshot["content_sha256"])
-        with self.store.transaction() as connection:
             existing = connection.execute(
                 "SELECT * FROM specialist_missions WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=? AND idempotency_key=?",
@@ -467,41 +463,88 @@ class SpecialistService:
             seat_outstanding = int(connection.execute(
                 "SELECT COUNT(*) FROM specialist_missions WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=? AND status IN ('queued','active','retry_wait')",
-                (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id, timeline),
+                (self.scope.match_id, self.scope.agent_id,
+                 self.scope.perspective_id, timeline),
             ).fetchone()[0])
-            # Concurrency limits apply to executing attempts, not durable
-            # admission. Keep a separate bounded backlog so fair scheduling is
-            # possible without allowing an unbounded mission flood.
-            if installation_outstanding >= max(64, policy["installation_concurrency"] * 16):
-                raise SpecialistError("specialist_installation_queue_limit")
-            if seat_outstanding >= max(16, policy["seat_concurrency"] * 8):
-                raise SpecialistError("specialist_seat_queue_limit")
-            connection.execute(
-                "INSERT INTO specialist_missions(mission_id,match_id,agent_id,perspective_id,"
-                "timeline_id,world_epoch,source_world_revision,observation_cursor,world_snapshot_id,"
-                "world_view_hash,faculty,normalized_objective,subject_refs_json,linked_operation_id,"
-                "parent_episode_id,corpus_revision,system_prompt_version,system_prompt_hash,"
-                "tool_contract_version,tool_contract_hash,execution_class,model_profile_revision,"
-                "model_profile_json,"
-                "idempotency_key,attempt_count,associated_checkpoint_generation,tool_budget,"
-                "provider_call_budget,provider_token_budget,context_token_ceiling,output_token_budget,"
-                "deadline_unix,status,result_scope,created_unix,updated_unix) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,'queued',?,?,?)",
-                (mission_id, self.scope.match_id, self.scope.agent_id,
-                 self.scope.perspective_id, timeline, identity.world_epoch,
-                 int(projection["world_revision"]), int(projection["observation_cursor"]),
-                 snapshot_id, world_view_hash, faculty, objective, canonical_json(subjects),
-                 operation_id, parent_episode_id, corpus_revision, prompt_version, prompt_hash,
-                 TOOL_CONTRACT_VERSION, tool_hash, execution, model_profile_revision,
-                 canonical_json(pinned_profile), idempotency,
-                 checkpoint_generation,
-                 int(budget["tool_budget"]), int(budget["provider_call_budget"]),
-                 int(budget["provider_token_budget"]), int(budget["context_token_ceiling"]),
-                 int(budget["output_token_budget"]), now + int(budget["wall_seconds"]),
-                 result_scope or ("operation" if operation_id else "query"), now, now),
+        if installation_outstanding >= max(64, policy["installation_concurrency"] * 16):
+            raise SpecialistError("specialist_installation_queue_limit")
+        if seat_outstanding >= max(16, policy["seat_concurrency"] * 8):
+            raise SpecialistError("specialist_seat_queue_limit")
+        snapshot_id = world_view_hash = None
+        reference_snapshot_path = reference_snapshot_hash = None
+        if faculty == "world":
+            snapshot = self.world_store.snapshot(
+                self.scope, identity,
+                journal_head_hash=str(journal_manifest["head_hash"]),
+                journal_sequence=int(journal_manifest["sequence"]),
+                calculator_versions={"world": CALCULATOR_VERSION},
+                pin_owner=("specialist_mission", mission_id),
             )
-        if snapshot_id:
-            self.world_store.pin_snapshot(snapshot_id, "specialist_mission", mission_id)
+            snapshot_id = str(snapshot["snapshot_id"])
+            world_view_hash = str(snapshot["content_sha256"])
+        elif faculty == "reference":
+            if not corpus_revision:
+                raise SpecialistError("reference_corpus_revision_unavailable")
+            from smacx_reference import freeze_reference_corpus
+            try:
+                frozen_reference = freeze_reference_corpus(
+                    corpus_revision, self.store.path.parent / "reference-snapshots",
+                )
+            except RuntimeError as exc:
+                raise SpecialistError(str(exc)) from exc
+            reference_snapshot_path = str(frozen_reference["content_path"])
+            reference_snapshot_hash = str(frozen_reference["content_sha256"])
+        duplicate: dict[str, Any] | None = None
+        try:
+            with self.store.transaction() as connection:
+                existing = connection.execute(
+                    "SELECT * FROM specialist_missions WHERE match_id=? AND agent_id=? "
+                    "AND perspective_id=? AND timeline_id=? AND idempotency_key=?",
+                    (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id,
+                     timeline, idempotency),
+                ).fetchone()
+                if existing:
+                    duplicate = dict(existing)
+                else:
+                    connection.execute(
+                        "INSERT INTO specialist_missions(mission_id,match_id,agent_id,perspective_id,"
+                        "timeline_id,world_epoch,source_world_revision,observation_cursor,world_snapshot_id,"
+                        "world_view_hash,faculty,normalized_objective,subject_refs_json,linked_operation_id,"
+                        "parent_episode_id,corpus_revision,reference_snapshot_path,reference_snapshot_hash,"
+                        "system_prompt_version,system_prompt_hash,"
+                        "tool_contract_version,tool_contract_hash,execution_class,model_profile_revision,"
+                        "model_profile_json,"
+                        "idempotency_key,attempt_count,associated_checkpoint_generation,tool_budget,"
+                        "provider_call_budget,provider_token_budget,context_token_ceiling,output_token_budget,"
+                        "deadline_unix,status,result_scope,created_unix,updated_unix) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,'queued',?,?,?)",
+                        (mission_id, self.scope.match_id, self.scope.agent_id,
+                         self.scope.perspective_id, timeline, identity.world_epoch,
+                         int(projection["world_revision"]), int(projection["observation_cursor"]),
+                         snapshot_id, world_view_hash, faculty, objective, canonical_json(subjects),
+                         operation_id, parent_episode_id, corpus_revision,
+                         reference_snapshot_path, reference_snapshot_hash,
+                         prompt_version, prompt_hash,
+                         TOOL_CONTRACT_VERSION, tool_hash, execution, model_profile_revision,
+                         canonical_json(pinned_profile), idempotency,
+                         checkpoint_generation,
+                         int(budget["tool_budget"]), int(budget["provider_call_budget"]),
+                         int(budget["provider_token_budget"]), int(budget["context_token_ceiling"]),
+                         int(budget["output_token_budget"]), now + int(budget["wall_seconds"]),
+                         result_scope or ("operation" if operation_id else "query"), now, now),
+                    )
+        except Exception:
+            if snapshot_id:
+                self.world_store.unpin_snapshot(
+                    snapshot_id, "specialist_mission", mission_id,
+                )
+            raise
+        if duplicate is not None:
+            if snapshot_id:
+                self.world_store.unpin_snapshot(
+                    snapshot_id, "specialist_mission", mission_id,
+                )
+            return self._public_mission(duplicate, deduplicated=True)
         event = self.journal.append(self.scope, "specialist.mission_commissioned", {
             "mission_id": mission_id, "faculty": faculty, "objective_hash": content_hash(objective),
             "operation_id": operation_id, "world_snapshot_id": snapshot_id,
@@ -533,13 +576,18 @@ class SpecialistService:
             ).fetchone()
         if not row:
             raise SpecialistError("unknown_specialist_mission")
+        if str(row["timeline_id"]) != self.store.active_timeline_id(self.scope):
+            raise SpecialistError("specialist_result_historical_timeline")
         public = self._public_mission(dict(row))
         if include_result and row["status"] in {"accepted", "stale"} and row["result_json"]:
             public["result"] = json.loads(row["result_json"])
             public["result_hash"] = row["result_hash"]
+            if row["result_receipt_json"]:
+                public["provenance_receipt"] = json.loads(row["result_receipt_json"])
         return public
 
-    def cancel(self, mission_id: str, reason: str = "cancelled_by_parent") -> dict[str, Any]:
+    def cancel(self, mission_id: str, reason: str = "cancelled_by_parent", *,
+               authoritative: bool = False) -> dict[str, Any]:
         if reason not in CANCELLATION_REASONS:
             raise SpecialistError("invalid_specialist_cancellation_reason")
         now = time.time()
@@ -552,10 +600,13 @@ class SpecialistService:
             ).fetchone()
             if not row:
                 raise SpecialistError("unknown_specialist_mission")
+            allow_prepared = authoritative and reason in {
+                "cancelled_by_rollback", "cancelled_by_world_epoch",
+            }
             changed = connection.execute(
                 "UPDATE specialist_missions SET status='cancelled',cancellation_reason=?,updated_unix=? "
                 "WHERE mission_id=? AND status IN ('queued','active','retry_wait') "
-                "AND accepted_attempt_id IS NULL",
+                + ("" if allow_prepared else "AND accepted_attempt_id IS NULL"),
                 (reason, now, mission_id),
             ).rowcount
             if changed != 1:
@@ -760,6 +811,8 @@ class SpecialistService:
                 raise SpecialistError("invalid_specialist_claim_citations")
             if not set(claim["citations"]).issubset(allowed):
                 raise SpecialistError("specialist_claim_uses_unretrieved_evidence")
+            if claim.get("epistemic_status") != "unknown" and not claim["citations"]:
+                raise SpecialistError("specialist_claim_missing_evidence")
         for name in ("limitations", "unresolved_questions"):
             if not isinstance(raw.get(name), list) \
                     or not all(isinstance(value, str) for value in raw[name]):
@@ -847,7 +900,7 @@ class SpecialistService:
         mission = dict(mission_row)
         with self.store._connect() as connection:
             attempt_row = connection.execute(
-                "SELECT status,heartbeat_expires_unix FROM specialist_attempts "
+                "SELECT status,heartbeat_expires_unix,started_unix FROM specialist_attempts "
                 "WHERE attempt_id=? AND mission_id=?", (attempt_id, mission_id),
             ).fetchone()
         if not attempt_row or attempt_row["status"] not in {"starting", "running", "validating"} \
@@ -857,10 +910,10 @@ class SpecialistService:
         current = self.world_store.load(self.scope, current_timeline)
         stale_reason = None
         if current_timeline != mission["timeline_id"]:
-            self.cancel(mission_id, "cancelled_by_rollback")
+            self.cancel(mission_id, "cancelled_by_rollback", authoritative=True)
             raise SpecialistError("specialist_late_result_rejected")
         elif not current or current["identity"]["world_epoch"] != mission["world_epoch"]:
-            self.cancel(mission_id, "cancelled_by_world_epoch")
+            self.cancel(mission_id, "cancelled_by_world_epoch", authoritative=True)
             raise SpecialistError("specialist_late_result_rejected")
         elif mission["faculty"] == "reference" and str(
                 mission.get("corpus_revision") or "current") != str(
@@ -921,12 +974,47 @@ class SpecialistService:
         preview = " ".join(result["answer"].split())[:480]
         result_json = canonical_json(result)
         result_hash = content_hash(result)
+        dependency_rows = sorted(({
+            "kind": str(dep["dependency_kind"]),
+            "ref": str(dep["dependency_ref"]),
+            "hash": str(dep["dependency_hash"]),
+        } for dep in deps), key=lambda item: (item["kind"], item["ref"]))
+        receipt = {
+            "schema": "smacx.specialist-result-receipt.v1",
+            "source": {
+                "timeline_id": str(mission["timeline_id"]),
+                "world_epoch": str(mission["world_epoch"]),
+                "world_revision": int(mission["source_world_revision"]),
+                "observation_cursor": int(mission["observation_cursor"]),
+                "world_snapshot_id": mission.get("world_snapshot_id"),
+                "corpus_revision": mission.get("corpus_revision"),
+            },
+            "dependency_hash": content_hash(dependency_rows),
+            "representative_evidence_refs": [item["ref"] for item in dependency_rows[:16]],
+            "reference_document_hashes": [
+                {"ref": item["ref"], "hash": item["hash"]}
+                for item in dependency_rows if item["kind"] == "reference_document"
+            ][:16],
+            "usage": {
+                "provider_calls": int(usage.get("api_calls") or usage.get("provider_calls") or 0),
+                "provider_tokens": int(usage.get("total_tokens") or usage.get("provider_tokens") or 0),
+                "peak_context_tokens": int(usage.get("peak_context_tokens") or 0),
+                "tool_calls": len(deps),
+            },
+            "latency_seconds": max(0.0, now - float(attempt_row["started_unix"])),
+            "result_hash": result_hash,
+            "status": status,
+            "stale_reason": stale_reason,
+            "limitations_present": bool(result["limitations"]),
+        }
+        receipt_json = canonical_json(receipt)
+        termination_generation = self.store.checkpoint_generation(self.scope.match_id)
         with self.store.transaction() as connection:
             changed = connection.execute(
-                "UPDATE specialist_missions SET result_json=?,result_hash=?,result_preview=?,"
+                "UPDATE specialist_missions SET result_json=?,result_receipt_json=?,result_hash=?,result_preview=?,"
                 "accepted_attempt_id=?,stale_reason=?,completion_journal_sequence=NULL,updated_unix=? "
                 "WHERE mission_id=? AND status='active' AND accepted_attempt_id IS NULL",
-                (result_json, result_hash, preview, attempt_id, stale_reason,
+                (result_json, receipt_json, result_hash, preview, attempt_id, stale_reason,
                  now, mission_id),
             ).rowcount
             if changed != 1:
@@ -946,7 +1034,7 @@ class SpecialistService:
                     "timeline_id,checkpoint_generation,outcome_class,content_path,content_sha256,"
                     "bytes,model_visible,rolled_back,created_unix) VALUES(?,?,?,?,?,?,?,?,0,0,?)",
                     (attempt_id, mission_id, mission["timeline_id"],
-                     int(trace.get("checkpoint_generation") or 0),
+                     termination_generation,
                      status, trace["content_path"],
                      trace["content_sha256"], int(trace["bytes"]), now),
                 )
@@ -980,11 +1068,14 @@ class SpecialistService:
         )
         return {"ok": status == "accepted", "status": status, "mission_id": mission_id,
                 "result": result, "result_hash": result_hash,
+                "provenance_receipt": receipt,
                 "journal_event_id": event["event_id"], "stale_reason": stale_reason}
 
     def _enqueue_terminal_attention(self, mission: Mapping[str, Any], *, status: str,
                                     preview: str, limited: bool,
                                     result_hash: str = "") -> dict[str, Any]:
+        if str(mission["timeline_id"]) != self.store.active_timeline_id(self.scope):
+            return {"ok": False, "status": "historical_timeline_suppressed"}
         digest = result_hash or content_hash({
             "mission_id": mission["mission_id"], "status": status,
             "reason": mission.get("stale_reason") or mission.get("cancellation_reason") or preview,
@@ -1014,7 +1105,7 @@ class SpecialistService:
                 "timeline_id,checkpoint_generation,outcome_class,content_path,content_sha256,"
                 "bytes,model_visible,rolled_back,created_unix) VALUES(?,?,?,?,?,?,?,?,0,0,?)",
                 (attempt_id, mission_id, mission["timeline_id"],
-                 int(trace.get("checkpoint_generation") or 0),
+                 self.store.checkpoint_generation(self.scope.match_id),
                  str(trace.get("outcome_class") or "failed"), trace["content_path"],
                  trace["content_sha256"], int(trace["bytes"]), time.time()),
             )
@@ -1150,12 +1241,17 @@ class SpecialistService:
         publication is idempotent by attempt/result/sequence. Therefore this
         repair is safe after a crash at every individual boundary.
         """
+        active_timeline = self.store.active_timeline_id(self.scope)
+        # Rollback authority precedes crash-window publication. A result that
+        # was prepared on an abandoned branch is diagnostic evidence only.
+        self.cancel_for_rollback(active_timeline)
         with self.store._connect() as connection:
             rows = [dict(row) for row in connection.execute(
                 "SELECT * FROM specialist_missions WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND status='active' "
+                "AND perspective_id=? AND timeline_id=? AND status='active' "
                 "AND accepted_attempt_id IS NOT NULL AND result_json IS NOT NULL",
-                (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id),
+                (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id,
+                 active_timeline),
             ).fetchall()]
         repaired = 0
         for mission in rows:
@@ -1253,7 +1349,7 @@ class SpecialistService:
                  active_timeline_id),
             ).fetchall()]
         for mission_id in ids:
-            self.cancel(mission_id, "cancelled_by_rollback")
+            self.cancel(mission_id, "cancelled_by_rollback", authoritative=True)
         with self.store.transaction() as connection:
             connection.execute(
                 "UPDATE specialist_trace_manifests SET rolled_back=1,model_visible=0 WHERE "
@@ -1280,7 +1376,14 @@ def mission_prompt(mission: Mapping[str, Any]) -> str:
             "corpus_revision": mission.get("corpus_revision"),
         },
         "result_contract": RESULT_CONTRACT,
-        "instruction": "Investigate with your sole instrument, then return only the JSON result.",
+        "instruction": (
+            "Investigate with your sole instrument, then return only the JSON result. "
+            "For every material non-unknown claims[] entry, copy at least one exact "
+            "top-level evidence_refs/citation_receipt value from a successful instrument "
+            "result into citations[]. Subject/object/document IDs are not citations. "
+            "If no exact receipt supports a statement, keep it in answer or limitations "
+            "and omit it from claims[]."
+        ),
     }
     if int(mission.get("attempt_number") or 1) > 1:
         prior_failure = str(mission.get("prior_failure_reason") or "invalid result")[:320]
@@ -1288,6 +1391,8 @@ def mission_prompt(mission: Mapping[str, Any]) -> str:
             f"A prior attempt was rejected: {prior_failure}. Start a fresh investigation and "
             "emit exactly one JSON object matching result_contract: no prose, preamble, "
             "markdown, or code fence. Claim citations must be exact evidence_refs returned "
-            "by instrument calls in this attempt. Omit a claim citation rather than inventing it."
+            "by successful instrument calls in this attempt. Subject/object/document IDs are "
+            "not citations. If no exact receipt supports a statement, keep it in answer or "
+            "limitations and omit it from claims[]."
         )
     return canonical_json(payload)

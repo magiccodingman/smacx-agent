@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import time
 from typing import Any, Literal, Mapping
@@ -80,6 +81,39 @@ def _claim_call() -> int:
     return SERVICE.claim_tool_call(ATTEMPT_ID)
 
 
+def _remaining_calls(sequence: int) -> int:
+    return max(0, int(MISSION["tool_budget"]) - int(sequence))
+
+
+def _world_evidence_view(result: Mapping[str, Any], evidence_ref: str) -> dict[str, Any]:
+    """Return the bounded evidence page the disposable child actually needs.
+
+    The frozen world service returns cache and dependency-integrity metadata
+    intended for a sovereign caller.  A specialist attempt records that full
+    dependency graph durably below, so echoing every object ref, material hash,
+    query fingerprint, and immutable identity through the provider transcript
+    only duplicates authority and makes the context grow with the number of
+    queried objects.  The child receives one opaque, exact citation receipt;
+    result validation resolves it against the complete server-held graph.
+    """
+    omitted = {
+        "cache", "dependency_hash", "dependency_refs", "dependency_ref_count",
+        "dependency_refs_truncated", "identity", "observation_cursor",
+        "retention_class", "valid_while", "world_revision",
+    }
+    view = {str(key): value for key, value in result.items() if key not in omitted}
+    view["evidence_refs"] = [evidence_ref]
+    view["citation_receipt"] = evidence_ref
+    view["citation_rule"] = (
+        "For a non-unknown claims[] fact based on this result, copy "
+        "citation_receipt exactly into citations[]. object_ref, location_ref, "
+        "region_ref, and other subject IDs are not citations."
+    )
+    view["evidence_scope"] = "immutable_frozen_world_query"
+    view["result_token_estimate"] = max(1, len(canonical_json(view)) // 4)
+    return view
+
+
 def _http_json(method: str, path: str, body: Mapping[str, Any] | None = None) -> dict[str, Any]:
     base = _required("SMACX_REFERENCE_URL").rstrip("/")
     data = canonical_json(body).encode() if body is not None else None
@@ -120,6 +154,94 @@ def _reference_dependencies(result: Mapping[str, Any], action: str) -> list[dict
                      "hash": str(MISSION.get("corpus_revision") or "current")})
     unique = {(row["kind"], row["ref"]): row for row in rows}
     return list(unique.values())
+
+
+def _frozen_reference() -> dict[str, Any]:
+    path = Path(str(MISSION.get("reference_snapshot_path") or "")).resolve()
+    expected_root = (STORE.path.parent / "reference-snapshots").resolve()
+    try:
+        path.relative_to(expected_root)
+    except ValueError as exc:
+        raise SpecialistError("reference_snapshot_path_invalid") from exc
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise SpecialistError("reference_snapshot_unavailable") from exc
+    if hashlib.sha256(raw).hexdigest() != str(MISSION.get("reference_snapshot_hash") or ""):
+        raise SpecialistError("reference_snapshot_integrity_failure")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SpecialistError("reference_snapshot_invalid") from exc
+    if not isinstance(value, dict) or value.get("revision") != MISSION.get("corpus_revision"):
+        raise SpecialistError("reference_snapshot_revision_mismatch")
+    return value
+
+
+def _reference_page(action: str, *, query: str, document_id: str,
+                    collection_id: str, limit: int, max_content_tokens: int,
+                    continuation: str) -> dict[str, Any]:
+    snapshot = _frozen_reference()
+    documents = [item for item in snapshot.get("documents", ()) if isinstance(item, Mapping)]
+    collections = [item for item in snapshot.get("collections", ()) if isinstance(item, Mapping)]
+    limit = min(max(int(limit), 1), 16)
+    ceiling = min(max(int(max_content_tokens), 256), 4096)
+    if action == "get":
+        document = next((dict(item) for item in documents
+                         if str(item.get("document_id") or "") == document_id), None)
+        if document is None:
+            raise SpecialistError("reference_document_not_found")
+        body = str(document.get("body") or "")
+        match = re.fullmatch(r"body-(\d+)", continuation or "body-0")
+        if not match:
+            raise SpecialistError("invalid_reference_continuation")
+        start = int(match.group(1)); character_budget = max(256, ceiling * 4)
+        end = min(len(body), start + character_budget)
+        document["body"] = body[start:end]
+        document["body_offset"] = start
+        document["body_complete"] = end >= len(body)
+        return {"revision": snapshot["revision"], "document": document,
+                "continuation": None if end >= len(body) else f"body-{end}"}
+    if action == "search":
+        terms = set(re.findall(r"[a-z0-9]{2,}", query.casefold()))
+        if not terms:
+            raise SpecialistError("reference_query_required")
+        ranked = []
+        for item in documents:
+            title = str(item.get("title") or "")
+            description = str(item.get("description") or "")
+            body = str(item.get("body") or "")
+            title_terms = set(re.findall(r"[a-z0-9]{2,}", title.casefold()))
+            text_terms = set(re.findall(r"[a-z0-9]{2,}", (description + " " + body).casefold()))
+            score = 8 * len(terms & title_terms) + len(terms & text_terms)
+            if score:
+                ranked.append((score, title.casefold(), item))
+        rows = []
+        remaining = ceiling * 4
+        for _, _, item in sorted(ranked, key=lambda row: (-row[0], row[1]))[:limit]:
+            excerpt = str(item.get("body") or "")[:max(0, min(1200, remaining))]
+            row = {key: item.get(key) for key in (
+                "document_id", "title", "description", "collection_id",
+                "collection_path", "source_hash",
+            )}
+            row["excerpt"] = excerpt
+            remaining -= len(excerpt)
+            rows.append(row)
+            if remaining <= 0:
+                break
+        return {"revision": snapshot["revision"], "results": rows,
+                "continuation": None, "search_kind": "immutable_lexical"}
+    source = collections if action in {"topics", "tree"} else [
+        item for item in documents if str(item.get("collection_id") or "") == collection_id
+    ]
+    match = re.fullmatch(r"cursor-(\d+)", continuation or "cursor-0")
+    if not match:
+        raise SpecialistError("invalid_reference_continuation")
+    start = int(match.group(1)); page = [dict(item) for item in source[start:start + limit]]
+    next_cursor = start + len(page)
+    return {"revision": snapshot["revision"],
+            "collections" if action in {"topics", "tree"} else "documents": page,
+            "continuation": None if next_cursor >= len(source) else f"cursor-{next_cursor}"}
 
 
 def _frozen_world() -> tuple[WorldService, tempfile.TemporaryDirectory[str]]:
@@ -171,34 +293,31 @@ if MISSION["faculty"] == "reference":
     def reference_query(
         action: Literal["topics", "tree", "collection_documents", "search", "get"],
         query: str = "", document_id: str = "", collection_id: str = "",
-        limit: int = 8, max_content_tokens: int = 2048,
+        limit: int = 8, max_content_tokens: int = 2048, continuation: str = "",
     ) -> dict[str, Any]:
         sequence = _claim_call()
-        if action == "search":
-            result = _http_json("POST", "/api/search", {
-                "query": query[:2000], "top": min(max(limit, 1), 16),
-                "maxContentTokens": min(max(max_content_tokens, 256), 4096),
-                "includeContent": True,
-                "maxQueryTokens": 1024,
-            })
-        elif action == "get":
-            result = _http_json("GET", "/api/documents/" + quote(document_id, safe=""))
-        elif action == "collection_documents":
-            result = _http_json("GET", "/api/collections/" + quote(collection_id, safe="")
-                                + "/documents")
-        elif action == "tree":
-            result = _http_json("GET", "/api/tree?includeDocuments=false")
-        else:
-            result = _http_json("GET", "/api/topics")
+        result = _reference_page(
+            action, query=query[:2000], document_id=document_id,
+            collection_id=collection_id, limit=limit,
+            max_content_tokens=max_content_tokens, continuation=continuation,
+        )
         dependencies = _reference_dependencies(result, action)
         SERVICE.record_dependencies(ATTEMPT_ID, sequence, dependencies)
         _trace("mcp_call", {"sequence": sequence, "instrument": "reference_query",
                             "arguments": {"action": action, "query": query,
                                           "document_id": document_id,
-                                          "collection_id": collection_id, "limit": limit},
+                                          "collection_id": collection_id, "limit": limit,
+                                          "continuation": continuation},
                             "result": result, "dependencies": dependencies})
-        return {"ok": True, "evidence_refs": [row["ref"] for row in dependencies],
-                "result": result, "bounded": True}
+        evidence_refs = [row["ref"] for row in dependencies]
+        return {"ok": True, "evidence_refs": evidence_refs,
+                "citation_receipts": evidence_refs,
+                "citation_rule": (
+                    "For a non-unknown claims[] fact based on this result, copy at least "
+                    "one citation_receipts value exactly into citations[]. Document IDs, "
+                    "collection IDs, and other subject IDs are not citations."
+                ), "result": result, "bounded": True,
+                "remaining_evidence_calls": _remaining_calls(sequence)}
 
 else:
     mcp = MCPServer(
@@ -226,12 +345,20 @@ else:
             "continuation": continuation,
         }
         try:
+            # A disposable child is a context reducer, not a second sovereign
+            # carrying the full rich-tier world envelope.  Keep each frozen
+            # evidence page at the 64K world-budget tier even when the child
+            # model itself has a larger context window; it can use continuation
+            # or another focused query when more evidence is material.
+            specialist_world_context = min(
+                int(MISSION["context_token_ceiling"]), 65_536,
+            )
             result = WORLD.query(
                 mode=mode, subject_refs=subject_refs or (), origin_ref=origin_ref,
                 target_ref=target_ref, movement_profile_ref=movement_profile_ref,
                 radius=radius, since_cursor=since_cursor, detail=detail,
                 continuation=continuation,
-                context_length=int(MISSION["context_token_ceiling"]),
+                context_length=specialist_world_context,
             )
         except (WorldQueryError, ValueError) as exc:
             failed = {"ok": False, "error": str(exc),
@@ -245,13 +372,27 @@ else:
                               "detail": detail},
                 "result": failed, "dependencies": [],
             })
-            return failed
+            return {**failed, "remaining_evidence_calls": _remaining_calls(sequence)}
+        if not result.get("ok"):
+            # A typed failed lookup is feedback to the disposable analyst, not
+            # evidence about the frozen world.  Recording it as a world-query
+            # dependency would later replay an error without a dependency hash
+            # and falsely stale an otherwise valid mission result.
+            _trace("mcp_call", {
+                "sequence": sequence, "instrument": "world_query",
+                "arguments": query_payload, "result": result,
+                "dependencies": [],
+            })
+            return {**result, "evidence_refs": [],
+                    "immutable_world_view": str(MISSION["world_snapshot_id"]),
+                    "remaining_evidence_calls": _remaining_calls(sequence)}
         snapshot_ref = str(MISSION["world_snapshot_id"])
         dependencies = [{"kind": "world_snapshot", "ref": snapshot_ref,
                          "hash": str(MISSION["world_view_hash"])}]
+        query_ref = f"world-query:{MISSION_ID}:{sequence}"
         dependencies.append({
             "kind": "world_query",
-            "ref": f"world-query:{MISSION_ID}:{sequence}",
+            "ref": query_ref,
             "hash": str(result.get("dependency_hash") or content_hash(result)),
             "payload": query_payload,
         })
@@ -267,8 +408,9 @@ else:
         _trace("mcp_call", {"sequence": sequence, "instrument": "world_query",
                             "arguments": query_payload,
                             "result": result, "dependencies": dependencies})
-        return {**result, "evidence_refs": [row["ref"] for row in dependencies],
-                "immutable_world_view": snapshot_ref}
+        return {**_world_evidence_view(result, query_ref),
+                "immutable_world_view": snapshot_ref,
+                "remaining_evidence_calls": _remaining_calls(sequence)}
 
 
 if __name__ == "__main__":

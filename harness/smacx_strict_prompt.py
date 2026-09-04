@@ -426,8 +426,38 @@ def _install() -> None:
 
     # Specialists use the same Hermes runtime but must never receive the
     # sovereign request-tail context, attention lease, or semantic-GC hooks.
-    # Their system prompt is still replaced fail-closed by the hash above.
+    # Their provider wire retains only the newest assistant reasoning segment:
+    # this preserves immediate tool-loop continuity while preventing each
+    # disposable investigation from replaying every earlier scratch trace.
+    # Full provider trajectories remain available in the diagnostic trace.
     if specialist_mode:
+        import run_agent  # type: ignore
+
+        original_specialist_sanitize = run_agent.AIAgent._sanitize_api_messages
+
+        def compact_specialist_context(messages):  # noqa: ANN001
+            sanitized = original_specialist_sanitize(copy.deepcopy(messages))
+            if not isinstance(sanitized, list):
+                return sanitized
+            assistant_rows = [
+                index for index, message in enumerate(sanitized)
+                if isinstance(message, dict) and message.get("role") == "assistant"
+            ]
+            newest = assistant_rows[-1] if assistant_rows else -1
+            for index in assistant_rows:
+                if index == newest:
+                    continue
+                message = sanitized[index]
+                for field in ("reasoning", "reasoning_content", "reasoning_details"):
+                    message.pop(field, None)
+                content = message.get("content")
+                if isinstance(content, str):
+                    message["content"] = _without_historical_thinking(content)[0]
+            return sanitized
+
+        run_agent.AIAgent._sanitize_api_messages = staticmethod(
+            compact_specialist_context
+        )
         return
 
     # Hermes deliberately defaults reasoning echo off for unknown custom

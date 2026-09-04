@@ -1588,7 +1588,7 @@ def smac_world(
     movement_profile_ref: str = "mobility-land-default",
     radius: int = 3,
     since_cursor: int = 0,
-    detail: Literal["compact", "standard"] = "standard",
+    detail: Literal["compact", "standard", "deep"] = "standard",
     continuation: str = "",
 ) -> dict:
     """Provider-facing facade; internal calculators remain independently bounded."""
@@ -1668,10 +1668,7 @@ def smac_cognition(
             perspective_id=perspective_id,
         )
         projection_identity, projection = world._projection()
-        objects = {str(item["object_ref"]) for item in projection.get("objects", [])}
         refs = tuple(subject_refs or ())
-        if action not in {"watch_create", "watch_close"} and any(ref not in objects for ref in refs):
-            raise AttentionError("unknown_or_cross_perspective_subject_ref")
         turn_state = next((item for item in projection.get("objects", [])
                            if item.get("kind") == "turn_state"), {})
         turn_field = turn_state.get("fields", {}).get("turn", {})
@@ -1704,14 +1701,16 @@ def smac_cognition(
                     "cancelled_specialist_missions": cancelled}
         if not kind or not objective:
             raise AttentionError("operation_kind_and_objective_required")
+        dependencies = attention.semantic_dependency_hashes(projection)
+        if any(ref not in dependencies for ref in refs):
+            raise AttentionError("unknown_or_cross_perspective_subject_ref")
         return {"ok": True, **attention.upsert_operation(
             operation_id=operation_id or None, kind=kind, objective=objective,
             referenced_world_objects=refs,
             source_world_revision=int(projection["world_revision"]),
             source_world_epoch=projection_identity.world_epoch,
             source_dependency_hash=content_hash({
-                ref: content_hash(next(item for item in projection["objects"]
-                                       if item["object_ref"] == ref)) for ref in refs
+                ref: dependencies[ref] for ref in refs
             }),
             current_turn=current_turn, linked_plan_id=linked_plan_id or None,
             linked_goal_id=linked_goal_id or None, foreground=foreground,
@@ -2711,14 +2710,14 @@ def smac_memory(
 
 @mcp.tool(
     description=(
-        "Commission or inspect one disposable read-only evidence faculty. Use reference for "
-        "multi-hop mechanics research and world for broad context-heavy analysis; cheap bounded "
-        "mechanical questions remain direct smac_world calls. The platform chooses model, budgets, "
+        "Retrieve one small mechanics answer directly, or commission/inspect one disposable "
+        "read-only evidence faculty. Use direct_reference for a focused rule lookup, reference for "
+        "multi-hop mechanics research, and world for broad context-heavy analysis. The platform chooses model, budgets, "
         "deadline, retries, and execution class. Completion arrives through durable attention."
     )
 )
 def smac_investigate(
-    action: Literal["commission", "result", "retry", "cancel"],
+    action: Literal["direct_reference", "commission", "result", "retry", "cancel"],
     faculty: Literal["reference", "world"] = "world",
     objective: str = "",
     operation_id: str = "",
@@ -2732,6 +2731,23 @@ def smac_investigate(
             perspective_id=perspective_id,
         )
         service = SpecialistService(world.store.store, world.store, scope)
+        if action == "direct_reference":
+            if not objective.strip():
+                raise SpecialistError("reference_query_required")
+            direct = read_game_reference(
+                "search", query=objective[:2000], limit=4, include_body=True,
+                max_content_tokens=2048, max_query_tokens=512,
+            )
+            if not direct.get("ok"):
+                return direct
+            evidence = direct.get("evidence") if isinstance(direct.get("evidence"), list) else []
+            refs = [
+                f"reference:{item.get('document_id')}:{item.get('field', 'body')}"
+                for item in evidence if isinstance(item, dict) and item.get("document_id")
+            ][:16]
+            return {"ok": True, "mode": "direct_reference", "bounded": True,
+                    "result": direct, "evidence_refs": refs,
+                    "dependency_hash": content_hash(direct)}
         if action == "result":
             if not mission_id:
                 raise SpecialistError("mission_id_required")

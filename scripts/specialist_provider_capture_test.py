@@ -24,12 +24,17 @@ IMAGE = os.environ.get("SMACX_HERMES_IMAGE", "smacx-agent-harness:rebuild")
 
 
 def _seed_and_run(root: Path, base_url: str, reference_url: str) -> int:
+    import smacx_reference
     from smacx_specialist_supervisor import SpecialistSupervisor
     from smacx_specialists import SpecialistService
     from smacx_store import MemoryScope, SmacxStore
     from smacx_world_model import PerspectiveProjector
     from smacx_world_store import WorldStore
     from smacx_world_types import WorldIdentity, canonical_json
+
+    # Commission freezes the corpus before the disposable process starts, so
+    # bind the revision export endpoint in this isolated test process too.
+    smacx_reference.REFERENCE_URL = reference_url.rstrip("/")
 
     store = SmacxStore(root / "state.sqlite3")
     store.ensure_agent("agent-capture", "PRIVATE SOVEREIGN PERSONALITY")
@@ -142,11 +147,34 @@ def _seed_and_run(root: Path, base_url: str, reference_url: str) -> int:
             "SELECT mission_id,tool_calls,provider_calls,provider_tokens,trace_path "
             "FROM specialist_attempts ORDER BY started_unix"
         ).fetchall()]
-    if len(attempts) != 3 or [int(row["tool_calls"]) for row in attempts] != [2, 2, 4]:
+    if len(attempts) != 3 or [int(row["tool_calls"]) for row in attempts] != [3, 3, 4]:
         raise AssertionError(f"specialists did not perform iterative queries: {attempts}")
     if any(not row["trace_path"] or not Path(str(row["trace_path"])).is_file()
            for row in attempts):
         raise AssertionError("real specialist traces were not retained")
+    for row in attempts:
+        decoded = subprocess.run(
+            ["zstd", "-q", "-d", "-c", str(row["trace_path"])],
+            text=True, capture_output=True, check=True,
+        ).stdout
+        trace_rows = [json.loads(line) for line in decoded.splitlines() if line.strip()]
+        envelope = next((item for item in trace_rows
+                         if item.get("kind") == "mission_envelope"), None)
+        outcome = next((item for item in trace_rows
+                        if item.get("kind") == "attempt_outcome"), None)
+        validated = next((item for item in trace_rows
+                          if item.get("kind") == "validated_result"), None)
+        exchanges = outcome.get("provider_exchanges", []) if outcome else []
+        if not envelope or not validated or len(exchanges) < 3:
+            raise AssertionError("trace omitted mission/provider trajectory/validated result")
+        if not envelope["mission"].get("system_prompt_hash"):
+            raise AssertionError("trace omitted exact specialist prompt hash")
+        exchange_text = json.dumps(exchanges, separators=(",", ":"))
+        if '"tool_calls"' not in exchange_text or '"content"' not in exchange_text:
+            raise AssertionError("trace omitted assistant tool/reasoning/final trajectory")
+        if any(secret in decoded for secret in (
+                "PRIVATE SOVEREIGN PERSONALITY", "Bearer test", "sk-test")):
+            raise AssertionError("trace leaked sovereign or credential material")
     print(json.dumps({
         "passed": True, "mission_ids": mission_ids,
         "tool_calls": [int(row["tool_calls"]) for row in attempts],
@@ -166,6 +194,7 @@ def _completion(request: dict[str, Any], mission: dict[str, Any], call_count: in
             {"action": "search", "query": "air refuel sensors defense psi native"},
             {"action": "get", "document_id": "combined-doc"},
         ] if faculty == "reference" else [
+            {"mode": "base", "subject_refs": ["invented-world-ref"]},
             {"mode": "overview"},
             {"mode": "area", "origin_ref": "base-home", "radius": 2},
         ]
@@ -179,6 +208,7 @@ def _completion(request: dict[str, Any], mission: dict[str, Any], call_count: in
             "created": 0, "model": request.get("model"),
             "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
                 "role": "assistant", "content": None,
+                "reasoning_content": f"specialist-reasoning-{mission_id}-{call_count}",
                 "tool_calls": [{"id": f"call-{mission_id}-{call_count}",
                                 "type": "function", "function": {
                                     "name": tool_name,
@@ -196,6 +226,9 @@ def _completion(request: dict[str, Any], mission: dict[str, Any], call_count: in
         except json.JSONDecodeError:
             continue
         citations.extend(str(item) for item in payload.get("evidence_refs") or [])
+        if any(key in payload for key in (
+                "dependency_hash", "dependency_refs", "valid_while", "cache")):
+            raise AssertionError("specialist provider received internal world dependency metadata")
     citation = next((item for item in citations if item.startswith("world-query:")),
                     citations[0] if citations else "")
     result = {
@@ -214,7 +247,9 @@ def _completion(request: dict[str, Any], mission: dict[str, Any], call_count: in
         "id": f"capture-{mission_id}-final", "object": "chat.completion",
         "created": 0, "model": request.get("model"),
         "choices": [{"index": 0, "finish_reason": "stop",
-                     "message": {"role": "assistant", "content": json.dumps(result)}}],
+                     "message": {"role": "assistant", "content": json.dumps(result),
+                                 "reasoning_content":
+                                     f"specialist-reasoning-{mission_id}-final"}}],
         "usage": {"prompt_tokens": 120, "completion_tokens": 60, "total_tokens": 180},
     }
 
@@ -240,6 +275,25 @@ def main() -> int:
                 payload: dict[str, Any] = {"ok": True, "state": {
                     "revision": "fixture-revision",
                 }}
+            elif self.path == "/api/export/fixture-revision":
+                payload = {
+                    "revision": "fixture-revision",
+                    "collections": [{"collection_id": "mechanics",
+                                     "title": "Mechanics", "path": "Mechanics"}],
+                    "documents": [{
+                        "document_id": "transport-doc", "title": "Transport mechanics",
+                        "description": "Movement and embarkation.",
+                        "collection_id": "mechanics", "collection_path": "Mechanics",
+                        "source_hash": "transport-fixture",
+                        "body": "Transports carry ground units. Boarding and disembarking are guarded actions.",
+                    }, {
+                        "document_id": "combined-doc", "title": "Combat modifiers",
+                        "description": "Air, sensors, facilities, and psi.",
+                        "collection_id": "mechanics", "collection_path": "Mechanics",
+                        "source_hash": "combat-fixture",
+                        "body": "Air units require range and refueling. Sensors and defensive facilities modify engagements. Psi combat uses morale rules.",
+                    }],
+                }
             elif self.path.startswith("/api/documents/"):
                 document_id = self.path.rsplit("/", 1)[-1]
                 payload = {
@@ -294,8 +348,11 @@ def main() -> int:
                 "id": completion["id"], "object": "chat.completion.chunk",
                 "created": 0, "model": completion["model"],
                 "choices": [{"index": 0, "delta": {
-                    "role": "assistant", **({"tool_calls": message["tool_calls"]}
-                    if message.get("tool_calls") else {"content": message.get("content") or ""}),
+                    "role": "assistant",
+                    "reasoning_content": message.get("reasoning_content") or "",
+                    **({"tool_calls": message["tool_calls"]}
+                       if message.get("tool_calls") else
+                       {"content": message.get("content") or ""}),
                 }, "finish_reason": None}],
             }
             finish = {
@@ -341,9 +398,10 @@ def main() -> int:
     finally:
         server.shutdown(); server.server_close(); thread.join(2)
 
-    if len(captured) != 11:
-        raise AssertionError(f"expected eleven provider calls, got {len(captured)}")
+    if len(captured) != 13:
+        raise AssertionError(f"expected thirteen provider calls, got {len(captured)}")
     seen_missions: list[str] = []
+    mission_calls: dict[str, int] = {}
     stable_prefixes: dict[str, set[str]] = {"world": set(), "reference": set()}
     for index, request in enumerate(captured):
         tools = request.get("tools") or []
@@ -373,6 +431,19 @@ def main() -> int:
             "system": systems[0], "tools": tools,
         }, sort_keys=True, separators=(",", ":")).encode()).hexdigest())
         mission_id = str(mission.get("mission_id") or "")
+        mission_call = mission_calls.get(mission_id, 0)
+        reasoning_markers = [
+            f"specialist-reasoning-{mission_id}-{prior}"
+            for prior in range(mission_call)
+        ]
+        present_markers = [marker for marker in reasoning_markers if marker in serialized]
+        permitted_markers = reasoning_markers[-1:] if reasoning_markers else []
+        if any(marker not in permitted_markers for marker in present_markers):
+            raise AssertionError(
+                "specialist provider wire retained superseded reasoning: "
+                f"call={mission_call} present={present_markers} permitted={permitted_markers}"
+            )
+        mission_calls[mission_id] = mission_call + 1
         if any(previous in serialized for previous in seen_missions if previous != mission_id):
             raise AssertionError("disposable mission inherited a prior mission transcript")
         if mission_id and mission_id not in seen_missions:
@@ -387,6 +458,8 @@ def main() -> int:
         "exact_one_specialist_instrument": True, "no_sovereign_state": True,
         "trace_derived_citations": True, "sequential_process_state_isolation": True,
         "stable_child_prefixes": True,
+        "compressed_provider_trajectory_traces": True,
+        "failed_lookup_not_evidence_or_staleness": True,
         "captured_provider_calls": len(captured),
     }}, separators=(",", ":")))
     return 0

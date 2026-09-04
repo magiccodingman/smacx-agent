@@ -11,7 +11,7 @@ import uuid
 
 from smacx_journal import CampaignJournal
 from smacx_store import MemoryScope, SmacxStore
-from smacx_world_types import canonical_json, content_hash, require_ref
+from smacx_world_types import canonical_json, content_hash, material_hash, provider_safe, require_ref
 from smacx_world_store import WorldStore
 
 
@@ -219,7 +219,12 @@ class AttentionService:
                 ref: (object_dependency_hashes or {}).get(ref)
                 for ref in item["referenced_world_objects"]
             })
-            if current_world_epoch is not None and item.pop("source_world_epoch") != current_world_epoch:
+            missing_dependency = object_dependency_hashes is not None and any(
+                ref not in object_dependency_hashes
+                for ref in item["referenced_world_objects"]
+            )
+            if current_world_epoch is not None and item.pop("source_world_epoch") != current_world_epoch \
+                    or missing_dependency:
                 item["status"] = "invalid"
                 with self.store.transaction() as connection:
                     connection.execute(
@@ -499,8 +504,13 @@ class AttentionService:
                  self.scope.perspective_id),
             ).fetchone():
                 raise AttentionError("linked_goal_not_active")
-        expires = expires_turn if expires_turn is not None else \
-            (current_turn + 10 if current_turn is not None else None)
+        # Watches are attention preferences, not permanent automation. Even a
+        # caller-supplied far-future expiry must be renewed within ten turns.
+        renewal_ceiling = current_turn + 10 if current_turn is not None else None
+        expires = expires_turn if expires_turn is not None else renewal_ceiling
+        if renewal_ceiling is not None:
+            expires = min(int(expires), renewal_ceiling) if expires is not None \
+                else renewal_ceiling
         normalized = content_hash({"kind": watch_kind, "subjects": subjects,
                                    "predicate": predicate, "goal": linked_goal_id,
                                    "plan": linked_plan_id})
@@ -577,8 +587,9 @@ class AttentionService:
         with self.store._connect() as connection:
             rows = connection.execute(
                 "SELECT result_json FROM world_query_cache WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND world_epoch=?",
-                (*self._key(self.timeline_id), str(projection["identity"]["world_epoch"])),
+                "AND perspective_id=? AND timeline_id=? AND world_epoch=? AND world_revision=?",
+                (*self._key(self.timeline_id), str(projection["identity"]["world_epoch"]),
+                 int(projection["world_revision"])),
             ).fetchall()
         for row in rows:
             result = json.loads(row["result_json"])
@@ -599,6 +610,34 @@ class AttentionService:
                     }
         return registry
 
+    def semantic_dependency_hashes(
+        self, projection: Mapping[str, Any] | None = None,
+    ) -> dict[str, str]:
+        """Hash the current issued object/derived-ref registry materially.
+
+        Operations and watches may refer to both durable world objects and
+        ephemeral issued handles such as routes, rendezvous, frontiers,
+        theaters, and versioned regions. Query-cache history is not authority:
+        only handles reproducible at the active world revision are returned.
+        """
+        projection = projection or self.world_store.load(self.scope, self.timeline_id)
+        if not projection:
+            return {}
+        regions = [
+            *self.world_store.load_regions(self.scope, self.timeline_id,
+                                           "mobility-land-default"),
+            *self.world_store.load_regions(self.scope, self.timeline_id,
+                                           "mobility-sea-default"),
+        ]
+        result = {
+            str(item["object_ref"]): material_hash(item)
+            for item in projection.get("objects", ())
+            if isinstance(item, Mapping) and item.get("object_ref")
+        }
+        for ref, descriptor in self._semantic_registry(projection, regions).items():
+            result[str(ref)] = content_hash(provider_safe(descriptor))
+        return result
+
     def gc_watches(self, current_turn: int) -> int:
         projection = self.world_store.load(self.scope, self.timeline_id)
         current_epoch = str(projection["identity"]["world_epoch"]) if projection else ""
@@ -613,6 +652,10 @@ class AttentionService:
         for region in regions:
             for old in region.supersedes:
                 aliases.setdefault(old, []).append(region.region_ref)
+        registry = self._semantic_registry(projection, regions) if projection else {}
+        object_refs = {str(item.get("object_ref")) for item in projection.get("objects", ())
+                       if isinstance(item, Mapping)} if projection else set()
+        valid_refs = object_refs | {item.region_ref for item in regions} | set(registry)
         with self.store.transaction() as connection:
             rows = connection.execute(
                 "SELECT watch_id,subject_refs_json FROM world_watches WHERE match_id=? "
@@ -637,17 +680,24 @@ class AttentionService:
                         "UPDATE world_watches SET subject_refs_json=?,updated_unix=? WHERE watch_id=?",
                         (canonical_json(sorted(set(migrated))), time.time(), row["watch_id"]),
                     )
+                elif any(str(subject) not in valid_refs for subject in migrated):
+                    connection.execute(
+                        "UPDATE world_watches SET status='invalid',updated_unix=? WHERE watch_id=?",
+                        (time.time(), row["watch_id"]),
+                    )
         with self.store.transaction() as connection:
             expired = connection.execute(
                 "UPDATE world_watches SET status='expired',updated_unix=? WHERE match_id=? "
                 "AND agent_id=? AND perspective_id=? AND timeline_id=? AND status='active' "
                 "AND (world_epoch<>? OR "
                 "(expires_turn IS NOT NULL AND expires_turn<?) OR "
+                "(last_renewed_turn IS NOT NULL AND last_renewed_turn+10<?) OR "
                 "(linked_plan_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM plans p "
                 " WHERE p.plan_id=world_watches.linked_plan_id AND p.status='active')) OR "
                 "(linked_goal_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM goals g "
                 " WHERE g.goal_id=world_watches.linked_goal_id AND g.status='active')))",
-                (time.time(), *self._key(self.timeline_id), current_epoch, int(current_turn)),
+                (time.time(), *self._key(self.timeline_id), current_epoch,
+                 int(current_turn), int(current_turn)),
             ).rowcount
         if expired:
             self.journal.append(self.scope, "attention.watches_expired", {
@@ -817,7 +867,33 @@ class AttentionService:
         refs = tuple(dict.fromkeys(str(item) for item in referenced_world_objects))[:64]
         timeline = self.timeline_id
         now = time.time()
+        projection = self.world_store.load(self.scope, timeline)
+        if not projection:
+            raise AttentionError("world_projection_unavailable")
+        if str(projection["identity"]["world_epoch"]) != str(source_world_epoch) \
+                or int(projection["world_revision"]) != int(source_world_revision):
+            raise AttentionError("stale_operation_world_revision")
+        dependencies = self.semantic_dependency_hashes(projection)
+        if any(ref not in dependencies for ref in refs):
+            raise AttentionError("unknown_or_superseded_operation_ref")
+        expected_dependency_hash = content_hash({ref: dependencies[ref] for ref in refs})
+        if str(source_dependency_hash) != expected_dependency_hash:
+            raise AttentionError("stale_operation_dependency_hash")
         with self.store.transaction() as connection:
+            if linked_plan_id and not connection.execute(
+                "SELECT 1 FROM plans WHERE plan_id=? AND match_id=? AND agent_id=? "
+                "AND perspective_id=? AND status='active'",
+                (linked_plan_id, self.scope.match_id, self.scope.agent_id,
+                 self.scope.perspective_id),
+            ).fetchone():
+                raise AttentionError("linked_plan_not_active")
+            if linked_goal_id and not connection.execute(
+                "SELECT 1 FROM goals WHERE goal_id=? AND match_id=? AND agent_id=? "
+                "AND perspective_id=? AND status='active'",
+                (linked_goal_id, self.scope.match_id, self.scope.agent_id,
+                 self.scope.perspective_id),
+            ).fetchone():
+                raise AttentionError("linked_goal_not_active")
             if operation_id is None:
                 count = int(connection.execute(
                     "SELECT COUNT(*) AS count FROM cognitive_operations WHERE match_id=? "
@@ -897,12 +973,25 @@ class AttentionService:
                 "('active','stale') AND linked_plan_id IS NOT NULL AND last_renewed_turn<?",
                 (now, *self._key(self.timeline_id), int(current_turn)),
             ).rowcount
+            linked_expired = connection.execute(
+                "UPDATE cognitive_operations SET status='expired',foreground=0,updated_unix=? "
+                "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                "AND status IN ('active','stale') AND ((linked_plan_id IS NOT NULL AND "
+                "NOT EXISTS (SELECT 1 FROM plans p WHERE p.plan_id=cognitive_operations.linked_plan_id "
+                "AND p.status='active')) OR (linked_goal_id IS NOT NULL AND NOT EXISTS "
+                "(SELECT 1 FROM goals g WHERE g.goal_id=cognitive_operations.linked_goal_id "
+                "AND g.status='active')) OR (last_renewed_turn IS NOT NULL AND "
+                "last_renewed_turn+10<?))",
+                (now, *self._key(self.timeline_id), int(current_turn)),
+            ).rowcount
         watches = self.gc_watches(current_turn)
-        if expired or demoted:
+        if expired or demoted or linked_expired:
             self.journal.append(self.scope, "cognition.turn_scope_collected", {
-                "expired_operations": expired, "demoted_operations": demoted,
+                "expired_operations": expired + linked_expired,
+                "demoted_operations": demoted,
             }, turn=current_turn)
-        return {"expired_operations": expired, "demoted_operations": demoted,
+        return {"expired_operations": expired + linked_expired,
+                "demoted_operations": demoted,
                 "expired_watches": watches}
 
     def acquire_sovereign(self, episode_id: str, episode_mode: str,

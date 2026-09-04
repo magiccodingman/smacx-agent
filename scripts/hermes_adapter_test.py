@@ -8,7 +8,8 @@ from pathlib import Path
 import tempfile
 
 from smacx_hermes import (
-    HermesAdapterError, configure_from_descriptor, configure_profile, hermes_command,
+    COMMUNICATION_MCP_TOOLS, HermesAdapterError, configure_from_descriptor,
+    configure_profile, hermes_command,
 )
 from smacx_prompt import compose_player_system_prompt, prompt_sha256
 
@@ -45,6 +46,18 @@ def main() -> int:
             raise AssertionError("duplicate unscoped Hermes memory remained enabled")
         if config["mcp_servers"]["smacx"]["url"] != profile["mcp_url"]:
             raise AssertionError("Hermes profile was not bound to its exact MCP sidecar")
+        communication = config["mcp_servers"].get("smacx-communication", {})
+        if communication.get("url") != profile["mcp_url"] or set(
+                communication.get("tools", {}).get("include", ())) != set(
+                    COMMUNICATION_MCP_TOOLS):
+            raise AssertionError("communication registry was not explicitly allowlisted")
+        forbidden_communication = {
+            "smac_decision", "smac_choices", "smac_command", "smac_execute_choice",
+            "smac_launch", "smac_new_game", "smac_new_scenario", "smac_lan",
+            "smac_saves", "smac_stop", "smac_report_capability_gap",
+        }
+        if forbidden_communication.intersection(COMMUNICATION_MCP_TOOLS):
+            raise AssertionError("gameplay mutation schema entered communication registry")
         if config["model"].get("reasoning_echo") is not False:
             raise AssertionError("generic provider profiles unexpectedly replay reasoning")
         if (profile_root / ".env").stat().st_mode & 0o777 != 0o600:

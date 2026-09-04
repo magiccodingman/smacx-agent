@@ -13,9 +13,11 @@ from smacx_regions import Region, RegionBuilder
 from smacx_store import MemoryScope, SmacxStore
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
 from smacx_world import WorldService
-from smacx_world_model import PerspectiveProjector, SemanticLodProjector
+from smacx_world_model import PerspectiveProjector, SemanticLodProjector, net_deltas
 from smacx_world_store import WorldStore
-from smacx_world_types import WorldContractError, WorldIdentity, content_hash
+from smacx_world_types import (
+    WorldContractError, WorldIdentity, WorldObject, content_hash, material_hash,
+)
 
 
 def initialized(root: Path) -> tuple[SmacxStore, CampaignJournal, MemoryScope, WorldStore]:
@@ -78,6 +80,52 @@ def main() -> int:
         "location-a", "location-c", MobilityProfile("land-test", "land"))
     assert not hidden_gap.reachable and "unknown geography" in hidden_gap.uncertainty[0]
 
+    # VEH is a compact native array. Changing only its private row index must
+    # preserve owned/contact semantic identity and produce no player-visible
+    # change when the bridge's monotonic handle remains stable.
+    compaction_identity = WorldIdentity(
+        "match-compaction", "perspective-compaction", "timeline-main", "world-compaction",
+    )
+    before_compaction = bundle()
+    before_compaction["units"][0]["own_unit_ref"] = "own-unit-501"
+    before_compaction["units"][1]["native_observation_key"] = "vehicle-handle-901"
+    first_compaction = PerspectiveProjector(compaction_identity).project(
+        before_compaction, observation_sequence=1,
+    )
+    prior_compaction = {
+        "identity": compaction_identity.as_dict(), "world_revision": 1,
+        "objects": [item.as_dict(provider_safe=False) for item in first_compaction["objects"]],
+    }
+    after_compaction = bundle()
+    after_compaction["units"][0].update({"id": 2, "own_unit_ref": "own-unit-501"})
+    after_compaction["units"][1].update({
+        "id": 3, "native_observation_key": "vehicle-handle-901",
+    })
+    second_compaction = PerspectiveProjector(
+        compaction_identity, prior_projection=prior_compaction,
+    ).project(after_compaction, observation_sequence=2)
+    first_semantic = {
+        item.object_ref: item.as_dict(provider_safe=True)
+        for item in first_compaction["objects"]
+    }
+    second_semantic = {
+        item.object_ref: item.as_dict(provider_safe=True)
+        for item in second_compaction["objects"]
+    }
+    assert first_semantic == second_semantic
+    assert "own-unit-501" in second_semantic
+    assert next(ref for ref, item in second_semantic.items()
+                if item["kind"] == "foreign_contact") == next(
+                    ref for ref, item in first_semantic.items()
+                    if item["kind"] == "foreign_contact"
+                )
+    assert {
+        ref: material_hash(item) for ref, item in first_semantic.items()
+    } == {
+        ref: material_hash(item) for ref, item in second_semantic.items()
+    }
+    assert second_compaction["temporal_events"] == []
+
     with tempfile.TemporaryDirectory(prefix="smacx-world-") as temporary:
         root = Path(temporary)
         store, journal, scope, world_store = initialized(root)
@@ -107,6 +155,20 @@ def main() -> int:
         } == {item["object_ref"]: item for item in loaded["objects"]}
         assert next(item.object_ref for item in continued["objects"]
                     if item.kind == "foreign_contact" and item.status == "active") == contact["object_ref"]
+        later_bundle = bundle()
+        later_bundle.update({"turn": 13, "year": 2213})
+        reverified = PerspectiveProjector(identity, prior_projection=loaded).project(
+            later_bundle, observation_sequence=30,
+        )
+        reverified_contact = next(item for item in reverified["objects"]
+                                  if item.object_ref == contact["object_ref"])
+        assert reverified_contact.fields["hp"].first_known_turn == 12
+        assert reverified_contact.fields["hp"].last_verified_turn == 13
+        contact_deltas = [delta for delta in net_deltas(
+            loaded["objects"],
+            [item.as_dict(provider_safe=False) for item in reverified["objects"]],
+        ) if delta.get("object_ref") == contact["object_ref"]]
+        assert contact_deltas == []
         # Identity may cross tiles only when the native feed proves one
         # uninterrupted visible path.  This includes advance/retreat and ally
         # rendezvous trajectories; a bare reconciliation location change is
@@ -216,6 +278,54 @@ def main() -> int:
         repeated = service.query(mode="relation", origin_ref="base-alpha",
                                  target_ref="own-unit-7", context_length=65536)
         assert repeated["cache"]["hit"] is True
+        # Cache metadata belongs to the same whole-result ceiling, for every
+        # detail tier and on both miss and hit paths.
+        for detail, ceiling in (("compact", 512), ("standard", 2048), ("deep", 3276)):
+            first_budgeted = service.query(
+                mode="forces", detail=detail, context_length=65536,
+                continuation=f"cursor-{10 + ceiling}",
+            )
+            second_budgeted = service.query(
+                mode="forces", detail=detail, context_length=65536,
+                continuation=f"cursor-{10 + ceiling}",
+            )
+            assert first_budgeted["result_token_estimate"] <= ceiling
+            assert second_budgeted["result_token_estimate"] <= ceiling
+            assert second_budgeted.get("cache", {}).get("hit") is True
+
+        # Collector-private bookkeeping is not a strategic dependency. It may
+        # change without invalidating a provider result; material topology may
+        # not. This specifically guards subject-filtered route/relation caches.
+        internal_only = json.loads(json.dumps(loaded["objects"]))
+        internal_only[0].setdefault("metadata", {})["native_debug_counter"] = 999
+        world_store.replace_projection(
+            scope, identity, [WorldObject.from_dict(item) for item in internal_only], observation_cursor=3,
+            action_revision="action-private", continuity="complete",
+            journal_head_hash="0" * 64,
+        )
+        private_stable = service.query(
+            mode="relation", origin_ref="base-alpha", target_ref="own-unit-7",
+            context_length=65536,
+        )
+        assert private_stable["cache"]["hit"] is True
+        topology_changed = json.loads(json.dumps(internal_only))
+        location = next(item for item in topology_changed
+                        if item.get("object_ref") == "location-1")
+        location["fields"]["features"]["value"] = ["fungus"]
+        world_store.replace_projection(
+            scope, identity, [WorldObject.from_dict(item) for item in topology_changed], observation_cursor=4,
+            action_revision="action-material", continuity="complete",
+            journal_head_hash="0" * 64,
+        )
+        material_invalidated = service.query(
+            mode="relation", origin_ref="base-alpha", target_ref="own-unit-7",
+            context_length=65536,
+        )
+        assert material_invalidated["cache"]["hit"] is False
+        mode_results["route"] = service.query(
+            mode="route", origin_ref="own-unit-7", target_ref="base-alpha",
+            context_length=65536,
+        )
         first_anchor = service.anchor(context_length=65536)
         frontiers = first_anchor["payload"]["frontiers"]
         if not frontiers:
@@ -333,6 +443,19 @@ def main() -> int:
         route_watch = attention.create_watch(
             "route_disruption", [route_ref], {}, current_turn=12,
         )
+        # The same current issued derived handle is valid operation evidence.
+        current_projection = world_store.load(scope, identity.timeline_id)
+        assert current_projection is not None
+        route_dependencies = attention.semantic_dependency_hashes(current_projection)
+        route_operation = attention.upsert_operation(
+            operation_id=None, kind="route_review", objective="Review issued route",
+            referenced_world_objects=[route_ref],
+            source_world_revision=int(current_projection["world_revision"]),
+            source_world_epoch=str(current_projection["identity"]["world_epoch"]),
+            source_dependency_hash=content_hash({route_ref: route_dependencies[route_ref]}),
+            current_turn=12,
+        )
+        assert route_operation["status"] == "active"
         route_path = mode_results["route"]["route"]["path"]
         disrupted = attention.evaluate_watches([], temporal_events=[{
             "event_kind": "terrain_or_improvement_changed",
@@ -340,6 +463,26 @@ def main() -> int:
             "affected_location_refs": [route_path[0]],
         }], observation_cursor=5, turn=12)
         assert [item["watch_id"] for item in disrupted] == [route_watch["watch_id"]]
+
+        # Query-cache rows are merely issued-handle receipts, not permanent
+        # authority. Once the route receipt expires, both watch and operation
+        # lifecycle checks must reject/collect the derived reference.
+        with store.transaction() as connection:
+            connection.execute(
+                "DELETE FROM world_query_cache WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=?",
+                (scope.match_id, scope.agent_id, scope.perspective_id,
+                 identity.timeline_id),
+            )
+        route_state = attention.runtime_state(
+            current_world_revision=int(current_projection["world_revision"]),
+            current_world_epoch=str(current_projection["identity"]["world_epoch"]),
+            object_dependency_hashes=attention.semantic_dependency_hashes(current_projection),
+            current_turn=12,
+        )
+        assert route_operation["operation_id"] not in {
+            row["operation_id"] for row in route_state["operations"]
+        }
 
         rendezvous = service.query(
             mode="compare", subject_refs=["own-unit-7"], target_ref="base-alpha",
@@ -354,6 +497,67 @@ def main() -> int:
         }], observation_cursor=6, turn=12)
         assert [item["watch_id"] for item in rendezvous_progress] == [
             rendezvous_watch["watch_id"]]
+
+        # Exercise the real builder through persistence, merge, split, and
+        # empty-profile replacement. The prior-anchor component retains the
+        # oldest lineage; every detached component receives a fresh lineage.
+        persisted_profile = MobilityProfile("persisted-lineage", "land")
+        persisted_connected = PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare("persist-a", 0, 0, "land"),
+            KnownSquare("persist-b", 2, 0, "land"),
+            KnownSquare("persist-c", 4, 0, "land"),
+        ])
+        persisted_split = PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare("persist-a", 0, 0, "land"),
+            KnownSquare("persist-c", 4, 0, "land"),
+        ])
+        built_initial, _ = RegionBuilder().build(
+            persisted_connected, persisted_profile, world_revision=10,
+        )
+        world_store.save_regions(scope, identity.timeline_id, built_initial, 10)
+        loaded_initial = world_store.load_regions(
+            scope, identity.timeline_id, persisted_profile.profile_ref,
+        )
+        built_split, split_aliases = RegionBuilder().build(
+            persisted_split, persisted_profile, loaded_initial, world_revision=11,
+        )
+        assert len(built_split) == 2 and not split_aliases
+        initial_lineage = loaded_initial[0].lineage_ref
+        assert next(row for row in built_split if row.anchor_location_ref == "persist-a").lineage_ref \
+            == initial_lineage
+        detached_lineage = next(
+            row for row in built_split if row.anchor_location_ref == "persist-c"
+        ).lineage_ref
+        assert detached_lineage != initial_lineage
+        world_store.save_regions(scope, identity.timeline_id, built_split, 11)
+        loaded_split = world_store.load_regions(
+            scope, identity.timeline_id, persisted_profile.profile_ref,
+        )
+        built_merge, _ = RegionBuilder().build(
+            persisted_connected, persisted_profile, loaded_split, world_revision=12,
+        )
+        assert len(built_merge) == 1
+        assert built_merge[0].lineage_ref == initial_lineage
+        assert built_merge[0].lineage_birth_revision == 10
+        world_store.save_regions(scope, identity.timeline_id, built_merge, 12)
+        loaded_merge = world_store.load_regions(
+            scope, identity.timeline_id, persisted_profile.profile_ref,
+        )
+        built_second_split, _ = RegionBuilder().build(
+            persisted_split, persisted_profile, loaded_merge, world_revision=13,
+        )
+        second_detached = next(
+            row for row in built_second_split if row.anchor_location_ref == "persist-c"
+        )
+        assert second_detached.lineage_ref not in {initial_lineage, detached_lineage}
+        world_store.save_regions(scope, identity.timeline_id, built_second_split, 13)
+        world_store.save_regions(
+            scope, identity.timeline_id, [], 14,
+            mobility_profiles=[persisted_profile.profile_ref],
+        )
+        assert world_store.load_regions(
+            scope, identity.timeline_id, persisted_profile.profile_ref,
+        ) == []
 
         # One-to-one region supersession migrates; a split is ambiguous and
         # invalidates instead of silently choosing a new region.
@@ -432,11 +636,18 @@ def main() -> int:
             )}
         assert statuses == {ttl_watch["watch_id"]: "expired",
                             linked_watch["watch_id"]: "expired"}
+        operation_refs = ["base-alpha"]
+        current_projection = world_store.load(scope, identity.timeline_id)
+        assert current_projection is not None
+        dependencies = attention.semantic_dependency_hashes()
         operation = attention.upsert_operation(
             operation_id=None, kind="compare_bases", objective="Compare defense windows",
-            referenced_world_objects=["base-alpha"], source_world_revision=1,
-            source_world_epoch="world-test",
-            source_dependency_hash=content_hash({"base-alpha": "test"}),
+            referenced_world_objects=operation_refs,
+            source_world_revision=int(current_projection["world_revision"]),
+            source_world_epoch=str(current_projection["identity"]["world_epoch"]),
+            source_dependency_hash=content_hash({
+                ref: dependencies[ref] for ref in operation_refs
+            }),
             current_turn=12,
         )
         assert operation["foreground"]
@@ -468,7 +679,10 @@ def main() -> int:
         "frontier_temporal_watch": True,
         "route_disruption_watch": True, "rendezvous_watch": True,
         "region_watch_migration_split_and_merge": True,
+        "region_builder_persistence_split_merge_split": True,
         "watch_ttl_and_plan_cleanup": True,
+        "native_row_compaction_semantically_inert": True,
+        "first_known_preserved_on_reverification": True,
     }}, separators=(",", ":")))
     return 0
 

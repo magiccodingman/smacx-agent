@@ -6,26 +6,26 @@ conversation text, saves, credentials, or private endpoints.
 
 | Gate | Result |
 | --- | ---: |
-| Small quiet 64K anchor | 615 estimated tokens |
-| Huge quiet 64K anchor | 617 estimated tokens |
-| Huge quiet growth | 0.325% for 100× as many tiles |
-| Huge quiet 256K anchor | 617 estimated tokens |
-| Huge fragmented 64K anchor | 3,307 estimated tokens; 3,176 regions explicitly omitted |
-| Huge chaotic 64K anchor | 5,976 estimated tokens |
-| Huge chaotic 256K anchor | 15,980 estimated tokens |
+| Small quiet 64K anchor | 622 estimated tokens |
+| Huge quiet 64K anchor | 624 estimated tokens |
+| Huge quiet growth | 0.322% for 100× as many tiles |
+| Huge quiet 256K anchor | 624 estimated tokens |
+| Huge fragmented 64K anchor | 3,482 estimated tokens; 3,176 regions explicitly omitted |
+| Huge chaotic 64K anchor | 5,885 estimated tokens |
+| Huge chaotic 256K anchor | 15,989 estimated tokens |
 | Large-cognition 64K complete runtime context | 3,725 estimated tokens |
-| Same strategic truth at 256K | 7,094 estimated tokens |
-| Huge chaotic 256K complete runtime context | 21,979 estimated tokens: 15,918 anchor, 5,766 cognition, 26 attention |
+| Same strategic truth at 256K | 7,095 estimated tokens |
+| Huge chaotic 256K complete runtime context | 24,798 estimated tokens: 15,262 anchor, 5,766 cognition, 3,500 attention |
 | Mature notebook scale | 240 notes of approximately 24KB each; metadata-only list/search and targeted full get remained bounded |
 | Semantic GC 50%-crossing gate | 45,697 → 2,436 estimated provider-wire tokens before Hermes generic compression |
 | Note/memory-heavy 500-action gate | 1,074,269 → 13,185 estimated provider-wire tokens with durable write receipts |
-| `smac_world` serialized schema | 1,468 bytes; 490 conservative tokens |
-| v6 system prompt | 5,239 bytes; 1,747 conservative tokens |
+| `smac_world` serialized schema | 1,475 bytes; 492 conservative tokens |
+| v6 system prompt | 5,280 bytes; 1,760 conservative tokens; 1,117 exact Qwen tokens |
 | Managed provider tools | 15 |
-| Live stable-prefix second request | 21,424 locally cached tokens of 23,843 prompt tokens |
-| Live Hermes world specialist | 4 provider calls, 10 world queries, 291,432 cumulative replay tokens, 93,740 peak prompt tokens, 5,394-byte strict result, 54.869 seconds |
-| Real-game no-timer specialist | accepted; 101.386 seconds; native bridge probe 182 ms; native turn unchanged; completion delivered through durable attention |
-| Real-game no-timer sovereign action | 5 calls; 46,036 input, 1,018 output, 479 reasoning tokens; guarded semantic revision advanced |
+| Live stable-prefix second request | 24,720 locally cached tokens of 26,643 prompt tokens |
+| Live Hermes world specialist | 3 provider calls, 10 world queries, 230,482 cumulative replay tokens, 98,417 peak prompt tokens, 5,435-byte strict result, 81.716 seconds |
+| Real-game no-timer specialist | accepted; 4 provider calls, 8 world queries, 198,623 cumulative replay tokens, 50,130 peak prompt tokens, 38.484 seconds; native bridge probe 192 ms; native turn unchanged |
+| Real-game no-timer sovereign action | 5 calls; 43,784 input, 1,519 output, 1,022 reasoning tokens; guarded semantic revision advanced |
 | Native bridge build | current worker image built successfully, including the 32-bit bridge stage |
 | .NET tests | 63 passed |
 
@@ -42,9 +42,9 @@ children against a recording provider and proves iterative world/reference
 retrieval, exactly one faculty tool, stable system/tool prefixes, trace-derived
 citations, and no cross-mission or sovereign state. The independent live test
 uses the configured Qwen provider and immutable world snapshot. It accepted a
-strict result with zero sovereign-history rows. The 291,432-token figure sums
-replayed prompt plus completion usage across four requests; the largest single
-prompt was 93,740 tokens. This is aggregate inference cost, not simultaneous
+strict result with zero sovereign-history rows. The 230,482-token figure sums
+replayed prompt plus completion usage across three requests; the largest single
+prompt was 98,417 tokens. This is aggregate inference cost, not simultaneous
 sovereign context occupancy.
 
 `scripts/runtime_context_contract_test.py` measures the complete request-only
@@ -73,21 +73,39 @@ verified a checkpoint, killed the native process, recovered it without UI
 input, and confirmed the restored turn. It then commissioned a real disposable
 Hermes world analyst over a frozen native perspective. The child completed
 without changing the native turn, while an independent semantic-snapshot probe
-returned in 182 ms, and its completion was delivered through the repaired
+returned in 192 ms, and its completion was delivered through the repaired
 at-least-once attention channel. A managed low-reasoning Hermes/Qwen seat then
 executed an opaque legal choice that advanced the native semantic revision. Its
 session and live worker volume survived a verified backup, and parking removed
 the sidecar. The run also queried the real native Unity Survey and current
 Governor fields and the native owned-orbital and completed-project global
 adapters before recovery. The sovereign action made five provider calls and
-used 46,036 input, 1,018 output, and 479 reasoning tokens.
+used 43,784 input, 1,519 output, and 1,022 reasoning tokens.
 The fixture is self-cleaning and never used the developer's normal portal stack
 or desktop.
 
-Pact/infiltration intelligence, Secret Project/victory-race intelligence, and
-orbital systems remain explicitly **partial** in the Game Semantics Coverage
-Matrix. The implemented native subsets and their field-level provenance are
-tested; unadapted stock report surfaces are not represented as complete.
+The completed global pipeline carries owned systems, exact Pact/infiltration/
+Governor/Empath Guild report entitlements, observed public Secret Project race
+events, orbital state, ecology, victory posture, native-life ontology, base
+radius/yields/facilities, support, convoy, and transport state from native-shaped
+input through projection, `smac_world`, anchor, runtime context, and frozen
+specialist snapshot. Unknown rival state remains unknown.
+
+Production-shaped collector measurements were:
+
+| Collector case | Initial / unchanged wall time | Bridge calls | Maximum UI-probe gap |
+| --- | ---: | ---: | ---: |
+| Small quiet | 264 / 76 ms | 11 | 17 ms |
+| Stock Huge quiet | 2,624 / 1,448 ms | 35 | 72 ms |
+| Stock Huge active | 3,056 / 1,628 ms | 36 | 78 ms |
+| 25,600-square custom quiet | 20,245 / 6,415 ms | 110 | 287 ms |
+| 768-event overflow/reconciliation | 904 / 266 ms | 16 initial; 14 unchanged | 17 ms |
+
+The overflow case drained all 768 native events through three feed pages,
+reported the deliberate continuity gap, left no native backlog, and retained
+zero unchanged projection-object writes. The 25,600-square custom case is a
+stress fixture beyond the stock Huge map, remains below the 30-second hard gate,
+and does not block native/UI responsiveness.
 
 An earlier exploratory run of the same no-timer path continued from turn 1 to
 turn 3 before the integration fixture was tightened to stop on an observed
@@ -96,11 +114,13 @@ That longer sample made 34 provider calls and used 323,801 input, 7,498 output,
 and 3,976 reasoning tokens. These are cumulative provider totals, not active
 context occupancy, and are recorded only as directional integration evidence.
 
-During live acceptance, the fixture exposed and the rebuild fixed four real
+During live acceptance, the fixture exposed and the rebuild fixed six real
 integration defects: the MCP sidecar lacked its exact process-session binding,
 the collector used obsolete bridge operation names, the MCP runtime helper was
 missing two local utilities, and Docker's non-TTY multiplexed log framing was
-being mistaken for invalid checkpoint JSON. Each now has a deterministic
+being mistaken for invalid checkpoint JSON. It also caught an incomplete
+authoritative base page and shell-launcher handling for the pinned Hermes entry
+point. Each now has a deterministic
 regression contract in addition to the live test.
 
 The historical no-timer gameplay report remains separately documented in

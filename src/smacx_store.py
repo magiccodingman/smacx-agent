@@ -600,6 +600,7 @@ CREATE TABLE world_regions (
     anchor_location_ref TEXT NOT NULL,
     location_refs_json TEXT NOT NULL,
     supersedes_json TEXT NOT NULL,
+    lineage_birth_revision INTEGER NOT NULL,
     updated_world_revision INTEGER NOT NULL,
     PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id, mobility_profile_ref, region_ref)
 );
@@ -649,6 +650,13 @@ CREATE TABLE world_snapshot_pins (
     owner_id TEXT NOT NULL,
     pinned_unix REAL NOT NULL,
     PRIMARY KEY (snapshot_id, owner_kind, owner_id)
+);
+
+CREATE TABLE campaign_checkpoint_generations (
+    match_id TEXT PRIMARY KEY REFERENCES matches(match_id) ON DELETE CASCADE,
+    generation INTEGER NOT NULL CHECK (generation >= 0),
+    checkpoint_id TEXT,
+    completed_unix REAL NOT NULL
 );
 
 CREATE TABLE world_anchors (
@@ -832,7 +840,7 @@ CREATE TABLE specialist_missions (
     world_epoch TEXT NOT NULL,
     source_world_revision INTEGER NOT NULL,
     observation_cursor INTEGER NOT NULL,
-    world_snapshot_id TEXT REFERENCES world_snapshots(snapshot_id),
+    world_snapshot_id TEXT,
     world_view_hash TEXT,
     faculty TEXT NOT NULL CHECK (faculty IN ('reference','world')),
     normalized_objective TEXT NOT NULL,
@@ -840,6 +848,8 @@ CREATE TABLE specialist_missions (
     linked_operation_id TEXT,
     parent_episode_id TEXT,
     corpus_revision TEXT,
+    reference_snapshot_path TEXT,
+    reference_snapshot_hash TEXT,
     system_prompt_version TEXT NOT NULL,
     system_prompt_hash TEXT NOT NULL,
     tool_contract_version TEXT NOT NULL,
@@ -859,6 +869,7 @@ CREATE TABLE specialist_missions (
     status TEXT NOT NULL CHECK (status IN ('queued','active','retry_wait','accepted','stale','failed','cancelled')),
     result_scope TEXT NOT NULL CHECK (result_scope IN ('query','operation','turn')),
     result_json TEXT,
+    result_receipt_json TEXT,
     result_hash TEXT,
     result_preview TEXT,
     accepted_attempt_id TEXT,
@@ -1274,7 +1285,7 @@ INITIAL_SCHEMA = "\n".join((
     INITIAL_SCHEMA_HARNESS,
 ))
 SCHEMA_REVISION = 1
-CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260903-sovereign-world-specialist-dependencies"
+CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260903-world-specialist-checkpoint-generations"
 
 
 def _new_id(kind: str) -> str:
@@ -1516,6 +1527,43 @@ class SmacxStore:
                 (match_id, installation_id, display_name, mode, ruleset_id, _json(metadata), now, now),
             )
             return dict(connection.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone())
+
+    def checkpoint_generation(self, match_id: str) -> int:
+        """Return the latest fully published recovery-checkpoint generation."""
+        _require_id(match_id, "match_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT generation FROM campaign_checkpoint_generations WHERE match_id=?",
+                (match_id,),
+            ).fetchone()
+        return int(row["generation"]) if row else 0
+
+    def complete_checkpoint_generation(self, match_id: str, checkpoint_id: str) -> int:
+        """Atomically publish one monotonic generation after a checkpoint is complete.
+
+        Re-publishing the same checkpoint id is idempotent.  This counter is
+        deliberately independent from world/specialist snapshots: only a
+        complete native + journal + cognition recovery boundary advances it.
+        """
+        _require_id(match_id, "match_id")
+        _require_id(checkpoint_id, "checkpoint_id")
+        now = time.time()
+        with self.transaction() as connection:
+            existing = connection.execute(
+                "SELECT generation,checkpoint_id FROM campaign_checkpoint_generations "
+                "WHERE match_id=?", (match_id,),
+            ).fetchone()
+            if existing and str(existing["checkpoint_id"] or "") == checkpoint_id:
+                return int(existing["generation"])
+            generation = int(existing["generation"] if existing else 0) + 1
+            connection.execute(
+                "INSERT INTO campaign_checkpoint_generations(match_id,generation,checkpoint_id,"
+                "completed_unix) VALUES(?,?,?,?) ON CONFLICT(match_id) DO UPDATE SET "
+                "generation=excluded.generation,checkpoint_id=excluded.checkpoint_id,"
+                "completed_unix=excluded.completed_unix",
+                (match_id, generation, checkpoint_id, now),
+            )
+        return generation
 
     def create_perspective(
         self,

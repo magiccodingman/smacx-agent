@@ -225,6 +225,8 @@ class AttemptProviderProxy:
     def __init__(self, upstream_base_url: str, meter: ProviderLeaseMeter) -> None:
         self.upstream_base_url = upstream_base_url.rstrip("/")
         self.meter = meter
+        self._trace_lock = threading.RLock()
+        self._trace_exchanges: list[dict[str, Any]] = []
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -273,6 +275,33 @@ class AttemptProviderProxy:
                     self._error(502, "provider_transport_failed")
                     return
                 content_type = response_headers.get("Content-Type", "application/json")
+                try:
+                    request_capture: Any = json.loads(body)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    request_capture = {"unparsed_bytes": len(body)}
+                try:
+                    if "text/event-stream" in content_type:
+                        response_capture = []
+                        for line in response_body.splitlines():
+                            if not line.startswith(b"data: ") or line == b"data: [DONE]":
+                                continue
+                            try:
+                                response_capture.append(json.loads(line[6:]))
+                            except json.JSONDecodeError:
+                                response_capture.append({"unparsed_event_bytes": len(line)})
+                    else:
+                        response_capture = json.loads(response_body)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    response_capture = {"unparsed_bytes": len(response_body)}
+                with owner._trace_lock:
+                    owner._trace_exchanges.append({
+                        "kind": "provider_exchange",
+                        "sequence": len(owner._trace_exchanges) + 1,
+                        "path": self.path,
+                        "status": int(status),
+                        "request": request_capture,
+                        "response": response_capture,
+                    })
                 if 200 <= status < 300:
                     try:
                         usage = (_usage_from_sse(response_body)
@@ -302,6 +331,11 @@ class AttemptProviderProxy:
 
     def start(self) -> None:
         self.thread.start()
+
+    def trace_exchanges(self) -> list[dict[str, Any]]:
+        """Return provider-visible requests and replies for diagnostic traces."""
+        with self._trace_lock:
+            return [dict(item) for item in self._trace_exchanges]
 
     def close(self) -> None:
         self.server.shutdown()

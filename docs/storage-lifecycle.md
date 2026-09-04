@@ -137,6 +137,13 @@ snapshot. That snapshot is a replay accelerator, never a second source of
 truth. A checksum, version, or journal-head mismatch discards it and rebuilds
 the projection from authoritative journal evidence.
 
+Disposable specialist world snapshots use the same content-addressed format but
+carry only a mission pin. Completion, cancellation, failure, rollback, and
+retention release that pin; a zero-pin snapshot with no retained checkpoint or
+recovery owner is collected with its content file. Checkpoint-owned snapshots
+remain governed by checkpoint retention. This keeps repeated Huge-world
+investigations storage-bounded without weakening retry or recovery.
+
 Checkpoint recovery uses an
 explicit child timeline anchored to an immutable parent event hash and native
 save digest, rotates native sessions, restores Hermes, and rebuilds the derived

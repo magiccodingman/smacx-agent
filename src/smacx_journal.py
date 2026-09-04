@@ -624,13 +624,17 @@ class CampaignJournal:
         elif kind == "game.action":
             state["recent_actions"].append(payload)
             state["recent_actions"] = state["recent_actions"][-100:]
-        elif kind == "observation.world_object":
-            object_ref = str(payload.get("object_ref") or "")
-            change = str(payload.get("change") or "")
-            if object_ref and change == "removed":
-                state["world_objects"].pop(object_ref, None)
-            elif object_ref and isinstance(payload.get("current"), Mapping):
-                state["world_objects"][object_ref] = dict(payload["current"])
+        elif kind in {"observation.world_object", "observation.world_batch"}:
+            changes = payload.get("deltas") if kind.endswith("world_batch") else [payload]
+            for change_payload in changes if isinstance(changes, list) else ():
+                if not isinstance(change_payload, Mapping):
+                    continue
+                object_ref = str(change_payload.get("object_ref") or "")
+                change = str(change_payload.get("change") or "")
+                if object_ref and change == "removed":
+                    state["world_objects"].pop(object_ref, None)
+                elif object_ref and isinstance(change_payload.get("current"), Mapping):
+                    state["world_objects"][object_ref] = dict(change_payload["current"])
             state["world_observation_cursor"] = max(
                 int(state.get("world_observation_cursor") or 0),
                 int(payload.get("observation_sequence") or 0),

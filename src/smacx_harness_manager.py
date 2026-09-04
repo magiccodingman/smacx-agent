@@ -418,11 +418,13 @@ class HarnessManager:
         prompt_hash = str(profile.get("metadata", {}).get("system_prompt_sha256") or "")
         if len(prompt_hash) != 64:
             raise HarnessManagerError("managed_system_prompt_hash_missing")
+        toolset = ("smacx-communication" if episode_mode == "communication"
+                   else str(policy.get("toolsets", "smacx")))
         command = [
             "-p", profile_id, "chat", "--continue", str(run["match_id"]),
             "--create-if-missing", "--in", workspace,
             "--reasoning", str(profile["reasoning_effort"]),
-            "--toolsets", str(policy.get("toolsets", "smacx")),
+            "--toolsets", toolset,
             "--max-turns", str(policy.get("max_turns", 256)),
             "--run-budget", str(policy.get("run_budget_seconds", 3600)),
             "--pass-session-id", "--query", prompt,

@@ -11,6 +11,8 @@ import subprocess
 import tempfile
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
 
 from smacx_journal import CampaignJournal
 from smacx_specialist_supervisor import SpecialistSupervisor
@@ -19,6 +21,7 @@ from smacx_store import MemoryScope, SmacxStore
 from smacx_world_model import PerspectiveProjector
 from smacx_world_store import WorldStore
 from smacx_world_types import WorldIdentity, canonical_json
+import smacx_reference
 
 
 FAKE_HERMES = r'''#!/usr/bin/env python3
@@ -75,6 +78,30 @@ print(json.dumps({
     "claims": [], "limitations": [], "unresolved_questions": []
 }))
 '''
+
+
+class ReferenceFixtureHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+        if not self.path.startswith("/api/export/"):
+            self.send_error(404)
+            return
+        revision = unquote(self.path.removeprefix("/api/export/"))
+        body = canonical_json({
+            "revision": revision,
+            "collections": [{"collection_id": "rules", "title": "Rules"}],
+            "documents": [{"document_id": "movement", "title": "Movement",
+                           "description": "Fixture", "collection_id": "rules",
+                           "collection_path": "Rules", "source_hash": "fixture",
+                           "body": "Road movement is mechanically bounded."}],
+        }).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args) -> None:
+        return
 
 
 def seed(root: Path) -> tuple[SmacxStore, WorldStore, MemoryScope, SpecialistService]:
@@ -145,6 +172,15 @@ def supervisor(root: Path, store: SmacxStore, worlds: WorldStore) -> SpecialistS
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="smacx-specialist-supervisor-") as raw:
         root = Path(raw)
+        reference_server = ThreadingHTTPServer(("127.0.0.1", 0), ReferenceFixtureHandler)
+        reference_thread = threading.Thread(
+            target=reference_server.serve_forever, daemon=True,
+        )
+        reference_thread.start()
+        previous_reference_url = smacx_reference.REFERENCE_URL
+        smacx_reference.REFERENCE_URL = (
+            f"http://127.0.0.1:{reference_server.server_address[1]}"
+        )
         store, worlds, scope, service = seed(root)
         fake = root / "fake_hermes.py"
         fake.write_text(FAKE_HERMES, encoding="utf-8")
@@ -170,6 +206,16 @@ def main() -> int:
             assert list(servers) == ["specialist-world"]
             assert config["platform_toolsets"]["cli"] == ["specialist-world"]
             assert config["memory"] == {"memory_enabled": False, "user_profile_enabled": False}
+            # Published-result size and provider-call reasoning headroom are
+            # separate hard bounds. A small final JSON ceiling must not starve
+            # the disposable Hermes tool/reasoning loop.
+            assert config["model"]["max_tokens"] == 16_384
+            with store._connect() as connection:
+                first_mission_row = connection.execute(
+                    "SELECT output_token_budget FROM specialist_missions WHERE mission_id=?",
+                    (first["mission_id"],),
+                ).fetchone()
+            assert int(first_mission_row["output_token_budget"]) < config["model"]["max_tokens"]
             serialized = canonical_json(first_capture)
             assert "Sovereign Secret Personality" not in serialized
             assert "SMACX_RUNTIME_CONTEXT" not in serialized
@@ -481,8 +527,26 @@ def main() -> int:
                     "WHERE attempt_id=?", (accepted_traces[-1]["attempt_id"],),
                 )
                 connection.execute(
-                    "UPDATE specialist_trace_manifests SET checkpoint_generation=10 "
+                    "UPDATE specialist_trace_manifests SET checkpoint_generation=20 "
                     "WHERE attempt_id=?", (failed_traces[0]["attempt_id"],),
+                )
+            # Disposable world snapshots are not campaign checkpoints and do
+            # not age traces. Only completed recovery boundaries advance the
+            # authoritative monotonic generation.
+            generation_before = store.checkpoint_generation(scope.match_id)
+            for index in range(5):
+                projection = worlds.load(scope, store.active_timeline_id(scope))
+                assert projection is not None
+                identity = WorldIdentity(**projection["identity"])
+                worlds.snapshot(
+                    scope, identity, journal_head_hash="0" * 64,
+                    journal_sequence=index,
+                    calculator_versions={"fixture": "1"},
+                )
+            assert store.checkpoint_generation(scope.match_id) == generation_before
+            for generation in range(40):
+                store.complete_checkpoint_generation(
+                    scope.match_id, f"checkpoint-retention-{generation}",
                 )
             gc = trace_store.gc(store, success_generations=10, failed_generations=25,
                                 byte_ceiling=16 * 1024 * 1024)
@@ -501,6 +565,10 @@ def main() -> int:
             )
             assert high["removed"] == 0 and high["bytes_retained"] == retained_before
         finally:
+            reference_server.shutdown()
+            reference_server.server_close()
+            reference_thread.join(2)
+            smacx_reference.REFERENCE_URL = previous_reference_url
             for name, value in prior.items():
                 if value is None:
                     os.environ.pop(name, None)

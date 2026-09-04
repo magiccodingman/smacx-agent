@@ -20,6 +20,7 @@ class EntitlementChannel(str, Enum):
     PACT = "pact_shared"
     INFILTRATION = "infiltration"
     GOVERNOR = "governor"
+    PROJECT_INTELLIGENCE = "project_intelligence"
     SATELLITE = "satellite_report"
     PUBLIC = "public_report"
     SCENARIO = "scenario"
@@ -31,6 +32,7 @@ class PerspectiveEntitlements:
     faction_ref: str
     unity_survey: bool = False
     governor: bool = False
+    project_intelligence: bool = False
     pact_factions: frozenset[str] = frozenset()
     infiltrated_factions: frozenset[str] = frozenset()
     satellite_channels: frozenset[str] = frozenset()
@@ -55,6 +57,8 @@ class PerspectiveEntitlements:
             return owner_ref in self.infiltrated_factions
         if kind == EntitlementChannel.GOVERNOR:
             return self.governor
+        if kind == EntitlementChannel.PROJECT_INTELLIGENCE:
+            return self.project_intelligence
         if kind == EntitlementChannel.SATELLITE:
             return subject in self.satellite_channels
         if kind == EntitlementChannel.SCENARIO:

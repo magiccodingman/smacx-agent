@@ -20,6 +20,13 @@ The sovereign sees one compact tool, `smac_investigate`:
 The sovereign cannot select a provider, model, raw toolset, capability, budget,
 deadline, retry count, or internal execution class.
 
+`action=direct_reference` is the bounded exception for one focused mechanics
+lookup. It returns at most four compact results under a 2,048-token content
+ceiling through the same `smac_investigate` schema and does not create a child.
+Collection and large-document reads use bounded excerpts and monotonic
+continuations. Multi-document or context-heavy synthesis remains specialist
+work.
+
 A mission may be useful for a multi-base defense comparison, a route/rendezvous
 analysis, or research that spans several mechanics articles. It is not required
 for a routine unit or modal decision. Bounded direct `smac_world` queries remain
@@ -69,6 +76,14 @@ limitations[]
 unresolved_questions[]
 ```
 
+Every material non-unknown claim must cite an exact evidence reference actually
+returned during that attempt; an empty citation list is invalid. The compact
+sovereign result also includes a provenance receipt with source timeline/world
+or corpus revision, dependency hash, bounded representative evidence refs,
+measured provider/tool usage, latency, result hash, staleness, and limitations.
+The child transcript and full internal dependency graph are never copied into
+sovereign context.
+
 Publication uses compare-and-swap. A changed active timeline or world epoch
 cancels late publication. A changed actual world dependency or corpus revision
 marks the result stale. Unrelated world changes do not invalidate narrowly
@@ -80,14 +95,15 @@ concurrently.
 ## Hard leashes and recovery
 
 Both synthesis and investigation classes enforce hard limits for MCP calls,
-provider calls, cumulative provider tokens, per-request context, final output,
+provider calls, cumulative provider tokens, per-request context, published result,
 wall time, retries, and strict-schema repairs. An attempt-local loopback provider
-proxy measures actual OpenAI-compatible HTTP/SSE traffic and reserves output
+proxy measures actual OpenAI-compatible HTTP/SSE traffic and reserves provider-call output
 headroom before forwarding each request; child-authored usage files are never
 trusted as the production leash. Defaults are conservative but operator
 configurable. A timeout, cancellation, shutdown, rollback, operation
 completion, or turn handoff reaps the child process group and records a typed
-outcome. Installation and per-seat concurrency are independently bounded, and
+outcome. The locked baseline permits exactly one running child per sovereign
+seat; installation-wide concurrency remains independently configurable, and
 round-robin admission prevents one seat from starving another.
 
 Failed provider usage is accounted just like successful usage. Missing provider
@@ -99,10 +115,13 @@ exact evidence references mechanically returned during that fresh attempt.
 ## Traces, backup, and operations
 
 Each retained attempt trace is JSONL compressed with Zstandard and hashed. It
-contains the mission envelope, sanitized MCP activity, content-free process/
-usage outcome, and validated result when one exists. Secret-shaped fields and
-bearer/key material are redacted. Traces are diagnostic only: they are never
-placed in model context and never become authoritative campaign history.
+contains the mission envelope, exact specialist-system-prompt hash,
+provider/model/profile and generation controls, sanitized provider-visible
+assistant/reasoning trajectory, every sanitized MCP request/result, retries and
+failures, usage/context/latency telemetry, raw final result, and validated final
+result when one exists. Secret-shaped fields and bearer/key material are
+redacted. Traces are diagnostic only: they are never placed in model context or
+become authoritative campaign history.
 
 The Operations page provides:
 
@@ -113,11 +132,14 @@ The Operations page provides:
 - retained trace download; and
 - manual trace garbage collection.
 
-Successful and unsuccessful traces have separate checkpoint-generation
-retention horizons. Protected recent failures are never silently removed to
-satisfy the byte ceiling; the operator receives a warning and new full trace
-capture stops until policy or storage is corrected. Normal control backup and
-restore include the retained trace tree and manifests.
+Successful and unsuccessful traces have separate completed-campaign-checkpoint
+generation retention horizons. An attempt is tagged with the generation that
+exists when the attempt terminates, so specialist snapshots cannot age traces
+and an attempt spanning a checkpoint receives the completion generation.
+Protected recent failures are never silently removed to satisfy the byte
+ceiling; the operator receives a warning and new full trace capture stops until
+policy or storage is corrected. Normal control backup and restore include the
+retained trace tree and manifests.
 
 ## Verification
 

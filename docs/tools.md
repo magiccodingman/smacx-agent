@@ -42,7 +42,9 @@ operator/control operations and are not advertised to the model.
   pinned to an immutable perspective snapshot; reference research is pinned to
   one corpus revision. Actual child calls determine freshness dependencies.
   Completion arrives through at-least-once attention; strict results are
-  fallible evidence, never sovereign strategy or action authority.
+  fallible evidence, never sovereign strategy or action authority. The
+  `direct_reference` action is the cheap bounded path for one focused mechanics
+  lookup; it does not launch a specialist or add another permanent tool schema.
 - `smac_memory_update(...)` — create or revise one guarded claim, belief, relationship, commitment, goal, plan, or summary from a JSON record. Actor/evidence references are mechanically constrained to the same perspective, and claims remain distinct from beliefs.
 - `smac_notebook(...)` — list, search, read, revise, or delete bounded named
   campaign notes, plans, territories, and other agent-authored records in the

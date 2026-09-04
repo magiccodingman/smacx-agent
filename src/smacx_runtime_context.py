@@ -256,10 +256,8 @@ class RuntimeContextAssembler:
         active = self.attention.runtime_state(
             current_world_revision=int(projection["world_revision"]),
             current_world_epoch=projection_identity.world_epoch,
-            object_dependency_hashes={
-                str(item["object_ref"]): content_hash(item)
-                for item in projection.get("objects", [])
-            }, current_turn=turn,
+            object_dependency_hashes=self.attention.semantic_dependency_hashes(projection),
+            current_turn=turn,
         )
         focus = _focus(snapshot)
         operation_refs = [
@@ -368,6 +366,7 @@ class RuntimeContextAssembler:
         # transition to placed.  Anything removed by either local attention
         # budgeting or whole-envelope pressure is detached and requeued with
         # its original stable attention ID.
+        original_lease_count = len(attention_lease.get("items", ()))
         placement = self.attention.restrict_for_placement(
             str(payload["attention"]["attention_lease_id"]),
             [str(item["attention_id"]) for item in payload["attention"].get("items", ())],
@@ -375,10 +374,14 @@ class RuntimeContextAssembler:
         payload["attention"]["through_cursor"] = placement["through_cursor"]
         if placement["requeued_ids"]:
             payload["attention"]["truncated"] = True
-            payload["attention"]["remaining_count"] = (
-                int(payload["attention"].get("remaining_count") or 0)
-                + len(placement["requeued_ids"])
-            )
+        # Compute once from the original lease and the final serialized IDs.
+        # _bounded_attention and whole-envelope pressure can both omit rows;
+        # summing their counters double-counts the same item.
+        remaining = original_lease_count - len(payload["attention"].get("items", ()))
+        if remaining:
+            payload["attention"]["remaining_count"] = remaining
+        else:
+            payload["attention"].pop("remaining_count", None)
         payload["token_composition"] = {
             "anchor": estimate_tokens(payload["world"]["anchor"]),
             "deltas": estimate_tokens(payload["world"]["net_deltas"]),

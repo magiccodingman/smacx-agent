@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 import tempfile
 import time
+import subprocess
 
 from smacx_control import SecretVault
 from smacx_journal import CampaignJournal
@@ -22,6 +23,65 @@ from smacx_store import MemoryScope, SmacxStore
 from smacx_world_model import PerspectiveProjector
 from smacx_world_store import WorldStore
 from smacx_world_types import WorldIdentity, canonical_json
+
+
+def trace_usage_summary(path: str | None) -> list[dict[str, int]]:
+    """Return content-free per-call diagnostics from a retained trace."""
+    if not path or not Path(path).is_file():
+        return []
+    completed = subprocess.run(
+        ["zstd", "-q", "-d", "-c", path], check=False,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    )
+    if completed.returncode:
+        return []
+    result = []
+    for line in completed.stdout.decode("utf-8", errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        exchanges = ([row] if isinstance(row, dict)
+                     and row.get("kind") == "provider_exchange" else
+                     row.get("provider_exchanges", ()) if isinstance(row, dict) else ())
+        for exchange in exchanges:
+            if not isinstance(exchange, dict):
+                continue
+            request = exchange.get("request") \
+                if isinstance(exchange.get("request"), dict) else {}
+            response = exchange.get("response")
+            if isinstance(response, list):
+                usage_rows = [item.get("usage") for item in response
+                              if isinstance(item, dict)
+                              and isinstance(item.get("usage"), dict)]
+                usage = usage_rows[-1] if usage_rows else {}
+            else:
+                usage = response.get("usage", {}) if isinstance(response, dict) else {}
+            messages = request.get("messages", ()) \
+                if isinstance(request.get("messages"), list) else ()
+            result.append({
+                "request_bytes": len(canonical_json(request).encode()),
+                "message_count": len(messages),
+                "assistant_content_bytes": sum(
+                    len(str(item.get("content") or "").encode())
+                    for item in messages if isinstance(item, dict)
+                    and item.get("role") == "assistant"
+                ),
+                "assistant_reasoning_bytes": sum(
+                    len(str(item.get("reasoning_content")
+                            or item.get("reasoning") or "").encode())
+                    for item in messages if isinstance(item, dict)
+                    and item.get("role") == "assistant"
+                ),
+                "tool_result_bytes": sum(
+                    len(str(item.get("content") or "").encode())
+                    for item in messages if isinstance(item, dict)
+                    and item.get("role") == "tool"
+                ),
+                "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                "completion_tokens": int(usage.get("completion_tokens") or 0),
+            })
+    return result
 
 
 def main() -> int:
@@ -153,13 +213,52 @@ def main() -> int:
                 (mission["mission_id"],),
             ).fetchone())
         if result.get("status") != "accepted":
+            diagnostics = trace_usage_summary(attempt.get("trace_path"))
+            from smacx_world import WorldService
+            current_world = WorldService(worlds, scope)
+            with store._connect() as connection:
+                dependency_rows = [dict(row) for row in connection.execute(
+                    "SELECT dependency_kind,dependency_ref,dependency_hash,"
+                    "dependency_payload_json FROM specialist_dependencies "
+                    "WHERE attempt_id=? ORDER BY source_call_sequence,dependency_kind,"
+                    "dependency_ref", (attempt["attempt_id"],),
+                ).fetchall()]
+            dependency_diagnostics = []
+            for row in dependency_rows:
+                payload = json.loads(row["dependency_payload_json"] or "{}")
+                actual_hash = ""
+                if row["dependency_kind"] == "world_query":
+                    replayed = current_world.query(
+                        mode=str(payload.get("mode") or ""),
+                        subject_refs=payload.get("subject_refs") or (),
+                        origin_ref=str(payload.get("origin_ref") or ""),
+                        target_ref=str(payload.get("target_ref") or ""),
+                        movement_profile_ref=str(payload.get("movement_profile_ref")
+                                                 or "mobility-land-default"),
+                        radius=int(payload.get("radius") or 0),
+                        since_cursor=int(payload.get("since_cursor") or 0),
+                        detail=str(payload.get("detail") or "standard"),
+                        continuation=str(payload.get("continuation") or ""),
+                        context_length=int(mission.get("context_token_ceiling") or 262144),
+                    )
+                    actual_hash = str(replayed.get("dependency_hash") or "")
+                dependency_diagnostics.append({
+                    "kind": str(row["dependency_kind"]),
+                    "ref": str(row["dependency_ref"]),
+                    "expected_hash": str(row["dependency_hash"]),
+                    "actual_hash": actual_hash,
+                    "mode": str(payload.get("mode") or ""),
+                })
             raise AssertionError(
                 "live Hermes specialist did not produce an accepted bounded result; "
                 f"status={result.get('status')}; outcome={attempt.get('status')}; "
+                f"stale_reason={result.get('stale_reason')}; "
                 f"failure={attempt.get('failure_reason')}; "
                 f"provider_calls={attempt.get('provider_calls')}; "
                 f"provider_tokens={attempt.get('provider_tokens')}; "
                 f"peak_context_tokens={attempt.get('peak_context_tokens')}"
+                f"; calls={json.dumps(diagnostics, separators=(',', ':'))}; "
+                f"dependencies={json.dumps(dependency_diagnostics, separators=(',', ':'))}"
             )
         value = result.get("result") or {}
         print(json.dumps({

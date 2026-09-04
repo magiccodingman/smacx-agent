@@ -308,6 +308,14 @@ def main() -> int:
             endpoint["container_name"], "perspective_world_page",
             domain="summary", cursor=0, limit=1,
         )
+        native_bases = bridge_operation(
+            endpoint["container_name"], "perspective_world_page",
+            domain="bases", cursor=0, limit=16,
+        )
+        native_units = bridge_operation(
+            endpoint["container_name"], "perspective_world_page",
+            domain="units", cursor=0, limit=64,
+        )
         native_snapshot = bridge_operation(
             endpoint["container_name"], "semantic_snapshot",
         ).get("snapshot", {})
@@ -317,13 +325,59 @@ def main() -> int:
             raise AssertionError(f"native entitlement summary is incomplete: {native_summary}")
         if not isinstance(native_snapshot.get("own_orbitals"), dict) \
                 or not isinstance(native_snapshot.get("public_projects"), list) \
-                or not isinstance(native_snapshot.get("governor_faction_id"), int):
+                or not isinstance(native_snapshot.get("governor_faction_id"), int) \
+                or not isinstance(native_snapshot.get("intelligence_entitlements"), dict):
             raise AssertionError(f"native global intelligence adapter is incomplete: {native_snapshot}")
+        base_rows = native_bases.get("items") if isinstance(native_bases, dict) else None
+        if not isinstance(base_rows, list) or not base_rows \
+                or not isinstance(base_rows[0].get("base_radius"), list) \
+                or not isinstance(base_rows[0].get("facilities"), list) \
+                or not isinstance(base_rows[0].get("minerals"), dict):
+            raise AssertionError(f"native base/economic geography adapter is incomplete: {native_bases}")
+        unit_rows = native_units.get("items") if isinstance(native_units, dict) else None
+        owned_units = [row for row in unit_rows or () if row.get("owned") is True]
+        if not owned_units or any(
+                not isinstance(row.get("roles"), dict)
+                or not isinstance(row.get("abilities"), list)
+                or "requires_support" not in row
+                or not isinstance(row.get("cargo"), dict)
+                for row in owned_units):
+            raise AssertionError(f"native movement/support/life adapter is incomplete: {native_units}")
+        time_control = (native_snapshot.get("game_settings") or {}).get("time_control") or {}
+        if int(time_control.get("id", -1)) != 0 \
+                or str(time_control.get("name") or "").casefold() != "none":
+            raise AssertionError(
+                f"managed native acceptance game did not use no-timer semantics: {time_control}"
+            )
         mcp_result = asyncio.run(inspect_mcp(endpoint["url"], created["match"]["match_id"]))
         test_episode_id = "episode-live-" + suffix
         runtime_started = runtime_context(endpoint["container_name"], test_episode_id)
         if not runtime_started.get("ok"):
             raise AssertionError(f"runtime context lease failed: {runtime_started}")
+        global_world = asyncio.run(mcp_tool(endpoint["url"], "smac_world", {
+            "mode": "global", "detail": "deep",
+        }))
+        global_kinds = {item.get("kind") for item in global_world.get("items", [])
+                        if isinstance(item, dict)}
+        required_global_kinds = {
+            "game_settings", "scenario_rules", "project_state",
+            "project_race_state", "orbital_state", "governor_state",
+            "intelligence_entitlement_state",
+            "movement_rules", "ecology_state", "planetary_state", "victory_posture",
+        }
+        if not global_world.get("ok") or not required_global_kinds <= global_kinds:
+            raise AssertionError(
+                f"native global state did not traverse projection/MCP: "
+                f"missing={sorted(required_global_kinds - global_kinds)} result={global_world}"
+            )
+        runtime_text = json.dumps(runtime_started.get("runtime_context", {}),
+                                  separators=(",", ":"))
+        if not all(marker in runtime_text for marker in (
+                "game_settings", "project_state", "orbital_state",
+                "governor_state", "intelligence_entitlement_state",
+                "ecology_state", "planetary_state",
+                "victory_posture")):
+            raise AssertionError("native global domains did not reach the strategic runtime anchor")
         asyncio.run(prepare_checkpoint(endpoint["url"]))
         runtime_context(endpoint["container_name"], test_episode_id, end=True)
         checkpoint = api(
@@ -422,11 +476,16 @@ def main() -> int:
                     "installation_concurrency": 1, "seat_concurrency": 1,
                     "automatic_retries": 0, "schema_repairs": 1,
                     "investigation": {
-                        "tool_budget": 8, "provider_call_budget": 8,
+                        # The production-shaped opening-theater mission spans
+                        # base, force, area, route, reachability and logistics
+                        # views. Keep it hard-bounded while leaving enough
+                        # evidence calls for the child to synthesize instead of
+                        # terminating exactly at its query leash.
+                        "tool_budget": 12, "provider_call_budget": 10,
                         "provider_token_budget": 512000,
                         "context_token_ceiling": min(
                             int(descriptor["context_length"]), 262144),
-                        "output_token_budget": 1500, "wall_seconds": 180,
+                        "output_token_budget": 4000, "wall_seconds": 180,
                     },
                 },
             }, csrf)
@@ -500,6 +559,12 @@ def main() -> int:
                 )
                 raise AssertionError(
                     f"live gameplay specialist failed: {mission_value}; {diagnostic}")
+            accepted_diagnostic = api(
+                opener, base_url, "GET", f"/api/v1/specialists/missions/{mission_id}",
+            )
+            accepted_attempts = accepted_diagnostic.get("mission", {}).get("attempts", []) \
+                if isinstance(accepted_diagnostic.get("mission"), dict) else []
+            accepted_attempt = accepted_attempts[-1] if accepted_attempts else {}
             specialist_after = asyncio.run(current_decision(recovered_endpoint))
             if specialist_before.get("turn") != specialist_after.get("turn"):
                 raise AssertionError("read-only specialist impersonated native turn progress")
@@ -520,6 +585,11 @@ def main() -> int:
                 "latency_ms": round((time.monotonic() - specialist_started) * 1000, 3),
                 "native_bridge_probe_ms": round(ui_probe_ms, 3),
                 "native_turn_unchanged": True, "completion_attention": True,
+                "tool_calls": int(accepted_attempt.get("tool_calls") or 0),
+                "provider_calls": int(accepted_attempt.get("provider_calls") or 0),
+                "provider_tokens": int(accepted_attempt.get("provider_tokens") or 0),
+                "peak_context_tokens": int(
+                    accepted_attempt.get("peak_context_tokens") or 0),
             }
             prompt = (
                 "This is a bounded semantic integration test in a fresh tiny Citizen game. "
@@ -637,7 +707,10 @@ def main() -> int:
                 "mcp_tool_count": mcp_result["tool_count"],
                 "mcp_bound_to_exact_match": True,
                 "native_unity_governor_entitlements": True,
+                "native_no_timer": True,
                 "native_orbital_project_global_adapter": True,
+                "native_base_geography_and_unit_traits": True,
+                "native_global_projection_world_runtime_path": True,
                 "managed_lifecycle_blocked": True,
                 "bridge_verified_checkpoint": True,
                 "live_worker_volume_backup_verified": live_backup_verified,

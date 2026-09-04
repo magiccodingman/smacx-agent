@@ -394,9 +394,10 @@ public sealed class AdministrationController(
             profile = GraphitiProfile(item);
         }
         if (request.InstallationConcurrency is < 1 or > 16 ||
-            request.SeatConcurrency is < 1 or > 8)
+            request.SeatConcurrency != 1)
             return BadRequest(ApiResponse<JsonElement?>.Failure(
-                "invalid_specialist_concurrency", "Choose an installation limit from 1 through 16."));
+                "invalid_specialist_concurrency",
+                "Choose an installation limit from 1 through 16; each sovereign is limited to one child."));
         static object Workload(SpecialistWorkloadPolicyRequest? value,
             SpecialistWorkloadPolicyRequest fallback) => new
         {
@@ -413,7 +414,7 @@ public sealed class AdministrationController(
             policy = new
             {
                 installation_concurrency = request.InstallationConcurrency,
-                seat_concurrency = request.SeatConcurrency,
+                seat_concurrency = 1,
                 automatic_retries = request.AutomaticRetries,
                 schema_repairs = request.SchemaRepairs,
                 trace_capture = request.TraceCapture,

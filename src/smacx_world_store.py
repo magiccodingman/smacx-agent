@@ -94,6 +94,13 @@ class WorldStore:
                 "SELECT world_epoch,world_revision,projection_checksum,material_checksum FROM world_heads "
                 "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=?", key,
             ).fetchone()
+            existing_rows = {
+                str(row["object_ref"]): str(row["dependency_hash"])
+                for row in connection.execute(
+                    "SELECT object_ref,dependency_hash FROM world_objects WHERE "
+                    "match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=?", key,
+                ).fetchall()
+            }
             revision = 1
             if previous:
                 revision = int(previous["world_revision"])
@@ -113,17 +120,27 @@ class WorldStore:
                 (*key, identity.world_epoch, revision, action_revision, observation_cursor,
                  continuity, journal_head_hash, checksum, material_checksum, now),
             )
-            connection.execute(
-                "DELETE FROM world_objects WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=?", key,
-            )
+            incoming = {str(item["object_ref"]): item for item in rows}
+            removed_refs = sorted(set(existing_rows) - set(incoming))
+            epoch_changed = bool(previous and previous["world_epoch"] != identity.world_epoch)
+            changed_rows = [
+                item for item in rows
+                if epoch_changed
+                or existing_rows.get(str(item["object_ref"])) != content_hash(item)
+            ]
+            if removed_refs:
+                connection.executemany(
+                    "DELETE FROM world_objects WHERE match_id=? AND agent_id=? "
+                    "AND perspective_id=? AND timeline_id=? AND object_ref=?",
+                    [(*key, object_ref) for object_ref in removed_refs],
+                )
             connection.executemany(
-                "INSERT INTO world_objects(match_id,agent_id,perspective_id,timeline_id,world_epoch," \
+                "INSERT OR REPLACE INTO world_objects(match_id,agent_id,perspective_id,timeline_id,world_epoch," \
                 "object_ref,object_kind,location_ref,parent_ref,status,payload_json,dependency_hash," \
                 "updated_revision,updated_unix) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(*key, identity.world_epoch, item["object_ref"], item["kind"],
                   item.get("location_ref"), item.get("parent_ref"), item.get("status", "active"),
-                  canonical_json(item), content_hash(item), revision, now) for item in rows],
+                  canonical_json(item), content_hash(item), revision, now) for item in changed_rows],
             )
             # Query rows carry their own dependency hash. Unrelated world
             # changes must not defeat reusable evidence; request-time lookup
@@ -134,6 +151,8 @@ class WorldStore:
             "changed": not previous
             or previous["world_epoch"] != identity.world_epoch
             or previous["material_checksum"] != material_checksum,
+            "projection_rows_written": len(changed_rows) + len(removed_refs) + 1,
+            "projection_object_rows_written": len(changed_rows) + len(removed_refs),
         }
 
     def record_observation_projection(
@@ -155,40 +174,65 @@ class WorldStore:
 
     def changes_since(self, scope: MemoryScope, timeline_id: str, since_cursor: int,
                       *, limit: int = 512) -> list[dict[str, Any]]:
+        row_limit = min(max(int(limit), 1), 2048)
         with self.store._connect() as connection:
             rows = connection.execute(
                 "SELECT observation_sequence,journal_event_id,turn,payload_json,continuity "
                 "FROM world_observation_projection WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND observation_kind='world_object' "
-                "AND observation_sequence>? ORDER BY observation_sequence,journal_event_id LIMIT ?",
+                "AND perspective_id=? AND timeline_id=? AND observation_kind IN "
+                "('world_object','world_batch') "
+                "AND observation_sequence>? ORDER BY observation_sequence,rowid LIMIT ?",
                 (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)),
-                 min(max(int(limit), 1), 2048)),
+                 row_limit),
             ).fetchall()
-        return [{
-            "observation_cursor": int(row["observation_sequence"]),
-            "journal_event_id": str(row["journal_event_id"]),
-            "turn": row["turn"], "continuity": str(row["continuity"]),
-            "delta": json.loads(row["payload_json"]),
-        } for row in rows]
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            deltas = payload.get("deltas") if isinstance(payload, Mapping) else None
+            values = deltas if isinstance(deltas, list) else [payload]
+            for delta in values:
+                if not isinstance(delta, Mapping):
+                    continue
+                result.append({
+                    "observation_cursor": int(row["observation_sequence"]),
+                    "journal_event_id": str(row["journal_event_id"]),
+                    "turn": row["turn"], "continuity": str(row["continuity"]),
+                    "delta": dict(delta),
+                })
+                if len(result) >= row_limit:
+                    return result
+        return result
 
     def temporal_events_since(self, scope: MemoryScope, timeline_id: str,
                               since_cursor: int, *, limit: int = 256) -> list[dict[str, Any]]:
         """Return bounded provider-safe semantic history, never native feed rows."""
+        row_limit = min(max(int(limit), 1), 1024)
         with self.store._connect() as connection:
             rows = connection.execute(
                 "SELECT observation_sequence,journal_event_id,turn,payload_json,continuity "
                 "FROM world_observation_projection WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND observation_kind='semantic_event' "
-                "AND observation_sequence>? ORDER BY observation_sequence,journal_event_id LIMIT ?",
+                "AND perspective_id=? AND timeline_id=? AND observation_kind IN "
+                "('semantic_event','semantic_batch') "
+                "AND observation_sequence>? ORDER BY observation_sequence,rowid LIMIT ?",
                 (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)),
-                 min(max(int(limit), 1), 1024)),
+                 row_limit),
             ).fetchall()
-        return [{
-            "observation_cursor": int(row["observation_sequence"]),
-            "journal_event_id": str(row["journal_event_id"]), "turn": row["turn"],
-            "continuity": str(row["continuity"]),
-            "event": json.loads(row["payload_json"]),
-        } for row in rows]
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            events = payload.get("events") if isinstance(payload, Mapping) else None
+            values = events if isinstance(events, list) else [payload]
+            for event in values:
+                if not isinstance(event, Mapping):
+                    continue
+                result.append({
+                    "observation_cursor": int(row["observation_sequence"]),
+                    "journal_event_id": str(row["journal_event_id"]), "turn": row["turn"],
+                    "continuity": str(row["continuity"]), "event": dict(event),
+                })
+                if len(result) >= row_limit:
+                    return result
+        return result
 
     def current_anchor(self, scope: MemoryScope, timeline_id: str, context_tier: str) -> dict[str, Any] | None:
         with self.store._connect() as connection:
@@ -216,12 +260,15 @@ class WorldStore:
             str(row["mobility_profile_ref"]), str(row["anchor_location_ref"]),
             frozenset(json.loads(row["location_refs_json"])),
             tuple(json.loads(row["supersedes_json"])),
+            int(row["lineage_birth_revision"]),
         ) for row in rows]
 
     def save_regions(self, scope: MemoryScope, timeline_id: str,
-                     regions: Iterable[Region], world_revision: int) -> None:
+                     regions: Iterable[Region], world_revision: int,
+                     mobility_profiles: Iterable[str] = ()) -> None:
         values = list(regions)
-        profiles = sorted({item.mobility_profile_ref for item in values})
+        profiles = sorted({item.mobility_profile_ref for item in values}
+                          | set(map(str, mobility_profiles)))
         with self.store.transaction() as connection:
             for profile in profiles:
                 connection.execute(
@@ -232,11 +279,12 @@ class WorldStore:
             connection.executemany(
                 "INSERT INTO world_regions(match_id,agent_id,perspective_id,timeline_id,"
                 "mobility_profile_ref,region_ref,lineage_ref,version,anchor_location_ref,"
-                "location_refs_json,supersedes_json,updated_world_revision) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "location_refs_json,supersedes_json,lineage_birth_revision,updated_world_revision) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(*self._scope_tuple(scope, timeline_id), item.mobility_profile_ref,
                   item.region_ref, item.lineage_ref, item.version, item.anchor_location_ref,
                   canonical_json(sorted(item.location_refs)), canonical_json(item.supersedes),
+                  int(item.lineage_birth_revision),
                   int(world_revision)) for item in values],
             )
 
@@ -337,6 +385,7 @@ class WorldStore:
     def snapshot(
         self, scope: MemoryScope, identity: WorldIdentity, *, journal_head_hash: str,
         journal_sequence: int, calculator_versions: Mapping[str, str],
+        pin_owner: tuple[str, str] | None = None,
     ) -> dict[str, Any]:
         projection = self.load(scope, identity.timeline_id)
         if not projection:
@@ -374,6 +423,9 @@ class WorldStore:
                 except FileNotFoundError:
                     pass
         snapshot_id = "snapshot-" + digest[:48]
+        if pin_owner is not None and pin_owner[0] not in {
+                "specialist_mission", "checkpoint", "recovery"}:
+            raise WorldStoreError("invalid_snapshot_pin_owner")
         with self.store.transaction() as connection:
             connection.execute(
                 "INSERT OR IGNORE INTO world_snapshots(snapshot_id,match_id,agent_id," \
@@ -386,6 +438,12 @@ class WorldStore:
                  projection["projection_checksum"], canonical_json(calculator_versions),
                  str(target), digest, time.time()),
             )
+            if pin_owner is not None:
+                connection.execute(
+                    "INSERT OR IGNORE INTO world_snapshot_pins("
+                    "snapshot_id,owner_kind,owner_id,pinned_unix) VALUES(?,?,?,?)",
+                    (snapshot_id, pin_owner[0], pin_owner[1], time.time()),
+                )
         return {
             "snapshot_id": snapshot_id, "content_sha256": digest, "path": str(target),
             "match_id": scope.match_id, "agent_id": scope.agent_id,
@@ -443,6 +501,78 @@ class WorldStore:
                 "DELETE FROM world_snapshot_pins WHERE snapshot_id=? AND owner_kind=? AND owner_id=?",
                 (snapshot_id, owner_kind, owner_id),
             )
+        self.gc_snapshot_if_unpinned(snapshot_id)
+
+    def gc_snapshot_if_unpinned(self, snapshot_id: str) -> bool:
+        """Delete a derived snapshot only after its final owner releases it."""
+        path: Path | None = None
+        with self.store.transaction() as connection:
+            row = connection.execute(
+                "SELECT content_path FROM world_snapshots WHERE snapshot_id=? AND NOT EXISTS "
+                "(SELECT 1 FROM world_snapshot_pins WHERE snapshot_id=?)",
+                (snapshot_id, snapshot_id),
+            ).fetchone()
+            if not row:
+                return False
+            path = Path(str(row["content_path"])).resolve()
+            try:
+                path.relative_to(self.root)
+            except ValueError as exc:
+                raise WorldStoreError("world_snapshot_path_outside_root") from exc
+            connection.execute("DELETE FROM world_snapshots WHERE snapshot_id=?", (snapshot_id,))
+        if path is not None:
+            path.unlink(missing_ok=True)
+            for parent in (path.parent, path.parent.parent, path.parent.parent.parent):
+                if parent == self.root or self.root not in parent.parents:
+                    break
+                try:
+                    parent.rmdir()
+                except OSError:
+                    break
+        return True
+
+    def gc_unpinned_snapshots(
+        self, *, scope: MemoryScope | None = None, exclude_timeline_id: str | None = None,
+    ) -> int:
+        """Collect unowned accelerators, optionally restricted to obsolete timelines."""
+        where = ["NOT EXISTS (SELECT 1 FROM world_snapshot_pins p WHERE "
+                 "p.snapshot_id=world_snapshots.snapshot_id)"]
+        params: list[Any] = []
+        if scope is not None:
+            where.extend(["match_id=?", "agent_id=?", "perspective_id=?"])
+            params.extend([scope.match_id, scope.agent_id, scope.perspective_id])
+        if exclude_timeline_id:
+            where.append("timeline_id<>?")
+            params.append(exclude_timeline_id)
+        with self.store._connect() as connection:
+            ids = [str(row["snapshot_id"]) for row in connection.execute(
+                "SELECT snapshot_id FROM world_snapshots WHERE " + " AND ".join(where),
+                tuple(params),
+            ).fetchall()]
+        return sum(1 for snapshot_id in ids if self.gc_snapshot_if_unpinned(snapshot_id))
+
+    def gc_orphaned_specialist_snapshot_pins(self) -> int:
+        """Release snapshot pins whose specialist mission was never committed.
+
+        Snapshot content and its pin are committed atomically before the
+        mission row so a crash can never expose an unpinned mission snapshot.
+        The inverse crash window can leave a pin whose owner mission does not
+        exist; supervisor startup deterministically repairs that condition.
+        """
+        with self.store.transaction() as connection:
+            snapshot_ids = [str(row["snapshot_id"]) for row in connection.execute(
+                "SELECT DISTINCT p.snapshot_id FROM world_snapshot_pins p "
+                "LEFT JOIN specialist_missions m ON m.mission_id=p.owner_id "
+                "WHERE p.owner_kind='specialist_mission' AND m.mission_id IS NULL"
+            ).fetchall()]
+            connection.execute(
+                "DELETE FROM world_snapshot_pins WHERE owner_kind='specialist_mission' "
+                "AND NOT EXISTS (SELECT 1 FROM specialist_missions m "
+                "WHERE m.mission_id=world_snapshot_pins.owner_id)"
+            )
+        for snapshot_id in snapshot_ids:
+            self.gc_snapshot_if_unpinned(snapshot_id)
+        return len(snapshot_ids)
 
     def load_snapshot_content(self, snapshot_id: str) -> dict[str, Any]:
         """Load a pinned immutable view without consulting the live projection."""
@@ -533,6 +663,7 @@ class WorldStore:
                     f"DELETE FROM {table} WHERE match_id=? AND agent_id=? AND perspective_id=? "
                     "AND timeline_id<>?", key,
                 )
+        self.gc_unpinned_snapshots(scope=scope, exclude_timeline_id=active_timeline_id)
 
     def telemetry(
         self, category: str, metric: str, value: float | None,

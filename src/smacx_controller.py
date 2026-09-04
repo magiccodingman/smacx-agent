@@ -1320,7 +1320,9 @@ def read_game_reference(action: str, *, query: str = "", topic: str = "",
                         include_body: bool = False, include_documents: bool = False,
                         entity_kind: str = "",
                         entity_key: str = "", entities: list[dict[str, str]] | None = None,
-                        ruleset_id: str = "smacx") -> dict[str, Any]:
+                        ruleset_id: str = "smacx", max_content_tokens: int | None = None,
+                        max_query_tokens: int = 1_024,
+                        continuation: str = "") -> dict[str, Any]:
     """Read global mechanics knowledge; it contains no match-hidden state."""
     try:
         return read_reference_store(
@@ -1329,7 +1331,8 @@ def read_game_reference(action: str, *, query: str = "", topic: str = "",
             include_documents=include_documents,
             private_prefix=(f"private.{GAME_SOURCE_ID}." if GAME_SOURCE_ID else None),
             entity_kind=entity_kind, entity_key=entity_key, entities=entities,
-            ruleset_id=ruleset_id,
+            ruleset_id=ruleset_id, max_content_tokens=max_content_tokens,
+            max_query_tokens=max_query_tokens, continuation=continuation,
         )
     except (StoreError, JournalError, ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}

@@ -15,7 +15,9 @@ from smacx_store import MemoryScope
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
 from smacx_world_model import CALCULATOR_VERSION, SemanticLodProjector, estimate_tokens
 from smacx_world_store import WorldStore
-from smacx_world_types import WorldContractError, WorldIdentity, content_hash, material_hash
+from smacx_world_types import (
+    WorldContractError, WorldIdentity, content_hash, material_hash, provider_safe,
+)
 
 
 WORLD_MODES = frozenset({
@@ -41,7 +43,7 @@ def _public_object(item: Mapping[str, Any], *, include_fields: bool = True) -> d
               if item.get(key) is not None}
     if include_fields:
         result["fields"] = item.get("fields", {})
-    return result
+    return provider_safe(result)
 
 
 class WorldService:
@@ -80,6 +82,8 @@ class WorldService:
                 str(item.get("fields", {}).get("terrain", {}).get("epistemic_status")) == "current",
                 frozenset(str(value) for value in (_value(item, "features", []) or [])),
                 _value(item, "owner_ref"), bool(_value(item, "hostile_zoc", False)),
+                bool(_value(item, "blocking_contact_occupied", False)),
+                int(_value(item, "altitude")) if _value(item, "altitude") is not None else None,
             ))
         shape_data = projection.get("map_shape")
         if not isinstance(shape_data, Mapping):
@@ -105,27 +109,45 @@ class WorldService:
                          subjects: tuple[str, ...], origin_ref: str, target_ref: str,
                          radius: int,
                          projection: Mapping[str, Any] | None = None) -> tuple[str, ...]:
-        if subjects:
-            refs = set(subjects)
-            for ref in subjects:
-                location = objects.get(ref, {}).get("location_ref")
-                if location:
-                    refs.add(str(location))
-            return tuple(sorted(refs))
+        subject_refs = set(subjects)
+        for ref in subjects:
+            location = objects.get(ref, {}).get("location_ref")
+            if location:
+                subject_refs.add(str(location))
         kinds = {
             "base": {"base"}, "forces": {"own_unit", "foreign_contact"},
             "intel": {"faction", "foreign_contact", "claim"},
             "global": {"global_system", "game_settings", "scenario_rules", "economy_state",
                        "research_state", "social_state", "council_state", "victory_state",
-                       "technology_state", "global_event", "project", "victory"},
+                       "technology_state", "global_event", "project", "project_state",
+                       "project_race_state", "orbital_state", "governor_state",
+                       "intelligence_entitlement_state",
+                       "movement_rules", "ecology_state", "planetary_state",
+                       "victory_posture", "victory"},
             "logistics": {"own_unit", "base", "route", "convoy"},
         }.get(mode)
         if kinds is not None:
-            return tuple(sorted(ref for ref, item in objects.items() if item.get("kind") in kinds))
-        if mode == "relation":
-            return tuple(sorted({value for value in (origin_ref, target_ref,
-                str(objects.get(origin_ref, {}).get("location_ref") or ""),
-                str(objects.get(target_ref, {}).get("location_ref") or "")) if value}))
+            refs = {
+                ref for ref, item in objects.items()
+                if item.get("kind") in kinds and (not subjects or ref in subject_refs)
+            }
+            # These modes run perspective-wide deterministic auxiliaries even
+            # when their primary rows are subject-filtered.  Their cache key
+            # must therefore cover every strategic fact the calculation reads.
+            if mode == "base":
+                refs.update(ref for ref, item in objects.items()
+                            if item.get("kind") in {"foreign_contact", "faction", "location"})
+            elif mode == "intel":
+                refs.update(ref for ref, item in objects.items()
+                            if item.get("kind") in {"faction", "location"})
+            elif mode == "logistics":
+                refs.update(ref for ref, item in objects.items()
+                            if item.get("kind") in {
+                                "own_unit", "base", "route", "convoy", "location",
+                                "mobility_profile", "faction",
+                            })
+            refs.update(subject_refs)
+            return tuple(sorted(refs))
         if mode == "area":
             center = objects.get(origin_ref or (subjects[0] if subjects else ""))
             center_ref = str(center.get("location_ref") if center and center.get("location_ref")
@@ -209,6 +231,9 @@ class WorldService:
                 if current_item.get("kind") in {
                     "location", "base", "faction", "game_settings", "scenario_rules",
                     "council_state", "victory_state", "global_event", "project",
+                    "project_state", "orbital_state", "governor_state", "ecology_state",
+                    "intelligence_entitlement_state",
+                    "project_race_state", "movement_rules", "victory_posture",
                 }:
                     regenerate = True
                     break
@@ -223,6 +248,7 @@ class WorldService:
                     item.get("fields", {}).get("terrain", {}).get("epistemic_status") == "current",
                     frozenset(_value(item, "features", []) or []), _value(item, "owner_ref"),
                     bool(_value(item, "hostile_zoc", False)),
+                    bool(_value(item, "blocking_contact_occupied", False)),
                 ))
             model_projection = {
                 **projection, "known_squares": squares,
@@ -246,6 +272,7 @@ class WorldService:
             self.store.save_regions(
                 self.scope, identity.timeline_id, region_projection,
                 int(projection["world_revision"]),
+                ("mobility-land-default", "mobility-sea-default"),
             )
             hashes = {str(item["object_ref"]): material_hash(item)
                       for item in projection["objects"]}
@@ -277,6 +304,19 @@ class WorldService:
         return DETAIL_LIMITS[detail]
 
     @staticmethod
+    def _seal_token_estimate(result: dict[str, Any]) -> int:
+        """Set a self-consistent estimate including its own serialized field."""
+        estimate = 0
+        for _ in range(4):
+            result["result_token_estimate"] = estimate
+            updated = estimate_tokens(result)
+            if updated == estimate:
+                break
+            estimate = updated
+        result["result_token_estimate"] = estimate
+        return estimate
+
+    @staticmethod
     def _trim(result: dict[str, Any], budget: int) -> dict[str, Any]:
         dependency_refs = result.get("dependency_refs")
         if isinstance(dependency_refs, list):
@@ -284,7 +324,7 @@ class WorldService:
             # The cache binds the complete server-held dependency hash. The
             # provider needs representative/queryable references, not a linear
             # copy of every quiet tile merely to validate that hash.
-            while len(dependency_refs) > 8 and estimate_tokens(result) > budget:
+            while dependency_refs and estimate_tokens(result) > budget:
                 dependency_refs.pop()
                 result["dependency_refs_truncated"] = True
         body = result.get("items")
@@ -309,14 +349,100 @@ class WorldService:
                         reduced = True
                     if not reduced:
                         break
-            result["result_token_estimate"] = estimate_tokens(result)
-            if result["result_token_estimate"] > budget:
-                raise WorldQueryError("world_result_budget_exhausted")
-            return result
+            # Non-list modes (render/route/relation/overview) still share the
+            # same whole-result ceiling and must pass through auxiliary
+            # demotion plus the bounded typed-error fallback below.
+            body = []
+        original_items = len(body)
         while body and estimate_tokens(result) > budget:
             body.pop()
             result["truncated"] = True
-        result["result_token_estimate"] = estimate_tokens(result)
+        # Auxiliary sections are part of the same contractual ceiling.  Trim
+        # them deterministically after primary items; callers can re-query the
+        # named mode/subject rather than receiving an oversized side channel.
+        for field in ("objects", "lost_contact_envelopes", "connectors",
+                      "temporal_events"):
+            values = result.get(field)
+            while isinstance(values, list) and values and estimate_tokens(result) > budget:
+                values.pop()
+                result["truncated"] = True
+        logistics = result.get("logistics")
+        if isinstance(logistics, dict):
+            for field in ("transport_route_options", "convoys", "aircraft", "transports"):
+                values = logistics.get(field)
+                while isinstance(values, list) and values and estimate_tokens(result) > budget:
+                    values.pop()
+                    result["truncated"] = True
+            for field in ("support_details_by_home_base", "support_by_home_base"):
+                support = logistics.get(field)
+                if not isinstance(support, dict):
+                    continue
+                original_count = len(support)
+                while support and estimate_tokens(result) > budget:
+                    support.pop(sorted(support)[-1])
+                    result["truncated"] = True
+                if len(support) != original_count:
+                    logistics[f"{field}_count"] = original_count
+        rendering = result.get("rendering")
+        if isinstance(rendering, dict) and estimate_tokens(result) > budget:
+            result["rendering"] = {
+                "kind": rendering.get("kind", "semantic_map"),
+                "omitted": "rendering_exceeds_requested_budget",
+            }
+            result["truncated"] = True
+        if estimate_tokens(result) > budget:
+            # Compact-detail bookkeeping must not crowd out the semantic body.
+            # Integrity remains bound by dependency_hash and identity even
+            # when representative refs or explanatory prose are omitted.
+            for field in ("epistemic_note", "dependency_refs", "dependency_ref_count",
+                          "retention_class"):
+                if estimate_tokens(result) <= budget:
+                    break
+                if field in result:
+                    result.pop(field, None)
+                    result["truncated"] = True
+            valid = result.get("valid_while")
+            if isinstance(valid, dict) and estimate_tokens(result) > budget:
+                valid.pop("condition", None)
+                result["truncated"] = True
+        result["result_token_estimate"] = WorldService._seal_token_estimate(result)
+        # The estimate field is itself serialized.  Re-apply deterministic
+        # metadata compaction after sealing so a result that was exactly at the
+        # ceiling before that field was added cannot cross the contract.
+        dependency_refs = result.get("dependency_refs")
+        while isinstance(dependency_refs, list) and dependency_refs \
+                and result["result_token_estimate"] > budget:
+            dependency_refs.pop()
+            result["dependency_refs_truncated"] = True
+            result["result_token_estimate"] = WorldService._seal_token_estimate(result)
+        for field in ("epistemic_note", "dependency_refs", "dependency_ref_count",
+                      "retention_class"):
+            if result["result_token_estimate"] <= budget:
+                break
+            if field in result:
+                result.pop(field, None)
+                result["truncated"] = True
+                result["result_token_estimate"] = WorldService._seal_token_estimate(result)
+        if original_items and not body and result.get("truncated"):
+            compact_error = {
+                "ok": False, "schema": "smacx.world-result.v1",
+                "error": {"code": "single_world_item_exceeds_budget"},
+                "mode": result.get("mode"), "declared_token_ceiling": budget,
+                "query_hint": "Narrow subject_refs or use deep detail.",
+            }
+            compact_error["result_token_estimate"] = WorldService._seal_token_estimate(compact_error)
+            return compact_error
+        if result["result_token_estimate"] > budget:
+            # Never return a successful oversized result.  This bounded typed
+            # response advances the caller past an individually oversized row.
+            compact_error = {
+                "ok": False, "error": "world_result_budget_exhausted",
+                "mode": result.get("mode"), "declared_token_ceiling": budget,
+                "oversized_item_count": original_items,
+                "query_hint": "Use compact detail, a narrower subject_ref, or a continuation.",
+            }
+            compact_error["result_token_estimate"] = WorldService._seal_token_estimate(compact_error)
+            return compact_error
         return result
 
     def query(
@@ -334,6 +460,21 @@ class WorldService:
         subjects = tuple(dict.fromkeys(str(item) for item in subject_refs))[:32]
         identity, projection = self._projection()
         objects = self._objects(projection)
+        known_refs = set(objects)
+        supplied_refs = [*subjects]
+        if mode in {"area", "relation", "route", "reachability", "compare"}:
+            supplied_refs.extend(value for value in (origin_ref, target_ref) if value)
+        invalid_refs = sorted({ref for ref in supplied_refs if ref not in known_refs})
+        if invalid_refs:
+            return {
+                "ok": False, "schema": "smacx.world-result.v1", "mode": mode,
+                "error": {"code": "unknown_or_superseded_world_ref",
+                          "refs": invalid_refs[:8]},
+                "identity": identity.as_dict(),
+                "world_revision": projection["world_revision"],
+                "observation_cursor": projection["observation_cursor"],
+                "result_token_estimate": estimate_tokens(invalid_refs[:8]) + 48,
+            }
         request = {
             "mode": mode, "subject_refs": subjects, "origin_ref": origin_ref,
             "target_ref": target_ref, "movement_profile_ref": movement_profile_ref,
@@ -353,7 +494,8 @@ class WorldService:
             target_ref=target_ref, radius=radius, projection=projection,
         )
         dependency_hash = content_hash({
-            ref: objects.get(ref) for ref in dependency_refs
+            ref: material_hash(objects[ref]) if ref in objects else None
+            for ref in dependency_refs
         })
         fingerprint = content_hash({
             "scope": identity.as_dict(),
@@ -369,9 +511,10 @@ class WorldService:
                 "world_revision": projection["world_revision"],
                 "condition": "listed dependency_refs retain dependency_hash",
             }
+            cached = self._trim(provider_safe(cached), budget)
             self.store.telemetry("world_query", "cache_hit", 1, scope=self.scope,
                                  timeline_id=identity.timeline_id, dimensions={"mode": mode})
-            return cached
+            return provider_safe(cached)
         result: dict[str, Any] = {
             "ok": True, "schema": "smacx.world-result.v1", "mode": mode,
             "identity": identity.as_dict(), "world_revision": projection["world_revision"],
@@ -396,7 +539,11 @@ class WorldService:
                 "intel": {"faction", "foreign_contact", "claim"},
                 "global": {"global_system", "game_settings", "scenario_rules", "economy_state",
                            "research_state", "social_state", "council_state", "victory_state",
-                           "technology_state", "global_event", "project", "victory"},
+                           "technology_state", "global_event", "project", "project_state",
+                           "project_race_state", "orbital_state", "governor_state",
+                           "intelligence_entitlement_state",
+                           "movement_rules", "ecology_state", "planetary_state",
+                           "victory_posture", "victory"},
                 "logistics": {"own_unit", "base", "route", "convoy"},
             }[mode]
             selected = [item for item in objects.values() if item.get("kind") in kinds]
@@ -407,13 +554,17 @@ class WorldService:
                 result["items"] = base_mechanics(topology, objects, subjects)
                 result["objects"] = [_public_object(item) for item in selected]
             elif mode == "logistics":
-                result["logistics"] = logistics_projection(objects)
+                topology = self._topology(projection)
+                result["logistics"] = logistics_projection(
+                    objects, topology, subjects,
+                )
                 result["items"] = [_public_object(item) for item in selected]
             elif mode == "intel":
                 topology = self._topology(projection)
                 turn_state = objects.get("world-turn", {})
                 result["lost_contact_envelopes"] = lost_contact_envelopes(
                     topology, objects, current_turn=_value(turn_state, "turn"),
+                    subject_refs=subjects,
                 )
                 result["items"] = [_public_object(item) for item in selected]
             else:
@@ -445,7 +596,8 @@ class WorldService:
                 "geometric_distance": topology.shape.distance((a.x, a.y), (b.x, b.y)),
                 "bearing": topology.shape.bearing((a.x, a.y), (b.x, b.y)),
             }
-            profile = mobility_profile(objects, movement_profile_ref, subject_ref=origin_ref)
+            profile = mobility_profile(objects, movement_profile_ref,
+                                       subject_ref=origin_ref, topology=topology)
             route = topology.route(origin_location, target_location, profile)
             result["relation"].update({
                 "known_world_reachable": route.reachable,
@@ -454,7 +606,8 @@ class WorldService:
             })
         elif mode in {"route", "reachability", "compare"}:
             topology = self._topology(projection)
-            profile = mobility_profile(objects, movement_profile_ref, subject_ref=origin_ref)
+            profile = mobility_profile(objects, movement_profile_ref,
+                                       subject_ref=origin_ref, topology=topology)
             if mode == "route":
                 origin_location = objects.get(origin_ref, {}).get("location_ref") or origin_ref
                 target_location = objects.get(target_ref, {}).get("location_ref") or target_ref
@@ -529,22 +682,25 @@ class WorldService:
             result["items"] = result["items"][continuation_offset:]
         available_before_trim = len(result.get("items", [])) \
             if isinstance(result.get("items"), list) else 0
-        result = self._trim(result, budget)
+        result["cache"] = {"hit": False, "query_fingerprint": fingerprint}
+        result = self._trim(provider_safe(result), budget)
         returned = len(result.get("items", [])) if isinstance(result.get("items"), list) else 0
-        if returned < available_before_trim:
+        if result.get("ok") is False:
+            result["continuation"] = None
+        elif returned < available_before_trim:
             result["continuation"] = f"cursor-{continuation_offset + returned}"
         else:
             result["continuation"] = None
         token_estimate = int(result["result_token_estimate"])
-        self.store.put_cached_query(
-            self.scope, identity, world_revision=int(projection["world_revision"]),
-            observation_cursor=int(projection["observation_cursor"]),
-            ruleset_hash=self.ruleset_hash, calculator_version=CALCULATOR_VERSION,
-            dependency_hash=dependency_hash, request=request, result=result,
-            token_estimate=token_estimate,
-        )
+        if result.get("ok") is not False:
+            self.store.put_cached_query(
+                self.scope, identity, world_revision=int(projection["world_revision"]),
+                observation_cursor=int(projection["observation_cursor"]),
+                ruleset_hash=self.ruleset_hash, calculator_version=CALCULATOR_VERSION,
+                dependency_hash=dependency_hash, request=request, result=result,
+                token_estimate=token_estimate,
+            )
         self.store.telemetry("world_query", "result_tokens", token_estimate,
                              scope=self.scope, timeline_id=identity.timeline_id,
                              dimensions={"mode": mode, "detail": detail, "cache": False})
-        result["cache"] = {"hit": False, "query_fingerprint": fingerprint}
-        return result
+        return provider_safe(result)

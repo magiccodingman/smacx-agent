@@ -17,6 +17,47 @@ from typing import Any, Mapping
 
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
 
+# Collector/private implementation details are permitted inside the durable
+# projection, but never across a provider-facing boundary.  Keep the policy in
+# one recursive serializer: filtering only WorldObject.metadata is insufficient
+# because cached dictionaries, deltas, auxiliary envelopes, and promoted
+# focus/watch objects can otherwise bypass it.
+_PRIVATE_EXACT_KEYS = frozenset({
+    "engine_id", "hidden_id", "native_id", "native_observation_key",
+    "native_x", "native_y", "subject_a", "subject_b", "from_tile_id",
+    "to_tile_id", "tile_id", "row_index", "vehicle_id", "base_id",
+    "owner", "prototype_id", "home_base_id", "transport_unit_id",
+    "order", "order_auto_type",
+})
+
+
+def provider_safe(value: Any) -> Any:
+    """Recursively serialize only provider-authorized strategic information.
+
+    This is deliberately idempotent and accepts dataclasses used by the world
+    model as well as dictionaries loaded from SQLite.  Private coordinates and
+    native row handles remain available internally for topology and identity
+    reconciliation, but are impossible to emit accidentally via a nested
+    auxiliary result or promoted object.
+    """
+    if isinstance(value, WorldObject):
+        return provider_safe(value.as_dict(provider_safe=False))
+    if isinstance(value, EpistemicValue):
+        return provider_safe(value.as_dict())
+    if isinstance(value, Mapping):
+        result: dict[str, Any] = {}
+        for raw_key, item in value.items():
+            key = str(raw_key)
+            lower = key.lower()
+            if lower.startswith(("native_", "hidden_", "collector_", "engine_")) \
+                    or lower in _PRIVATE_EXACT_KEYS:
+                continue
+            result[key] = provider_safe(item)
+        return result
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [provider_safe(item) for item in value]
+    return value
+
 
 class WorldContractError(ValueError):
     """Raised when perspective-world input violates the public contract."""
@@ -39,6 +80,7 @@ class EvidenceSource(str, Enum):
     PACT = "pact"
     INFILTRATION = "infiltration"
     GOVERNOR = "governor"
+    PROJECT = "project"
     SATELLITE = "satellite"
     PUBLIC_REPORT = "public_report"
     SCENARIO = "scenario"
@@ -64,6 +106,13 @@ def material_object(value: Mapping[str, Any]) -> dict[str, Any]:
     fields = value.get("fields") if isinstance(value.get("fields"), Mapping) else {}
     normalized_fields: dict[str, Any] = {}
     for name, raw in sorted(fields.items()):
+        # For a currently observed object, ``last_seen_turn`` is observation
+        # freshness bookkeeping: it advances merely because the collector saw
+        # the same object again.  If the object later leaves visibility its
+        # status transition (and the retained stale value) is material, but
+        # repeated current sightings must not manufacture world deltas.
+        if name == "last_seen_turn" and value.get("status", "active") == "active":
+            continue
         if not isinstance(raw, Mapping):
             normalized_fields[str(name)] = raw
             continue
@@ -73,16 +122,12 @@ def material_object(value: Mapping[str, Any]) -> dict[str, Any]:
             ) if key in raw
         }
     metadata = value.get("metadata") if isinstance(value.get("metadata"), Mapping) else {}
-    safe_metadata = {
-        str(key): item for key, item in metadata.items()
-        if not str(key).startswith("native_") and key not in {"engine_id", "hidden_id"}
-    }
-    return {
+    return provider_safe({
         "object_ref": value.get("object_ref"), "kind": value.get("kind"),
         "location_ref": value.get("location_ref"), "parent_ref": value.get("parent_ref"),
         "status": value.get("status", "active"), "fields": normalized_fields,
-        "metadata": safe_metadata,
-    }
+        "metadata": metadata,
+    })
 
 
 def material_hash(value: Mapping[str, Any]) -> str:
@@ -186,20 +231,16 @@ class WorldObject:
             require_ref(self.parent_ref, "parent_ref")
 
     def as_dict(self, *, provider_safe: bool = True) -> dict[str, Any]:
-        metadata = dict(self.metadata)
-        if provider_safe:
-            for key in tuple(metadata):
-                if key.startswith("native_") or key in {"engine_id", "hidden_id"}:
-                    metadata.pop(key, None)
-        return {
+        result = {
             "object_ref": self.object_ref,
             "kind": self.kind,
             "location_ref": self.location_ref,
             "parent_ref": self.parent_ref,
             "status": self.status,
             "fields": {key: value.as_dict() for key, value in sorted(self.fields.items())},
-            "metadata": metadata,
+            "metadata": dict(self.metadata),
         }
+        return globals()["provider_safe"](result) if provider_safe else result
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "WorldObject":

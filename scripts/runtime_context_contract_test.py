@@ -46,11 +46,15 @@ def main() -> int:
                                   action_revision="action-9", continuity="complete",
                                   journal_head_hash="0" * 64)
         attention = AttentionService(store, journal, scope)
+        dependencies = attention.semantic_dependency_hashes()
+        operation_refs = ["base-home", "own-unit-7"]
         operation = attention.upsert_operation(
             operation_id=None, kind="front_defense", objective="Compare reserve response",
-            referenced_world_objects=["base-home", "own-unit-7"],
+            referenced_world_objects=operation_refs,
             source_world_revision=1, source_world_epoch="world-runtime",
-            source_dependency_hash=content_hash({"base-home": "test", "own-unit-7": "test"}),
+            source_dependency_hash=content_hash({
+                ref: dependencies[ref] for ref in operation_refs
+            }),
             current_turn=9,
         )
         critical = attention.enqueue(
@@ -140,6 +144,27 @@ def main() -> int:
                                           episode_mode="gameplay", context_length=65536)
         assert after_operation["operations"] == []
 
+        # Whole-envelope placement reports omissions exactly once. A maximal
+        # 32-item lease is first bounded locally and can then be restricted by
+        # the final request envelope; the same omitted IDs must not be counted
+        # by both stages.
+        for index in range(32):
+            attention.enqueue(
+                "diagnostic_burst", {"index": index, "detail": "x" * 2048},
+                observation_cursor=100 + index, priority=40,
+            )
+        burst = assembler.build(
+            episode_id="episode-runtime-32-attention",
+            episode_mode="gameplay", context_length=65536,
+        )
+        visible_attention_ids = {
+            item["attention_id"] for item in burst["attention"]["items"]
+        }
+        assert 0 < len(visible_attention_ids) < 32
+        assert burst["attention"]["remaining_count"] == 32 - len(visible_attention_ids)
+        assert len(visible_attention_ids) == len(burst["attention"]["items"])
+        attention.abandon(burst["attention"]["attention_lease_id"])
+
         communication = assembler.build(episode_id="episode-runtime-communication",
                                         episode_mode="communication", context_length=65536)
         assert communication["episode"]["mutation_authority"] is False
@@ -199,6 +224,7 @@ def main() -> int:
         "communication_same_sovereign_read_only": True,
         "runtime_token_composition_observed": True,
         "operation_retained_then_collected": True,
+        "attention_32_item_remaining_count_exact": True,
         "large_cognition_live_selection": True,
         "huge_chaotic_256k_runtime_bounded": True,
         "runtime_tokens_64k": compact["token_estimate"],

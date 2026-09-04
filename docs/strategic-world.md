@@ -26,6 +26,15 @@ factions, and explicitly entitled Pact/infiltration/Governor/satellite/scenario
 fields. A second entitlement pass rejects admin, spectator, and hidden candidate
 data before projection. Unknown geography never becomes a route or region.
 
+Global intelligence follows the same rule. Owned economy, research, Planetary
+state, orbitals, base radius/yields/facilities, scenario and victory posture are
+native perspective facts. Foreign economy, research, and orbital report fields
+exist only when their exact Pact, infiltration, Governor, or Empath Guild
+entitlement is present. Secret Project races enter observed history through the
+public BEGIN/CHANGE/HALT/SURVIVE/DONE report popups; a builder is named only
+when that report actually disclosed one. Missing rival production remains
+`unknown` rather than being read from hidden native arrays.
+
 The campaign journal is authoritative temporal evidence. SQLite world tables,
 region graphs, anchors, search indexes, query caches, and Graphiti are derived.
 A projection head names an exact `(match_id, agent_id, perspective_id,

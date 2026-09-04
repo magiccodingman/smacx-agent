@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import json
 import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
+import threading
+from urllib.parse import unquote
 
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
@@ -14,7 +17,7 @@ from smacx_specialists import SpecialistError, SpecialistService, system_prompt
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world_model import PerspectiveProjector
 from smacx_world_store import WorldStore
-from smacx_world_types import WorldIdentity, material_hash
+from smacx_world_types import WorldIdentity, content_hash, material_hash
 
 
 def projected(identity: WorldIdentity, *, home_population: int = 2,
@@ -42,9 +45,47 @@ def result(mission_id: str, citation: str = "") -> dict:
     }
 
 
+class ReferenceExportHandler(BaseHTTPRequestHandler):
+    """Tiny immutable-corpus fixture; reference missions never need live production I/O."""
+
+    def do_GET(self) -> None:  # noqa: N802 - stdlib callback spelling
+        prefix = "/api/export/"
+        if not self.path.startswith(prefix):
+            self.send_error(404)
+            return
+        revision = unquote(self.path[len(prefix):])
+        payload = json.dumps({
+            "revision": revision,
+            "collections": [{
+                "collection_id": "mechanics", "title": "Mechanics",
+                "description": "Deterministic specialist fixture.", "parent_id": None,
+            }],
+            "documents": [{
+                "document_id": "doc-sensors", "collection_id": "mechanics",
+                "title": "Sensors", "description": "Sensor mechanics.",
+                "tags": ["sensors"], "body": "Sensors improve defensive combat.",
+                "source_hash": "d" * 64,
+            }],
+        }, separators=(",", ":")).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *_args: object) -> None:
+        return
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="smacx-specialist-") as raw:
         root = Path(raw)
+        reference_server = ThreadingHTTPServer(("127.0.0.1", 0), ReferenceExportHandler)
+        threading.Thread(target=reference_server.serve_forever, daemon=True).start()
+        import smacx_reference
+        smacx_reference.REFERENCE_URL = (
+            f"http://127.0.0.1:{reference_server.server_address[1]}"
+        )
         store = SmacxStore(root / "state.sqlite3")
         store.ensure_agent("agent-specialist", "Specialist")
         store.create_match(match_id="match-specialist", display_name="Test", mode="solo")
@@ -73,7 +114,10 @@ def main() -> int:
         duplicate = service.commission(faculty="world", objective="Inspect Home",
                                        subject_refs=["base-home"])
         assert duplicate["deduplicated"] and duplicate["mission_id"] == first["mission_id"]
-        second = service.commission(faculty="reference", objective="Research sensors")
+        second = service.commission(
+            faculty="reference", objective="Research sensors",
+            corpus_revision="old-corpus",
+        )
         third = service.commission(faculty="world", objective="Third queued mission")
         assert third["status"] == "mission_pending"
 
@@ -139,6 +183,34 @@ def main() -> int:
         service.record_dependencies(reference_attempt["attempt_id"], 1, [{
             "kind": "reference_document", "ref": "doc-sensors", "hash": "d" * 64,
         }])
+        # Only mechanically returned receipts are citations. A semantic
+        # document/collection/object identifier must never be accepted merely
+        # because it resembles a useful subject.
+        with store._connect() as connection:
+            reference_row = dict(connection.execute(
+                "SELECT * FROM specialist_missions WHERE mission_id=?",
+                (second["mission_id"],),
+            ).fetchone())
+        try:
+            service._validate_result(
+                reference_row, reference_attempt["attempt_id"],
+                result(second["mission_id"], "mechanics"),
+            )
+            raise AssertionError("subject identifier was accepted as an evidence receipt")
+        except SpecialistError as exc:
+            assert str(exc) == "specialist_claim_uses_unretrieved_evidence"
+        missing_receipt = result(second["mission_id"])
+        missing_receipt["claims"] = [{
+            "claim": "Sensors have an effect.", "citations": [],
+            "epistemic_status": "current",
+        }]
+        try:
+            service._validate_result(
+                reference_row, reference_attempt["attempt_id"], missing_receipt,
+            )
+            raise AssertionError("material claim without a receipt was accepted")
+        except SpecialistError as exc:
+            assert str(exc) == "specialist_claim_missing_evidence"
         os.environ["SMACX_CORPUS_REVISION"] = "new-corpus"
         stale_reference = service.accept_attempt(
             second["mission_id"], reference_attempt["attempt_id"],
@@ -176,11 +248,15 @@ def main() -> int:
         except SpecialistError as exc:
             assert str(exc) == "specialist_late_result_rejected"
 
+        operation_refs = ("base-home",)
+        dependencies = service.attention.semantic_dependency_hashes()
         operation = service.attention.upsert_operation(
             operation_id=None, kind="defense_review", objective="Review Home defense",
-            referenced_world_objects=("base-home",),
+            referenced_world_objects=operation_refs,
             source_world_revision=3, source_world_epoch=identity.world_epoch,
-            source_dependency_hash=material_hash({"base-home": 3}),
+            source_dependency_hash=content_hash({
+                ref: dependencies[ref] for ref in operation_refs
+            }),
             current_turn=1,
         )
         linked = service.commission(
@@ -229,11 +305,55 @@ def main() -> int:
         timeline_attempt = service.begin_attempt(
             timeline_mission["mission_id"], "test-runtime",
         )
+        prepared_mission = service.commission(
+            faculty="world", objective="Prepared result must lose to rollback",
+        )
+        prepared_attempt = service.begin_attempt(
+            prepared_mission["mission_id"], "test-runtime",
+        )
+        prepared_body = result(prepared_mission["mission_id"])
+        with store.transaction() as connection:
+            connection.execute(
+                "UPDATE specialist_missions SET accepted_attempt_id=?,result_json=?,"
+                "result_hash=?,result_preview=? WHERE mission_id=? AND status='active'",
+                (prepared_attempt["attempt_id"], json.dumps(prepared_body),
+                 material_hash(prepared_body), "Prepared but unpublished",
+                 prepared_mission["mission_id"]),
+            )
+            prepared_snapshot_id = connection.execute(
+                "SELECT world_snapshot_id FROM specialist_missions WHERE mission_id=?",
+                (prepared_mission["mission_id"],),
+            ).fetchone()[0]
+            assert connection.execute(
+                "SELECT COUNT(*) FROM world_snapshot_pins WHERE snapshot_id=?",
+                (prepared_snapshot_id,),
+            ).fetchone()[0] == 1
         with store.transaction() as connection:
             connection.execute(
                 "UPDATE matches SET metadata_json=? WHERE match_id=?",
                 (json.dumps({"active_memory_timeline": "timeline-restored"}), scope.match_id),
             )
+        # Startup reconciliation must first honor rollback authority. It may
+        # never publish the prepared body or enqueue completion attention from
+        # the abandoned branch.
+        assert service.reconcile_prepared_results() == 0
+        with store._connect() as connection:
+            prepared_row = connection.execute(
+                "SELECT status,cancellation_reason,completion_journal_sequence "
+                "FROM specialist_missions WHERE mission_id=?",
+                (prepared_mission["mission_id"],),
+            ).fetchone()
+            assert tuple(prepared_row) == ("cancelled", "cancelled_by_rollback", None)
+            assert connection.execute(
+                "SELECT COUNT(*) FROM world_snapshot_pins WHERE snapshot_id=?",
+                (prepared_snapshot_id,),
+            ).fetchone()[0] == 0
+            assert connection.execute(
+                "SELECT COUNT(*) FROM attention_items WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id='timeline-restored' "
+                "AND attention_kind='specialist_completion'",
+                (scope.match_id, scope.agent_id, scope.perspective_id),
+            ).fetchone()[0] == 0
         try:
             service.accept_attempt(
                 timeline_mission["mission_id"], timeline_attempt["attempt_id"],
@@ -242,17 +362,24 @@ def main() -> int:
             raise AssertionError("timeline-invalidated result published")
         except SpecialistError as exc:
             assert str(exc) == "specialist_late_result_rejected"
-        assert service.get(timeline_mission["mission_id"])["status"] == "cancelled"
+        try:
+            service.get(timeline_mission["mission_id"])
+            raise AssertionError("historical-timeline result remained sovereign-readable")
+        except SpecialistError as exc:
+            assert str(exc) == "specialist_result_historical_timeline"
 
         for faculty in ("reference", "world"):
             _, prompt = system_prompt(faculty)
             lowered = prompt.casefold()
             assert "disposable" in lowered and "sovereign" in lowered
             assert "terminal" in lowered or "files" in lowered
+            assert "never citations" in lowered
+            assert "empty claims[] is" in lowered and "valid:" in lowered
         with store._connect() as connection:
             columns = {row[1] for row in connection.execute(
                 "PRAGMA table_info('specialist_attempts')")}
             assert "session_state" not in columns and "conversation_json" not in columns
+        reference_server.shutdown()
 
     print(json.dumps({"event": "pass", "payload": {
         "mission_attempt_split": True, "bounded_durable_queue": True,
@@ -265,6 +392,9 @@ def main() -> int:
         "operation_completion_cancels_linked": True,
         "world_epoch_late_publish_rejected": True,
         "timeline_late_publish_rejected": True,
+        "historical_result_hidden": True,
+        "prepared_result_rollback_authoritative": True,
+        "frozen_reference_corpus": True,
     }}, separators=(",", ":")))
     return 0
 

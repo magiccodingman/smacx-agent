@@ -240,6 +240,18 @@ def main() -> int:
         raise AssertionError("strict provider-facing prompt guard was not enabled")
     if not any(name.endswith("SYSTEM.md") for name in data_files):
         raise AssertionError("strict prompt file was not seeded into managed data")
+    communication_config = manager._container_config({  # noqa: SLF001
+        "run_id": "run-contract-player", "harness_profile_id": "harness-contract-profile",
+        "match_id": "match-contract-game", "agent_id": "agent-contract-player",
+        "restart_count": 0, "restart_policy": {
+            "toolsets": "smacx", "max_turns": 100, "run_budget_seconds": 60,
+        },
+    }, runtime, "Handle communication.", episode_mode="communication")
+    communication_toolset = communication_config["Cmd"][
+        communication_config["Cmd"].index("--toolsets") + 1
+    ]
+    if communication_toolset != "smacx-communication":
+        raise AssertionError("communication invocation retained gameplay tool registry")
 
     old_secret_volume = runtime["secret_volume"]
     control.key = None
@@ -274,6 +286,7 @@ def main() -> int:
             "read_only_capability_dropped_runtime": True,
             "writable_unprivileged_data_root": True,
             "semantic_toolsets_only": True,
+            "communication_toolset_isolated": True,
             "prompt_driven_native_turn_handoff": True,
             "standard_launcher_starts_specialist_supervisor": True,
         },
