@@ -52,6 +52,15 @@ event, the bridge returns `continuity=incomplete` and
 marks the observation projection incomplete, queues critical attention, and
 performs a full perspective reconciliation. It never invents missing events.
 
+Draining and publication are separate durable phases. Before the first journal
+write, the collector freezes one private immutable publication package: its
+cursor/hash, native through-sequence, action revision, entitlement-filtered
+projection input, checked projection/delta hashes, semantic events, continuity,
+and watch/attention inputs. A retry finishes that exact package idempotently;
+newer ring activity cannot enter it and is drained only into the next
+publication after acknowledgement. The large payload is a private sidecar so
+normal stage acknowledgement remains bounded.
+
 Native request handling remains UI-thread bounded. A socket thread only posts a
 request into the serialized Windows message slot. Potentially synchronous game
 effects—including Turn Complete—are recorded as deferred actions and begin only
@@ -89,7 +98,21 @@ transports, carriers, and special connections. Deterministic calculators expose
 routes, reachability, ETA, bearings, response matrices, rendezvous windows,
 base defense/production facts, support, convoys, transport capacity, air
 recovery, lost-contact envelopes, site affordances, and narrow connectors.
-They do not rank strategy.
+They do not rank strategy. Foreign movement is evaluated in the foreign
+subject's mechanically known access frame: it never borrows the sovereign's or
+the sovereign's Pact partners' bases, carriers, gates, drops, or special
+connections. Unknown foreign refuelling remains an explicit conservative
+minimum rather than becoming false impossibility or exact ETA. Lost-contact
+envelopes include residual movement in the disappearance turn plus refreshed
+movement at every crossed turn boundary.
+
+Amphibious schedules use current residual movement only before rendezvous (or
+for an already-boarded transport). Explicit future boarding and disembarkation
+boundaries begin their following phases with refreshed movement. The fixed
+embark/landing candidate frontier reports whether search coverage is complete,
+how many candidates were examined, and whether a result is globally earliest
+or only the best found within the bounded search; a bounded miss is never
+reported as proven mechanical unreachability.
 
 The semantic mipmap makes prompt size track strategic complexity rather than
 tile count:

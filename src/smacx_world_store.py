@@ -35,6 +35,9 @@ class WorldStore:
         return (self.root / "native-observation-staging" / scope.match_id
                 / scope.agent_id / scope.perspective_id / f"{timeline_id}.json")
 
+    def _native_publication_path(self, scope: MemoryScope, timeline_id: str) -> Path:
+        return self._native_stage_path(scope, timeline_id).with_suffix(".publication.json")
+
     @staticmethod
     def _atomic_private_json(path: Path, value: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +61,7 @@ class WorldStore:
                 pass
 
     def load_native_observation_stage(
-        self, scope: MemoryScope, timeline_id: str,
+        self, scope: MemoryScope, timeline_id: str, *, include_publication: bool = True,
     ) -> dict[str, Any]:
         """Load provider-inaccessible two-phase native observation staging."""
         path = self._native_stage_path(scope, timeline_id)
@@ -70,11 +73,50 @@ class WorldStore:
             raise WorldStoreError("native_observation_stage_invalid") from exc
         if value and value.get("schema") != "smacx.private-native-stage.v1":
             raise WorldStoreError("native_observation_stage_schema_mismatch")
+        publication = value.get("publication_package")
+        publication_manifest = value.get("publication_manifest")
+        # Normalize an in-flight publication written by the earlier embedded
+        # package format. Recovery must still acknowledge the exact frozen
+        # source boundary rather than falling back to the mutable stage.
+        if isinstance(publication, Mapping) and not isinstance(publication_manifest, Mapping):
+            publication_manifest = {
+                "publication_hash": str(publication.get("publication_hash") or ""),
+                "source_through_sequence": int(
+                    publication.get("source_through_sequence") or 0
+                ),
+                "observation_cursor": int(
+                    publication.get("observation_cursor")
+                    or value.get("publication_observation_cursor") or 0
+                ),
+            }
+        if publication is None and isinstance(publication_manifest, Mapping) \
+                and include_publication:
+            try:
+                publication = json.loads(self._native_publication_path(
+                    scope, timeline_id,
+                ).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise WorldStoreError("native_observation_publication_missing") from exc
+        if publication is not None and include_publication:
+            if not isinstance(publication, Mapping):
+                raise WorldStoreError("native_observation_publication_invalid")
+            publication = dict(publication)
+            supplied_hash = str(publication.get("publication_hash") or "")
+            hash_input = {key: item for key, item in publication.items()
+                          if key != "publication_hash"}
+            if not supplied_hash or content_hash(hash_input) != supplied_hash:
+                raise WorldStoreError("native_observation_publication_hash_mismatch")
+            if isinstance(publication_manifest, Mapping) and supplied_hash != str(
+                    publication_manifest.get("publication_hash") or ""):
+                raise WorldStoreError("native_observation_publication_manifest_mismatch")
         return {
             "schema": "smacx.private-native-stage.v1",
             "staged_after_sequence": int(value.get("staged_after_sequence") or 0),
             "committed_after_sequence": int(value.get("committed_after_sequence") or 0),
             "publication_observation_cursor": value.get("publication_observation_cursor"),
+            "publication_package": publication,
+            "publication_manifest": dict(publication_manifest)
+                if isinstance(publication_manifest, Mapping) else None,
             "events": [dict(item) for item in value.get("events", [])
                        if isinstance(item, Mapping)],
             "continuity_gap": dict(value["continuity_gap"])
@@ -85,7 +127,12 @@ class WorldStore:
         self, scope: MemoryScope, timeline_id: str, *, events: Iterable[Mapping[str, Any]],
         next_sequence: int, continuity_gap: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        stage = self.load_native_observation_stage(scope, timeline_id)
+        stage = self.load_native_observation_stage(
+            scope, timeline_id, include_publication=False,
+        )
+        if stage.get("publication_manifest") is not None \
+                or stage.get("publication_observation_cursor") is not None:
+            raise WorldStoreError("native_observation_publication_in_progress")
         by_sequence = {
             int(item["native_sequence"]): dict(item)
             for item in stage["events"] if isinstance(item.get("native_sequence"), int)
@@ -113,26 +160,64 @@ class WorldStore:
 
     def begin_native_observation_publication(
         self, scope: MemoryScope, timeline_id: str, observation_cursor: int,
+        publication_package: Mapping[str, Any],
     ) -> dict[str, Any]:
-        stage = self.load_native_observation_stage(scope, timeline_id)
+        stage = self.load_native_observation_stage(
+            scope, timeline_id, include_publication=False,
+        )
         existing = stage.get("publication_observation_cursor")
         if existing is not None and int(existing) != int(observation_cursor):
             raise WorldStoreError("native_observation_publication_cursor_mismatch")
+        package = dict(publication_package)
+        package["observation_cursor"] = int(observation_cursor)
+        package.pop("publication_hash", None)
+        package["publication_hash"] = content_hash(package)
+        prior_manifest = stage.get("publication_manifest")
+        if isinstance(prior_manifest, Mapping) and str(
+                prior_manifest.get("publication_hash") or "") != package["publication_hash"]:
+            raise WorldStoreError("native_observation_publication_package_mismatch")
+        self._atomic_private_json(
+            self._native_publication_path(scope, timeline_id), package,
+        )
         stage["publication_observation_cursor"] = int(observation_cursor)
+        stage["publication_package"] = None
+        stage["publication_manifest"] = {
+            "publication_hash": package["publication_hash"],
+            "source_through_sequence": int(package.get("source_through_sequence") or 0),
+            "observation_cursor": int(observation_cursor),
+        }
         self._atomic_private_json(self._native_stage_path(scope, timeline_id), stage)
+        stage["publication_package"] = package
         return stage
 
     def acknowledge_native_observation_publication(
         self, scope: MemoryScope, timeline_id: str, observation_cursor: int,
     ) -> dict[str, Any]:
-        stage = self.load_native_observation_stage(scope, timeline_id)
+        stage = self.load_native_observation_stage(
+            scope, timeline_id, include_publication=False,
+        )
         if int(stage.get("publication_observation_cursor") or -1) != int(observation_cursor):
             raise WorldStoreError("native_observation_ack_cursor_mismatch")
-        stage["committed_after_sequence"] = int(stage["staged_after_sequence"])
-        stage["events"] = []
+        publication = stage.get("publication_manifest")
+        if not isinstance(publication, Mapping):
+            raise WorldStoreError("native_observation_ack_package_missing")
+        through_sequence = int(publication.get("source_through_sequence") or 0)
+        stage["committed_after_sequence"] = max(
+            int(stage["committed_after_sequence"]), through_sequence,
+        )
+        stage["staged_after_sequence"] = max(
+            int(stage["committed_after_sequence"]), through_sequence,
+        )
+        stage["events"] = [
+            item for item in stage["events"]
+            if int(item.get("native_sequence") or 0) > through_sequence
+        ]
         stage["continuity_gap"] = None
         stage["publication_observation_cursor"] = None
+        stage["publication_package"] = None
+        stage["publication_manifest"] = None
         self._atomic_private_json(self._native_stage_path(scope, timeline_id), stage)
+        self._native_publication_path(scope, timeline_id).unlink(missing_ok=True)
         return stage
 
     @staticmethod

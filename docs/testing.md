@@ -161,7 +161,9 @@ attempt isolation, hard leashes, cancellation, retry, schema repair, scheduling,
 and trace retention. `specialist_provider_meter_test.py` separately proves the
 attempt-local provider proxy enforces actual calls, cumulative usage,
 per-request context, and output reservations even when a failed response omits
-usage. Live scripts print only content-free usage/cache/latency aggregates.
+usage. It also proves that `/chat/completions` and `/v1/chat/completions` inputs
+resolve to exactly one `/v1` prefix when the configured provider base already
+contains it. Live scripts print only content-free usage/cache/latency aggregates.
 The provider-facing child evidence envelope contains a bounded semantic result
 and one opaque query receipt; internal object/material hashes and dependency
 graphs remain in the retained diagnostic trace rather than being replayed into
@@ -184,7 +186,10 @@ including more than 256 events, cross-page visible movement continuity, visible
 destruction versus fog loss, capture/recapture, tile visibility transitions,
 chat, global events, public Secret Project report transitions, durable
 two-phase publication across both injected crash windows, and a staged drain
-larger than the native ring. It also rejects action revisions coupled to native
+larger than the native ring. The adversarial recovery fixture mutates the native
+feed and action revision after partial journal publication and proves N finishes
+from its original immutable package before N+1 consumes the new event. It also
+rejects action revisions coupled to native
 row indices and verifies that loss/reappearance retires only the affected
 foreign visible-episode identity. The managed real-game gate deliberately
 compacts an owned VEH row before checkpoint, kills the native worker, and
@@ -197,11 +202,15 @@ provider-safe projection path.
 `movement_mechanics_contract_test.py` proves route, reachability, response, and
 lost-contact envelopes share one stateful arrival engine across turn
 boundaries, fungus, rough terrain, roads, rivers, tubes, ZOC, occupancy and
-remaining movement. It routes own, Pact, truce, hostile and epistemically
-unknown subjects under subject-relative access. The amphibious benchmark
-separately enforces bounded coast/port Pareto frontiers, transport ownership and
-diplomatic access, capacity/boarding legality, and conditional opposed landing
-on a 4,096-square custom world.
+remaining movement, including residual disappearance phases and refreshed
+movement after unseen turn boundaries. It routes own, Pact, truce, hostile and
+epistemically unknown subjects under subject-relative access, including
+foreign aircraft refuelling/carrier/gate isolation. Transport fixtures cover
+0/partial/full residual movement before rendezvous, after future boarding, and
+after disembarkation. The amphibious benchmark separately enforces bounded
+coast/port frontiers, explicit search completeness/optimality, transport
+ownership and diplomatic access, capacity/boarding legality, and conditional
+opposed landing on a 4,096-square custom world.
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:

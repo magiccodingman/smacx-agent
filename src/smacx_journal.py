@@ -522,6 +522,7 @@ class CampaignJournal:
             "commitments": {}, "goals": {}, "plans": {}, "summaries": {}, "notebook": {},
             "chat": {}, "chat_groups": {}, "chat_groups_snapshot_seen": False,
             "recent_actions": [], "lifecycle": [], "world_objects": {},
+            "project_reports": {},
             "world_observations": [], "world_continuity": "complete",
             "world_observation_cursor": 0,
         }
@@ -640,6 +641,32 @@ class CampaignJournal:
                 int(payload.get("observation_sequence") or 0),
             )
         elif kind.startswith("observation."):
+            if kind == "observation.semantic_batch":
+                semantic_events = payload.get("events")
+                for semantic in semantic_events if isinstance(semantic_events, list) else ():
+                    if not isinstance(semantic, Mapping):
+                        continue
+                    event_kind = str(semantic.get("event_kind") or "")
+                    project_ref = str(semantic.get("project_ref") or "")
+                    prior_project_ref = str(semantic.get("prior_project_ref") or "")
+                    if prior_project_ref:
+                        state["project_reports"].pop(prior_project_ref, None)
+                    if not project_ref:
+                        continue
+                    if event_kind == "project_race_halted":
+                        state["project_reports"].pop(project_ref, None)
+                    elif event_kind.startswith("project_race_") \
+                            and semantic.get("builder_ref"):
+                        state["project_reports"][project_ref] = {
+                            "project_ref": project_ref,
+                            "builder_ref": semantic.get("builder_ref"),
+                            "builder_epistemic_status": "reported",
+                            "builder_last_verified_turn": semantic.get(
+                                "turn", event.get("turn")),
+                            "builder_provenance": semantic.get(
+                                "provenance", "native_public_report"),
+                            "journal_event_id": event.get("event_id"),
+                        }
             state["world_observations"].append({
                 "event_type": kind, "journal_event_id": event.get("event_id"),
                 "turn": event.get("turn"), "year": event.get("year"),

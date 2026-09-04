@@ -130,7 +130,10 @@ def main() -> int:
         )
         assert restarted.native_after_sequence == 1500
         assert restarted._pending_native_events == collector._pending_native_events
-        worlds.begin_native_observation_publication(scope, collector.timeline_id, 1)
+        worlds.begin_native_observation_publication(
+            scope, collector.timeline_id, 1,
+            {"source_through_sequence": int(staged["staged_after_sequence"])},
+        )
         worlds.acknowledge_native_observation_publication(scope, collector.timeline_id, 1)
         collector._restore_native_stage()
 
@@ -157,7 +160,10 @@ def main() -> int:
         })
         staged = worlds.load_native_observation_stage(scope, collector.timeline_id)
         assert len(staged["events"]) == 1800
-        worlds.begin_native_observation_publication(scope, collector.timeline_id, 2)
+        worlds.begin_native_observation_publication(
+            scope, collector.timeline_id, 2,
+            {"source_through_sequence": int(staged["staged_after_sequence"])},
+        )
         worlds.acknowledge_native_observation_publication(scope, collector.timeline_id, 2)
         collector._restore_native_stage()
 
@@ -310,6 +316,116 @@ def main() -> int:
             thread.join(1)
         assert all(not thread.is_alive() for thread in threads)
         assert maximum_active == 1
+
+    # Freeze the complete publication, not merely its cursor. New native
+    # activity after a partial publish belongs exclusively to N+1.
+    with tempfile.TemporaryDirectory(prefix="smacx-native-frozen-publication-") as raw:
+        root = Path(raw)
+        store = SmacxStore(root / "state.sqlite3")
+        store.ensure_agent("agent-freeze", "Freeze")
+        store.create_match(match_id="match-freeze", display_name="Freeze", mode="solo")
+        store.create_perspective("match-freeze", "agent-freeze",
+                                 perspective_id="perspective-freeze")
+        scope = MemoryScope("match-freeze", "agent-freeze", "perspective-freeze")
+        journal = CampaignJournal(root / "campaigns", timeline_resolver=store.active_timeline_id)
+        worlds = WorldStore(store, root / "snapshots")
+        fixture = NativeFixture(16, 8, contacts=1)
+
+        def make_collector():
+            return ObservationCollector(
+                scope=scope, session_id="session-freeze", bridge_call=fixture,
+                journal=journal, world_store=worlds,
+                attention=AttentionService(store, journal, scope),
+            )
+
+        make_collector().collect_once()
+        fixture.revision = 2
+        fixture.events = [{
+            "sequence": 1, "kind": "visible_unit_damaged", "turn": 51,
+            "subject_a": 1000, "subject_b": 2, "from_tile_id": 1,
+            "to_tile_id": 1, "value_before": 10, "value_after": 8,
+            "continuous_visibility": True,
+        }]
+        original_append = journal.append
+        injected = False
+
+        def fail_after_first_batch(*args, **kwargs):
+            nonlocal injected
+            event_type = args[1] if len(args) > 1 else kwargs.get("event_type")
+            if event_type == "observation.semantic_batch" and not injected:
+                injected = True
+                raise RuntimeError("injected_after_first_journal_batch")
+            return original_append(*args, **kwargs)
+
+        journal.append = fail_after_first_batch  # type: ignore[method-assign]
+        try:
+            make_collector().collect_once()
+            raise AssertionError("frozen publication failure not injected")
+        except RuntimeError as exc:
+            assert str(exc) == "injected_after_first_journal_batch"
+        journal.append = original_append  # type: ignore[method-assign]
+        frozen = worlds.load_native_observation_stage(scope, journal.timeline_id(scope))
+        package_n = json.loads(json.dumps(frozen["publication_package"]))
+        assert package_n["source_native_sequences"] == [1]
+        assert package_n["action_revision"] == "benchmark-2"
+        fixture.revision = 3
+        fixture.events.append({
+            "sequence": 2, "kind": "visible_unit_damaged", "turn": 52,
+            "subject_a": 1000, "subject_b": 2, "from_tile_id": 1,
+            "to_tile_id": 1, "value_before": 8, "value_after": 6,
+            "continuous_visibility": True,
+        })
+        make_collector().collect_once()
+        after_n = worlds.load(scope, journal.timeline_id(scope))
+        assert after_n["action_revision"] == "benchmark-2"
+        assert worlds.load_native_observation_stage(
+            scope, journal.timeline_id(scope),
+        )["committed_after_sequence"] == 1
+        make_collector().collect_once()
+        after_n1 = worlds.load(scope, journal.timeline_id(scope))
+        assert after_n1["action_revision"] == "benchmark-3"
+        events = worlds.temporal_events_since(scope, journal.timeline_id(scope), 0, limit=256)
+        damage = [row for row in events if row["event"].get("event_kind") == "contact_damaged"]
+        assert len(damage) == 2
+
+        # The other dangerous window is after semantic journal publication but
+        # before world-head replacement.
+        fixture.revision = 4
+        fixture.events.append({
+            "sequence": 3, "kind": "visible_unit_damaged", "turn": 53,
+            "subject_a": 1000, "subject_b": 2, "from_tile_id": 1,
+            "to_tile_id": 1, "value_before": 6, "value_after": 5,
+            "continuous_visibility": True,
+        })
+        original_replace = worlds.replace_projection
+        replaced_once = False
+
+        def fail_before_world_head(*args, **kwargs):
+            nonlocal replaced_once
+            if not replaced_once:
+                replaced_once = True
+                raise RuntimeError("injected_before_world_head_replacement")
+            return original_replace(*args, **kwargs)
+
+        worlds.replace_projection = fail_before_world_head  # type: ignore[method-assign]
+        try:
+            make_collector().collect_once()
+            raise AssertionError("world-head failure not injected")
+        except RuntimeError as exc:
+            assert str(exc) == "injected_before_world_head_replacement"
+        worlds.replace_projection = original_replace  # type: ignore[method-assign]
+        frozen = worlds.load_native_observation_stage(scope, journal.timeline_id(scope))
+        assert frozen["publication_package"]["source_native_sequences"] == [3]
+        fixture.revision = 5
+        fixture.events.append({
+            "sequence": 4, "kind": "known_tile_changed", "turn": 54,
+            "subject_a": 2, "from_tile_id": 2, "to_tile_id": 2,
+            "continuous_visibility": True,
+        })
+        make_collector().collect_once()
+        assert worlds.load(scope, journal.timeline_id(scope))["action_revision"] == "benchmark-4"
+        make_collector().collect_once()
+        assert worlds.load(scope, journal.timeline_id(scope))["action_revision"] == "benchmark-5"
 
     # Exercise both two-phase crash windows through the complete collector,
     # projector, journal, and temporal-history path.
@@ -481,6 +597,8 @@ def main() -> int:
         "managed_sidecar_identity_explicit": True,
         "collector_refresh_serialized": True,
         "two_phase_publication_crash_replay_exactly_once": True,
+        "immutable_publication_package_defers_new_native_activity": True,
+        "post_semantic_pre_world_head_recovery_exact": True,
         "durable_stage_retains_more_than_native_ring_capacity": True,
         "semantic_identity_checkpoint_wiring": True,
         "action_revision_ignores_native_row_layout": True,

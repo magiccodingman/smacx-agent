@@ -12,10 +12,10 @@ from urllib.request import Request, urlopen
 from smacx_provider_meter import AttemptProviderProxy, ProviderLeaseMeter
 
 
-def _post(base: str, payload: dict) -> tuple[int, bytes]:
+def _post(base: str, payload: dict, path: str = "/chat/completions") -> tuple[int, bytes]:
     body = json.dumps(payload, separators=(",", ":")).encode()
     try:
-        with urlopen(Request(base + "/chat/completions", data=body, method="POST",
+        with urlopen(Request(base + path, data=body, method="POST",
                              headers={"Content-Type": "application/json"}), timeout=5) as response:
             return response.status, response.read()
     except HTTPError as exc:
@@ -24,6 +24,7 @@ def _post(base: str, payload: dict) -> tuple[int, bytes]:
 
 def main() -> int:
     upstream_calls: list[dict] = []
+    upstream_paths: list[str] = []
 
     class Upstream(BaseHTTPRequestHandler):
         def log_message(self, *_args: object) -> None:
@@ -32,6 +33,7 @@ def main() -> int:
         def do_POST(self) -> None:  # noqa: N802
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             upstream_calls.append(payload)
+            upstream_paths.append(self.path)
             index = len(upstream_calls)
             usage = {"prompt_tokens": 100 + index, "completion_tokens": 10,
                      "total_tokens": 110 + index}
@@ -74,7 +76,7 @@ def main() -> int:
         status, body = _post(base, {"model": "fixture", "messages": [{"role": "user",
                                       "content": "first"}, {"role": "tool",
                                       "content": "second"}], "max_tokens": 100,
-                                      "stream": True})
+                                      "stream": True}, path="/v1/chat/completions")
         assert status == 200 and b"[DONE]" in body
         status, body = _post(base, {"model": "fixture", "messages": [],
                                     "max_tokens": 100})
@@ -84,6 +86,7 @@ def main() -> int:
         assert usage.provider_tokens == 223
         assert usage.peak_context_tokens == 102
         assert len(upstream_calls) == 2
+        assert upstream_paths == ["/v1/chat/completions", "/v1/chat/completions"]
     finally:
         proxy.close()
         upstream.shutdown()

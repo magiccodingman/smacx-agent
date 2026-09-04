@@ -318,7 +318,9 @@ def main() -> int:
         "transport", "own_unit", "sea-a", owner_ref="faction-1", triad="sea",
         movement_points=2, roles={"transport": True}, cargo={"capacity": 4, "loaded": 4},
     )}
-    assert transport_route(ocean_topology, full_transport, "passenger", "land-b") is None
+    assert transport_route(
+        ocean_topology, full_transport, "passenger", "land-b",
+    )["reachable"] is False
 
     drop_objects = {
         "dropper": item("dropper", "own_unit", "land-a", owner_ref="faction-1",

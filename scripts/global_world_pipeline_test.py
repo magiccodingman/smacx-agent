@@ -184,6 +184,10 @@ def main() -> int:
         worlds = WorldStore(store, root / "snapshots")
         attention = AttentionService(store, journal, scope)
         fixture = CompleteDomainFixture()
+        fixture.events = [{
+            "sequence": 1, "kind": "project_race_started", "turn": 50,
+            "subject_a": 2, "subject_b": 2,
+        }]
         collector = ObservationCollector(
             scope=scope, session_id="session-domain", bridge_call=fixture,
             journal=journal, world_store=worlds, attention=attention,
@@ -227,6 +231,8 @@ def main() -> int:
         initial_race = field(objects["global-known-project-races"], "state")[0]
         assert initial_race["builder_ref"] == "faction-2"
         assert initial_race["builder_epistemic_status"] == "current"
+        assert journal.replay(scope)["project_reports"]["project-2"]["builder_ref"] \
+            == "faction-2"
 
         # Simulate a native process restart: the bridge-local popup memory is
         # empty, while the journal-derived current projection still contains
@@ -234,6 +240,15 @@ def main() -> int:
         # newer native report supersedes it.
         fixture.project_builder_ref = None
         fixture.revision += 1
+        # Destroy every derived world cache. The immutable campaign journal is
+        # sufficient to rebuild the reported builder and provenance.
+        with store.transaction() as connection:
+            connection.execute(
+                "DELETE FROM world_observation_projection WHERE match_id=?",
+                (scope.match_id,),
+            )
+            connection.execute("DELETE FROM world_objects WHERE match_id=?", (scope.match_id,))
+            connection.execute("DELETE FROM world_heads WHERE match_id=?", (scope.match_id,))
         restarted_collector = ObservationCollector(
             scope=scope, session_id="session-domain-restarted", bridge_call=fixture,
             journal=journal, world_store=worlds, attention=attention,
@@ -249,6 +264,10 @@ def main() -> int:
 
         fixture.project_builder_ref = "faction-3"
         fixture.revision += 1
+        fixture.events.append({
+            "sequence": 2, "kind": "project_race_changed", "turn": 51,
+            "subject_a": 2, "subject_b": 3,
+        })
         restarted_collector.collect_once()
         projection = worlds.load(scope, journal.timeline_id(scope))
         assert projection is not None
@@ -256,6 +275,31 @@ def main() -> int:
         replacement_race = field(objects["global-known-project-races"], "state")[0]
         assert replacement_race["builder_ref"] == "faction-3"
         assert replacement_race["builder_epistemic_status"] == "current"
+        assert journal.replay(scope)["project_reports"]["project-2"]["builder_ref"] \
+            == "faction-3"
+        fixture.project_builder_ref = None
+        fixture.revision += 1
+        fixture.events.append({
+            "sequence": 3, "kind": "project_race_halted", "turn": 52,
+            "subject_a": 2, "subject_b": -1,
+        })
+        restarted_collector.collect_once()
+        halted_projection = worlds.load(scope, journal.timeline_id(scope))
+        halted_objects = {item["object_ref"]: item for item in halted_projection["objects"]}
+        halted_race = field(halted_objects["global-known-project-races"], "state")[0]
+        assert not halted_race.get("builder_ref")
+        assert "project-2" not in journal.replay(scope)["project_reports"]
+        fixture.project_builder_ref = "faction-2"
+        fixture.revision += 1
+        fixture.events.append({
+            "sequence": 4, "kind": "project_race_continued", "turn": 53,
+            "subject_a": 2, "subject_b": 2,
+        })
+        restarted_collector.collect_once()
+        projection = worlds.load(scope, journal.timeline_id(scope))
+        objects = {item["object_ref"]: item for item in projection["objects"]}
+        assert field(objects["global-known-project-races"], "state")[0]["builder_ref"] \
+            == "faction-2"
         assert field(objects["global-ecology"], "state")["sea_level"] == 4
         assert field(objects["global-own-planetary-state"], "state")["random_event_id"] == 7
         assert field(objects["global-victory-posture"], "state")["enabled"]["cooperative"]
@@ -329,6 +373,7 @@ def main() -> int:
         "base_radius_support_convoy_transport": True,
         "wild_native_and_progenitor_ontology": True,
         "project_builder_report_survives_restart_and_is_superseded": True,
+        "project_report_rebuilds_without_derived_projection": True,
         "specialist_snapshot_entitlement_safe": True,
     }}, separators=(",", ":")))
     return 0

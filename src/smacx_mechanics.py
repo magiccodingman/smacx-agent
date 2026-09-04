@@ -7,6 +7,7 @@ ranks strategic value or recommends an action.
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from math import ceil
 from typing import Any, Iterable, Mapping
 
@@ -67,25 +68,36 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
         triad = "sea"
     subject_owner = field_value(subject, "owner_ref")
 
-    def friendly_owner(owner_ref: Any) -> bool:
+    def subject_can_use_owner(owner_ref: Any) -> bool:
+        """Return only access mechanically established for the moving subject.
+
+        Diplomacy fields are from the sovereign perspective. They cannot prove
+        that a foreign mover may use our or our Pact partner's infrastructure.
+        """
+        if subject_is_foreign:
+            return bool(subject_owner) and owner_ref == subject_owner
         return owner_ref in {None, "", subject_owner, "faction-0"} \
             or relationship_class(objects.get(str(owner_ref), {})) == "allied"
 
     stationary_refuel = {
         object_location(item) for item in objects.values()
-        if item.get("kind") == "base" and friendly_owner(field_value(item, "owner_ref"))
+        if item.get("kind") == "base"
+        and subject_can_use_owner(field_value(item, "owner_ref"))
     }
     stationary_refuel.update(
         str(item["object_ref"]) for item in objects.values()
         if item.get("kind") == "location"
         and "airbase" in set(map(str, field_value(item, "features", []) or []))
-        and friendly_owner(field_value(item, "owner_ref"))
+        and subject_can_use_owner(field_value(item, "owner_ref"))
     )
     mobile_refuel: set[str] = set()
     for item in objects.values():
         item_roles = field_value(item, "roles", {})
         cargo = field_value(item, "cargo", {})
-        if item.get("kind") == "own_unit" and isinstance(item_roles, Mapping) \
+        if item.get("kind") in {"own_unit", "foreign_contact"} \
+                and item.get("status", "active") == "active" \
+                and subject_can_use_owner(field_value(item, "owner_ref")) \
+                and isinstance(item_roles, Mapping) \
                 and item_roles.get("carrier") \
                 and isinstance(cargo, Mapping) \
                 and int(cargo.get("loaded", 0)) < int(cargo.get("capacity", 0)):
@@ -139,8 +151,10 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
             base_owner = field_value(occupying_base, "owner_ref") \
                 if occupying_base is not None else None
             base_owner_object = objects.get(str(base_owner), {})
-            base_is_non_pact = base_owner not in {None, "", field_value(subject, "owner_ref")} \
-                and relationship_class(base_owner_object) != "allied"
+            base_is_non_pact = base_owner not in {None, "", subject_owner} and (
+                subject_is_foreign
+                or relationship_class(base_owner_object) != "allied"
+            )
             if not combat and (square.hostile_zoc or (
                 occupying_base is not None
                 and base_is_non_pact
@@ -211,7 +225,7 @@ def response_matrix(topology: PerspectiveTopology,
                 transported = transport_route(
                     topology, objects, origin_ref, target_ref,
                 )
-                if transported is not None:
+                if transported is not None and transported.get("reachable") is not False:
                     cell["transport_route"] = transported
                     cell["reachable_with_transport"] = True
                     cell["eta_turns_with_transport"] = transported["eta_turns"]
@@ -358,6 +372,9 @@ def transport_route(
         objects, "transport-passenger-land", subject_ref=passenger_ref,
         topology=topology,
     )
+    fresh_land_profile = replace(
+        land_profile, movement_remaining=land_profile.movement_points,
+    )
     transports = []
     for item in objects.values():
         item_roles = field_value(item, "roles", {})
@@ -389,7 +406,7 @@ def transport_route(
     passenger_arrivals = topology.arrival_map(
         passenger_location, land_profile, max_turns=search_turns,
     )
-    landing_candidates = sorted(
+    ranked_landing_candidates = sorted(
         coast_pairs,
         key=lambda pair: (
             topology.shape.distance(
@@ -397,9 +414,11 @@ def transport_route(
                 (topology.by_ref[target_location].x, topology.by_ref[target_location].y),
             ), pair,
         ),
-    )[:8]
+    )
+    landing_candidate_cap = 8
+    landing_candidates = ranked_landing_candidates[:landing_candidate_cap]
     post_legs = {
-        land_ref: topology.route(land_ref, target_location, land_profile)
+        land_ref: topology.route(land_ref, target_location, fresh_land_profile)
         for land_ref, _sea_ref in landing_candidates
     }
     hostile_at = {
@@ -409,12 +428,17 @@ def transport_route(
         and relationship_class(objects.get(str(field_value(item, "owner_ref")), {})) != "allied"
     }
     best: tuple[tuple[int, float, str], dict[str, Any]] | None = None
+    any_embark_truncated = False
+    maximum_embark_candidates = 0
     for transport, already_boarded, capacity, loaded in transports:
         transport_ref = str(transport["object_ref"])
         transport_location = object_location(transport)
         sea_profile = mobility_profile(
             objects, "transport-sea", subject_ref=transport_ref,
             topology=topology,
+        )
+        fresh_sea_profile = replace(
+            sea_profile, movement_remaining=sea_profile.movement_points,
         )
         transport_arrivals = topology.arrival_map(
             transport_location, sea_profile, max_turns=search_turns,
@@ -435,15 +459,19 @@ def transport_route(
                     + float(transport_arrival["movement_cost"]),
                     land_ref, sea_ref,
                 ))
-            for _turns, _cost, land_ref, sea_ref in sorted(ranked)[:4]:
+            embark_candidate_cap = 4
+            maximum_embark_candidates = max(maximum_embark_candidates, len(ranked))
+            any_embark_truncated = any_embark_truncated or len(ranked) > embark_candidate_cap
+            for _turns, _cost, land_ref, sea_ref in sorted(ranked)[:embark_candidate_cap]:
                 embark_pairs.append((
                     land_ref, sea_ref,
                     topology.route(passenger_location, land_ref, land_profile),
                     topology.route(transport_location, sea_ref, sea_profile),
                 ))
         for embark_land, embark_sea, passenger_leg, transport_leg in embark_pairs:
+            crossing_profile = sea_profile if already_boarded else fresh_sea_profile
             crossing_arrivals = topology.arrival_map(
-                embark_sea, sea_profile, max_turns=search_turns,
+                embark_sea, crossing_profile, max_turns=search_turns,
             )
             for landing_ref, landing_sea_ref in landing_candidates:
                 post_leg = post_legs[landing_ref]
@@ -454,7 +482,7 @@ def transport_route(
                 opposed = landing_ref in hostile_at
                 if opposed and not amphibious:
                     continue
-                sea_leg = topology.route(embark_sea, landing_sea_ref, sea_profile)
+                sea_leg = topology.route(embark_sea, landing_sea_ref, crossing_profile)
                 if not sea_leg.reachable:
                     continue
                 try:
@@ -477,6 +505,7 @@ def transport_route(
                         conditional = conditional or passenger_leg.eta_kind != "exact_known_state" \
                             or transport_leg.eta_kind != "exact_known_state"
                     schedule = {
+                        "reachable": True,
                         "transport_ref": transport_ref,
                         "passenger_ref": passenger_ref,
                         "target_ref": target_ref,
@@ -508,6 +537,36 @@ def transport_route(
                         },
                         "capacity": {"total": capacity, "loaded": loaded,
                                      "available": capacity - loaded},
+                        "search": {
+                            "search_complete": (
+                                len(ranked_landing_candidates) <= landing_candidate_cap
+                                and (already_boarded or len(ranked) <= embark_candidate_cap)
+                            ),
+                            "optimality": (
+                                "globally_earliest_known_schedule"
+                                if len(ranked_landing_candidates) <= landing_candidate_cap
+                                and (already_boarded or len(ranked) <= embark_candidate_cap)
+                                else "best_schedule_within_bounded_candidates"
+                            ),
+                            "embark_candidates_available": 1 if already_boarded else len(ranked),
+                            "embark_candidates_examined": 1 if already_boarded
+                            else min(len(ranked), embark_candidate_cap),
+                            "embark_candidate_cap": 1 if already_boarded else embark_candidate_cap,
+                            "landing_candidates_available": len(ranked_landing_candidates),
+                            "landing_candidates_examined": len(landing_candidates),
+                            "landing_candidate_cap": landing_candidate_cap,
+                        },
+                        "phase_mechanics": {
+                            "pre_rendezvous": "current residual movement",
+                            "boarding_boundary": (
+                                "already aboard; transport may use current residual movement"
+                                if already_boarded else
+                                "explicit boarding ends the phase; crossing begins with fresh transport movement"
+                            ),
+                            "post_disembark": (
+                                "fresh passenger movement after the explicit disembark boundary"
+                            ),
+                        },
                         "requirements": [
                             "Execute each phase through fresh guarded unit choices.",
                             "A non-amphibious passenger cannot make an opposed amphibious attack.",
@@ -528,7 +587,48 @@ def transport_route(
                         best = (score, schedule)
                 except (AttributeError, TypeError, ValueError):
                     continue
-    return best[1] if best else None
+    if best:
+        # Completeness describes the entire bounded search, not merely the
+        # transport that produced the selected schedule. A later truncated
+        # embark frontier means an earlier or otherwise preferable schedule
+        # may still exist outside the examined candidates.
+        if any_embark_truncated:
+            best[1]["search"]["search_complete"] = False
+            best[1]["search"]["optimality"] = (
+                "best_schedule_within_bounded_candidates"
+            )
+        best[1]["search"]["maximum_embark_candidates_available"] = (
+            maximum_embark_candidates
+        )
+        best[1]["search"]["transports_examined"] = len(transports)
+        return best[1]
+    # A bounded candidate frontier is not a proof of mechanical
+    # unreachability.  Expose coverage so callers cannot silently conflate the
+    # two conclusions.
+    truncated = len(ranked_landing_candidates) > landing_candidate_cap \
+        or any_embark_truncated
+    return {
+        "reachable": False,
+        "status": ("no_route_found_within_bounded_candidate_search" if truncated
+                   else "mechanically_unreachable_in_known_world"),
+        "search": {
+            "search_complete": not truncated,
+            "optimality": "none",
+            "landing_candidates_available": len(ranked_landing_candidates),
+            "landing_candidates_examined": len(landing_candidates),
+            "landing_candidate_cap": landing_candidate_cap,
+            "embark_candidate_cap": 4,
+            "maximum_embark_candidates_available": maximum_embark_candidates,
+            "maximum_embark_candidates_examined": min(
+                maximum_embark_candidates, 4,
+            ),
+            "transports_examined": len(transports),
+        },
+        "limitations": ([
+            "The fixed candidate frontier is a latency bound, not proof that no route exists.",
+            "Additional embark or landing candidates may contain a feasible or earlier schedule.",
+        ] if truncated else []),
+    }
 
 
 def logistics(objects: Mapping[str, Mapping[str, Any]],
@@ -613,15 +713,24 @@ def lost_contact_envelopes(topology: PerspectiveTopology,
                                    subject_ref=str(item["object_ref"]), topology=topology)
         start = object_location(item)
         reached: dict[str, dict[str, Any]] = {}
+        # ``arrival_map`` turn 1 is the residual phase of the last-seen turn;
+        # every crossed native turn boundary adds one fresh full-movement
+        # phase.  Treating elapsed turns as the phase count drops all residual
+        # same-turn movement and leaves a zero-move sighting frozen forever.
+        unseen_movement_phases = None if elapsed is None else elapsed + 1
         if elapsed is not None and start in topology.by_ref:
-            reached = topology.arrival_map(start, profile, max_turns=elapsed)
+            reached = topology.arrival_map(
+                start, profile, max_turns=unseen_movement_phases,
+            )
         rows.append({
             "retired_contact_ref": item["object_ref"],
             "last_known_location_ref": start,
             "last_seen_turn": last_seen,
             "turns_since_last_seen": elapsed,
+            "unseen_movement_phases": unseen_movement_phases,
             "observed_mobility_profile": {
                 "triad": profile.triad, "movement_points": profile.movement_points,
+                "last_seen_movement_remaining": profile.movement_remaining,
             },
             "known_world_possible_location_count": len(reached),
             "known_world_possible_location_refs": [
@@ -631,6 +740,7 @@ def lost_contact_envelopes(topology: PerspectiveTopology,
                     )
                 )[:32]
             ],
+            "known_world_possible_location_refs_complete": len(reached) <= 32,
             "epistemic_status": "estimated",
             "identity_continuity": "retired; a later similar unit is a new contact",
             "limitations": [

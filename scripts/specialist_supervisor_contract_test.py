@@ -153,7 +153,10 @@ def seed(root: Path) -> tuple[SmacxStore, WorldStore, MemoryScope, SpecialistSer
         policy = {
             "installation_concurrency": 1, "seat_concurrency": 1,
             "automatic_retries": 1, "schema_repairs": 1,
-            "synthesis": {"wall_seconds": 5}, "investigation": {"wall_seconds": 5},
+            # Leave process-start headroom under a loaded CI/Docker host. The
+            # explicit timeout fixture below shortens its own deadline, so the
+            # contract does not depend on this setup value being razor-thin.
+            "synthesis": {"wall_seconds": 15}, "investigation": {"wall_seconds": 15},
         }
         connection.execute(
             "INSERT INTO control_settings(setting_key,value_json,updated_unix) "

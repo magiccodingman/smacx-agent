@@ -296,6 +296,24 @@ class PerspectiveTopology:
         initial_fuel = profile.air_safe_range
         if initial_fuel is None:
             return self._route_surface(origin_ref, target_ref, profile, dependency)
+        if profile.constraint_mode == "subject_unknown":
+            # The perspective cannot enumerate a foreign faction's carriers,
+            # bases, gates, or diplomatic access.  Absence of an observed
+            # refuelling chain is therefore not proof that a threat is
+            # impossible. Return the physically shortest conservative minimum
+            # and make the unknown logistics explicit; never borrow sovereign
+            # infrastructure or label the result exact.
+            plausible = self._route_surface(origin_ref, target_ref, profile, dependency)
+            if not plausible.reachable:
+                return plausible
+            return RouteResult(
+                True, plausible.path, plausible.movement_cost, plausible.turns,
+                tuple(dict.fromkeys((*plausible.uncertainty,
+                    "Foreign refuelling and access infrastructure is not fully observed; "
+                    "fuel feasibility is unknown and this route is only a conservative "
+                    "minimum-arrival possibility."))),
+                dependency, "conditional_minimum", None,
+            )
         full_fuel = profile.air_full_safe_range or initial_fuel
         refuels = {ref for ref in profile.refuel_location_refs if ref in self.by_ref}
         waypoints = sorted(refuels | {origin_ref, target_ref})

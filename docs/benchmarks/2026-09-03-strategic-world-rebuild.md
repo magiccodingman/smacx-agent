@@ -22,10 +22,10 @@ conversation text, saves, credentials, or private endpoints.
 | `smac_world` serialized schema | 1,475 bytes; 492 conservative tokens |
 | v6 system prompt | 5,280 bytes; 1,760 conservative tokens; 1,117 exact Qwen tokens |
 | Managed provider tools | 15 |
-| Live stable-prefix second request | 23,072 locally cached tokens of 25,943 prompt tokens |
+| Live stable-prefix second request | 21,424 locally cached tokens of 23,143 prompt tokens |
 | Live Hermes world specialist | 5 provider calls, 9 world queries, 326,786 cumulative replay tokens, 89,492 peak prompt tokens, 4,343-byte strict result, 58.35 seconds |
-| Real-game no-timer specialist | accepted; 4 provider calls, 8 world queries, 198,623 cumulative replay tokens, 50,130 peak prompt tokens, 38.484 seconds; native bridge probe 192 ms; native turn unchanged |
-| Real-game no-timer sovereign action | 5 calls; 43,784 input, 1,519 output, 1,022 reasoning tokens; guarded semantic revision advanced |
+| Real-game no-timer specialist | accepted; 5 provider calls, 10 world queries, 375,582 cumulative replay tokens, 97,541 peak prompt tokens, 51.714 seconds; native bridge probe 188 ms; native turn unchanged |
+| Real-game no-timer sovereign action | 12 calls; 135,383 input, 4,959 output, 3,541 reasoning tokens; guarded semantic revision advanced |
 | Native bridge build | current worker image built successfully, including the 32-bit bridge stage |
 | .NET tests | 63 passed |
 
@@ -93,24 +93,29 @@ Production-shaped collector measurements were:
 
 | Collector case | Initial / unchanged wall time | Bridge calls | Maximum UI-probe gap |
 | --- | ---: | ---: | ---: |
-| Small quiet | 337 ms initial | fixture-bounded | below 500 ms |
-| Stock Huge quiet | 3,650 ms initial | fixture-bounded | below 500 ms |
-| Stock Huge active | 4,557 ms initial | fixture-bounded | below 500 ms |
-| 25,600-square custom quiet | 22,040 ms initial | fixture-bounded | below 500 ms |
-| Dense overflow/reconciliation | 1,051 ms initial | multi-page | below 500 ms |
+| Small quiet | 399 / 137 ms | 11 | 18 ms |
+| Stock Huge quiet | 4,142 / 2,423 ms | 35 | 102 ms |
+| Stock Huge active | 5,032 / 2,637 ms | 36 | 99 ms |
+| 25,600-square custom quiet | 24,854 / 10,218 ms | 110 | 446 ms |
+| Dense overflow/reconciliation | 1,151 / 444 ms | 16 / 14 | 24 ms |
 
 The overflow case drains multi-page native events, reports deliberate
 continuity gaps, leaves no native backlog, and retains zero unchanged
 projection-object writes. A separate durability fixture stages 1,800 events,
 well beyond the native ring capacity, and replays both injected publication
-crash windows exactly once. The 25,600-square custom case is a
+crash windows exactly once. After each partial publish, the fixture changes the
+native feed and action revision: immutable N completes with its original
+projection/deltas/events, then N+1 consumes the new activity once. The
+25,600-square custom case is a
 stress fixture beyond the stock Huge map, remains below the 30-second hard gate,
 and does not block native/UI responsiveness.
 
-The custom 4,096-square amphibious stress fixture completed in 1.51 seconds.
+The custom 4,096-square amphibious stress fixture completed in 1.76 seconds.
 Candidate pruning retained four embark and eight landing frontier
-states while enforcing transport ownership/access, capacity, current boarding
-state, and opposed-disembarkation legality.
+states while enforcing transport ownership/access, phase-refreshed movement,
+capacity, current boarding state, and opposed-disembarkation legality. Search
+results expose coverage and optimality; an adversarial feasible landing beyond
+the first eight is reported as an incomplete bounded miss, never unreachable.
 
 An earlier exploratory run of the same no-timer path continued from turn 1 to
 turn 3 before the integration fixture was tightened to stop on an observed
@@ -119,13 +124,15 @@ That longer sample made 34 provider calls and used 323,801 input, 7,498 output,
 and 3,976 reasoning tokens. These are cumulative provider totals, not active
 context occupancy, and are recorded only as directional integration evidence.
 
-During live acceptance, the fixture exposed and the rebuild fixed six real
+During live acceptance, the fixture exposed and the rebuild fixed seven real
 integration defects: the MCP sidecar lacked its exact process-session binding,
 the collector used obsolete bridge operation names, the MCP runtime helper was
 missing two local utilities, and Docker's non-TTY multiplexed log framing was
 being mistaken for invalid checkpoint JSON. It also caught an incomplete
 authoritative base page and shell-launcher handling for the pinned Hermes entry
-point. Each now has a deterministic
+point. The final pass additionally caught duplicate `/v1/v1` routing when both
+an operator-configured provider base and Hermes supplied the OpenAI API prefix.
+Each now has a deterministic
 regression contract in addition to the live test.
 
 The historical no-timer gameplay report remains separately documented in

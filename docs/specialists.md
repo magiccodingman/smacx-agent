@@ -169,3 +169,7 @@ These gates prove mission/attempt separation, immutable input, actual-call
 dependencies, isolated provider requests, stable system/tool prefixes, strict
 results, stale/CAS behavior, attention delivery, retries, schema repair, hard
 cancellation, concurrency fairness, compressed trace integrity, and retention.
+Terminally failed world missions keep their immutable snapshot pinned only for
+the configured manual-retry horizon. Throttled housekeeping releases expired
+pins during normal supervisor operation (restart is unnecessary), and `retry`
+independently rejects an expired horizon even if housekeeping has not run yet.

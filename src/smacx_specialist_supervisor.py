@@ -56,6 +56,7 @@ class SpecialistSupervisor:
         self.futures: dict[str, Future[None]] = {}
         self.executor = ThreadPoolExecutor(max_workers=16, thread_name_prefix="smacx-specialist")
         self._last_seat = ""
+        self._last_housekeeping_unix = 0.0
 
     @staticmethod
     def _scope(mission: Mapping[str, Any]) -> MemoryScope:
@@ -108,6 +109,15 @@ class SpecialistSupervisor:
             ).fetchall()]
         for scope in scopes:
             self._service(scope).reconcile_terminal_attention()
+        return total
+
+    def housekeeping(self, *, force: bool = False) -> int:
+        """Run throttled lifecycle/retention reconciliation while healthy."""
+        now = time.time()
+        if not force and now - self._last_housekeeping_unix < 30.0:
+            return 0
+        total = self.reconcile()
+        self._last_housekeeping_unix = now
         return total
 
     def _publish_health(self, status: str = "ready") -> None:
@@ -647,8 +657,13 @@ class SpecialistSupervisor:
 
     def run(self, *, once: bool = False) -> int:
         self.reconcile()
+        self._last_housekeeping_unix = time.time()
         while not self.stop_event.is_set():
             self._publish_health()
+            # Failed immutable-view pins have a bounded manual retry horizon.
+            # Release them during normal healthy operation rather than waiting
+            # for a supervisor restart.
+            self.housekeeping()
             self.futures = {key: future for key, future in self.futures.items()
                             if not future.done()}
             slots, rows = self._available()

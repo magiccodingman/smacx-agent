@@ -88,6 +88,15 @@ def trace_usage_summary(path: str | None) -> list[dict[str, object]]:
             template = request.get("chat_template_kwargs") \
                 if isinstance(request.get("chat_template_kwargs"), dict) else {}
             result.append({
+                "http_status": int(exchange.get("status") or 0),
+                "response_error_type": str(
+                    response.get("error", {}).get("type") or ""
+                ) if isinstance(response, dict)
+                and isinstance(response.get("error"), dict) else "",
+                "response_error_message": str(
+                    response.get("error", {}).get("message") or ""
+                )[:240] if isinstance(response, dict)
+                and isinstance(response.get("error"), dict) else "",
                 "request_bytes": len(canonical_json(request).encode()),
                 "message_count": len(messages),
                 "request_max_tokens": int(request.get("max_tokens") or 0),

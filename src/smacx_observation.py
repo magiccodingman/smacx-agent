@@ -20,6 +20,16 @@ from smacx_entitlements import PerspectiveEntitlements, sanitize_bundle
 LOG = logging.getLogger("smacx.observation")
 
 
+def _sequence_content_hash(values: list[Mapping[str, Any]]) -> str:
+    """Merkle-like ordered hash without one unbounded JSON encoder hold."""
+    digest = hashlib.sha256()
+    digest.update(str(len(values)).encode("ascii"))
+    for index, item in enumerate(values):
+        digest.update(index.to_bytes(8, "big"))
+        digest.update(bytes.fromhex(content_hash(item)))
+    return digest.hexdigest()
+
+
 def _delta_attention(delta: Mapping[str, Any]) -> tuple[bool, int] | None:
     """Classify material deltas without turning routine bookkeeping into alarms."""
     current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
@@ -477,18 +487,24 @@ class ObservationCollector:
         prior_field: Mapping[str, Any] = {}
         prior_by_project: dict[int, Mapping[str, Any]] = {}
         replayed = self.journal.replay(self.scope, self.timeline_id)
-        journal_objects = replayed.get("world_objects") \
-            if isinstance(replayed.get("world_objects"), Mapping) else {}
-        prior_object = journal_objects.get("global-known-project-races")
-        if not isinstance(prior_object, Mapping) and current:
-            # A brand-new journal may not yet have a projected batch. The
-            # current projection is only a bootstrap accelerator; all later
-            # recovery derives the same row from the canonical journal.
-            prior_object = next((
-                item for item in current.get("objects", ())
-                if isinstance(item, Mapping)
-                and item.get("object_ref") == "global-known-project-races"
-            ), None)
+        project_reports = replayed.get("project_reports") \
+            if isinstance(replayed.get("project_reports"), Mapping) else {}
+        for project_ref, report in project_reports.items():
+            if not isinstance(report, Mapping) or not str(project_ref).startswith("project-"):
+                continue
+            try:
+                prior_by_project[int(str(project_ref).split("-", 1)[1])] = report
+            except ValueError:
+                continue
+        # The prior projection is an accelerator/bootstrap for installations
+        # created before semantic Project reports existed. Once a report has
+        # been journalled, replayed ``project_reports`` is the sole authority.
+        prior_object = None
+        if not prior_by_project and current:
+            prior_object = next((item for item in current.get("objects", ())
+                                 if isinstance(item, Mapping)
+                                 and item.get("object_ref") ==
+                                 "global-known-project-races"), None)
         if isinstance(prior_object, Mapping):
             candidate_field = prior_object.get("fields", {}).get("state") \
                 if isinstance(prior_object.get("fields"), Mapping) else None
@@ -497,18 +513,25 @@ class ObservationCollector:
             if isinstance(candidate_field, Mapping):
                 prior_field = candidate_field
             if isinstance(prior_values, list):
-                prior_by_project = {
+                prior_by_project.update({
                     int(item["project_id"]): item for item in prior_values
                     if isinstance(item, Mapping)
                     and isinstance(item.get("project_id"), int)
                     and item.get("builder_ref")
-                }
+                })
+        halted_in_publication = {
+            int(item["subject_a"]) for item in self._pending_native_events
+            if item.get("native_kind") == "project_race_halted"
+            and isinstance(item.get("subject_a"), int)
+        }
         for race in races:
             if not isinstance(race, dict) or not isinstance(race.get("project_id"), int):
                 continue
             if race.get("builder_ref"):
                 race["builder_epistemic_status"] = "current"
                 race["builder_provenance"] = "native_public_report"
+                continue
+            if int(race["project_id"]) in halted_in_publication:
                 continue
             prior = prior_by_project.get(int(race["project_id"]))
             if prior is None:
@@ -737,6 +760,178 @@ class ObservationCollector:
         unique = {content_hash(item): item for item in events}
         return list(unique.values())
 
+    def _publish_frozen_observation(
+        self, package: Mapping[str, Any], *,
+        prepared_projection: list[Any] | None = None,
+        prepared_deltas: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Replay one immutable native observation publication idempotently.
+
+        The private stage owns this package until projection replacement and
+        acknowledgement complete.  Nothing in this method consults live native
+        state, so a crash/retry cannot change an already-started publication.
+        """
+        publication_key = str(package["publication_hash"])
+        cursor = int(package["observation_cursor"])
+        self.observation_cursor = cursor
+        turn = package.get("turn")
+        year = package.get("year")
+        continuity = str(package.get("continuity") or "complete")
+        action_revision = str(package.get("action_revision") or "")
+        temporal_events = [dict(item) for item in package.get("temporal_events", ())
+                           if isinstance(item, Mapping)]
+        identity_raw = package.get("identity")
+        if not isinstance(identity_raw, Mapping):
+            raise ObservationCollectorError("frozen_publication_identity_missing")
+        identity = WorldIdentity(
+            str(identity_raw["match_id"]), str(identity_raw["perspective_id"]),
+            str(identity_raw["timeline_id"]), str(identity_raw["world_epoch"]),
+        )
+        frozen_bundle = package.get("projection_input")
+        if not isinstance(frozen_bundle, Mapping):
+            raise ObservationCollectorError("frozen_publication_input_missing")
+        prior = self.world_store.load(self.scope, self.timeline_id)
+        if prepared_projection is None:
+            projected = PerspectiveProjector(identity, prior_projection=prior).project(
+                frozen_bundle, observation_sequence=cursor,
+            )
+            projection_objects = list(projected["objects"])
+        else:
+            projection_objects = prepared_projection
+        current_objects = [item.as_dict(provider_safe=False) for item in projection_objects]
+        if _sequence_content_hash(current_objects) != str(
+                package.get("projection_hash") or ""):
+            raise ObservationCollectorError("frozen_publication_projection_mismatch")
+        prior_objects = prior.get("objects", ()) if prior else ()
+        deltas = prepared_deltas if prepared_deltas is not None \
+            else net_deltas(prior_objects, current_objects)
+        if _sequence_content_hash(deltas) != str(package.get("world_delta_hash") or "") \
+                or len(deltas) != int(package.get("world_delta_count") or 0):
+            raise ObservationCollectorError("frozen_publication_delta_mismatch")
+        journal_events_written = 0
+        observation_rows_written = 0
+        continuity_gap = package.get("continuity_gap")
+        if isinstance(continuity_gap, Mapping):
+            gap_payload = {**dict(continuity_gap), "observation_sequence": cursor}
+            event = self.journal.append(
+                self.scope, "observation.continuity_gap", gap_payload,
+                session_id=self.session_id,
+                idempotency_key=f"native-publication:{publication_key}:continuity",
+            )
+            self.world_store.record_observation_projection(
+                self.scope, self.timeline_id, {
+                    "sequence": cursor, "kind": "continuity_gap", "turn": None,
+                    "payload": gap_payload, "continuity": "incomplete",
+                }, event["event_id"],
+            )
+            journal_events_written += 1
+            observation_rows_written += 1
+            if self.attention is not None:
+                self.attention.enqueue(
+                    "observation_continuity_gap", gap_payload,
+                    observation_cursor=cursor, priority=100, critical=True,
+                    session_id=self.session_id,
+                    dedupe_key=f"continuity:{publication_key}",
+                )
+        for batch_index, batch in enumerate(_bounded_batches([
+                {**delta, "observation_sequence": cursor} for delta in deltas])):
+            event = self.journal.append(
+                self.scope, "observation.world_batch", {
+                    "observation_sequence": cursor,
+                    "batch_index": batch_index, "deltas": batch,
+                }, session_id=self.session_id, turn=turn, year=year,
+                idempotency_key=f"native-publication:{publication_key}:world:{batch_index}",
+            )
+            self.world_store.record_observation_projection(
+                self.scope, self.timeline_id,
+                {"sequence": cursor, "kind": "world_batch", "turn": turn,
+                 "payload": {"deltas": batch}, "continuity": continuity},
+                event["event_id"],
+            )
+            journal_events_written += 1
+            observation_rows_written += 1
+
+        attention_groups: dict[tuple[bool, int], list[dict[str, Any]]] = {}
+        for delta in deltas:
+            if self.attention is None:
+                break
+            classification = _delta_attention(delta)
+            if classification is not None:
+                attention_groups.setdefault(classification, []).append(delta)
+        if self.attention is not None:
+            for (critical, priority), values in attention_groups.items():
+                for batch in _bounded_batches(values, byte_limit=96_000, item_limit=64):
+                    payload = {"delta": batch[0]} if len(batch) == 1 else {"deltas": batch}
+                    self.attention.enqueue(
+                        "world_change" if len(batch) == 1 else "world_changes", payload,
+                        observation_cursor=cursor, priority=priority, critical=critical,
+                        turn=turn, session_id=self.session_id,
+                        dedupe_key=content_hash({"observation_cursor": cursor, "deltas": batch}),
+                    )
+        semantic_payloads = [{
+            **semantic, "observation_sequence": cursor,
+            "provenance": "direct_observation",
+        } for semantic in temporal_events]
+        for batch_index, batch in enumerate(_bounded_batches(semantic_payloads)):
+            event = self.journal.append(
+                self.scope, "observation.semantic_batch", {
+                    "observation_sequence": cursor,
+                    "batch_index": batch_index, "events": batch,
+                }, session_id=self.session_id, turn=turn, year=year,
+                idempotency_key=f"native-publication:{publication_key}:semantic:{batch_index}",
+            )
+            self.world_store.record_observation_projection(
+                self.scope, self.timeline_id,
+                {"sequence": cursor, "kind": "semantic_batch", "turn": turn,
+                 "payload": {"events": batch}, "continuity": continuity},
+                event["event_id"],
+            )
+            journal_events_written += 1
+            observation_rows_written += 1
+        if self.attention is not None and (deltas or temporal_events):
+            self.attention.evaluate_watches(
+                deltas, temporal_events=temporal_events,
+                observation_cursor=cursor, turn=turn, session_id=self.session_id,
+            )
+        reconciled = self.journal.append(
+            self.scope, "observation.reconciled", {
+                "observation_sequence": cursor, "continuity": continuity,
+                "action_revision": action_revision,
+                "object_count": len(projection_objects), "delta_count": len(deltas),
+            }, session_id=self.session_id, turn=turn, year=year,
+            idempotency_key=f"native-publication:{publication_key}:reconciled",
+        )
+        manifest = self.journal.replay(self.scope)["manifest"]
+        stored = self.world_store.replace_projection(
+            self.scope, identity, projection_objects,
+            observation_cursor=cursor, action_revision=action_revision,
+            continuity=continuity, journal_head_hash=str(manifest["head_hash"]),
+        )
+        self.world_store.acknowledge_native_observation_publication(
+            self.scope, self.timeline_id, cursor,
+        )
+        self._restore_native_stage()
+        self._continuous_contact_moves.clear()
+        self._contact_identity_reset = False
+        self._collection_metrics.update({
+            "reconciled": True, "world_objects": len(projection_objects),
+            "material_deltas": len(deltas), "semantic_events": len(temporal_events),
+            "projection_rows_written": int(stored.get("projection_rows_written") or 0),
+            "projection_object_rows_written": int(
+                stored.get("projection_object_rows_written") or 0),
+            "journal_events_written": journal_events_written + 1,
+            "observation_rows_written": observation_rows_written,
+            "attention_batches_written": sum(
+                len(_bounded_batches(values, byte_limit=96_000, item_limit=64))
+                for values in attention_groups.values()),
+        })
+        self._last_action_revision = action_revision
+        return {"ok": True, "changed": stored["changed"], "deltas": len(deltas),
+                "world_revision": stored["world_revision"],
+                "observation_cursor": cursor,
+                "journal_event_id": reconciled["event_id"],
+                "publication_hash": publication_key}
+
     def collect_once(self) -> dict[str, Any]:
         """Serialize background and request-triggered reconciliation per perspective."""
         with self._collect_lock:
@@ -801,6 +996,21 @@ class ObservationCollector:
                 self.scope, self.timeline_id, int(publication_cursor),
             )
             stage = self._restore_native_stage()
+            publication_cursor = None
+        elif publication_cursor is not None:
+            package = stage.get("publication_package")
+            if not isinstance(package, Mapping):
+                raise ObservationCollectorError("native_publication_package_missing")
+            # Finish publication N from its immutable private package. Native
+            # activity that happened after the freeze remains in the bridge
+            # ring until a later collector pass creates publication N+1.
+            self._collection_metrics.update({
+                "native_feed_pages": 0, "native_events_drained": 0,
+                "native_continuity_incomplete": (
+                    str(package.get("continuity") or "complete") == "incomplete"
+                ), "publication_recovered": True,
+            })
+            return self._publish_frozen_observation(package)
         feed = self._drain_native_feed()
         self._collection_metrics.update({
             "native_feed_pages": int(feed.get("drained_pages") or 0),
@@ -838,20 +1048,8 @@ class ObservationCollector:
         stage = self.world_store.load_native_observation_stage(
             self.scope, self.timeline_id,
         )
-        assigned_cursor = stage.get("publication_observation_cursor")
-        if assigned_cursor is None:
-            assigned_cursor = self.observation_cursor + 1
-            stage = self.world_store.begin_native_observation_publication(
-                self.scope, self.timeline_id, int(assigned_cursor),
-            )
+        assigned_cursor = self.observation_cursor + 1
         self.observation_cursor = int(assigned_cursor)
-        publication_key = content_hash({
-            "timeline_id": self.timeline_id,
-            "observation_cursor": self.observation_cursor,
-            "native_sequences": [item.get("native_sequence") for item in stage["events"]],
-            "continuity_gap": stage.get("continuity_gap"),
-            "action_revision": bundle.get("action_revision"),
-        })
         world_epoch = self._world_epoch(bundle, current)
         identity = WorldIdentity(self.scope.match_id, self.scope.perspective_id,
                                  self.timeline_id, world_epoch)
@@ -886,149 +1084,36 @@ class ObservationCollector:
             semantic_deltas, [*list(projection.get("temporal_events", ())), *native_events],
             turn=bundle.get("turn"),
         )
-        journal_events_written = 0
-        observation_rows_written = 0
-        continuity_gap = stage.get("continuity_gap")
-        if isinstance(continuity_gap, Mapping):
-            gap_payload = {
-                **dict(continuity_gap),
-                "observation_sequence": self.observation_cursor,
-            }
-            event = self.journal.append(
-                self.scope, "observation.continuity_gap", gap_payload,
-                session_id=self.session_id,
-                idempotency_key=f"native-publication:{publication_key}:continuity",
-            )
-            self.world_store.record_observation_projection(
-                self.scope, self.timeline_id, {
-                    "sequence": self.observation_cursor,
-                    "kind": "continuity_gap", "turn": None,
-                    "payload": gap_payload, "continuity": "incomplete",
-                }, event["event_id"],
-            )
-            journal_events_written += 1
-            observation_rows_written += 1
-            if self.attention is not None:
-                self.attention.enqueue(
-                    "observation_continuity_gap", gap_payload,
-                    observation_cursor=self.observation_cursor,
-                    priority=100, critical=True, session_id=self.session_id,
-                    dedupe_key=f"continuity:{publication_key}",
-                )
-        delta_batches = _bounded_batches([
-            {**delta, "observation_sequence": self.observation_cursor}
-            for delta in deltas
-        ])
-        for batch_index, batch in enumerate(delta_batches):
-            event = self.journal.append(
-                self.scope, "observation.world_batch", {
-                    "observation_sequence": self.observation_cursor,
-                    "batch_index": batch_index, "deltas": batch,
-                }, session_id=self.session_id, turn=bundle.get("turn"), year=bundle.get("year"),
-                idempotency_key=(
-                    f"native-publication:{publication_key}:world:{batch_index}"
-                ),
-            )
-            self.world_store.record_observation_projection(
-                self.scope, self.timeline_id,
-                {"sequence": self.observation_cursor, "kind": "world_batch",
-                 "turn": bundle.get("turn"), "payload": {"deltas": batch},
-                 "continuity": str(feed.get("continuity", "complete"))},
-                event["event_id"],
-            )
-            journal_events_written += 1
-            observation_rows_written += 1
-
-        attention_groups: dict[tuple[bool, int], list[dict[str, Any]]] = {}
-        for delta in deltas:
-            if self.attention is not None:
-                classification = _delta_attention(delta)
-                if classification is None:
-                    continue
-                critical, priority = classification
-                attention_groups.setdefault((critical, priority), []).append(delta)
-        if self.attention is not None:
-            for (critical, priority), values in attention_groups.items():
-                for batch in _bounded_batches(values, byte_limit=96_000, item_limit=64):
-                    payload = {"delta": batch[0]} if len(batch) == 1 else {"deltas": batch}
-                    self.attention.enqueue(
-                        "world_change" if len(batch) == 1 else "world_changes", payload,
-                        observation_cursor=self.observation_cursor, priority=priority,
-                        critical=critical, turn=bundle.get("turn"), session_id=self.session_id,
-                        dedupe_key=content_hash({
-                            "observation_cursor": self.observation_cursor,
-                            "deltas": batch,
-                        }),
-                    )
-        semantic_payloads = [{
-                **semantic, "observation_sequence": self.observation_cursor,
-                "provenance": "direct_observation",
-            } for semantic in temporal_events]
-        for batch_index, batch in enumerate(_bounded_batches(semantic_payloads)):
-            event = self.journal.append(
-                self.scope, "observation.semantic_batch", {
-                    "observation_sequence": self.observation_cursor,
-                    "batch_index": batch_index, "events": batch,
-                },
-                session_id=self.session_id, turn=bundle.get("turn"), year=bundle.get("year"),
-                idempotency_key=(
-                    f"native-publication:{publication_key}:semantic:{batch_index}"
-                ),
-            )
-            self.world_store.record_observation_projection(
-                self.scope, self.timeline_id,
-                {"sequence": self.observation_cursor, "kind": "semantic_batch",
-                 "turn": bundle.get("turn"), "payload": {"events": batch},
-                 "continuity": str(feed.get("continuity", "complete"))},
-                event["event_id"],
-            )
-            journal_events_written += 1
-            observation_rows_written += 1
-        if self.attention is not None and (deltas or temporal_events):
-            self.attention.evaluate_watches(
-                deltas, temporal_events=temporal_events,
-                observation_cursor=self.observation_cursor,
-                turn=bundle.get("turn"), session_id=self.session_id,
-            )
-        reconciled = self.journal.append(
-            self.scope, "observation.reconciled", {
-                "observation_sequence": self.observation_cursor,
-                "continuity": "complete" if feed.get("continuity") != "incomplete" else "incomplete",
-                "action_revision": bundle.get("action_revision"),
-                "object_count": len(current_objects), "delta_count": len(deltas),
-            }, session_id=self.session_id, turn=bundle.get("turn"), year=bundle.get("year"),
-            idempotency_key=f"native-publication:{publication_key}:reconciled",
+        publication = {
+            "schema": "smacx.private-observation-publication.v1",
+            "identity": identity.as_dict(),
+            "source_through_sequence": int(stage["staged_after_sequence"]),
+            "source_native_sequences": [
+                int(item["native_sequence"]) for item in stage["events"]
+                if isinstance(item.get("native_sequence"), int)
+            ],
+            "action_revision": str(bundle.get("action_revision") or ""),
+            "turn": bundle.get("turn"), "year": bundle.get("year"),
+            "continuity": ("incomplete" if feed.get("continuity") == "incomplete"
+                           else "complete"),
+            "continuity_gap": stage.get("continuity_gap"),
+            # The entitlement-filtered bundle is the compact immutable
+            # projection candidate. Projection and delta hashes make replay a
+            # checked deterministic derivation without duplicating every Huge
+            # map object twice in the private stage.
+            "projection_input": bundle,
+            "projection_hash": _sequence_content_hash(current_objects),
+            "world_delta_hash": _sequence_content_hash(deltas),
+            "world_delta_count": len(deltas),
+            "temporal_events": temporal_events,
+        }
+        frozen = self.world_store.begin_native_observation_publication(
+            self.scope, self.timeline_id, self.observation_cursor, publication,
         )
-        manifest = self.journal.replay(self.scope)["manifest"]
-        stored = self.world_store.replace_projection(
-            self.scope, identity, projection["objects"],
-            observation_cursor=self.observation_cursor,
-            action_revision=str(bundle.get("action_revision") or ""),
-            continuity="complete" if feed.get("continuity") != "incomplete" else "incomplete",
-            journal_head_hash=str(manifest["head_hash"]),
+        package = frozen.get("publication_package")
+        if not isinstance(package, Mapping):
+            raise ObservationCollectorError("native_publication_freeze_failed")
+        return self._publish_frozen_observation(
+            package, prepared_projection=list(projection["objects"]),
+            prepared_deltas=deltas,
         )
-        self.world_store.acknowledge_native_observation_publication(
-            self.scope, self.timeline_id, self.observation_cursor,
-        )
-        self._restore_native_stage()
-        self._collection_metrics.update({
-            "reconciled": True,
-            "world_objects": len(current_objects),
-            "material_deltas": len(deltas),
-            "semantic_events": len(temporal_events),
-            "projection_rows_written": int(stored.get("projection_rows_written") or 0),
-            "projection_object_rows_written": int(
-                stored.get("projection_object_rows_written") or 0
-            ),
-            "journal_events_written": journal_events_written + 1,
-            "observation_rows_written": observation_rows_written,
-            "attention_batches_written": sum(
-                len(_bounded_batches(values, byte_limit=96_000, item_limit=64))
-                for values in attention_groups.values()
-            ),
-        })
-        self._last_action_revision = str(bundle.get("action_revision") or "")
-        return {"ok": True, "changed": stored["changed"], "deltas": len(deltas),
-                "world_revision": stored["world_revision"],
-                "observation_cursor": self.observation_cursor,
-                "journal_event_id": reconciled["event_id"]}

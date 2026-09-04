@@ -639,11 +639,13 @@ class SpecialistService:
                 (mission_id, self.scope.match_id, self.scope.agent_id,
                  self.scope.perspective_id),
             ).fetchone()
-        if not row or row["status"] != "failed" or float(row["deadline_unix"]) <= now:
+        if not row or row["status"] != "failed":
             # A stale result belongs to an obsolete dependency set. Re-running
             # the same frozen mission cannot make it current; the sovereign
             # must commission a new revision-bound mission instead.
             raise SpecialistError("specialist_mission_not_retriable")
+        if float(row["deadline_unix"]) <= now:
+            raise SpecialistError("specialist_retry_window_expired")
         mission = dict(row)
         current_timeline = self.store.active_timeline_id(self.scope)
         current = self.world_store.load(self.scope, current_timeline)

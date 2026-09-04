@@ -16,6 +16,7 @@ import json
 import threading
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
@@ -229,6 +230,28 @@ class AttemptProviderProxy:
         self._trace_exchanges: list[dict[str, Any]] = []
         owner = self
 
+        def upstream_url(request_path: str) -> str:
+            """Join provider paths without duplicating an OpenAI base prefix.
+
+            Hermes providers may address the proxy as either
+            ``/chat/completions`` or ``/v1/chat/completions``. Administrators
+            likewise commonly save an upstream base ending in ``/v1``. The
+            metering boundary must preserve exactly one such prefix.
+            """
+            base = urlsplit(owner.upstream_base_url)
+            incoming = urlsplit(request_path)
+            base_path = base.path.rstrip("/")
+            incoming_path = "/" + incoming.path.lstrip("/")
+            if base_path and (
+                incoming_path == base_path
+                or incoming_path.startswith(base_path + "/")
+            ):
+                path = incoming_path
+            else:
+                path = base_path + incoming_path
+            return urlunsplit((base.scheme, base.netloc, path,
+                               incoming.query, incoming.fragment))
+
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_args: object) -> None:
                 return
@@ -259,7 +282,7 @@ class AttemptProviderProxy:
                 headers = {key: value for key, value in self.headers.items()
                            if key.casefold() not in _HOP_HEADERS}
                 headers["Content-Length"] = str(len(body))
-                request = Request(owner.upstream_base_url + self.path, data=body,
+                request = Request(upstream_url(self.path), data=body,
                                   headers=headers, method="POST")
                 try:
                     with urlopen(request, timeout=300) as response:

@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 
-from smacx_mechanics import base_mechanics, logistics, mobility_profile, transport_route
+from smacx_mechanics import (
+    base_mechanics, logistics, lost_contact_envelopes, mobility_profile, transport_route,
+)
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
 from smacx_world_model import PerspectiveProjector
 from smacx_world_types import WorldIdentity
@@ -165,6 +167,57 @@ def main() -> int:
     assert carrier_hop.eta_kind == "conditional_known_state" and carrier_hop.uncertainty
     results["fuel_refuel_and_carrier_dependencies"] = True
 
+    # Foreign movement is evaluated in the moving faction's access frame, not
+    # the sovereign's Pact frame. Even a Pact aircraft cannot borrow our base
+    # or carrier merely because that faction is allied to us.
+    access_objects = {
+        "faction-1": obj("faction-1", "faction", relationship="allied"),
+        "faction-2": obj("faction-2", "faction", relationship="allied"),
+        "faction-3": obj("faction-3", "faction", relationship="neutral"),
+        "faction-4": obj("faction-4", "faction", relationship="hostile"),
+    }
+    for faction_no, location in enumerate(("a0", "a1", "a2", "a3"), start=1):
+        access_objects[f"base-{faction_no}"] = obj(
+            f"base-{faction_no}", "base", location,
+            owner_ref=f"faction-{faction_no}",
+            facilities=[{"facility_id": 33, "name": "Psi Gate"}],
+            psi_gate_ready=True, is_ocean=False, coastal=True,
+        )
+    access_objects.update({
+        "our-carrier": obj("our-carrier", "own_unit", "a4", owner_ref="faction-1",
+                           triad="sea", roles={"carrier": True},
+                           cargo={"capacity": 4, "loaded": 0}),
+        "hostile-carrier": obj("hostile-carrier", "foreign_contact", "a5",
+                               owner_ref="faction-4", triad="sea",
+                               roles={"carrier": True}, cargo={"capacity": 4, "loaded": 1}),
+    })
+    for faction_no in range(1, 5):
+        kind = "own_unit" if faction_no == 1 else "foreign_contact"
+        ref = f"aircraft-{faction_no}"
+        access_objects[ref] = obj(
+            ref, kind, f"a{faction_no - 1}", owner_ref=f"faction-{faction_no}",
+            triad="air", movement_points=2, moves_remaining=2,
+            air_safe_range=3, air_full_safe_range=3, roles={"combat": True},
+        )
+    own_air = mobility_profile(access_objects, "own-air", subject_ref="aircraft-1",
+                               topology=air_topology)
+    pact_air = mobility_profile(access_objects, "pact-air", subject_ref="aircraft-2",
+                                topology=air_topology)
+    treaty_air = mobility_profile(access_objects, "treaty-air", subject_ref="aircraft-3",
+                                  topology=air_topology)
+    hostile_air = mobility_profile(access_objects, "hostile-air", subject_ref="aircraft-4",
+                                   topology=air_topology)
+    assert {"a0", "a1", "a4"}.issubset(own_air.refuel_location_refs)
+    assert pact_air.refuel_location_refs == frozenset({"a1"})
+    assert treaty_air.refuel_location_refs == frozenset({"a2"})
+    assert hostile_air.refuel_location_refs == frozenset({"a3", "a5"})
+    assert pact_air.special_connections == ()
+    foreign_route = air_topology.route("a3", "a6", hostile_air)
+    assert foreign_route.reachable and foreign_route.eta_kind == "conditional_minimum"
+    assert foreign_route.latest_turns is None
+    assert any("refuelling" in value for value in foreign_route.uncertainty)
+    results["subject_relative_foreign_air_access"] = True
+
     # A production-native-shaped bundle carries movement traits, actual
     # support flags/cost, convoy flow and transport capacity through the real
     # projector into calculators. Clean Reactor is support-only, not ZOC
@@ -240,7 +293,7 @@ def main() -> int:
     )
     assert transport_route(
         topology, opposed_objects, "supported", "location-4",
-    ) is None
+    )["reachable"] is False
     opposed_objects["supported"]["fields"]["roles"]["value"]["amphibious"] = True
     assault = transport_route(
         topology, opposed_objects, "supported", "location-4",
@@ -249,6 +302,124 @@ def main() -> int:
     assert assault["eta_kind"] == "conditional_guarded_amphibious_assault"
     assert assault["latest_turns"] is None and assault["disembark"]["opposed"] is True
     results["production_projection_support_convoy_transport"] = True
+
+    # Boarding and disembarkation are explicit phase boundaries. Future
+    # crossing/post-disembark legs use refreshed movement, while an
+    # already-boarded transport may use its current residual movement.
+    phase_topology = PerspectiveTopology(MapShape(14, 4, False), [
+        KnownSquare("phase-land-a", 0, 0, "land"),
+        KnownSquare("phase-sea-a", 1, 1, "ocean"),
+        KnownSquare("phase-sea-b", 3, 1, "ocean"),
+        KnownSquare("phase-sea-c", 5, 1, "ocean"),
+        KnownSquare("phase-sea-d", 7, 1, "ocean"),
+        KnownSquare("phase-land-b", 8, 2, "land"),
+        KnownSquare("phase-target", 10, 2, "land"),
+    ])
+    future_etas = set()
+    for passenger_remaining in (0, 1, 2):
+        for transport_remaining in (0, 1, 2):
+            phase_objects = {
+                "phase-passenger": obj(
+                    "phase-passenger", "own_unit", "phase-land-a",
+                    owner_ref="faction-1", triad="land", movement_points=2,
+                    moves_remaining=passenger_remaining, roles={"combat": True},
+                ),
+                "phase-transport": obj(
+                    "phase-transport", "own_unit", "phase-sea-a",
+                    owner_ref="faction-1", triad="sea", movement_points=2,
+                    moves_remaining=transport_remaining, roles={"transport": True},
+                    cargo={"capacity": 4, "loaded": 0},
+                ),
+                "phase-target": obj("phase-target", "location", "phase-target"),
+            }
+            schedule = transport_route(
+                phase_topology, phase_objects, "phase-passenger", "phase-target",
+            )
+            assert schedule and schedule["reachable"]
+            assert schedule["phase_mechanics"]["pre_rendezvous"] == \
+                "current residual movement"
+            assert "fresh transport movement" in \
+                schedule["phase_mechanics"]["boarding_boundary"]
+            future_etas.add((passenger_remaining, schedule["crossing"]["eta_turns"]))
+    # Transport residual does not leak across a future boarding boundary.
+    for passenger_remaining in (0, 1, 2):
+        assert len({eta for remaining, eta in future_etas
+                    if remaining == passenger_remaining}) == 1
+    boarded_crossing = []
+    for transport_remaining in (0, 1, 2):
+        boarded_objects = {
+            "phase-passenger": obj(
+                "phase-passenger", "own_unit", "phase-sea-a",
+                owner_ref="faction-1", triad="land", movement_points=2,
+                moves_remaining=0, roles={"combat": True},
+                transport_unit_ref="phase-transport",
+            ),
+            "phase-transport": obj(
+                "phase-transport", "own_unit", "phase-sea-a",
+                owner_ref="faction-1", triad="sea", movement_points=2,
+                moves_remaining=transport_remaining, roles={"transport": True},
+                cargo={"capacity": 4, "loaded": 1},
+            ),
+            "phase-target": obj("phase-target", "location", "phase-target"),
+        }
+        schedule = transport_route(
+            phase_topology, boarded_objects, "phase-passenger", "phase-target",
+        )
+        assert schedule and schedule["reachable"]
+        boarded_crossing.append(schedule["crossing"]["eta_turns"])
+    assert boarded_crossing[0] > boarded_crossing[-1]
+    results["transport_phase_correct_movement"] = True
+
+    # Candidate caps are explicit coverage, never a false proof of
+    # unreachability. Block the first eight geometrically ranked landings while
+    # retaining feasible candidates beyond the frontier.
+    frontier_squares = [
+        *(KnownSquare(f"upper-{x}", x, 0, "land") for x in range(0, 20, 2)),
+        *(KnownSquare(f"water-{x}", x, 1, "ocean") for x in range(1, 20, 2)),
+        *(KnownSquare(f"lower-{x}", x, 2, "land") for x in range(0, 20, 2)),
+    ]
+    frontier_topology = PerspectiveTopology(MapShape(20, 3, False), frontier_squares)
+    target_ref = "lower-18"
+    coast_pairs = sorted({
+        (land_ref, neighbor.location_ref)
+        for land_ref, square in frontier_topology.by_ref.items() if not square.ocean
+        for neighbor in frontier_topology.adjacent(land_ref).values() if neighbor.ocean
+    })
+    ranked_landings = sorted(coast_pairs, key=lambda pair: (
+        frontier_topology.shape.distance(
+            (frontier_topology.by_ref[pair[0]].x, frontier_topology.by_ref[pair[0]].y),
+            (frontier_topology.by_ref[target_ref].x,
+             frontier_topology.by_ref[target_ref].y),
+        ), pair,
+    ))
+    assert len(ranked_landings) > 8
+    frontier_objects = {
+        "frontier-passenger": obj(
+            "frontier-passenger", "own_unit", "upper-0", owner_ref="faction-1",
+            triad="land", movement_points=3, moves_remaining=3,
+            roles={"combat": True, "amphibious": False},
+        ),
+        "frontier-transport": obj(
+            "frontier-transport", "own_unit", "water-1", owner_ref="faction-1",
+            triad="sea", movement_points=3, moves_remaining=3,
+            roles={"transport": True}, cargo={"capacity": 4, "loaded": 0},
+        ),
+        target_ref: obj(target_ref, "location", target_ref),
+        "faction-hostile": obj("faction-hostile", "faction", relationship="hostile"),
+    }
+    for index, (landing_ref, _sea_ref) in enumerate(ranked_landings[:8]):
+        frontier_objects[f"frontier-blocker-{index}"] = obj(
+            f"frontier-blocker-{index}", "foreign_contact", landing_ref,
+            owner_ref="faction-hostile", triad="land", roles={"combat": True},
+        )
+    bounded = transport_route(
+        frontier_topology, frontier_objects, "frontier-passenger", target_ref,
+    )
+    assert bounded and bounded["reachable"] is False
+    assert bounded["status"] == "no_route_found_within_bounded_candidate_search"
+    assert bounded["search"]["search_complete"] is False
+    assert bounded["search"]["landing_candidates_available"] > 8
+    results["amphibious_candidate_coverage_explicit"] = True
 
     # Occupancy/ZOC constraints belong to the moving subject. Own movement is
     # exact; a foreign subject receives an explicit conditional minimum and is
@@ -298,6 +469,70 @@ def main() -> int:
         assert profile.constraint_mode == "subject_unknown"
         assert routed.reachable and routed.eta_kind == "conditional_minimum"
     results["subject_relative_zoc_and_occupancy"] = True
+
+    # Lost-contact envelopes include the residual disappearance phase plus a
+    # fresh phase for every crossed turn boundary. Exercise 0/partial/full
+    # residual movement over the movement cost families that can otherwise
+    # expose an under-approximation.
+    movement_worlds = {
+        "road": PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare(f"road-{i}", i * 2, 0, "land", features=frozenset({"road"}))
+            for i in range(5)
+        ]),
+        "tube": PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare(f"tube-{i}", i * 2, 0, "land",
+                        features=frozenset({"road", "magtube"})) for i in range(5)
+        ]),
+        "rough": PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare(f"rough-{i}", i * 2, 0, "rocky") for i in range(5)
+        ]),
+        "fungus": PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare(f"fungus-{i}", i * 2, 0, "land",
+                        features=frozenset({"fungus"})) for i in range(5)
+        ]),
+        "sea": PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare(f"sea-{i}", i * 2, 0, "ocean") for i in range(5)
+        ]),
+        "air": PerspectiveTopology(MapShape(10, 2, False), [
+            KnownSquare(f"air-{i}", i * 2, 0, "land") for i in range(5)
+        ]),
+    }
+    for family, envelope_topology in movement_worlds.items():
+        triad = "sea" if family == "sea" else "air" if family == "air" else "land"
+        for remaining in (0, 1, 3):
+            for elapsed in (0, 1, 3):
+                ref = f"lost-{family}-{remaining}-{elapsed}"
+                start = f"{family}-0"
+                contact = obj(
+                    ref, "foreign_contact", start, owner_ref="faction-hostile",
+                    triad=triad, movement_points=3, moves_remaining=remaining,
+                    last_seen_turn=20,
+                )
+                contact["status"] = "lost"
+                objects_for_envelope = {ref: contact}
+                profile = mobility_profile(
+                    objects_for_envelope, "envelope", subject_ref=ref,
+                    topology=envelope_topology,
+                )
+                mechanically_possible = set(envelope_topology.arrival_map(
+                    start, profile, max_turns=elapsed + 1,
+                ))
+                row = lost_contact_envelopes(
+                    envelope_topology, objects_for_envelope,
+                    current_turn=20 + elapsed,
+                )[0]
+                exposed = set(row["known_world_possible_location_refs"])
+                assert mechanically_possible.issubset(exposed)
+                assert row["unseen_movement_phases"] == elapsed + 1
+    zero_next = obj(
+        "zero-next", "foreign_contact", "road-0", owner_ref="faction-hostile",
+        triad="land", movement_points=3, moves_remaining=0, last_seen_turn=20,
+    )
+    zero_next["status"] = "lost"
+    assert "road-1" in lost_contact_envelopes(
+        movement_worlds["road"], {"zero-next": zero_next}, current_turn=21,
+    )[0]["known_world_possible_location_refs"]
+    results["lost_contact_phase_superset"] = True
 
     # Profile-aware connectivity and scenario map shape remain deterministic.
     coast = PerspectiveTopology(MapShape(8, 2, True), [

@@ -14,9 +14,10 @@ from urllib.parse import unquote
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
 from smacx_specialists import SpecialistError, SpecialistService, system_prompt
+from smacx_specialist_supervisor import SpecialistSupervisor
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world_model import PerspectiveProjector
-from smacx_world_store import WorldStore
+from smacx_world_store import WorldStore, WorldStoreError
 from smacx_world_types import WorldIdentity, content_hash, material_hash
 
 
@@ -298,6 +299,56 @@ def main() -> int:
         )
         assert expired_attempt["world_snapshot_id"] == expired_row["world_snapshot_id"]
         service.cancel(expired_retryable["mission_id"], "cancelled_by_parent")
+
+        cleanup_mission = service.commission(
+            faculty="world", objective="Expire a terminal failure without restart",
+            subject_refs=["base-home"],
+        )
+        cleanup_attempt_1 = service.begin_attempt(
+            cleanup_mission["mission_id"], "test-runtime",
+        )
+        service.fail_attempt(
+            cleanup_mission["mission_id"], cleanup_attempt_1["attempt_id"],
+            "provider_failed", "automatic retry",
+        )
+        cleanup_attempt_2 = service.begin_attempt(
+            cleanup_mission["mission_id"], "test-runtime",
+        )
+        assert service.fail_attempt(
+            cleanup_mission["mission_id"], cleanup_attempt_2["attempt_id"],
+            "provider_failed", "terminal failure",
+        )["status"] == "failed"
+        with store.transaction() as connection:
+            cleanup_snapshot = str(connection.execute(
+                "SELECT world_snapshot_id FROM specialist_missions WHERE mission_id=?",
+                (cleanup_mission["mission_id"],),
+            ).fetchone()[0])
+            connection.execute(
+                "UPDATE specialist_missions SET deadline_unix=0 WHERE mission_id=?",
+                (cleanup_mission["mission_id"],),
+            )
+        try:
+            service.retry(cleanup_mission["mission_id"])
+            raise AssertionError("expired specialist retry was accepted before GC")
+        except SpecialistError as exc:
+            assert str(exc) == "specialist_retry_window_expired"
+        supervisor = SpecialistSupervisor(
+            database=store.path, secret_root=root / "secrets",
+            snapshot_root=worlds.root, trace_root=root / "traces",
+            reference_url="http://127.0.0.1:9", poll_seconds=0.1,
+        )
+        assert supervisor.housekeeping(force=True) >= 1
+        with store._connect() as connection:
+            cleaned = dict(connection.execute(
+                "SELECT world_snapshot_id FROM specialist_missions WHERE mission_id=?",
+                (cleanup_mission["mission_id"],),
+            ).fetchone())
+        assert cleaned["world_snapshot_id"] is None
+        try:
+            worlds.load_snapshot_content(cleanup_snapshot)
+            raise AssertionError("expired unpinned specialist snapshot survived GC")
+        except WorldStoreError:
+            pass
         try:
             service.accept_attempt(
                 changed_mission["mission_id"], changed_attempt["attempt_id"],
@@ -455,6 +506,7 @@ def main() -> int:
         "prepared_result_rollback_authoritative": True,
         "frozen_reference_corpus": True,
         "failed_world_snapshot_manual_retry": True,
+        "failed_snapshot_retry_horizon_housekeeping": True,
     }}, separators=(",", ":")))
     return 0
 
