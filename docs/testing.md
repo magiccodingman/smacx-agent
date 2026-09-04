@@ -48,6 +48,7 @@ PYTHONPATH=src python3 scripts/world_model_contract_test.py
 PYTHONPATH=src python3 scripts/native_observation_contract_test.py
 PYTHONPATH=src python3 scripts/fair_play_world_test.py
 PYTHONPATH=src python3 scripts/strategic_world_fixtures_test.py
+PYTHONPATH=src python3 scripts/geographic_semantics_contract_test.py
 PYTHONPATH=src python3 scripts/global_world_pipeline_test.py
 PYTHONPATH=src python3 scripts/movement_mechanics_contract_test.py
 PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
@@ -231,6 +232,21 @@ isolated game process and runs the real
 `allow_airdrop` diplomacy, Aerospace Complex, and stationed Air Superiority
 matrices plus many-ready-orbital-Drop routine-page latency/payload checks before
 parking its disposable no-timer worker.
+
+The geographic/LOD acceptance suite is deterministic and uses native-shaped
+tile, base, unit, faction, landmark, repair-rule, and guarded site-receipt rows:
+
+```bash
+PYTHONPATH=src python3 scripts/geographic_semantics_contract_test.py
+```
+
+It proves physical land/ocean identity invariance, terrain split/merge,
+coastal mobility separation, territorial/resource/landmark aggregation,
+unknown-connectivity frontiers, lazy scout access, cross-region theaters,
+active-plan/recent-event promotion, non-ranking expansion mechanics,
+repair/staging logistics, and Huge fragmented-map bounding.
+The latest content-free measurements are recorded in
+[Geographic semantics and hierarchical LOD acceptance](benchmarks/2026-09-04-geographic-semantics.md).
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:

@@ -45,7 +45,17 @@ def object_location(item: Mapping[str, Any] | None, fallback: str = "") -> str:
 
 def relationship_class(item: Mapping[str, Any]) -> str:
     value = str(field_value(item, "relationship", "unknown"))
-    return value if value in {"hostile", "allied", "neutral", "unknown"} else "unknown"
+    if value in {"hostile", "allied", "neutral"}:
+        return value
+    relations = field_value(item, "relations", {})
+    if isinstance(relations, Mapping):
+        if relations.get("pact") is True:
+            return "allied"
+        if relations.get("vendetta") is True:
+            return "hostile"
+        if relations.get("treaty") is True or relations.get("truce") is True:
+            return "neutral"
+    return "unknown"
 
 
 def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
@@ -947,6 +957,186 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
             "Supply one land unit and one destination in subject_refs, or use compare, "
             "to calculate a bounded guarded transport schedule."
         )
+        repair_rules_object = objects.get("global-repair-rules", {})
+        repair_rules = field_value(repair_rules_object, "state", {})
+        if not isinstance(repair_rules, Mapping):
+            repair_rules = {}
+        friendly_bases = []
+        for base in objects.values():
+            if base.get("kind") != "base" or object_location(base) not in topology.by_ref:
+                continue
+            owner_ref = str(field_value(base, "owner_ref", ""))
+            owner = objects.get(owner_ref, {})
+            relationship = "self" if field_value(owner, "is_self") is True \
+                else relationship_class(owner)
+            if relationship not in {"self", "allied"} and owner_ref != "faction-own":
+                continue
+            friendly_bases.append({
+                "base_ref": base["object_ref"], "location_ref": object_location(base),
+                "owner_ref": owner_ref, "relationship": relationship,
+                "coastal": bool(field_value(base, "coastal", False)),
+                "drone_riots": field_value(base, "drone_riots", None),
+                "facility_ids": [int(value["facility_id"]) for value in
+                                 (field_value(base, "facilities", []) or ())
+                                 if isinstance(value, Mapping)
+                                 and isinstance(value.get("facility_id"), int)],
+                "facility_names": [str(value.get("name")) for value in
+                                   (field_value(base, "facilities", []) or ())
+                                   if isinstance(value, Mapping) and value.get("name")],
+            })
+        repair_locations = [
+            {"location_ref": ref, "mechanisms": [
+                name for name, present in (
+                    ("airbase", "airbase" in square.features),
+                    ("bunker", "bunker" in square.features),
+                    ("monolith", "monolith" in square.features),
+                    ("fungus", "fungus" in square.features),
+                ) if present
+            ], "owner_ref": square.owner_ref,
+             "epistemic_status": "current" if square.current else "stale"}
+            for ref, square in topology.by_ref.items()
+            if square.features & {"airbase", "bunker", "monolith", "fungus"}
+        ]
+        for base in friendly_bases:
+            base_repair_status = (
+                "current_usable" if base["drone_riots"] is False else
+                "current_blocked_by_drone_riots" if base["drone_riots"] is True else
+                "unknown_drone_riot_state"
+            )
+            repair_locations.append({
+                "location_ref": base["location_ref"], "base_ref": base["base_ref"],
+                "owner_ref": base["owner_ref"], "relationship": base["relationship"],
+                "mechanisms": ["base"], "base_repair_status": base_repair_status,
+                "facility_ids": base["facility_ids"],
+                "facility_names": base["facility_names"],
+                "epistemic_status": "current" if base["drone_riots"] is not None else "unknown",
+            })
+        self_faction_refs = {
+            str(value.get("object_ref")) for value in objects.values()
+            if value.get("kind") == "faction" and field_value(value, "is_self") is True
+        } | {"faction-own"}
+        completed_projects = []
+        for value in objects.values():
+            if value.get("kind") not in {"project_state", "project"}:
+                continue
+            state = field_value(value, "state", [])
+            if isinstance(state, Mapping):
+                state = state.get("completed_projects", [])
+            if isinstance(state, list):
+                completed_projects.extend(row for row in state if isinstance(row, Mapping))
+            elif value.get("kind") == "project":
+                completed_projects.append({
+                    "name": field_value(value, "name"),
+                    "owner_ref": field_value(value, "owner_ref"),
+                })
+        own_project_names = {
+            str(row.get("name", "")).casefold() for row in completed_projects
+            if str(row.get("owner_ref", "")) in self_faction_refs
+        }
+        has_nano_factory = any("nano factory" in name for name in own_project_names)
+        has_xenoempathy_dome = any("xenoempathy dome" in name for name in own_project_names)
+        damaged = [item for item in own
+                   if isinstance(field_value(item, "hp"), (int, float))
+                   and isinstance(field_value(item, "max_hp"), (int, float))
+                   and field_value(item, "hp") < field_value(item, "max_hp")]
+        repair_options = []
+        for unit in damaged[:8]:
+            start = object_location(unit)
+            if start not in topology.by_ref:
+                continue
+            profile = mobility_profile(
+                objects, "repair-arrival", subject_ref=str(unit["object_ref"]), topology=topology,
+            )
+            planet_life = bool((field_value(unit, "roles", {}) or {}).get("planet_life"))
+            for location in repair_locations[:96]:
+                target = str(location["location_ref"])
+                if target not in topology.by_ref:
+                    continue
+                route = topology.route(start, target, profile)
+                if not route.reachable:
+                    continue
+                mechanisms = list(location["mechanisms"])
+                triad = str(field_value(unit, "triad", "land"))
+                base_usable = location.get("base_repair_status") == "current_usable"
+                modifiers = {"minimal": repair_rules.get("minimal")}
+                if "fungus" in mechanisms and planet_life:
+                    modifiers["fungus_native"] = repair_rules.get("fungus_native")
+                if "airbase" in mechanisms and triad == "air":
+                    modifiers["airbase_bonus"] = repair_rules.get("airbase_bonus")
+                if "bunker" in mechanisms and triad == "land":
+                    modifiers["bunker_bonus"] = repair_rules.get("bunker_bonus")
+                owner_ref = str(location.get("owner_ref") or "")
+                relationship = str(location.get("relationship") or "unknown")
+                if owner_ref in self_faction_refs or relationship == "self":
+                    modifiers["friendly_territory_bonus"] = repair_rules.get(
+                        "friendly_territory_bonus"
+                    )
+                if "base" in mechanisms and base_usable:
+                    modifiers["base_bonus"] = repair_rules.get("base_bonus")
+                    facility_ids = set(location.get("facility_ids", ()))
+                    required_facility = {"land": 27, "sea": 28, "air": 29}.get(triad)
+                    if not planet_life and required_facility in facility_ids:
+                        modifiers["base_facility_bonus"] = repair_rules.get(
+                            "base_facility_bonus"
+                        )
+                    elif planet_life:
+                        modifiers["native_base_bonus"] = {
+                            "configured_bonus": repair_rules.get("native_base_bonus"),
+                            "condition": "applies only when the native breed modifier is active",
+                        }
+                if has_nano_factory:
+                    modifiers["nano_factory_bonus"] = repair_rules.get("nano_factory_bonus")
+                repair_options.append({
+                    "damaged_unit_ref": unit["object_ref"], "repair_location_ref": target,
+                    "base_ref": location.get("base_ref"), "mechanisms": mechanisms,
+                    "arrival_turns": route.turns, "movement_cost": route.movement_cost,
+                    "transport_dependency": None if route.reachable else "required_or_unknown",
+                    "known_repair_rule_modifiers": modifiers,
+                    "base_repair_status": location.get("base_repair_status"),
+                    "repair_timing_conditions": {
+                        "must_not_have_moved_before_repair_phase": True,
+                        "fungal_tower_exception": True,
+                        "reactor_scaled": True,
+                        "non_base_repair_limit_applies": not base_usable and not has_nano_factory,
+                        "xenoempathy_fungus_limit_removed": has_xenoempathy_dome,
+                    },
+                    "conditional_rules": [
+                        "Native-life fungus repair applies only when the unit has that role.",
+                        "A base contributes repair only while its drone-riot state permits it.",
+                        "Monolith visitation, Repair Bay stacking, reactor scaling, native breed modifiers, and Battle Ogre caps remain native-authoritative.",
+                    ],
+                })
+        repair_options.sort(key=lambda row: (
+            str(row["damaged_unit_ref"]), int(row.get("arrival_turns") or 10**9),
+            str(row["repair_location_ref"]),
+        ))
+        staging = []
+        for base in friendly_bases[:32]:
+            arrivals = []
+            for unit_ref in requested[:8]:
+                unit = objects[unit_ref]
+                start = object_location(unit)
+                if start not in topology.by_ref:
+                    continue
+                profile = mobility_profile(
+                    objects, "staging-arrival", subject_ref=unit_ref, topology=topology,
+                )
+                route = topology.route(start, base["location_ref"], profile)
+                arrivals.append({
+                    "unit_ref": unit_ref, "reachable": route.reachable,
+                    "arrival_turns": route.turns, "movement_cost": route.movement_cost,
+                    "uncertainty": list(route.uncertainty),
+                })
+            staging.append({**base, "subject_arrivals": arrivals})
+        result["repair_rules"] = dict(repair_rules)
+        result["repair_locations"] = repair_locations[:64]
+        result["damaged_unit_repair_options"] = repair_options[:64]
+        result["staging_bases"] = staging
+        result["repair_and_staging_boundary"] = (
+            "Rules-aware mechanical access and timing only; no best repair or staging location "
+            "is ranked. Ordinary known squares still provide the configured minimal stationary "
+            "repair and are omitted from the bounded special-location list."
+        )
     return result
 
 
@@ -1012,10 +1202,18 @@ def lost_contact_envelopes(topology: PerspectiveTopology,
     return rows
 
 
-def location_affordances(topology: PerspectiveTopology,
-                         objects: Mapping[str, Mapping[str, Any]],
-                         subject_refs: Iterable[str]) -> list[dict[str, Any]]:
+def location_affordances(
+    topology: PerspectiveTopology,
+    objects: Mapping[str, Mapping[str, Any]],
+    subject_refs: Iterable[str], *,
+    native_receipts: Mapping[str, Mapping[str, Any]] | None = None,
+    physical_mass_by_location: Mapping[str, str] | None = None,
+    mobility_region_by_location: Mapping[str, Iterable[str]] | None = None,
+) -> list[dict[str, Any]]:
     """Expose comparable known mechanics without assigning strategic value."""
+    native_receipts = native_receipts or {}
+    physical_mass_by_location = physical_mass_by_location or {}
+    mobility_region_by_location = mobility_region_by_location or {}
     bases = [item for item in objects.values() if item.get("kind") == "base"]
     contacts = [item for item in objects.values()
                 if item.get("kind") == "foreign_contact" and item.get("status") == "active"
@@ -1034,10 +1232,57 @@ def location_affordances(topology: PerspectiveTopology,
                 return None
             a, b = topology.by_ref[location_ref], topology.by_ref[other_ref]
             return topology.shape.distance((a.x, a.y), (b.x, b.y))
-        base_distances = [value for value in (distance(base) for base in bases)
-                          if value is not None]
+        base_distances = [value for value in (distance(base) for base in bases) if value is not None]
         threat_distances = [value for value in (distance(contact) for contact in contacts)
                             if value is not None]
+        receipt = dict(native_receipts.get(location_ref, {}))
+        features = list((source_fields.get("features") or {}).get("value", ()) or ())
+        resource_features = [value for value in features if value in {
+            "nutrient_resource", "mineral_resource", "energy_resource", "resource_bonus",
+            "monolith", "supply_pod", "thermal_borehole",
+        }]
+        nearby_bases = []
+        travel = []
+        for base in bases:
+            base_location = object_location(base)
+            if base_location not in topology.by_ref:
+                continue
+            owner_ref = field_value(base, "owner_ref")
+            faction = objects.get(str(owner_ref), {})
+            relation = "self" if field_value(faction, "is_self") is True \
+                else relationship_class(faction)
+            owned_or_pact = relation in {"self", "allied"} or str(owner_ref) == "faction-own"
+            if not owned_or_pact:
+                continue
+            profile = MobilityProfile(
+                "site-land" if not topology.by_ref[location_ref].ocean else "site-sea",
+                "land" if not topology.by_ref[location_ref].ocean else "sea",
+            )
+            route = topology.route(base_location, location_ref, profile)
+            nearby_bases.append({
+                "base_ref": base.get("object_ref"), "owner_ref": owner_ref,
+                "relationship": relation, "geometric_distance": distance(base),
+            })
+            if route.reachable:
+                travel.append({
+                    "base_ref": base.get("object_ref"), "arrival_turns": route.turns,
+                    "movement_cost": route.movement_cost, "eta_kind": route.eta_kind,
+                    "uncertainty": list(route.uncertainty),
+                })
+        travel.sort(key=lambda value: (
+            int(value.get("arrival_turns") or 10**9), str(value.get("base_ref")),
+        ))
+        landmarks = [
+            {"landmark_ref": value.get("object_ref"),
+             "name": field_value(value, "name"),
+             "epistemic_status": (value.get("fields", {}).get("name", {}) or {}).get(
+                 "epistemic_status")}
+            for value in objects.values()
+            if value.get("kind") == "landmark" and value.get("location_ref") == location_ref
+        ]
+        unknown_neighbors = len(topology.shape.neighbors(
+            (topology.by_ref[location_ref].x, topology.by_ref[location_ref].y))) \
+            - len(topology.adjacent(location_ref))
         rows.append({
             "subject_ref": subject_ref, "location_ref": location_ref,
             "terrain": source_fields.get("terrain"),
@@ -1046,11 +1291,40 @@ def location_affordances(topology: PerspectiveTopology,
             "rockiness": source_fields.get("rockiness"),
             "altitude": source_fields.get("altitude"),
             "owner_ref": source_fields.get("owner_ref"),
+            "founding_buildability": {
+                "status": "exact_current_guarded_receipt" if receipt else
+                          "unknown_requires_target_specific_native_receipt",
+                "legal_for_land_colony": receipt.get("legal_for_land_colony"),
+                "legal_for_sea_colony": receipt.get("legal_for_sea_colony"),
+                "hidden_reasons_excluded": True,
+            },
+            "known_current_tile_yields": receipt.get("current_tile_yields"),
+            "known_base_radius": {
+                "currently_visible_location_count": receipt.get("known_radius_location_count"),
+                "complete_currently_visible": receipt.get("radius_complete_currently_visible"),
+                "locations": receipt.get("known_radius", [])[:21],
+            },
+            "overlapping_known_base_radii": receipt.get("overlapping_known_bases", []),
+            "known_resource_features": resource_features,
+            "known_landmarks": landmarks[:8],
+            "physical_mass_ref": physical_mass_by_location.get(location_ref),
+            "mobility_region_refs": sorted(set(mobility_region_by_location.get(location_ref, ()))),
+            "nearest_owned_or_pact_bases": sorted(
+                nearby_bases, key=lambda value: (
+                    int(value.get("geometric_distance") or 10**9), str(value.get("base_ref")),
+                ),
+            )[:8],
+            "known_direct_travel_from_owned_or_pact_bases": travel[:8],
+            "nearest_known_direct_arrival_turns": travel[0]["arrival_turns"] if travel else None,
+            "transport_requirement": "not_required_on_known_direct_route" if travel else
+                                     "required_or_unknown_from_known_base_network",
             "nearest_known_base_distance": min(base_distances) if base_distances else None,
             "nearest_visible_contact_distance": min(threat_distances) if threat_distances else None,
-            "unknown_neighbors": len(topology.shape.neighbors(
-                (topology.by_ref[location_ref].x, topology.by_ref[location_ref].y)))
-                - len(topology.adjacent(location_ref)),
+            "known_nearby_hostile_contact_count": sum(
+                1 for value in threat_distances if value <= 3
+            ),
+            "unknown_neighbors": unknown_neighbors,
+            "frontier_exposure": unknown_neighbors > 0,
             "strategy_boundary": "mechanical affordances only; no site ranking",
         })
     return rows

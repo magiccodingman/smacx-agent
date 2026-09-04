@@ -45,6 +45,9 @@ def main() -> int:
         'if (op == "test_airdrop_collection_stress_fixture")',
         'if (op == "test_pact_port_fixture")',
         'if (op == "semantic_airdrop_targets")',
+        'if (op == "semantic_base_site_receipts")',
+        "smacx.native-base-site-receipts.v1",
+        "visible_landmark_records(sq, x, y)",
         '"smacx.private-vehicle-identity.v1"',
         "semantic_airdrop_target_receipt(",
         '"visible_base_founded"',
@@ -58,6 +61,24 @@ def main() -> int:
     )
     if any(value not in source for value in required):
         raise AssertionError("native observation ring or overflow contract drifted")
+    site_receipt = source.split(
+        "std::string semantic_base_site_receipts_response", 1,
+    )[1].split("std::string perspective_world_page_response", 1)[0]
+    if any(value not in site_receipt for value in (
+        "target_ids.size() > 32",
+        "if (!sq || !sq->is_visible(faction_id)) continue;",
+        "base.faction_id != faction_id && (!base_sq || !base_sq->is_visible(faction_id))",
+        "hidden_reasons_excluded",
+        "can_build_base(x, y, faction_id, TRIAD_LAND)",
+        "can_build_base(x, y, faction_id, TRIAD_SEA)",
+    )):
+        raise AssertionError("guarded base-site visibility or legality contract drifted")
+    paged_tiles = source.split('if (domain == "tiles") {', 1)[1].split(
+        '} else if (domain == "bases") {', 1,
+    )[0]
+    visible_branch = paged_tiles.split("if (visible) {", 1)[1]
+    if "visible_landmark_records(sq, x, y)" not in visible_branch:
+        raise AssertionError("native landmarks escaped the current-visibility branch")
     move_source = (ROOT / "bridge/src/move.cpp").read_text(encoding="utf-8")
     if "&& (!combat || !at_war(faction_id, veh->faction_id))" in move_source \
             or "&& veh->faction_id != faction_id && !has_pact(faction_id, veh->faction_id))" not in move_source:

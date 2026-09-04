@@ -376,6 +376,11 @@ class ObservationCollector:
         if str(snapshot.get("revision") or "") != revision:
             raise ObservationCollectorError("world_changed_during_collection")
         global_objects = []
+        if isinstance(summary.get("repair_rules"), Mapping):
+            global_objects.append({
+                "object_ref": "global-repair-rules", "kind": "repair_rules",
+                "source": "owned_state", "state": dict(summary["repair_rules"]),
+            })
         for key, kind, source in (
             ("game_settings", "game_settings", "owned_state"),
             ("scenario", "scenario_rules", "scenario"),

@@ -262,19 +262,44 @@ def main() -> int:
     assert fog["epistemic_status"] == "estimated" and "retired" in fog["identity_continuity"]
     results["fog_pursuit"] = True
 
-    # Multi-front and global races remain simultaneously represented.
-    busy = [*squares]
+    # Multi-front and global races remain simultaneously represented.  The
+    # theater assertions are intentionally mechanical: a connected
+    # land/ocean/land operation spans mobility regions, allied participation
+    # is explicit, and a separate quiet plan-linked base remains promoted.
+    busy = [
+        KnownSquare("west-front", 0, 2, "land"),
+        KnownSquare("front-sea-a", 1, 3, "ocean"),
+        KnownSquare("front-sea-b", 3, 3, "ocean"),
+        KnownSquare("east-front", 4, 2, "land"),
+        KnownSquare("quiet-plan", 16, 6, "land"),
+        KnownSquare("quiet-unrelated", 10, 0, "land"),
+    ]
     world_objects = [
-        item("front-a", "foreign_contact", "location-1", owner_ref="faction-2",
-             relationship="hostile"),
-        item("front-b", "foreign_contact", "location-239", owner_ref="faction-3",
-             relationship="hostile"),
+        *[item(square.location_ref, "location", None, terrain=square.terrain,
+               features=[]) for square in busy],
+        item("front-a", "foreign_contact", "west-front", owner_ref="faction-2",
+             relationship="hostile", triad="land"),
+        item("front-ally", "foreign_contact", "front-sea-a", owner_ref="faction-3",
+             relationship="allied", triad="sea"),
+        item("front-b", "foreign_contact", "east-front", owner_ref="faction-2",
+             relationship="hostile", triad="land"),
+        item("quiet-plan-base", "base", "quiet-plan", owner_ref="faction-1"),
         item("project-race", "project", None, name="Weather Paradigm", state="building"),
         item("council", "council_state", None, state={"governor_vote_due": True}),
     ]
     anchor = SemanticLodProjector(context_tier="64k").build(
-        projection(32, 16, busy, world_objects))
-    assert anchor["planet"]["active_theater_count"] >= 1
+        projection(32, 16, busy, world_objects),
+        active_plan_refs=["quiet-plan-base"], recent_material_refs=["front-b"],
+    )
+    assert anchor["planet"]["active_theater_count"] >= 2
+    assert any(len(row["region_refs"]) > 1 and row["allied_faction_refs"]
+               for row in anchor["active_theaters"])
+    assert any("quiet-plan-base" in row["promoted_by_refs"]
+               for row in anchor["active_theaters"])
+    assert any("front-b" in row["recent_material_refs"]
+               for row in anchor["active_theaters"])
+    assert any(row["lod_level"] == "geographic"
+               for row in anchor["physical_masses"])
     assert {row["kind"] for row in anchor["strategic_objects"]} >= {"project", "council_state"}
     results["multi_front_warfare"] = results["project_global_race"] = True
 
@@ -284,8 +309,56 @@ def main() -> int:
         square = next(value for value in squares if value.location_ref == ref)
         site_objects[ref] = item(ref, "location", None, terrain=square.terrain,
                                  features=["river"] if ref == "location-6" else [])
-    sites = location_affordances(topo, site_objects, ["location-4", "location-6", "location-8"])
-    assert len(sites) == 3 and all("no site ranking" in row["strategy_boundary"] for row in sites)
+    site_objects["nearby-hostile"] = item(
+        "nearby-hostile", "foreign_contact", "location-10",
+        owner_ref="faction-2", relationship="hostile", triad="land",
+    )
+    receipts = {
+        "location-4": {
+            "legal_for_land_colony": True, "legal_for_sea_colony": False,
+            "current_tile_yields": {"nutrients": 2, "minerals": 1, "energy": 1},
+            "known_radius": [], "known_radius_location_count": 21,
+            "radius_complete_currently_visible": True,
+            "overlapping_known_bases": [],
+        },
+        "location-6": {
+            "legal_for_land_colony": True, "legal_for_sea_colony": False,
+            "current_tile_yields": {"nutrients": 3, "minerals": 1, "energy": 2},
+            "known_radius": [], "known_radius_location_count": 21,
+            "radius_complete_currently_visible": True,
+            "overlapping_known_bases": [
+                {"base_ref": "base-a", "overlapping_radius_location_count": 8},
+            ],
+        },
+        "location-8": {
+            "legal_for_land_colony": False, "legal_for_sea_colony": False,
+            "current_tile_yields": {"nutrients": 1, "minerals": 2, "energy": 0},
+            "known_radius": [], "known_radius_location_count": 10,
+            "radius_complete_currently_visible": False,
+            "overlapping_known_bases": [],
+        },
+    }
+    sites = location_affordances(
+        topo, site_objects, ["location-4", "location-6", "location-8"],
+        native_receipts=receipts,
+        physical_mass_by_location={
+            "location-4": "landmass-home", "location-6": "landmass-home",
+            "location-8": "landmass-other",
+        },
+        mobility_region_by_location={
+            "location-4": ["region-home"], "location-6": ["region-home"],
+            "location-8": ["region-other"],
+        },
+    )
+    by_site = {row["location_ref"]: row for row in sites}
+    assert by_site["location-4"]["founding_buildability"]["legal_for_land_colony"] is True
+    assert by_site["location-6"]["overlapping_known_base_radii"]
+    assert by_site["location-8"]["founding_buildability"]["legal_for_land_colony"] is False
+    assert by_site["location-4"]["physical_mass_ref"] != \
+        by_site["location-8"]["physical_mass_ref"]
+    assert by_site["location-6"]["known_current_tile_yields"] != \
+        by_site["location-8"]["known_current_tile_yields"]
+    assert all("best" not in json.dumps(row).lower() for row in sites)
     results["expansion_site_reasoning"] = True
 
     # Transport, air recovery, and special connection mechanics.

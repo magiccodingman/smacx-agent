@@ -9,7 +9,9 @@ from smacx_mechanics import (
     location_affordances, lost_contact_envelopes, mobility_profile, rendezvous_matrix,
     response_matrix,
 )
-from smacx_regions import RegionBuilder, build_theaters
+from smacx_regions import (
+    PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE, RegionBuilder, build_theaters,
+)
 from smacx_semantic_map import render_svg
 from smacx_store import MemoryScope
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
@@ -105,6 +107,36 @@ class WorldService:
                           "horizontal_wrap": True}
         return PerspectiveTopology(MapShape(**shape_data), locations)
 
+    def _derived_geography(self, projection: Mapping[str, Any]) -> dict[str, Any]:
+        """Rebuild the current bounded geographic registry for semantic refs."""
+        identity = WorldIdentity(**projection["identity"])
+        topology = self._topology(projection)
+        # Reproduce every geography ref that the current provider-facing
+        # anchors could have issued, including quiet plan/watch/inspection
+        # promotion.  The distinction among promotion causes matters in the
+        # anchor summary; ref reconstruction only needs the bounded target set.
+        promoted: set[str] = set()
+        for tier in ("64k", "256k"):
+            issued = self.store.current_anchor(self.scope, identity.timeline_id, tier)
+            if not issued:
+                continue
+            promoted.update(map(str, issued.get("payload", {}).get(
+                "lod", {}
+            ).get("promotion_refs", ())))
+        previous = [
+            *self.store.load_regions(self.scope, identity.timeline_id, "mobility-land-default"),
+            *self.store.load_regions(self.scope, identity.timeline_id, "mobility-sea-default"),
+            *self.store.load_regions(self.scope, identity.timeline_id, PHYSICAL_LAND_PROFILE),
+            *self.store.load_regions(self.scope, identity.timeline_id, PHYSICAL_OCEAN_PROFILE),
+        ]
+        payload = SemanticLodProjector(context_tier="256k", token_cap=16000).build(
+            {**projection, "known_squares": list(topology.by_ref.values()),
+             "map_shape": topology.shape.__dict__},
+            previous_regions=previous,
+            operation_refs=sorted(promoted),
+        )
+        return payload
+
     def _dependency_refs(self, mode: str, objects: Mapping[str, Mapping[str, Any]], *,
                          subjects: tuple[str, ...], origin_ref: str, target_ref: str,
                          radius: int,
@@ -123,6 +155,7 @@ class WorldService:
                        "project_race_state", "orbital_state", "governor_state",
                        "intelligence_entitlement_state",
                        "movement_rules", "ecology_state", "planetary_state",
+                       "repair_rules",
                        "victory_posture", "victory"},
             "logistics": {"own_unit", "base", "route", "convoy"},
         }.get(mode)
@@ -149,6 +182,12 @@ class WorldService:
             refs.update(subject_refs)
             return tuple(sorted(refs))
         if mode == "area":
+            if origin_ref and origin_ref not in objects:
+                return tuple(sorted(
+                    ref for ref, item in objects.items()
+                    if item.get("kind") in {"location", "base", "own_unit", "foreign_contact",
+                                             "faction", "landmark", "mobility_profile"}
+                ))
             center = objects.get(origin_ref or (subjects[0] if subjects else ""))
             center_ref = str(center.get("location_ref") if center and center.get("location_ref")
                              else center.get("object_ref") if center else origin_ref)
@@ -175,6 +214,10 @@ class WorldService:
             }
             refs.update(subjects)
             refs.update(value for value in (origin_ref, target_ref) if value)
+            if (origin_ref and origin_ref not in objects) or (target_ref and target_ref not in objects):
+                refs.update(ref for ref, item in objects.items()
+                            if item.get("kind") in {"base", "own_unit", "foreign_contact",
+                                                   "faction", "landmark"})
             for value in (origin_ref, target_ref, *subjects):
                 location = objects.get(value, {}).get("location_ref")
                 if location:
@@ -186,8 +229,19 @@ class WorldService:
 
     def anchor(self, *, context_length: int, focus_ref: str | None = None,
                operation_refs: Iterable[str] = (), triggered_watch_refs: Iterable[str] = (),
+               active_plan_refs: Iterable[str] = (),
+               recent_material_refs: Iterable[str] = (),
+               inspection_refs: Iterable[str] = (),
                token_cap: int | None = None) -> dict[str, Any]:
         identity, projection = self._projection()
+        operation_refs = tuple(operation_refs)
+        triggered_watch_refs = tuple(triggered_watch_refs)
+        active_plan_refs = tuple(active_plan_refs)
+        recent_material_refs = tuple(recent_material_refs)
+        explicit_inspections = tuple(inspection_refs)
+        inspection_refs = explicit_inspections or tuple(self.store.recent_inspection_refs(
+            self.scope, identity.timeline_id, int(projection["world_revision"]),
+        ))
         tier = "64k" if int(context_length) < 131072 else "256k"
         current = self.store.current_anchor(self.scope, identity.timeline_id, tier)
         now = {str(item["object_ref"]): item for item in projection["objects"]}
@@ -203,11 +257,20 @@ class WorldService:
                                   ("appeared" if ref not in preliminary_baseline else "changed"),
                         **({"current": _public_object(now[ref])} if ref in now else {}),
                     })
-        promotion_refs = sorted({str(value) for value in (
-            *((focus_ref,) if focus_ref else ()), *operation_refs, *triggered_watch_refs,
-        ) if value})
         turn = next((_value(item, "turn") for item in projection.get("objects", ())
                      if item.get("kind") == "turn_state"), None)
+        recent_material_refs = tuple(dict.fromkeys((
+            *recent_material_refs,
+            *self.store.recent_material_refs(
+                self.scope, identity.timeline_id,
+                int(projection["observation_cursor"]),
+                int(turn) if isinstance(turn, int) else None,
+            ),
+        )))[:64]
+        promotion_refs = sorted({str(value) for value in (
+            *((focus_ref,) if focus_ref else ()), *operation_refs, *triggered_watch_refs,
+            *active_plan_refs, *recent_material_refs, *inspection_refs,
+        ) if value})
         effective_token_cap = min(
             6000 if tier == "64k" else 16000,
             max(512, int(token_cap)) if token_cap is not None else
@@ -234,6 +297,7 @@ class WorldService:
                     "project_state", "orbital_state", "governor_state", "ecology_state",
                     "intelligence_entitlement_state",
                     "project_race_state", "movement_rules", "victory_posture",
+                    "repair_rules",
                 }:
                     regenerate = True
                     break
@@ -260,6 +324,10 @@ class WorldService:
                                          "mobility-land-default"),
                 *self.store.load_regions(self.scope, identity.timeline_id,
                                          "mobility-sea-default"),
+                *self.store.load_regions(self.scope, identity.timeline_id,
+                                         PHYSICAL_LAND_PROFILE),
+                *self.store.load_regions(self.scope, identity.timeline_id,
+                                         PHYSICAL_OCEAN_PROFILE),
             ]
             payload = SemanticLodProjector(
                 context_tier=tier, token_cap=effective_token_cap,
@@ -267,12 +335,16 @@ class WorldService:
                 model_projection, previous_regions=previous_regions,
                 focus_ref=focus_ref, operation_refs=operation_refs,
                 triggered_watch_refs=triggered_watch_refs,
+                active_plan_refs=active_plan_refs,
+                recent_material_refs=recent_material_refs,
+                inspection_refs=inspection_refs,
             )
             region_projection = payload.pop("_region_projection", [])
             self.store.save_regions(
                 self.scope, identity.timeline_id, region_projection,
                 int(projection["world_revision"]),
-                ("mobility-land-default", "mobility-sea-default"),
+                ("mobility-land-default", "mobility-sea-default",
+                 PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE),
             )
             hashes = {str(item["object_ref"]): material_hash(item)
                       for item in projection["objects"]}
@@ -368,7 +440,8 @@ class WorldService:
                 result["truncated"] = True
         logistics = result.get("logistics")
         if isinstance(logistics, dict):
-            for field in ("transport_route_options", "convoys", "aircraft", "transports"):
+            for field in ("damaged_unit_repair_options", "repair_locations", "staging_bases",
+                          "transport_route_options", "convoys", "aircraft", "transports"):
                 values = logistics.get(field)
                 while isinstance(values, list) and values and estimate_tokens(result) > budget:
                     values.pop()
@@ -451,6 +524,7 @@ class WorldService:
         radius: int = 3, since_cursor: int = 0, detail: str = "standard",
         continuation: str = "", context_length: int = 65536,
         runtime_airdrop_receipt: Mapping[str, Any] | None = None,
+        runtime_base_site_receipts: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if mode not in WORLD_MODES:
             raise WorldQueryError("invalid_world_mode")
@@ -490,10 +564,27 @@ class WorldService:
                 origin["fields"] = fields
                 objects[origin_ref] = origin
         known_refs = set(objects)
+        geography: dict[str, Any] | None = None
+        derived_registry: dict[str, dict[str, Any]] = {}
+        if mode in {"area", "relation", "compare", "logistics"}:
+            geography = self._derived_geography(projection)
+            for row in geography.get("physical_masses", ()):
+                if not isinstance(row, Mapping):
+                    continue
+                ref = row.get("landmass_ref") or row.get("ocean_mass_ref")
+                if ref:
+                    derived_registry[str(ref)] = dict(row)
+            for field, key in (("frontiers", "frontier_ref"),
+                               ("active_theaters", "theater_ref"),
+                               ("ownership_interfaces", "ownership_interface_ref")):
+                for row in geography.get(field, ()):
+                    if isinstance(row, Mapping) and row.get(key):
+                        derived_registry[str(row[key])] = dict(row)
         supplied_refs = [*subjects]
         if mode in {"area", "relation", "route", "reachability", "compare"}:
             supplied_refs.extend(value for value in (origin_ref, target_ref) if value)
-        invalid_refs = sorted({ref for ref in supplied_refs if ref not in known_refs})
+        invalid_refs = sorted({ref for ref in supplied_refs
+                               if ref not in known_refs and ref not in derived_registry})
         if invalid_refs:
             return {
                 "ok": False, "schema": "smacx.world-result.v1", "mode": mode,
@@ -510,6 +601,13 @@ class WorldService:
             "radius": radius, "since_cursor": int(since_cursor), "detail": detail,
             "continuation": continuation,
         }
+        if runtime_base_site_receipts:
+            # Guarded native founding legality may change without changing a
+            # provider-visible square. It is therefore part of the private
+            # query-cache key, never an untracked side input.
+            request["native_base_site_receipt_hash"] = content_hash(
+                provider_safe(runtime_base_site_receipts)
+            )
         if continuation and not continuation.startswith("cursor-"):
             raise WorldQueryError("invalid_world_continuation")
         try:
@@ -572,6 +670,7 @@ class WorldService:
                            "project_race_state", "orbital_state", "governor_state",
                            "intelligence_entitlement_state",
                            "movement_rules", "ecology_state", "planetary_state",
+                           "repair_rules",
                            "victory_posture", "victory"},
                 "logistics": {"own_unit", "base", "route", "convoy"},
             }[mode]
@@ -600,9 +699,73 @@ class WorldService:
                 result["items"] = [_public_object(item) for item in selected]
         elif mode == "area":
             center = objects.get(origin_ref or (subjects[0] if subjects else ""))
+            derived_center = derived_registry.get(origin_ref or (subjects[0] if subjects else ""))
             center_ref = str(center.get("location_ref") if center and center.get("location_ref")
                              else center.get("object_ref") if center else origin_ref)
             topology = self._topology(projection)
+            if derived_center is not None:
+                result["geographic_object"] = derived_center
+                boundary_refs = [str(value) for value in derived_center.get("boundary_refs", ())]
+                if derived_center.get("frontier_ref"):
+                    scouts = []
+                    for unit in objects.values():
+                        if unit.get("kind") != "own_unit":
+                            continue
+                        roles = _value(unit, "roles", {})
+                        if not isinstance(roles, Mapping) or not (
+                            roles.get("scout") or roles.get("explore") or roles.get("combat")
+                        ):
+                            continue
+                        start = str(unit.get("location_ref") or "")
+                        if start not in topology.by_ref:
+                            continue
+                        profile = mobility_profile(
+                            objects, "mobility-land-default",
+                            subject_ref=str(unit["object_ref"]), topology=topology,
+                        )
+                        candidates = [
+                            (topology.route(start, target, profile), target)
+                            for target in boundary_refs[:24] if target in topology.by_ref
+                        ]
+                        reachable = [(route, target) for route, target in candidates if route.reachable]
+                        if not reachable:
+                            continue
+                        route, target = min(reachable, key=lambda value: (
+                            int(value[0].turns or 10**9), float(value[0].movement_cost or 10**9),
+                            value[1],
+                        ))
+                        scouts.append({
+                            "scout_ref": unit["object_ref"], "frontier_location_ref": target,
+                            "arrival_turns": route.turns, "movement_cost": route.movement_cost,
+                            "eta_kind": route.eta_kind, "uncertainty": list(route.uncertainty),
+                        })
+                    scouts.sort(key=lambda row: (
+                        int(row.get("arrival_turns") or 10**9), str(row["scout_ref"]),
+                    ))
+                    result["frontier_access"] = {
+                        "reachable_scouts": scouts[:8],
+                        "nearest_scout_arrival_turns": scouts[0]["arrival_turns"] if scouts else None,
+                        "known_land_route_available": bool(scouts),
+                        "transport_dependency": None if scouts else
+                            "possible_or_required; query logistics with a scout and frontier location",
+                        "calculation_scope": "lazy_query_only",
+                    }
+                mass_locations: set[str] = set()
+                mass_ref = derived_center.get("landmass_ref") or derived_center.get("ocean_mass_ref")
+                if mass_ref:
+                    profile = PHYSICAL_LAND_PROFILE if derived_center.get("landmass_ref") \
+                        else PHYSICAL_OCEAN_PROFILE
+                    geography_regions = geography.get("_region_projection", ()) \
+                        if isinstance(geography, Mapping) else ()
+                    for region in geography_regions:
+                        if region.mobility_profile_ref != profile:
+                            continue
+                        if region.region_ref == mass_ref:
+                            mass_locations = set(region.location_refs)
+                            break
+                    result["items"] = [_public_object(item) for item in objects.values()
+                                       if str(item.get("location_ref") or "") in mass_locations]
+                center_ref = ""
             if center_ref == "world-map":
                 known = set(topology.by_ref)
                 shape = topology.shape
@@ -639,15 +802,41 @@ class WorldService:
                                    or item.get("location_ref") in in_area]
         elif mode == "relation":
             topology = self._topology(projection)
-            origin_location = objects.get(origin_ref, {}).get("location_ref") or origin_ref
-            target_location = objects.get(target_ref, {}).get("location_ref") or target_ref
+            origin_location = (objects.get(origin_ref, {}).get("location_ref")
+                               or derived_registry.get(origin_ref, {}).get("anchor_location_ref")
+                               or origin_ref)
+            target_location = (objects.get(target_ref, {}).get("location_ref")
+                               or derived_registry.get(target_ref, {}).get("anchor_location_ref")
+                               or target_ref)
             if origin_location not in topology.by_ref or target_location not in topology.by_ref:
                 raise WorldQueryError("unknown_relation_endpoint")
             a, b = topology.by_ref[origin_location], topology.by_ref[target_location]
+            geography_regions = geography.get("_region_projection", ()) \
+                if isinstance(geography, Mapping) else ()
+            land_by_location = {ref: region.region_ref for region in geography_regions
+                                if region.mobility_profile_ref == PHYSICAL_LAND_PROFILE
+                                for ref in region.location_refs}
+            ocean_by_location = {ref: region.region_ref for region in geography_regions
+                                 if region.mobility_profile_ref == PHYSICAL_OCEAN_PROFILE
+                                 for ref in region.location_refs}
             result["relation"] = {
                 "origin_ref": origin_ref, "target_ref": target_ref,
                 "geometric_distance": topology.shape.distance((a.x, a.y), (b.x, b.y)),
                 "bearing": topology.shape.bearing((a.x, a.y), (b.x, b.y)),
+                "same_known_landmass": bool(
+                    land_by_location.get(str(origin_location))
+                    and land_by_location.get(str(origin_location))
+                    == land_by_location.get(str(target_location))
+                ),
+                "same_known_ocean_mass": bool(
+                    ocean_by_location.get(str(origin_location))
+                    and ocean_by_location.get(str(origin_location))
+                    == ocean_by_location.get(str(target_location))
+                ),
+                "origin_physical_mass_ref": land_by_location.get(str(origin_location))
+                    or ocean_by_location.get(str(origin_location)),
+                "target_physical_mass_ref": land_by_location.get(str(target_location))
+                    or ocean_by_location.get(str(target_location)),
             }
             profile = mobility_profile(objects, movement_profile_ref,
                                        subject_ref=origin_ref, topology=topology)
@@ -691,7 +880,30 @@ class WorldService:
                             "arrivals": item.get("arrivals"),
                         })[:24]
                 else:
-                    result["items"] = location_affordances(topology, objects, subjects)
+                    geography_regions = geography.get("_region_projection", ()) \
+                        if isinstance(geography, Mapping) else ()
+                    land_regions = [region for region in geography_regions
+                                    if region.mobility_profile_ref == PHYSICAL_LAND_PROFILE]
+                    ocean_regions = [region for region in geography_regions
+                                     if region.mobility_profile_ref == PHYSICAL_OCEAN_PROFILE]
+                    mobility_regions = [region for region in geography_regions
+                                        if region.mobility_profile_ref in {
+                                            "mobility-land-default", "mobility-sea-default",
+                                        }]
+                    mass_by_location = {
+                        ref: region.region_ref for region in [*land_regions, *ocean_regions]
+                        for ref in region.location_refs
+                    }
+                    mobility_by_location: dict[str, list[str]] = {}
+                    for region in mobility_regions:
+                        for ref in region.location_refs:
+                            mobility_by_location.setdefault(ref, []).append(region.region_ref)
+                    result["items"] = location_affordances(
+                        topology, objects, subjects,
+                        native_receipts=runtime_base_site_receipts,
+                        physical_mass_by_location=mass_by_location,
+                        mobility_region_by_location=mobility_by_location,
+                    )
             else:
                 start = objects.get(origin_ref, {}).get("location_ref") or origin_ref
                 if start not in topology.by_ref:

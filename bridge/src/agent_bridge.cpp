@@ -8744,6 +8744,38 @@ std::string item_names(uint32_t items) {
     return out.str();
 }
 
+std::string visible_landmark_records(MAP* sq, int x, int y) {
+    // Called only for a square currently visible to the perspective faction.
+    // The live MAP landmark word is not a remembered-state surface, so callers
+    // must never use this helper for a fogged square.
+    std::ostringstream out;
+    out << '[';
+    bool comma = false;
+    const uint32_t mask = sq ? static_cast<uint32_t>(sq->lm_items()) : 0;
+    for (int bit = 0; bit < MaxNaturalNum; ++bit) {
+        const uint32_t flag = 1u << bit;
+        if (!(mask & flag)) continue;
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"landmark_type_id\":" << bit
+            << ",\"landmark_type\":" << json_string(Natural[bit].name_short)
+            << ",\"natural_name\":" << json_string(Natural[bit].name)
+            << ",\"landmark_code\":" << (sq ? sq->code_at() : 0)
+            << ",\"named_center\":false}";
+    }
+    for (int index = 0; index < *MapLandmarkCount; ++index) {
+        if (Landmarks[index].x != x || Landmarks[index].y != y) continue;
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"landmark_type_id\":null,\"landmark_type\":\"named_natural_landmark\""
+            << ",\"natural_name\":" << json_string(Landmarks[index].name)
+            << ",\"landmark_code\":" << (sq ? sq->code_at() : 0)
+            << ",\"named_center\":true}";
+    }
+    out << ']';
+    return out.str();
+}
+
 std::string tiles_response(const std::string& request) {
     if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
     int faction_id = *CurrentPlayerFaction;
@@ -8950,6 +8982,94 @@ std::string semantic_airdrop_targets_response(const std::string& request) {
     return out.str();
 }
 
+std::string semantic_base_site_receipts_response(const std::string& request) {
+    if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    bool targets_valid = false;
+    std::vector<int> target_ids = field_int_array(
+        request, "target_tile_ids", &targets_valid);
+    if (!targets_valid || target_ids.size() > 32) {
+        return error_response("invalid_target_tiles",
+            "target_tile_ids must contain at most 32 non-negative tile identifiers.");
+    }
+    const DWORD started_at = GetTickCount();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.native-base-site-receipts.v1\""
+        << ",\"action_revision\":" << json_string(semantic_revision().c_str())
+        << ",\"items\":[";
+    bool comma = false;
+    for (int tile_id : target_ids) {
+        int x = -1, y = -1;
+        if (!semantic_tile_coords(tile_id, &x, &y)) continue;
+        MAP* sq = mapsq(x, y);
+        if (!sq || !sq->is_visible(faction_id)) continue;
+        if (comma) out << ',';
+        comma = true;
+        const bool ocean = is_ocean(sq);
+        out << "{\"location_ref\":\"location-" << tile_id << "\""
+            << ",\"epistemic_status\":\"current\",\"source\":\"native_guarded_receipt\""
+            << ",\"legal_for_land_colony\":"
+            << (can_build_base(x, y, faction_id, TRIAD_LAND) ? "true" : "false")
+            << ",\"legal_for_sea_colony\":"
+            << (can_build_base(x, y, faction_id, TRIAD_SEA) ? "true" : "false")
+            << ",\"terrain_kind\":" << json_string(ocean ? "ocean" : "land")
+            << ",\"current_tile_yields\":{\"nutrients\":"
+            << mod_crop_yield(faction_id, -1, x, y, 0)
+            << ",\"minerals\":" << mod_mine_yield(faction_id, -1, x, y, 0)
+            << ",\"energy\":" << mod_energy_yield(faction_id, -1, x, y, 0)
+            << "},\"known_radius\":[";
+        bool radius_comma = false;
+        int known_radius_count = 0;
+        for (int offset = 0; offset < 21; ++offset) {
+            int rx = 0, ry = 0;
+            MAP* radius_sq = next_tile(x, y, offset, &rx, &ry);
+            if (!radius_sq || !radius_sq->is_visible(faction_id)) continue;
+            if (radius_comma) out << ',';
+            radius_comma = true;
+            ++known_radius_count;
+            out << "{\"location_ref\":\"location-" << semantic_tile_id(rx, ry)
+                << "\",\"features\":" << item_names(radius_sq->items)
+                << ",\"yields\":{\"nutrients\":"
+                << mod_crop_yield(faction_id, -1, rx, ry, 0)
+                << ",\"minerals\":" << mod_mine_yield(faction_id, -1, rx, ry, 0)
+                << ",\"energy\":" << mod_energy_yield(faction_id, -1, rx, ry, 0)
+                << "}}";
+        }
+        out << "],\"known_radius_location_count\":" << known_radius_count
+            << ",\"radius_complete_currently_visible\":"
+            << (known_radius_count == 21 ? "true" : "false")
+            << ",\"overlapping_known_bases\":[";
+        bool base_comma = false;
+        for (int base_id = 0; base_id < *BaseCount; ++base_id) {
+            BASE& base = Bases[base_id];
+            MAP* base_sq = mapsq(base.x, base.y);
+            if (base.faction_id != faction_id && (!base_sq || !base_sq->is_visible(faction_id))) {
+                continue;
+            }
+            int overlap = 0;
+            for (int a = 0; a < 21; ++a) {
+                int ax = 0, ay = 0;
+                if (!next_tile(x, y, a, &ax, &ay)) continue;
+                for (int b = 0; b < 21; ++b) {
+                    int bx = 0, by = 0;
+                    if (next_tile(base.x, base.y, b, &bx, &by)
+                    && ax == bx && ay == by) ++overlap;
+                }
+            }
+            if (!overlap) continue;
+            if (base_comma) out << ',';
+            base_comma = true;
+            out << "{\"base_ref\":\"base-location-" << semantic_tile_id(base.x, base.y)
+                << "\",\"owner_ref\":\"faction-" << static_cast<int>(base.faction_id)
+                << "\",\"overlapping_radius_location_count\":" << overlap << '}';
+        }
+        out << "],\"hidden_reasons_excluded\":true}";
+    }
+    out << "],\"requested_count\":" << target_ids.size()
+        << ",\"native_elapsed_ms\":" << (GetTickCount() - started_at) << '}';
+    return out.str();
+}
+
 std::string perspective_world_page_response(const std::string& request) {
     if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
     const int faction_id = *CurrentPlayerFaction;
@@ -8972,6 +9092,16 @@ std::string perspective_world_page_response(const std::string& request) {
             << ((*GameRules & RULES_NO_UNITY_SURVEY) ? "false" : "true")
             << ",\"is_governor\":"
             << (*GovernorFaction == faction_id ? "true" : "false")
+            << ",\"repair_rules\":{\"minimal\":" << conf.repair_minimal
+            << ",\"fungus_native\":" << conf.repair_fungus
+            << ",\"friendly_territory_bonus\":" << conf.repair_friendly
+            << ",\"airbase_bonus\":" << conf.repair_airbase
+            << ",\"bunker_bonus\":" << conf.repair_bunker
+            << ",\"base_bonus\":" << conf.repair_base
+            << ",\"native_base_bonus\":" << conf.repair_base_native
+            << ",\"base_facility_bonus\":" << conf.repair_base_facility
+            << ",\"nano_factory_bonus\":" << conf.repair_nano_factory
+            << ",\"battle_ogre_cap\":" << conf.repair_battle_ogre << '}'
             << ",\"items\":[],\"next_cursor\":null}";
         return out.str();
     }
@@ -8997,6 +9127,7 @@ std::string perspective_world_page_response(const std::string& request) {
                     << ",\"rainfall\":" << ((sq->climate >> 3) & 3)
                     << ",\"temperature\":" << (sq->climate & 7)
                     << ",\"rockiness\":" << sq->rocky_level()
+                    << ",\"landmarks\":" << visible_landmark_records(sq, x, y)
                     << ",\"owner_ref\":";
                 if (sq->owner >= 0 && sq->owner < MaxPlayerNum) {
                     out << json_string((std::string("faction-")
@@ -17181,6 +17312,7 @@ std::string execute_request(const std::string& request) {
     if (op == "list_tiles") return tiles_response(request);
     if (op == "perspective_world_page") return perspective_world_page_response(request);
     if (op == "semantic_airdrop_targets") return semantic_airdrop_targets_response(request);
+    if (op == "semantic_base_site_receipts") return semantic_base_site_receipts_response(request);
     if (op == "semantic_snapshot") return semantic_snapshot_response();
     if (op == "semantic_chat") return semantic_chat_response(request);
     if (op == "semantic_lan") {

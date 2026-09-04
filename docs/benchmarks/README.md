@@ -33,6 +33,7 @@ needed to reproduce it. Do not hand-edit generated JSON.
 
 Published reports:
 
+- [2026-09-04 geographic semantics and hierarchical LOD acceptance](2026-09-04-geographic-semantics.md)
 - [2026-09-03 strategic world and provider-context acceptance](2026-09-03-strategic-world-rebuild.md)
 - [2026-09-02 bounded runtime no-timer smoke test](2026-09-02-bounded-runtime.md)
 - [2026-09-02 AI-2 turn-transition regression](2026-09-02-ai2-turn-transition-regression.md)

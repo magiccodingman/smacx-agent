@@ -7,7 +7,10 @@ import hashlib
 import time
 from typing import Any, Iterable, Mapping
 
-from smacx_regions import Region, RegionBuilder, build_theaters
+from smacx_regions import (
+    PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE, Region, RegionBuilder,
+    build_theaters,
+)
 from smacx_topology import KnownSquare, MapShape, MobilityProfile, PerspectiveTopology
 from smacx_world_types import (
     EpistemicStatus, EpistemicValue, EvidenceSource, Observation, WorldContractError,
@@ -17,7 +20,7 @@ from smacx_world_types import (
 
 
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
-CALCULATOR_VERSION = "smacx.calculators.v1"
+CALCULATOR_VERSION = "smacx.calculators.v2-geography"
 
 ENTITLEMENT_EVIDENCE_SOURCES = {
     "unity_survey": EvidenceSource.SURVEY,
@@ -279,6 +282,13 @@ class PerspectiveProjector:
                                       turn=turn, world_revision=revision_hint,
                                       provenance_ref=provenance),
             }
+            if current and isinstance(tile.get("landmarks"), list):
+                landmark_rows = [dict(value) for value in tile["landmarks"]
+                                 if isinstance(value, Mapping)]
+                fields["landmarks"] = _evidence(
+                    landmark_rows, current=True, owned=False, turn=turn,
+                    world_revision=revision_hint, provenance_ref=provenance,
+                )
             if observed_terrain is None:
                 fields["terrain"] = EpistemicValue(
                     None, EpistemicStatus.UNKNOWN, EvidenceSource.STALE_MAP,
@@ -308,6 +318,25 @@ class PerspectiveProjector:
             objects.append(WorldObject(ref, "location", fields, metadata={
                 "native_x": square.x, "native_y": square.y,
             }))
+            for landmark in tile.get("landmarks", ()) if current else ():
+                if not isinstance(landmark, Mapping) or not landmark.get("named_center"):
+                    continue
+                name = str(landmark.get("natural_name") or landmark.get("landmark_type")
+                           or "Known natural landmark")
+                landmark_ref = "landmark-" + content_hash({
+                    "center": ref,
+                    "landmark_type_id": landmark.get("landmark_type_id"),
+                    "landmark_code": landmark.get("landmark_code"),
+                    "named_center": True,
+                })[:24]
+                objects.append(WorldObject(landmark_ref, "landmark", {
+                    "name": _evidence(name, current=True, owned=False, turn=turn,
+                                      world_revision=revision_hint, provenance_ref=provenance),
+                    "landmark_type": _evidence(
+                        landmark.get("landmark_type"), current=True, owned=False, turn=turn,
+                        world_revision=revision_hint, provenance_ref=provenance,
+                    ),
+                }, ref))
         for base in bundle.get("bases", ()):
             if not isinstance(base, Mapping) or "tile_id" not in base:
                 continue
@@ -527,7 +556,7 @@ class PerspectiveProjector:
         present_refs = {item.object_ref for item in objects}
         current_locations = {square.location_ref for square in squares if square.current}
         for ref, prior in self._prior_objects.items():
-            if ref in present_refs or prior.get("kind") != "base" \
+            if ref in present_refs or prior.get("kind") not in {"base", "landmark"} \
                     or prior.get("location_ref") in current_locations:
                 continue
             prior_fields = prior.get("fields") if isinstance(prior.get("fields"), Mapping) else {}
@@ -541,7 +570,7 @@ class PerspectiveProjector:
                     revision_hint, provenance, old.get("known_bounds"),
                 )
             objects.append(WorldObject(
-                ref, "base", stale_fields, prior.get("location_ref"),
+                ref, str(prior.get("kind")), stale_fields, prior.get("location_ref"),
                 prior.get("parent_ref"), "stale", {},
             ))
         objects = self._stabilize_evidence(objects)
@@ -587,6 +616,7 @@ class SemanticLodProjector:
             "intelligence_entitlement_state": ("state",),
             "planetary_state": ("state",),
             "project_race_state": ("state",), "movement_rules": ("state",),
+            "repair_rules": ("state",),
             "victory_posture": ("state",),
             "global_event": ("name", "state"), "victory": ("name", "state"),
         }.get(kind, ())
@@ -605,9 +635,249 @@ class SemanticLodProjector:
                 ("object_ref", "kind", "location_ref", "status")
                 if item.get(key) is not None} | {"fields": selected}
 
+    @staticmethod
+    def _field(item: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+        fields = item.get("fields") if isinstance(item.get("fields"), Mapping) else {}
+        value = fields.get(name)
+        return value if isinstance(value, Mapping) else {}
+
+    @classmethod
+    def _mass_row(
+        cls, mass: Region, *, kind: str, topology: PerspectiveTopology,
+        objects_by_location: Mapping[str, list[Mapping[str, Any]]],
+        relationship_by_faction: Mapping[str, str],
+        opposite_by_location: Mapping[str, str], pinned: set[str],
+    ) -> dict[str, Any]:
+        inhabitants = [item for ref in mass.location_refs
+                       for item in objects_by_location.get(ref, ())]
+        territory: dict[str, dict[str, Any]] = {}
+        resources: dict[str, dict[str, Any]] = {}
+        landmark_composition: dict[str, dict[str, Any]] = {}
+        landmarks: list[dict[str, Any]] = []
+        current_forces: dict[str, int] = {}
+        naval_contacts: dict[str, int] = {}
+        stale_naval_contacts: dict[str, int] = {}
+        sea_bases: dict[str, int] = {}
+        coastal_bases: list[str] = []
+        unknown_ownership_count = 0
+        current_known_unowned_count = 0
+        for ref in mass.location_refs:
+            location = next((item for item in objects_by_location.get(ref, ())
+                             if item.get("kind") == "location"
+                             and item.get("object_ref") == ref), None)
+            if not location:
+                continue
+            owner = cls._field(location, "owner_ref")
+            owner_ref = owner.get("value")
+            if owner_ref:
+                row = territory.setdefault(str(owner_ref), {
+                    "faction_ref": str(owner_ref),
+                    "relationship": relationship_by_faction.get(str(owner_ref), "unknown"),
+                    "current_known_owned_location_count": 0,
+                    "stale_known_owned_location_count": 0,
+                    "current_base_count": 0, "stale_known_base_count": 0,
+                    "representative_refs": [],
+                })
+                key = ("current_known_owned_location_count"
+                       if owner.get("epistemic_status") == "current"
+                       else "stale_known_owned_location_count")
+                row[key] += 1
+                if len(row["representative_refs"]) < 4:
+                    row["representative_refs"].append(ref)
+            elif owner.get("epistemic_status") == "current":
+                current_known_unowned_count += 1
+            else:
+                unknown_ownership_count += 1
+            features = cls._field(location, "features")
+            freshness = "current" if features.get("epistemic_status") == "current" else "stale"
+            for feature in features.get("value", ()) or ():
+                if feature not in {
+                    "nutrient_resource", "mineral_resource", "energy_resource",
+                    "resource_bonus", "monolith", "supply_pod", "thermal_borehole",
+                    "sensor", "airbase", "bunker", "river", "fungus",
+                }:
+                    continue
+                row = resources.setdefault(str(feature), {
+                    "feature": str(feature), "current_count": 0, "stale_count": 0,
+                    "representative_refs": [],
+                })
+                row[f"{freshness}_count"] += 1
+                if len(row["representative_refs"]) < 4:
+                    row["representative_refs"].append(ref)
+            landmark_field = cls._field(location, "landmarks")
+            landmark_freshness = (
+                "current" if landmark_field.get("epistemic_status") == "current" else "stale"
+            )
+            for landmark in landmark_field.get("value", ()) or ():
+                if not isinstance(landmark, Mapping):
+                    continue
+                landmark_type = str(
+                    landmark.get("natural_name") or landmark.get("landmark_type")
+                    or "known_natural_landmark"
+                )
+                row = landmark_composition.setdefault(landmark_type, {
+                    "landmark_type": landmark_type,
+                    "current_known_location_count": 0,
+                    "stale_known_location_count": 0,
+                    "representative_location_refs": [],
+                })
+                row[f"{landmark_freshness}_known_location_count"] += 1
+                if len(row["representative_location_refs"]) < 4:
+                    row["representative_location_refs"].append(ref)
+        for item in inhabitants:
+            owner_ref = cls._field(item, "owner_ref").get("value")
+            if item.get("kind") == "base" and owner_ref:
+                row = territory.setdefault(str(owner_ref), {
+                    "faction_ref": str(owner_ref),
+                    "relationship": relationship_by_faction.get(str(owner_ref), "unknown"),
+                    "current_known_owned_location_count": 0,
+                    "stale_known_owned_location_count": 0,
+                    "current_base_count": 0, "stale_known_base_count": 0,
+                    "representative_refs": [],
+                })
+                key = "stale_known_base_count" if item.get("status") == "stale" else "current_base_count"
+                row[key] += 1
+                if len(row["representative_refs"]) < 4:
+                    row["representative_refs"].append(str(item["object_ref"]))
+                if kind == "ocean":
+                    sea_bases[str(owner_ref)] = sea_bases.get(str(owner_ref), 0) + 1
+                if cls._field_value(item, "coastal") is True:
+                    coastal_bases.append(str(item["object_ref"]))
+            if item.get("kind") == "landmark":
+                landmarks.append({
+                    "landmark_ref": item.get("object_ref"),
+                    "name": cls._field(item, "name").get("value"),
+                    "landmark_type": cls._field(item, "landmark_type").get("value"),
+                    "location_ref": item.get("location_ref"),
+                    "epistemic_status": cls._field(item, "name").get("epistemic_status"),
+                })
+            if kind == "ocean" and item.get("kind") in {"own_unit", "foreign_contact"} \
+                    and cls._field(item, "triad").get("value") == "sea":
+                faction = str(owner_ref or "unknown")
+                current_forces[faction] = current_forces.get(faction, 0) + 1
+                if item.get("kind") == "foreign_contact":
+                    if item.get("status") == "active" \
+                            and cls._field(item, "triad").get("epistemic_status") == "current":
+                        naval_contacts[faction] = naval_contacts.get(faction, 0) + 1
+                    else:
+                        stale_naval_contacts[faction] = stale_naval_contacts.get(faction, 0) + 1
+        adjacent: set[str] = set()
+        coastline_pairs = 0
+        coastline_examples: list[dict[str, str]] = []
+        for ref in mass.location_refs:
+            for neighbor in topology.adjacent(ref).values():
+                opposite = opposite_by_location.get(neighbor.location_ref)
+                if not opposite:
+                    continue
+                adjacent.add(opposite); coastline_pairs += 1
+                if len(coastline_examples) < 6:
+                    coastline_examples.append({
+                        "mass_location_ref": ref,
+                        "adjacent_location_ref": neighbor.location_ref,
+                    })
+                if kind == "ocean":
+                    for neighbor_item in objects_by_location.get(neighbor.location_ref, ()):
+                        if neighbor_item.get("kind") != "base":
+                            continue
+                        # Physical ocean summaries may name only already-known
+                        # coastal bases on the adjacent land square.  No remote
+                        # or hidden base discovery is introduced here.
+                        coastal_bases.append(str(neighbor_item.get("object_ref")))
+        promoted = sorted({str(item.get("object_ref")) for item in inhabitants
+                           if str(item.get("object_ref")) in pinned}
+                          | (set(mass.location_refs) & pinned)
+                          | ({mass.region_ref} & pinned))
+        ref_key = "landmass_ref" if kind == "land" else "ocean_mass_ref"
+        return {
+            ref_key: mass.region_ref,
+            "lineage_ref": mass.lineage_ref, "version": mass.version,
+            "anchor_location_ref": mass.anchor_location_ref,
+            "known_location_count": len(mass.location_refs),
+            "current_known_location_count": sum(
+                int(topology.by_ref[ref].current) for ref in mass.location_refs
+            ),
+            "stale_known_location_count": sum(
+                int(not topology.by_ref[ref].current) for ref in mass.location_refs
+            ),
+            "current_known_unowned_location_count": current_known_unowned_count,
+            "unknown_ownership_location_count": unknown_ownership_count,
+            "territorial_composition": sorted(territory.values(), key=lambda row: row["faction_ref"]),
+            "known_feature_composition": sorted(resources.values(), key=lambda row: row["feature"]),
+            "known_landmark_composition": sorted(
+                landmark_composition.values(), key=lambda row: row["landmark_type"]
+            ),
+            "known_landmarks": landmarks[:8],
+            "adjacent_ocean_mass_refs" if kind == "land" else "adjacent_landmass_refs":
+                sorted(adjacent)[:12],
+            "known_coastline_edge_count": coastline_pairs,
+            "representative_coastline_edges": coastline_examples,
+            "known_sea_force_counts_by_faction": dict(sorted(current_forces.items())),
+            "known_sea_bases_by_faction": dict(sorted(sea_bases.items())),
+            "current_visible_naval_contact_counts_by_faction": dict(sorted(naval_contacts.items())),
+            "stale_known_naval_contact_counts_by_faction": dict(
+                sorted(stale_naval_contacts.items())
+            ),
+            "owned_naval_force_count": sum(
+                count for faction, count in current_forces.items()
+                if relationship_by_faction.get(faction) == "self"
+            ),
+            "relevant_coastal_base_refs": sorted(set(coastal_bases))[:12],
+            "promoted_by_refs": promoted[:8],
+            "lod_level": "operational" if promoted else "geographic",
+            "identity_invariant": "terrain connectivity only; ownership, diplomacy, and units do not affect identity",
+        }
+
+    @classmethod
+    def _ownership_interfaces(
+        cls, topology: PerspectiveTopology, objects: list[Mapping[str, Any]],
+        mass_by_location: Mapping[str, str], relationship_by_faction: Mapping[str, str],
+    ) -> list[dict[str, Any]]:
+        locations = {str(item.get("object_ref")): item for item in objects
+                     if item.get("kind") == "location"}
+        rows: dict[tuple[str, ...], dict[str, Any]] = {}
+        for ref, square in topology.by_ref.items():
+            left = cls._field(locations.get(ref, {}), "owner_ref")
+            left_owner = left.get("value")
+            if not left_owner or left.get("epistemic_status") != "current":
+                continue
+            for neighbor in topology.adjacent(ref).values():
+                if ref >= neighbor.location_ref:
+                    continue
+                right = cls._field(locations.get(neighbor.location_ref, {}), "owner_ref")
+                right_owner = right.get("value")
+                if not right_owner or right_owner == left_owner \
+                        or right.get("epistemic_status") != "current":
+                    continue
+                factions = tuple(sorted((str(left_owner), str(right_owner))))
+                mass_refs = tuple(sorted({value for value in (
+                    mass_by_location.get(ref, ""),
+                    mass_by_location.get(neighbor.location_ref, ""),
+                ) if value}))
+                key = (*mass_refs, "owners", *factions)
+                row = rows.setdefault(key, {
+                    "ownership_interface_ref": "ownership-interface-" + content_hash(key)[:16],
+                    "physical_mass_ref": mass_refs[0] if len(mass_refs) == 1 else None,
+                    "physical_mass_refs": list(mass_refs),
+                    "faction_refs": list(factions),
+                    "relationships_to_sovereign": {
+                        value: relationship_by_faction.get(value, "unknown") for value in factions
+                    },
+                    "current_known_adjacency_count": 0,
+                    "representative_edges": [],
+                    "epistemic_status": "current",
+                    "meaning": "mechanical adjacency of currently known differently owned squares",
+                })
+                row["current_known_adjacency_count"] += 1
+                if len(row["representative_edges"]) < 6:
+                    row["representative_edges"].append([ref, neighbor.location_ref])
+        return sorted(rows.values(), key=lambda row: row["ownership_interface_ref"])
+
     def build(self, projection: Mapping[str, Any], *, previous_regions: Iterable[Region] = (),
               focus_ref: str | None = None, operation_refs: Iterable[str] = (),
-              triggered_watch_refs: Iterable[str] = ()) -> dict[str, Any]:
+              triggered_watch_refs: Iterable[str] = (),
+              active_plan_refs: Iterable[str] = (),
+              recent_material_refs: Iterable[str] = (),
+              inspection_refs: Iterable[str] = ()) -> dict[str, Any]:
         objects = [provider_safe(item)
                    for item in projection.get("objects", ())]
         squares = list(projection.get("known_squares", ()))
@@ -616,6 +886,7 @@ class SemanticLodProjector:
         previous = list(previous_regions)
         region_builder = RegionBuilder()
         regions: list[Region] = []
+        physical_masses: list[Region] = []
         aliases: dict[str, str] = {}
         for profile in (
             MobilityProfile("mobility-land-default", "land"),
@@ -628,19 +899,93 @@ class SemanticLodProjector:
             )
             regions.extend(built)
             aliases.update(profile_aliases)
+        for kind, profile_ref in (
+            ("land", PHYSICAL_LAND_PROFILE), ("ocean", PHYSICAL_OCEAN_PROFILE),
+        ):
+            built, profile_aliases = region_builder.build_physical(
+                topology, kind,
+                (item for item in previous if item.mobility_profile_ref == profile_ref),
+                world_revision=int(projection.get("world_revision", 0)),
+            )
+            physical_masses.extend(built)
+            aliases.update(profile_aliases)
+        landmasses = [item for item in physical_masses
+                      if item.mobility_profile_ref == PHYSICAL_LAND_PROFILE]
+        ocean_masses = [item for item in physical_masses
+                        if item.mobility_profile_ref == PHYSICAL_OCEAN_PROFILE]
+        landmass_by_location = {ref: item.region_ref for item in landmasses
+                                for ref in item.location_refs}
+        ocean_mass_by_location = {ref: item.region_ref for item in ocean_masses
+                                  for ref in item.location_refs}
+        objects_by_location: dict[str, list[Mapping[str, Any]]] = {}
+        for item in objects:
+            at = item.get("location_ref") or (
+                item.get("object_ref") if item.get("kind") == "location" else None
+            )
+            if at:
+                objects_by_location.setdefault(str(at), []).append(item)
+        relationship_by_faction: dict[str, str] = {}
+        for item in objects:
+            if item.get("kind") != "faction":
+                continue
+            relations = self._field_value(item, "relations")
+            relationship_by_faction[str(item.get("object_ref"))] = (
+                "self" if self._field_value(item, "is_self") is True else
+                "allied" if isinstance(relations, Mapping) and relations.get("pact") is True else
+                "hostile" if isinstance(relations, Mapping) and relations.get("vendetta") is True else
+                "neutral" if isinstance(relations, Mapping)
+                and (relations.get("treaty") is True or relations.get("truce") is True) else
+                "unknown"
+            )
         frontiers = region_builder.frontiers(
-            topology,
-            (item for item in regions if item.mobility_profile_ref == "mobility-land-default"),
+            topology, landmasses, landmass_by_location=landmass_by_location,
+            ocean_mass_by_location=ocean_mass_by_location,
+            objects_by_location=objects_by_location,
+            relationship_by_faction=relationship_by_faction,
         )
-        location_to_region = {ref: region.region_ref for region in regions for ref in region.location_refs}
-        theaters = build_theaters(objects, location_to_region,
-                                  world_revision=int(projection.get("world_revision", 0)))
-        pinned = {str(ref) for ref in operation_refs} | {str(ref) for ref in triggered_watch_refs}
+        location_to_regions: dict[str, list[str]] = {}
+        for region in regions:
+            for ref in region.location_refs:
+                location_to_regions.setdefault(ref, []).append(region.region_ref)
+        region_adjacency: dict[str, set[str]] = {item.region_ref: set() for item in regions}
+        for ref, assigned in location_to_regions.items():
+            neighbors = topology.adjacent(ref)
+            nearby = {region_ref for square in neighbors.values()
+                      for region_ref in location_to_regions.get(square.location_ref, ())}
+            for region_ref in assigned:
+                region_adjacency[region_ref].update(nearby - {region_ref})
+        pinned = (
+            {str(ref) for ref in operation_refs}
+            | {str(ref) for ref in triggered_watch_refs}
+            | {str(ref) for ref in active_plan_refs}
+            | {str(ref) for ref in recent_material_refs}
+            | {str(ref) for ref in inspection_refs}
+        )
         if focus_ref:
             pinned.add(focus_ref)
+        theaters = build_theaters(
+            objects, location_to_regions,
+            world_revision=int(projection.get("world_revision", 0)),
+            location_to_mass={**landmass_by_location, **ocean_mass_by_location},
+            region_adjacency=region_adjacency, promoted_refs=pinned,
+            recent_material_refs=recent_material_refs,
+        )
         counts: dict[str, int] = {}
         for item in objects:
             counts[str(item.get("kind"))] = counts.get(str(item.get("kind")), 0) + 1
+        mass_rows = [
+            self._mass_row(
+                item, kind="land", topology=topology, objects_by_location=objects_by_location,
+                relationship_by_faction=relationship_by_faction,
+                opposite_by_location=ocean_mass_by_location, pinned=pinned,
+            ) for item in landmasses
+        ] + [
+            self._mass_row(
+                item, kind="ocean", topology=topology, objects_by_location=objects_by_location,
+                relationship_by_faction=relationship_by_faction,
+                opposite_by_location=landmass_by_location, pinned=pinned,
+            ) for item in ocean_masses
+        ]
         region_rows = []
         for region in regions:
             inhabitants = [item for item in objects
@@ -651,6 +996,8 @@ class SemanticLodProjector:
                 kind_counts[kind] = kind_counts.get(kind, 0) + 1
             pinned_in_region = [str(item.get("object_ref")) for item in inhabitants
                                 if str(item.get("object_ref")) in pinned]
+            if region.region_ref in pinned:
+                pinned_in_region.append(region.region_ref)
             hostile_count = sum(1 for item in inhabitants
                                 if item.get("kind") == "foreign_contact"
                                 and item.get("status") == "active"
@@ -664,11 +1011,16 @@ class SemanticLodProjector:
                 "lod_level": "operational" if hostile_count or pinned_in_region else "region",
                 "promoted_by_refs": pinned_in_region[:8],
             })
+        ownership_interfaces = self._ownership_interfaces(
+            topology, objects, {**landmass_by_location, **ocean_mass_by_location},
+            relationship_by_faction,
+        )
         strategic_kinds = {
             "base", "faction", "game_settings", "scenario_rules", "economy_state",
             "research_state", "social_state", "council_state", "victory_state",
             "technology_state", "project", "project_state", "orbital_state",
             "project_race_state", "governor_state", "movement_rules",
+            "repair_rules",
             "intelligence_entitlement_state",
             "ecology_state", "planetary_state", "victory_posture", "global_event", "victory",
         }
@@ -684,6 +1036,11 @@ class SemanticLodProjector:
             -int(item.get("location_count", 0)),
             str(item.get("region_ref")),
         ))
+        mass_rows.sort(key=lambda item: (
+            0 if item.get("lod_level") == "operational" else 1,
+            -int(item.get("known_location_count", 0)),
+            str(item.get("landmass_ref") or item.get("ocean_mass_ref")),
+        ))
         region_limit = 24 if self.context_tier == "64k" else 48
         omitted_regions = region_rows[region_limit:]
         visible_regions = region_rows[:region_limit]
@@ -693,6 +1050,9 @@ class SemanticLodProjector:
         strategic_limit = 48 if self.context_tier == "64k" else 128
         active_limit = 24 if self.context_tier == "64k" else 64
         promotion_refs = sorted(pinned)
+        mass_limit = 16 if self.context_tier == "64k" else 32
+        omitted_masses = mass_rows[mass_limit:]
+        visible_masses = mass_rows[:mass_limit]
         anchor = {
             "schema": "smacx.world-anchor.v1",
             "identity": dict(projection["identity"]),
@@ -708,11 +1068,20 @@ class SemanticLodProjector:
             "planet": {
                 "known_land_locations": sum(1 for square in squares if not square.ocean),
                 "known_ocean_locations": sum(1 for square in squares if square.ocean),
-                "land_region_count": sum(1 for region in regions
+                "physical_landmass_count": len(landmasses),
+                "physical_ocean_mass_count": len(ocean_masses),
+                "land_mobility_region_count": sum(1 for region in regions
                                          if region.mobility_profile_ref == "mobility-land-default"),
-                "ocean_region_count": sum(1 for region in regions
+                "sea_mobility_region_count": sum(1 for region in regions
                                           if region.mobility_profile_ref == "mobility-sea-default"),
                 "active_theater_count": len(theaters),
+            },
+            "physical_masses": visible_masses,
+            "physical_mass_overflow": {
+                "omitted_count": len(omitted_masses),
+                "omitted_known_locations": sum(int(item.get("known_location_count", 0))
+                                                 for item in omitted_masses),
+                "query_hint": "Use smac_world area/relation on a mass or frontier for detail.",
             },
             "regions": visible_regions,
             "region_overflow": {
@@ -725,6 +1094,7 @@ class SemanticLodProjector:
             },
             "region_aliases": aliases,
             "frontiers": [item.as_dict() for item in frontiers[:frontier_limit]],
+            "ownership_interfaces": ownership_interfaces[:12],
             "active_theaters": [item.as_dict() for item in theaters[:theater_limit]],
             "strategic_objects": strategic[:strategic_limit],
             "active_detail": [item for item in objects
@@ -733,35 +1103,55 @@ class SemanticLodProjector:
                 "tier": self.context_tier,
                 "promotion_refs": promotion_refs,
                 "region_limit": region_limit,
+                "physical_mass_limit": mass_limit,
                 "theater_limit": theater_limit,
                 "frontier_limit": frontier_limit,
                 "strategic_object_limit": strategic_limit,
                 "regions_truncated": bool(omitted_regions),
+                "physical_masses_truncated": bool(omitted_masses),
                 "theaters_truncated": len(theaters) > theater_limit,
                 "frontiers_truncated": len(frontiers) > frontier_limit,
                 "strategic_objects_truncated": len(strategic) > strategic_limit,
                 "principle": "Peripheral strategic awareness; use smac_world for deliberate zoom.",
             },
         }
+        # Reserve room for the final self-estimate and integrity hash so the
+        # serialized anchor, not merely its pre-metadata body, obeys the cap.
+        content_cap = max(448, self.token_cap - 64)
         # Demote least salient detail first. Planet/region summaries are never raw tile lists.
-        while anchor["active_detail"] and estimate_tokens(anchor) > self.token_cap:
+        while anchor["active_detail"] and estimate_tokens(anchor) > content_cap:
             anchor["active_detail"].pop()
-        while anchor["strategic_objects"] and estimate_tokens(anchor) > self.token_cap:
+        while anchor["strategic_objects"] and estimate_tokens(anchor) > content_cap:
             anchor["strategic_objects"].pop()
             anchor["lod"]["strategic_objects_truncated"] = True
-        if estimate_tokens(anchor) > self.token_cap:
+        if estimate_tokens(anchor) > content_cap:
+            anchor["ownership_interfaces"] = []
+        if estimate_tokens(anchor) > content_cap:
+            anchor["physical_masses"] = [{key: value for key, value in item.items()
+                                          if key in {"landmass_ref", "ocean_mass_ref", "version",
+                                                     "known_location_count", "lod_level",
+                                                     "promoted_by_refs"}}
+                                         for item in anchor["physical_masses"]]
+        if estimate_tokens(anchor) > content_cap:
             anchor["regions"] = [{key: value for key, value in item.items()
                                   if key in {"region_ref", "version", "location_count"}}
                                  for item in anchor["regions"]]
-        if estimate_tokens(anchor) > self.token_cap:
+        if estimate_tokens(anchor) > content_cap:
             raise WorldContractError("world_anchor_budget_exhausted")
-        anchor["token_estimate"] = estimate_tokens(anchor)
         anchor["projection_integrity_hash"] = content_hash(provider_safe(anchor))
-        anchor["_region_projection"] = regions
+        anchor["token_estimate"] = 0
+        for _ in range(4):
+            current_estimate = estimate_tokens(anchor)
+            if anchor["token_estimate"] == current_estimate:
+                break
+            anchor["token_estimate"] = current_estimate
+        if estimate_tokens(anchor) > self.token_cap:
+            raise WorldContractError("world_anchor_budget_exhausted_after_seal")
+        anchor["_region_projection"] = [*regions, *physical_masses]
         # _region_projection is collector persistence, not provider data.  The
         # caller removes it before storage; all other content is safe here.
         safe_anchor = provider_safe(anchor)
-        safe_anchor["_region_projection"] = regions
+        safe_anchor["_region_projection"] = [*regions, *physical_masses]
         return safe_anchor
 
 

@@ -90,6 +90,8 @@ DECISION_LOCK = threading.Lock()
 DECISION_TTL_SECONDS = 180.0
 AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
 AIRDROP_RECEIPT_LOCK = threading.Lock()
+BASE_SITE_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
+BASE_SITE_RECEIPT_LOCK = threading.Lock()
 SEMANTIC_LOCATION_CAPABILITIES: dict[tuple[str, ...], tuple[int, float]] = {}
 SEMANTIC_LOCATION_CAPABILITY_LOCK = threading.Lock()
 DECISION_CACHE_LIMIT = 128
@@ -1921,6 +1923,7 @@ def smac_world(
             perspective_id=perspective_id,
         )
         runtime_airdrop_receipt = None
+        runtime_base_site_receipts = None
         target_tile_id = -1
         if mode in {"relation", "route", "reachability"} \
                 and re.fullmatch(r"own-unit-[1-9][0-9]{0,9}", origin_ref):
@@ -1956,6 +1959,43 @@ def smac_world(
                             AIRDROP_RECEIPT_CACHE[cache_key] = candidate
                             while len(AIRDROP_RECEIPT_CACHE) > 64:
                                 AIRDROP_RECEIPT_CACHE.pop(next(iter(AIRDROP_RECEIPT_CACHE)))
+        if mode == "compare" and not origin_ref and not target_ref and subject_refs:
+            target_ids = []
+            for ref in list(subject_refs)[:32]:
+                match = re.fullmatch(r"location-([0-9]+)", str(ref))
+                if match:
+                    target_ids.append(int(match.group(1)))
+            if target_ids:
+                identity, projection = world._projection()
+                action_revision = str(projection.get("action_revision") or "")
+                cache_key = (
+                    match_id, session_id, agent_id, perspective_id,
+                    identity.timeline_id, identity.world_epoch, action_revision,
+                    *(str(value) for value in sorted(set(target_ids))),
+                )
+                with BASE_SITE_RECEIPT_LOCK:
+                    candidate = BASE_SITE_RECEIPT_CACHE.get(cache_key)
+                if candidate is None:
+                    received = _call(
+                        "semantic_base_site_receipts",
+                        target_tile_ids=sorted(set(target_ids)),
+                    )
+                    if received.get("ok") is True \
+                            and str(received.get("action_revision") or "") == action_revision:
+                        candidate = received
+                        with BASE_SITE_RECEIPT_LOCK:
+                            BASE_SITE_RECEIPT_CACHE[cache_key] = received
+                            while len(BASE_SITE_RECEIPT_CACHE) > 64:
+                                BASE_SITE_RECEIPT_CACHE.pop(
+                                    next(iter(BASE_SITE_RECEIPT_CACHE))
+                                )
+                if isinstance(candidate, Mapping) and candidate.get("ok") is True \
+                        and str(candidate.get("action_revision") or "") == action_revision:
+                    runtime_base_site_receipts = {
+                        str(item.get("location_ref")): item
+                        for item in candidate.get("items", ())
+                        if isinstance(item, Mapping) and item.get("location_ref")
+                    }
         context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
         result = world.query(
             mode=mode, subject_refs=subject_refs or (), origin_ref=origin_ref,
@@ -1963,6 +2003,7 @@ def smac_world(
             radius=radius, since_cursor=since_cursor, detail=detail,
             continuation=continuation, context_length=context_length,
             runtime_airdrop_receipt=runtime_airdrop_receipt,
+            runtime_base_site_receipts=runtime_base_site_receipts,
         )
         if result.get("ok") is True:
             identity, projection = world._projection()

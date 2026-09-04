@@ -284,12 +284,30 @@ class RuntimeContextAssembler:
             current_turn=int(turn) if turn is not None else None,
             current_year=int(snapshot["year"]) if snapshot.get("year") is not None else None,
         )
+        active_plan_refs = [
+            str(ref) for plan in cognition.get("plans", ())
+            if isinstance(plan, Mapping)
+            for ref in plan.get("target_refs", ())
+        ][:64]
         operations = _operation_context(
             active["operations"], token_budget=budgets["operations"],
         )
         attention_context = _bounded_attention(
             attention_lease, token_budget=budgets["attention"],
         )
+        recent_material_refs: list[str] = []
+        for attention_item in attention_context.get("items", ()):
+            if not isinstance(attention_item, Mapping) \
+                    or attention_item.get("attention_kind") != "world_change":
+                continue
+            delta = attention_item.get("payload", {}).get("delta", {})
+            if not isinstance(delta, Mapping):
+                continue
+            recent_material_refs.extend(
+                str(value) for value in (delta.get("object_ref"), delta.get("location_ref"))
+                if value
+            )
+        recent_material_refs = list(dict.fromkeys(recent_material_refs))[:64]
         recall_context: dict[str, Any] | None = None
         recall_terms = []
         for item in attention_context.get("items", []):
@@ -339,6 +357,8 @@ class RuntimeContextAssembler:
         anchor = self.world.anchor(
             context_length=context_length, focus_ref=focus_ref or None,
             operation_refs=operation_refs, triggered_watch_refs=triggered_watch_refs,
+            active_plan_refs=active_plan_refs,
+            recent_material_refs=recent_material_refs,
             token_cap=anchor_cap,
         )
         payload["world"] = {

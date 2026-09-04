@@ -144,15 +144,23 @@ manufactured, and native anti-drop coverage remains authoritative without
 exposing a hidden reason.
 
 The semantic mipmap makes prompt size track strategic complexity rather than
-tile count:
+tile count. Physical land/ocean masses are terrain-connected identities;
+mobility regions are separate unit-profile graphs, so coastal bases, diplomacy,
+ownership, ZOC, and moving units cannot silently redefine geography:
 
-1. known squares form versioned mobility-specific regions;
-2. region lineages record merges/splits across revisions;
-3. regions roll into frontiers and theaters;
-4. active focus, operations, triggered watches, contacts, threatened bases,
-   projects, and global systems promote local detail;
-5. quiet peripheral regions demote to summaries; and
-6. overflow reports omitted counts and query handles instead of silently
+1. known terrain forms versioned physical land and ocean masses;
+2. the same known squares independently form mobility-specific regions;
+3. masses expose bounded coastline, resource, landmark, territorial, naval,
+   and mechanical ownership-interface composition;
+4. contiguous unknown boundaries form exploration frontiers, while expensive
+   scout arrival/transport analysis remains query-scoped;
+5. mechanically connected activity forms neutral theaters that may cross
+   geographic and mobility boundaries;
+6. active focus, foreground operations, triggered watches, active plan targets,
+   recent material events, contacts, threatened bases, and explicit inspections
+   promote local detail;
+7. quiet peripheral geography demotes to summaries; and
+8. overflow reports omitted counts and query handles instead of silently
    disappearing.
 
 The 64K tier caps the anchor at 6,000 estimated tokens; the 256K tier caps it at
@@ -171,7 +179,7 @@ There is exactly one materialized current anchor per perspective/context tier.
 It has a content identity, world-anchor revision, and observation cursor. It is
 regenerated when the world epoch or turn changes, material delta pressure
 crosses its threshold, strategic structures change, observation age expires, or
-focus/operation/watch promotion changes. Regeneration replaces the prior
+focus/operation/watch/plan/recent-event/inspection promotion changes. Regeneration replaces the prior
 materialized anchor; history remains in the journal rather than accumulating in
 provider context or anchor tables.
 
@@ -192,6 +200,25 @@ a result; a changed dependency invalidates it.
 ordinary `smac_world` tool result. It is explanatory, not authoritative, and
 has no native screenshot or pixel data. It is not a PNG, image-content message,
 or completed multimodal-provider path.
+
+Recent-event promotion uses a bounded journal-backed material window, so
+acknowledging attention does not immediately demote geography that just changed;
+the window naturally expires as the turn and observation cursor advance.
+
+An `area` query over an issued frontier returns its bounded geographic evidence
+and lazily computes reachable scouts, nearest arrival, known travel cost, and a
+transport-dependency qualification. A `relation` query reports same-known-
+landmass and same-known-ocean-mass facts. A location-only `compare` query asks
+the native bridge for a revision-bound receipt over at most 32 explicitly
+nominated visible candidate sites; it exposes legal founding results and known
+radius mechanics without hidden reasons or a deterministic site ranking.
+
+`logistics` derives bounded, subject-relative repair and staging evidence from
+current repair rules, owned unit damage/triad/native-life state, known terrain
+features, relevant owned projects/facilities, and mechanically accessible own or
+Pact bases. It exposes arrival/transport qualifications and refuel or recovery
+locations without selecting a best destination. Unknown foreign access remains
+unknown.
 
 ## Focus, operations, plans, and watches
 

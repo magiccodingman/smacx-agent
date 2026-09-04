@@ -200,7 +200,8 @@ bounded native observation ring and perspective pages
   -> external collector with idempotent semantic publication
   -> hash-linked campaign journal (temporal authority)
   -> perspective snapshot and world projection (rebuildable)
-  -> mobility regions, frontiers, theaters, attention and query cache
+  -> physical land/ocean masses + mobility regions + frontiers + theaters
+  -> geographic composition, attention and query cache
   -> exactly one current anchor + net deltas
   -> trusted request-only SMACX_RUNTIME_CONTEXT at the provider tail
 ```

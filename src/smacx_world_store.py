@@ -571,6 +571,71 @@ class WorldStore:
             )
         return fingerprint
 
+    def recent_inspection_refs(
+        self, scope: MemoryScope, timeline_id: str, world_revision: int, *, limit: int = 8,
+    ) -> list[str]:
+        """Return bounded refs from recent explicit semantic-world inspections."""
+        with self.store._connect() as connection:
+            rows = connection.execute(
+                "SELECT request_json FROM world_query_cache WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND world_revision=? "
+                "ORDER BY COALESCE(last_hit_unix,created_unix) DESC LIMIT ?",
+                (*self._scope_tuple(scope, timeline_id), int(world_revision), max(1, min(limit, 32))),
+            ).fetchall()
+        refs: list[str] = []
+        for row in rows:
+            request = json.loads(row["request_json"])
+            for value in (
+                request.get("origin_ref"), request.get("target_ref"),
+                *(request.get("subject_refs") or ()),
+            ):
+                if value and str(value) not in refs:
+                    refs.append(str(value))
+        return refs[:32]
+
+    def recent_material_refs(
+        self, scope: MemoryScope, timeline_id: str, observation_cursor: int,
+        current_turn: int | None, *, sequence_window: int = 8, limit: int = 64,
+    ) -> list[str]:
+        """Return a short-lived bounded promotion set from authoritative evidence.
+
+        Attention acknowledgement must not immediately erase local strategic
+        resolution.  This window is derived from journal-backed observation
+        projections and naturally expires as observations/turns advance.
+        """
+        since = max(0, int(observation_cursor) - max(1, min(sequence_window, 32)))
+        rows = [
+            *self.changes_since(scope, timeline_id, since, limit=min(limit, 128)),
+            *self.temporal_events_since(scope, timeline_id, since, limit=min(limit, 128)),
+        ]
+        refs: list[str] = []
+
+        def remember(value: Any) -> None:
+            if not value:
+                return
+            text = str(value)
+            if text not in refs:
+                refs.append(text)
+
+        for row in sorted(rows, key=lambda value: int(value.get("observation_cursor", 0)),
+                          reverse=True):
+            turn = row.get("turn")
+            if current_turn is not None and isinstance(turn, int) and turn < current_turn - 1:
+                continue
+            payload = row.get("delta") if isinstance(row.get("delta"), Mapping) \
+                else row.get("event") if isinstance(row.get("event"), Mapping) else {}
+            current = payload.get("current") if isinstance(payload.get("current"), Mapping) else {}
+            for key in (
+                "object_ref", "location_ref", "from_location_ref", "to_location_ref",
+                "contact_ref", "base_ref", "unit_ref", "system_ref",
+            ):
+                remember(payload.get(key))
+            remember(current.get("object_ref"))
+            remember(current.get("location_ref"))
+            if len(refs) >= max(1, min(limit, 128)):
+                break
+        return refs[:max(1, min(limit, 128))]
+
     def snapshot(
         self, scope: MemoryScope, identity: WorldIdentity, *, journal_head_hash: str,
         journal_sequence: int, calculator_versions: Mapping[str, str],
