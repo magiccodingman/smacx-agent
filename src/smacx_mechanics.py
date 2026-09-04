@@ -20,6 +20,13 @@ def field_value(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
     return field.get("value", default) if isinstance(field, Mapping) else default
 
 
+def field_is_current(item: Mapping[str, Any], name: str) -> bool:
+    """Whether a provider-safe field is an affirmative current observation."""
+    fields = item.get("fields")
+    field = fields.get(name) if isinstance(fields, Mapping) else None
+    return isinstance(field, Mapping) and field.get("epistemic_status") == "current"
+
+
 def base_support_cost(item: Mapping[str, Any]) -> int | float | None:
     minerals = field_value(item, "minerals", {})
     if isinstance(minerals, Mapping) and isinstance(
@@ -162,28 +169,45 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
         for origin in ready_psi_gates for target in psi_gates if origin != target
     )
     airdrop_destinations: frozenset[str] = frozenset()
+    airdrop_targets_native_guarded = False
+    airdrop_targets_complete = False
     airdrop_ready = bool(field_value(subject, "airdrop_ready", False))
     airdrop_range = int(field_value(subject, "airdrop_range", 0) or 0)
     if airdrop_ready and topology is not None and object_location(subject) in topology.by_ref:
         origin_square = topology.by_ref[object_location(subject)]
         combat = bool(isinstance(roles, Mapping) and roles.get("combat"))
-        candidates = set()
-        for location_ref, square in topology.by_ref.items():
-            if not square.current or square.ocean:
-                continue
-            if topology.shape.distance(
-                (origin_square.x, origin_square.y), (square.x, square.y),
-            ) > airdrop_range:
-                continue
-            occupying_base = next((item for item in objects.values()
-                if item.get("kind") == "base" and object_location(item) == location_ref), None)
-            base_owner = field_value(occupying_base, "owner_ref") \
-                if occupying_base is not None else None
-            if subject_is_foreign:
-                # Aggregate occupancy/ZOC flags describe danger to the
-                # sovereign, not to this foreign mover. Apply only explicit
-                # subject-relative owner facts; an unknown relation remains a
-                # conditional possible destination.
+        native_target_ids = field_value(subject, "airdrop_target_tile_ids", None)
+        if not subject_is_foreign and isinstance(native_target_ids, list):
+            # The owned-unit projection receives this set from the same native
+            # rule surface used by semantic_choices/semantic_command.  It
+            # includes anti-drop coverage without exposing the hidden reason.
+            candidates = {
+                f"location-{int(tile_id)}" for tile_id in native_target_ids
+                if isinstance(tile_id, int)
+                and f"location-{int(tile_id)}" in topology.by_ref
+            }
+            airdrop_destinations = frozenset(candidates)
+            airdrop_targets_native_guarded = True
+            airdrop_targets_complete = not bool(
+                field_value(subject, "airdrop_targets_truncated", False)
+            )
+        else:
+            # Foreign/hypothetical state has no native target receipt.  Build
+            # only a perspective-safe possibility set and keep every result
+            # conditional: hidden anti-drop coverage can still invalidate it.
+            candidates = set()
+            for location_ref, square in topology.by_ref.items():
+                if not square.current or square.ocean:
+                    continue
+                if topology.shape.distance(
+                    (origin_square.x, origin_square.y), (square.x, square.y),
+                ) > airdrop_range:
+                    continue
+                occupying_base = next((item for item in objects.values()
+                    if item.get("kind") == "base" and item.get("status", "active") == "active"
+                    and object_location(item) == location_ref), None)
+                base_owner = field_value(occupying_base, "owner_ref") \
+                    if occupying_base is not None else None
                 blocked_by_known_occupant = False
                 for occupant in objects.values():
                     if occupant.get("kind") not in {"own_unit", "foreign_contact"} \
@@ -191,7 +215,7 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
                             or object_location(occupant) != location_ref:
                         continue
                     relation = subject_relationship(field_value(occupant, "owner_ref"))
-                    if relation in {"hostile", "neutral"}:
+                    if relation == "neutral" or (not combat and relation == "hostile"):
                         blocked_by_known_occupant = True
                         break
                 if blocked_by_known_occupant:
@@ -202,17 +226,8 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
                     or (combat and base_relation == "neutral")
                 ):
                     continue
-            else:
-                if square.blocking_contact_occupied:
-                    continue
-                base_is_non_pact = base_owner not in {None, "", subject_owner} \
-                    and relationship_class(objects.get(str(base_owner), {})) != "allied"
-                if not combat and (square.hostile_zoc or (
-                    occupying_base is not None and base_is_non_pact
-                )):
-                    continue
-            candidates.add(location_ref)
-        airdrop_destinations = frozenset(candidates)
+                candidates.add(location_ref)
+            airdrop_destinations = frozenset(candidates)
     return MobilityProfile(
         profile_ref=profile_ref, triad=triad, movement_points=moves,
         movement_remaining=remaining,
@@ -248,6 +263,8 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
         abilities=frozenset(map(str, abilities)),
         special_connections=special_connections,
         airdrop_destination_refs=airdrop_destinations,
+        airdrop_targets_native_guarded=airdrop_targets_native_guarded,
+        airdrop_targets_complete=airdrop_targets_complete,
         known=mobility_known,
         constraint_mode=("subject_unknown" if subject_is_foreign
                          else "sovereign_exact"),
@@ -452,9 +469,10 @@ def transport_route(
         for neighbor in topology.adjacent(land_ref).values()
         if neighbor.ocean or "base" in neighbor.features
     })
-    search_turns = max(1, topology.shape.width + topology.shape.height)
+    # Exhaust the finite known graph. Coordinate diameter is not a valid turn
+    # horizon for winding regions or high-cost terrain.
     passenger_arrivals = topology.arrival_map(
-        passenger_location, land_profile, max_turns=search_turns,
+        passenger_location, land_profile, max_turns=None,
     )
     ranked_landing_candidates = sorted(
         coast_pairs,
@@ -496,7 +514,7 @@ def transport_route(
             topology=topology,
         )
         transport_arrivals = topology.arrival_map(
-            transport_location, sea_profile, max_turns=search_turns,
+            transport_location, sea_profile, max_turns=None,
         )
         embark_states: list[dict[str, Any]] = []
         if already_boarded:
@@ -504,6 +522,10 @@ def transport_route(
                 continue
             embark_states.append({
                 "location_ref": transport_location,
+                "base_ref": None,
+                "base_owner_ref": None,
+                "base_access": "already_boarded",
+                "base_dependency_hash": None,
                 "passenger_leg": None,
                 "transport_leg": None,
                 "board_turn_offset": 0,
@@ -514,14 +536,25 @@ def transport_route(
             })
             maximum_embark_candidates = max(maximum_embark_candidates, 1)
         else:
-            ranked: list[tuple[int, float, str, int, int]] = []
+            ranked: list[tuple[int, float, str, int, int, str, str, str]] = []
             # The intersection of land- and sea-passable known squares is a
-            # coastal land base/port. This is the legal state from which the
-            # existing board_transport semantic action can execute. Merely
-            # marking a landlocked square as a base must not create naval
-            # rendezvous access.
-            for location_ref, square in topology.by_ref.items():
-                if square.ocean or "base" not in square.features \
+            # current owned coastal base. A remembered tile feature is not an
+            # access receipt and can never support an exact embark schedule.
+            passenger_owner = field_value(passenger, "owner_ref")
+            transport_owner = field_value(transport, "owner_ref")
+            for base in objects.values():
+                if base.get("kind") != "base" or base.get("status", "active") != "active":
+                    continue
+                location_ref = object_location(base)
+                square = topology.by_ref.get(location_ref)
+                base_owner = field_value(base, "owner_ref")
+                if square is None or not square.current or square.ocean \
+                        or "base" not in square.features \
+                        or not field_is_current(base, "owner_ref") \
+                        or not field_is_current(base, "coastal") \
+                        or not bool(field_value(base, "coastal", False)) \
+                        or base_owner != passenger_owner \
+                        or base_owner != transport_owner \
                         or not any(neighbor.ocean
                                    for neighbor in topology.adjacent(location_ref).values()):
                     continue
@@ -540,11 +573,13 @@ def transport_route(
                     float(passenger_arrival["movement_cost"])
                     + float(transport_arrival["movement_cost"]),
                     location_ref, passenger_turn, transport_turn,
+                    str(base.get("object_ref")), str(base_owner), content_hash(base),
                 ))
             embark_candidate_cap = 4
             maximum_embark_candidates = max(maximum_embark_candidates, len(ranked))
             any_embark_truncated = any_embark_truncated or len(ranked) > embark_candidate_cap
-            for _turns, _cost, location_ref, passenger_turn, transport_turn \
+            for (_turns, _cost, location_ref, passenger_turn, transport_turn,
+                 base_ref, base_owner, base_hash) \
                     in sorted(ranked)[:embark_candidate_cap]:
                 passenger_leg = topology.route(
                     passenger_location, location_ref, land_profile,
@@ -565,6 +600,10 @@ def transport_route(
                 )
                 embark_states.append({
                     "location_ref": location_ref,
+                    "base_ref": base_ref,
+                    "base_owner_ref": base_owner,
+                    "base_access": "current_owned_coastal_base",
+                    "base_dependency_hash": base_hash,
                     "passenger_leg": passenger_leg,
                     "transport_leg": transport_leg,
                     "board_turn_offset": board_turn,
@@ -582,7 +621,7 @@ def transport_route(
                 ),
             )
             crossing_arrivals = topology.arrival_map(
-                embark_location, crossing_profile, max_turns=search_turns,
+                embark_location, crossing_profile, max_turns=None,
             )
             for landing_ref, landing_sea_ref in landing_candidates:
                 if landing_sea_ref not in crossing_arrivals:
@@ -667,6 +706,10 @@ def transport_route(
                         "latest_turns": None if conditional else eta,
                         "embark": {
                             "location_ref": embark_location,
+                            "base_ref": embark_state["base_ref"],
+                            "base_owner_ref": embark_state["base_owner_ref"],
+                            "base_access": embark_state["base_access"],
+                            "base_dependency_hash": embark_state["base_dependency_hash"],
                             "co_located": True,
                             "legal_state": "same_square_owned_transport_with_capacity",
                             "already_boarded": already_boarded,
@@ -710,6 +753,8 @@ def transport_route(
                         "capacity": {"total": capacity, "loaded": loaded,
                                      "available": capacity - loaded},
                         "search": {
+                            "search_turn_horizon": None,
+                            "search_horizon_complete": True,
                             "search_complete": (
                                 len(ranked_landing_candidates) <= landing_candidate_cap
                                 and (already_boarded or len(ranked) <= embark_candidate_cap)
@@ -760,6 +805,12 @@ def transport_route(
                         "dependency_hash": content_hash({
                             "passenger": passenger_ref, "transport": transport_ref,
                             "target": target_ref, "embark": embark_location,
+                            "embark_base": {
+                                "base_ref": embark_state["base_ref"],
+                                "owner_ref": embark_state["base_owner_ref"],
+                                "access": embark_state["base_access"],
+                                "dependency_hash": embark_state["base_dependency_hash"],
+                            },
                             "board_turn": board_turn,
                             "transport_after_board": embark_state[
                                 "transport_movement_remaining"
@@ -803,6 +854,8 @@ def transport_route(
         "status": ("no_route_found_within_bounded_candidate_search" if truncated
                    else "mechanically_unreachable_in_known_world"),
         "search": {
+            "search_turn_horizon": None,
+            "search_horizon_complete": True,
             "search_complete": not truncated,
             "optimality": "none",
             "landing_candidates_available": len(ranked_landing_candidates),

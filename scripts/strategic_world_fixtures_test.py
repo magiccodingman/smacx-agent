@@ -301,6 +301,8 @@ def main() -> int:
                           refuel_location_refs=frozenset({"land-b"}))
     assert ocean_topology.route("land-a", "land-b", air).reachable
     crossing_objects = {
+        "port-base": item("port-base", "base", "land-a",
+                          owner_ref="faction-1", coastal=True),
         "passenger": item("passenger", "own_unit", "land-a", owner_ref="faction-1",
                           triad="land", movement_points=1,
                           roles={"combat": True, "amphibious": False}),

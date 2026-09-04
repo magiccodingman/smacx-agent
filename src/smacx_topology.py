@@ -99,6 +99,10 @@ class MobilityProfile:
     mobile_refuel_location_refs: frozenset[str] = field(default_factory=frozenset)
     special_connections: tuple[tuple[str, str, float, str], ...] = ()
     airdrop_destination_refs: frozenset[str] = field(default_factory=frozenset)
+    # A current owned unit may carry a native-enumerated legal target receipt.
+    # Hypothetical/foreign profiles never claim that stronger authority.
+    airdrop_targets_native_guarded: bool = False
+    airdrop_targets_complete: bool = False
     abilities: frozenset[str] = field(default_factory=frozenset)
     known: bool = True
     # Perspective-derived ZOC/occupancy is exact only for the sovereign's own
@@ -433,9 +437,14 @@ class PerspectiveTopology:
         parent_kinds = state["parent_kinds"]
         stochastic_paths = state["stochastic_paths"]
         if target_ref not in labels:
-            return RouteResult(False, (), None, None,
-                               ("No route exists in the currently known world; unknown geography may change this.",),
-                               dependency)
+            uncertainty = [
+                "No route exists in the currently known world; unknown geography may change this."
+            ]
+            if profile.can_airdrop and not profile.airdrop_targets_complete:
+                uncertainty.append(
+                    "Airdrop target coverage is incomplete; absence from the available target set is not proof of native illegality."
+                )
+            return RouteResult(False, (), None, None, tuple(uncertainty), dependency)
         path = [target_ref]
         while path[-1] != origin_ref:
             path.append(parents[path[-1]])
@@ -446,12 +455,15 @@ class PerspectiveTopology:
         uncertainty = self._arrival_uncertainty(path, parent_kinds, stochastic_paths,
                                                 target_ref, profile)
         stochastic = stochastic_paths.get(target_ref, False)
+        airdrop_used = any(parent_kinds.get(ref) == "airdrop" for ref in path[1:])
+        conditional = profile.constraint_mode == "subject_unknown" \
+            or (airdrop_used and not profile.airdrop_targets_native_guarded)
         return RouteResult(
             True, tuple(path), movement_cost, turns, tuple(uncertainty), dependency,
             "stochastic_earliest" if stochastic else
             ("conditional_minimum" if profile.constraint_mode == "subject_unknown"
-             else "exact_known_state"),
-            None if stochastic or profile.constraint_mode == "subject_unknown" else turns,
+             else "conditional_known_state" if conditional else "exact_known_state"),
+            None if stochastic or conditional else turns,
             int(arrival_turn), float(arrival_spent),
             max(0.0, float(profile.movement_points) - float(arrival_spent)),
         )
@@ -564,9 +576,18 @@ class PerspectiveTopology:
         values = set(flags)
         uncertainty: list[str] = []
         if "airdrop" in values:
-            uncertainty.append(
-                "Airdrop range/start-state is known; execute only a fresh native-guarded destination choice."
-            )
+            if profile.airdrop_targets_native_guarded:
+                uncertainty.append(
+                    "Airdrop destination was present in the current native rule-validated target receipt; execution still revalidates freshness."
+                )
+            else:
+                uncertainty.append(
+                    "Airdrop is a perspective-safe possibility only; obtain a fresh native-guarded destination choice before execution."
+                )
+            if not profile.airdrop_targets_complete:
+                uncertainty.append(
+                    "Airdrop target coverage is incomplete; absence from this set is not proof of illegality."
+                )
         if "stale" in values:
             uncertainty.append(
                 "Route crosses stale remembered geography; revalidate before a consequential action."
@@ -594,9 +615,18 @@ class PerspectiveTopology:
     ) -> list[str]:
         uncertainty: list[str] = []
         if any(parent_kinds.get(ref) == "airdrop" for ref in path[1:]):
-            uncertainty.append(
-                "Airdrop range/start-state is known; execute only a fresh native-guarded destination choice."
-            )
+            if profile.airdrop_targets_native_guarded:
+                uncertainty.append(
+                    "Airdrop destination was present in the current native rule-validated target receipt; execution still revalidates freshness."
+                )
+            else:
+                uncertainty.append(
+                    "Airdrop is a perspective-safe possibility only; obtain a fresh native-guarded destination choice before execution."
+                )
+            if not profile.airdrop_targets_complete:
+                uncertainty.append(
+                    "Airdrop target coverage is incomplete; absence from this set is not proof of illegality."
+                )
         if any(not self.by_ref[ref].current for ref in path):
             uncertainty.append("Route crosses stale remembered geography; revalidate before a consequential action.")
         if profile.triad == "sea" and any(
@@ -619,9 +649,9 @@ class PerspectiveTopology:
         return uncertainty
 
     def arrival_map(self, origin_ref: str, profile: MobilityProfile,
-                    *, max_turns: int) -> dict[str, dict[str, Any]]:
+                    *, max_turns: int | None) -> dict[str, dict[str, Any]]:
         """Earliest stateful arrivals using the same transitions as route()."""
-        if max_turns < 0:
+        if max_turns is not None and max_turns < 0:
             raise WorldContractError("invalid_reachability_turn_bound")
         if not profile.known:
             return {}
@@ -629,7 +659,8 @@ class PerspectiveTopology:
             rows: dict[str, dict[str, Any]] = {}
             for ref in sorted(self.by_ref):
                 route = self.route(origin_ref, ref, profile)
-                if route.reachable and route.turns is not None and route.turns <= max_turns:
+                if route.reachable and route.turns is not None \
+                        and (max_turns is None or route.turns <= max_turns):
                     rows[ref] = route.as_dict()
             return rows
         dependency = self._dependency_hash(profile)
@@ -648,8 +679,13 @@ class PerspectiveTopology:
                 tuple(uncertainty), dependency,
                 "stochastic_earliest" if stochastic else
                 ("conditional_minimum" if profile.constraint_mode == "subject_unknown"
+                 else "conditional_known_state"
+                 if "airdrop" in state["uncertainty_flags"].get(ref, ())
+                 and not profile.airdrop_targets_native_guarded
                  else "exact_known_state"),
                 None if stochastic or profile.constraint_mode == "subject_unknown"
+                or ("airdrop" in state["uncertainty_flags"].get(ref, ())
+                    and not profile.airdrop_targets_native_guarded)
                 else int(label[0]),
                 int(label[0]), float(label[1]),
                 max(0.0, float(profile.movement_points) - float(label[1])),

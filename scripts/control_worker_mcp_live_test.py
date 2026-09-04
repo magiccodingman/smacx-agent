@@ -309,6 +309,7 @@ def main() -> int:
             "-e", "SMACX_DOCKER_ENABLED=1",
             "-e", "SMACX_AGENT_TEST_MODE=1",
             "-e", "SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION=1",
+            "-e", "SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1",
             "-e", "SMACX_DOCKER_SOCKET=/var/run/docker.sock",
             "-e", f"SMACX_DOCKER_NETWORK={network}",
             "-e", f"SMACX_GAME_SOURCE={game}",
@@ -791,6 +792,30 @@ def main() -> int:
                     f"{before_revision!r} -> {after_revision!r}"
                 )
             hermes_result["native_revision_advanced"] = True
+        # This contained fixture mutates native factions/units/bases, so run it
+        # only after every recovery/provider assertion and immediately before
+        # parking the disposable acceptance worker.
+        native_airdrop = bridge_operation(
+            recovered_sidecar, "test_airdrop_legality_fixture",
+        )
+        expected_airdrop = {
+            "hostile_combat": True,
+            "hostile_noncombat": False,
+            "pact_combat": True,
+            "pact_noncombat": True,
+            "treaty_combat": False,
+            "treaty_noncombat": False,
+            "unknown_combat": False,
+            "unknown_noncombat": False,
+            "aerospace_defended": True,
+            "air_superiority_defended": True,
+        }
+        if not native_airdrop.get("ok") or any(
+                native_airdrop.get(key) is not expected
+                for key, expected in expected_airdrop.items()):
+            raise AssertionError(
+                f"production-native airdrop legality drifted: {native_airdrop}"
+            )
         api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park",
             {}, csrf, 120,
@@ -806,6 +831,7 @@ def main() -> int:
                 "native_no_timer": True,
                 "native_orbital_project_global_adapter": True,
                 "native_base_geography_and_unit_traits": True,
+                "native_airdrop_diplomacy_and_anti_drop_guards": True,
                 "native_global_projection_world_runtime_path": True,
                 "managed_lifecycle_blocked": True,
                 "bridge_verified_checkpoint": True,

@@ -244,6 +244,7 @@ def main() -> int:
         ],
         "bases": [{"id": 0, "base_ref": "base-home", "tile_id": 0,
                    "owned": True, "owner_ref": "faction-1", "name": "Home",
+                   "coastal": True,
                    "minerals": {"unit_support_cost": 1}}],
         "units": [
             {"id": 1, "own_unit_ref": "clean", "native_observation_key": "vehicle-handle-1",
@@ -327,6 +328,8 @@ def main() -> int:
     newly_boarded: dict[int, dict] = {}
     for transport_remaining in (0, 1, 2):
         phase_objects = {
+            "phase-base": obj("phase-base", "base", "phase-port",
+                              owner_ref="faction-1", coastal=True),
             "phase-passenger": obj(
                 "phase-passenger", "own_unit", "phase-port",
                 owner_ref="faction-1", triad="land", movement_points=2,
@@ -354,6 +357,8 @@ def main() -> int:
         newly_boarded[transport_remaining] = schedule
     assert newly_boarded[0]["eta_turns"] > newly_boarded[2]["eta_turns"]
     short_objects = {
+        "phase-base": obj("phase-base", "base", "phase-port",
+                          owner_ref="faction-1", coastal=True),
         "phase-passenger": obj(
             "phase-passenger", "own_unit", "phase-port", owner_ref="faction-1",
             triad="land", movement_points=2, moves_remaining=2,
@@ -380,6 +385,8 @@ def main() -> int:
     arrival_schedules = {}
     for passenger_remaining in (1, 2):
         phase_objects = {
+            "phase-base": obj("phase-base", "base", "phase-port",
+                              owner_ref="faction-1", coastal=True),
             "phase-passenger": obj(
                 "phase-passenger", "own_unit", "phase-before-port",
                 owner_ref="faction-1", triad="land", movement_points=2,
@@ -402,6 +409,8 @@ def main() -> int:
     # The transport can also arrive at the shared port, board there, and keep
     # precisely the movement left by that rendezvous move.
     arriving_transport_objects = {
+        "phase-base": obj("phase-base", "base", "phase-port",
+                          owner_ref="faction-1", coastal=True),
         "phase-passenger": obj(
             "phase-passenger", "own_unit", "phase-port",
             owner_ref="faction-1", triad="land", movement_points=2,
@@ -489,6 +498,119 @@ def main() -> int:
     assert boarded_schedules[0]["disembark"]["turn_offset"] == 1
     results["transport_phase_correct_movement"] = True
 
+    # Exact embark schedules require a current owned coastal base object, not
+    # a remembered tile feature. Non-owned access is deliberately excluded
+    # until a native co-occupancy receipt can establish Pact behavior.
+    access_core = {
+        "phase-passenger": obj(
+            "phase-passenger", "own_unit", "phase-port",
+            owner_ref="faction-1", triad="land", movement_points=2,
+            moves_remaining=2, roles={"combat": True},
+        ),
+        "phase-transport": obj(
+            "phase-transport", "own_unit", "phase-port",
+            owner_ref="faction-1", triad="sea", movement_points=2,
+            moves_remaining=2, roles={"transport": True},
+            cargo={"capacity": 4, "loaded": 0},
+        ),
+        "phase-target": obj("phase-target", "location", "phase-target"),
+        "faction-2": obj("faction-2", "faction", relationship="hostile"),
+        "faction-3": obj("faction-3", "faction", relationship="neutral"),
+        "faction-4": obj("faction-4", "faction", relationship="allied"),
+    }
+    own_port = obj("port-own", "base", "phase-port",
+                   owner_ref="faction-1", coastal=True)
+    own_schedule = transport_route(
+        phase_topology, {**access_core, "port-own": own_port},
+        "phase-passenger", "phase-target",
+    )
+    assert own_schedule and own_schedule["reachable"]
+    assert own_schedule["embark"]["base_ref"] == "port-own"
+    assert own_schedule["embark"]["base_owner_ref"] == "faction-1"
+    assert own_schedule["embark"]["base_access"] == "current_owned_coastal_base"
+    assert own_schedule["embark"]["base_dependency_hash"]
+    assert own_schedule["search"]["search_turn_horizon"] is None
+    assert own_schedule["search"]["search_horizon_complete"] is True
+    disallowed_ports = {
+        "missing": None,
+        "enemy": obj("port-enemy", "base", "phase-port",
+                     owner_ref="faction-2", coastal=True),
+        "treaty": obj("port-treaty", "base", "phase-port",
+                      owner_ref="faction-3", coastal=True),
+        "pact": obj("port-pact", "base", "phase-port",
+                    owner_ref="faction-4", coastal=True),
+    }
+    stale_port = json.loads(json.dumps(own_port))
+    stale_port["status"] = "stale"
+    for value in stale_port["fields"].values():
+        value["epistemic_status"] = "stale"
+    disallowed_ports["stale"] = stale_port
+    destroyed_port = json.loads(json.dumps(own_port))
+    destroyed_port["status"] = "destroyed"
+    disallowed_ports["destroyed"] = destroyed_port
+    for name, port in disallowed_ports.items():
+        candidate_objects = dict(access_core)
+        if port is not None:
+            candidate_objects[f"port-{name}"] = port
+        rejected = transport_route(
+            phase_topology, candidate_objects, "phase-passenger", "phase-target",
+        )
+        assert rejected and rejected["reachable"] is False, (name, rejected)
+    results["current_owned_embark_port_authority"] = True
+
+    # A winding finite known graph can require more arrival turns than
+    # width+height. Preparatory rendezvous search is exhaustive over that
+    # graph, while only the documented candidate frontiers remain bounded.
+    snake_squares = []
+    sequence = []
+    for row_index in range(10):
+        y = row_index * 4
+        xs = list(range(0, 12, 2))
+        if row_index % 2:
+            xs.reverse()
+        sequence.extend((x, y) for x in xs)
+        if row_index < 9:
+            sequence.append((xs[-1], y + 2))
+    for index, (x, y) in enumerate(sequence):
+        snake_squares.append(KnownSquare(
+            f"snake-{index}", x, y, "land",
+            features=frozenset({"base"}) if (x, y) == sequence[-1] else frozenset(),
+        ))
+    sea_refs = []
+    for x in range(1, 12, 2):
+        ref = f"snake-sea-{x}"
+        sea_refs.append(ref)
+        snake_squares.append(KnownSquare(ref, x, 37, "ocean"))
+    snake_topology = PerspectiveTopology(MapShape(12, 38, False), snake_squares)
+    port_ref = f"snake-{len(sequence) - 1}"
+    origin_ref = sequence and "snake-0"
+    target_snake_ref = next(square.location_ref for square in snake_squares
+                            if square.x == 10 and square.y == 36)
+    snake_objects = {
+        "snake-port": obj("snake-port", "base", port_ref,
+                          owner_ref="faction-1", coastal=True),
+        "snake-passenger": obj(
+            "snake-passenger", "own_unit", origin_ref,
+            owner_ref="faction-1", triad="land", movement_points=1,
+            moves_remaining=1, roles={"combat": True},
+        ),
+        "snake-transport": obj(
+            "snake-transport", "own_unit", port_ref,
+            owner_ref="faction-1", triad="sea", movement_points=1,
+            moves_remaining=1, roles={"transport": True},
+            cargo={"capacity": 4, "loaded": 0},
+        ),
+        "snake-target": obj("snake-target", "location", target_snake_ref),
+    }
+    snake_schedule = transport_route(
+        snake_topology, snake_objects, "snake-passenger", "snake-target",
+    )
+    assert snake_schedule and snake_schedule["reachable"], snake_schedule
+    assert snake_schedule["embark"]["passenger_arrival"]["turns"] \
+        > snake_topology.shape.width + snake_topology.shape.height
+    assert snake_schedule["search"]["search_horizon_complete"] is True
+    results["amphibious_exhaustive_known_graph_search"] = True
+
     # Candidate caps are explicit coverage, never a false proof of
     # unreachability. Block the first eight geometrically ranked landings while
     # retaining feasible candidates beyond the frontier.
@@ -515,6 +637,8 @@ def main() -> int:
     ))
     assert len(ranked_landings) > 8
     frontier_objects = {
+        "frontier-base": obj("frontier-base", "base", "upper-0",
+                             owner_ref="faction-1", coastal=True),
         "frontier-passenger": obj(
             "frontier-passenger", "own_unit", "upper-0", owner_ref="faction-1",
             triad="land", movement_points=3, moves_remaining=3,
@@ -594,9 +718,9 @@ def main() -> int:
     # Foreign airdrop candidates must never inherit sovereign aggregate ZOC
     # or occupancy flags.  Prune only relations mechanically known from the
     # moving faction's frame; preserve unknown third-party cases as
-    # conditional possibilities.  Combat may attack a known-war base but not
-    # silently break a treaty, while every known non-Pact occupant blocks the
-    # native landing square.
+    # conditional possibilities. Combat may attack a known-war base or stack
+    # but cannot silently break a treaty; unknown relations remain possible,
+    # never exact.
     drop_refs = (
         "fd-origin", "fd-sovereign-zoc", "fd-same-unit", "fd-hostile-unit", "fd-pact-unit",
         "fd-neutral-unit", "fd-unknown-unit", "fd-own-base", "fd-pact-base",
@@ -666,7 +790,17 @@ def main() -> int:
     )
     assert "fd-hostile-base" in combat_drop.airdrop_destination_refs
     assert "fd-neutral-base" not in combat_drop.airdrop_destination_refs
-    assert "fd-hostile-unit" not in combat_drop.airdrop_destination_refs
+    assert "fd-hostile-unit" in combat_drop.airdrop_destination_refs
+    assert "fd-pact-unit" in combat_drop.airdrop_destination_refs
+    assert "fd-neutral-unit" not in combat_drop.airdrop_destination_refs
+    assert "fd-unknown-unit" in combat_drop.airdrop_destination_refs
+    assert not combat_drop.airdrop_targets_native_guarded
+    assert not combat_drop.airdrop_targets_complete
+    hostile_drop_route = foreign_drop_topology.route(
+        "fd-origin", "fd-hostile-unit", combat_drop,
+    )
+    assert hostile_drop_route.reachable
+    assert hostile_drop_route.eta_kind == "conditional_minimum"
     clean_foreign_drop_topology = PerspectiveTopology(MapShape(24, 2, False), [
         KnownSquare(
             ref, index * 2, 0, "land",
@@ -681,6 +815,51 @@ def main() -> int:
     assert clean_noncombat_drop.airdrop_destination_refs \
         == noncombat_drop.airdrop_destination_refs
     results["subject_relative_foreign_airdrop_candidates"] = True
+
+    # Owned exact destinations come only from the current native legal-target
+    # receipt. This binds anti-drop coverage without projecting hidden enemy
+    # facilities; a locally inferred target remains explicitly conditional.
+    receipt_topology = PerspectiveTopology(MapShape(8, 2, False), [
+        KnownSquare("location-0", 0, 0, "land", features=frozenset({"base"})),
+        KnownSquare("location-1", 2, 0, "land"),
+        KnownSquare("location-2", 4, 0, "land", blocking_contact_occupied=True),
+        KnownSquare("location-3", 6, 0, "land"),
+    ])
+    receipt_dropper = obj(
+        "receipt-dropper", "own_unit", "location-0", owner_ref="faction-1",
+        triad="land", movement_points=1, moves_remaining=1,
+        roles={"combat": True}, airdrop_ready=True, airdrop_range=4,
+        airdrop_target_tile_ids=[2], airdrop_target_count=1,
+        airdrop_targets_truncated=False,
+    )
+    receipt_profile = mobility_profile(
+        {"receipt-dropper": receipt_dropper}, "receipt",
+        subject_ref="receipt-dropper", topology=receipt_topology,
+    )
+    assert receipt_profile.airdrop_destination_refs == frozenset({"location-2"})
+    assert receipt_profile.airdrop_targets_native_guarded
+    assert receipt_profile.airdrop_targets_complete
+    exact_drop = receipt_topology.route("location-0", "location-2", receipt_profile)
+    assert exact_drop.reachable and exact_drop.eta_kind == "exact_known_state"
+    assert not receipt_topology.route(
+        "location-0", "location-3", receipt_profile,
+    ).reachable
+    fallback_dropper = obj(
+        "fallback-dropper", "own_unit", "location-0", owner_ref="faction-1",
+        triad="land", movement_points=1, moves_remaining=1,
+        roles={"combat": True}, airdrop_ready=True, airdrop_range=4,
+    )
+    fallback_profile = mobility_profile(
+        {"fallback-dropper": fallback_dropper}, "fallback",
+        subject_ref="fallback-dropper", topology=receipt_topology,
+    )
+    conditional_drop = receipt_topology.route(
+        "location-0", "location-3", fallback_profile,
+    )
+    assert conditional_drop.reachable
+    assert conditional_drop.eta_kind == "conditional_known_state"
+    assert conditional_drop.latest_turns is None
+    results["owned_airdrop_native_target_receipt"] = True
 
     # Lost-contact envelopes include the residual disappearance phase plus a
     # fresh phase for every crossed turn boundary. Exercise 0/partial/full

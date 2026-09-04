@@ -8308,6 +8308,150 @@ std::string test_lan_ai_contact_fixture_response(const std::string& request) {
     return out.str();
 }
 
+std::string test_airdrop_legality_fixture_response() {
+    char test_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_ACCEPTANCE_AIRDROP_LEGALITY", test_mode,
+        sizeof(test_mode)) || strcmp(test_mode, "1")) {
+        return error_response("test_mode_disabled",
+            "The contained native airdrop legality fixture is disabled.");
+    }
+    if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    int other = -1;
+    for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+        if (candidate != faction_id && is_alive(candidate)) {
+            other = candidate;
+            break;
+        }
+    }
+    if (other < 0) return error_response("missing_fixture_faction",
+        "No live counterpart faction is available for the airdrop fixture.");
+    std::vector<std::pair<int, int>> sites;
+    for (int y = 0; y < *MapAreaY && sites.size() < 5; ++y) {
+        for (int x = y & 1; x < *MapAreaX && sites.size() < 5; x += 2) {
+            MAP* sq = mapsq(x, y);
+            if (!sq || is_ocean(sq) || sq->base_who() >= 0 || veh_at(x, y) >= 0) continue;
+            bool separated = true;
+            for (const auto& site : sites) {
+                if (map_range(site.first, site.second, x, y) <= 1) {
+                    separated = false;
+                    break;
+                }
+            }
+            if (separated) sites.push_back({x, y});
+        }
+    }
+    if (sites.size() < 5) return error_response("missing_fixture_sites",
+        "Five distinct empty land sites are required for the airdrop fixture.");
+    const uint32_t relationship_bits = DIPLO_VENDETTA | DIPLO_TRUCE
+        | DIPLO_TREATY | DIPLO_PACT;
+    auto set_relationship = [&](uint32_t bit) {
+        Factions[faction_id].diplo_status[other] &= ~relationship_bits;
+        Factions[other].diplo_status[faction_id] &= ~relationship_bits;
+        Factions[faction_id].diplo_status[other] |= bit;
+        Factions[other].diplo_status[faction_id] |= bit;
+    };
+    auto spawn_occupant = [&](size_t site_index) {
+        int id = veh_init(BSC_SCOUT_PATROL, other,
+                          sites[site_index].first, sites[site_index].second);
+        if (id >= 0) spot_all(id, 1);
+        return id;
+    };
+    set_relationship(DIPLO_VENDETTA);
+    if (spawn_occupant(0) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the hostile airdrop target.");
+    MAP* hostile = mapsq(sites[0].first, sites[0].second);
+    const bool hostile_combat = allow_airdrop(
+        sites[0].first, sites[0].second, faction_id, true, hostile);
+    const bool hostile_noncombat = allow_airdrop(
+        sites[0].first, sites[0].second, faction_id, false, hostile);
+
+    set_relationship(DIPLO_PACT);
+    if (spawn_occupant(1) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the Pact airdrop target.");
+    MAP* pact = mapsq(sites[1].first, sites[1].second);
+    const bool pact_combat = allow_airdrop(
+        sites[1].first, sites[1].second, faction_id, true, pact);
+    const bool pact_noncombat = allow_airdrop(
+        sites[1].first, sites[1].second, faction_id, false, pact);
+
+    set_relationship(DIPLO_TREATY);
+    if (spawn_occupant(2) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the treaty airdrop target.");
+    MAP* treaty = mapsq(sites[2].first, sites[2].second);
+    const bool treaty_combat = allow_airdrop(
+        sites[2].first, sites[2].second, faction_id, true, treaty);
+    const bool treaty_noncombat = allow_airdrop(
+        sites[2].first, sites[2].second, faction_id, false, treaty);
+
+    set_relationship(0);
+    if (spawn_occupant(3) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the unknown-relation airdrop target.");
+    MAP* unknown = mapsq(sites[3].first, sites[3].second);
+    const bool unknown_combat = allow_airdrop(
+        sites[3].first, sites[3].second, faction_id, true, unknown);
+    const bool unknown_noncombat = allow_airdrop(
+        sites[3].first, sites[3].second, faction_id, false, unknown);
+
+    set_relationship(DIPLO_VENDETTA);
+    const int defense_base_id = mod_base_init(
+        other, sites[4].first, sites[4].second);
+    if (defense_base_id < 0) return error_response("fixture_base_failed",
+        "Could not create the Aerospace Complex target.");
+    Bases[defense_base_id].facilities_built[FAC_AEROSPACE_COMPLEX / 8]
+        |= 1 << (FAC_AEROSPACE_COMPLEX % 8);
+    MAP* defended = mapsq(sites[4].first, sites[4].second);
+    const bool aerospace_defended = !allow_airdrop(
+        sites[4].first, sites[4].second, faction_id, true, defended);
+    Bases[defense_base_id].facilities_built[FAC_AEROSPACE_COMPLEX / 8]
+        &= ~(1 << (FAC_AEROSPACE_COMPLEX % 8));
+    const int component_techs[] = {
+        Chassis[CHS_NEEDLEJET].preq_tech,
+        Weapon[WPN_LASER].preq_tech,
+        Armor[ARM_NO_ARMOR].preq_tech,
+        Ability[ABL_ID_AIR_SUPERIORITY].preq_tech,
+        Reactor[REC_FISSION - 1].preq_tech,
+    };
+    for (int tech_id : component_techs) {
+        if (tech_id >= 0 && tech_id < MaxTechnologyNum) {
+            TechOwners[tech_id] |= 1 << other;
+        }
+    }
+    char interceptor_name[] = "Harness Airdrop Defender";
+    const int interceptor_proto = propose_proto(
+        other, CHS_NEEDLEJET, WPN_LASER, ARM_NO_ARMOR,
+        ABL_AIR_SUPERIORITY, REC_FISSION, PLAN_AIR_SUPERIORITY,
+        interceptor_name);
+    if (interceptor_proto < other * MaxProtoFactionNum
+    || interceptor_proto >= min(MaxProtoNum, (other + 1) * MaxProtoFactionNum)) {
+        return error_response("fixture_interceptor_failed",
+            "Could not create the Air Superiority defender prototype.");
+    }
+    Units[interceptor_proto].unit_flags |= UNIT_PROTOTYPED;
+    if (veh_init(interceptor_proto, other, sites[4].first, sites[4].second) < 0) {
+        return error_response("fixture_interceptor_failed",
+            "Could not station the Air Superiority defender.");
+    }
+    const bool air_superiority_defended = !allow_airdrop(
+        sites[4].first, sites[4].second, faction_id, true, defended);
+
+    std::ostringstream out;
+    out << "{\"ok\":true,\"hostile_combat\":"
+        << (hostile_combat ? "true" : "false")
+        << ",\"hostile_noncombat\":" << (hostile_noncombat ? "true" : "false")
+        << ",\"pact_combat\":" << (pact_combat ? "true" : "false")
+        << ",\"pact_noncombat\":" << (pact_noncombat ? "true" : "false")
+        << ",\"treaty_combat\":" << (treaty_combat ? "true" : "false")
+        << ",\"treaty_noncombat\":" << (treaty_noncombat ? "true" : "false")
+        << ",\"unknown_combat\":" << (unknown_combat ? "true" : "false")
+        << ",\"unknown_noncombat\":" << (unknown_noncombat ? "true" : "false")
+        << ",\"aerospace_defended\":" << (aerospace_defended ? "true" : "false")
+        << ",\"air_superiority_defended\":"
+        << (air_superiority_defended ? "true" : "false")
+        << '}';
+    return out.str();
+}
+
 std::string item_names(uint32_t items) {
     struct NamedBit { uint32_t bit; const char* name; };
     const NamedBit named[] = {
@@ -8394,6 +8538,61 @@ std::string tiles_response(const std::string& request) {
     return out.str();
 }
 
+struct SemanticAirdropTarget {
+    int tile_id;
+    int distance;
+    int base_owner;
+    int unit_owner;
+};
+
+struct SemanticAirdropTargetReceipt {
+    bool available = false;
+    int legal_count = 0;
+    bool truncated = false;
+    std::vector<SemanticAirdropTarget> targets;
+};
+
+// One authoritative enumerator serves both provider-safe observation and the
+// executable semantic action surface. Omitted anti-drop reasons remain hidden;
+// membership is the current native legality receipt.
+SemanticAirdropTargetReceipt semantic_airdrop_target_receipt(
+int veh_id, int maximum_targets = 128) {
+    SemanticAirdropTargetReceipt receipt;
+    if (veh_id < 0 || veh_id >= *VehCount) return receipt;
+    VEH& veh = Vehs[veh_id];
+    const int faction_id = *CurrentPlayerFaction;
+    if (veh.faction_id != faction_id
+    || !can_airdrop(veh_id, mapsq(veh.x, veh.y))) return receipt;
+    receipt.available = true;
+    const int range = drop_range(faction_id);
+    for (int distance = 0; distance <= range; ++distance) {
+        for (int y = 0; y < *MapAreaY; ++y) {
+            for (int x = y & 1; x < *MapAreaX; x += 2) {
+                if (map_range(veh.x, veh.y, x, y) != distance) continue;
+                MAP* sq = mapsq(x, y);
+                if (!sq || !sq->is_visible(faction_id) || is_ocean(sq)
+                || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), sq)) continue;
+                const int unit_owner = sq->veh_who();
+                const int base_owner = sq->base_who();
+                const bool unsafe_relation =
+                    (unit_owner >= 0 && unit_owner != faction_id
+                        && !has_pact(faction_id, unit_owner)
+                        && !at_war(faction_id, unit_owner))
+                    || (base_owner >= 0 && base_owner != faction_id
+                        && !has_pact(faction_id, base_owner)
+                        && !at_war(faction_id, base_owner));
+                if (unsafe_relation) continue;
+                ++receipt.legal_count;
+                if (static_cast<int>(receipt.targets.size()) >= maximum_targets) continue;
+                receipt.targets.push_back({semantic_tile_id(x, y), distance,
+                    base_owner, unit_owner});
+            }
+        }
+    }
+    receipt.truncated = receipt.legal_count > static_cast<int>(receipt.targets.size());
+    return receipt;
+}
+
 std::string perspective_world_page_response(const std::string& request) {
     if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
     const int faction_id = *CurrentPlayerFaction;
@@ -8465,7 +8664,9 @@ std::string perspective_world_page_response(const std::string& request) {
                 << (owned ? "true" : "false") << ",\"visible_now\":"
                 << (visible ? "true" : "false") << ",\"name\":"
                 << json_string(base.name) << ",\"owner_ref\":\"faction-"
-                << static_cast<int>(base.faction_id) << "\"";
+                << static_cast<int>(base.faction_id) << "\""
+                << ",\"coastal\":"
+                << (coast_tiles(base.x, base.y) ? "true" : "false");
             if (owned) {
                 set_base(index);
                 base_compute(1);
@@ -8532,6 +8733,9 @@ std::string perspective_world_page_response(const std::string& request) {
             if (!visible) continue;
             if (emitted++) out << ',';
             const int stable_handle = semantic_vehicle_handle(index);
+            const SemanticAirdropTargetReceipt airdrop_receipt = owned
+                ? semantic_airdrop_target_receipt(index)
+                : SemanticAirdropTargetReceipt{};
             out << "{\"id\":" << index
                 << ",\"own_unit_ref\":";
             if (owned) out << json_string(
@@ -8565,9 +8769,21 @@ std::string perspective_world_page_response(const std::string& request) {
                 << (owned && semantic_friendly_air_refuel_tile(
                     faction_id, veh.x, veh.y) ? "true" : "false")
                 << ",\"airdrop_ready\":"
-                << (owned && can_airdrop(index, mapsq(veh.x, veh.y)) ? "true" : "false")
-                << ",\"airdrop_range\":" << (owned ? drop_range(faction_id) : -1)
-                << ",\"abilities\":[";
+                << (airdrop_receipt.available ? "true" : "false")
+                << ",\"airdrop_range\":" << (owned ? drop_range(faction_id) : -1);
+            if (airdrop_receipt.available) {
+                out << ",\"airdrop_target_tile_ids\":[";
+                for (size_t target_index = 0;
+                     target_index < airdrop_receipt.targets.size(); ++target_index) {
+                    if (target_index) out << ',';
+                    out << airdrop_receipt.targets[target_index].tile_id;
+                }
+                out << "]"
+                    << ",\"airdrop_target_count\":" << airdrop_receipt.legal_count
+                    << ",\"airdrop_targets_truncated\":"
+                    << (airdrop_receipt.truncated ? "true" : "false");
+            }
+            out << ",\"abilities\":[";
             bool page_ability_comma = false;
             struct PageAbility { VehAblFlag flag; const char* name; };
             const PageAbility page_abilities[] = {
@@ -10533,40 +10749,24 @@ int target_tile_id = -1, int target_unit_id = -1) {
             }
         }
     }
-    if (can_airdrop(veh_id, mapsq(veh.x, veh.y))) {
+    const SemanticAirdropTargetReceipt airdrop_receipt =
+        semantic_airdrop_target_receipt(veh_id);
+    if (airdrop_receipt.available) {
         int range = drop_range(faction_id);
-        int emitted_targets = 0;
-        int legal_targets = 0;
         std::ostringstream targets;
-        for (int distance = 0; distance <= range; ++distance) {
-            for (int y = 0; y < *MapAreaY; ++y) {
-                for (int x = y & 1; x < *MapAreaX; x += 2) {
-                    if (map_range(veh.x, veh.y, x, y) != distance) continue;
-                    MAP* sq = mapsq(x, y);
-                    if (!sq || !sq->is_visible(faction_id) || is_ocean(sq)
-                    || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), sq)) continue;
-                    int unit_owner = sq->veh_who();
-                    int base_owner = sq->base_who();
-                    bool unsafe_relation = (unit_owner >= 0 && unit_owner != faction_id
-                            && !has_pact(faction_id, unit_owner) && !at_war(faction_id, unit_owner))
-                        || (base_owner >= 0 && base_owner != faction_id
-                            && !has_pact(faction_id, base_owner) && !at_war(faction_id, base_owner));
-                    if (unsafe_relation) continue;
-                    ++legal_targets;
-                    if (emitted_targets >= 128) continue;
-                    if (emitted_targets++) targets << ',';
-                    targets << "{\"target_tile_id\":" << semantic_tile_id(x, y)
-                        << ",\"range\":" << distance
-                        << ",\"base_owner\":" << base_owner
-                        << ",\"unit_owner\":" << unit_owner << '}';
-                }
-            }
+        for (size_t index = 0; index < airdrop_receipt.targets.size(); ++index) {
+            if (index) targets << ',';
+            const SemanticAirdropTarget& target = airdrop_receipt.targets[index];
+            targets << "{\"target_tile_id\":" << target.tile_id
+                << ",\"range\":" << target.distance
+                << ",\"base_owner\":" << target.base_owner
+                << ",\"unit_owner\":" << target.unit_owner << '}';
         }
         out << ",{\"id\":\"airdrop:" << veh_id
             << "\",\"command\":\"airdrop_unit\",\"unit_id\":" << veh_id
             << ",\"max_range\":" << range << ",\"targets\":[" << targets.str()
-            << "],\"target_count\":" << legal_targets
-            << ",\"targets_truncated\":" << (legal_targets > emitted_targets ? "true" : "false")
+            << "],\"target_count\":" << airdrop_receipt.legal_count
+            << ",\"targets_truncated\":" << (airdrop_receipt.truncated ? "true" : "false")
             << ",\"meaning\":\"Execute one native air drop to a currently visible, rule-validated land target.\"}";
     }
     if (can_arty(veh.unit_id, true)) {
@@ -16620,6 +16820,9 @@ std::string execute_request(const std::string& request) {
     }
     if (op == "test_lan_ai_contact_fixture") {
         return test_lan_ai_contact_fixture_response(request);
+    }
+    if (op == "test_airdrop_legality_fixture") {
+        return test_airdrop_legality_fixture_response();
     }
     if (op == "test_identity_compaction_fixture") {
         return test_identity_compaction_fixture_response();

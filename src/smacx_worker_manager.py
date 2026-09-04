@@ -1461,10 +1461,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             values["SMACX_AGENT_LAN_SCENARIO"] = autostart["lan_scenario_id"]
         # Native acceptance fixtures must never leak into a production
         # worker. A deliberately test-mode Control Center may propagate only
-        # the narrow identity-compaction fixture used by the live regression.
+        # the narrow fixtures explicitly enabled by a live regression.
         if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" \
                 and os.environ.get("SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION") == "1":
             values["SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" \
+                and os.environ.get("SMACX_ACCEPTANCE_AIRDROP_LEGALITY") == "1":
+            values["SMACX_ACCEPTANCE_AIRDROP_LEGALITY"] = "1"
         faction_roster = autostart.get("faction_roster")
         if isinstance(faction_roster, list) and len(faction_roster) == 7:
             values["SMACX_AGENT_FACTION_ROSTER"] = ",".join(

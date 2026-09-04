@@ -110,14 +110,26 @@ projection/deltas/events, then N+1 consumes the new activity once. The
 stress fixture beyond the stock Huge map, remains below the 30-second hard gate,
 and does not block native/UI responsiveness.
 
-The corrected custom 4,096-square amphibious stress fixture completed in 3.44
-seconds on the review host, below its 5-second hard gate. Candidate pruning
-retained four legal same-square coastal-port embark states and eight landing
-frontier states while enforcing transport ownership/access, independent
-passenger/transport residual movement, capacity, current boarding state,
-charged disembark movement, and opposed-disembarkation legality. Search results
-expose coverage and optimality; an adversarial feasible landing beyond the
-first eight is reported as an incomplete bounded miss, never unreachable.
+The corrected custom 4,096-square amphibious stress fixture completed in 3.58
+seconds on the review host, below its 5-second hard gate. Preparatory arrival
+maps exhaust the finite known graph; candidate pruning then retained four legal
+same-square current-owned coastal-base embark states and eight landing frontier
+states while enforcing bound base evidence, transport ownership/access,
+independent passenger/transport residual movement, capacity, current boarding
+state, charged disembark movement, and opposed-disembarkation legality. Search
+results expose horizon/candidate coverage and optimality; an adversarial
+feasible landing beyond the first eight is reported as an incomplete bounded
+miss, never unreachable. A separate winding known-region fixture proves a
+valid rendezvous whose travel time exceeds `width + height` is still found.
+
+The isolated managed no-timer fixture also executes the production-native
+airdrop matrix after checkpoint, verified backup, forced native process
+recovery, and semantic-identity validation. Combat/noncombat behavior passed
+for at-war, Pact, treaty, and unknown occupants. Aerospace Complex coverage and
+a separately stationed Air Superiority defender each suppressed the drop
+through the real `allow_airdrop` path. The destructive fixture is available
+only behind a dedicated acceptance flag and runs immediately before its
+disposable worker is parked.
 
 An earlier exploratory run of the same no-timer path continued from turn 1 to
 turn 3 before the integration fixture was tightened to stop on an observed

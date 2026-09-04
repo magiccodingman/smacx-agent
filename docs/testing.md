@@ -210,12 +210,22 @@ adjacent-coast rejection, same-square coastal-port rendezvous, passenger and
 transport arrivals, 0/partial/full residual movement, same-turn transport
 movement after boarding, the passenger's mandatory post-board refresh,
 charged disembark movement, same-turn land continuation, and final aggregate
-ETA. Foreign-airdrop fixtures cover same-owner, sovereign, Pact, war, treaty,
-and unknown occupants/bases without borrowing sovereign ZOC or diplomacy. The
-amphibious benchmark separately enforces bounded legal-embark/landing
+ETA. Exact embark fixtures require an active provider-safe base object with
+current owned coastal evidence and reject stale, destroyed, missing, enemy,
+treaty, and unproven Pact ports. A winding-region adversary proves preparatory
+arrival search exhausts the finite known graph instead of stopping at
+`width + height`. Foreign-airdrop fixtures cover same-owner, sovereign, Pact,
+war, treaty, and unknown occupants/bases without borrowing sovereign ZOC or
+diplomacy; owned droppers consume a bounded native target receipt and expose
+truncation. The amphibious benchmark separately enforces bounded candidate
 frontiers, explicit search completeness/optimality, transport ownership and
 diplomatic access, capacity/boarding legality, and conditional opposed landing
-on a 4,096-square custom world.
+on a 4,096-square custom world. `native_airdrop_legality_test.py` is the focused
+entry point for an isolated native worker deliberately launched with
+`SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1`; production workers do not receive that
+flag. The managed worker test enables the same narrow fixture and runs the real
+`allow_airdrop` diplomacy, Aerospace Complex, and stationed Air Superiority
+matrices before parking its disposable no-timer worker.
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:

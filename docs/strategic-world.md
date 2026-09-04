@@ -107,20 +107,35 @@ envelopes include residual movement in the disappearance turn plus refreshed
 movement at every crossed turn boundary.
 
 Amphibious schedules are a two-actor native state machine. An unboarded land
-unit and owned sea transport rendezvous on the same coastal base square;
-adjacent coast squares are not treated as boardable. `board_transport` skips
-the passenger but preserves the transport's actual rendezvous-turn residual,
-so the carrier can begin crossing immediately. The passenger refreshes only at
-its next native turn. Disembark is one charged adjacent land move, and the
-passenger may continue on land in that turn only when movement remains. An
-already-boarded passenger instead retains its current independent movement
-state. Endpoint arrival state records native turn, movement spent, and movement
-remaining so aggregate ETA is composed from executable transitions rather than
-integer leg estimates. The fixed legal-embark/landing candidate frontier
-reports whether search coverage is complete, how many candidates were
-examined, and whether a result is globally earliest or only the best found
-within the bounded search; a bounded miss is never reported as proven
-mechanical unreachability.
+unit and owned sea transport rendezvous on the same current owned coastal-base
+square; a remembered tile feature is not a base-access receipt, and adjacent
+coast squares are not treated as boardable. The schedule binds the base ref,
+current owner/coastal evidence, and dependency hash. Missing, stale, destroyed,
+enemy, treaty, and unproven Pact ports cannot produce an exact route.
+`board_transport` skips the passenger but preserves the transport's actual
+rendezvous-turn residual, so the carrier can begin crossing immediately. The
+passenger refreshes only at its next native turn. Disembark is one charged
+adjacent land move, and the passenger may continue on land in that turn only
+when movement remains. An already-boarded passenger instead retains its current
+independent movement state. Endpoint arrival state records native turn,
+movement spent, and movement remaining so aggregate ETA is composed from
+executable transitions rather than integer leg estimates. Preparatory passenger,
+transport, and crossing searches exhaust the finite known graph rather than
+assuming coordinate diameter is a valid turn horizon. The fixed embark/landing
+candidate frontier reports whether candidate coverage is complete, how many
+candidates were examined, and whether a result is globally earliest or only
+the best found within the bounded frontier; a bounded miss is never reported as
+proven mechanical unreachability.
+
+For an owned current drop-capable unit, observation and executable choices share
+one native `allow_airdrop` target receipt. Exact route classification is allowed
+only for receipt members, and truncation is explicit so omission never becomes
+proof of illegality. Foreign and hypothetical drops expose only fair-play-safe
+conditional possibilities. Combat drops may enter an occupied at-war target;
+noncombat drops may share only own/Pact stacks. Treaty, truce, and unknown
+relations are not silently converted into hostility, and native anti-drop
+coverage such as an Aerospace Complex remains authoritative without exposing a
+hidden reason.
 
 The semantic mipmap makes prompt size track strategic complexity rather than
 tile count:

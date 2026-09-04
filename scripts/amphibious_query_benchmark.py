@@ -24,6 +24,12 @@ def unit(ref: str, location: str, triad: str, roles: dict, **extra):
             "fields": {key: field(value) for key, value in values.items()}}
 
 
+def base(ref: str, location: str):
+    return {"object_ref": ref, "kind": "base", "status": "active",
+            "location_ref": location,
+            "fields": {"owner_ref": field("faction-1"), "coastal": field(True)}}
+
+
 def main() -> int:
     width, height = 128, 64
     squares = []
@@ -48,6 +54,10 @@ def main() -> int:
             cargo={"capacity": 4, "loaded": 0},
         ),
     }
+    objects.update({
+        f"port-{y}": base(f"port-{y}", f"location-{(38 + width * y) // 2}")
+        for y in range(height) if (38 & 1) == (y & 1)
+    })
     started = time.perf_counter()
     route = transport_route(topology, objects, "passenger", target)
     elapsed_ms = (time.perf_counter() - started) * 1000
