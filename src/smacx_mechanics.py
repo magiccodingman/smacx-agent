@@ -493,7 +493,6 @@ def transport_route(
     }
     best: tuple[tuple[int, float, str], dict[str, Any]] | None = None
     any_embark_truncated = False
-    unproven_pact_embark = False
     maximum_embark_candidates = 0
 
     def relative_turn_offset(route: Any) -> int:
@@ -537,7 +536,7 @@ def transport_route(
             })
             maximum_embark_candidates = max(maximum_embark_candidates, 1)
         else:
-            ranked: list[tuple[int, float, str, int, int, str, str, str]] = []
+            ranked: list[tuple[int, float, str, int, int, str, str, str, str, str | None]] = []
             # The intersection of land- and sea-passable known squares is a
             # current owned coastal base. A remembered tile feature is not an
             # access receipt and can never support an exact embark schedule.
@@ -557,17 +556,17 @@ def transport_route(
                         or not any(neighbor.ocean
                                    for neighbor in topology.adjacent(location_ref).values()):
                     continue
-                if base_owner != passenger_owner or base_owner != transport_owner:
-                    owner = objects.get(str(base_owner), {})
-                    if passenger_owner == transport_owner \
-                            and relationship_class(owner) == "allied" \
-                            and field_is_current(owner, "relationship"):
-                        # The native action surface suggests Pact-port access,
-                        # but no destructive native co-location fixture has
-                        # yet proven it. Its omission therefore invalidates a
-                        # global unreachability claim.
-                        unproven_pact_embark = True
+                if passenger_owner != transport_owner:
                     continue
+                access = "current_owned_coastal_base"
+                relationship_hash: str | None = None
+                if base_owner != passenger_owner:
+                    owner = objects.get(str(base_owner), {})
+                    if relationship_class(owner) != "allied" \
+                            or not field_is_current(owner, "relationship"):
+                        continue
+                    access = "current_pact_coastal_base"
+                    relationship_hash = content_hash(owner)
                 passenger_arrival = passenger_arrivals.get(location_ref)
                 transport_arrival = transport_arrivals.get(location_ref)
                 if passenger_arrival is None or transport_arrival is None:
@@ -584,12 +583,13 @@ def transport_route(
                     + float(transport_arrival["movement_cost"]),
                     location_ref, passenger_turn, transport_turn,
                     str(base.get("object_ref")), str(base_owner), content_hash(base),
+                    access, relationship_hash,
                 ))
             embark_candidate_cap = 4
             maximum_embark_candidates = max(maximum_embark_candidates, len(ranked))
             any_embark_truncated = any_embark_truncated or len(ranked) > embark_candidate_cap
             for (_turns, _cost, location_ref, passenger_turn, transport_turn,
-                 base_ref, base_owner, base_hash) \
+                 base_ref, base_owner, base_hash, base_access, relationship_hash) \
                     in sorted(ranked)[:embark_candidate_cap]:
                 passenger_leg = topology.route(
                     passenger_location, location_ref, land_profile,
@@ -612,8 +612,9 @@ def transport_route(
                     "location_ref": location_ref,
                     "base_ref": base_ref,
                     "base_owner_ref": base_owner,
-                    "base_access": "current_owned_coastal_base",
+                    "base_access": base_access,
                     "base_dependency_hash": base_hash,
+                    "relationship_dependency_hash": relationship_hash,
                     "passenger_leg": passenger_leg,
                     "transport_leg": transport_leg,
                     "board_turn_offset": board_turn,
@@ -720,6 +721,9 @@ def transport_route(
                             "base_owner_ref": embark_state["base_owner_ref"],
                             "base_access": embark_state["base_access"],
                             "base_dependency_hash": embark_state["base_dependency_hash"],
+                            "relationship_dependency_hash": embark_state.get(
+                                "relationship_dependency_hash"
+                            ),
                             "co_located": True,
                             "legal_state": "same_square_owned_transport_with_capacity",
                             "already_boarded": already_boarded,
@@ -820,6 +824,9 @@ def transport_route(
                                 "owner_ref": embark_state["base_owner_ref"],
                                 "access": embark_state["base_access"],
                                 "dependency_hash": embark_state["base_dependency_hash"],
+                                "relationship_dependency_hash": embark_state.get(
+                                    "relationship_dependency_hash"
+                                ),
                             },
                             "board_turn": board_turn,
                             "transport_after_board": embark_state[
@@ -844,15 +851,10 @@ def transport_route(
         # transport that produced the selected schedule. A later truncated
         # embark frontier means an earlier or otherwise preferable schedule
         # may still exist outside the examined candidates.
-        if any_embark_truncated or unproven_pact_embark:
+        if any_embark_truncated:
             best[1]["search"]["search_complete"] = False
             best[1]["search"]["optimality"] = (
                 "best_schedule_within_bounded_candidates"
-            )
-        best[1]["search"]["unproven_pact_port_access"] = unproven_pact_embark
-        if unproven_pact_embark:
-            best[1].setdefault("limitations", []).append(
-                "A current Pact coastal port was omitted pending native co-location proof."
             )
         best[1]["search"]["maximum_embark_candidates_available"] = (
             maximum_embark_candidates
@@ -863,7 +865,7 @@ def transport_route(
     # unreachability.  Expose coverage so callers cannot silently conflate the
     # two conclusions.
     truncated = len(ranked_landing_candidates) > landing_candidate_cap \
-        or any_embark_truncated or unproven_pact_embark
+        or any_embark_truncated
     return {
         "reachable": False,
         "status": ("no_route_found_within_bounded_candidate_search" if truncated
@@ -882,13 +884,10 @@ def transport_route(
                 maximum_embark_candidates, 4,
             ),
             "transports_examined": len(transports),
-            "unproven_pact_port_access": unproven_pact_embark,
         },
         "limitations": ([
             "The fixed candidate frontier is a latency bound, not proof that no route exists.",
             "Additional legal co-location embark states or landing candidates may contain a feasible or earlier schedule.",
-            *(["A current Pact coastal port was not used because native co-location access is not yet mechanically proven."]
-              if unproven_pact_embark else []),
         ] if truncated else []),
     }
 

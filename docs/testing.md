@@ -30,6 +30,7 @@ PYTHONPATH=src python3 scripts/control_http_test.py
 PYTHONPATH=src python3 scripts/worker_contract_test.py
 PYTHONPATH=src python3 scripts/capability_manifest_test.py
 PYTHONPATH=src python3 scripts/mcp_command_schema_test.py
+PYTHONPATH=src python3 scripts/semantic_choice_binding_test.py
 PYTHONPATH=src python3 scripts/stale_revision_recovery_test.py
 PYTHONPATH=src python3 scripts/match_briefing_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
@@ -211,8 +212,8 @@ transport arrivals, 0/partial/full residual movement, same-turn transport
 movement after boarding, the passenger's mandatory post-board refresh,
 charged disembark movement, same-turn land continuation, and final aggregate
 ETA. Exact embark fixtures require an active provider-safe base object with
-current owned coastal evidence and reject stale, destroyed, missing, enemy,
-treaty, and unproven Pact ports. A winding-region adversary proves preparatory
+current owned-or-Pact coastal and relationship evidence and reject stale,
+destroyed, missing, enemy, Treaty, Truce, and neutral ports. A winding-region adversary proves preparatory
 arrival search exhausts the finite known graph instead of stopping at
 `width + height`. Foreign-airdrop fixtures cover same-owner, sovereign, Pact,
 war, treaty, and unknown occupants/bases without borrowing sovereign ZOC or
@@ -225,7 +226,8 @@ on a 4,096-square custom world. `native_airdrop_legality_test.py` is the focused
 entry point for an isolated native worker deliberately launched with both
 `SMACX_AGENT_TEST_MODE=1` and `SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1`; either flag
 alone is rejected by the destructive endpoint and production workers receive
-neither. The managed worker test enables the same narrow fixture and runs the real
+neither. The managed live worker gate covers the same narrow fixture in its
+isolated game process and runs the real
 `allow_airdrop` diplomacy, Aerospace Complex, and stationed Air Superiority
 matrices plus many-ready-orbital-Drop routine-page latency/payload checks before
 parking its disposable no-timer worker.

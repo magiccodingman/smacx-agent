@@ -498,9 +498,9 @@ def main() -> int:
     assert boarded_schedules[0]["disembark"]["turn_offset"] == 1
     results["transport_phase_correct_movement"] = True
 
-    # Exact embark schedules require a current owned coastal base object, not
-    # a remembered tile feature. Non-owned access is deliberately excluded
-    # until a native co-occupancy receipt can establish Pact behavior.
+    # Exact embark schedules require a current owned or Pact coastal base
+    # object, not a remembered tile feature. Treaty/neutral/enemy access is
+    # never promoted to mechanical co-location permission.
     access_core = {
         "phase-passenger": obj(
             "phase-passenger", "own_unit", "phase-port",
@@ -539,16 +539,24 @@ def main() -> int:
         "phase-passenger", "phase-target",
     )
     assert mixed_port_schedule and mixed_port_schedule["reachable"]
-    assert mixed_port_schedule["search"]["search_complete"] is False
-    assert mixed_port_schedule["search"]["unproven_pact_port_access"] is True
+    assert mixed_port_schedule["search"]["search_complete"] is True
+    assert mixed_port_schedule["embark"]["base_ref"] == "port-own"
+    pact_schedule = transport_route(
+        phase_topology,
+        {**access_core,
+         "port-pact": obj("port-pact", "base", "phase-port",
+                          owner_ref="faction-4", coastal=True)},
+        "phase-passenger", "phase-target",
+    )
+    assert pact_schedule and pact_schedule["reachable"]
+    assert pact_schedule["embark"]["base_access"] == "current_pact_coastal_base"
+    assert pact_schedule["embark"]["relationship_dependency_hash"]
     disallowed_ports = {
         "missing": None,
         "enemy": obj("port-enemy", "base", "phase-port",
                      owner_ref="faction-2", coastal=True),
         "treaty": obj("port-treaty", "base", "phase-port",
                       owner_ref="faction-3", coastal=True),
-        "pact": obj("port-pact", "base", "phase-port",
-                    owner_ref="faction-4", coastal=True),
     }
     stale_port = json.loads(json.dumps(own_port))
     stale_port["status"] = "stale"
@@ -566,11 +574,16 @@ def main() -> int:
             phase_topology, candidate_objects, "phase-passenger", "phase-target",
         )
         assert rejected and rejected["reachable"] is False, (name, rejected)
-        if name == "pact":
-            assert rejected["search"]["search_complete"] is False
-            assert rejected["search"]["unproven_pact_port_access"] is True
-            assert rejected["status"] != "mechanically_unreachable_in_known_world"
-    results["current_owned_embark_port_authority"] = True
+    broken_pact = json.loads(json.dumps(access_core))
+    broken_pact["faction-4"]["fields"]["relationship"] = field("neutral")
+    broken_pact["port-pact"] = obj(
+        "port-pact", "base", "phase-port", owner_ref="faction-4", coastal=True,
+    )
+    rejected = transport_route(
+        phase_topology, broken_pact, "phase-passenger", "phase-target",
+    )
+    assert rejected and rejected["reachable"] is False
+    results["current_owned_or_pact_embark_port_authority"] = True
 
     # A winding finite known graph can require more arrival turns than
     # width+height. Preparatory rendezvous search is exhaustive over that

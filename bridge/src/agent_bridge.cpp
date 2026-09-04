@@ -8329,28 +8329,11 @@ std::string test_airdrop_legality_fixture_response() {
     }
     if (other < 0) return error_response("missing_fixture_faction",
         "No live counterpart faction is available for the airdrop fixture.");
-    std::vector<std::pair<int, int>> sites;
-    for (int y = 0; y < *MapAreaY && sites.size() < 5; ++y) {
-        for (int x = y & 1; x < *MapAreaX && sites.size() < 5; x += 2) {
-            MAP* sq = mapsq(x, y);
-            if (!sq || is_ocean(sq) || sq->base_who() >= 0 || veh_at(x, y) >= 0) continue;
-            bool separated = true;
-            for (const auto& site : sites) {
-                if (map_range(site.first, site.second, x, y) <= 1) {
-                    separated = false;
-                    break;
-                }
-            }
-            if (separated) sites.push_back({x, y});
-        }
-    }
-    if (sites.size() < 5) return error_response("missing_fixture_sites",
-        "Five distinct empty land sites are required for the airdrop fixture.");
     const uint32_t relationship_bits = DIPLO_VENDETTA | DIPLO_TRUCE
         | DIPLO_TREATY | DIPLO_PACT;
-    // Isolate occupant legality from unrelated native ZOC. Every other live
-    // faction is made Pact for the disposable fixture; the selected
-    // counterpart is then changed for each matrix row below.
+    // Establish a neutral mechanical baseline before selecting sites. This
+    // removes unrelated player ZOC while candidate selection excludes any
+    // remaining native-life ZOC. Individual rows then alter only `other`.
     for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
         if (candidate == faction_id || !is_alive(candidate)) continue;
         Factions[faction_id].diplo_status[candidate] &= ~relationship_bits;
@@ -8358,6 +8341,29 @@ std::string test_airdrop_legality_fixture_response() {
         Factions[faction_id].diplo_status[candidate] |= DIPLO_PACT;
         Factions[candidate].diplo_status[faction_id] |= DIPLO_PACT;
     }
+    std::vector<std::pair<int, int>> sites;
+    for (int y = 0; y < *MapAreaY && sites.size() < 9; ++y) {
+        for (int x = y & 1; x < *MapAreaX && sites.size() < 9; x += 2) {
+            MAP* sq = mapsq(x, y);
+            if (!sq || is_ocean(sq) || sq->base_who() >= 0 || veh_at(x, y) >= 0
+            || mod_zoc_move(x, y, faction_id)) continue;
+            bool separated = true;
+            for (const auto& site : sites) {
+                if (map_range(site.first, site.second, x, y) <= 1) {
+                    separated = false;
+                    break;
+                }
+            }
+            if (separated && sites.size() >= 5
+            && map_range(sites[4].first, sites[4].second, x, y)
+                <= std::max(1, AerospaceDefenseRange)) {
+                separated = false;
+            }
+            if (separated) sites.push_back({x, y});
+        }
+    }
+    if (sites.size() < 9) return error_response("missing_fixture_sites",
+        "Nine distinct empty land sites are required for the airdrop fixture.");
     auto set_relationship = [&](uint32_t bit) {
         Factions[faction_id].diplo_status[other] &= ~relationship_bits;
         Factions[other].diplo_status[faction_id] &= ~relationship_bits;
@@ -8448,6 +8454,57 @@ std::string test_airdrop_legality_fixture_response() {
     const bool air_superiority_defended = !allow_airdrop(
         sites[4].first, sites[4].second, faction_id, true, defended);
 
+    int owned_base_id = first_owned_base(faction_id);
+    if (owned_base_id < 0) return error_response("missing_fixture_base",
+        "An owned base is required for the native target-path fixture.");
+    const int drop_techs[] = {
+        Chassis[CHS_INFANTRY].preq_tech, Weapon[WPN_LASER].preq_tech,
+        Armor[ARM_NO_ARMOR].preq_tech, Ability[ABL_ID_DROP_POD].preq_tech,
+        Reactor[REC_FISSION - 1].preq_tech, Rules->tech_preq_orb_insert_wo_space,
+    };
+    for (int tech_id : drop_techs) {
+        if (tech_id >= 0 && tech_id < MaxTechnologyNum) TechOwners[tech_id] |= 1 << faction_id;
+    }
+    char drop_name[] = "Harness Native Target Dropper";
+    int drop_proto = propose_proto(
+        faction_id, CHS_INFANTRY, WPN_LASER, ARM_NO_ARMOR,
+        ABL_DROP_POD, REC_FISSION, PLAN_COMBAT, drop_name);
+    if (drop_proto < faction_id * MaxProtoFactionNum
+    || drop_proto >= min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum)) {
+        return error_response("fixture_drop_proto_failed",
+            "Could not create the native target-path Drop prototype.");
+    }
+    Units[drop_proto].unit_flags |= UNIT_PROTOTYPED;
+    int dropper_id = veh_init(
+        drop_proto, faction_id, Bases[owned_base_id].x, Bases[owned_base_id].y);
+    if (dropper_id < 0) return error_response("fixture_dropper_failed",
+        "Could not create the native target-path Drop unit.");
+    Vehs[dropper_id].moves_spent = 0;
+    Vehs[dropper_id].state &= ~VSTATE_MADE_AIRDROP;
+    Factions[faction_id].player_flags &= ~PFLAG_MAP_REVEALED;
+    MAP* mapped_fog = mapsq(sites[5].first, sites[5].second);
+    MAP* unmapped = mapsq(sites[6].first, sites[6].second);
+    mapped_fog->visibility |= 1 << faction_id;
+    unmapped->visibility &= ~(1 << faction_id);
+    const bool mapped_fog_native_target = action_airdrop(
+        dropper_id, sites[5].first, sites[5].second, 0) != 0;
+    const bool unmapped_native_target = action_airdrop(
+        dropper_id, sites[6].first, sites[6].second, 0) != 0;
+    int hidden_unit_id = veh_init(
+        BSC_SCOUT_PATROL, other, sites[7].first, sites[7].second);
+    if (hidden_unit_id < 0) return error_response("fixture_hidden_unit_failed",
+        "Could not create the hidden unit target.");
+    Vehs[hidden_unit_id].visibility &= ~(1 << faction_id);
+    mapsq(sites[7].first, sites[7].second)->visibility &= ~(1 << faction_id);
+    const bool hidden_unit_rejected = action_airdrop(
+        dropper_id, sites[7].first, sites[7].second, 0) == 0;
+    int hidden_base_id = mod_base_init(other, sites[8].first, sites[8].second);
+    if (hidden_base_id < 0) return error_response("fixture_hidden_base_failed",
+        "Could not create the hidden base target.");
+    mapsq(sites[8].first, sites[8].second)->visibility &= ~(1 << faction_id);
+    const bool hidden_hostile_base_native_target = action_airdrop(
+        dropper_id, sites[8].first, sites[8].second, 0) != 0;
+
     std::ostringstream out;
     out << "{\"ok\":true,\"hostile_combat\":"
         << (hostile_combat ? "true" : "false")
@@ -8461,6 +8518,15 @@ std::string test_airdrop_legality_fixture_response() {
         << ",\"aerospace_defended\":" << (aerospace_defended ? "true" : "false")
         << ",\"air_superiority_defended\":"
         << (air_superiority_defended ? "true" : "false")
+        << ",\"mapped_fog_native_target\":"
+        << (mapped_fog_native_target ? "true" : "false")
+        << ",\"unmapped_native_target\":"
+        << (unmapped_native_target ? "true" : "false")
+        << ",\"hidden_unit_rejected\":"
+        << (hidden_unit_rejected ? "true" : "false")
+        << ",\"hidden_hostile_base_native_target\":"
+        << (hidden_hostile_base_native_target ? "true" : "false")
+        << ",\"native_target_path_uses_visibility_gate\":false"
         << '}';
     return out.str();
 }
@@ -8491,10 +8557,23 @@ std::string test_airdrop_collection_stress_fixture_response() {
     for (int tech_id : component_techs) {
         if (tech_id >= 0 && tech_id < MaxTechnologyNum) TechOwners[tech_id] |= 1 << faction_id;
     }
-    char drop_name[] = "Harness Orbital Drop Infantry";
-    const int drop_proto = propose_proto(
-        faction_id, CHS_INFANTRY, WPN_LASER, ARM_NO_ARMOR,
-        ABL_DROP_POD, REC_FISSION, PLAN_COMBAT, drop_name);
+    int drop_proto = -1;
+    const int prototype_begin = faction_id * MaxProtoFactionNum;
+    const int prototype_end = min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum);
+    for (int unit_id = prototype_begin; unit_id < prototype_end; ++unit_id) {
+        if ((Units[unit_id].unit_flags & UNIT_PROTOTYPED)
+        && Units[unit_id].chassis_id == CHS_INFANTRY
+        && has_abil(unit_id, ABL_DROP_POD)) {
+            drop_proto = unit_id;
+            break;
+        }
+    }
+    if (drop_proto < 0) {
+        char drop_name[] = "Harness Orbital Drop Infantry";
+        drop_proto = propose_proto(
+            faction_id, CHS_INFANTRY, WPN_LASER, ARM_NO_ARMOR,
+            ABL_DROP_POD, REC_FISSION, PLAN_COMBAT, drop_name);
+    }
     if (drop_proto < faction_id * MaxProtoFactionNum
     || drop_proto >= min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum)) {
         return error_response("fixture_drop_proto_failed",
@@ -8502,18 +8581,139 @@ std::string test_airdrop_collection_stress_fixture_response() {
     }
     Units[drop_proto].unit_flags |= UNIT_PROTOTYPED;
     int created = 0;
+    int first_dropper_id = -1;
     for (int index = 0; index < 128; ++index) {
         int veh_id = veh_init(drop_proto, faction_id, Bases[base_id].x, Bases[base_id].y);
         if (veh_id < 0) break;
+        if (first_dropper_id < 0) first_dropper_id = veh_id;
         Vehs[veh_id].moves_spent = 0;
         Vehs[veh_id].state &= ~VSTATE_MADE_AIRDROP;
         ++created;
     }
+    int outside_target_tile_id = -1;
+    bool enumeration_truncated = false;
+    if (first_dropper_id >= 0) {
+        std::vector<std::pair<int, int>> legal;
+        VEH& dropper = Vehs[first_dropper_id];
+        // This destructive acceptance fixture deliberately maps the test
+        // faction's whole Planet so the demanded-enumeration path traverses
+        // a worst-practical orbital target set. The verified checkpoint is
+        // restored before any unrelated fixture runs.
+        for (int y = 0; y < *MapAreaY; ++y) {
+            for (int x = y & 1; x < *MapAreaX; x += 2) {
+                MAP* square = mapsq(x, y);
+                if (!square) continue;
+                square->visibility |= 1 << faction_id;
+                if (is_ocean(square)
+                || !allow_airdrop(x, y, faction_id, dropper.is_combat_unit(), square)) continue;
+                legal.push_back({map_range(dropper.x, dropper.y, x, y),
+                                 semantic_tile_id(x, y)});
+            }
+        }
+        std::sort(legal.begin(), legal.end());
+        enumeration_truncated = legal.size() > 128;
+        if (enumeration_truncated) outside_target_tile_id = legal[128].second;
+    }
     reset_semantic_observation_shadow();
     std::ostringstream out;
     out << "{\"ok\":true,\"created\":" << created
+        << ",\"first_dropper_id\":" << first_dropper_id
+        << ",\"outside_first_128_target_tile_id\":" << outside_target_tile_id
+        << ",\"enumeration_truncated\":"
+        << (enumeration_truncated ? "true" : "false")
         << ",\"airdrop_range\":" << drop_range(faction_id)
         << ",\"map_tiles\":" << (*MapAreaX * *MapAreaY / 2) << '}';
+    return out.str();
+}
+
+std::string test_pact_port_fixture_response() {
+    char test_mode[8] = {};
+    char acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
+        sizeof(test_mode)) || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_PACT_PORT",
+        acceptance_mode, sizeof(acceptance_mode)) || strcmp(acceptance_mode, "1")) {
+        return error_response("test_mode_disabled",
+            "The contained native Pact-port fixture is disabled.");
+    }
+    if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    int other = -1;
+    for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+        if (candidate != faction_id && is_alive(candidate)) { other = candidate; break; }
+    }
+    if (other < 0) return error_response("missing_fixture_faction",
+        "No live counterpart faction is available for the Pact-port fixture.");
+    int base_x = -1;
+    int base_y = -1;
+    int land_x = -1;
+    int land_y = -1;
+    int sea_x = -1;
+    int sea_y = -1;
+    for (int y = 1; y + 1 < *MapAreaY && base_x < 0; ++y) {
+        for (int x = y & 1; x < *MapAreaX && base_x < 0; x += 2) {
+            MAP* site = mapsq(x, y);
+            if (!site || is_ocean(site) || site->base_who() >= 0 || veh_at(x, y) >= 0) continue;
+            int lx = -1, ly = -1, sx = -1, sy = -1;
+            for (int dir = 0; dir < 8; ++dir) {
+                int nx = wrap(x + BaseOffsetX[dir]);
+                int ny = y + BaseOffsetY[dir];
+                MAP* neighbor = mapsq(nx, ny);
+                if (!neighbor || neighbor->base_who() >= 0 || veh_at(nx, ny) >= 0) continue;
+                if (is_ocean(neighbor) && sx < 0) { sx = nx; sy = ny; }
+                if (!is_ocean(neighbor) && lx < 0) { lx = nx; ly = ny; }
+            }
+            if (lx >= 0 && sx >= 0) {
+                base_x = x; base_y = y; land_x = lx; land_y = ly; sea_x = sx; sea_y = sy;
+            }
+        }
+    }
+    if (base_x < 0) return error_response("missing_fixture_site",
+        "No empty coastal land site with land and sea approaches is available.");
+    const uint32_t relationship_bits = DIPLO_VENDETTA | DIPLO_TRUCE
+        | DIPLO_TREATY | DIPLO_PACT;
+    Factions[faction_id].diplo_status[other] &= ~relationship_bits;
+    Factions[other].diplo_status[faction_id] &= ~relationship_bits;
+    treaty_on(faction_id, other, DIPLO_COMMLINK | DIPLO_TREATY | DIPLO_PACT);
+    const int base_id = mod_base_init(other, base_x, base_y);
+    // Keep one ready pair at the Pact base for the native boarding proof and
+    // a separate adjacent pair for the legal-entry proof. Entering the base
+    // can consume the Scout's last movement point; that is not evidence that
+    // co-location or boarding is illegal on its next ready phase.
+    const int passenger_id = veh_init(BSC_SCOUT_PATROL, faction_id, base_x, base_y);
+    const int transport_id = veh_init(BSC_TRANSPORT_FOIL, faction_id, base_x, base_y);
+    const int land_entry_id = veh_init(BSC_SCOUT_PATROL, faction_id, land_x, land_y);
+    const int sea_entry_id = veh_init(BSC_TRANSPORT_FOIL, faction_id, sea_x, sea_y);
+    if (base_id < 0 || passenger_id < 0 || transport_id < 0
+    || land_entry_id < 0 || sea_entry_id < 0) {
+        return error_response("fixture_creation_failed",
+            "Could not create the Pact base and its boarding/entry actors.");
+    }
+    Vehs[passenger_id].moves_spent = 0;
+    Vehs[transport_id].moves_spent = 0;
+    Vehs[land_entry_id].moves_spent = 0;
+    Vehs[sea_entry_id].moves_spent = 0;
+    mapsq(base_x, base_y)->visibility |= 1 << faction_id;
+    mapsq(land_x, land_y)->visibility |= 1 << faction_id;
+    mapsq(sea_x, sea_y)->visibility |= 1 << faction_id;
+    spot_all(passenger_id, 1);
+    spot_all(transport_id, 1);
+    ensure_semantic_vehicle_handles();
+    reset_semantic_observation_shadow();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"relationship\":\"pact\",\"counterpart_faction_id\":"
+        << other << ",\"base_id\":" << base_id
+        << ",\"base_ref\":\"base-location-" << semantic_tile_id(base_x, base_y)
+        << "\",\"base_tile_id\":" << semantic_tile_id(base_x, base_y)
+        << ",\"passenger_id\":" << passenger_id
+        << ",\"passenger_ref\":" << json_string(
+            (std::string("own-unit-") + std::to_string(semantic_vehicle_handle(passenger_id))).c_str())
+        << ",\"transport_id\":" << transport_id
+        << ",\"transport_ref\":" << json_string(
+            (std::string("own-unit-") + std::to_string(semantic_vehicle_handle(transport_id))).c_str())
+        << ",\"land_entry_id\":" << land_entry_id
+        << ",\"sea_entry_id\":" << sea_entry_id
+        << ",\"coastal\":true}";
     return out.str();
 }
 
@@ -8617,6 +8817,33 @@ struct SemanticAirdropTargetReceipt {
     std::vector<SemanticAirdropTarget> targets;
 };
 
+bool semantic_airdrop_target_allowed(int veh_id, int target_tile_id,
+int* target_x = nullptr, int* target_y = nullptr) {
+    if (veh_id < 0 || veh_id >= *VehCount) return false;
+    VEH& veh = Vehs[veh_id];
+    const int faction_id = *CurrentPlayerFaction;
+    int x = -1;
+    int y = -1;
+    if (veh.faction_id != faction_id
+    || !semantic_tile_coords(target_tile_id, &x, &y)
+    || !can_airdrop(veh_id, mapsq(veh.x, veh.y))
+    || map_range(veh.x, veh.y, x, y) > drop_range(faction_id)) return false;
+    MAP* sq = mapsq(x, y);
+    if (!sq || is_ocean(sq)
+    || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), sq)) return false;
+    const int unit_owner = sq->veh_who();
+    const int base_owner = sq->base_who();
+    const bool unsafe_relation =
+        (unit_owner >= 0 && unit_owner != faction_id
+            && !has_pact(faction_id, unit_owner) && !at_war(faction_id, unit_owner))
+        || (base_owner >= 0 && base_owner != faction_id
+            && !has_pact(faction_id, base_owner) && !at_war(faction_id, base_owner));
+    if (unsafe_relation) return false;
+    if (target_x) *target_x = x;
+    if (target_y) *target_y = y;
+    return true;
+}
+
 // One authoritative enumerator serves both provider-safe observation and the
 // executable semantic action surface. Omitted anti-drop reasons remain hidden;
 // membership is the current native legality receipt.
@@ -8668,6 +8895,7 @@ int veh_id, int maximum_targets = 128) {
 }
 
 std::string semantic_airdrop_targets_response(const std::string& request) {
+    const DWORD started_at = GetTickCount();
     if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
     const int faction_id = *CurrentPlayerFaction;
     const int veh_id = field_int(request, "unit_id", -1);
@@ -8688,33 +8916,18 @@ std::string semantic_airdrop_targets_response(const std::string& request) {
         int x = -1;
         int y = -1;
         const bool valid = semantic_tile_coords(target_tile_id, &x, &y);
-        MAP* sq = valid ? mapsq(x, y) : nullptr;
-        bool allowed = sq && map_range(veh.x, veh.y, x, y) <= drop_range(faction_id)
-            && sq->is_visible(faction_id) && !is_ocean(sq)
-            && allow_airdrop(x, y, faction_id, veh.is_combat_unit(), sq);
-        if (allowed) {
-            const int unit_owner = sq->veh_who();
-            const int base_owner = sq->base_who();
-            allowed = !(
-                (unit_owner >= 0 && unit_owner != faction_id
-                    && !has_pact(faction_id, unit_owner)
-                    && !at_war(faction_id, unit_owner))
-                || (base_owner >= 0 && base_owner != faction_id
-                    && !has_pact(faction_id, base_owner)
-                    && !at_war(faction_id, base_owner))
-            );
-        }
+        bool allowed = valid && semantic_airdrop_target_allowed(
+            veh_id, target_tile_id, &x, &y);
         out << ",\"query\":\"target\",\"target_tile_id\":" << target_tile_id
             << ",\"allowed\":" << (allowed ? "true" : "false")
             << ",\"targets\":[";
         if (allowed) {
             out << "{\"target_tile_id\":" << target_tile_id
-                << ",\"range\":" << map_range(veh.x, veh.y, x, y)
-                << ",\"base_owner\":" << sq->base_who()
-                << ",\"unit_owner\":" << sq->veh_who() << '}';
+                << ",\"range\":" << map_range(veh.x, veh.y, x, y) << '}';
         }
         out << "],\"target_count\":" << (allowed ? 1 : 0)
-            << ",\"targets_truncated\":false}";
+            << ",\"targets_truncated\":false,\"native_elapsed_ms\":"
+            << (GetTickCount() - started_at) << '}';
         return out.str();
     }
     const int maximum_targets = std::min(128, std::max(1,
@@ -8732,6 +8945,7 @@ std::string semantic_airdrop_targets_response(const std::string& request) {
     }
     out << "],\"target_count\":" << receipt.legal_count
         << ",\"targets_truncated\":" << (receipt.truncated ? "true" : "false")
+        << ",\"native_elapsed_ms\":" << (GetTickCount() - started_at)
         << '}';
     return out.str();
 }
@@ -10879,9 +11093,23 @@ int target_tile_id = -1, int target_unit_id = -1) {
             }
         }
     }
-    const SemanticAirdropTargetReceipt airdrop_receipt =
-        semantic_airdrop_target_receipt(veh_id);
-    if (airdrop_receipt.available) {
+    if (target_tile_id >= 0) {
+        int exact_x = -1;
+        int exact_y = -1;
+        if (can_airdrop(veh_id, mapsq(veh.x, veh.y))
+        && semantic_airdrop_target_allowed(
+                veh_id, target_tile_id, &exact_x, &exact_y)) {
+            out << ",{\"id\":\"airdrop:" << veh_id << ':' << target_tile_id
+                << "\",\"command\":\"airdrop_unit\",\"unit_id\":" << veh_id
+                << ",\"target_tile_id\":" << target_tile_id
+                << ",\"range\":" << map_range(veh.x, veh.y, exact_x, exact_y)
+                << ",\"target_specific\":true,"
+                << "\"meaning\":\"Execute one native-validated air drop to this exact semantic location. A rejection never reveals hidden blockers.\"}";
+        }
+    } else {
+        const SemanticAirdropTargetReceipt airdrop_receipt =
+            semantic_airdrop_target_receipt(veh_id);
+        if (airdrop_receipt.available) {
         int range = drop_range(faction_id);
         std::ostringstream targets;
         for (size_t index = 0; index < airdrop_receipt.targets.size(); ++index) {
@@ -10897,7 +11125,8 @@ int target_tile_id = -1, int target_unit_id = -1) {
             << ",\"max_range\":" << range << ",\"targets\":[" << targets.str()
             << "],\"target_count\":" << airdrop_receipt.legal_count
             << ",\"targets_truncated\":" << (airdrop_receipt.truncated ? "true" : "false")
-            << ",\"meaning\":\"Execute one native air drop to a currently visible, rule-validated land target.\"}";
+            << ",\"meaning\":\"Execute one native air drop to an enumerated currently visible legal land target, or query an exact semantic location.\"}";
+        }
     }
     if (can_arty(veh.unit_id, true)) {
         int range = arty_range(veh.unit_id);
@@ -16322,24 +16551,10 @@ std::string semantic_command_response(const std::string& request) {
         int y = -1;
         bool target_tile_valid = semantic_request_tile(
             request, &target_tile_id, &x, &y);
-        MAP* origin = mapsq(veh.x, veh.y);
-        MAP* target = mapsq(x, y);
-        if (!target_tile_valid || !can_airdrop(veh_id, origin)
-        || !target || !target->is_visible(faction_id)
-        || is_ocean(target) || map_range(veh.x, veh.y, x, y) > drop_range(faction_id)
-        || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), target)) {
+        if (!target_tile_valid
+        || !semantic_airdrop_target_allowed(veh_id, target_tile_id, &x, &y)) {
             return error_response("invalid_airdrop_target",
-                "Use a currently returned visible, rule-validated target from this unit's fresh airdrop choice.");
-        }
-        int unit_owner = target->veh_who();
-        int base_owner = target->base_who();
-        bool unsafe_relation = (unit_owner >= 0 && unit_owner != faction_id
-                && !has_pact(faction_id, unit_owner) && !at_war(faction_id, unit_owner))
-            || (base_owner >= 0 && base_owner != faction_id
-                && !has_pact(faction_id, base_owner) && !at_war(faction_id, base_owner));
-        if (unsafe_relation) {
-            return error_response("airdrop_requires_diplomatic_decision",
-                "A semantic airdrop will not implicitly break a treaty or truce. Resolve diplomacy first.");
+                "The exact semantic airdrop target is not currently legal. Hidden blockers are not disclosed.");
         }
         int old_x = veh.x;
         int old_y = veh.y;
@@ -16956,6 +17171,9 @@ std::string execute_request(const std::string& request) {
     }
     if (op == "test_airdrop_collection_stress_fixture") {
         return test_airdrop_collection_stress_fixture_response();
+    }
+    if (op == "test_pact_port_fixture") {
+        return test_pact_port_fixture_response();
     }
     if (op == "test_identity_compaction_fixture") {
         return test_identity_compaction_fixture_response();

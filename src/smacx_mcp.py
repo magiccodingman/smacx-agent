@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import threading
 import time
-from typing import Literal
+from typing import Any, Literal, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import parse_qs, urlsplit
@@ -90,6 +90,8 @@ DECISION_LOCK = threading.Lock()
 DECISION_TTL_SECONDS = 180.0
 AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
 AIRDROP_RECEIPT_LOCK = threading.Lock()
+SEMANTIC_LOCATION_CAPABILITIES: dict[tuple[str, ...], tuple[int, float]] = {}
+SEMANTIC_LOCATION_CAPABILITY_LOCK = threading.Lock()
 DECISION_CACHE_LIMIT = 128
 ACTION_PROGRESS: dict[tuple[str, str], dict] = {}
 ACTION_PROGRESS_LOCK = threading.RLock()
@@ -596,6 +598,295 @@ def _resolve_native_unit_id(own_unit_ref: str) -> int | None:
             return None
         cursor = next_cursor
     return None
+
+
+class SemanticSelectorError(ValueError):
+    """A provider semantic reference is not valid in the current native frame."""
+
+
+def _native_pages(domain: str) -> list[dict[str, Any]]:
+    """Read one bounded native domain while rejecting revision changes mid-read."""
+    rows: list[dict[str, Any]] = []
+    cursor = 0
+    revision = ""
+    for _ in range(32):
+        page = _call("perspective_world_page", domain=domain, cursor=cursor, limit=256)
+        if page.get("ok") is not True:
+            raise SemanticSelectorError("semantic_reference_native_projection_unavailable")
+        page_revision = str(page.get("action_revision") or "")
+        if revision and page_revision != revision:
+            raise SemanticSelectorError("semantic_reference_native_projection_changed")
+        revision = page_revision
+        rows.extend(item for item in page.get("items", ()) if isinstance(item, dict))
+        next_cursor = page.get("next_cursor")
+        if not isinstance(next_cursor, int) or next_cursor <= cursor:
+            break
+        cursor = next_cursor
+    return rows
+
+
+def _field_current(item: Mapping[str, Any], name: str) -> bool:
+    fields = item.get("fields") if isinstance(item.get("fields"), Mapping) else {}
+    value = fields.get(name)
+    return isinstance(value, Mapping) and value.get("epistemic_status") == "current"
+
+
+def _semantic_selector_context(expected_revision: str) -> dict[str, Any]:
+    """Bind provider refs to the exact current perspective and private native rows.
+
+    The spelling of a semantic reference is never decoded. Resolution is an
+    equality join between the active world projection and a same-revision
+    native perspective page. This rejects old timelines/epochs, compacted VEH
+    rows, lost contacts, and refs copied from another seat.
+    """
+    if not MANAGED_ATTACHED:
+        summary = _call("perspective_world_page", domain="summary", cursor=0, limit=1)
+        if summary.get("ok") is not True \
+                or str(summary.get("action_revision") or "") != expected_revision:
+            raise SemanticSelectorError("semantic_reference_native_revision_changed")
+        units = _native_pages("units")
+        bases = _native_pages("bases")
+        by_ref: dict[str, int] = {}
+        objects: dict[str, dict[str, Any]] = {}
+        reverse_units: dict[int, str] = {}
+        reverse_bases: dict[int, str] = {}
+        reverse_locations: dict[int, str] = {}
+        for row in units:
+            native_id = row.get("id")
+            ref = row.get("own_unit_ref")
+            if row.get("owned") is True and isinstance(native_id, int) and isinstance(ref, str):
+                by_ref[ref] = native_id
+                reverse_units[native_id] = ref
+                objects[ref] = {"kind": "own_unit", "status": "active"}
+        for row in bases:
+            native_id = row.get("id")
+            ref = row.get("base_ref")
+            if row.get("owned") is True and isinstance(native_id, int) and isinstance(ref, str):
+                by_ref[ref] = native_id
+                reverse_bases[native_id] = ref
+                objects[ref] = {"kind": "base", "status": "active", "fields": {
+                    "owner_ref": {"source": "owned_state", "epistemic_status": "current"},
+                }}
+            tile_id = row.get("tile_id")
+            if isinstance(tile_id, int):
+                location = f"location-{tile_id}"
+                by_ref[location] = tile_id
+                reverse_locations[tile_id] = location
+                objects[location] = {"kind": "location", "status": "active"}
+        for row in units:
+            tile_id = row.get("tile_id")
+            if isinstance(tile_id, int):
+                location = f"location-{tile_id}"
+                by_ref.setdefault(location, tile_id)
+                reverse_locations.setdefault(tile_id, location)
+                objects.setdefault(location, {"kind": "location", "status": "active"})
+        return {
+            "identity": {}, "action_revision": expected_revision, "by_ref": by_ref,
+            "objects": objects, "reverse_units": reverse_units,
+            "reverse_bases": reverse_bases, "reverse_locations": reverse_locations,
+        }
+    match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
+    try:
+        _, world, _ = controller_world_service(
+            match_id, session_id=session_id, agent_id=agent_id,
+            perspective_id=perspective_id,
+        )
+        identity, projection = world._projection()
+    except Exception as exc:
+        raise SemanticSelectorError("semantic_reference_world_unavailable") from exc
+    if identity.match_id != match_id or identity.perspective_id != perspective_id:
+        raise SemanticSelectorError("semantic_reference_scope_mismatch")
+    action_revision = str(projection.get("action_revision") or "")
+    if not action_revision or action_revision != expected_revision:
+        raise SemanticSelectorError("semantic_reference_stale_revision")
+    objects = world._objects(projection)
+    native_units = _native_pages("units")
+    native_bases = _native_pages("bases")
+    # Pages are each coherent; confirm the native head remains unchanged after
+    # both joins. No result from an earlier compacted row may be reused.
+    check = _call("perspective_world_page", domain="summary", cursor=0, limit=1)
+    if check.get("ok") is not True \
+            or str(check.get("action_revision") or "") != expected_revision:
+        raise SemanticSelectorError("semantic_reference_native_revision_changed")
+
+    by_ref: dict[str, int] = {}
+    reverse_units: dict[int, str] = {}
+    reverse_bases: dict[int, str] = {}
+    reverse_locations: dict[int, str] = {}
+
+    unit_by_owned_ref = {
+        str(row.get("own_unit_ref")): row for row in native_units
+        if row.get("owned") is True and row.get("own_unit_ref")
+    }
+    unit_by_observation_key = {
+        str(row.get("native_observation_key")): row for row in native_units
+        if row.get("owned") is not True and row.get("native_observation_key")
+    }
+    base_by_ref = {str(row.get("base_ref")): row for row in native_bases if row.get("base_ref")}
+    for ref, item in objects.items():
+        if item.get("status", "active") != "active":
+            continue
+        kind = str(item.get("kind") or "")
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), Mapping) else {}
+        if kind == "location":
+            x = metadata.get("native_x")
+            y = metadata.get("native_y")
+            shape = projection.get("map_shape")
+            if isinstance(x, int) and isinstance(y, int) and isinstance(shape, Mapping):
+                width = shape.get("width")
+                if isinstance(width, int) and width > 0:
+                    tile_id = (x + width * y) // 2
+                    by_ref[ref] = tile_id
+                    reverse_locations[tile_id] = ref
+        elif kind == "own_unit":
+            row = unit_by_owned_ref.get(ref)
+            native_id = row.get("id") if row else None
+            if isinstance(native_id, int):
+                by_ref[ref] = native_id
+                reverse_units[native_id] = ref
+        elif kind == "foreign_contact":
+            key = metadata.get("native_observation_key")
+            row = unit_by_observation_key.get(str(key)) if key else None
+            native_id = row.get("id") if row else None
+            if isinstance(native_id, int) and _field_current(item, "last_seen_turn"):
+                by_ref[ref] = native_id
+                reverse_units[native_id] = ref
+        elif kind == "base":
+            row = base_by_ref.get(ref)
+            native_id = row.get("id") if row else None
+            if isinstance(native_id, int) and _field_current(item, "owner_ref"):
+                by_ref[ref] = native_id
+                reverse_bases[native_id] = ref
+    capability_prefix = (
+        match_id, session_id, agent_id, perspective_id,
+        identity.timeline_id, identity.world_epoch, expected_revision,
+    )
+    now = time.monotonic()
+    with SEMANTIC_LOCATION_CAPABILITY_LOCK:
+        expired = [key for key, (_, expires) in SEMANTIC_LOCATION_CAPABILITIES.items()
+                   if expires <= now]
+        for key in expired:
+            SEMANTIC_LOCATION_CAPABILITIES.pop(key, None)
+        for key, (tile_id, _) in SEMANTIC_LOCATION_CAPABILITIES.items():
+            if key[:7] != capability_prefix:
+                continue
+            ref = key[7]
+            by_ref[ref] = tile_id
+            reverse_locations[tile_id] = ref
+    return {
+        "identity": identity.as_dict(), "action_revision": action_revision,
+        "by_ref": by_ref, "objects": objects,
+        "reverse_units": reverse_units, "reverse_bases": reverse_bases,
+        "reverse_locations": reverse_locations,
+    }
+
+
+def _resolve_managed_selectors(
+    expected_revision: str, *, own_unit_ref: str = "", base_ref: str = "",
+    target_location_ref: str = "", target_unit_ref: str = "",
+) -> tuple[dict[str, int], dict[str, Any]]:
+    context = _semantic_selector_context(expected_revision)
+    objects = context["objects"]
+    by_ref = context["by_ref"]
+    resolved: dict[str, int] = {}
+    contracts = (
+        ("own_unit_ref", own_unit_ref, "unit_id", {"own_unit"}),
+        ("base_ref", base_ref, "base_id", {"base"}),
+        ("target_location_ref", target_location_ref, "target_tile_id", {"location"}),
+        ("target_unit_ref", target_unit_ref, "target_unit_id", {"own_unit", "foreign_contact"}),
+    )
+    for public_name, ref, native_name, kinds in contracts:
+        if not ref:
+            continue
+        item = objects.get(ref)
+        synthetic_location = public_name == "target_location_ref" \
+            and ref in by_ref and item is None
+        if not synthetic_location and (
+                not isinstance(item, Mapping) or item.get("status", "active") != "active"
+                or item.get("kind") not in kinds or ref not in by_ref):
+            raise SemanticSelectorError(f"invalid_current_{public_name}")
+        if public_name == "base_ref":
+            owner = item.get("fields", {}).get("owner_ref", {})
+            if not isinstance(owner, Mapping) or owner.get("source") != "owned_state":
+                raise SemanticSelectorError("base_ref_must_be_current_owned_base")
+        resolved[native_name] = int(by_ref[ref])
+    return resolved, context
+
+
+_CHOICE_REF_KEYS = {
+    "unit_id": ("own_unit_ref", "reverse_units"),
+    "attacker_unit_id": ("attacker_unit_ref", "reverse_units"),
+    "carrier_unit_id": ("carrier_unit_ref", "reverse_units"),
+    "defender_unit_id": ("defender_unit_ref", "reverse_units"),
+    "deleted_unit_id": ("deleted_unit_ref", "reverse_units"),
+    "former_unit_id": ("former_unit_ref", "reverse_units"),
+    "selected_unit_id": ("selected_unit_ref", "reverse_units"),
+    "source_unit_id": ("source_unit_ref", "reverse_units"),
+    "transport_unit_id": ("transport_unit_ref", "reverse_units"),
+    "target_unit_id": ("target_unit_ref", "reverse_units"),
+    "base_id": ("base_ref", "reverse_bases"),
+    "headquarters_base_id": ("headquarters_base_ref", "reverse_bases"),
+    "home_base_id": ("home_base_ref", "reverse_bases"),
+    "old_home_base_id": ("old_home_base_ref", "reverse_bases"),
+    "opened_base_id": ("opened_base_ref", "reverse_bases"),
+    "source_base_id": ("source_base_ref", "reverse_bases"),
+    "destination_base_id": ("destination_base_ref", "reverse_bases"),
+    "target_base_id": ("target_base_ref", "reverse_bases"),
+    "tile_id": ("location_ref", "reverse_locations"),
+    "base_tile_id": ("base_location_ref", "reverse_locations"),
+    "from_tile_id": ("from_location_ref", "reverse_locations"),
+    "observed_tile_id": ("observed_location_ref", "reverse_locations"),
+    "origin_tile_id": ("origin_location_ref", "reverse_locations"),
+    "to_tile_id": ("to_location_ref", "reverse_locations"),
+    "source_tile_id": ("source_location_ref", "reverse_locations"),
+    "destination_tile_id": ("destination_location_ref", "reverse_locations"),
+    "target_tile_id": ("target_location_ref", "reverse_locations"),
+}
+
+_CHOICE_REF_LIST_KEYS = {
+    "ready_unit_ids": ("ready_unit_refs", "reverse_units"),
+    "skipped_unit_ids": ("skipped_unit_refs", "reverse_units"),
+}
+
+
+def _semanticize_choice(value: Any, context: Mapping[str, Any] | None) -> Any:
+    """Translate private native entity selectors to provider-safe world refs."""
+    if isinstance(value, list):
+        return [_semanticize_choice(item, context) for item in value]
+    if not isinstance(value, Mapping):
+        return value
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        list_contract = _CHOICE_REF_LIST_KEYS.get(str(key))
+        if list_contract:
+            public_key, reverse_name = list_contract
+            reverse = context.get(reverse_name, {}) if isinstance(context, Mapping) else {}
+            refs = [reverse.get(native_id) for native_id in item] \
+                if isinstance(item, list) and isinstance(reverse, Mapping) else []
+            result[public_key] = [ref for ref in refs if isinstance(ref, str)]
+            continue
+        contract = _CHOICE_REF_KEYS.get(str(key))
+        if contract:
+            public_key, reverse_name = contract
+            reverse = context.get(reverse_name, {}) if isinstance(context, Mapping) else {}
+            ref = reverse.get(item) if isinstance(reverse, Mapping) else None
+            if isinstance(ref, str):
+                result[public_key] = ref
+            continue
+        result[str(key)] = _semanticize_choice(item, context)
+    return result
+
+
+def _choice_contains_private_selector(value: Any) -> bool:
+    if isinstance(value, list):
+        return any(_choice_contains_private_selector(item) for item in value)
+    if not isinstance(value, Mapping):
+        return False
+    return any(
+        str(key) in _CHOICE_REF_KEYS or str(key) in _CHOICE_REF_LIST_KEYS
+        or _choice_contains_private_selector(item)
+        for key, item in value.items()
+    )
 
 
 def _managed_lifecycle_block(operation: str) -> dict | None:
@@ -1379,7 +1670,7 @@ def _compact_decision_choices(choices: object) -> list[dict]:
     return compact
 
 
-def _decision_advisories(choices: object) -> list[dict]:
+def _decision_advisories(choices: object, *, semantic_context: Mapping[str, Any] | None = None) -> list[dict]:
     """Preserve native rule explanations that are deliberately not executable."""
     if not isinstance(choices, list):
         return []
@@ -1393,7 +1684,9 @@ def _decision_advisories(choices: object) -> list[dict]:
             continue
         if raw.get("kind") != "rule_status":
             continue
-        item = {key: raw[key] for key in allowed if key in raw}
+        item = _semanticize_choice(
+            {key: raw[key] for key in allowed if key in raw}, semantic_context,
+        )
         if item:
             advisories.append(item)
         if len(advisories) >= 8:
@@ -1436,6 +1729,7 @@ def _settlement_rule_explains_request(required_action: str,
 
 def _cache_decision_choices(identity: dict, choices: object, *,
                             choice_kind: str, choice_arguments: dict,
+                            semantic_context: Mapping[str, Any] | None = None,
                             focus: dict | None = None,
                             turn: int | None = None,
                             year: int | None = None,
@@ -1448,14 +1742,14 @@ def _cache_decision_choices(identity: dict, choices: object, *,
     labels: dict[str, str] = {}
     raw_items = choices if isinstance(choices, list) else []
     compact: list[dict] = []
-    advisories = _decision_advisories(raw_items)
+    advisories = _decision_advisories(raw_items, semantic_context=semantic_context)
     for raw in raw_items:
         if not isinstance(raw, dict) or not isinstance(raw.get("command"), str):
             continue
         shown_items = _compact_decision_choices([raw])
         if not shown_items:
             continue
-        shown = shown_items[0]
+        shown = _semanticize_choice(shown_items[0], semantic_context)
         action = str(raw["command"])
         bound = dict(raw)
         requires = bound.pop("requires", None)
@@ -1627,11 +1921,11 @@ def smac_world(
             perspective_id=perspective_id,
         )
         runtime_airdrop_receipt = None
+        target_tile_id = -1
         if mode in {"relation", "route", "reachability"} \
                 and re.fullmatch(r"own-unit-[1-9][0-9]{0,9}", origin_ref):
             identity, projection = world._projection()
             action_revision = str(projection.get("action_revision") or "")
-            target_tile_id = -1
             if mode in {"relation", "route"}:
                 target_location = str(
                     world._objects(projection).get(target_ref, {}).get("location_ref")
@@ -1663,13 +1957,47 @@ def smac_world(
                             while len(AIRDROP_RECEIPT_CACHE) > 64:
                                 AIRDROP_RECEIPT_CACHE.pop(next(iter(AIRDROP_RECEIPT_CACHE)))
         context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
-        return world.query(
+        result = world.query(
             mode=mode, subject_refs=subject_refs or (), origin_ref=origin_ref,
             target_ref=target_ref, movement_profile_ref=movement_profile_ref,
             radius=radius, since_cursor=since_cursor, detail=detail,
             continuation=continuation, context_length=context_length,
             runtime_airdrop_receipt=runtime_airdrop_receipt,
         )
+        if result.get("ok") is True:
+            identity, projection = world._projection()
+            action_revision = str(projection.get("action_revision") or "")
+            prefix = (
+                match_id, session_id, agent_id, perspective_id,
+                identity.timeline_id, identity.world_epoch, action_revision,
+            )
+            now = time.monotonic()
+            with SEMANTIC_LOCATION_CAPABILITY_LOCK:
+                # An exact world query mints a short-lived private binding for
+                # the semantic location it just validated. The provider keeps
+                # using the opaque ref; it never has to decode its spelling or
+                # provide the native tile handle on the action call.
+                if target_tile_id >= 0 and isinstance(runtime_airdrop_receipt, Mapping) \
+                        and runtime_airdrop_receipt.get("ok") is True \
+                        and runtime_airdrop_receipt.get("allowed") is True:
+                    SEMANTIC_LOCATION_CAPABILITIES[(*prefix, target_ref)] = (
+                        target_tile_id, now + DECISION_TTL_SECONDS,
+                    )
+                for item in result.get("items", ()):
+                    if not isinstance(item, Mapping) or item.get("kind") != "location" \
+                            or item.get("epistemic_status") != "unknown":
+                        continue
+                    ref = str(item.get("object_ref") or "")
+                    match = re.fullmatch(r"location-([0-9]+)", ref)
+                    if match:
+                        SEMANTIC_LOCATION_CAPABILITIES[(*prefix, ref)] = (
+                            int(match.group(1)), now + DECISION_TTL_SECONDS,
+                        )
+                while len(SEMANTIC_LOCATION_CAPABILITIES) > 4096:
+                    SEMANTIC_LOCATION_CAPABILITIES.pop(
+                        next(iter(SEMANTIC_LOCATION_CAPABILITIES)), None,
+                    )
+        return result
     except (WorldQueryError, ValueError, RuntimeError) as exc:
         return {"ok": False, "error": {"code": str(exc), "valid_modes": sorted(WORLD_MODES)}}
 
@@ -1794,8 +2122,8 @@ def smac_cognition(
 )
 def smac_decision(
     own_unit_ref: str = "",
-    target_tile_id: int = -1,
-    target_unit_id: int = -1,
+    target_location_ref: str = "",
+    target_unit_ref: str = "",
     finish_ready_units: bool = False,
     detail: Literal["compact", "full"] = "compact",
 ) -> dict:
@@ -1869,6 +2197,7 @@ def smac_decision(
             ), identity)
         protocol = snapshot.get("protocol", {})
         phase = protocol.get("phase")
+        semantic_context: dict[str, Any] | None = None
         if phase == "wait":
             frame = {
                 "ok": True, "kind": "decision_frame", "identity": identity,
@@ -1937,21 +2266,23 @@ def smac_decision(
                 pass
             elif selected is not None:
                 selected_ref = str(selected.get("own_unit_ref") or "")
-                selected_id = _resolve_native_unit_id(selected_ref)
-                if selected_id is None:
+                try:
+                    resolved, semantic_context = _resolve_managed_selectors(
+                        str(identity["revision"]), own_unit_ref=selected_ref,
+                        target_location_ref=target_location_ref,
+                        target_unit_ref=target_unit_ref,
+                    )
+                except SemanticSelectorError as exc:
                     return {
                         "ok": False,
                         "error": {
                             "code": "ready_unit_reference_unresolved",
-                            "message": "The stable ready-unit reference no longer resolves in the current native frame. Call smac_decision again.",
+                            "message": "The selected semantic reference no longer belongs to this current native frame. Call smac_decision again.",
+                            "detail": str(exc),
                         },
                     }
                 choice_kind = "unit_actions"
-                choice_arguments = {
-                    "unit_id": selected_id,
-                    "target_tile_id": target_tile_id,
-                    "target_unit_id": target_unit_id,
-                }
+                choice_arguments = resolved
                 focus = {"kind": "unit_actions", "unit": selected}
             else:
                 choice_kind = "game_management"
@@ -1967,9 +2298,21 @@ def smac_decision(
         }
         if choice_identity != identity:
             continue
+        try:
+            if semantic_context is None and _choice_contains_private_selector(
+                    choices_result.get("choices", [])):
+                semantic_context = _semantic_selector_context(str(identity["revision"]))
+            elif semantic_context is None:
+                semantic_context = {}
+            elif semantic_context.get("action_revision") != identity["revision"]:
+                semantic_context = _semantic_selector_context(str(identity["revision"]))
+        except SemanticSelectorError as exc:
+            return {"ok": False, "error": {
+                "code": "semantic_reference_projection_unavailable", "detail": str(exc),
+            }}
         decision_id, public_choices = _cache_decision_choices(
             identity, choices_result.get("choices", []), choice_kind=choice_kind,
-            choice_arguments=choice_arguments, focus=focus,
+            choice_arguments=choice_arguments, semantic_context=semantic_context, focus=focus,
             turn=snapshot.get("turn"), year=snapshot.get("year"), phase=phase,
         )
         frame = {
@@ -1984,7 +2327,9 @@ def smac_decision(
             },
             "choices": public_choices,
         }
-        advisories = _decision_advisories(choices_result.get("choices", []))
+        advisories = _decision_advisories(
+            choices_result.get("choices", []), semantic_context=semantic_context,
+        )
         if advisories:
             frame["rule_advisories"] = advisories
         if detail == "full":
@@ -2024,21 +2369,37 @@ def smac_list(
     return _call("list_tiles", **arguments)
 
 
-@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. Use production or base_management with base_id and unit_actions with unit_id. Base routing accepts a known owned base_id; map targeting accepts an opaque fair-play target_tile_id; carrier recovery accepts an owned target_unit_id. No native map coordinates are accepted.")
+@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. Select owned actors with own_unit_ref/base_ref and exact world targets with target_location_ref/target_unit_ref from the current perspective. Native IDs and coordinates never cross this managed boundary.")
 def smac_choices(
     kind: Literal["interaction", "research", "energy_allocation", "social_engineering", "diplomacy", "council", "unit_design", "production", "base_management", "base_citizens", "unit_actions", "game_management"],
-    base_id: int = -1,
-    unit_id: int = -1,
-    target_tile_id: int = -1,
-    target_unit_id: int = -1,
+    base_ref: str = "",
+    own_unit_ref: str = "",
+    target_location_ref: str = "",
+    target_unit_ref: str = "",
 ) -> dict:
     authority = _sovereign_gameplay_gate("Native choice enumeration")
     if authority:
         return authority
-    result = _call(
-        "semantic_choices", kind=kind, base_id=base_id, unit_id=unit_id,
-        target_tile_id=target_tile_id, target_unit_id=target_unit_id,
-    )
+    if MANAGED_ATTACHED:
+        refresh = _refresh_managed_world()
+        if not refresh.get("ok"):
+            return refresh
+    snapshot_result = _call("semantic_snapshot")
+    snapshot = snapshot_result.get("snapshot")
+    if snapshot_result.get("ok") is not True or not isinstance(snapshot, dict):
+        return snapshot_result
+    expected_revision = str(snapshot.get("revision") or "")
+    try:
+        choice_arguments, semantic_context = _resolve_managed_selectors(
+            expected_revision, own_unit_ref=own_unit_ref, base_ref=base_ref,
+            target_location_ref=target_location_ref, target_unit_ref=target_unit_ref,
+        )
+    except SemanticSelectorError as exc:
+        return {"ok": False, "error": {
+            "code": "invalid_semantic_selector", "detail": str(exc),
+            "message": "Use only a current semantic reference from this seat's active world.",
+        }}
+    result = _call("semantic_choices", kind=kind, **choice_arguments)
     if not result.get("ok"):
         return result
     identity = {
@@ -2048,10 +2409,7 @@ def smac_choices(
     }
     decision_id, choices = _cache_decision_choices(
         identity, result.get("choices", []), choice_kind=kind,
-        choice_arguments={
-            "base_id": base_id, "unit_id": unit_id,
-            "target_tile_id": target_tile_id, "target_unit_id": target_unit_id,
-        },
+        choice_arguments=choice_arguments, semantic_context=semantic_context,
     )
     frame = {
         "ok": True, "kind": "choice_frame", "decision_id": decision_id,
@@ -2061,7 +2419,9 @@ def smac_choices(
             "execute_at_most": 1,
         },
     }
-    advisories = _decision_advisories(result.get("choices", []))
+    advisories = _decision_advisories(
+        result.get("choices", []), semantic_context=semantic_context,
+    )
     if advisories:
         frame["rule_advisories"] = advisories
     return frame

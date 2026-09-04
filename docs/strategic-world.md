@@ -107,11 +107,12 @@ envelopes include residual movement in the disappearance turn plus refreshed
 movement at every crossed turn boundary.
 
 Amphibious schedules are a two-actor native state machine. An unboarded land
-unit and owned sea transport rendezvous on the same current owned coastal-base
+unit and owned sea transport rendezvous on the same current owned-or-Pact coastal-base
 square; a remembered tile feature is not a base-access receipt, and adjacent
 coast squares are not treated as boardable. The schedule binds the base ref,
-current owner/coastal evidence, and dependency hash. Missing, stale, destroyed,
-enemy, treaty, and unproven Pact ports cannot produce an exact route.
+current owner/coastal evidence, current relationship evidence, and dependency
+hash. Missing, stale, destroyed, enemy, Treaty, Truce, and neutral ports cannot
+produce an exact route.
 `board_transport` skips the passenger but preserves the transport's actual
 rendezvous-turn residual, so the carrier can begin crossing immediately. The
 passenger refreshes only at its next native turn. Disembark is one charged
@@ -125,9 +126,9 @@ assuming coordinate diameter is a valid turn horizon. The fixed embark/landing
 candidate frontier reports whether candidate coverage is complete, how many
 candidates were examined, and whether a result is globally earliest or only
 the best found within the bounded frontier; a bounded miss is never reported as
-proven mechanical unreachability. A current Pact coastal candidate likewise
-forces `search_complete=false` and an explicit unproven-port limitation until
-native co-location access is independently established.
+proven mechanical unreachability. A Pact candidate becomes invalid immediately
+when the current relationship or base evidence changes; remembered Pact access
+is never treated as current.
 
 Routine observation exposes only cheap Drop readiness, range, and action
 revision. An owned `smac_world` route/reachability query or `unit_actions`

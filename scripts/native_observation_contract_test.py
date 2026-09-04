@@ -43,6 +43,7 @@ def main() -> int:
         'if (op == "test_identity_compaction_fixture")',
         'if (op == "test_airdrop_legality_fixture")',
         'if (op == "test_airdrop_collection_stress_fixture")',
+        'if (op == "test_pact_port_fixture")',
         'if (op == "semantic_airdrop_targets")',
         '"smacx.private-vehicle-identity.v1"',
         "semantic_airdrop_target_receipt(",
@@ -104,6 +105,7 @@ def main() -> int:
         'if os.environ.get("SMACX_AGENT_TEST_MODE") == "1"',
         'values["SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION"] = "1"',
         'values["SMACX_ACCEPTANCE_AIRDROP_LEGALITY"] = "1"',
+        'values["SMACX_ACCEPTANCE_PACT_PORT"] = "1"',
         'values["SMACX_AGENT_TEST_MODE"] = "1"',
     )):
         raise AssertionError("MCP sidecar identity wiring drifted")

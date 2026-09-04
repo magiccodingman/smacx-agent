@@ -11,6 +11,7 @@ from pathlib import Path
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 from urllib.error import HTTPError
@@ -67,6 +68,71 @@ print(json.dumps(bridge_request(sys.argv[1], timeout=30, **json.loads(sys.argv[2
         "exec", container_name, "python3", "-c", script,
         operation, json.dumps(arguments, separators=(",", ":")),
     ))
+
+
+def wait_for_native_readiness(container_name: str, timeout: float = 60.0) -> dict:
+    """Require two successful UI-thread reads before destructive fixtures.
+
+    Worker/container health becomes visible before Wine has necessarily serviced
+    its first bounded bridge dispatch after a checkpoint rehost.  Retrying this
+    read-only operation is safe; retrying a timed-out mutating fixture is not.
+    """
+    deadline = time.monotonic() + timeout
+    consecutive = 0
+    latest: dict = {}
+    while time.monotonic() < deadline:
+        latest = bridge_operation(container_name, "semantic_snapshot")
+        if latest.get("ok") is True:
+            consecutive += 1
+            if consecutive >= 2:
+                return latest
+        else:
+            consecutive = 0
+        time.sleep(0.25)
+    raise AssertionError({
+        "message": "native UI thread did not become stably readable",
+        "latest": latest,
+    })
+
+
+def wait_native_action(container_name: str, action_id: int, timeout: float = 20.0) -> dict:
+    deadline = time.monotonic() + timeout
+    latest: dict = {}
+    while time.monotonic() < deadline:
+        latest = bridge_operation(container_name, "action_status", action_id=action_id)
+        action = latest.get("action") or {}
+        if action.get("status") != "pending":
+            return action
+        time.sleep(0.05)
+    return latest.get("action") or {}
+
+
+def measured_bridge_operation(
+    container_name: str, operation: str, **arguments: object,
+) -> tuple[dict, float, float]:
+    """Measure native receipt wall time and concurrent native/UI probe gap."""
+    stop = threading.Event()
+    probe_latencies: list[float] = []
+
+    def probe() -> None:
+        while not stop.is_set():
+            started = time.monotonic()
+            try:
+                bridge_operation(container_name, "ping")
+                probe_latencies.append((time.monotonic() - started) * 1000)
+            except Exception:
+                probe_latencies.append((time.monotonic() - started) * 1000)
+            stop.wait(0.01)
+
+    thread = threading.Thread(target=probe, daemon=True)
+    thread.start()
+    time.sleep(0.03)
+    started = time.monotonic()
+    result = bridge_operation(container_name, operation, **arguments)
+    wall_ms = (time.monotonic() - started) * 1000
+    stop.set()
+    thread.join(5)
+    return result, wall_ms, max(probe_latencies, default=0.0)
 
 
 def api(opener, base_url: str, method: str, path: str, body: dict | None = None,
@@ -310,6 +376,7 @@ def main() -> int:
             "-e", "SMACX_AGENT_TEST_MODE=1",
             "-e", "SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION=1",
             "-e", "SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1",
+            "-e", "SMACX_ACCEPTANCE_PACT_PORT=1",
             "-e", "SMACX_DOCKER_SOCKET=/var/run/docker.sock",
             "-e", f"SMACX_DOCKER_NETWORK={network}",
             "-e", f"SMACX_GAME_SOURCE={game}",
@@ -792,9 +859,24 @@ def main() -> int:
                     f"{before_revision!r} -> {after_revision!r}"
                 )
             hermes_result["native_revision_advanced"] = True
-        # This contained fixture mutates native factions/units/bases, so run it
-        # only after every recovery/provider assertion and immediately before
-        # parking the disposable acceptance worker.
+        # Publish a fresh checkpoint on the recovered timeline. The earlier
+        # checkpoint has already been consumed to prove crash recovery; using
+        # it again after the timeline fork would correctly fail the world/head
+        # coherence guard during the fixture-isolation restore.
+        fixture_checkpoint = api(
+            opener, base_url, "POST",
+            f"/api/v1/matches/{created['match']['match_id']}/checkpoint",
+            {"slot": "fixture_restore"}, csrf, 60,
+        ).get("checkpoint", {})
+        if fixture_checkpoint.get("verified") is not True:
+            raise AssertionError({
+                "message": "fresh fixture-isolation checkpoint was not verified",
+                "checkpoint": fixture_checkpoint,
+            })
+        # These contained fixtures mutate native factions/units/bases, so run
+        # them only after every recovery/provider assertion.  Exercise the
+        # isolated airdrop matrix before adding a Pact base and mixed stack;
+        # those are deliberately unrelated fixture worlds.
         native_airdrop = bridge_operation(
             recovered_sidecar, "test_airdrop_legality_fixture",
         )
@@ -809,6 +891,11 @@ def main() -> int:
             "unknown_noncombat": False,
             "aerospace_defended": True,
             "air_superiority_defended": True,
+            "mapped_fog_native_target": True,
+            "unmapped_native_target": True,
+            "hidden_unit_rejected": True,
+            "hidden_hostile_base_native_target": True,
+            "native_target_path_uses_visibility_gate": False,
         }
         if not native_airdrop.get("ok") or any(
                 native_airdrop.get(key) is not expected
@@ -849,8 +936,13 @@ def main() -> int:
                 "page_latency_ms": drop_page_latencies,
                 "page_bytes": drop_page_bytes,
             })
-        demanded_dropper = ready_drop_rows[0]
-        native_receipt = bridge_operation(
+        demanded_dropper = next(
+            (row for row in ready_drop_rows
+             if int(row.get("id", -1)) == int(drop_stress.get("first_dropper_id", -2))), None,
+        )
+        if demanded_dropper is None:
+            raise AssertionError("stress fixture's demanded Drop unit was not projected")
+        native_receipt, enumeration_wall_ms, enumeration_probe_gap_ms = measured_bridge_operation(
             recovered_sidecar, "semantic_airdrop_targets",
             unit_id=int(demanded_dropper["id"]), maximum_targets=128,
         )
@@ -871,10 +963,35 @@ def main() -> int:
                 "message": "demand receipt diverged from executable choices",
                 "receipt": native_receipt, "choice": airdrop_choice,
             })
-        demanded_target = max(native_receipt["targets"], key=lambda item: int(item["range"]))
+        outside_target_id = int(drop_stress.get("outside_first_128_target_tile_id", -1))
+        if drop_stress.get("enumeration_truncated") is not True \
+                or native_receipt.get("targets_truncated") is not True \
+                or int(native_receipt.get("target_count", 0)) <= 128 \
+                or outside_target_id < 0 or outside_target_id in receipt_ids:
+            raise AssertionError({
+                "message": "orbital Drop fixture did not prove >128 target truncation",
+                "fixture": drop_stress, "receipt": native_receipt,
+            })
+        exact_receipt, exact_wall_ms, exact_probe_gap_ms = measured_bridge_operation(
+            recovered_sidecar, "semantic_airdrop_targets",
+            unit_id=int(demanded_dropper["id"]), target_tile_id=outside_target_id,
+        )
+        if exact_receipt.get("ok") is not True \
+                or exact_receipt.get("allowed") is not True \
+                or int(exact_receipt.get("target_count", 0)) != 1:
+            raise AssertionError({
+                "message": "outside-page exact airdrop receipt failed",
+                "receipt": exact_receipt,
+            })
+        for receipt, label in ((native_receipt, "enumeration"), (exact_receipt, "exact")):
+            if float(receipt.get("native_elapsed_ms", 999999)) >= 500:
+                raise AssertionError({
+                    "message": f"{label} native airdrop receipt exceeded UI budget",
+                    "receipt": receipt,
+                })
         world_arguments = {
             "mode": "route", "origin_ref": str(demanded_dropper["own_unit_ref"]),
-            "target_ref": f"location-{int(demanded_target['target_tile_id'])}",
+            "target_ref": f"location-{outside_target_id}",
             "detail": "standard",
         }
         demanded_world = asyncio.run(mcp_tool(recovered_endpoint, "smac_world", world_arguments))
@@ -885,6 +1002,128 @@ def main() -> int:
                 "message": "demand receipt did not integrate with revision cache",
                 "first": demanded_world, "second": cached_world,
             })
+        outside_dropper = demanded_dropper
+        semantic_episode = "episode-semantic-drop-" + suffix
+        semantic_lease = runtime_context(recovered_sidecar, semantic_episode)
+        if not semantic_lease.get("ok"):
+            raise AssertionError(f"semantic Drop episode failed: {semantic_lease}")
+        exact_frame = asyncio.run(mcp_tool(recovered_endpoint, "smac_choices", {
+            "kind": "unit_actions",
+            "own_unit_ref": str(outside_dropper["own_unit_ref"]),
+            "target_location_ref": f"location-{outside_target_id}",
+        }))
+        serialized_frame = json.dumps(exact_frame, separators=(",", ":"))
+        exact_choice = next(
+            (row for row in exact_frame.get("choices", ())
+             if row.get("target_location_ref") == f"location-{outside_target_id}"), None,
+        )
+        if exact_choice is None or "target_tile_id" in serialized_frame:
+            raise AssertionError({
+                "message": "managed semantic target leaked or failed to bind",
+                "frame": exact_frame,
+            })
+        executed_drop = asyncio.run(mcp_tool(recovered_endpoint, "smac_execute_choice", {
+            "decision_id": exact_frame["decision_id"],
+            "choice_id": exact_choice["choice_id"],
+        }))
+        runtime_context(recovered_sidecar, semantic_episode, end=True)
+        if executed_drop.get("ok") is not True \
+                or executed_drop.get("executed_choice", {}).get("label") is None:
+            raise AssertionError({
+                "message": "opaque outside-page Drop execution failed",
+                "result": executed_drop,
+            })
+        # Restore the fresh pre-fixture checkpoint before the unrelated Pact-port
+        # proof. Destructive acceptance fixtures must not validate against
+        # state manufactured by a prior fixture.
+        old_recovered_container = str(recovered_worker["container_name"])
+        old_recovered_id = docker(
+            "inspect", "-f", "{{.Id}}", old_recovered_container,
+        )
+        docker("stop", "-t", "1", old_recovered_container)
+        reset_deadline = time.monotonic() + 480
+        while time.monotonic() < reset_deadline:
+            workers_now = api(opener, base_url, "GET", "/api/v1/workers")["workers"]
+            current = next(item for item in workers_now
+                           if item["instance_id"] == worker["instance_id"])
+            current_name = str(current.get("container_name") or "")
+            current_network = current.get("network") or {}
+            current_id = docker(
+                "inspect", "-f", "{{.Id}}", current_name, check=False,
+            ) if current_name else ""
+            if current.get("observed_status") == "running" \
+                    and current_id and current_id != old_recovered_id \
+                    and current_network.get("mcp_url") \
+                    and current_network.get("mcp_container_name"):
+                recovered_worker = current
+                break
+            time.sleep(2)
+        else:
+            raise AssertionError("fixture isolation recovery did not restart the worker")
+        recovered_endpoint = recovered_worker.get("network", {}).get("mcp_url")
+        recovered_sidecar = recovered_worker.get("network", {}).get("mcp_container_name")
+        if not recovered_endpoint or not recovered_sidecar:
+            raise AssertionError("fixture isolation recovery omitted its MCP sidecar")
+        wait_for_native_readiness(recovered_sidecar)
+        pact_port = bridge_operation(recovered_sidecar, "test_pact_port_fixture")
+        if not pact_port.get("ok") or pact_port.get("relationship") != "pact" \
+                or pact_port.get("coastal") is not True:
+            raise AssertionError(f"native Pact-port fixture failed: {pact_port}")
+        pact_target = int(pact_port["base_tile_id"])
+        for actor_key in ("land_entry_id", "sea_entry_id"):
+            actor_id = int(pact_port[actor_key])
+            choices = bridge_operation(
+                recovered_sidecar, "semantic_choices", kind="unit_actions",
+                unit_id=actor_id, target_tile_id=pact_target,
+            )
+            movement = next(
+                (row for row in choices.get("choices", ())
+                 if row.get("command") == "move_unit"
+                 and int(row.get("target_tile_id", -1)) == pact_target), None,
+            )
+            if movement is None:
+                raise AssertionError({
+                    "message": "owned actor could not legally enter current Pact base",
+                    "actor": actor_key, "fixture": pact_port, "choices": choices,
+                })
+            moved = bridge_operation(
+                recovered_sidecar, "semantic_command", command="move_unit",
+                unit_id=actor_id, target_tile_id=pact_target,
+                match_id=choices["match_id"], session_id=choices["session_id"],
+                expected_revision=choices["revision"],
+            )
+            if not moved.get("ok") or not moved.get("queued"):
+                raise AssertionError(f"Pact-port movement did not queue: {moved}")
+            action = wait_native_action(recovered_sidecar, int(moved["action_id"]))
+            if action.get("status") != "completed" \
+                    or int(action.get("observed_tile_id", -1)) != pact_target:
+                raise AssertionError({
+                    "message": "Pact-port movement did not complete", "action": action,
+                })
+        passenger_id = int(pact_port["passenger_id"])
+        transport_id = int(pact_port["transport_id"])
+        board_choices = bridge_operation(
+            recovered_sidecar, "semantic_choices", kind="unit_actions",
+            unit_id=passenger_id,
+        )
+        board = next(
+            (row for row in board_choices.get("choices", ())
+             if row.get("command") == "board_transport"
+             and int(row.get("transport_unit_id", -1)) == transport_id), None,
+        )
+        if board is None:
+            raise AssertionError({
+                "message": "co-located owned actors could not board at Pact base",
+                "choices": board_choices,
+            })
+        boarded = bridge_operation(
+            recovered_sidecar, "semantic_command", command="board_transport",
+            unit_id=passenger_id, transport_unit_id=transport_id,
+            match_id=board_choices["match_id"], session_id=board_choices["session_id"],
+            expected_revision=board_choices["revision"],
+        )
+        if not boarded.get("ok") or boarded.get("boarded") is not True:
+            raise AssertionError(f"native Pact-port boarding failed: {boarded}")
         api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park",
             {}, csrf, 120,
@@ -901,12 +1140,24 @@ def main() -> int:
                 "native_orbital_project_global_adapter": True,
                 "native_base_geography_and_unit_traits": True,
                 "native_airdrop_diplomacy_and_anti_drop_guards": True,
+                "native_pact_port_amphibious_sequence": True,
                 "native_airdrop_collection_stress": {
                     "ready_drop_units": len(ready_drop_rows),
                     "maximum_page_latency_ms": round(max(drop_page_latencies), 3),
                     "maximum_page_bytes": max(drop_page_bytes),
                     "map_tiles": int(drop_stress.get("map_tiles", 0)),
                     "demand_receipt_matches_actions": True,
+                    "enumeration_target_count": int(native_receipt.get("target_count", 0)),
+                    "enumeration_native_ms": float(native_receipt.get("native_elapsed_ms", 0)),
+                    "enumeration_wall_ms": round(enumeration_wall_ms, 3),
+                    "enumeration_probe_gap_ms": round(enumeration_probe_gap_ms, 3),
+                    "enumeration_payload_bytes": len(json.dumps(native_receipt, separators=(",", ":"))),
+                    "exact_native_ms": float(exact_receipt.get("native_elapsed_ms", 0)),
+                    "exact_wall_ms": round(exact_wall_ms, 3),
+                    "exact_probe_gap_ms": round(exact_probe_gap_ms, 3),
+                    "exact_payload_bytes": len(json.dumps(exact_receipt, separators=(",", ":"))),
+                    "outside_first_128_semantic_choice_executed": True,
+                    "provider_model_supplied_raw_tile_id": False,
                     "revision_cache_hit": True,
                 },
                 "native_global_projection_world_runtime_path": True,

@@ -325,6 +325,69 @@ def main() -> int:
         ocean_topology, full_transport, "passenger", "land-b",
     )["reachable"] is False
 
+    pact_topology = PerspectiveTopology(MapShape(16, 8, False), [
+        KnownSquare("owned-port", 0, 2, "land", features=frozenset({"base"})),
+        KnownSquare("land-start", 2, 2, "land"),
+        KnownSquare("pact-port", 4, 2, "land", features=frozenset({"base"})),
+        KnownSquare("target-coast", 6, 2, "land"),
+        KnownSquare("sea-start", 1, 3, "ocean"),
+        KnownSquare("sea-mid", 3, 3, "ocean"),
+        KnownSquare("sea-end", 5, 3, "ocean"),
+    ])
+    actors = {
+        "passenger": item("passenger", "own_unit", "land-start",
+                          owner_ref="faction-1", triad="land", movement_points=2,
+                          roles={"combat": True, "amphibious": False}),
+        "transport": item("transport", "own_unit", "sea-start",
+                          owner_ref="faction-1", triad="sea", movement_points=2,
+                          roles={"transport": True}, cargo={"capacity": 2, "loaded": 0}),
+        "target-coast": item("target-coast", "location", None, terrain="land"),
+        "faction-2": item("faction-2", "faction", None, relationship="allied"),
+    }
+    owned_only = {**actors, "owned-base": item(
+        "owned-base", "base", "owned-port", owner_ref="faction-1", coastal=True,
+    )}
+    owned_route = transport_route(pact_topology, owned_only, "passenger", "target-coast")
+    assert owned_route and owned_route["reachable"] \
+        and owned_route["embark"]["base_access"] == "current_owned_coastal_base"
+    pact_only = {**actors, "pact-base": item(
+        "pact-base", "base", "pact-port", owner_ref="faction-2", coastal=True,
+    )}
+    pact_route = transport_route(pact_topology, pact_only, "passenger", "target-coast")
+    assert pact_route and pact_route["reachable"] \
+        and pact_route["embark"]["base_access"] == "current_pact_coastal_base" \
+        and pact_route["embark"]["relationship_dependency_hash"]
+    both_route = transport_route(
+        pact_topology, {**owned_only, **pact_only}, "passenger", "target-coast",
+    )
+    assert both_route and both_route["reachable"]
+    assert both_route["eta_turns"] == min(
+        owned_route["eta_turns"], pact_route["eta_turns"],
+    )
+    assert both_route["embark"]["base_ref"] in {"owned-base", "pact-base"}
+    broken = {**pact_only, "faction-2": item(
+        "faction-2", "faction", None, relationship="neutral",
+    )}
+    assert transport_route(
+        pact_topology, broken, "passenger", "target-coast",
+    )["reachable"] is False
+    stale_faction = item("faction-2", "faction", None, relationship="allied")
+    stale_faction["fields"]["relationship"] = field(
+        "allied", status="stale", source="stale_map",
+    )
+    stale_base = item(
+        "pact-base", "base", "pact-port", owner_ref="faction-2", coastal=True,
+    )
+    stale_base["fields"]["coastal"] = field(
+        True, status="stale", source="stale_map",
+    )
+    assert transport_route(
+        pact_topology, {**actors, "faction-2": stale_faction,
+                        "pact-base": stale_base},
+        "passenger", "target-coast",
+    )["reachable"] is False
+    results["current_pact_coastal_port_routing"] = True
+
     drop_objects = {
         "dropper": item("dropper", "own_unit", "land-a", owner_ref="faction-1",
                         triad="land", movement_points=1,

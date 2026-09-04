@@ -26,6 +26,11 @@ def main() -> int:
         "unknown_noncombat": False,
         "aerospace_defended": True,
         "air_superiority_defended": True,
+        "mapped_fog_native_target": True,
+        "unmapped_native_target": True,
+        "hidden_unit_rejected": True,
+        "hidden_hostile_base_native_target": True,
+        "native_target_path_uses_visibility_gate": False,
     }
     if not result.get("ok") or any(result.get(key) is not value
                                     for key, value in expected.items()):

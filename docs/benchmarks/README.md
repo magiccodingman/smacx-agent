@@ -39,7 +39,8 @@ Published reports:
 
 Content-free machine-readable acceptance artifacts include the
 [live disposable specialist run](results/2026-09-03-specialist-live.json) and
-[live prefix-cache measurement](results/2026-09-03-prefix-cache-live.json).
+[live prefix-cache measurement](results/2026-09-03-prefix-cache-live.json), plus
+the [native demanded orbital-receipt run](results/2026-09-04-semantic-airdrop-live.json).
 
 ## Interpreting results
 

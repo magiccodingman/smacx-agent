@@ -22,12 +22,14 @@ conversation text, saves, credentials, or private endpoints.
 | `smac_world` serialized schema | 1,475 bytes; 492 conservative tokens |
 | v6 system prompt | 5,280 bytes; 1,760 conservative tokens; 1,117 exact Qwen tokens |
 | Managed provider tools | 15 |
-| Live stable-prefix second request | 21,424 locally cached tokens of 23,143 prompt tokens |
+| Live stable-prefix second request | 24,720 locally cached tokens of 26,643 prompt tokens |
 | Live Hermes world specialist | 5 provider calls, 9 world queries, 326,786 cumulative replay tokens, 89,492 peak prompt tokens, 4,343-byte strict result, 58.35 seconds |
 | Real-game no-timer specialist | accepted; 5 provider calls, 10 world queries, 375,582 cumulative replay tokens, 97,541 peak prompt tokens, 51.714 seconds; native bridge probe 188 ms; native turn unchanged |
 | Real-game no-timer sovereign action | 12 calls; 135,383 input, 4,959 output, 3,541 reasoning tokens; guarded semantic revision advanced |
 | Native bridge build | current worker image built successfully, including the 32-bit bridge stage |
 | .NET tests | 63 passed |
+| Native Huge-map demanded orbital enumeration | 3,785 legal destinations; 0 ms native handler clock, 212.900 ms wall, 218.256 ms maximum concurrent probe gap, 8,608-byte receipt |
+| Native exact outside-page orbital receipt | destination beyond first 128 accepted; 0 ms native handler clock, 215.288 ms wall, 211.417 ms maximum concurrent probe gap, 288-byte receipt; guarded opaque choice executed without a model-supplied native tile ID |
 
 The Huge fixtures use equivalent strategic activity while changing raw map size,
 then add controlled active complexity. `scripts/world_context_benchmark.py`
@@ -135,10 +137,16 @@ through the real `allow_airdrop` path. The destructive fixture requires both
 test mode and its dedicated acceptance flag. A companion many-ready orbital
 Drop case measures routine page latency and payload without enumerating targets;
 the full target receipt is requested only for one demanded unit. On the native
-8,192-square Huge map, 128 simultaneously ready Drop units produced a maximum
-126,895-byte unit page and 215.162 ms page latency. Its demand receipt exactly
-matched executable `unit_actions`, and the repeated world query hit the
-action-revision cache.
+8,192-square Huge map, 129 simultaneously ready Drop units produced a maximum
+127,868-byte unit page and 200.134 ms page latency. Full demanded enumeration
+covered 3,785 legal locations while remaining below the 500 ms native/UI law.
+The test then selected a legal semantic location beyond the first 128, minted
+a fresh target-specific receipt, returned a guarded opaque choice, and executed
+only that choice without a model-supplied native tile ID. Its demand receipt
+exactly matched executable `unit_actions`, and the repeated world query hit the
+action-revision cache. The same isolated lifecycle restored a fresh verified
+checkpoint and proved owned land/sea entry plus boarding at a current
+counterpart-owned Pact coastal base.
 
 An earlier exploratory run of the same no-timer path continued from turn 1 to
 turn 3 before the integration fixture was tightened to stop on an observed

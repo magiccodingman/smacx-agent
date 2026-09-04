@@ -603,16 +603,40 @@ class WorldService:
             center_ref = str(center.get("location_ref") if center and center.get("location_ref")
                              else center.get("object_ref") if center else origin_ref)
             topology = self._topology(projection)
-            if center_ref not in topology.by_ref:
+            if center_ref == "world-map":
+                known = set(topology.by_ref)
+                shape = topology.shape
+                # This is a bounded opaque address book, not hidden terrain
+                # observation. It gives orbital insertion the same ability as
+                # the stock map cursor to nominate an unexplored square while
+                # revealing no terrain, occupant, base, owner, or legality.
+                result["origin_ref"] = center_ref
+                result["coverage"] = {
+                    "planet_address_space": True,
+                    "unmapped_only": True,
+                    "hidden_state_disclosed": False,
+                    "use": "Exact target nomination; native legality remains guarded.",
+                }
+                result["items"] = [
+                    {"object_ref": f"location-{tile_id}", "kind": "location",
+                     "status": "active", "epistemic_status": "unknown"}
+                    for tile_id in range(shape.width * shape.height // 2)
+                    if f"location-{tile_id}" not in known
+                ]
+                center_ref = ""
+            if not center_ref:
+                pass
+            elif center_ref not in topology.by_ref:
                 raise WorldQueryError("unknown_area_origin")
-            origin = topology.by_ref[center_ref]
-            in_area = {ref for ref, square in topology.by_ref.items()
-                       if topology.shape.distance((origin.x, origin.y), (square.x, square.y)) <= radius}
-            result["origin_ref"] = center_ref
-            result["coverage"] = {"radius": radius, "unknown_not_enumerated": True}
-            result["items"] = [_public_object(item) for item in objects.values()
-                               if item.get("object_ref") in in_area
-                               or item.get("location_ref") in in_area]
+            else:
+                origin = topology.by_ref[center_ref]
+                in_area = {ref for ref, square in topology.by_ref.items()
+                           if topology.shape.distance((origin.x, origin.y), (square.x, square.y)) <= radius}
+                result["origin_ref"] = center_ref
+                result["coverage"] = {"radius": radius, "unknown_not_enumerated": True}
+                result["items"] = [_public_object(item) for item in objects.values()
+                                   if item.get("object_ref") in in_area
+                                   or item.get("location_ref") in in_area]
         elif mode == "relation":
             topology = self._topology(projection)
             origin_location = objects.get(origin_ref, {}).get("location_ref") or origin_ref

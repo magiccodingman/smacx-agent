@@ -719,6 +719,44 @@ def main() -> int:
         )
         assert invalidated["operations"] == []
 
+    # Orbital insertion can nominate any Planet square without teaching the
+    # provider native coordinates or hidden terrain.  The world-wide address
+    # book is bounded and paginated even when more than 128 squares are
+    # unknown; each returned item is only an opaque semantic capability.
+    with tempfile.TemporaryDirectory(prefix="smacx-orbital-address-") as temporary:
+        root = Path(temporary)
+        _, _, orbital_scope, orbital_store = initialized(root)
+        orbital_identity = WorldIdentity(
+            orbital_scope.match_id, orbital_scope.perspective_id,
+            "timeline-main", "world-orbital-address",
+        )
+        partial = bundle(width=32, height=16, contact=False)
+        partial["tiles"] = partial["tiles"][:4]
+        projected = PerspectiveProjector(orbital_identity).project(
+            partial, observation_sequence=1,
+        )
+        orbital_store.replace_projection(
+            orbital_scope, orbital_identity, projected["objects"],
+            observation_cursor=1, action_revision="action-orbital",
+            continuity="complete", journal_head_hash="0" * 64,
+        )
+        address_page = WorldService(orbital_store, orbital_scope).query(
+            mode="area", origin_ref="world-map", detail="compact",
+            context_length=65536,
+        )
+        assert address_page["ok"] and address_page["continuation"]
+        assert address_page["coverage"]["planet_address_space"] is True
+        assert address_page["coverage"]["unmapped_only"] is True
+        assert "hidden_state_disclosed" not in address_page["coverage"]
+        assert "native legality remains guarded" in address_page["coverage"]["use"]
+        assert address_page["items"]
+        for address in address_page["items"]:
+            assert set(address) == {
+                "object_ref", "kind", "status", "epistemic_status",
+            }
+            assert address["object_ref"].startswith("location-")
+            assert address["epistemic_status"] == "unknown"
+
     print(json.dumps({"event": "pass", "payload": {
         "correct_square_topology": True, "known_world_routing": True,
         "all_semantic_world_modes": True,
@@ -738,6 +776,7 @@ def main() -> int:
         "watch_ttl_and_plan_cleanup": True,
         "native_row_compaction_semantically_inert": True,
         "first_known_preserved_on_reverification": True,
+        "bounded_unknown_orbital_address_space": True,
     }}, separators=(",", ":")))
     return 0
 

@@ -136,8 +136,9 @@ installation_id
 
 Agent memory scope is exactly `match_id + agent_id + perspective_id`. Another
 agent in the same match, the same model in another match, and a recovered native
-process cannot reuse that scope accidentally. Match-local tile IDs are opaque
-identifiers; coordinates remain inside the bridge.
+process cannot reuse that scope accidentally. Managed providers receive only
+perspective-scoped semantic location/entity refs; native row/tile identifiers
+and coordinates remain inside the bridge and private action cache.
 
 Native state is filtered for the seat's faction. Unit/base ownership, map
 visibility, contacts, council state, diplomacy, chat participants, and legal

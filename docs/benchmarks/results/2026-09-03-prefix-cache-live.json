@@ -3,8 +3,8 @@
   "recorded_date": "2026-09-03",
   "model": "Qwen3.8-27B",
   "first_request_cache_hit_tokens": 0,
-  "second_request_cache_hit_tokens": 21424,
-  "second_request_prompt_tokens": 23843,
+  "second_request_cache_hit_tokens": 24720,
+  "second_request_prompt_tokens": 26643,
   "passed": true,
   "content_free": true
 }
