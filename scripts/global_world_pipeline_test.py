@@ -24,13 +24,14 @@ from smacx_world_types import WorldIdentity
 class CompleteDomainFixture(NativeFixture):
     def __init__(self) -> None:
         super().__init__(16, 8)
+        self.project_builder_ref: str | None = "faction-2"
         for tile in self.tiles:
             tile["visible_now"] = True
         self.bases = [{
             "id": 0, "base_ref": "base-home", "tile_id": 0,
             "owned": True, "visible_now": True, "owner_ref": "faction-1",
             "name": "Home", "population": 5, "mineral_surplus": 8,
-            "unit_support_cost": 1,
+            "minerals": {"unit_support_cost": 1},
             "facilities": [{"facility_id": 33, "name": "Psi Gate"}],
             "psi_gate_ready": True,
             "base_radius": [
@@ -136,9 +137,14 @@ class CompleteDomainFixture(NativeFixture):
                 "outcome": {"status": "in_progress"},
                 "public_projects": [{"project_id": 1, "name": "The Weather Paradigm",
                                      "owner_ref": "faction-2"}],
-                "known_project_races": [{"project_id": 2, "name": "The Virtual World",
-                                         "builder_identity": "unknown",
-                                         "source": "public_report"}],
+                "known_project_races": [{
+                    "project_id": 2, "name": "The Virtual World",
+                    **({"builder_ref": self.project_builder_ref,
+                        "builder_identity": "observed_report"}
+                       if self.project_builder_ref else
+                       {"builder_identity": "unknown"}),
+                    "source": "public_report",
+                }],
                 "own_orbitals": {"nutrient": 1, "mineral": 2, "energy": 3,
                                  "orbital_defense": 1},
                 "governor_faction_id": 2,
@@ -218,6 +224,38 @@ def main() -> int:
         actual_global_kinds = {item["kind"] for item in projection["objects"]
                                if item["object_ref"].startswith("global-")}
         assert expected_global_kinds <= actual_global_kinds
+        initial_race = field(objects["global-known-project-races"], "state")[0]
+        assert initial_race["builder_ref"] == "faction-2"
+        assert initial_race["builder_epistemic_status"] == "current"
+
+        # Simulate a native process restart: the bridge-local popup memory is
+        # empty, while the journal-derived current projection still contains
+        # the legitimately observed builder. It remains reported/stale until a
+        # newer native report supersedes it.
+        fixture.project_builder_ref = None
+        fixture.revision += 1
+        restarted_collector = ObservationCollector(
+            scope=scope, session_id="session-domain-restarted", bridge_call=fixture,
+            journal=journal, world_store=worlds, attention=attention,
+        )
+        restarted_collector.collect_once()
+        projection = worlds.load(scope, journal.timeline_id(scope))
+        assert projection is not None
+        objects = {item["object_ref"]: item for item in projection["objects"]}
+        stale_race = field(objects["global-known-project-races"], "state")[0]
+        assert stale_race["builder_ref"] == "faction-2"
+        assert stale_race["builder_epistemic_status"] == "stale"
+        assert stale_race["builder_provenance"]
+
+        fixture.project_builder_ref = "faction-3"
+        fixture.revision += 1
+        restarted_collector.collect_once()
+        projection = worlds.load(scope, journal.timeline_id(scope))
+        assert projection is not None
+        objects = {item["object_ref"]: item for item in projection["objects"]}
+        replacement_race = field(objects["global-known-project-races"], "state")[0]
+        assert replacement_race["builder_ref"] == "faction-3"
+        assert replacement_race["builder_epistemic_status"] == "current"
         assert field(objects["global-ecology"], "state")["sea_level"] == 4
         assert field(objects["global-own-planetary-state"], "state")["random_event_id"] == 7
         assert field(objects["global-victory-posture"], "state")["enabled"]["cooperative"]
@@ -290,6 +328,7 @@ def main() -> int:
         "global_domains_query_anchor_runtime": True,
         "base_radius_support_convoy_transport": True,
         "wild_native_and_progenitor_ontology": True,
+        "project_builder_report_survives_restart_and_is_superseded": True,
         "specialist_snapshot_entitlement_safe": True,
     }}, separators=(",", ":")))
     return 0

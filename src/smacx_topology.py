@@ -101,9 +101,14 @@ class MobilityProfile:
     airdrop_destination_refs: frozenset[str] = field(default_factory=frozenset)
     abilities: frozenset[str] = field(default_factory=frozenset)
     known: bool = True
+    # Perspective-derived ZOC/occupancy is exact only for the sovereign's own
+    # units. Foreign/allied subjects receive a conservative minimum with an
+    # explicit conditional marker instead of inheriting our blockers.
+    constraint_mode: str = "sovereign_exact"
 
     def __post_init__(self) -> None:
-        if self.triad not in {"land", "sea", "air"} or self.movement_points <= 0:
+        if self.triad not in {"land", "sea", "air"} or self.movement_points <= 0 \
+                or self.constraint_mode not in {"sovereign_exact", "subject_unknown"}:
             raise WorldContractError("invalid_mobility_profile")
 
 
@@ -390,7 +395,39 @@ class PerspectiveTopology:
 
     def _route_surface(self, origin_ref: str, target_ref: str,
                        profile: MobilityProfile, dependency: str) -> RouteResult:
-        origin = self.by_ref[origin_ref]
+        state = self._surface_arrival_state(origin_ref, profile)
+        labels = state["labels"]
+        raw_costs = state["raw_costs"]
+        parents = state["parents"]
+        parent_kinds = state["parent_kinds"]
+        stochastic_paths = state["stochastic_paths"]
+        if target_ref not in labels:
+            return RouteResult(False, (), None, None,
+                               ("No route exists in the currently known world; unknown geography may change this.",),
+                               dependency)
+        path = [target_ref]
+        while path[-1] != origin_ref:
+            path.append(parents[path[-1]])
+        path.reverse()
+        movement_cost = raw_costs[target_ref]
+        turns = labels[target_ref][0]
+        uncertainty = self._arrival_uncertainty(path, parent_kinds, stochastic_paths,
+                                                target_ref, profile)
+        stochastic = stochastic_paths.get(target_ref, False)
+        return RouteResult(
+            True, tuple(path), movement_cost, turns, tuple(uncertainty), dependency,
+            "stochastic_earliest" if stochastic else
+            ("conditional_minimum" if profile.constraint_mode == "subject_unknown"
+             else "exact_known_state"),
+            None if stochastic or profile.constraint_mode == "subject_unknown" else turns,
+        )
+
+    def _surface_arrival_state(
+        self, origin_ref: str, profile: MobilityProfile, *, max_turns: int | None = None,
+    ) -> dict[str, Any]:
+        """One label-setting engine for route, reachability, and envelopes."""
+        if origin_ref not in self.by_ref:
+            raise WorldContractError("invalid_reachability_origin")
         # Label-setting state machine. A label is (turn in which the unit is
         # moving, movement spent in that turn). Native over-cost entry may
         # exhaust/overspend a non-empty turn (and can be stochastic for land),
@@ -405,22 +442,25 @@ class PerspectiveTopology:
         parents: dict[str, str] = {}
         parent_kinds: dict[str, str] = {}
         stochastic_paths = {origin_ref: False}
+        uncertainty_flags: dict[str, frozenset[str]] = {
+            origin_ref: frozenset({"stale"}) if not self.by_ref[origin_ref].current
+            else frozenset()
+        }
         while queue:
             turn_no, spent, current_ref = heappop(queue)
             if (turn_no, spent) != labels[current_ref]:
                 continue
-            if current_ref == target_ref:
-                break
             current = self.by_ref[current_ref]
             for neighbor, step_cost, edge_kind in self._edges(current, profile):
                 # A currently observed non-allied combat unit blocks transit.
                 # It may still be the explicit route target (for an attack),
                 # and a hostile unit may route outward from its own origin for
                 # mechanical threat/response calculations.
-                if profile.triad != "air" and neighbor.blocking_contact_occupied \
-                        and neighbor.location_ref != target_ref:
-                    continue
-                if current.hostile_zoc and neighbor.hostile_zoc and not profile.ignores_zoc:
+                exact_constraints = profile.constraint_mode == "sovereign_exact"
+                occupied_terminal = exact_constraints and profile.triad != "air" \
+                    and neighbor.blocking_contact_occupied
+                if exact_constraints and current.hostile_zoc and neighbor.hostile_zoc \
+                        and not profile.ignores_zoc:
                     continue
                 effective = float(step_cost)
                 next_turn = max(1, turn_no)
@@ -454,6 +494,8 @@ class PerspectiveTopology:
                         next_turn = max(1, turn_no) + 1
                     next_spent = float(profile.movement_points)
                 candidate = (next_turn, next_spent)
+                if max_turns is not None and next_turn > max_turns:
+                    continue
                 if candidate < labels.get(neighbor.location_ref, (10**9, inf)):
                     labels[neighbor.location_ref] = candidate
                     raw_costs[neighbor.location_ref] = raw_costs[current_ref] + step_cost
@@ -462,17 +504,60 @@ class PerspectiveTopology:
                     stochastic_paths[neighbor.location_ref] = (
                         stochastic_paths.get(current_ref, False) or stochastic_entry
                     )
-                    heappush(queue, (next_turn, next_spent, neighbor.location_ref))
-        if target_ref not in labels:
-            return RouteResult(False, (), None, None,
-                               ("No route exists in the currently known world; unknown geography may change this.",),
-                               dependency)
-        path = [target_ref]
-        while path[-1] != origin_ref:
-            path.append(parents[path[-1]])
-        path.reverse()
-        movement_cost = raw_costs[target_ref]
-        turns = labels[target_ref][0]
+                    flags = set(uncertainty_flags.get(current_ref, ()))
+                    if edge_kind == "airdrop":
+                        flags.add("airdrop")
+                    if not neighbor.current:
+                        flags.add("stale")
+                    if profile.triad == "sea" and "fungus" in neighbor.features \
+                            and neighbor.altitude is None:
+                        flags.add("unknown_sea_fungus_depth")
+                    if stochastic_entry:
+                        flags.add("stochastic")
+                    uncertainty_flags[neighbor.location_ref] = frozenset(flags)
+                    # A known blocking combat unit can be attacked as a final
+                    # destination, but the route cannot pass through it.
+                    if not occupied_terminal:
+                        heappush(queue, (next_turn, next_spent, neighbor.location_ref))
+        return {
+            "labels": labels, "raw_costs": raw_costs, "parents": parents,
+            "parent_kinds": parent_kinds, "stochastic_paths": stochastic_paths,
+            "uncertainty_flags": uncertainty_flags,
+        }
+
+    @staticmethod
+    def _flag_uncertainty(flags: Iterable[str], profile: MobilityProfile) -> list[str]:
+        values = set(flags)
+        uncertainty: list[str] = []
+        if "airdrop" in values:
+            uncertainty.append(
+                "Airdrop range/start-state is known; execute only a fresh native-guarded destination choice."
+            )
+        if "stale" in values:
+            uncertainty.append(
+                "Route crosses stale remembered geography; revalidate before a consequential action."
+            )
+        if "unknown_sea_fungus_depth" in values:
+            uncertainty.append(
+                "A remembered sea-fungus square has unknown shelf depth; ETA uses the slower shelf bound."
+            )
+        if "stochastic" in values:
+            uncertainty.append(
+                "This route includes a fungus entry whose native random movement check can fail; "
+                "eta_turns is the earliest successful arrival and has no finite guaranteed upper bound."
+            )
+        if profile.constraint_mode == "subject_unknown":
+            uncertainty.append(
+                "Subject-relative ZOC, occupancy, and foreign diplomatic access are not fully known; "
+                "this is a conservative minimum, not an exact arrival guarantee."
+            )
+        return uncertainty
+
+    def _arrival_uncertainty(
+        self, path: list[str], parent_kinds: Mapping[str, str],
+        stochastic_paths: Mapping[str, bool], target_ref: str,
+        profile: MobilityProfile,
+    ) -> list[str]:
         uncertainty: list[str] = []
         if any(parent_kinds.get(ref) == "airdrop" for ref in path[1:]):
             uncertainty.append(
@@ -493,36 +578,62 @@ class PerspectiveTopology:
                 "This route includes a fungus entry whose native random movement check can fail; "
                 "eta_turns is the earliest successful arrival and has no finite guaranteed upper bound."
             )
-        return RouteResult(
-            True, tuple(path), movement_cost, turns, tuple(uncertainty), dependency,
-            "stochastic_earliest" if stochastic else "exact_known_state",
-            None if stochastic else turns,
-        )
+        if profile.constraint_mode == "subject_unknown":
+            uncertainty.append(
+                "Subject-relative ZOC, occupancy, and foreign diplomatic access are not fully known; this is a conservative minimum, not an exact arrival guarantee."
+            )
+        return uncertainty
+
+    def arrival_map(self, origin_ref: str, profile: MobilityProfile,
+                    *, max_turns: int) -> dict[str, dict[str, Any]]:
+        """Earliest stateful arrivals using the same transitions as route()."""
+        if max_turns < 0:
+            raise WorldContractError("invalid_reachability_turn_bound")
+        if not profile.known:
+            return {}
+        if profile.triad == "air" and profile.air_safe_range is not None:
+            rows: dict[str, dict[str, Any]] = {}
+            for ref in sorted(self.by_ref):
+                route = self.route(origin_ref, ref, profile)
+                if route.reachable and route.turns is not None and route.turns <= max_turns:
+                    rows[ref] = route.as_dict()
+            return rows
+        dependency = self._dependency_hash(profile)
+        state = self._surface_arrival_state(origin_ref, profile, max_turns=max_turns)
+        rows = {}
+        for ref, label in state["labels"].items():
+            stochastic = bool(state["stochastic_paths"].get(ref, False))
+            uncertainty = self._flag_uncertainty(
+                state["uncertainty_flags"].get(ref, ()), profile,
+            )
+            rows[ref] = RouteResult(
+                # Arrival maps deliberately omit every path.  Reconstructing a
+                # path per square is quadratic on Huge maps; callers request a
+                # single authoritative route only for selected endpoints.
+                True, (), float(state["raw_costs"][ref]), int(label[0]),
+                tuple(uncertainty), dependency,
+                "stochastic_earliest" if stochastic else
+                ("conditional_minimum" if profile.constraint_mode == "subject_unknown"
+                 else "exact_known_state"),
+                None if stochastic or profile.constraint_mode == "subject_unknown"
+                else int(label[0]),
+            ).as_dict()
+        return rows
 
     def reachable_costs(self, origin_ref: str, profile: MobilityProfile,
                         *, max_cost: float) -> dict[str, float]:
-        """Return exact minimum known-world movement costs within a bound."""
+        """Compatibility wrapper over the stateful arrival engine."""
         if origin_ref not in self.by_ref or max_cost < 0:
             raise WorldContractError("invalid_reachability_origin")
-        if not profile.known:
-            return {}
-        costs = {origin_ref: 0.0}
-        queue: list[tuple[float, str]] = [(0.0, origin_ref)]
-        while queue:
-            cost, current_ref = heappop(queue)
-            if cost != costs[current_ref]:
-                continue
-            current = self.by_ref[current_ref]
-            for neighbor, step_cost, _kind in self._edges(current, profile):
-                if neighbor.blocking_contact_occupied:
-                    continue
-                if current.hostile_zoc and neighbor.hostile_zoc and not profile.ignores_zoc:
-                    continue
-                candidate = cost + step_cost
-                if candidate <= max_cost and candidate < costs.get(neighbor.location_ref, inf):
-                    costs[neighbor.location_ref] = candidate
-                    heappush(queue, (candidate, neighbor.location_ref))
-        return costs
+        turns = int(max_cost // profile.movement_points)
+        if max_cost % profile.movement_points > 1e-9:
+            turns += 1
+        return {
+            ref: float(item["movement_cost"])
+            for ref, item in self.arrival_map(
+                origin_ref, profile, max_turns=max(0, turns),
+            ).items()
+        }
 
     def connected_components(self, profile: MobilityProfile) -> list[set[str]]:
         unseen = {ref for ref, square in self.by_ref.items()

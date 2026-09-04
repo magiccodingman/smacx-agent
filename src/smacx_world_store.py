@@ -31,6 +31,110 @@ class WorldStore:
         self.root = (root or (Path(configured) if configured else store.path.parent / "world-snapshots")) \
             .expanduser().resolve()
 
+    def _native_stage_path(self, scope: MemoryScope, timeline_id: str) -> Path:
+        return (self.root / "native-observation-staging" / scope.match_id
+                / scope.agent_id / scope.perspective_id / f"{timeline_id}.json")
+
+    @staticmethod
+    def _atomic_private_json(path: Path, value: Mapping[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(prefix=".native-stage-", dir=path.parent)
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(canonical_json(value))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+    def load_native_observation_stage(
+        self, scope: MemoryScope, timeline_id: str,
+    ) -> dict[str, Any]:
+        """Load provider-inaccessible two-phase native observation staging."""
+        path = self._native_stage_path(scope, timeline_id)
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            value = {}
+        except (OSError, json.JSONDecodeError) as exc:
+            raise WorldStoreError("native_observation_stage_invalid") from exc
+        if value and value.get("schema") != "smacx.private-native-stage.v1":
+            raise WorldStoreError("native_observation_stage_schema_mismatch")
+        return {
+            "schema": "smacx.private-native-stage.v1",
+            "staged_after_sequence": int(value.get("staged_after_sequence") or 0),
+            "committed_after_sequence": int(value.get("committed_after_sequence") or 0),
+            "publication_observation_cursor": value.get("publication_observation_cursor"),
+            "events": [dict(item) for item in value.get("events", [])
+                       if isinstance(item, Mapping)],
+            "continuity_gap": dict(value["continuity_gap"])
+                if isinstance(value.get("continuity_gap"), Mapping) else None,
+        }
+
+    def stage_native_observation_feed(
+        self, scope: MemoryScope, timeline_id: str, *, events: Iterable[Mapping[str, Any]],
+        next_sequence: int, continuity_gap: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        stage = self.load_native_observation_stage(scope, timeline_id)
+        by_sequence = {
+            int(item["native_sequence"]): dict(item)
+            for item in stage["events"] if isinstance(item.get("native_sequence"), int)
+        }
+        for item in events:
+            sequence = item.get("native_sequence")
+            if isinstance(sequence, int) and sequence > 0:
+                by_sequence[sequence] = dict(item)
+        # Never discard already drained transient evidence to satisfy a memory
+        # cap. This provider-inaccessible disk stage may span many native-ring
+        # windows while publication is retrying. A hard failure before cursor
+        # advancement is safer than silently converting observed history into
+        # absence; the later ring read will then produce an explicit gap if it
+        # has genuinely overflowed.
+        if len(by_sequence) > 65_536:
+            raise WorldStoreError("native_observation_stage_capacity_exceeded")
+        stage["events"] = [by_sequence[key] for key in sorted(by_sequence)]
+        stage["staged_after_sequence"] = max(
+            int(stage["staged_after_sequence"]), int(next_sequence),
+        )
+        if continuity_gap is not None:
+            stage["continuity_gap"] = dict(continuity_gap)
+        self._atomic_private_json(self._native_stage_path(scope, timeline_id), stage)
+        return stage
+
+    def begin_native_observation_publication(
+        self, scope: MemoryScope, timeline_id: str, observation_cursor: int,
+    ) -> dict[str, Any]:
+        stage = self.load_native_observation_stage(scope, timeline_id)
+        existing = stage.get("publication_observation_cursor")
+        if existing is not None and int(existing) != int(observation_cursor):
+            raise WorldStoreError("native_observation_publication_cursor_mismatch")
+        stage["publication_observation_cursor"] = int(observation_cursor)
+        self._atomic_private_json(self._native_stage_path(scope, timeline_id), stage)
+        return stage
+
+    def acknowledge_native_observation_publication(
+        self, scope: MemoryScope, timeline_id: str, observation_cursor: int,
+    ) -> dict[str, Any]:
+        stage = self.load_native_observation_stage(scope, timeline_id)
+        if int(stage.get("publication_observation_cursor") or -1) != int(observation_cursor):
+            raise WorldStoreError("native_observation_ack_cursor_mismatch")
+        stage["committed_after_sequence"] = int(stage["staged_after_sequence"])
+        stage["events"] = []
+        stage["continuity_gap"] = None
+        stage["publication_observation_cursor"] = None
+        self._atomic_private_json(self._native_stage_path(scope, timeline_id), stage)
+        return stage
+
     @staticmethod
     def _scope_tuple(scope: MemoryScope, timeline_id: str) -> tuple[str, str, str, str]:
         return scope.match_id, scope.agent_id, scope.perspective_id, timeline_id

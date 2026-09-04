@@ -20,7 +20,9 @@
 #include "veh_action.h"
 #include "veh_combat.h"
 
+#include <algorithm>
 #include <sstream>
+#include <set>
 #include <vector>
 
 namespace {
@@ -254,6 +256,11 @@ bool semantic_observation_shadow_ready = false;
 // stable semantic identity without revealing its native array index.
 std::vector<int> semantic_vehicle_handles;
 int next_semantic_vehicle_handle = 1;
+std::string field_string(const std::string& json, const char* name);
+int field_int(const std::string& json, const char* name, int fallback);
+std::string error_response(const char* error, const char* message);
+void reset_semantic_observation_shadow();
+bool game_active();
 
 void ensure_semantic_vehicle_handles() {
     const size_t count = static_cast<size_t>(std::max(0, *VehCount));
@@ -263,14 +270,135 @@ void ensure_semantic_vehicle_handles() {
         semantic_observation_shadow_ready = false;
     }
     while (semantic_vehicle_handles.size() < count) {
-        semantic_vehicle_handles.push_back(next_semantic_vehicle_handle++);
+        // Zero is an unobserved private row.  Allocating handles only when a
+        // unit is legitimately visible prevents hidden row layout/count from
+        // perturbing provider-visible refs or action revisions.
+        semantic_vehicle_handles.push_back(0);
     }
 }
 
 int semantic_vehicle_handle(int row) {
     ensure_semantic_vehicle_handles();
-    return row >= 0 && row < static_cast<int>(semantic_vehicle_handles.size())
-        ? semantic_vehicle_handles[row] : -1;
+    if (row < 0 || row >= static_cast<int>(semantic_vehicle_handles.size())) return -1;
+    if (!semantic_vehicle_handles[row])
+        semantic_vehicle_handles[row] = next_semantic_vehicle_handle++;
+    return semantic_vehicle_handles[row];
+}
+
+uint64_t semantic_vehicle_layout_hash() {
+    // Platform-private proof that a semantic-handle vector belongs to this
+    // exact restored native VEH layout. It is never provider-visible.
+    uint64_t hash = 1469598103934665603ULL;
+    auto mix = [&](uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ULL;
+    };
+    mix(static_cast<uint32_t>(*CurrentTurn));
+    mix(static_cast<uint32_t>(*CurrentPlayerFaction));
+    mix(static_cast<uint32_t>(*VehCount));
+    for (int row = 0; row < *VehCount; ++row) {
+        VEH& veh = Vehs[row];
+        mix(static_cast<uint32_t>(veh.faction_id));
+        mix(static_cast<uint32_t>(veh.unit_id));
+        mix(static_cast<uint32_t>(veh.x));
+        mix(static_cast<uint32_t>(veh.y));
+        mix(static_cast<uint32_t>(veh.home_base_id + 1));
+        mix(static_cast<uint32_t>(veh.order));
+        mix(static_cast<uint32_t>(veh.moves_spent));
+        mix(static_cast<uint32_t>(veh.cur_hitpoints()));
+    }
+    return hash;
+}
+
+std::vector<int> field_int_array(const std::string& json, const char* name,
+                                 bool* valid) {
+    if (valid) *valid = false;
+    std::vector<int> result;
+    std::string needle = std::string("\"") + name + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return result;
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return result;
+    pos = json.find('[', pos + 1);
+    if (pos == std::string::npos) return result;
+    ++pos;
+    while (pos < json.size()) {
+        while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t'
+        || json[pos] == '\r' || json[pos] == '\n' || json[pos] == ',')) ++pos;
+        if (pos < json.size() && json[pos] == ']') {
+            if (valid) *valid = true;
+            return result;
+        }
+        if (pos >= json.size() || json[pos] < '0' || json[pos] > '9') return {};
+        char* end = NULL;
+        long value = strtol(json.c_str() + pos, &end, 10);
+        if (!end || end == json.c_str() + pos || value < 0 || value > 0x7fffffffL)
+            return {};
+        result.push_back(static_cast<int>(value));
+        if (result.size() > static_cast<size_t>(MaxVehNum)) return {};
+        pos = static_cast<size_t>(end - json.c_str());
+        while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t'
+        || json[pos] == '\r' || json[pos] == '\n')) ++pos;
+        if (pos < json.size() && json[pos] != ',' && json[pos] != ']') return {};
+    }
+    return {};
+}
+
+std::string semantic_identity_state_response(const std::string& request) {
+    if (!game_active()) return error_response(
+        "game_not_active", "Semantic identity state requires an active game.");
+    std::string action = field_string(request, "action");
+    if (action == "export") {
+        ensure_semantic_vehicle_handles();
+        std::ostringstream out;
+        out << "{\"ok\":true,\"schema\":\"smacx.private-vehicle-identity.v1\""
+            << ",\"turn\":" << *CurrentTurn
+            << ",\"faction_id\":" << *CurrentPlayerFaction
+            << ",\"native_validation_hash\":\""
+            << semantic_vehicle_layout_hash() << "\""
+            << ",\"next_semantic_vehicle_handle\":"
+            << next_semantic_vehicle_handle << ",\"semantic_vehicle_handles\":[";
+        for (size_t index = 0; index < semantic_vehicle_handles.size(); ++index) {
+            if (index) out << ',';
+            out << semantic_vehicle_handles[index];
+        }
+        out << "]}";
+        return out.str();
+    }
+    if (action == "import") {
+        if (field_string(request, "schema") != "smacx.private-vehicle-identity.v1")
+            return error_response("identity_schema_mismatch", "Unsupported identity capsule.");
+        const std::string expected = field_string(request, "native_validation_hash");
+        if (expected.empty() || expected != std::to_string(semantic_vehicle_layout_hash()))
+            return error_response("identity_native_state_mismatch",
+                                  "Identity capsule does not match the restored native state.");
+        bool valid = false;
+        std::vector<int> handles = field_int_array(
+            request, "semantic_vehicle_handles", &valid);
+        const int next_handle = field_int(
+            request, "next_semantic_vehicle_handle", -1);
+        if (!valid || handles.size() != static_cast<size_t>(*VehCount))
+            return error_response("identity_handle_count_mismatch",
+                                  "Identity capsule handle count is invalid.");
+        std::set<int> unique;
+        int maximum = 0;
+        for (size_t index = 0; index < handles.size(); ++index) {
+            if (handles[index] <= 0) continue;
+            unique.insert(handles[index]);
+            maximum = std::max(maximum, handles[index]);
+        }
+        const size_t assigned = static_cast<size_t>(std::count_if(
+            handles.begin(), handles.end(), [](int value) { return value > 0; }));
+        if (unique.size() != assigned || next_handle <= maximum)
+            return error_response("identity_handle_set_invalid",
+                                  "Identity capsule handles are not unique and monotonic.");
+        semantic_vehicle_handles.swap(handles);
+        next_semantic_vehicle_handle = next_handle;
+        reset_semantic_observation_shadow();
+        return std::string("{\"ok\":true,\"restored\":true,\"handle_count\":")
+            + std::to_string(semantic_vehicle_handles.size()) + '}';
+    }
+    return error_response("bad_identity_action", "Use export or import.");
 }
 int semantic_observation_faction = -1;
 UINT_PTR semantic_observation_timer_id = 0;
@@ -2576,14 +2704,8 @@ void ensure_test_psi_gate_fixture() {
     test_psi_gate_fixture_initialized = true;
 }
 
-void ensure_test_order_fixture() {
-    if (test_order_fixture_initialized || !game_active()) return;
-    char test_mode[8] = {};
-    char test_orders[8] = {};
-    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
-    || strcmp(test_mode, "1")
-    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_ORDERS", test_orders,
-        sizeof(test_orders)) || strcmp(test_orders, "1")) return;
+bool create_test_order_fixture() {
+    if (test_order_fixture_initialized || !game_active()) return false;
     int faction_id = *CurrentPlayerFaction;
     int base_id = -1;
     for (int candidate = 0; candidate < *BaseCount; ++candidate) {
@@ -2592,13 +2714,38 @@ void ensure_test_order_fixture() {
             break;
         }
     }
-    if (base_id < 0) return;
+    if (base_id < 0) return false;
     int former_id = veh_init(BSC_FORMERS, faction_id, Bases[base_id].x, Bases[base_id].y);
     int patrol_id = veh_init(BSC_SCOUT_PATROL, faction_id, Bases[base_id].x, Bases[base_id].y);
-    if (former_id < 0 || patrol_id < 0) return;
+    if (former_id < 0 || patrol_id < 0) return false;
     spot_all(former_id, 1);
     spot_all(patrol_id, 1);
     test_order_fixture_initialized = true;
+    return true;
+}
+
+void ensure_test_order_fixture() {
+    char test_mode[8] = {};
+    char test_orders[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+    || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_ORDERS", test_orders,
+        sizeof(test_orders)) || strcmp(test_orders, "1")) return;
+    create_test_order_fixture();
+}
+
+std::string test_identity_compaction_fixture_response() {
+    char enabled[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION", enabled,
+        sizeof(enabled)) || strcmp(enabled, "1")) {
+        return error_response("acceptance_fixture_disabled",
+            "The private native identity-compaction fixture is disabled.");
+    }
+    if (!create_test_order_fixture()) {
+        return error_response("acceptance_fixture_unavailable",
+            "The private native identity-compaction fixture could not be created.");
+    }
+    return "{\"ok\":true,\"fixture\":\"own_unit_compaction\"}";
 }
 
 void ensure_test_return_home_fixture() {
@@ -4315,8 +4462,6 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(*CurrentTurn));
     mix(static_cast<uint32_t>(*CurrentFaction));
     mix(static_cast<uint32_t>(*CurrentPlayerFaction));
-    mix(static_cast<uint32_t>(*VehCount));
-    mix(static_cast<uint32_t>(*BaseCount));
     mix(static_cast<uint32_t>(*WinModalState));
     mix(static_cast<uint32_t>(*PopupDialogState));
     mix(static_cast<uint32_t>(*GameHalted));
@@ -4350,26 +4495,34 @@ std::string semantic_revision() {
     mix(endgame_presentation_generation);
     mix(static_cast<uint32_t>(deferred_diplomacy_faction_id + 1));
     mix(static_cast<uint32_t>(deferred_council_faction_id + 1));
-    mix(static_cast<uint32_t>(deferred_nerve_staple_base_id + 1));
-    mix(static_cast<uint32_t>(deferred_obliterate_base_id + 1));
-    mix(static_cast<uint32_t>(deferred_obliterate_unit_id + 1));
-    mix(static_cast<uint32_t>(active_obliterate_base_id + 1));
-    mix(static_cast<uint32_t>(active_obliterate_unit_id + 1));
+    auto base_ref_token = [&](int base_id) {
+        return base_id >= 0 && base_id < *BaseCount
+            ? semantic_tile_id(Bases[base_id].x, Bases[base_id].y) + 1 : 0;
+    };
+    auto unit_ref_token = [&](int veh_id) {
+        return veh_id >= 0 && veh_id < *VehCount
+            ? semantic_vehicle_handle(veh_id) + 1 : 0;
+    };
+    mix(static_cast<uint32_t>(base_ref_token(deferred_nerve_staple_base_id)));
+    mix(static_cast<uint32_t>(base_ref_token(deferred_obliterate_base_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_obliterate_unit_id)));
+    mix(static_cast<uint32_t>(base_ref_token(active_obliterate_base_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(active_obliterate_unit_id)));
     mix(static_cast<uint32_t>(active_obliterate_decision + 1));
-    mix(static_cast<uint32_t>(deferred_destroy_unit_id + 1));
-    mix(static_cast<uint32_t>(deferred_destroy_former_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_unit_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_former_id)));
     mix(static_cast<uint32_t>(deferred_destroy_owner_id + 2));
     mix(static_cast<uint32_t>(deferred_destroy_hostility_confirmed));
-    mix(static_cast<uint32_t>(deferred_move_unit_id + 1));
-    mix(static_cast<uint32_t>(deferred_probe_unit_id + 1));
-    mix(static_cast<uint32_t>(deferred_probe_base_id + 1));
-    mix(static_cast<uint32_t>(deferred_probe_target_unit_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_move_unit_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_probe_unit_id)));
+    mix(static_cast<uint32_t>(base_ref_token(deferred_probe_base_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_probe_target_unit_id)));
     mix(static_cast<uint32_t>(deferred_probe_action_id + 2));
-    mix(static_cast<uint32_t>(deferred_missile_unit_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_missile_unit_id)));
     mix(static_cast<uint32_t>(deferred_missile_x + 1));
     mix(static_cast<uint32_t>(deferred_missile_y + 1));
-    mix(static_cast<uint32_t>(active_probe_unit_id + 1));
-    mix(static_cast<uint32_t>(active_probe_base_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(active_probe_unit_id)));
+    mix(static_cast<uint32_t>(base_ref_token(active_probe_base_id)));
     mix(static_cast<uint32_t>(active_probe_abort_requested));
     mix(static_cast<uint32_t>(deferred_move_direction + 1));
     mix(static_cast<uint32_t>(deferred_move_x + 1));
@@ -4466,14 +4619,12 @@ std::string semantic_revision() {
             if (base.faction_id != faction_id) {
                 MAP* sq = mapsq(base.x, base.y);
                 if (sq && sq->is_visible(faction_id)) {
-                    mix(static_cast<uint32_t>(i));
                     mix(static_cast<uint32_t>(base.x));
                     mix(static_cast<uint32_t>(base.y));
                     mix(static_cast<uint32_t>(base.faction_id));
                 }
                 continue;
             }
-            mix(static_cast<uint32_t>(i));
             mix(static_cast<uint32_t>(base.x));
             mix(static_cast<uint32_t>(base.y));
             mix(static_cast<uint32_t>(base.pop_size));
@@ -4500,7 +4651,7 @@ std::string semantic_revision() {
             VEH& veh = Vehs[i];
             bool visible = veh.faction_id == faction_id || (veh.visibility & (1 << faction_id));
             if (!visible) continue;
-            mix(static_cast<uint32_t>(i));
+            mix(static_cast<uint32_t>(semantic_vehicle_handle(i)));
             mix(static_cast<uint32_t>(veh.faction_id));
             mix(static_cast<uint32_t>(veh.unit_id));
             mix(static_cast<uint32_t>(veh.x));
@@ -4515,7 +4666,7 @@ std::string semantic_revision() {
                 mix(static_cast<uint32_t>(veh.waypoint_count));
                 mix(static_cast<uint32_t>(veh.is_patrol_order() ? 1 : 0));
                 mix(static_cast<uint32_t>(veh.moves_spent));
-                mix(static_cast<uint32_t>(veh.home_base_id + 1));
+                mix(static_cast<uint32_t>(base_ref_token(veh.home_base_id)));
                 mix(static_cast<uint32_t>(veh.waypoint_x[0] + 2));
                 mix(static_cast<uint32_t>(veh.waypoint_y[0] + 2));
                 mix(semantic_vehicle_state_flags(veh));
@@ -8732,8 +8883,12 @@ std::string semantic_snapshot_response() {
         if (veh.faction_id != faction_id || !semantic_unit_requires_decision(veh_id)) continue;
         if (ready_comma) out << ',';
         ready_comma = true;
-        out << "{\"id\":" << veh_id << ",\"name\":" << json_string(veh.name())
-            << ",\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
+        out << "{\"own_unit_ref\":" << json_string(
+            (std::string("own-unit-")
+             + std::to_string(semantic_vehicle_handle(veh_id))).c_str())
+            << ",\"location_ref\":\"location-"
+            << semantic_tile_id(veh.x, veh.y) << "\""
+            << ",\"name\":" << json_string(veh.name())
             << ",\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
             << ",\"former\":" << (veh.is_former() ? "true" : "false")
             << ",\"combat\":" << (veh.is_combat_unit() ? "true" : "false")
@@ -8787,8 +8942,11 @@ std::string semantic_snapshot_response() {
             out << ",\"resolution\":" << json_string(deferred_action.resolution.c_str());
         }
         if (deferred_action.unit_id >= 0) {
-            out << ",\"unit_id\":" << deferred_action.unit_id
-                << ",\"origin_tile_id\":"
+            // A completed destructive action may already have compacted VEH,
+            // so its former row is neither a safe identity nor resolvable to
+            // a current semantic handle. Locations retain the useful outcome
+            // without publishing a raw or potentially reassigned row ID.
+            out << ",\"origin_tile_id\":"
                 << semantic_tile_id(deferred_action.origin_x, deferred_action.origin_y)
                 << ",\"target_tile_id\":"
                 << semantic_tile_id(deferred_action.target_x, deferred_action.target_y)
@@ -16437,6 +16595,7 @@ std::string execute_request(const std::string& request) {
     if (op == "human_ui_control") return human_ui_control_response(request);
     if (op == "observe") return observe_response();
     if (op == "observation_feed") return observation_feed_response(request);
+    if (op == "semantic_identity_state") return semantic_identity_state_response(request);
     if (op == "list_bases") return bases_response();
     if (op == "list_units") return units_response();
     if (op == "list_factions") return factions_response();
@@ -16461,6 +16620,9 @@ std::string execute_request(const std::string& request) {
     }
     if (op == "test_lan_ai_contact_fixture") {
         return test_lan_ai_contact_fixture_response(request);
+    }
+    if (op == "test_identity_compaction_fixture") {
+        return test_identity_compaction_fixture_response();
     }
     if (op == "list_tiles") return tiles_response(request);
     if (op == "perspective_world_page") return perspective_world_page_response(request);
@@ -16639,10 +16801,10 @@ void agent_observe_unit_destroyed(int veh_id) {
     // identity/shadow arrays in exact lockstep even when fair-play rules mean
     // no observation event may be emitted for the destroyed row.
     ensure_semantic_vehicle_handles();
-    const int stable_handle = semantic_vehicle_handle(veh_id);
     if (perspective >= 1 && perspective < MaxPlayerNum
     && (veh.faction_id == perspective
         || (veh.visibility & (1 << perspective)))) {
+        const int stable_handle = semantic_vehicle_handle(veh_id);
         const int tile_id = semantic_tile_id(veh.x, veh.y);
         append_observation_event("visible_unit_destroyed", *CurrentTurn,
             stable_handle, veh.faction_id, tile_id, tile_id,

@@ -180,8 +180,10 @@ def main() -> int:
         ) == result_events_before
 
         reference_attempt = service.begin_attempt(second["mission_id"], "test-runtime")
+        reference_receipt = "evidence-reference-1234567890abcdef12345678"
         service.record_dependencies(reference_attempt["attempt_id"], 1, [{
-            "kind": "reference_document", "ref": "doc-sensors", "hash": "d" * 64,
+            "kind": "reference_document", "ref": reference_receipt, "hash": "d" * 64,
+            "payload": {"document_id": "doc-sensors", "document_hash": "d" * 64},
         }])
         # Only mechanically returned receipts are citations. A semantic
         # document/collection/object identifier must never be accepted merely
@@ -214,7 +216,7 @@ def main() -> int:
         os.environ["SMACX_CORPUS_REVISION"] = "new-corpus"
         stale_reference = service.accept_attempt(
             second["mission_id"], reference_attempt["attempt_id"],
-            result(second["mission_id"], "doc-sensors"), usage={},
+            result(second["mission_id"], reference_receipt), usage={},
         )
         assert stale_reference["status"] == "stale"
         os.environ.pop("SMACX_CORPUS_REVISION", None)
@@ -239,6 +241,63 @@ def main() -> int:
             result(changed_mission["mission_id"], "base-home"), usage={},
         )
         assert stale["status"] == "stale"
+
+        retryable = service.commission(
+            faculty="world", objective="Retry against the exact frozen Home view",
+            subject_refs=["base-home"],
+        )
+        retry_attempt_1 = service.begin_attempt(retryable["mission_id"], "test-runtime")
+        first_failure = service.fail_attempt(
+            retryable["mission_id"], retry_attempt_1["attempt_id"],
+            "provider_failed", "transient one",
+        )
+        assert first_failure["status"] == "retry_wait"
+        retry_attempt_2 = service.begin_attempt(retryable["mission_id"], "test-runtime")
+        terminal_failure = service.fail_attempt(
+            retryable["mission_id"], retry_attempt_2["attempt_id"],
+            "provider_failed", "transient exhausted",
+        )
+        assert terminal_failure["status"] == "failed"
+        with store._connect() as connection:
+            retry_snapshot = connection.execute(
+                "SELECT world_snapshot_id FROM specialist_missions WHERE mission_id=?",
+                (retryable["mission_id"],),
+            ).fetchone()[0]
+        worlds.gc_unpinned_snapshots()
+        assert worlds.load_snapshot_content(str(retry_snapshot))["projection"]
+        manual_retry = service.retry(retryable["mission_id"])
+        assert manual_retry["status"] == "mission_pending"
+        retry_attempt_3 = service.begin_attempt(retryable["mission_id"], "test-runtime")
+        assert retry_attempt_3["world_snapshot_id"] == retry_snapshot
+        service.cancel(retryable["mission_id"], "cancelled_by_parent")
+
+        # Expiration itself creates a bounded manual-retry horizon.  The
+        # immutable view remains pinned through ordinary GC and is reclaimed
+        # atomically when the sovereign retries.
+        expired_retryable = service.commission(
+            faculty="world", objective="Retry an expired queued mission",
+            subject_refs=["base-home"],
+        )
+        with store.transaction() as connection:
+            connection.execute(
+                "UPDATE specialist_missions SET deadline_unix=0 WHERE mission_id=?",
+                (expired_retryable["mission_id"],),
+            )
+        assert service.expire(expired_retryable["mission_id"])["status"] == "failed"
+        with store._connect() as connection:
+            expired_row = dict(connection.execute(
+                "SELECT world_snapshot_id,deadline_unix FROM specialist_missions "
+                "WHERE mission_id=?", (expired_retryable["mission_id"],),
+            ).fetchone())
+        assert float(expired_row["deadline_unix"]) > 0
+        worlds.gc_unpinned_snapshots()
+        assert worlds.load_snapshot_content(str(expired_row["world_snapshot_id"]))["projection"]
+        assert service.retry(expired_retryable["mission_id"])["status"] == "mission_pending"
+        expired_attempt = service.begin_attempt(
+            expired_retryable["mission_id"], "test-runtime",
+        )
+        assert expired_attempt["world_snapshot_id"] == expired_row["world_snapshot_id"]
+        service.cancel(expired_retryable["mission_id"], "cancelled_by_parent")
         try:
             service.accept_attempt(
                 changed_mission["mission_id"], changed_attempt["attempt_id"],
@@ -395,6 +454,7 @@ def main() -> int:
         "historical_result_hidden": True,
         "prepared_result_rollback_authoritative": True,
         "frozen_reference_corpus": True,
+        "failed_world_snapshot_manual_retry": True,
     }}, separators=(",", ":")))
     return 0
 

@@ -198,7 +198,11 @@ def main() -> int:
         ready_refs = snapshot.get("ready_unit_refs", [])
         if ready_refs:
             ref = ready_refs[0]
-            ref_id = int(ref["id"])
+            units = bridge_request("list_units", scope="own", limit=256)
+            ref_id = next(
+                int(item["id"]) for item in units.get("items", [])
+                if item.get("own_unit_ref") == ref.get("own_unit_ref")
+            )
             if ref_id == automated_id:
                 emit("failure", {"stage": "automated_former_in_ready_refs", "snapshot": snapshot})
                 return 8

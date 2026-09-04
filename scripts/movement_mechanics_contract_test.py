@@ -55,6 +55,16 @@ def main() -> int:
     assert terrain._cost(terrain.by_ref["shelf-fungus"], terrain.by_ref["deep-fungus"], sea) == 1
     assert terrain._cost(terrain.by_ref["deep-fungus"], terrain.by_ref["shelf-fungus"], sea) == 3
     assert terrain._cost(terrain.by_ref["road-a"], terrain.by_ref["road-b"], sea) == 1
+    for origin, profile in (
+        ("plain", land), ("plain", native), ("plain", hover),
+        ("shelf-fungus", sea),
+    ):
+        arrivals = terrain.arrival_map(origin, profile, max_turns=16)
+        for target in terrain.by_ref:
+            route = terrain.route(origin, target, profile)
+            assert route.reachable == (target in arrivals)
+            if route.reachable:
+                assert route.turns == arrivals[target]["turns"]
     results["native_terrain_and_triad_costs"] = True
 
     # Stateful turn boundaries preserve native over-cost/stochastic semantics.
@@ -72,6 +82,17 @@ def main() -> int:
         "two-turn", "land", movement_points=2,
     ))
     assert over.turns == 1 and exhausted.turns == 2 and two_turn.turns == 2
+    for profile in (
+        MobilityProfile("flat-parity", "land", movement_points=2),
+        MobilityProfile("remaining-parity", "land", movement_points=3,
+                        movement_remaining=1),
+    ):
+        arrivals = boundary.arrival_map("b0", profile, max_turns=8)
+        for target in boundary.by_ref:
+            route = boundary.route("b0", target, profile)
+            assert route.reachable == (target in arrivals)
+            if route.reachable:
+                assert route.turns == arrivals[target]["turns"]
     results["stateful_turn_boundary_eta"] = True
 
     # Airdrops are origin-only, consume the action turn, avoid occupied
@@ -166,7 +187,7 @@ def main() -> int:
         ],
         "bases": [{"id": 0, "base_ref": "base-home", "tile_id": 0,
                    "owned": True, "owner_ref": "faction-1", "name": "Home",
-                   "unit_support_cost": 1}],
+                   "minerals": {"unit_support_cost": 1}}],
         "units": [
             {"id": 1, "own_unit_ref": "clean", "native_observation_key": "vehicle-handle-1",
              "tile_id": 0, "owned": True, "owner_ref": "faction-1", "triad": "land",
@@ -206,7 +227,77 @@ def main() -> int:
     assert mobility_profile(objects, "supported", subject_ref="supported",
                             topology=topology).can_embark
     assert transport_route(topology, objects, "supported", "location-4") is not None
+    hostile = obj("hostile", "foreign_contact", "location-0",
+                  owner_ref="faction-2", triad="land", movement_points=3,
+                  movement_scale=3, roles={})
+    assert transport_route(topology, {**objects, "hostile": hostile},
+                           "hostile", "location-4") is None
+    opposed_objects = json.loads(json.dumps(objects))
+    opposed_objects["landing-defender"] = obj(
+        "landing-defender", "foreign_contact", "location-4",
+        owner_ref="faction-2", relationship="hostile", triad="land",
+        movement_points=3, movement_scale=3, roles={"combat": True},
+    )
+    assert transport_route(
+        topology, opposed_objects, "supported", "location-4",
+    ) is None
+    opposed_objects["supported"]["fields"]["roles"]["value"]["amphibious"] = True
+    assault = transport_route(
+        topology, opposed_objects, "supported", "location-4",
+    )
+    assert assault is not None
+    assert assault["eta_kind"] == "conditional_guarded_amphibious_assault"
+    assert assault["latest_turns"] is None and assault["disembark"]["opposed"] is True
     results["production_projection_support_convoy_transport"] = True
+
+    # Occupancy/ZOC constraints belong to the moving subject. Own movement is
+    # exact; a foreign subject receives an explicit conditional minimum and is
+    # not falsely blocked by our perspective's enemy map.
+    zoc_topology = PerspectiveTopology(MapShape(8, 2, False), [
+        KnownSquare("z0", 0, 0, "land", hostile_zoc=True),
+        KnownSquare("z1", 2, 0, "land", hostile_zoc=True,
+                    blocking_contact_occupied=True),
+        KnownSquare("z2", 4, 0, "land"),
+    ])
+    own_route = zoc_topology.route(
+        "z0", "z2", MobilityProfile("own-zoc", "land", constraint_mode="sovereign_exact"),
+    )
+    foreign_route = zoc_topology.route(
+        "z0", "z2", MobilityProfile("foreign-zoc", "land", constraint_mode="subject_unknown"),
+    )
+    assert not own_route.reachable
+    assert foreign_route.reachable and foreign_route.eta_kind == "conditional_minimum"
+    assert any("Subject-relative" in item for item in foreign_route.uncertainty)
+    relation_objects = {
+        "faction-1": obj("faction-1", "faction", is_self=True),
+        "faction-pact": obj("faction-pact", "faction", relationship="allied"),
+        "faction-treaty": obj("faction-treaty", "faction", relationship="neutral"),
+        "faction-truce": obj("faction-truce", "faction", relationship="neutral"),
+        "faction-hostile": obj("faction-hostile", "faction", relationship="hostile"),
+        "faction-unknown": obj("faction-unknown", "faction", relationship="unknown"),
+        "own-subject": obj("own-subject", "own_unit", "z0", owner_ref="faction-1",
+                           triad="land", movement_points=3, movement_scale=3, roles={}),
+    }
+    for suffix in ("pact", "treaty", "truce", "hostile", "unknown"):
+        relation_objects[f"subject-{suffix}"] = obj(
+            f"subject-{suffix}", "foreign_contact", "z0",
+            owner_ref=f"faction-{suffix}", triad="land", movement_points=3,
+            movement_scale=3, roles={},
+        )
+    own_profile = mobility_profile(
+        relation_objects, "own", subject_ref="own-subject", topology=zoc_topology,
+    )
+    assert own_profile.constraint_mode == "sovereign_exact"
+    assert not zoc_topology.route("z0", "z2", own_profile).reachable
+    for suffix in ("pact", "treaty", "truce", "hostile", "unknown"):
+        profile = mobility_profile(
+            relation_objects, suffix, subject_ref=f"subject-{suffix}",
+            topology=zoc_topology,
+        )
+        routed = zoc_topology.route("z0", "z2", profile)
+        assert profile.constraint_mode == "subject_unknown"
+        assert routed.reachable and routed.eta_kind == "conditional_minimum"
+    results["subject_relative_zoc_and_occupancy"] = True
 
     # Profile-aware connectivity and scenario map shape remain deterministic.
     coast = PerspectiveTopology(MapShape(8, 2, True), [

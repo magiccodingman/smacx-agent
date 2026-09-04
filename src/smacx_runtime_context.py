@@ -54,9 +54,9 @@ def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "kind": interaction.get("kind"),
             "label": interaction.get("popup_label"),
             "required_action": protocol.get("required_action"),
-            "counterpart": interaction.get("faction_id"),
-            "base": interaction.get("base_id"),
-            "unit": interaction.get("unit_id"),
+            "counterpart_ref": interaction.get("counterpart_faction_ref"),
+            "base_ref": interaction.get("base_ref"),
+            "unit_ref": interaction.get("own_unit_ref") or interaction.get("contact_ref"),
         })
         return {
             # Action revisions can change for unrelated animation/network ticks.
@@ -71,10 +71,12 @@ def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     ready = snapshot.get("ready_unit_refs") if isinstance(snapshot.get("ready_unit_refs"), list) else []
     if ready:
         unit = ready[0] if isinstance(ready[0], Mapping) else {}
+        own_unit_ref = str(unit.get("own_unit_ref") or "unknown")
         return {
-            "focus_id": "focus-unit-" + str(unit.get("id") or "unknown"),
+            "focus_id": "focus-unit-" + own_unit_ref,
             "kind": "ready_unit", "mandatory": False,
-            "unit": {key: unit.get(key) for key in ("id", "name", "location_ref")
+            "unit": {key: unit.get(key) for key in
+                     ("own_unit_ref", "name", "location_ref", "roles")
                      if unit.get(key) is not None},
             "ready_count": len(ready), "action_revision": snapshot.get("revision"),
         }
@@ -273,8 +275,8 @@ class RuntimeContextAssembler:
         ]
         focus_ref = ""
         focus_unit = focus.get("unit") if isinstance(focus.get("unit"), Mapping) else {}
-        if focus_unit.get("id") is not None:
-            focus_ref = f"own-unit-{focus_unit['id']}"
+        if focus_unit.get("own_unit_ref"):
+            focus_ref = str(focus_unit["own_unit_ref"])
         tier = "64k" if context_length < 131072 else "256k"
         budgets = RUNTIME_BUDGETS[tier]
         cognition = _cognition(

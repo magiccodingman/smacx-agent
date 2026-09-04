@@ -50,7 +50,15 @@ def main() -> int:
         def turn_call(operation: str, **arguments: object) -> dict:
             calls.append((operation, dict(arguments)))
             if operation == "semantic_snapshot":
-                return snapshot("turn", ready=[{"id": 7, "name": "Scout Patrol", "roles": {"combat": True}}])
+                return snapshot("turn", ready=[{
+                    "own_unit_ref": "own-unit-19", "location_ref": "location-42",
+                    "name": "Scout Patrol", "roles": {"combat": True},
+                }])
+            if operation == "perspective_world_page":
+                return {"ok": True, "items": [{
+                    "id": 7, "own_unit_ref": "own-unit-19", "owned": True,
+                }],
+                        "next_cursor": None}
             return {
                 "ok": True, "match_id": "match-test", "session_id": "session-test",
                 "revision": "r1", "choices": [{"command": "skip_unit", "unit_id": 7}],
@@ -58,7 +66,9 @@ def main() -> int:
 
         smacx_mcp._call = turn_call
         frame = smacx_mcp.smac_decision()
-        if not frame.get("ok") or frame.get("focus", {}).get("unit", {}).get("id") != 7 \
+        if not frame.get("ok") \
+                or frame.get("focus", {}).get("unit", {}).get("own_unit_ref") != "own-unit-19" \
+                or "id" in frame.get("focus", {}).get("unit", {}) \
                 or frame.get("required_next", {}).get("tool") != "smac_execute_choice" \
                 or frame.get("required_next", {}).get("decision_id") != frame.get("decision_id") \
                 or "snapshot" in frame \
@@ -97,7 +107,9 @@ def main() -> int:
                 or finish_frame.get("focus", {}).get("ready_unit_count") != 1 \
                 or calls[-1] != ("semantic_choices", {"kind": "game_management"}):
             raise AssertionError(f"bad finish-ready frame: {finish_frame}, calls={calls}")
-        conflict = smacx_mcp.smac_decision(unit_id=7, finish_ready_units=True)
+        conflict = smacx_mcp.smac_decision(
+            own_unit_ref="own-unit-19", finish_ready_units=True,
+        )
         if conflict.get("error", {}).get("code") != "conflicting_decision_focus":
             raise AssertionError(f"finish/unit focus conflict was not rejected: {conflict}")
 

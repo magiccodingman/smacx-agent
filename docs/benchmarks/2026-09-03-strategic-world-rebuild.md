@@ -15,15 +15,15 @@ conversation text, saves, credentials, or private endpoints.
 | Huge chaotic 256K anchor | 15,989 estimated tokens |
 | Large-cognition 64K complete runtime context | 3,725 estimated tokens |
 | Same strategic truth at 256K | 7,095 estimated tokens |
-| Huge chaotic 256K complete runtime context | 24,798 estimated tokens: 15,262 anchor, 5,766 cognition, 3,500 attention |
+| Huge chaotic 256K complete runtime context | 24,811 estimated tokens: 15,265 anchor, 5,766 cognition, 3,501 attention |
 | Mature notebook scale | 240 notes of approximately 24KB each; metadata-only list/search and targeted full get remained bounded |
 | Semantic GC 50%-crossing gate | 45,697 → 2,436 estimated provider-wire tokens before Hermes generic compression |
 | Note/memory-heavy 500-action gate | 1,074,269 → 13,185 estimated provider-wire tokens with durable write receipts |
 | `smac_world` serialized schema | 1,475 bytes; 492 conservative tokens |
 | v6 system prompt | 5,280 bytes; 1,760 conservative tokens; 1,117 exact Qwen tokens |
 | Managed provider tools | 15 |
-| Live stable-prefix second request | 24,720 locally cached tokens of 26,643 prompt tokens |
-| Live Hermes world specialist | 3 provider calls, 10 world queries, 230,482 cumulative replay tokens, 98,417 peak prompt tokens, 5,435-byte strict result, 81.716 seconds |
+| Live stable-prefix second request | 23,072 locally cached tokens of 25,943 prompt tokens |
+| Live Hermes world specialist | 5 provider calls, 9 world queries, 326,786 cumulative replay tokens, 89,492 peak prompt tokens, 4,343-byte strict result, 58.35 seconds |
 | Real-game no-timer specialist | accepted; 4 provider calls, 8 world queries, 198,623 cumulative replay tokens, 50,130 peak prompt tokens, 38.484 seconds; native bridge probe 192 ms; native turn unchanged |
 | Real-game no-timer sovereign action | 5 calls; 43,784 input, 1,519 output, 1,022 reasoning tokens; guarded semantic revision advanced |
 | Native bridge build | current worker image built successfully, including the 32-bit bridge stage |
@@ -42,9 +42,9 @@ children against a recording provider and proves iterative world/reference
 retrieval, exactly one faculty tool, stable system/tool prefixes, trace-derived
 citations, and no cross-mission or sovereign state. The independent live test
 uses the configured Qwen provider and immutable world snapshot. It accepted a
-strict result with zero sovereign-history rows. The 230,482-token figure sums
-replayed prompt plus completion usage across three requests; the largest single
-prompt was 98,417 tokens. This is aggregate inference cost, not simultaneous
+strict result with zero sovereign-history rows. The 326,786-token figure sums
+replayed prompt plus completion usage across five requests; the largest single
+prompt was 89,492 tokens. This is aggregate inference cost, not simultaneous
 sovereign context occupancy.
 
 `scripts/runtime_context_contract_test.py` measures the complete request-only
@@ -65,22 +65,20 @@ evicted as query-scoped evidence without damaging the newest complete tool
 pair. `scripts/notebook_scale_test.py` proves list/search never returns full
 note bodies and that targeted `get` is independently token-capped.
 
-The end-to-end managed integration fixture also passed against the real game
-installation and provider. It created an isolated control plane, prepared a
+The end-to-end managed native integration fixture passed against the real game
+installation. It created an isolated control plane, prepared a
 fresh Tiny/Citizen game with multiplayer timer **None**, started the native
 worker and exact-seat MCP sidecar, acknowledged the match briefing, made and
 verified a checkpoint, killed the native process, recovered it without UI
-input, and confirmed the restored turn. It then commissioned a real disposable
-Hermes world analyst over a frozen native perspective. The child completed
-without changing the native turn, while an independent semantic-snapshot probe
-returned in 192 ms, and its completion was delivered through the repaired
-at-least-once attention channel. A managed low-reasoning Hermes/Qwen seat then
-executed an opaque legal choice that advanced the native semantic revision. Its
-session and live worker volume survived a verified backup, and parking removed
-the sidecar. The run also queried the real native Unity Survey and current
-Governor fields and the native owned-orbital and completed-project global
-adapters before recovery. The sovereign action made five provider calls and
-used 43,784 input, 1,519 output, and 1,022 reasoning tokens.
+input, and confirmed the restored turn. Before capture it created multiple
+owned units, deleted an earlier compacting native VEH row, and verified after
+recovery that all surviving semantic refs and the private handle capsule were
+identical. Its live worker volume survived a verified backup and parking
+removed the sidecar. The run also queried the real native Unity Survey and
+current Governor fields and the native owned-orbital and completed-project
+global adapters before recovery. The provider and specialist measurements in
+the table are separately rerunnable live gates; the earlier real-game provider
+sample remains recorded as causal no-timer evidence.
 The fixture is self-cleaning and never used the developer's normal portal stack
 or desktop.
 
@@ -95,17 +93,24 @@ Production-shaped collector measurements were:
 
 | Collector case | Initial / unchanged wall time | Bridge calls | Maximum UI-probe gap |
 | --- | ---: | ---: | ---: |
-| Small quiet | 264 / 76 ms | 11 | 17 ms |
-| Stock Huge quiet | 2,624 / 1,448 ms | 35 | 72 ms |
-| Stock Huge active | 3,056 / 1,628 ms | 36 | 78 ms |
-| 25,600-square custom quiet | 20,245 / 6,415 ms | 110 | 287 ms |
-| 768-event overflow/reconciliation | 904 / 266 ms | 16 initial; 14 unchanged | 17 ms |
+| Small quiet | 337 ms initial | fixture-bounded | below 500 ms |
+| Stock Huge quiet | 3,650 ms initial | fixture-bounded | below 500 ms |
+| Stock Huge active | 4,557 ms initial | fixture-bounded | below 500 ms |
+| 25,600-square custom quiet | 22,040 ms initial | fixture-bounded | below 500 ms |
+| Dense overflow/reconciliation | 1,051 ms initial | multi-page | below 500 ms |
 
-The overflow case drained all 768 native events through three feed pages,
-reported the deliberate continuity gap, left no native backlog, and retained
-zero unchanged projection-object writes. The 25,600-square custom case is a
+The overflow case drains multi-page native events, reports deliberate
+continuity gaps, leaves no native backlog, and retains zero unchanged
+projection-object writes. A separate durability fixture stages 1,800 events,
+well beyond the native ring capacity, and replays both injected publication
+crash windows exactly once. The 25,600-square custom case is a
 stress fixture beyond the stock Huge map, remains below the 30-second hard gate,
 and does not block native/UI responsiveness.
+
+The custom 4,096-square amphibious stress fixture completed in 1.51 seconds.
+Candidate pruning retained four embark and eight landing frontier
+states while enforcing transport ownership/access, capacity, current boarding
+state, and opposed-disembarkation legality.
 
 An earlier exploratory run of the same no-timer path continued from turn 1 to
 turn 3 before the integration fixture was tightened to stop on an observed

@@ -14,6 +14,8 @@ from smacx_journal import CampaignJournal
 from smacx_observation import ObservationCollector
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world_store import WorldStore
+from smacx_world import WorldService
+from observation_collector_benchmark import NativeFixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +39,9 @@ def main() -> int:
         '"visible_unit_damaged"',
         '"visible_unit_destroyed"',
         "semantic_vehicle_handles.erase",
+        'if (op == "semantic_identity_state") return semantic_identity_state_response(request);',
+        'if (op == "test_identity_compaction_fixture")',
+        '"smacx.private-vehicle-identity.v1"',
         '"visible_base_founded"',
         '"visible_base_captured"',
         '"visible_base_destroyed"',
@@ -73,8 +78,19 @@ def main() -> int:
         'get("io.smacx.session")',
         'f"SMACX_AGENT_MATCH_ID={spec[\'match_id\']}"',
         'f"SMACX_AGENT_SESSION_ID={session_id}"',
+        '"native_semantic_identity": native_identity_by_instance',
+        '"semantic_identity_state", timeout=20.0',
+        'if os.environ.get("SMACX_AGENT_TEST_MODE") == "1"',
+        'values["SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION"] = "1"',
     )):
         raise AssertionError("MCP sidecar identity wiring drifted")
+    revision_source = source.split("std::string semantic_revision() {", 1)[1].split(
+        "void CALLBACK semantic_observation_timer_proc", 1,
+    )[0]
+    if "mix(static_cast<uint32_t>(*VehCount))" in revision_source \
+            or "mix(static_cast<uint32_t>(*BaseCount))" in revision_source \
+            or "mix(static_cast<uint32_t>(i))" in revision_source:
+        raise AssertionError("provider action revision depends on compacting native row layout")
 
     with tempfile.TemporaryDirectory(prefix="smacx-native-observation-") as raw:
         root = Path(raw)
@@ -99,18 +115,51 @@ def main() -> int:
             "events": [{"sequence": 1499, "kind": "chat_inbound", "turn": 30,
                         "subject_a": 2, "subject_b": 1}],
         })
+        # Drain is private durable staging, not publication. A crash here must
+        # leave the ring cursor/events replayable without exposing raw rows.
         replay = journal.events_after(scope)
-        kinds = [event["event_type"] for event in replay]
-        assert "observation.continuity_gap" in kinds
+        assert replay == []
         assert collector.native_after_sequence == 1500
-        with store._connect() as connection:
-            projected = connection.execute(
-                "SELECT payload_json FROM world_observation_projection ORDER BY "
-                "observation_sequence",
-            ).fetchall()
-        assert len(projected) == 1
-        assert json.loads(projected[0]["payload_json"])["reconciliation_required"] is True
-        assert attention.pending_summary()["has_critical"] is True
+        staged = worlds.load_native_observation_stage(scope, collector.timeline_id)
+        assert staged["continuity_gap"]["reconciliation_required"] is True
+        assert staged["events"][0]["native_kind"] == "chat_inbound"
+        restarted = ObservationCollector(
+            scope=scope, session_id="session-observation",
+            bridge_call=lambda *_args, **_kwargs: {}, journal=journal,
+            world_store=worlds, attention=attention,
+        )
+        assert restarted.native_after_sequence == 1500
+        assert restarted._pending_native_events == collector._pending_native_events
+        worlds.begin_native_observation_publication(scope, collector.timeline_id, 1)
+        worlds.acknowledge_native_observation_publication(scope, collector.timeline_id, 1)
+        collector._restore_native_stage()
+
+        # Provider-inaccessible staging may legitimately span more than one
+        # 1024-row native-ring generation while publication is being retried.
+        # It must remain lossless rather than silently retaining only a tail.
+        first_stage = [
+            {"sequence": sequence, "kind": "known_tile_changed", "turn": 30,
+             "subject_a": sequence, "from_tile_id": sequence,
+             "to_tile_id": sequence, "continuous_visibility": True}
+            for sequence in range(1, 901)
+        ]
+        second_stage = [
+            {"sequence": sequence, "kind": "known_tile_changed", "turn": 30,
+             "subject_a": sequence, "from_tile_id": sequence,
+             "to_tile_id": sequence, "continuous_visibility": True}
+            for sequence in range(901, 1801)
+        ]
+        collector._append_native_feed({
+            "continuity": "complete", "next_sequence": 900, "events": first_stage,
+        })
+        collector._append_native_feed({
+            "continuity": "complete", "next_sequence": 1800, "events": second_stage,
+        })
+        staged = worlds.load_native_observation_stage(scope, collector.timeline_id)
+        assert len(staged["events"]) == 1800
+        worlds.begin_native_observation_publication(scope, collector.timeline_id, 2)
+        worlds.acknowledge_native_observation_publication(scope, collector.timeline_id, 2)
+        collector._restore_native_stage()
 
         collector._append_native_feed({
             "continuity": "complete", "next_sequence": 1502,
@@ -161,6 +210,8 @@ def main() -> int:
              "subject_a": 400, "from_tile_id": 400, "to_tile_id": 400,
              "continuous_visibility": True},
         ])
+        # Use a fresh timeline-private stage for the bounded multi-page case.
+        worlds._native_stage_path(scope, collector.timeline_id).unlink(missing_ok=True)
         collector.native_after_sequence = 0
         collector._pending_native_events.clear()
 
@@ -206,7 +257,7 @@ def main() -> int:
         recapture = collector._coalesce_native_events(
             current_objects=[], prior_objects=[], turn=31,
         )
-        captures = [row for row in recapture if row["base_ref"] == "base-location-44"]
+        captures = [row for row in recapture if row.get("base_ref") == "base-location-44"]
         assert [row["event_kind"] for row in captures] == [
             "base_captured", "base_recaptured",
         ]
@@ -223,6 +274,8 @@ def main() -> int:
         project_reports = collector._coalesce_native_events(
             current_objects=[], prior_objects=[], turn=31,
         )
+        project_reports = [row for row in project_reports
+                           if str(row.get("event_kind", "")).startswith("project_race_")]
         assert project_reports == [{
             "event_kind": "project_race_started", "project_ref": "project-39",
             "turn": 31, "provenance": "native_public_report",
@@ -258,6 +311,159 @@ def main() -> int:
         assert all(not thread.is_alive() for thread in threads)
         assert maximum_active == 1
 
+    # Exercise both two-phase crash windows through the complete collector,
+    # projector, journal, and temporal-history path.
+    with tempfile.TemporaryDirectory(prefix="smacx-native-publication-crash-") as raw:
+        root = Path(raw)
+        store = SmacxStore(root / "state.sqlite3")
+        store.ensure_agent("agent-crash", "Crash")
+        store.create_match(match_id="match-crash", display_name="Crash", mode="solo")
+        store.create_perspective("match-crash", "agent-crash",
+                                 perspective_id="perspective-crash")
+        scope = MemoryScope("match-crash", "agent-crash", "perspective-crash")
+        journal = CampaignJournal(root / "campaigns", timeline_resolver=store.active_timeline_id)
+        worlds = WorldStore(store, root / "snapshots")
+        fixture = NativeFixture(16, 8, contacts=1)
+        collector = ObservationCollector(
+            scope=scope, session_id="session-crash", bridge_call=fixture,
+            journal=journal, world_store=worlds,
+            attention=AttentionService(store, journal, scope),
+        )
+        collector.collect_once()
+        fixture.revision += 1
+        fixture.events = [{
+            "sequence": 1, "kind": "visible_unit_damaged", "turn": 51,
+            "subject_a": 1000, "subject_b": 2, "from_tile_id": 1,
+            "to_tile_id": 1, "value_before": 10, "value_after": 7,
+            "continuous_visibility": True,
+        }]
+        original_append = journal.append
+        failed = False
+
+        def fail_before_semantic(*args, **kwargs):
+            nonlocal failed
+            event_type = args[1] if len(args) > 1 else kwargs.get("event_type")
+            if event_type == "observation.semantic_batch" and not failed:
+                failed = True
+                raise RuntimeError("injected_before_semantic_publication")
+            return original_append(*args, **kwargs)
+
+        journal.append = fail_before_semantic  # type: ignore[method-assign]
+        try:
+            collector.collect_once()
+            raise AssertionError("publication failure was not injected")
+        except RuntimeError as exc:
+            assert str(exc) == "injected_before_semantic_publication"
+        journal.append = original_append  # type: ignore[method-assign]
+        collector = ObservationCollector(
+            scope=scope, session_id="session-crash", bridge_call=fixture,
+            journal=journal, world_store=worlds,
+            attention=AttentionService(store, journal, scope),
+        )
+        collector.collect_once()
+        damaged = [row for row in worlds.temporal_events_since(
+            scope, collector.timeline_id, 0, limit=256,
+        ) if row["event"].get("event_kind") == "contact_damaged"]
+        assert len(damaged) == 1
+
+        fixture.revision += 1
+        fixture.events = [{
+            "sequence": 2, "kind": "visible_unit_damaged", "turn": 52,
+            "subject_a": 1000, "subject_b": 2, "from_tile_id": 1,
+            "to_tile_id": 1, "value_before": 7, "value_after": 5,
+            "continuous_visibility": True,
+        }]
+        failed = False
+
+        def fail_after_semantic(*args, **kwargs):
+            nonlocal failed
+            event_type = args[1] if len(args) > 1 else kwargs.get("event_type")
+            if event_type == "observation.reconciled" and not failed:
+                failed = True
+                raise RuntimeError("injected_after_semantic_publication")
+            return original_append(*args, **kwargs)
+
+        journal.append = fail_after_semantic  # type: ignore[method-assign]
+        try:
+            collector.collect_once()
+            raise AssertionError("post-semantic failure was not injected")
+        except RuntimeError as exc:
+            assert str(exc) == "injected_after_semantic_publication"
+        journal.append = original_append  # type: ignore[method-assign]
+        ObservationCollector(
+            scope=scope, session_id="session-crash", bridge_call=fixture,
+            journal=journal, world_store=worlds,
+            attention=AttentionService(store, journal, scope),
+        ).collect_once()
+        damaged = [row for row in worlds.temporal_events_since(
+            scope, collector.timeline_id, 0, limit=256,
+        ) if row["event"].get("event_kind") == "contact_damaged"]
+        assert len(damaged) == 2
+
+        fixture.revision += 1
+        fixture.units = []
+        fixture.events = [{
+            "sequence": 3, "kind": "visible_unit_destroyed", "turn": 53,
+            "subject_a": 1000, "subject_b": 2, "from_tile_id": 1,
+            "to_tile_id": 1, "value_before": 5, "value_after": 0,
+            "continuous_visibility": True,
+        }]
+        collector = ObservationCollector(
+            scope=scope, session_id="session-crash", bridge_call=fixture,
+            journal=journal, world_store=worlds,
+            attention=AttentionService(store, journal, scope),
+        )
+        collector.collect_once()
+        temporal = worlds.temporal_events_since(scope, collector.timeline_id, 0, limit=256)
+        assert sum(row["event"].get("event_kind") == "contact_destroyed"
+                   for row in temporal) == 1
+        assert not any(row["event"].get("event_kind") == "contact_lost"
+                       and row["event"].get("contact_ref") == damaged[0]["event"].get("contact_ref")
+                       for row in temporal)
+        intel = WorldService(worlds, scope).query(mode="intel", context_length=65536)
+        assert not any(item.get("status") == "lost" for item in intel.get("items", []))
+        assert not intel.get("lost_contact_envelopes")
+
+    with tempfile.TemporaryDirectory(prefix="smacx-native-fog-break-") as raw:
+        root = Path(raw)
+        store = SmacxStore(root / "state.sqlite3")
+        store.ensure_agent("agent-fog", "Fog")
+        store.create_match(match_id="match-fog", display_name="Fog", mode="solo")
+        store.create_perspective("match-fog", "agent-fog", perspective_id="perspective-fog")
+        scope = MemoryScope("match-fog", "agent-fog", "perspective-fog")
+        journal = CampaignJournal(root / "campaigns", timeline_resolver=store.active_timeline_id)
+        worlds = WorldStore(store, root / "snapshots")
+        fixture = NativeFixture(16, 8, contacts=2)
+        collector = ObservationCollector(
+            scope=scope, session_id="session-fog", bridge_call=fixture,
+            journal=journal, world_store=worlds,
+            attention=AttentionService(store, journal, scope),
+        )
+        collector.collect_once()
+        before = {
+            item["metadata"]["native_observation_key"]: item["object_ref"]
+            for item in worlds.load(scope, collector.timeline_id)["objects"]
+            if item.get("kind") == "foreign_contact" and item.get("status") == "active"
+        }
+        fixture.revision += 1
+        location = int(fixture.units[0]["tile_id"])
+        fixture.events = [
+            {"sequence": 1, "kind": "visible_unit_lost", "turn": 51,
+             "subject_a": 1000, "subject_b": 2, "from_tile_id": location,
+             "to_tile_id": location, "continuous_visibility": False},
+            {"sequence": 2, "kind": "visible_unit_appeared", "turn": 51,
+             "subject_a": 1000, "subject_b": 2, "from_tile_id": -1,
+             "to_tile_id": location, "continuous_visibility": False},
+        ]
+        collector.collect_once()
+        after = {
+            item["metadata"]["native_observation_key"]: item["object_ref"]
+            for item in worlds.load(scope, collector.timeline_id)["objects"]
+            if item.get("kind") == "foreign_contact" and item.get("status") == "active"
+        }
+        assert after["vehicle-handle-1000"] != before["vehicle-handle-1000"]
+        assert after["vehicle-handle-1001"] == before["vehicle-handle-1001"]
+
     print(json.dumps({"event": "pass", "payload": {
         "bounded_native_ring": True,
         "overflow_explicit": True,
@@ -274,6 +480,12 @@ def main() -> int:
         "collector_bridge_operations_valid": True,
         "managed_sidecar_identity_explicit": True,
         "collector_refresh_serialized": True,
+        "two_phase_publication_crash_replay_exactly_once": True,
+        "durable_stage_retains_more_than_native_ring_capacity": True,
+        "semantic_identity_checkpoint_wiring": True,
+        "action_revision_ignores_native_row_layout": True,
+        "confirmed_destruction_full_pipeline": True,
+        "same_drain_visibility_gap_breaks_only_affected_contact": True,
     }}, separators=(",", ":")))
     return 0
 

@@ -50,7 +50,11 @@ def main() -> int:
         (choice for choice in choices.get("choices", [])
          if choice.get("command") == "skip_all_ready_units"), None,
     )
-    expected_ids = [int(item["id"]) for item in snapshot["ready_unit_refs"]]
+    units = bridge_request("list_units", scope="own", limit=256)
+    unit_by_ref = {str(item.get("own_unit_ref")): int(item["id"])
+                   for item in units.get("items", []) if item.get("own_unit_ref")}
+    expected_refs = [str(item["own_unit_ref"]) for item in snapshot["ready_unit_refs"]]
+    expected_ids = [unit_by_ref[item] for item in expected_refs]
     if not skip_choice:
         return fail("choice_missing", snapshot=snapshot, choices=choices)
     choice_ids = [int(value) for value in skip_choice.get("ready_unit_ids", [])]
@@ -85,7 +89,8 @@ def main() -> int:
 
     unchanged = bridge_request("semantic_snapshot", timeout=5).get("snapshot", {})
     if unchanged.get("revision") != snapshot.get("revision") \
-            or [int(item["id"]) for item in unchanged.get("ready_unit_refs", [])] != expected_ids:
+            or [str(item["own_unit_ref"])
+                for item in unchanged.get("ready_unit_refs", [])] != expected_refs:
         return fail("rejection_mutated_state", before=snapshot, after=unchanged)
 
     applied = bridge_request(

@@ -62,6 +62,13 @@ class ForeignContactRegistry:
     def begin_frame(self) -> None:
         self._seen: set[str] = set()
 
+    def retire(self, native_observation_key: str) -> ForeignContactState | None:
+        state = self.states.pop(native_observation_key, None)
+        if state is not None:
+            state.active = False
+            self.retired.append(state)
+        return state
+
     def observe(self, native_observation_key: str, location: str,
                 turn: int | None, *, creation_revision: int = 0,
                 continuous_path: Iterable[Mapping[str, Any]] = ()) -> str:
@@ -327,6 +334,16 @@ class PerspectiveProjector:
                 "perspective_id": self.identity.perspective_id,
                 "world_epoch": self.identity.world_epoch,
             }))
+        destroyed_keys = {
+            str(value) for value in bundle.get("_confirmed_destroyed_handles", ())
+        }
+        broken_keys = {
+            str(value) for value in bundle.get("_broken_contact_handles", ())
+        } | destroyed_keys
+        destroyed_refs = {
+            state.contact_ref for key in sorted(broken_keys)
+            if (state := self.contacts.retire(key)) is not None and key in destroyed_keys
+        }
         self.contacts.begin_frame()
         movement_proofs = bundle.get("_continuous_visible_contact_moves") \
             if isinstance(bundle.get("_continuous_visible_contact_moves"), Mapping) else {}
@@ -390,6 +407,8 @@ class PerspectiveProjector:
             objects.append(WorldObject(ref, kind, fields, at, metadata=metadata))
         disappeared = self.contacts.end_frame()
         for contact in disappeared:
+            if contact.contact_ref in destroyed_refs:
+                continue
             prior = self._prior_objects.get(contact.contact_ref, {})
             prior_fields = prior.get("fields") if isinstance(prior, Mapping) else {}
             stale_fields: dict[str, EpistemicValue] = {}

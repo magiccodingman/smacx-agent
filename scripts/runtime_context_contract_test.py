@@ -12,7 +12,7 @@ from smacx_journal import CampaignJournal
 from smacx_runtime_context import RuntimeContextAssembler
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world import WorldService
-from smacx_world_model import PerspectiveProjector
+from smacx_world_model import PerspectiveProjector, estimate_tokens
 from smacx_world_store import WorldStore
 from smacx_world_types import WorldIdentity, content_hash
 
@@ -144,6 +144,27 @@ def main() -> int:
                                           episode_mode="gameplay", context_length=65536)
         assert after_operation["operations"] == []
 
+        # Ready-unit focus is keyed by the stable semantic handle, never the
+        # current compacting VEH row. Deliberately make those values differ
+        # and prove the same ref is promoted into active anchor detail.
+        snapshot["protocol"] = {"phase": "turn", "required_action": "play"}
+        snapshot["interaction"] = {"kind": "turn"}
+        snapshot["ready_unit_refs"] = [{
+            "own_unit_ref": "own-unit-7", "native_row_for_test": 2,
+            "location_ref": "location-0", "name": "Scout",
+            "roles": {"combat": True},
+        }]
+        unit_focus = assembler.build(
+            episode_id="episode-runtime-stable-unit-focus",
+            episode_mode="gameplay", context_length=65536,
+        )
+        assert unit_focus["focus"]["unit"]["own_unit_ref"] == "own-unit-7"
+        assert "id" not in unit_focus["focus"]["unit"]
+        assert unit_focus["focus"]["focus_id"] == "focus-unit-own-unit-7"
+        assert "own-unit-7" in unit_focus["world"]["anchor"]["lod"]["promotion_refs"]
+        assert any(item.get("object_ref") == "own-unit-7"
+                   for item in unit_focus["world"]["anchor"]["active_detail"])
+
         # Whole-envelope placement reports omissions exactly once. A maximal
         # 32-item lease is first bounded locally and can then be restricted by
         # the final request envelope; the same omitted IDs must not be counted
@@ -214,6 +235,19 @@ def main() -> int:
         assert huge_runtime["token_estimate"] <= huge_runtime["budget"]["total"]
         assert huge_runtime["token_composition"]["anchor"] <= 16_000
         assert huge_runtime["working_cognition"]["commitments"]
+        final_seals = {}
+        for detail, ceiling in (("compact", 512), ("standard", 2048), ("deep", 8192)):
+            page = assembler.world.query(
+                mode="forces", detail=detail, context_length=262144,
+            )
+            cached_page = assembler.world.query(
+                mode="forces", detail=detail, context_length=262144,
+            )
+            assert page["continuation"] is not None
+            assert page["result_token_estimate"] == estimate_tokens(page) <= ceiling
+            assert cached_page["result_token_estimate"] == estimate_tokens(cached_page) <= ceiling
+            assert cached_page["cache"]["hit"] is True
+            final_seals[detail] = page["result_token_estimate"]
 
     print(json.dumps({"event": "pass", "payload": {
         "64k_and_256k_same_truth": True,
@@ -224,9 +258,11 @@ def main() -> int:
         "communication_same_sovereign_read_only": True,
         "runtime_token_composition_observed": True,
         "operation_retained_then_collected": True,
+        "stable_ready_unit_focus_and_anchor_promotion": True,
         "attention_32_item_remaining_count_exact": True,
         "large_cognition_live_selection": True,
         "huge_chaotic_256k_runtime_bounded": True,
+        "compact_standard_deep_continuations_finally_resealed": final_seals,
         "runtime_tokens_64k": compact["token_estimate"],
         "runtime_tokens_256k": rich["token_estimate"],
         "huge_chaotic_runtime_tokens_256k": huge_runtime["token_estimate"],

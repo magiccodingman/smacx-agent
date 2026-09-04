@@ -70,6 +70,30 @@ class SpecialistSupervisor:
         # and specialist mission insertion before scanning mission lifecycles.
         total = self.world_store.gc_orphaned_specialist_snapshot_pins()
         with self.store._connect() as connection:
+            expired_failed = [dict(row) for row in connection.execute(
+                "SELECT mission_id,world_snapshot_id FROM specialist_missions "
+                "WHERE status='failed' AND world_snapshot_id IS NOT NULL "
+                "AND deadline_unix<=?", (time.time(),),
+            ).fetchall()]
+        for mission in expired_failed:
+            with self.store.transaction() as connection:
+                changed = connection.execute(
+                    "UPDATE specialist_missions SET world_snapshot_id=NULL,world_view_hash=NULL "
+                    "WHERE mission_id=? AND status='failed' AND deadline_unix<=?",
+                    (mission["mission_id"], time.time()),
+                ).rowcount
+                if changed:
+                    connection.execute(
+                        "DELETE FROM world_snapshot_pins WHERE snapshot_id=? "
+                        "AND owner_kind='specialist_mission' AND owner_id=?",
+                        (mission["world_snapshot_id"], mission["mission_id"]),
+                    )
+            if changed:
+                self.world_store.gc_snapshot_if_unpinned(
+                    str(mission["world_snapshot_id"])
+                )
+                total += 1
+        with self.store._connect() as connection:
             rows = [dict(row) for row in connection.execute(
                 "SELECT DISTINCT m.* FROM specialist_missions m JOIN specialist_attempts a "
                 "ON a.mission_id=m.mission_id WHERE m.status='active' AND a.status IN "
@@ -538,11 +562,6 @@ class SpecialistSupervisor:
                 usage=(process_result.get("usage")
                        if isinstance(process_result.get("usage"), Mapping) else {}),
             )
-            if result["status"] == "failed" and mission.get("world_snapshot_id"):
-                self.world_store.unpin_snapshot(
-                    str(mission["world_snapshot_id"]), "specialist_mission",
-                    str(mission["mission_id"]),
-                )
         except SpecialistError:
             pass
         finally:

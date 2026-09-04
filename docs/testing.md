@@ -63,6 +63,7 @@ PYTHONPATH=src python3 scripts/reference_bounding_contract_test.py
 PYTHONPATH=src python3 scripts/specialist_snapshot_gc_scale_test.py
 PYTHONPATH=src python3 scripts/world_context_benchmark.py
 PYTHONPATH=src python3 scripts/observation_collector_benchmark.py
+PYTHONPATH=src python3 scripts/amphibious_query_benchmark.py
 ```
 
 The provider-wire context policy must run inside the built Hermes image because
@@ -181,11 +182,26 @@ PYTHONPATH=src python3 scripts/full_endgame_pipeline_test.py
 `native_observation_contract_test.py` checks the native observation adapters,
 including more than 256 events, cross-page visible movement continuity, visible
 destruction versus fog loss, capture/recapture, tile visibility transitions,
-chat, global events, and public Secret Project report transitions.
+chat, global events, public Secret Project report transitions, durable
+two-phase publication across both injected crash windows, and a staged drain
+larger than the native ring. It also rejects action revisions coupled to native
+row indices and verifies that loss/reappearance retires only the affected
+foreign visible-episode identity. The managed real-game gate deliberately
+compacts an owned VEH row before checkpoint, kills the native worker, and
+proves the surviving stable refs and private identity capsule restore exactly.
 `global_world_pipeline_test.py` carries legitimate global, intelligence,
 base-geography, support, convoy, native-life, orbital, project, ecology,
 victory, anchor, runtime, and frozen-specialist facts through the complete
 provider-safe projection path.
+
+`movement_mechanics_contract_test.py` proves route, reachability, response, and
+lost-contact envelopes share one stateful arrival engine across turn
+boundaries, fungus, rough terrain, roads, rivers, tubes, ZOC, occupancy and
+remaining movement. It routes own, Pact, truce, hostile and epistemically
+unknown subjects under subject-relative access. The amphibious benchmark
+separately enforces bounded coast/port Pareto frontiers, transport ownership and
+diplomatic access, capacity/boarding legality, and conditional opposed landing
+on a 4,096-square custom world.
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:

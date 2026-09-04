@@ -575,6 +575,27 @@ def _call(operation: str, **arguments: object) -> dict:
         return {"ok": False, "error": "game_not_connected", "message": str(exc), "next": next_step}
 
 
+def _resolve_native_unit_id(own_unit_ref: str) -> int | None:
+    """Resolve a provider-safe owned-unit ref behind the native boundary."""
+    if not re.fullmatch(r"own-unit-[1-9][0-9]{0,9}", own_unit_ref):
+        return None
+    cursor = 0
+    for _ in range(16):
+        page = _call("perspective_world_page", domain="units", cursor=cursor, limit=256)
+        if page.get("ok") is not True:
+            return None
+        for item in page.get("items", []):
+            if isinstance(item, dict) and item.get("owned") is True \
+                    and item.get("own_unit_ref") == own_unit_ref:
+                native_id = item.get("id")
+                return int(native_id) if isinstance(native_id, int) else None
+        next_cursor = page.get("next_cursor")
+        if not isinstance(next_cursor, int) or next_cursor <= cursor:
+            return None
+        cursor = next_cursor
+    return None
+
+
 def _managed_lifecycle_block(operation: str) -> dict | None:
     if not MANAGED_ATTACHED:
         return None
@@ -1723,7 +1744,8 @@ def smac_cognition(
     description=(
         "Get one stable, action-ordered decision frame. It bundles the current fair-play "
         "state headline with the exact active interaction choices, one selected ready unit's legal "
-        "actions, a wait/gap directive, or game-management choices when no unit decision remains. "
+        "actions selected by stable own_unit_ref, a wait/gap directive, or game-management choices "
+        "when no unit decision remains. "
         "After deliberately deciding that every remaining unit is finished, set finish_ready_units=true "
         "to receive the guarded skip-all-ready choice instead of another individual unit frame. "
         "Use this as the primary agent loop to reduce calls and prevent invalid action order. "
@@ -1732,7 +1754,7 @@ def smac_cognition(
     )
 )
 def smac_decision(
-    unit_id: int = -1,
+    own_unit_ref: str = "",
     target_tile_id: int = -1,
     target_unit_id: int = -1,
     finish_ready_units: bool = False,
@@ -1751,12 +1773,12 @@ def smac_decision(
                       "detail": refresh.get("error")},
             "gameplay_mutations_blocked": True,
         }
-    if finish_ready_units and unit_id >= 0:
+    if finish_ready_units and own_unit_ref:
         return {
             "ok": False,
             "error": {
                 "code": "conflicting_decision_focus",
-                "message": "Choose either one ready unit_id or finish_ready_units=true, not both.",
+                "message": "Choose either one own_unit_ref or finish_ready_units=true, not both.",
             },
         }
     for _ in range(3):
@@ -1853,10 +1875,11 @@ def smac_decision(
                     "kind": "game_management", "purpose": "finish_ready_units",
                     "ready_unit_count": len(ready_refs),
                 }
-            elif unit_id >= 0:
+            elif own_unit_ref:
                 selected = next(
                     (item for item in ready_refs
-                     if isinstance(item, dict) and int(item.get("id", -1)) == unit_id),
+                     if isinstance(item, dict)
+                     and str(item.get("own_unit_ref") or "") == own_unit_ref),
                     None,
                 )
                 if selected is None:
@@ -1864,7 +1887,7 @@ def smac_decision(
                         "ok": False,
                         "error": {
                             "code": "unit_not_ready_in_decision_frame",
-                            "message": "The requested unit is not in the fresh snapshot's ready_unit_refs. Use one returned ready unit or omit unit_id.",
+                            "message": "The requested own_unit_ref is not in the fresh snapshot's ready_unit_refs. Use one returned reference or omit it.",
                         },
                         "identity": identity,
                         "ready_unit_refs": ready_refs,
@@ -1874,7 +1897,16 @@ def smac_decision(
             if finish_ready_units:
                 pass
             elif selected is not None:
-                selected_id = int(selected["id"])
+                selected_ref = str(selected.get("own_unit_ref") or "")
+                selected_id = _resolve_native_unit_id(selected_ref)
+                if selected_id is None:
+                    return {
+                        "ok": False,
+                        "error": {
+                            "code": "ready_unit_reference_unresolved",
+                            "message": "The stable ready-unit reference no longer resolves in the current native frame. Call smac_decision again.",
+                        },
+                    }
                 choice_kind = "unit_actions"
                 choice_arguments = {
                     "unit_id": selected_id,
@@ -2741,12 +2773,20 @@ def smac_investigate(
             if not direct.get("ok"):
                 return direct
             evidence = direct.get("evidence") if isinstance(direct.get("evidence"), list) else []
-            refs = [
-                f"reference:{item.get('document_id')}:{item.get('field', 'body')}"
-                for item in evidence if isinstance(item, dict) and item.get("document_id")
-            ][:16]
+            receipts = [{
+                "evidence_ref": "evidence-reference-" + content_hash({
+                    "query": objective[:2000], "document_id": item.get("document_id"),
+                    "field": item.get("field", "body"),
+                    "source_hash": item.get("source_hash"),
+                })[:24],
+                "document_id": item.get("document_id"),
+                "field": item.get("field", "body"),
+                "source_hash": item.get("source_hash"),
+            } for item in evidence if isinstance(item, dict) and item.get("document_id")][:16]
             return {"ok": True, "mode": "direct_reference", "bounded": True,
-                    "result": direct, "evidence_refs": refs,
+                    "result": direct,
+                    "evidence_refs": [item["evidence_ref"] for item in receipts],
+                    "provenance_receipts": receipts,
                     "dependency_hash": content_hash(direct)}
         if action == "result":
             if not mission_id:

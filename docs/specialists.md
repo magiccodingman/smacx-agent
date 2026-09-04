@@ -60,6 +60,12 @@ transcript or reasoning, including a retry or schema repair.
 World snapshots are immutable accelerators tied to exact match, seat,
 perspective, timeline, world epoch/revision, observation cursor, projection
 hash, and journal head. The snapshot remains pinned while a mission can run.
+If an otherwise retry-eligible world mission exhausts automatic retries, its
+mission pin becomes a bounded manual-retry retention lease rather than being
+released immediately. Normal snapshot GC preserves that exact frozen view.
+Manual retry must occur before both the mission deadline and retention lease
+expire and atomically reclaims the same snapshot while moving the mission back
+to the queue. No fresh/current world is silently substituted.
 
 Dependencies are recorded by the platform from each successful child query:
 world objects and query fingerprints/hashes for world work; document and corpus

@@ -19,6 +19,16 @@ def field_value(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
     return field.get("value", default) if isinstance(field, Mapping) else default
 
 
+def base_support_cost(item: Mapping[str, Any]) -> int | float | None:
+    minerals = field_value(item, "minerals", {})
+    if isinstance(minerals, Mapping) and isinstance(
+            minerals.get("unit_support_cost"), (int, float)):
+        return minerals["unit_support_cost"]
+    # Compatibility with imported pre-rebuild fixtures only.
+    value = field_value(item, "unit_support_cost")
+    return value if isinstance(value, (int, float)) else None
+
+
 def object_location(item: Mapping[str, Any] | None, fallback: str = "") -> str:
     if not item:
         return fallback
@@ -174,6 +184,8 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
         special_connections=special_connections,
         airdrop_destination_refs=airdrop_destinations,
         known=mobility_known,
+        constraint_mode=("subject_unknown" if subject_is_foreign
+                         else "sovereign_exact"),
     )
 
 
@@ -309,7 +321,7 @@ def base_mechanics(topology: PerspectiveTopology,
                                                                 row["minimum_observed_eta_turns"] or 10**9))[:12],
             "support_burden": len(supported_refs),
             "supported_unit_refs": supported_refs[:32],
-            "support_mineral_cost": field_value(base, "unit_support_cost"),
+            "support_mineral_cost": base_support_cost(base),
         })
     return rows
 
@@ -330,7 +342,10 @@ def transport_route(
     """
     passenger = objects.get(passenger_ref)
     target_location = object_location(objects.get(target_ref), target_ref)
-    if not passenger or target_location not in topology.by_ref \
+    # The sovereign can coordinate only its own passenger with its own
+    # transports.  Foreign threat estimates must never borrow our fleet.
+    if not passenger or passenger.get("kind") != "own_unit" \
+            or target_location not in topology.by_ref \
             or str(field_value(passenger, "triad", "")) != "land":
         return None
     passenger_location = object_location(passenger)
@@ -361,6 +376,38 @@ def transport_route(
         if object_location(item) not in topology.by_ref:
             continue
         transports.append((item, is_boarded_here, capacity, loaded))
+    # Known coast pairs are computed once.  Candidate frontiers are capped so
+    # this query scales as O(V) with small constants rather than repeated
+    # all-land x all-land routing.
+    coast_pairs = sorted({
+        (land_ref, neighbor.location_ref)
+        for land_ref, land_square in topology.by_ref.items() if not land_square.ocean
+        for neighbor in topology.adjacent(land_ref).values()
+        if neighbor.ocean or "base" in neighbor.features
+    })
+    search_turns = max(1, topology.shape.width + topology.shape.height)
+    passenger_arrivals = topology.arrival_map(
+        passenger_location, land_profile, max_turns=search_turns,
+    )
+    landing_candidates = sorted(
+        coast_pairs,
+        key=lambda pair: (
+            topology.shape.distance(
+                (topology.by_ref[pair[0]].x, topology.by_ref[pair[0]].y),
+                (topology.by_ref[target_location].x, topology.by_ref[target_location].y),
+            ), pair,
+        ),
+    )[:8]
+    post_legs = {
+        land_ref: topology.route(land_ref, target_location, land_profile)
+        for land_ref, _sea_ref in landing_candidates
+    }
+    hostile_at = {
+        object_location(item)
+        for item in objects.values()
+        if item.get("kind") == "foreign_contact" and item.get("status", "active") == "active"
+        and relationship_class(objects.get(str(field_value(item, "owner_ref")), {})) != "allied"
+    }
     best: tuple[tuple[int, float, str], dict[str, Any]] | None = None
     for transport, already_boarded, capacity, loaded in transports:
         transport_ref = str(transport["object_ref"])
@@ -369,41 +416,48 @@ def transport_route(
             objects, "transport-sea", subject_ref=transport_ref,
             topology=topology,
         )
+        transport_arrivals = topology.arrival_map(
+            transport_location, sea_profile, max_turns=search_turns,
+        )
         embark_pairs: list[tuple[str, str, Any, Any]] = []
         if already_boarded:
             embark_pairs.append((passenger_location, transport_location, None, None))
         else:
-            for land_ref, land_square in topology.by_ref.items():
-                if land_square.ocean:
+            ranked = []
+            for land_ref, sea_ref in coast_pairs:
+                passenger_arrival = passenger_arrivals.get(land_ref)
+                transport_arrival = transport_arrivals.get(sea_ref)
+                if passenger_arrival is None or transport_arrival is None:
                     continue
-                try:
-                    passenger_leg = topology.route(passenger_location, land_ref, land_profile)
-                except Exception:
-                    continue
-                if not passenger_leg.reachable:
-                    continue
-                for sea_square in topology.adjacent(land_ref).values():
-                    if not sea_square.ocean and "base" not in sea_square.features:
-                        continue
-                    transport_leg = topology.route(
-                        transport_location, sea_square.location_ref, sea_profile,
-                    )
-                    if transport_leg.reachable:
-                        embark_pairs.append((land_ref, sea_square.location_ref,
-                                              passenger_leg, transport_leg))
+                ranked.append((
+                    max(int(passenger_arrival["turns"]), int(transport_arrival["turns"])),
+                    float(passenger_arrival["movement_cost"])
+                    + float(transport_arrival["movement_cost"]),
+                    land_ref, sea_ref,
+                ))
+            for _turns, _cost, land_ref, sea_ref in sorted(ranked)[:4]:
+                embark_pairs.append((
+                    land_ref, sea_ref,
+                    topology.route(passenger_location, land_ref, land_profile),
+                    topology.route(transport_location, sea_ref, sea_profile),
+                ))
         for embark_land, embark_sea, passenger_leg, transport_leg in embark_pairs:
-            for landing_ref, landing_square in topology.by_ref.items():
-                if landing_square.ocean:
-                    continue
-                post_leg = topology.route(landing_ref, target_location, land_profile)
+            crossing_arrivals = topology.arrival_map(
+                embark_sea, sea_profile, max_turns=search_turns,
+            )
+            for landing_ref, landing_sea_ref in landing_candidates:
+                post_leg = post_legs[landing_ref]
                 if not post_leg.reachable:
                     continue
-                for sea_square in topology.adjacent(landing_ref).values():
-                    if not sea_square.ocean and "base" not in sea_square.features:
-                        continue
-                    sea_leg = topology.route(embark_sea, sea_square.location_ref, sea_profile)
-                    if not sea_leg.reachable:
-                        continue
+                if landing_sea_ref not in crossing_arrivals:
+                    continue
+                opposed = landing_ref in hostile_at
+                if opposed and not amphibious:
+                    continue
+                sea_leg = topology.route(embark_sea, landing_sea_ref, sea_profile)
+                if not sea_leg.reachable:
+                    continue
+                try:
                     rendezvous_turn = 0 if already_boarded else max(
                         int(passenger_leg.turns or 0), int(transport_leg.turns or 0),
                     )
@@ -415,12 +469,24 @@ def transport_route(
                         cost_legs.extend((passenger_leg, transport_leg))
                     raw_cost = sum(float(value.movement_cost or 0)
                                    for value in cost_legs if value is not None)
+                    conditional = opposed or any(
+                        value.eta_kind != "exact_known_state"
+                        for value in (sea_leg, post_leg)
+                    )
+                    if not already_boarded:
+                        conditional = conditional or passenger_leg.eta_kind != "exact_known_state" \
+                            or transport_leg.eta_kind != "exact_known_state"
                     schedule = {
                         "transport_ref": transport_ref,
                         "passenger_ref": passenger_ref,
                         "target_ref": target_ref,
                         "eta_turns": eta,
-                        "eta_kind": "exact_serialized_guarded_schedule",
+                        "eta_kind": "conditional_guarded_amphibious_assault"
+                        if opposed else (
+                            "conditional_serialized_guarded_schedule" if conditional
+                            else "exact_serialized_guarded_schedule"
+                        ),
+                        "latest_turns": None if conditional else eta,
                         "embark": {
                             "land_location_ref": embark_land,
                             "sea_location_ref": embark_sea,
@@ -435,10 +501,10 @@ def transport_route(
                             "eta_turns": sea_leg.turns,
                         },
                         "disembark": {
-                            "sea_location_ref": sea_square.location_ref,
+                            "sea_location_ref": landing_sea_ref,
                             "land_location_ref": landing_ref,
                             "post_disembark_path": list(post_leg.path),
-                            "amphibious": amphibious,
+                            "amphibious": amphibious, "opposed": opposed,
                         },
                         "capacity": {"total": capacity, "loaded": loaded,
                                      "available": capacity - loaded},
@@ -450,7 +516,7 @@ def transport_route(
                         "dependency_hash": content_hash({
                             "passenger": passenger_ref, "transport": transport_ref,
                             "target": target_ref, "embark": (embark_land, embark_sea),
-                            "landing": (sea_square.location_ref, landing_ref),
+                            "landing": (landing_sea_ref, landing_ref),
                             "passenger_leg": passenger_leg.as_dict() if passenger_leg else None,
                             "transport_leg": transport_leg.as_dict() if transport_leg else None,
                             "sea_leg": sea_leg.as_dict(), "post_leg": post_leg.as_dict(),
@@ -460,6 +526,8 @@ def transport_route(
                     score = (eta, raw_cost, transport_ref)
                     if best is None or score < best[0]:
                         best = (score, schedule)
+                except (AttributeError, TypeError, ValueError):
+                    continue
     return best[1] if best else None
 
 
@@ -493,7 +561,7 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
     support_details = {
         str(item["object_ref"]): {
             "supported_unit_count": int(home_counts.get(str(item["object_ref"]), 0)),
-            "mineral_cost": field_value(item, "unit_support_cost"),
+            "mineral_cost": base_support_cost(item),
         }
         for item in objects.values() if item.get("kind") == "base"
         and str(item["object_ref"]) in home_counts
@@ -544,11 +612,9 @@ def lost_contact_envelopes(topology: PerspectiveTopology,
         profile = mobility_profile(objects, "observed-contact-envelope",
                                    subject_ref=str(item["object_ref"]), topology=topology)
         start = object_location(item)
-        reached: dict[str, float] = {}
+        reached: dict[str, dict[str, Any]] = {}
         if elapsed is not None and start in topology.by_ref:
-            reached = topology.reachable_costs(
-                start, profile, max_cost=float(max(1, elapsed) * profile.movement_points),
-            )
+            reached = topology.arrival_map(start, profile, max_turns=elapsed)
         rows.append({
             "retired_contact_ref": item["object_ref"],
             "last_known_location_ref": start,
@@ -559,7 +625,11 @@ def lost_contact_envelopes(topology: PerspectiveTopology,
             },
             "known_world_possible_location_count": len(reached),
             "known_world_possible_location_refs": [
-                ref for ref, _ in sorted(reached.items(), key=lambda pair: (pair[1], pair[0]))[:32]
+                ref for ref, value in sorted(
+                    reached.items(), key=lambda pair: (
+                        int(pair[1].get("turns") or 0), pair[0]
+                    )
+                )[:32]
             ],
             "epistemic_status": "estimated",
             "identity_continuity": "retired; a later similar unit is a new contact",

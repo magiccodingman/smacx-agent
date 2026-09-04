@@ -235,6 +235,34 @@ def main() -> int:
         assert next(item.object_ref for item in reappeared["objects"]
                     if item.kind == "foreign_contact" and item.status == "active") != contact["object_ref"]
 
+        # A loss event breaks lineage even when the same native row is visible
+        # again at the identical square before this collector drain closes.
+        two_contacts = bundle()
+        two_contacts["units"].append({
+            "id": 92, "native_observation_key": "hidden-engine-92",
+            "tile_id": 18, "owned": False, "name": "Second Rover",
+            "owner_ref": "faction-2", "hp": 10, "max_hp": 10,
+        })
+        first_two = PerspectiveProjector(identity).project(two_contacts, observation_sequence=40)
+        two_prior = {**loaded, "objects": [item.as_dict(provider_safe=False)
+                                             for item in first_two["objects"]]}
+        before_by_key = {
+            item.metadata.get("native_observation_key"): item.object_ref
+            for item in first_two["objects"] if item.kind == "foreign_contact"
+        }
+        same_drain = dict(two_contacts)
+        same_drain["_broken_contact_handles"] = ["hidden-engine-91"]
+        after_gap = PerspectiveProjector(identity, prior_projection=two_prior).project(
+            same_drain, observation_sequence=41,
+        )
+        after_by_key = {
+            item.metadata.get("native_observation_key"): item.object_ref
+            for item in after_gap["objects"]
+            if item.kind == "foreign_contact" and item.status == "active"
+        }
+        assert after_by_key["hidden-engine-91"] != before_by_key["hidden-engine-91"]
+        assert after_by_key["hidden-engine-92"] == before_by_key["hidden-engine-92"]
+
         # Provider-facing world never serializes collector-private IDs.
         service = WorldService(world_store, scope)
         forces = service.query(mode="forces", context_length=65536)

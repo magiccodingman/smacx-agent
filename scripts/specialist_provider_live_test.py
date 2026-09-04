@@ -25,7 +25,7 @@ from smacx_world_store import WorldStore
 from smacx_world_types import WorldIdentity, canonical_json
 
 
-def trace_usage_summary(path: str | None) -> list[dict[str, int]]:
+def trace_usage_summary(path: str | None) -> list[dict[str, object]]:
     """Return content-free per-call diagnostics from a retained trace."""
     if not path or not Path(path).is_file():
         return []
@@ -59,9 +59,42 @@ def trace_usage_summary(path: str | None) -> list[dict[str, int]]:
                 usage = response.get("usage", {}) if isinstance(response, dict) else {}
             messages = request.get("messages", ()) \
                 if isinstance(request.get("messages"), list) else ()
+            response_rows = response if isinstance(response, list) else [response]
+            response_content_bytes = 0
+            response_reasoning_bytes = 0
+            response_tool_calls = 0
+            finish_reasons: set[str] = set()
+            for response_row in response_rows:
+                if not isinstance(response_row, dict):
+                    continue
+                for choice in response_row.get("choices", ()):
+                    if not isinstance(choice, dict):
+                        continue
+                    finish = choice.get("finish_reason")
+                    if finish:
+                        finish_reasons.add(str(finish))
+                    body = choice.get("delta") if isinstance(
+                        choice.get("delta"), dict
+                    ) else choice.get("message") if isinstance(
+                        choice.get("message"), dict
+                    ) else {}
+                    response_content_bytes += len(str(body.get("content") or "").encode())
+                    response_reasoning_bytes += len(str(
+                        body.get("reasoning_content") or body.get("reasoning") or ""
+                    ).encode())
+                    calls = body.get("tool_calls")
+                    if isinstance(calls, list):
+                        response_tool_calls += len(calls)
+            template = request.get("chat_template_kwargs") \
+                if isinstance(request.get("chat_template_kwargs"), dict) else {}
             result.append({
                 "request_bytes": len(canonical_json(request).encode()),
                 "message_count": len(messages),
+                "request_max_tokens": int(request.get("max_tokens") or 0),
+                "request_reasoning_effort": str(request.get("reasoning_effort") or ""),
+                "request_enable_thinking": template.get("enable_thinking"),
+                "request_preserve_thinking": template.get("preserve_thinking"),
+                "request_tool_count": len(request.get("tools") or ()),
                 "assistant_content_bytes": sum(
                     len(str(item.get("content") or "").encode())
                     for item in messages if isinstance(item, dict)
@@ -80,6 +113,10 @@ def trace_usage_summary(path: str | None) -> list[dict[str, int]]:
                 ),
                 "prompt_tokens": int(usage.get("prompt_tokens") or 0),
                 "completion_tokens": int(usage.get("completion_tokens") or 0),
+                "response_content_bytes": response_content_bytes,
+                "response_reasoning_bytes": response_reasoning_bytes,
+                "response_tool_calls": response_tool_calls,
+                "finish_reasons": sorted(finish_reasons),
             })
     return result
 

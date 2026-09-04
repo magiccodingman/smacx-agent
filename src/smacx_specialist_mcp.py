@@ -133,8 +133,9 @@ def _http_json(method: str, path: str, body: Mapping[str, Any] | None = None) ->
     return value
 
 
-def _reference_dependencies(result: Mapping[str, Any], action: str) -> list[dict[str, str]]:
-    rows: list[dict[str, str]] = []
+def _reference_dependencies(result: Mapping[str, Any], action: str,
+                            call_sequence: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
     stack: list[Any] = [result]
     while stack:
         value = stack.pop()
@@ -143,15 +144,29 @@ def _reference_dependencies(result: Mapping[str, Any], action: str) -> list[dict
                            if any(key in value for key in
                                   ("title", "content", "body", "document_id")) else None)
             if document_id:
-                rows.append({"kind": "reference_document", "ref": str(document_id),
-                             "hash": content_hash(value)})
+                digest = content_hash(value)
+                receipt = "evidence-reference-" + content_hash({
+                    "attempt_id": ATTEMPT_ID, "call_sequence": call_sequence,
+                    "document_id": str(document_id), "hash": digest,
+                })[:24]
+                rows.append({"kind": "reference_document", "ref": receipt,
+                             "hash": digest,
+                             "payload": {"document_id": str(document_id),
+                                         "document_hash": digest,
+                                         "corpus_revision": MISSION.get("corpus_revision")}})
             stack.extend(value.values())
         elif isinstance(value, list):
             stack.extend(value)
     if action in {"search", "tree", "topics", "related"}:
-        rows.append({"kind": "reference_coverage",
-                     "ref": f"corpus:{MISSION.get('corpus_revision') or 'current'}:{action}",
-                     "hash": str(MISSION.get("corpus_revision") or "current")})
+        digest = str(MISSION.get("corpus_revision") or "current")
+        receipt = "evidence-reference-" + content_hash({
+            "attempt_id": ATTEMPT_ID, "call_sequence": call_sequence,
+            "coverage": action, "revision": digest,
+        })[:24]
+        rows.append({"kind": "reference_coverage", "ref": receipt,
+                     "hash": digest,
+                     "payload": {"coverage_action": action,
+                                 "corpus_revision": digest}})
     unique = {(row["kind"], row["ref"]): row for row in rows}
     return list(unique.values())
 
@@ -301,7 +316,7 @@ if MISSION["faculty"] == "reference":
             collection_id=collection_id, limit=limit,
             max_content_tokens=max_content_tokens, continuation=continuation,
         )
-        dependencies = _reference_dependencies(result, action)
+        dependencies = _reference_dependencies(result, action, sequence)
         SERVICE.record_dependencies(ATTEMPT_ID, sequence, dependencies)
         _trace("mcp_call", {"sequence": sequence, "instrument": "reference_query",
                             "arguments": {"action": action, "query": query,

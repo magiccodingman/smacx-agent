@@ -93,6 +93,7 @@ def default_specialist_policy() -> dict[str, Any]:
                           "provider_token_budget": 512000, "context_token_ceiling": 262144,
                           "output_token_budget": 4000, "wall_seconds": 300},
         "automatic_retries": 1, "schema_repairs": 1,
+        "manual_retry_retention_seconds": 86_400,
         "trace_capture": True, "trace_success_generations": 10,
         "trace_failed_generations": 25, "trace_byte_ceiling": 2_147_483_648,
         "trace_high_retention": False,
@@ -108,6 +109,7 @@ def normalize_specialist_policy(configured: Mapping[str, Any] | None = None) -> 
         "seat_concurrency", "installation_concurrency", "automatic_retries",
         "schema_repairs", "trace_capture", "trace_success_generations",
         "trace_failed_generations", "trace_byte_ceiling", "trace_high_retention",
+        "manual_retry_retention_seconds",
     ):
         if key in source:
             result[key] = source[key]
@@ -139,6 +141,9 @@ def normalize_specialist_policy(configured: Mapping[str, Any] | None = None) -> 
     )
     result["automatic_retries"] = min(max(int(result["automatic_retries"]), 0), 2)
     result["schema_repairs"] = min(max(int(result["schema_repairs"]), 0), 1)
+    result["manual_retry_retention_seconds"] = min(max(
+        int(result["manual_retry_retention_seconds"]), 300,
+    ), 604_800)
     result["trace_success_generations"] = min(
         max(int(result["trace_success_generations"]), 0), 10_000,
     )
@@ -634,7 +639,7 @@ class SpecialistService:
                 (mission_id, self.scope.match_id, self.scope.agent_id,
                  self.scope.perspective_id),
             ).fetchone()
-        if not row or row["status"] != "failed":
+        if not row or row["status"] != "failed" or float(row["deadline_unix"]) <= now:
             # A stale result belongs to an obsolete dependency set. Re-running
             # the same frozen mission cannot make it current; the sovereign
             # must commission a new revision-bound mission instead.
@@ -654,17 +659,29 @@ class SpecialistService:
                 self.world_store.load_snapshot_content(snapshot_id)
             except Exception as exc:
                 raise SpecialistError("specialist_retry_snapshot_unavailable") from exc
-            self.world_store.pin_snapshot(snapshot_id, "specialist_mission", mission_id)
         wall_seconds = int(self._policy()[str(mission["execution_class"])]["wall_seconds"])
         with self.store.transaction() as connection:
+            transaction_now = time.time()
             changed = connection.execute(
                 "UPDATE specialist_missions SET status='queued',stale_reason=NULL,"
                 "cancellation_reason=NULL,deadline_unix=?,updated_unix=? "
                 "WHERE mission_id=? AND match_id=? AND agent_id=? AND perspective_id=? "
-                "AND status='failed'",
-                (now + wall_seconds, now, mission_id, self.scope.match_id, self.scope.agent_id,
-                 self.scope.perspective_id),
+                "AND status='failed' AND deadline_unix>? "
+                "AND COALESCE(world_snapshot_id,'')=?",
+                (transaction_now + wall_seconds, transaction_now, mission_id,
+                 self.scope.match_id, self.scope.agent_id,
+                 self.scope.perspective_id, transaction_now, snapshot_id,
+                ),
             ).rowcount
+            if changed == 1 and snapshot_id:
+                # Reclaim retry authority and the immutable-view pin in the
+                # same transaction.  This cannot race the supervisor's
+                # deadline GC into accepting a retry whose view was released.
+                connection.execute(
+                    "INSERT OR IGNORE INTO world_snapshot_pins("
+                    "snapshot_id,owner_kind,owner_id,pinned_unix) VALUES(?,?,?,?)",
+                    (snapshot_id, "specialist_mission", mission_id, transaction_now),
+                )
         if changed != 1:
             raise SpecialistError("specialist_mission_not_retriable")
         return {"ok": True, "mission_id": mission_id, "status": "mission_pending"}
@@ -992,8 +1009,14 @@ class SpecialistService:
             "dependency_hash": content_hash(dependency_rows),
             "representative_evidence_refs": [item["ref"] for item in dependency_rows[:16]],
             "reference_document_hashes": [
-                {"ref": item["ref"], "hash": item["hash"]}
-                for item in dependency_rows if item["kind"] == "reference_document"
+                {
+                    "evidence_ref": str(dep["dependency_ref"]),
+                    "hash": str(dep["dependency_hash"]),
+                    "document_id": str((json.loads(
+                        dep.get("dependency_payload_json") or "{}"
+                    ) or {}).get("document_id") or ""),
+                }
+                for dep in deps if dep["dependency_kind"] == "reference_document"
             ][:16],
             "usage": {
                 "provider_calls": int(usage.get("api_calls") or usage.get("provider_calls") or 0),
@@ -1156,12 +1179,13 @@ class SpecialistService:
             retry = bool(allow_retry and (transient_retry or repair_retry)
                          and mission["status"] == "active")
             workload = policy[str(mission["execution_class"])]
+            deadline = now + int(workload["wall_seconds"] if retry else
+                                 policy["manual_retry_retention_seconds"])
             connection.execute(
                 "UPDATE specialist_missions SET status=?,deadline_unix=?,updated_unix=? "
                 "WHERE mission_id=? "
                 "AND status='active' AND accepted_attempt_id IS NULL",
-                ("retry_wait" if retry else "failed",
-                 now + int(workload["wall_seconds"]), now, mission_id),
+                ("retry_wait" if retry else "failed", deadline, now, mission_id),
             )
         status = "retry_wait" if retry else "failed"
         if not retry:
@@ -1191,9 +1215,11 @@ class SpecialistService:
             if not mission:
                 raise SpecialistError("unknown_specialist_mission")
             changed = connection.execute(
-                "UPDATE specialist_missions SET status='failed',stale_reason=?,updated_unix=? "
+                "UPDATE specialist_missions SET status='failed',stale_reason=?,"
+                "deadline_unix=?,updated_unix=? "
                 "WHERE mission_id=? AND status IN ('queued','retry_wait')",
-                ("mission_deadline_expired", now, mission_id),
+                ("mission_deadline_expired", now + int(
+                    self._policy()["manual_retry_retention_seconds"]), now, mission_id),
             ).rowcount
         if changed:
             mission_dict = dict(mission)
@@ -1206,10 +1232,6 @@ class SpecialistService:
                 preview="Specialist mission expired before an attempt could complete.",
                 limited=True,
             )
-            if mission["world_snapshot_id"]:
-                self.world_store.unpin_snapshot(
-                    str(mission["world_snapshot_id"]), "specialist_mission", mission_id,
-                )
         return {"ok": bool(changed), "mission_id": mission_id,
                 "status": "failed" if changed else str(mission["status"])}
 

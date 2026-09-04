@@ -195,7 +195,8 @@ semantically zoomable view inside each request:
 
 ```text
 bounded native observation ring and perspective pages
-  -> external collector
+  -> private durable observation stage and acknowledged drain cursor
+  -> external collector with idempotent semantic publication
   -> hash-linked campaign journal (temporal authority)
   -> perspective snapshot and world projection (rebuildable)
   -> mobility regions, frontiers, theaters, attention and query cache
@@ -208,6 +209,15 @@ not harmless engine ticks. Each field retains epistemic status, provenance,
 and last verification where available. Foreign units receive identities only
 for one continuous visible episode; reacquisition through fog cannot assert
 that a similar contact is the same unit.
+
+The native ring is an interrupt-safe transport, not durable authority. The
+collector stages each raw drain in a provider-inaccessible file, publishes its
+semantic events idempotently to the journal, reconciles the projection, and
+only then advances the durable native cursor and removes the stage. A crash
+before either publication boundary replays the stage exactly once. Confirmed
+destruction retires the contact before absence reconciliation, while any
+visibility gap retires only that contact's visible-episode identity—even if it
+reappears on the same square during the same drain.
 
 Provider-facing size follows strategic complexity rather than map tiles. Quiet
 regions demote into hierarchical summaries, while focus, active operations,
@@ -412,6 +422,15 @@ active journal timeline forked from the recorded hash. AI-visible working state,
 structured lists, search, recall, chat acknowledgement, and modern group state
 all read that timeline; older SQLite rows are disposable/admin projections and
 cannot leak an abandoned future. A model must re-observe.
+
+Checkpoint metadata also carries a strictly platform-private native semantic
+identity capsule: the VEH-row handle vector, next monotonic handle, and an
+exact restored-layout validation hash. It is imported only after the verified
+save matches and never crosses MCP/provider serialization. This preserves
+surviving `own-unit-*` and continuous-contact identities across native process
+replacement even after native VEH-row compaction; a mismatch fails closed and
+forces derived-world reconstruction rather than attaching identities to the
+wrong world.
 
 Portal governance rows are durable authorization records. Quorum is frozen from
 the other connected, non-delegated human seats when a proposal opens. Approval

@@ -185,6 +185,34 @@ class ObservationCollector:
         self._contact_identity_reset = False
         self._pending_native_events: list[dict[str, Any]] = []
         self._collection_metrics: dict[str, Any] = {}
+        self._restore_native_stage()
+
+    def _restore_native_stage(self) -> dict[str, Any]:
+        stage = self.world_store.load_native_observation_stage(
+            self.scope, self.timeline_id,
+        )
+        self.native_after_sequence = int(stage["staged_after_sequence"])
+        self._pending_native_events = list(stage["events"])
+        self._continuous_contact_moves.clear()
+        self._contact_identity_reset = stage.get("continuity_gap") is not None
+        for payload in self._pending_native_events:
+            kind = str(payload.get("native_kind") or "")
+            handle = payload.get("subject_a")
+            key = f"vehicle-handle-{handle}" if isinstance(handle, int) else ""
+            if kind == "visible_unit_moved" and payload.get("continuous_visibility") \
+                    and isinstance(payload.get("from_tile_id"), int) \
+                    and isinstance(payload.get("to_tile_id"), int):
+                self._continuous_contact_moves.setdefault(key, []).append({
+                    "from": f"location-{payload['from_tile_id']}",
+                    "to": f"location-{payload['to_tile_id']}",
+                    "native_sequence": payload["native_sequence"],
+                })
+            elif kind in {"visible_unit_lost", "visible_unit_destroyed"} and key:
+                self._continuous_contact_moves.pop(key, None)
+            elif kind == "contact_identity_reset":
+                self._continuous_contact_moves.clear()
+                self._contact_identity_reset = True
+        return stage
 
     def _bridge(self, operation: str, **kwargs: Any) -> dict[str, Any]:
         self._collection_metrics["bridge_calls"] = int(
@@ -377,6 +405,18 @@ class ObservationCollector:
                 key: list(value) for key, value in self._continuous_contact_moves.items()
             },
             "_contact_identity_reset": self._contact_identity_reset,
+            "_broken_contact_handles": sorted({
+                f"vehicle-handle-{item['subject_a']}"
+                for item in self._pending_native_events
+                if item.get("native_kind") == "visible_unit_lost"
+                and isinstance(item.get("subject_a"), int)
+            }),
+            "_confirmed_destroyed_handles": sorted({
+                f"vehicle-handle-{item['subject_a']}"
+                for item in self._pending_native_events
+                if item.get("native_kind") == "visible_unit_destroyed"
+                and isinstance(item.get("subject_a"), int)
+            }),
         }
         # All native rows are already perspective-filtered.  The explicit
         # entitlement pass is retained as an independently testable boundary
@@ -421,43 +461,83 @@ class ObservationCollector:
         })
         return "world-" + hashlib.sha256(material.encode()).hexdigest()[:32]
 
+    def _preserve_project_report_history(
+        self, bundle: dict[str, Any], current: Mapping[str, Any] | None,
+    ) -> None:
+        """Carry legitimately observed builders from journal authority."""
+        global_rows = bundle.get("global")
+        if not isinstance(global_rows, list):
+            return
+        row = next((item for item in global_rows
+                    if isinstance(item, dict)
+                    and item.get("object_ref") == "global-known-project-races"), None)
+        races = row.get("state") if isinstance(row, dict) else None
+        if not isinstance(races, list):
+            return
+        prior_field: Mapping[str, Any] = {}
+        prior_by_project: dict[int, Mapping[str, Any]] = {}
+        replayed = self.journal.replay(self.scope, self.timeline_id)
+        journal_objects = replayed.get("world_objects") \
+            if isinstance(replayed.get("world_objects"), Mapping) else {}
+        prior_object = journal_objects.get("global-known-project-races")
+        if not isinstance(prior_object, Mapping) and current:
+            # A brand-new journal may not yet have a projected batch. The
+            # current projection is only a bootstrap accelerator; all later
+            # recovery derives the same row from the canonical journal.
+            prior_object = next((
+                item for item in current.get("objects", ())
+                if isinstance(item, Mapping)
+                and item.get("object_ref") == "global-known-project-races"
+            ), None)
+        if isinstance(prior_object, Mapping):
+            candidate_field = prior_object.get("fields", {}).get("state") \
+                if isinstance(prior_object.get("fields"), Mapping) else None
+            prior_values = candidate_field.get("value") \
+                if isinstance(candidate_field, Mapping) else None
+            if isinstance(candidate_field, Mapping):
+                prior_field = candidate_field
+            if isinstance(prior_values, list):
+                prior_by_project = {
+                    int(item["project_id"]): item for item in prior_values
+                    if isinstance(item, Mapping)
+                    and isinstance(item.get("project_id"), int)
+                    and item.get("builder_ref")
+                }
+        for race in races:
+            if not isinstance(race, dict) or not isinstance(race.get("project_id"), int):
+                continue
+            if race.get("builder_ref"):
+                race["builder_epistemic_status"] = "current"
+                race["builder_provenance"] = "native_public_report"
+                continue
+            prior = prior_by_project.get(int(race["project_id"]))
+            if prior is None:
+                continue
+            race["builder_ref"] = prior["builder_ref"]
+            race["builder_identity"] = "observed_report"
+            race["builder_epistemic_status"] = "stale"
+            race["builder_last_verified_turn"] = prior.get(
+                "builder_last_verified_turn", prior_field.get("last_verified_turn")
+            )
+            race["builder_provenance"] = prior.get(
+                "builder_provenance", prior_field.get("provenance_ref")
+            )
+
     def _append_native_feed(self, feed: Mapping[str, Any]) -> None:
         saw_inbound_chat = False
+        staged_events: list[dict[str, Any]] = []
+        continuity_gap = None
         if feed.get("continuity") == "incomplete":
-            self._continuous_contact_moves.clear()
-            self._contact_identity_reset = True
-            self.observation_cursor += 1
-            gap_payload = {
-                "observation_sequence": self.observation_cursor,
+            continuity_gap = {
                 "native_after_sequence": self.native_after_sequence,
                 "native_next_sequence": int(feed.get("next_sequence") or 0),
                 "lost_after_observation_sequence": feed.get("lost_after_observation_sequence"),
                 "reconciliation_required": True,
             }
-            event = self.journal.append(
-                self.scope, "observation.continuity_gap", gap_payload,
-                session_id=self.session_id,
-            )
-            self.world_store.record_observation_projection(
-                self.scope, self.timeline_id, {
-                    "sequence": self.observation_cursor,
-                    "kind": "continuity_gap", "turn": None,
-                    "payload": gap_payload, "continuity": "incomplete",
-                }, event["event_id"],
-            )
-            if self.attention is not None:
-                self.attention.enqueue(
-                    "observation_continuity_gap", gap_payload,
-                    observation_cursor=self.observation_cursor,
-                    priority=100, critical=True, session_id=self.session_id,
-                    dedupe_key=f"continuity:{self.timeline_id}:{self.observation_cursor}",
-                )
         for item in feed.get("events", ()):
             if not isinstance(item, Mapping):
                 continue
-            self.observation_cursor += 1
             payload = {
-                "observation_sequence": self.observation_cursor,
                 "native_sequence": int(item["sequence"]),
                 "native_kind": str(item.get("kind") or "unknown"),
                 "subject_a": item.get("subject_a"), "subject_b": item.get("subject_b"),
@@ -467,35 +547,17 @@ class ObservationCollector:
                 "value_after": item.get("value_after"),
                 "continuous_visibility": bool(item.get("continuous_visibility", False)),
             }
-            if payload["native_kind"] == "visible_unit_moved" \
-                    and payload["continuous_visibility"] \
-                    and isinstance(payload["subject_a"], int) \
-                    and isinstance(payload["from_tile_id"], int) \
-                    and isinstance(payload["to_tile_id"], int):
-                key = f"vehicle-handle-{payload['subject_a']}"
-                self._continuous_contact_moves.setdefault(key, []).append({
-                    "from": f"location-{payload['from_tile_id']}",
-                    "to": f"location-{payload['to_tile_id']}",
-                    "native_sequence": payload["native_sequence"],
-                })
-            elif payload["native_kind"] in {
-                "visible_unit_lost", "visible_unit_destroyed",
-            } and isinstance(payload["subject_a"], int):
-                self._continuous_contact_moves.pop(
-                    f"vehicle-handle-{payload['subject_a']}", None,
-                )
-            if payload["native_kind"] == "contact_identity_reset":
-                self._continuous_contact_moves.clear()
-                self._contact_identity_reset = True
             saw_inbound_chat = saw_inbound_chat or payload["native_kind"] == "chat_inbound"
-            # Collector-private handles stay in a bounded in-memory staging
-            # buffer until reconciliation can translate them to semantic refs.
-            self._pending_native_events.append({**payload, "turn": item.get("turn")})
-            if len(self._pending_native_events) > 1024:
-                self._pending_native_events = self._pending_native_events[-1024:]
-        self.native_after_sequence = max(
-            self.native_after_sequence, int(feed.get("next_sequence") or 0),
+            staged_events.append({**payload, "turn": item.get("turn")})
+        self.world_store.stage_native_observation_feed(
+            self.scope, self.timeline_id, events=staged_events,
+            next_sequence=int(feed.get("next_sequence") or 0),
+            continuity_gap=continuity_gap,
         )
+        # Only the durable private stage advances the ring-drain cursor. A
+        # process failure before semantic publication therefore replays the
+        # same staged rows instead of silently consuming them.
+        self._restore_native_stage()
         if saw_inbound_chat and self.chat_capture is not None:
             self.chat_capture()
 
@@ -532,26 +594,52 @@ class ObservationCollector:
         prior_objects: list[Mapping[str, Any]], turn: int | None,
     ) -> list[dict[str, Any]]:
         """Translate private POD transitions into authoritative semantic events."""
-        handle_to_ref: dict[str, str] = {}
+        prior_handle_to_ref: dict[str, str] = {}
+        current_handle_to_ref: dict[str, str] = {}
         ref_kinds: dict[str, str] = {}
-        for item in [*prior_objects, *current_objects]:
-            if not isinstance(item, Mapping):
-                continue
-            metadata = item.get("metadata") if isinstance(item.get("metadata"), Mapping) else {}
-            key = metadata.get("native_observation_key")
-            if key:
-                handle_to_ref[str(key)] = str(item.get("object_ref"))
-                ref_kinds[str(item.get("object_ref"))] = str(item.get("kind") or "")
-            if item.get("kind") == "own_unit" and metadata.get("native_handle") is not None:
-                handle_to_ref[f"vehicle-handle-{metadata['native_handle']}"] = str(item.get("object_ref"))
-                ref_kinds[str(item.get("object_ref"))] = "own_unit"
+        for collection, destination in (
+            (prior_objects, prior_handle_to_ref),
+            (current_objects, current_handle_to_ref),
+        ):
+            for item in collection:
+                if not isinstance(item, Mapping):
+                    continue
+                metadata = item.get("metadata") \
+                    if isinstance(item.get("metadata"), Mapping) else {}
+                key = metadata.get("native_observation_key")
+                if key:
+                    destination[str(key)] = str(item.get("object_ref"))
+                    ref_kinds[str(item.get("object_ref"))] = str(
+                        item.get("kind") or ""
+                    )
+                if item.get("kind") == "own_unit" \
+                        and metadata.get("native_handle") is not None:
+                    destination[
+                        f"vehicle-handle-{metadata['native_handle']}"
+                    ] = str(item.get("object_ref"))
+                    ref_kinds[str(item.get("object_ref"))] = "own_unit"
         events: list[dict[str, Any]] = []
         move_by_contact: dict[str, dict[str, Any]] = {}
         base_capture_history: dict[str, dict[str, Any]] = {}
+        broken_handles: set[str] = set()
+        destroyed_handles = {
+            f"vehicle-handle-{item['subject_a']}"
+            for item in self._pending_native_events
+            if item.get("native_kind") == "visible_unit_destroyed"
+            and isinstance(item.get("subject_a"), int)
+        }
         for raw in self._pending_native_events:
             kind = str(raw.get("native_kind") or "")
             handle = raw.get("subject_a")
-            unit_ref = handle_to_ref.get(f"vehicle-handle-{handle}")
+            handle_key = f"vehicle-handle-{handle}"
+            if kind in {"visible_unit_lost", "visible_unit_destroyed"}:
+                unit_ref = prior_handle_to_ref.get(handle_key) \
+                    or current_handle_to_ref.get(handle_key)
+            elif kind == "visible_unit_appeared" and handle_key in broken_handles:
+                unit_ref = current_handle_to_ref.get(handle_key)
+            else:
+                unit_ref = current_handle_to_ref.get(handle_key) \
+                    or prior_handle_to_ref.get(handle_key)
             at = raw.get("to_tile_id") if isinstance(raw.get("to_tile_id"), int) \
                 and raw.get("to_tile_id", -1) >= 0 else raw.get("from_tile_id")
             location = f"location-{at}" if isinstance(at, int) and at >= 0 else None
@@ -572,6 +660,12 @@ class ObservationCollector:
                     row["to_location_ref"] = row["path"][-1]["to_location_ref"]
             elif kind in {"visible_unit_appeared", "visible_unit_lost",
                           "visible_unit_destroyed", "visible_unit_damaged"} and unit_ref:
+                if kind == "visible_unit_lost":
+                    broken_handles.add(handle_key)
+                    if handle_key in destroyed_handles:
+                        continue
+                elif kind == "visible_unit_destroyed":
+                    broken_handles.add(handle_key)
                 own = ref_kinds.get(unit_ref) == "own_unit"
                 semantic_kind = {
                     "visible_unit_appeared": "unit_appeared" if own else "contact_appeared",
@@ -639,7 +733,6 @@ class ObservationCollector:
                     event["prior_project_ref"] = f"project-{raw['value_before']}"
                 events.append(event)
         events.extend(move_by_contact.values())
-        self._pending_native_events.clear()
         # Exact native duplicates can occur alongside reconciliation deltas.
         unique = {content_hash(item): item for item in events}
         return list(unique.values())
@@ -657,6 +750,9 @@ class ObservationCollector:
             except Exception as exc:
                 self._collection_metrics["failed"] = True
                 self._collection_metrics["failure_kind"] = type(exc).__name__
+                # Rebuild all transient correlation state from the durable
+                # private stage before an in-process retry.
+                self._restore_native_stage()
                 raise
             finally:
                 self._collection_metrics["wall_ms"] = round(
@@ -685,14 +781,26 @@ class ObservationCollector:
                 current_for_timeline.get("observation_cursor", 0)
                 if current_for_timeline else 0
             )
-            self.native_after_sequence = 0
             self._last_action_revision = ""
-            self._continuous_contact_moves.clear()
-            self._contact_identity_reset = True
+            self._restore_native_stage()
         elif self.observation_cursor == 0:
             current_for_timeline = self.world_store.load(self.scope, self.timeline_id)
             if current_for_timeline:
                 self.observation_cursor = int(current_for_timeline["observation_cursor"])
+        current = self.world_store.load(self.scope, self.timeline_id)
+        stage = self.world_store.load_native_observation_stage(
+            self.scope, self.timeline_id,
+        )
+        publication_cursor = stage.get("publication_observation_cursor")
+        if publication_cursor is not None and current is not None \
+                and int(current.get("observation_cursor") or 0) >= int(publication_cursor):
+            # Projection replacement is the final durable publication step.
+            # A crash after it but before private-stage acknowledgement leaves
+            # an unambiguous, safely acknowledgable remnant.
+            self.world_store.acknowledge_native_observation_publication(
+                self.scope, self.timeline_id, int(publication_cursor),
+            )
+            stage = self._restore_native_stage()
         feed = self._drain_native_feed()
         self._collection_metrics.update({
             "native_feed_pages": int(feed.get("drained_pages") or 0),
@@ -703,7 +811,8 @@ class ObservationCollector:
         current = self.world_store.load(self.scope, self.timeline_id)
         should_reconcile = action_revision != self._last_action_revision \
             or feed.get("reconciliation_required") is True \
-            or int(feed.get("drained_event_count") or 0) > 0 or current is None
+            or int(feed.get("drained_event_count") or 0) > 0 \
+            or bool(self._pending_native_events) or current is None
         if not should_reconcile:
             self._collection_metrics.update({
                 "reconciled": False, "projection_rows_written": 0,
@@ -716,6 +825,7 @@ class ObservationCollector:
         for _ in range(3):
             try:
                 bundle = self._bundle()
+                self._preserve_project_report_history(bundle, current)
                 break
             except ObservationCollectorError as exc:
                 last_error = exc
@@ -725,7 +835,23 @@ class ObservationCollector:
         # Reconciliation itself is one material observation. Every object delta
         # emitted from it shares this cursor, while journal event IDs preserve
         # the individual facts at that observation boundary.
-        self.observation_cursor += 1
+        stage = self.world_store.load_native_observation_stage(
+            self.scope, self.timeline_id,
+        )
+        assigned_cursor = stage.get("publication_observation_cursor")
+        if assigned_cursor is None:
+            assigned_cursor = self.observation_cursor + 1
+            stage = self.world_store.begin_native_observation_publication(
+                self.scope, self.timeline_id, int(assigned_cursor),
+            )
+        self.observation_cursor = int(assigned_cursor)
+        publication_key = content_hash({
+            "timeline_id": self.timeline_id,
+            "observation_cursor": self.observation_cursor,
+            "native_sequences": [item.get("native_sequence") for item in stage["events"]],
+            "continuity_gap": stage.get("continuity_gap"),
+            "action_revision": bundle.get("action_revision"),
+        })
         world_epoch = self._world_epoch(bundle, current)
         identity = WorldIdentity(self.scope.match_id, self.scope.perspective_id,
                                  self.timeline_id, world_epoch)
@@ -762,6 +888,33 @@ class ObservationCollector:
         )
         journal_events_written = 0
         observation_rows_written = 0
+        continuity_gap = stage.get("continuity_gap")
+        if isinstance(continuity_gap, Mapping):
+            gap_payload = {
+                **dict(continuity_gap),
+                "observation_sequence": self.observation_cursor,
+            }
+            event = self.journal.append(
+                self.scope, "observation.continuity_gap", gap_payload,
+                session_id=self.session_id,
+                idempotency_key=f"native-publication:{publication_key}:continuity",
+            )
+            self.world_store.record_observation_projection(
+                self.scope, self.timeline_id, {
+                    "sequence": self.observation_cursor,
+                    "kind": "continuity_gap", "turn": None,
+                    "payload": gap_payload, "continuity": "incomplete",
+                }, event["event_id"],
+            )
+            journal_events_written += 1
+            observation_rows_written += 1
+            if self.attention is not None:
+                self.attention.enqueue(
+                    "observation_continuity_gap", gap_payload,
+                    observation_cursor=self.observation_cursor,
+                    priority=100, critical=True, session_id=self.session_id,
+                    dedupe_key=f"continuity:{publication_key}",
+                )
         delta_batches = _bounded_batches([
             {**delta, "observation_sequence": self.observation_cursor}
             for delta in deltas
@@ -772,6 +925,9 @@ class ObservationCollector:
                     "observation_sequence": self.observation_cursor,
                     "batch_index": batch_index, "deltas": batch,
                 }, session_id=self.session_id, turn=bundle.get("turn"), year=bundle.get("year"),
+                idempotency_key=(
+                    f"native-publication:{publication_key}:world:{batch_index}"
+                ),
             )
             self.world_store.record_observation_projection(
                 self.scope, self.timeline_id,
@@ -815,6 +971,9 @@ class ObservationCollector:
                     "batch_index": batch_index, "events": batch,
                 },
                 session_id=self.session_id, turn=bundle.get("turn"), year=bundle.get("year"),
+                idempotency_key=(
+                    f"native-publication:{publication_key}:semantic:{batch_index}"
+                ),
             )
             self.world_store.record_observation_projection(
                 self.scope, self.timeline_id,
@@ -838,6 +997,7 @@ class ObservationCollector:
                 "action_revision": bundle.get("action_revision"),
                 "object_count": len(current_objects), "delta_count": len(deltas),
             }, session_id=self.session_id, turn=bundle.get("turn"), year=bundle.get("year"),
+            idempotency_key=f"native-publication:{publication_key}:reconciled",
         )
         manifest = self.journal.replay(self.scope)["manifest"]
         stored = self.world_store.replace_projection(
@@ -847,6 +1007,10 @@ class ObservationCollector:
             continuity="complete" if feed.get("continuity") != "incomplete" else "incomplete",
             journal_head_hash=str(manifest["head_hash"]),
         )
+        self.world_store.acknowledge_native_observation_publication(
+            self.scope, self.timeline_id, self.observation_cursor,
+        )
+        self._restore_native_stage()
         self._collection_metrics.update({
             "reconciled": True,
             "world_objects": len(current_objects),

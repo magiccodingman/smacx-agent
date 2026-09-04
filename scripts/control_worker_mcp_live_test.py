@@ -180,6 +180,70 @@ async def current_decision(url: str) -> dict:
     return {"ok": False, "error": {"code": "briefing_gate_did_not_clear"}}
 
 
+def force_native_identity_compaction(container_name: str) -> dict:
+    """Delete an early owned VEH row so a survivor's handle no longer matches its row.
+
+    This is a private native recovery fixture. Provider-facing play continues to
+    use opaque choice IDs and stable own-unit refs everywhere else.
+    """
+    # The private acceptance worker is explicitly test-gated, and this bridge
+    # operation is unreachable from the provider-facing MCP surface.
+    prepared = bridge_operation(container_name, "test_identity_compaction_fixture")
+    if prepared.get("ok") is not True:
+        raise AssertionError(f"identity fixture preparation failed: {prepared}")
+    units = bridge_operation(
+        container_name, "perspective_world_page",
+        domain="units", cursor=0, limit=256,
+    )
+    owned = sorted(
+        (row for row in units.get("items", []) if row.get("owned") is True
+         and isinstance(row.get("id"), int) and row.get("own_unit_ref")),
+        key=lambda row: int(row["id"]),
+    )
+    if len(owned) < 2:
+        raise AssertionError(f"identity fixture requires two owned units: {units}")
+    doomed = owned[0]
+    choices = bridge_operation(
+        container_name, "semantic_choices", kind="unit_actions",
+        unit_id=int(doomed["id"]),
+    )
+    disband = next(
+        (row for row in choices.get("choices", [])
+         if row.get("command") == "disband_unit"), None,
+    )
+    if disband is None:
+        raise AssertionError(f"identity fixture cannot disband early row: {choices}")
+    removed = bridge_operation(
+        container_name, "semantic_command", command="disband_unit",
+        unit_id=int(doomed["id"]), confirm_disband=1,
+        match_id=choices["match_id"], session_id=choices["session_id"],
+        expected_revision=choices["revision"],
+    )
+    if removed.get("ok") is not True:
+        raise AssertionError(f"identity fixture disband failed: {removed}")
+    survivors = bridge_operation(
+        container_name, "perspective_world_page",
+        domain="units", cursor=0, limit=256,
+    )
+    survivor_rows = [
+        row for row in survivors.get("items", []) if row.get("owned") is True
+        and isinstance(row.get("id"), int) and row.get("own_unit_ref")
+    ]
+    survivor_refs = sorted(str(row["own_unit_ref"]) for row in survivor_rows)
+    capsule = bridge_operation(container_name, "semantic_identity_state", action="export")
+    handles = capsule.get("semantic_vehicle_handles")
+    if capsule.get("ok") is not True or not isinstance(handles, list):
+        raise AssertionError(f"semantic identity export failed: {capsule}")
+    if not any(isinstance(value, int) and value > 0 and value != index + 1
+               for index, value in enumerate(handles)):
+        raise AssertionError(
+            f"native row compaction did not create a non-row semantic handle: {capsule}"
+        )
+    if not survivor_refs:
+        raise AssertionError("identity fixture removed every owned unit")
+    return {"survivor_refs": survivor_refs, "capsule": capsule}
+
+
 async def mcp_tool(url: str, name: str, arguments: dict | None = None) -> dict:
     async with streamable_http_client(url) as streams:
         async with ClientSession(streams[0], streams[1]) as session:
@@ -234,6 +298,7 @@ def main() -> int:
     hermes_result: dict | None = None
     specialist_result: dict | None = None
     specialist_name: str | None = None
+    identity_before_recovery: dict | None = None
     try:
         docker("volume", "create", control_volume)
         docker("network", "create", *labels, network)
@@ -242,6 +307,8 @@ def main() -> int:
             "run", "-d", "--name", control_name, *labels,
             "--network", network, "--group-add", socket_gid,
             "-e", "SMACX_DOCKER_ENABLED=1",
+            "-e", "SMACX_AGENT_TEST_MODE=1",
+            "-e", "SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION=1",
             "-e", "SMACX_DOCKER_SOCKET=/var/run/docker.sock",
             "-e", f"SMACX_DOCKER_NETWORK={network}",
             "-e", f"SMACX_GAME_SOURCE={game}",
@@ -379,6 +446,9 @@ def main() -> int:
                 "victory_posture")):
             raise AssertionError("native global domains did not reach the strategic runtime anchor")
         asyncio.run(prepare_checkpoint(endpoint["url"]))
+        identity_before_recovery = force_native_identity_compaction(
+            endpoint["container_name"]
+        )
         runtime_context(endpoint["container_name"], test_episode_id, end=True)
         checkpoint = api(
             opener, base_url, "POST",
@@ -427,6 +497,32 @@ def main() -> int:
         recovered_sidecar = recovered_worker.get("network", {}).get("mcp_container_name")
         if not recovered_sidecar:
             raise AssertionError("recovered worker did not publish its MCP container identity")
+        recovered_units = bridge_operation(
+            recovered_sidecar, "perspective_world_page",
+            domain="units", cursor=0, limit=256,
+        )
+        recovered_refs = sorted(
+            str(row["own_unit_ref"])
+            for row in recovered_units.get("items", [])
+            if row.get("owned") is True and row.get("own_unit_ref")
+        )
+        recovered_identity = bridge_operation(
+            recovered_sidecar, "semantic_identity_state", action="export",
+        )
+        if identity_before_recovery is None \
+                or recovered_refs != identity_before_recovery["survivor_refs"]:
+            raise AssertionError(
+                "semantic own-unit refs changed across native process recovery: "
+                f"{identity_before_recovery} -> {recovered_refs}"
+            )
+        if recovered_identity.get("semantic_vehicle_handles") \
+                != identity_before_recovery["capsule"].get("semantic_vehicle_handles") \
+                or recovered_identity.get("next_semantic_vehicle_handle") \
+                != identity_before_recovery["capsule"].get("next_semantic_vehicle_handle"):
+            raise AssertionError(
+                "private semantic identity capsule did not restore exactly: "
+                f"{identity_before_recovery['capsule']} -> {recovered_identity}"
+            )
         recovery_probe_episode = "episode-recovery-probe-" + suffix
         recovery_lease = runtime_context(recovered_sidecar, recovery_probe_episode)
         if not recovery_lease.get("ok"):
@@ -715,6 +811,7 @@ def main() -> int:
                 "bridge_verified_checkpoint": True,
                 "live_worker_volume_backup_verified": live_backup_verified,
                 "native_crash_recovered_without_ui": True,
+                "semantic_vehicle_identity_survived_native_restart": True,
                 "recovered_checkpoint_turn": recovered_turn,
                 "sidecar_removed_on_park": True,
                 "hermes_semantic_turn": bool(hermes_result),

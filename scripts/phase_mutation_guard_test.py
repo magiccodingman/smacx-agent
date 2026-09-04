@@ -27,8 +27,10 @@ def main() -> int:
     if snapshot.get("interaction", {}).get("popup_label") != "PLANETFALL" or not refs:
         emit("failure", {"stage": "opening_fixture", "snapshot": snapshot})
         return 3
-    unit_id = int(refs[0]["id"])
     before = bridge_request("list_units", scope="own", limit=200)
+    unit = next(item for item in before.get("items", [])
+                if item.get("own_unit_ref") == refs[0].get("own_unit_ref"))
+    unit_id = int(unit["id"])
     fabricated = bridge_request(
         "semantic_command", command="disband_unit", unit_id=unit_id,
         confirm_disband=1, match_id=snapshot["match_id"],

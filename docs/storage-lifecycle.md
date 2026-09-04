@@ -138,11 +138,15 @@ truth. A checksum, version, or journal-head mismatch discards it and rebuilds
 the projection from authoritative journal evidence.
 
 Disposable specialist world snapshots use the same content-addressed format but
-carry only a mission pin. Completion, cancellation, failure, rollback, and
-retention release that pin; a zero-pin snapshot with no retained checkpoint or
-recovery owner is collected with its content file. Checkpoint-owned snapshots
-remain governed by checkpoint retention. This keeps repeated Huge-world
-investigations storage-bounded without weakening retry or recovery.
+carry mission-owned pins. Completion, cancellation, staleness, rollback, and
+non-retriable expiry release the pin. A retry-eligible terminal failure instead
+keeps its exact frozen snapshot through a bounded manual-retry horizon; normal
+GC cannot remove it during that window, and retry atomically reclaims the same
+snapshot before queuing a fresh isolated attempt. After the horizon, a zero-pin
+snapshot with no retained checkpoint or recovery owner is collected with its
+content file. Checkpoint-owned snapshots remain governed by checkpoint
+retention. This keeps repeated Huge-world investigations storage-bounded
+without weakening exact-input retry or recovery.
 
 Checkpoint recovery uses an
 explicit child timeline anchored to an immutable parent event hash and native

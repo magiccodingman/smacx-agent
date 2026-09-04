@@ -643,14 +643,19 @@ class WorldService:
                 start = objects.get(origin_ref, {}).get("location_ref") or origin_ref
                 if start not in topology.by_ref:
                     raise WorldQueryError("unknown_reachability_origin")
-                reached = topology.reachable_costs(
-                    start, profile, max_cost=float(radius * profile.movement_points),
-                )
+                reached = topology.arrival_map(start, profile, max_turns=radius)
                 result["items"] = [{
-                    "location_ref": ref, "minimum_movement_cost": cost,
-                    "minimum_turns": int((cost + profile.movement_points - 1)
-                                         // profile.movement_points),
-                } for ref, cost in sorted(reached.items(), key=lambda item: (item[1], item[0]))]
+                    "location_ref": ref,
+                    "minimum_movement_cost": value.get("movement_cost"),
+                    "minimum_turns": value.get("turns"),
+                    "eta_kind": value.get("eta_kind"),
+                    "latest_turns": value.get("latest_turns"),
+                    "uncertainty": value.get("uncertainty", []),
+                } for ref, value in sorted(
+                    reached.items(), key=lambda item: (
+                        int(item[1].get("turns") or 0), item[0]
+                    )
+                )]
                 result["coverage"] = {"known_world_only": True, "unknown_not_traversed": True}
         elif mode == "changes":
             anchor = self.anchor(context_length=context_length)
@@ -683,6 +688,12 @@ class WorldService:
         available_before_trim = len(result.get("items", [])) \
             if isinstance(result.get("items"), list) else 0
         result["cache"] = {"hit": False, "query_fingerprint": fingerprint}
+        # Reserve the largest practical continuation representation before the
+        # budget seal.  Replacing it with the real cursor (or null) can only
+        # shrink the final payload, preserving the trim decision.
+        result["continuation"] = (
+            "cursor-1000000000000" if isinstance(result.get("items"), list) else None
+        )
         result = self._trim(provider_safe(result), budget)
         returned = len(result.get("items", [])) if isinstance(result.get("items"), list) else 0
         if result.get("ok") is False:
@@ -691,7 +702,12 @@ class WorldService:
             result["continuation"] = f"cursor-{continuation_offset + returned}"
         else:
             result["continuation"] = None
+        # Continuation metadata is part of the provider result and therefore
+        # part of the authoritative token/cache/telemetry estimate.
+        result["result_token_estimate"] = self._seal_token_estimate(result)
         token_estimate = int(result["result_token_estimate"])
+        if token_estimate > budget:
+            raise WorldQueryError("world_result_budget_seal_failed")
         if result.get("ok") is not False:
             self.store.put_cached_query(
                 self.scope, identity, world_revision=int(projection["world_revision"]),

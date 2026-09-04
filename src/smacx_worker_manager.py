@@ -1459,6 +1459,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             values["SMACX_AGENT_STARTUP_SCENARIO"] = autostart["scenario_id"]
         if isinstance(autostart.get("lan_scenario_id"), str):
             values["SMACX_AGENT_LAN_SCENARIO"] = autostart["lan_scenario_id"]
+        # Native acceptance fixtures must never leak into a production
+        # worker. A deliberately test-mode Control Center may propagate only
+        # the narrow identity-compaction fixture used by the live regression.
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" \
+                and os.environ.get("SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION") == "1":
+            values["SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION"] = "1"
         faction_roster = autostart.get("faction_roster")
         if isinstance(faction_roster, list) and len(faction_roster) == 7:
             values["SMACX_AGENT_FACTION_ROSTER"] = ",".join(
@@ -3551,6 +3557,29 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             frozen_signature = observe_signature()
             if frozen_signature != previous_signature:
                 raise WorkerManagerError("checkpoint_state_changed_before_ai_freeze")
+            native_identity_by_instance: dict[str, dict[str, Any]] = {}
+            for instance_id in managed_instances:
+                capsule = self._native_request(
+                    instance_id, "semantic_identity_state", timeout=20.0,
+                    action="export",
+                )
+                if capsule.get("ok") is not True \
+                        or capsule.get("schema") != "smacx.private-vehicle-identity.v1":
+                    raise WorkerManagerError(
+                        "checkpoint_semantic_identity_export_failed"
+                    )
+                native_identity_by_instance[instance_id] = {
+                    "schema": capsule["schema"],
+                    "turn": capsule.get("turn"),
+                    "faction_id": capsule.get("faction_id"),
+                    "native_validation_hash": capsule.get("native_validation_hash"),
+                    "next_semantic_vehicle_handle": capsule.get(
+                        "next_semantic_vehicle_handle"
+                    ),
+                    "semantic_vehicle_handles": list(
+                        capsule.get("semantic_vehicle_handles") or []
+                    ),
+                }
             choices = self._native_request(
                 host_instance_id, "semantic_choices", kind="game_management",
                 timeout=30.0,
@@ -3582,6 +3611,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "quiescence_samples": stable_samples,
                 "frozen_ai_controllers": len(paused_harnesses),
                 "managed_peer_count": len(managed_instances),
+                # Strictly platform-private derived metadata. This capsule is
+                # never journaled, projected, or supplied to a provider.
+                "native_semantic_identity": native_identity_by_instance,
             }
             journal_checkpoints: list[dict[str, Any]] = []
             world_snapshots: list[dict[str, Any]] = []
@@ -3973,6 +4005,34 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                       "loaded_checkpoint": loaded}
         else:
             raise WorkerManagerError("unsupported_match_recovery_mode")
+        identity_capsules = checkpoint.get("native_semantic_identity")
+        if not isinstance(identity_capsules, Mapping):
+            raise WorkerManagerError("checkpoint_semantic_identity_missing")
+        restored_identity: list[dict[str, Any]] = []
+        for seat in seats:
+            instance_id = seat.get("instance_id")
+            if not isinstance(instance_id, str) or not instance_id:
+                continue
+            if seat.get("metadata", {}).get("delegation_status") == "active":
+                continue
+            capsule = identity_capsules.get(instance_id)
+            if not isinstance(capsule, Mapping):
+                raise WorkerManagerError(
+                    f"checkpoint_semantic_identity_missing_for_instance:{instance_id}"
+                )
+            response = self._native_request(
+                instance_id, "semantic_identity_state", timeout=20.0,
+                action="import", **dict(capsule),
+            )
+            if response.get("ok") is not True or response.get("restored") is not True:
+                detail = json.dumps(response, separators=(",", ":"))[:1000]
+                raise WorkerManagerError(
+                    f"checkpoint_semantic_identity_restore_failed:{instance_id}:{detail}"
+                )
+            restored_identity.append({
+                "instance_id": instance_id,
+                "handle_count": response.get("handle_count"),
+            })
         self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_required": False,
                                            "last_recovered_unix": time.time(),
@@ -3981,6 +4041,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if refresh_runtime:
             result["runtime_refresh"] = runtime_refresh
         result["memory_restore"] = memory_restore
+        result["native_semantic_identity_restore"] = restored_identity
         return result
 
     def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:
