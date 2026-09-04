@@ -482,6 +482,8 @@ class AttentionService:
             raise AttentionError("unknown_or_cross_perspective_subject_ref")
         subjects = tuple(sorted(set(normalized_subjects)))
         predicate = dict(predicate)
+        if any(str(key).startswith("_") for key in predicate):
+            raise AttentionError("private_watch_predicate_key")
         resolved_locations = sorted({
             location for subject in subjects
             for location in registry.get(subject, {}).get("location_refs", ())
@@ -555,7 +557,10 @@ class AttentionService:
                            regions: Iterable[Any]) -> dict[str, dict[str, Any]]:
         """Resolve provider-safe derived handles actually issued to this perspective."""
         registry: dict[str, dict[str, Any]] = {}
-        region_rows = list(regions)
+        from smacx_regions import PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE
+        region_rows = [*regions,
+            *self.world_store.load_regions(self.scope, self.timeline_id, PHYSICAL_LAND_PROFILE),
+            *self.world_store.load_regions(self.scope, self.timeline_id, PHYSICAL_OCEAN_PROFILE)]
         for region in region_rows:
             registry[region.region_ref] = {
                 "kind": "region", "location_refs": sorted(region.location_refs),
@@ -703,6 +708,20 @@ class AttentionService:
             self.journal.append(self.scope, "attention.watches_expired", {
                 "count": expired, "through_turn": int(current_turn),
             }, turn=current_turn)
+        with self.store._connect() as connection:
+            lifecycle = connection.execute(
+                "SELECT watch_id,status,subject_refs_json FROM world_watches w WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND status IN ('expired','invalid') "
+                "AND NOT EXISTS (SELECT 1 FROM attention_items a WHERE a.match_id=w.match_id "
+                "AND a.agent_id=w.agent_id AND a.perspective_id=w.perspective_id AND a.timeline_id=w.timeline_id "
+                "AND a.attention_kind='watch_lifecycle' AND json_extract(a.payload_json,'$.watch_id')=w.watch_id) LIMIT 32",
+                self._key(self.timeline_id)).fetchall()
+        for row in lifecycle:
+            self.enqueue("watch_lifecycle", {"watch_id":row["watch_id"], "status":row["status"],
+                "subject_refs":json.loads(row["subject_refs_json"]),
+                "meaning":"This watch no longer provides vigilance; sovereign review is required."},
+                observation_cursor=0, priority=60, turn=current_turn,
+                dedupe_key="lifecycle:"+row["watch_id"])
         return expired
 
     def close_watch(self, watch_id: str, *, current_turn: int | None = None) -> None:
@@ -731,19 +750,28 @@ class AttentionService:
         current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
         fields = current.get("fields") if isinstance(current.get("fields"), Mapping) else {}
         envelope = fields.get(field) if isinstance(fields.get(field), Mapping) else None
-        actual = envelope.get("value") if envelope is not None else current.get(field)
+        missing = object()
+        actual = envelope.get("value", missing) if envelope is not None else current.get(field, missing)
         expected = predicate.get("value", predicate.get("equals"))
         operator = str(predicate.get("operator") or "eq")
         if operator == "changed":
-            return change == "changed"
+            previous = delta.get("previous")
+            if change != "changed" or not isinstance(previous, Mapping):
+                return False
+            previous_fields = previous.get("fields", {})
+            prior = previous_fields.get(field) if isinstance(previous_fields, Mapping) else None
+            prior_value = prior.get("value", missing) if isinstance(prior, Mapping) else previous.get(field, missing)
+            return prior_value != actual
         if operator == "exists":
-            return actual is not None
+            return actual is not missing and actual is not None
+        if actual is missing:
+            return False
         try:
-            return {
-                "eq": actual == expected, "ne": actual != expected,
-                "gt": actual > expected, "gte": actual >= expected,
-                "lt": actual < expected, "lte": actual <= expected,
-            }[operator]
+            import operator as operators
+            compare = {"eq": operators.eq, "ne": operators.ne,
+                       "gt": operators.gt, "gte": operators.ge,
+                       "lt": operators.lt, "lte": operators.le}[operator]
+            return compare(actual, expected)
         except (KeyError, TypeError):
             return False
 
@@ -767,6 +795,8 @@ class AttentionService:
                 *self.world_store.load_regions(self.scope, timeline, "mobility-sea-default"),
             )
         }
+        projection = self.world_store.load(self.scope, timeline) or {}
+        current_objects = {str(item["object_ref"]): item for item in projection.get("objects", ())}
         triggered: list[dict[str, Any]] = []
         for row in rows:
             subjects = set(json.loads(row["subject_refs_json"]))
@@ -817,11 +847,15 @@ class AttentionService:
                            and (bool(subjects & direct_refs)
                                 or bool(watched_locations & event_locations))
                     )
+                    if predicate.get("relationship") == "hostile":
+                        from smacx_mechanics import relationship_class, field_is_current
+                        contact = current_objects.get(str(event.get("contact_ref") or event.get("unit_ref") or ""), {})
+                        matched = matched and contact.get("kind") == "foreign_contact" and contact.get("status") == "active" and field_is_current(contact, "relationship") and relationship_class(contact) == "hostile"
                     if matched and self._watch_predicate_matches(predicate, {
                             "change": str(event.get("event_kind") or "changed"),
                             "current": event}):
                         matches.append({"temporal_event": event})
-            for delta in changes:
+            for delta in changes if watch_kind not in {"region_entry", "region_exit"} else ():
                 current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
                 candidate_refs = {
                     str(delta.get("object_ref") or ""),

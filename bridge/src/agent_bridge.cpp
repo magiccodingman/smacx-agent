@@ -8997,6 +8997,33 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
     out << "{\"ok\":true,\"schema\":\"smacx.native-base-site-receipts.v1\""
         << ",\"action_revision\":" << json_string(semantic_revision().c_str())
         << ",\"items\":[";
+    // Native yield helpers update the base-computation scratch accumulator and
+    // energy mirrors consult CurrentBase's faction. A read-only candidate probe
+    // must neither retain that scratch mutation nor borrow another base's owner.
+    struct YieldReadGuard {
+        BASE query_base = {};
+        BASE* previous_base = *CurrentBase;
+        int previous_reduce = *BaseTerraformReduce;
+        explicit YieldReadGuard(int owner) {
+            query_base.faction_id = owner;
+            *CurrentBase = &query_base;
+        }
+        ~YieldReadGuard() {
+            *CurrentBase = previous_base;
+            *BaseTerraformReduce = previous_reduce;
+        }
+    } yield_read_guard(faction_id);
+    std::map<int, std::vector<int>> known_base_radius;
+    for (int base_id = 0; base_id < *BaseCount; ++base_id) {
+        BASE& base = Bases[base_id];
+        MAP* base_sq = mapsq(base.x, base.y);
+        if (base.faction_id != faction_id && (!base_sq || !base_sq->is_visible(faction_id))) continue;
+        for (int offset = 0; offset < 21; ++offset) {
+            int x = 0, y = 0;
+            if (next_tile(base.x, base.y, offset, &x, &y))
+                known_base_radius[semantic_tile_id(x, y)].push_back(base_id);
+        }
+    }
     bool comma = false;
     for (int tile_id : target_ids) {
         int x = -1, y = -1;
@@ -9006,7 +9033,7 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
         if (comma) out << ',';
         comma = true;
         const bool ocean = is_ocean(sq);
-        out << "{\"location_ref\":\"location-" << tile_id << "\""
+        out << "{\"location_ref\":\"location-" << tile_id << "\",\"tile_id\":" << tile_id
             << ",\"epistemic_status\":\"current\",\"source\":\"native_guarded_receipt\""
             << ",\"legal_for_land_colony\":"
             << (can_build_base(x, y, faction_id, TRIAD_LAND) ? "true" : "false")
@@ -9040,23 +9067,18 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
             << (known_radius_count == 21 ? "true" : "false")
             << ",\"overlapping_known_bases\":[";
         bool base_comma = false;
-        for (int base_id = 0; base_id < *BaseCount; ++base_id) {
+        std::map<int, int> overlaps;
+        for (int offset = 0; offset < 21; ++offset) {
+            int rx = 0, ry = 0;
+            if (!next_tile(x, y, offset, &rx, &ry)) continue;
+            auto found = known_base_radius.find(semantic_tile_id(rx, ry));
+            if (found != known_base_radius.end())
+                for (int base_id : found->second) ++overlaps[base_id];
+        }
+        for (const auto& entry : overlaps) {
+            const int base_id = entry.first;
+            const int overlap = entry.second;
             BASE& base = Bases[base_id];
-            MAP* base_sq = mapsq(base.x, base.y);
-            if (base.faction_id != faction_id && (!base_sq || !base_sq->is_visible(faction_id))) {
-                continue;
-            }
-            int overlap = 0;
-            for (int a = 0; a < 21; ++a) {
-                int ax = 0, ay = 0;
-                if (!next_tile(x, y, a, &ax, &ay)) continue;
-                for (int b = 0; b < 21; ++b) {
-                    int bx = 0, by = 0;
-                    if (next_tile(base.x, base.y, b, &bx, &by)
-                    && ax == bx && ay == by) ++overlap;
-                }
-            }
-            if (!overlap) continue;
             if (base_comma) out << ',';
             base_comma = true;
             out << "{\"base_ref\":\"base-location-" << semantic_tile_id(base.x, base.y)
@@ -9068,6 +9090,72 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
     out << "],\"requested_count\":" << target_ids.size()
         << ",\"native_elapsed_ms\":" << (GetTickCount() - started_at) << '}';
     return out.str();
+}
+
+// Contained latency fixture. The production operation remains read-only; only
+// an isolated dual-gated test worker may temporarily install these input rows.
+std::string test_base_site_receipts_stress_response() {
+    char test_mode[8] = {}, acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+        || strcmp(test_mode, "1")
+        || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_BASE_SITE", acceptance_mode, sizeof(acceptance_mode))
+        || strcmp(acceptance_mode, "1"))
+        return error_response("test_mode_disabled", "Base-site stress is disabled.");
+    if (!game_active() || *BaseCount < 1 || *MapAreaTiles < MaxBaseNum)
+        return error_response("fixture_unavailable", "Requires an active sufficiently large map.");
+    const int original_count = *BaseCount;
+    BASE* original_current_base = *CurrentBase;
+    const int original_reduce = *BaseTerraformReduce;
+    std::vector<BASE> original(Bases, Bases + MaxBaseNum);
+    std::vector<std::pair<MAP*, uint8_t>> visibility;
+    visibility.reserve(*MapAreaTiles);
+    std::string receipt;
+    {
+    struct FixtureRestore {
+        const std::vector<BASE>& bases;
+        const std::vector<std::pair<MAP*, uint8_t>>& visibility;
+        int count;
+        ~FixtureRestore() {
+            std::copy(bases.begin(), bases.end(), Bases);
+            *BaseCount = count;
+            for (const auto& entry : visibility) entry.first->visibility = entry.second;
+        }
+    } restore{original, visibility, original_count};
+    int own_base = 0;
+    for (int i = 0; i < original_count; ++i)
+        if (Bases[i].faction_id == *CurrentPlayerFaction) { own_base = i; break; }
+    std::ostringstream request;
+    request << "{\"target_tile_ids\":[";
+    for (int i = 0; i < MaxBaseNum; ++i) {
+        int x = 0, y = 0;
+        semantic_tile_coords(i, &x, &y);
+        Bases[i] = original[own_base];
+        Bases[i].x = x; Bases[i].y = y;
+        Bases[i].faction_id = *CurrentPlayerFaction;
+        if (i < 32) { if (i) request << ','; request << i; }
+    }
+    // Preserve every visibility byte exactly; the fixture leaks nothing into
+    // later managed observation and is never available to the sovereign.
+    for (int i = 0; i < *MapAreaTiles; ++i) {
+        int x = 0, y = 0; semantic_tile_coords(i, &x, &y);
+        MAP* sq = mapsq(x, y);
+        if (!sq) continue;
+        visibility.push_back({sq, sq->visibility});
+        sq->visibility |= (1 << *CurrentPlayerFaction);
+    }
+    request << "]}";
+    *BaseCount = MaxBaseNum;
+    receipt = semantic_base_site_receipts_response(request.str());
+    }
+    if (*BaseCount != original_count || *CurrentBase != original_current_base
+        || *BaseTerraformReduce != original_reduce
+        || memcmp(original.data(), Bases, sizeof(BASE) * MaxBaseNum)
+        || std::any_of(visibility.begin(), visibility.end(), [](const std::pair<MAP*, uint8_t>& row) {
+            return row.first->visibility != row.second;
+        })) {
+        return error_response("fixture_restore_failed", "Base-site probe changed native state.");
+    }
+    return receipt;
 }
 
 std::string perspective_world_page_response(const std::string& request) {
@@ -9112,15 +9200,23 @@ std::string perspective_world_page_response(const std::string& request) {
         int index = cursor;
         for (; index < *MapAreaTiles && emitted < limit; ++index) {
             int x = -1, y = -1;
-            if (!semantic_tile_coords(index, &x, &y) || !is_known(x, y, faction_id)) continue;
+            const bool survey = !(*GameRules & RULES_NO_UNITY_SURVEY);
+            if (!semantic_tile_coords(index, &x, &y)) continue;
+            const bool mapped = is_known(x, y, faction_id);
+            if (!mapped && !survey) continue;
             MAP* sq = mapsq(x, y);
             if (!sq) continue;
             if (emitted++) out << ',';
             const bool visible = sq->is_visible(faction_id);
-            const uint32_t remembered = visible ? sq->items : sq->visible_items[faction_id - 1];
+            const uint32_t remembered = visible ? sq->items : mapped ? sq->visible_items[faction_id - 1] : 0;
             out << "{\"tile_id\":" << index << ",\"x\":" << x << ",\"y\":" << y
-                << ",\"visible_now\":" << (visible ? "true" : "false")
-                << ",\"features\":" << item_names(remembered);
+                << ",\"visible_now\":" << (visible ? "true" : "false");
+            if (mapped || visible) out << ",\"features\":" << item_names(remembered);
+            if (!visible && survey) {
+                out << ",\"entitled_fields\":{\"terrain\":{\"channel\":\"unity_survey\",\"value\":"
+                    << json_string(is_ocean(sq) ? "ocean" : "land")
+                    << "},\"altitude\":{\"channel\":\"unity_survey\",\"value\":" << sq->alt_level() << "}}";
+            }
             if (visible) {
                 out << ",\"altitude\":" << sq->alt_level()
                     << ",\"is_ocean\":" << (is_ocean(sq) ? "true" : "false")
@@ -17313,6 +17409,7 @@ std::string execute_request(const std::string& request) {
     if (op == "perspective_world_page") return perspective_world_page_response(request);
     if (op == "semantic_airdrop_targets") return semantic_airdrop_targets_response(request);
     if (op == "semantic_base_site_receipts") return semantic_base_site_receipts_response(request);
+    if (op == "test_base_site_receipts_stress") return test_base_site_receipts_stress_response();
     if (op == "semantic_snapshot") return semantic_snapshot_response();
     if (op == "semantic_chat") return semantic_chat_response(request);
     if (op == "semantic_lan") {

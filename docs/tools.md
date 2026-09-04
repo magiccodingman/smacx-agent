@@ -169,3 +169,21 @@ Probe teams adjacent to a currently visible non-pact base receive exact `execute
 A ready unit standing at an owned, unused Psi Gate receives `use_psi_gate` choices for every compatible owned destination gate. The command revalidates both bases, facility state, ownership, unit triad, and revision, invokes the native network-aware transfer, and consumes both endpoint gates for the turn.
 
 No MCP tool exposes screenshots, mouse input, keyboard input, arbitrary UI text, raw memory, or scenario-editor state.
+
+### Geography discovery and current target addresses
+
+`smac_world(mode="area", origin_ref="world-geography")` enumerates complete
+current geography through bounded continuation pages, including objects omitted
+from the anchor. Returned physical-mass and mobility-region refs support area
+queries. Relation results explicitly qualify unknown connectivity. These are
+read-only mechanical facts, not strategic rankings.
+
+World query targets use the same current private semantic mapping as guarded
+choices. Remembered terrain can retain a current map address without granting
+current occupant/access knowledge. No query decodes a semantic reference into
+an engine selector.
+
+For geography around a specific colony, use `area` with
+`origin_ref="world-geography"` and its base ref in `subject_refs`. This returns
+containing physical masses and mobility regions even when omitted from the anchor.
+Mass overflow retains owned-base and current foreign-presence aggregate counts.

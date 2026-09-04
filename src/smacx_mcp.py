@@ -725,21 +725,29 @@ def _semantic_selector_context(expected_revision: str) -> dict[str, Any]:
         if row.get("owned") is not True and row.get("native_observation_key")
     }
     base_by_ref = {str(row.get("base_ref")): row for row in native_bases if row.get("base_ref")}
+    # SQLite reconstruction stores dimensions in the map-state object. Guarded
+    # selectors require that explicit evidence; the read-only topology fallback
+    # that estimates dimensions from known squares must never bind an action.
+    map_state = next((item for item in objects.values() if item.get("kind") == "map_state"), {})
+    if not isinstance(projection.get("map_shape"), Mapping) and not all(
+        _field_current(map_state, name) for name in ("width", "height", "horizontal_wrap")
+    ):
+        raise SemanticSelectorError("semantic_reference_map_shape_unavailable")
+    shape = world._topology(projection).shape
     for ref, item in objects.items():
-        if item.get("status", "active") != "active":
-            continue
         kind = str(item.get("kind") or "")
+        if item.get("status", "active") != "active" and not (
+            kind == "location" and item.get("status") == "stale"
+        ):
+            continue
         metadata = item.get("metadata") if isinstance(item.get("metadata"), Mapping) else {}
         if kind == "location":
             x = metadata.get("native_x")
             y = metadata.get("native_y")
-            shape = projection.get("map_shape")
-            if isinstance(x, int) and isinstance(y, int) and isinstance(shape, Mapping):
-                width = shape.get("width")
-                if isinstance(width, int) and width > 0:
-                    tile_id = (x + width * y) // 2
-                    by_ref[ref] = tile_id
-                    reverse_locations[tile_id] = ref
+            if isinstance(x, int) and isinstance(y, int) and shape.normalize((x, y)) == (x, y):
+                tile_id = (x + shape.width * y) // 2
+                by_ref[ref] = tile_id
+                reverse_locations[tile_id] = ref
         elif kind == "own_unit":
             row = unit_by_owned_ref.get(ref)
             native_id = row.get("id") if row else None
@@ -803,8 +811,10 @@ def _resolve_managed_selectors(
         item = objects.get(ref)
         synthetic_location = public_name == "target_location_ref" \
             and ref in by_ref and item is None
+        remembered_location = public_name == "target_location_ref" and isinstance(item, Mapping) \
+            and item.get("kind") == "location" and item.get("status") == "stale"
         if not synthetic_location and (
-                not isinstance(item, Mapping) or item.get("status", "active") != "active"
+                not isinstance(item, Mapping) or item.get("status", "active") != "active" and not remembered_location
                 or item.get("kind") not in kinds or ref not in by_ref):
             raise SemanticSelectorError(f"invalid_current_{public_name}")
         if public_name == "base_ref":
@@ -1925,8 +1935,8 @@ def smac_world(
         runtime_airdrop_receipt = None
         runtime_base_site_receipts = None
         target_tile_id = -1
-        if mode in {"relation", "route", "reachability"} \
-                and re.fullmatch(r"own-unit-[1-9][0-9]{0,9}", origin_ref):
+        if mode in {"relation", "route", "reachability"} and origin_ref and \
+                world._objects(world._projection()[1]).get(origin_ref, {}).get("kind") == "own_unit":
             identity, projection = world._projection()
             action_revision = str(projection.get("action_revision") or "")
             if mode in {"relation", "route"}:
@@ -1934,9 +1944,9 @@ def smac_world(
                     world._objects(projection).get(target_ref, {}).get("location_ref")
                     or target_ref
                 )
-                match = re.fullmatch(r"location-([0-9]+)", target_location)
-                if match:
-                    target_tile_id = int(match.group(1))
+                selectors, _ = _resolve_managed_selectors(
+                    action_revision, target_location_ref=target_location)
+                target_tile_id = selectors.get("target_tile_id", -1)
             scope_key = str(target_tile_id) if target_tile_id >= 0 else "enumeration"
             cache_key = (
                 match_id, session_id, agent_id, perspective_id,
@@ -1946,7 +1956,11 @@ def smac_world(
             with AIRDROP_RECEIPT_LOCK:
                 runtime_airdrop_receipt = AIRDROP_RECEIPT_CACHE.get(cache_key)
             if runtime_airdrop_receipt is None:
-                native_id = _resolve_native_unit_id(origin_ref)
+                source = world._objects(projection).get(origin_ref, {})
+                native_id = None
+                if source.get("kind") == "own_unit":
+                    selectors, _ = _resolve_managed_selectors(action_revision, own_unit_ref=origin_ref)
+                    native_id = selectors.get("unit_id")
                 if native_id is not None:
                     arguments: dict[str, object] = {"unit_id": native_id, "maximum_targets": 128}
                     if target_tile_id >= 0:
@@ -1960,11 +1974,14 @@ def smac_world(
                             while len(AIRDROP_RECEIPT_CACHE) > 64:
                                 AIRDROP_RECEIPT_CACHE.pop(next(iter(AIRDROP_RECEIPT_CACHE)))
         if mode == "compare" and not origin_ref and not target_ref and subject_refs:
+            identity, projection = world._projection()
+            action_revision = str(projection.get("action_revision") or "")
+            context = _semantic_selector_context(action_revision)
             target_ids = []
             for ref in list(subject_refs)[:32]:
-                match = re.fullmatch(r"location-([0-9]+)", str(ref))
-                if match:
-                    target_ids.append(int(match.group(1)))
+                item = context["objects"].get(ref, {})
+                if item.get("kind") == "location" and ref in context["by_ref"]:
+                    target_ids.append(context["by_ref"][ref])
             if target_ids:
                 identity, projection = world._projection()
                 action_revision = str(projection.get("action_revision") or "")
@@ -1992,9 +2009,10 @@ def smac_world(
                 if isinstance(candidate, Mapping) and candidate.get("ok") is True \
                         and str(candidate.get("action_revision") or "") == action_revision:
                     runtime_base_site_receipts = {
-                        str(item.get("location_ref")): item
-                        for item in candidate.get("items", ())
-                        if isinstance(item, Mapping) and item.get("location_ref")
+                        ref: {**item, "location_ref": ref}
+                        for item in candidate.get("items", ()) if isinstance(item, Mapping)
+                        for ref in [context["reverse_locations"].get(item.get("tile_id"))]
+                        if isinstance(item, Mapping) and ref
                     }
         context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
         result = world.query(
@@ -2013,6 +2031,11 @@ def smac_world(
                 identity.timeline_id, identity.world_epoch, action_revision,
             )
             now = time.monotonic()
+            address_registry = {}
+            if mode == "area" and origin_ref == "world-map":
+                shape = world._topology(projection).shape
+                address_registry = {f"location-{tile_id}": tile_id
+                                    for tile_id in range(shape.width * shape.height // 2)}
             with SEMANTIC_LOCATION_CAPABILITY_LOCK:
                 # An exact world query mints a short-lived private binding for
                 # the semantic location it just validated. The provider keeps
@@ -2029,10 +2052,9 @@ def smac_world(
                             or item.get("epistemic_status") != "unknown":
                         continue
                     ref = str(item.get("object_ref") or "")
-                    match = re.fullmatch(r"location-([0-9]+)", ref)
-                    if match:
+                    if ref in address_registry:
                         SEMANTIC_LOCATION_CAPABILITIES[(*prefix, ref)] = (
-                            int(match.group(1)), now + DECISION_TTL_SECONDS,
+                            address_registry[ref], now + DECISION_TTL_SECONDS,
                         )
                 while len(SEMANTIC_LOCATION_CAPABILITIES) > 4096:
                     SEMANTIC_LOCATION_CAPABILITIES.pop(

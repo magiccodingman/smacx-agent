@@ -340,3 +340,40 @@ collection.
 
 See [Game semantics coverage](game-semantics-coverage.md), [Agent loop](agent-loop.md),
 [MCP tools](tools.md), [Storage](storage-lifecycle.md), and [Testing](testing.md).
+
+## Sovereign correctness checkpoint
+
+LOD no longer determines whether geography exists in the query address space.
+Use `smac_world(mode="area", origin_ref="world-geography")`, following its
+continuation, to discover physical masses, mobility regions and other current
+geographic handles. Query a returned mass or region directly for detail. Full
+membership stays server-side. Owned colonies and current foreign bases/land
+forces affect peripheral selection without requiring an explicit plan or watch.
+
+Physical relations distinguish same-known mass, distinct components that may
+connect through unknown geography, and separation established by mapped
+boundaries. Survey contributes only its entitled topography with Survey
+provenance; it does not confer current vision or resource/ownership knowledge.
+Frontier map freshness uses geographic evidence, never colocated unit timestamps.
+
+Theater clusters require local participant relationships or explicit links.
+Sharing a huge mobility region or touching an adjacent region is insufficient.
+Essential economy, research, Social Engineering, Council, victory, project-race
+and ecology awareness is selected ahead of quiet individual bases.
+
+Cache lookup precedes rich geography reconstruction. Base response dependencies
+include owned responders and infrastructure; irrelevant distant noncombat
+changes can retain a narrow answer. Repair/staging distinguishes current access,
+stale evidence, unknown access and known blockers, preserving the evidence
+wrappers. Island candidates use the existing transport scheduler and retain
+bounded-search uncertainty. Healing-phase effects remain native-authoritative.
+
+A watch with `operator="changed"` compares its selected field, not arbitrary
+object activity. Invalid or expired watches queue a deduplicated lifecycle notice
+so the sovereign knows that vigilance ended.
+
+Geography discovery accepts nominated base/unit/location `subject_refs` to return
+containing physical masses and mobility regions directly. If many owned masses
+exceed rich LOD, overflow retains owned-base and current foreign-presence counts.
+An issued theater handle used by a plan or operation promotes its previously
+known participants even after the local activity becomes quiet.

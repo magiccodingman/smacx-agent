@@ -69,6 +69,8 @@ def main() -> int:
         "if (!sq || !sq->is_visible(faction_id)) continue;",
         "base.faction_id != faction_id && (!base_sq || !base_sq->is_visible(faction_id))",
         "hidden_reasons_excluded",
+        "*CurrentBase = &query_base;", "*CurrentBase = previous_base;",
+        "*BaseTerraformReduce = previous_reduce;",
         "can_build_base(x, y, faction_id, TRIAD_LAND)",
         "can_build_base(x, y, faction_id, TRIAD_SEA)",
     )):
@@ -76,6 +78,10 @@ def main() -> int:
     paged_tiles = source.split('if (domain == "tiles") {', 1)[1].split(
         '} else if (domain == "bases") {', 1,
     )[0]
+    survey_branch = paged_tiles.split("if (!visible && survey) {", 1)[1].split("if (visible) {", 1)[0]
+    assert "RULES_NO_UNITY_SURVEY" in paged_tiles and "!mapped && !survey" in paged_tiles
+    assert "unity_survey" in survey_branch and "alt_level()" in survey_branch
+    assert not any(name in survey_branch for name in ("sq->owner", "sq->items", "landmarks", "Vehicles", "Bases"))
     visible_branch = paged_tiles.split("if (visible) {", 1)[1]
     if "visible_landmark_records(sq, x, y)" not in visible_branch:
         raise AssertionError("native landmarks escaped the current-visibility branch")

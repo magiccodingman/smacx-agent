@@ -45,10 +45,10 @@ def object_location(item: Mapping[str, Any] | None, fallback: str = "") -> str:
 
 def relationship_class(item: Mapping[str, Any]) -> str:
     value = str(field_value(item, "relationship", "unknown"))
-    if value in {"hostile", "allied", "neutral"}:
+    if field_is_current(item, "relationship") and value in {"hostile", "allied", "neutral"}:
         return value
     relations = field_value(item, "relations", {})
-    if isinstance(relations, Mapping):
+    if field_is_current(item, "relations") and isinstance(relations, Mapping):
         if relations.get("pact") is True:
             return "allied"
         if relations.get("vendetta") is True:
@@ -129,12 +129,14 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
 
     stationary_refuel = {
         object_location(item) for item in objects.values()
-        if item.get("kind") == "base"
+        if item.get("kind") == "base" and item.get("status", "active") == "active"
+        and field_is_current(item, "owner_ref")
         and subject_can_use_owner(field_value(item, "owner_ref"))
     }
     stationary_refuel.update(
         str(item["object_ref"]) for item in objects.values()
         if item.get("kind") == "location"
+        and field_is_current(item, "features") and field_is_current(item, "owner_ref")
         and "airbase" in set(map(str, field_value(item, "features", []) or []))
         and subject_can_use_owner(field_value(item, "owner_ref"))
     )
@@ -153,6 +155,8 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
     own_bases = [item for item in objects.values() if item.get("kind") == "base"
                  and field_value(item, "owner_ref") == field_value(subject, "owner_ref")]
     def has_psi_gate(item: Mapping[str, Any]) -> bool:
+        if not field_is_current(item, "facilities") or item.get("status", "active") != "active":
+            return False
         facilities = field_value(item, "facilities", []) or []
         return any(
             isinstance(value, Mapping) and (
@@ -407,10 +411,10 @@ def base_mechanics(topology: PerspectiveTopology,
                            "turns_remaining": completion},
             "friendly_response": sorted(reinforcements,
                                          key=lambda row: (row["eta_turns"] is None,
-                                                          row["eta_turns"] or 10**9))[:12],
+                                                          (row["eta_turns"] if row["eta_turns"] is not None else 10**9)))[:12],
             "visible_hostile_response": sorted(threats,
                                                key=lambda row: (row["minimum_observed_eta_turns"] is None,
-                                                                row["minimum_observed_eta_turns"] or 10**9))[:12],
+                                                                (row["minimum_observed_eta_turns"] if row["minimum_observed_eta_turns"] is not None else 10**9)))[:12],
             "support_burden": len(supported_refs),
             "supported_unit_refs": supported_refs[:32],
             "support_mineral_cost": base_support_cost(base),
@@ -969,9 +973,26 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
             owner = objects.get(owner_ref, {})
             relationship = "self" if field_value(owner, "is_self") is True \
                 else relationship_class(owner)
-            if relationship not in {"self", "allied"} and owner_ref != "faction-own":
-                continue
+            access_current = field_is_current(base, "owner_ref") and base.get("status") == "active" and (
+                owner_ref == "faction-own" or
+                field_is_current(owner, "is_self") and field_value(owner, "is_self") is True or
+                field_is_current(owner, "relations") and relationship == "allied" or
+                field_is_current(owner, "relationship") and relationship == "allied")
+            if relationship in {"hostile", "neutral"} and field_is_current(owner, "relations"):
+                access_status = "impossible_on_known_access"
+            elif access_current:
+                access_status = "current_usable"
+            elif base.get("status") == "stale" or any(
+                (base.get("fields", {}).get(name) or {}).get("epistemic_status") == "stale"
+                for name in ("owner_ref", "drone_riots")):
+                access_status = "stale_needs_reverification"
+            else:
+                access_status = "access_unknown"
             friendly_bases.append({
+                "access_status": access_status,
+                "evidence": {"base": {name: base.get("fields", {}).get(name)
+                                      for name in ("owner_ref", "coastal", "drone_riots", "facilities")},
+                             "relationship": owner.get("fields", {}).get("relations") or owner.get("fields", {}).get("relationship")},
                 "base_ref": base["object_ref"], "location_ref": object_location(base),
                 "owner_ref": owner_ref, "relationship": relationship,
                 "coastal": bool(field_value(base, "coastal", False)),
@@ -993,14 +1014,18 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                     ("fungus", "fungus" in square.features),
                 ) if present
             ], "owner_ref": square.owner_ref,
-             "epistemic_status": "current" if square.current else "stale"}
+             "epistemic_status": (objects.get(ref, {}).get("fields", {}).get("features") or {}).get("epistemic_status", "unknown"),
+             "evidence": {name: objects.get(ref, {}).get("fields", {}).get(name)
+                          for name in ("features", "owner_ref")}}
             for ref, square in topology.by_ref.items()
             if square.features & {"airbase", "bunker", "monolith", "fungus"}
         ]
         for base in friendly_bases:
             base_repair_status = (
-                "current_usable" if base["drone_riots"] is False else
-                "current_blocked_by_drone_riots" if base["drone_riots"] is True else
+                base["access_status"] if base["access_status"] != "current_usable" else
+                "stale_needs_reverification" if (base["evidence"]["base"].get("drone_riots") or {}).get("epistemic_status") == "stale" else
+                "current_usable" if base["drone_riots"] is False and (base["evidence"]["base"].get("drone_riots") or {}).get("epistemic_status") == "current" else
+                "current_blocked_by_drone_riots" if base["drone_riots"] is True and (base["evidence"]["base"].get("drone_riots") or {}).get("epistemic_status") == "current" else
                 "unknown_drone_riot_state"
             )
             repair_locations.append({
@@ -1009,16 +1034,22 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                 "mechanisms": ["base"], "base_repair_status": base_repair_status,
                 "facility_ids": base["facility_ids"],
                 "facility_names": base["facility_names"],
-                "epistemic_status": "current" if base["drone_riots"] is not None else "unknown",
+                "epistemic_status": "current" if base_repair_status.startswith("current_") else
+                    "stale" if base_repair_status == "stale_needs_reverification" else "unknown",
+                "access_status": base["access_status"], "evidence": base["evidence"],
             })
         self_faction_refs = {
             str(value.get("object_ref")) for value in objects.values()
             if value.get("kind") == "faction" and field_value(value, "is_self") is True
         } | {"faction-own"}
         completed_projects = []
+        projects_current = False
         for value in objects.values():
             if value.get("kind") not in {"project_state", "project"}:
                 continue
+            if not field_is_current(value, "state"):
+                continue
+            projects_current = True
             state = field_value(value, "state", [])
             if isinstance(state, Mapping):
                 state = state.get("completed_projects", [])
@@ -1040,6 +1071,17 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                    and isinstance(field_value(item, "max_hp"), (int, float))
                    and field_value(item, "hp") < field_value(item, "max_hp")]
         repair_options = []
+        if requested:
+            damaged = [unit for unit in damaged if unit["object_ref"] in requested]
+        def arrival(unit_ref, target, profile, allow_transport=True):
+            route = topology.route(object_location(objects[unit_ref]), target, profile)
+            assisted = None
+            if not route.reachable and profile.triad == "land" and allow_transport:
+                assisted = transport_route(topology, objects, unit_ref, target)
+            status = "direct_route" if route.reachable else (
+                "transport_assisted" if assisted and assisted.get("reachable") is True else
+                "transport_dependency_unresolved" if not allow_transport or assisted and not assisted.get("search", {}).get("search_complete") else "no_known_transport_path")
+            return route, assisted, status
         for unit in damaged[:8]:
             start = object_location(unit)
             if start not in topology.by_ref:
@@ -1048,13 +1090,15 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                 objects, "repair-arrival", subject_ref=str(unit["object_ref"]), topology=topology,
             )
             planet_life = bool((field_value(unit, "roles", {}) or {}).get("planet_life"))
+            transport_attempts = 0
             for location in repair_locations[:96]:
                 target = str(location["location_ref"])
                 if target not in topology.by_ref:
                     continue
-                route = topology.route(start, target, profile)
+                route, assisted, arrival_status = arrival(str(unit["object_ref"]), target, profile,
+                                                         transport_attempts < 8)
                 if not route.reachable:
-                    continue
+                    transport_attempts += 1
                 mechanisms = list(location["mechanisms"])
                 triad = str(field_value(unit, "triad", "land"))
                 base_usable = location.get("base_repair_status") == "current_usable"
@@ -1075,7 +1119,8 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                     modifiers["base_bonus"] = repair_rules.get("base_bonus")
                     facility_ids = set(location.get("facility_ids", ()))
                     required_facility = {"land": 27, "sea": 28, "air": 29}.get(triad)
-                    if not planet_life and required_facility in facility_ids:
+                    facilities_current = (location.get("evidence", {}).get("base", {}).get("facilities") or {}).get("epistemic_status") == "current"
+                    if not planet_life and required_facility in facility_ids and facilities_current:
                         modifiers["base_facility_bonus"] = repair_rules.get(
                             "base_facility_bonus"
                         )
@@ -1086,19 +1131,33 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                         }
                 if has_nano_factory:
                     modifiers["nano_factory_bonus"] = repair_rules.get("nano_factory_bonus")
+                qualified_modifiers = dict(modifiers)
+                conditional_modifiers = {}
+                owner_evidence = location.get("evidence", {}).get("base", location.get("evidence", {})).get("owner_ref") or {}
+                if owner_evidence.get("epistemic_status") != "current" and "friendly_territory_bonus" in qualified_modifiers:
+                    conditional_modifiers["friendly_territory_bonus"] = qualified_modifiers.pop("friendly_territory_bonus")
+                if location.get("epistemic_status") != "current" or not field_is_current(repair_rules_object, "state"):
+                    conditional_modifiers.update(qualified_modifiers)
+                    qualified_modifiers = {}
                 repair_options.append({
                     "damaged_unit_ref": unit["object_ref"], "repair_location_ref": target,
                     "base_ref": location.get("base_ref"), "mechanisms": mechanisms,
-                    "arrival_turns": route.turns, "movement_cost": route.movement_cost,
-                    "transport_dependency": None if route.reachable else "required_or_unknown",
-                    "known_repair_rule_modifiers": modifiers,
+                    "arrival_turns": route.turns if route.reachable else assisted.get("eta_turns") if assisted else None,
+                    "movement_cost": route.movement_cost,
+                    "transport_dependency": arrival_status,
+                    "transport_route": assisted,
+                    "arrival_uncertainty": list(route.uncertainty),
+                    "epistemic_status": location.get("epistemic_status", "unknown"),
+                    "repair_evidence": location.get("evidence", {}),
+                    "known_repair_rule_modifiers": qualified_modifiers,
+                    "conditional_repair_rule_modifiers": conditional_modifiers,
                     "base_repair_status": location.get("base_repair_status"),
                     "repair_timing_conditions": {
                         "must_not_have_moved_before_repair_phase": True,
                         "fungal_tower_exception": True,
                         "reactor_scaled": True,
-                        "non_base_repair_limit_applies": not base_usable and not has_nano_factory,
-                        "xenoempathy_fungus_limit_removed": has_xenoempathy_dome,
+                        "non_base_repair_limit_applies": not base_usable and not has_nano_factory if projects_current else None,
+                        "xenoempathy_fungus_limit_removed": has_xenoempathy_dome if projects_current else None,
                     },
                     "conditional_rules": [
                         "Native-life fungus repair applies only when the unit has that role.",
@@ -1107,7 +1166,7 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                     ],
                 })
         repair_options.sort(key=lambda row: (
-            str(row["damaged_unit_ref"]), int(row.get("arrival_turns") or 10**9),
+            str(row["damaged_unit_ref"]), int((row.get("arrival_turns") if row.get("arrival_turns") is not None else 10**9)),
             str(row["repair_location_ref"]),
         ))
         staging = []
@@ -1121,14 +1180,19 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                 profile = mobility_profile(
                     objects, "staging-arrival", subject_ref=unit_ref, topology=topology,
                 )
-                route = topology.route(start, base["location_ref"], profile)
+                route, assisted, arrival_status = arrival(unit_ref, base["location_ref"], profile)
                 arrivals.append({
-                    "unit_ref": unit_ref, "reachable": route.reachable,
-                    "arrival_turns": route.turns, "movement_cost": route.movement_cost,
+                    "transport_dependency": arrival_status, "transport_route": assisted,
+                    "unit_ref": unit_ref,
+                    "reachable": route.reachable or bool(assisted and assisted.get("reachable")),
+                    "direct_route_reachable": route.reachable,
+                    "arrival_turns": route.turns if route.reachable else assisted.get("eta_turns") if assisted else None,
+                    "movement_cost": route.movement_cost,
                     "uncertainty": list(route.uncertainty),
                 })
             staging.append({**base, "subject_arrivals": arrivals})
         result["repair_rules"] = dict(repair_rules)
+        result["repair_rules_evidence"] = repair_rules_object.get("fields", {}).get("state")
         result["repair_locations"] = repair_locations[:64]
         result["damaged_unit_repair_options"] = repair_options[:64]
         result["staging_bases"] = staging
@@ -1270,7 +1334,7 @@ def location_affordances(
                     "uncertainty": list(route.uncertainty),
                 })
         travel.sort(key=lambda value: (
-            int(value.get("arrival_turns") or 10**9), str(value.get("base_ref")),
+            int(value["arrival_turns"] if value.get("arrival_turns") is not None else 10**9), str(value.get("base_ref")),
         ))
         landmarks = [
             {"landmark_ref": value.get("object_ref"),
@@ -1311,7 +1375,7 @@ def location_affordances(
             "mobility_region_refs": sorted(set(mobility_region_by_location.get(location_ref, ()))),
             "nearest_owned_or_pact_bases": sorted(
                 nearby_bases, key=lambda value: (
-                    int(value.get("geometric_distance") or 10**9), str(value.get("base_ref")),
+                    int(value["geometric_distance"] if value.get("geometric_distance") is not None else 10**9), str(value.get("base_ref")),
                 ),
             )[:8],
             "known_direct_travel_from_owned_or_pact_bases": travel[:8],

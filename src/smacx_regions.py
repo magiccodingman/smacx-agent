@@ -216,7 +216,8 @@ class RegionBuilder:
             for ref in region.location_refs:
                 square = topology.by_ref[ref]
                 possible = set(topology.shape.neighbors((square.x, square.y)).values())
-                known = {(item.x, item.y) for item in topology.adjacent(ref).values()}
+                known = {(item.x, item.y) for item in topology.adjacent(ref).values()
+                         if item.terrain != "unknown"}
                 missing = possible - known
                 if missing:
                     boundary.add(ref)
@@ -291,7 +292,7 @@ class RegionBuilder:
                             target.add(str(owner_value))
                         features = fields.get("features") if isinstance(fields, Mapping) else None
                         values = features.get("value", []) if isinstance(features, Mapping) else []
-                        for feature in values:
+                        for feature in values or ():
                             if feature in {"nutrient_resource", "mineral_resource", "energy_resource",
                                            "resource_bonus", "monolith", "supply_pod"}:
                                 row = nearby_resources.setdefault(str(feature), {
@@ -304,12 +305,25 @@ class RegionBuilder:
                                 row[f"{freshness}_count"] += 1
                                 if len(row["representative_refs"]) < 3:
                                     row["representative_refs"].append(ref)
-                        for value in fields.values() if isinstance(fields, Mapping) else ():
-                            if isinstance(value, Mapping) and isinstance(value.get("last_verified_turn"), int):
-                                turns.append(int(value["last_verified_turn"]))
+                        if obj.get("kind") == "location":
+                            for name in ("terrain", "altitude", "features", "owner_ref"):
+                                value = fields.get(name)
+                                if isinstance(value, Mapping) and isinstance(value.get("last_verified_turn"), int):
+                                    turns.append(int(value["last_verified_turn"]))
                     for neighbor in topology.adjacent(ref).values():
                         if ocean_mass_by_location.get(neighbor.location_ref):
                             ocean_refs.add(ocean_mass_by_location[neighbor.location_ref])
+                nearby = {neighbor.location_ref for ref in segment
+                          for neighbor in topology.adjacent(ref).values()} - segment
+                for ref in nearby:
+                    for obj in objects_by_location.get(ref, ()):
+                        if obj.get("kind") != "foreign_contact":
+                            continue
+                        owner = obj.get("fields", {}).get("owner_ref", {})
+                        if not isinstance(owner, Mapping) or not owner.get("value"):
+                            continue
+                        target = current_foreign if obj.get("status") == "active" and owner.get("epistemic_status") == "current" else stale_foreign
+                        target.add(str(owner["value"]))
                 possible_components: set[str] = set()
                 for position in missing_positions:
                     for adjacent in topology.shape.neighbors(position).values():
@@ -380,6 +394,7 @@ def build_theaters(
     world_revision: int, location_to_mass: Mapping[str, str] | None = None,
     region_adjacency: Mapping[str, Iterable[str]] | None = None,
     promoted_refs: Iterable[str] = (), recent_material_refs: Iterable[str] = (),
+    topology: PerspectiveTopology | None = None,
 ) -> list[Theater]:
     """Build neutral, mechanically connected operational overlays."""
     rows = list(objects)
@@ -387,36 +402,44 @@ def build_theaters(
     region_adjacency = region_adjacency or {}
     promoted = set(map(str, promoted_refs))
     recent = set(map(str, recent_material_refs))
-    active_by_region: dict[str, list[Mapping[str, Any]]] = {}
-    reasons: dict[str, set[str]] = {}
+    active: dict[str, Mapping[str, Any]] = {}
     for item in rows:
         ref = str(item.get("object_ref") or "")
         location = str(item.get("location_ref") or "")
-        mapped = location_to_region.get(location, ())
-        regions = (mapped,) if isinstance(mapped, str) else tuple(mapped or ())
-        relationship = _field_value(item, "relationship")
-        active = (
-            item.get("kind") in {"combat", "global_event"}
-            or (item.get("kind") == "foreign_contact" and relationship in {"hostile", "allied"})
-            or _field_value(item, "hostile") is True
-            or _field_value(item, "threatened") is True
-            or ref in promoted or ref in recent or location in promoted or location in recent
-        )
-        if not active:
+        if item.get("status", "active") != "active" or not location:
             continue
-        for region in regions:
-            active_by_region.setdefault(str(region), []).append(item)
-            reasons.setdefault(str(region), set()).add(str(item.get("kind") or "activity"))
-    graph = {region: set() for region in active_by_region}
-    for region in graph:
-        graph[region].update(set(map(str, region_adjacency.get(region, ()))) & set(graph))
+        if (item.get("kind") in {"combat", "global_event"}
+            or item.get("kind") == "foreign_contact" and _field_value(item, "relationship") in {"hostile", "allied"}
+            or _field_value(item, "hostile") is True or _field_value(item, "threatened") is True
+            or ref in promoted or ref in recent or location in promoted or location in recent):
+            active[ref] = item
+    graph = {ref: set() for ref in active}
+    # Regions describe mobility, not operational coupling. Join locally interacting
+    # participants only; distinct distant crises on one continent remain separate.
+    for left, a in active.items():
+        for right, b in active.items():
+            if right <= left:
+                continue
+            la, lb = str(a.get("location_ref")), str(b.get("location_ref"))
+            local = la == lb
+            if topology and la in topology.by_ref and lb in topology.by_ref:
+                sa, sb = topology.by_ref[la], topology.by_ref[lb]
+                local = topology.shape.distance((sa.x, sa.y), (sb.x, sb.y)) <= 3
+            owner_a, owner_b = _field_value(a, "owner_ref"), _field_value(b, "owner_ref")
+            related = (owner_a is not None and owner_a == owner_b
+                       or "allied" in {_field_value(a, "relationship"), _field_value(b, "relationship")}
+                       or _field_value(a, "threatened") is True or _field_value(b, "threatened") is True)
+            if local and related:
+                graph[left].add(right); graph[right].add(left)
     for item in rows:
         if item.get("kind") not in {"route", "convoy", "operation"}:
             continue
-        refs = [str(value) for value in (_field_value(item, "region_refs") or [])
-                if str(value) in graph]
-        for left in refs:
-            graph[left].update(value for value in refs if value != left)
+        linked = set(map(str, _field_value(item, "subject_refs") or ()))
+        linked.update(str(_field_value(item, name) or "") for name in ("origin_ref", "target_ref"))
+        participants = {ref for ref, row in active.items()
+                        if ref in linked or str(row.get("location_ref")) in linked}
+        for ref in participants:
+            graph[ref].update(participants - {ref})
     theaters: list[Theater] = []
     unseen = set(graph)
     while unseen:
@@ -428,7 +451,11 @@ def build_theaters(
             region = stack.pop()
             for neighbor in sorted(graph[region] & unseen):
                 unseen.remove(neighbor); component.add(neighbor); stack.append(neighbor)
-        involved = [item for region in component for item in active_by_region[region]]
+        involved = [active[ref] for ref in component]
+        involved_regions: set[str] = set()
+        for item in involved:
+            mapped = location_to_region.get(str(item.get("location_ref")), ())
+            involved_regions.update((mapped,) if isinstance(mapped, str) else mapped)
         subjects = sorted({str(item.get("object_ref")) for item in involved if item.get("object_ref")})
         locations = {str(item.get("location_ref")) for item in involved if item.get("location_ref")}
         factions = {str(_field_value(item, "owner_ref")) for item in involved
@@ -452,8 +479,8 @@ def build_theaters(
             ("\x1f".join(sorted(component)) + "\x1e" + "\x1f".join(subjects)).encode()
         ).hexdigest()[:16]
         theaters.append(Theater(
-            f"theater-{digest}", tuple(sorted(component)), tuple(subjects[:32]),
-            ",".join(sorted({value for region in component for value in reasons[region]})),
+            f"theater-{digest}", tuple(sorted(involved_regions)), tuple(subjects[:32]),
+            ",".join(sorted({str(item.get("kind")) for item in involved})),
             min(100, 35 + len(subjects) * 5 + len(promoted_here) * 15 + len(recent_here) * 10),
             world_revision, tuple(sorted({location_to_mass.get(ref, "") for ref in locations}
                                          - {""})[:12]), tuple(sorted(factions)[:8]),

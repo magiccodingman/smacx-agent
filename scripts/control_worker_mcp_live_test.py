@@ -25,7 +25,7 @@ def docker(*arguments: str, check: bool = True) -> str:
         ["docker", *arguments], capture_output=True, text=True, check=False,
     )
     if check and completed.returncode:
-        raise RuntimeError(f"docker_{arguments[0]}_failed:{completed.stderr.strip()[:1000]}")
+        raise RuntimeError(f"docker_{arguments[0]}_failed:{completed.stderr.strip()[-1000:]}")
     return completed.stdout.strip()
 
 
@@ -377,6 +377,7 @@ def main() -> int:
             "-e", "SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION=1",
             "-e", "SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1",
             "-e", "SMACX_ACCEPTANCE_PACT_PORT=1",
+            "-e", "SMACX_ACCEPTANCE_BASE_SITE=1",
             "-e", "SMACX_DOCKER_SOCKET=/var/run/docker.sock",
             "-e", f"SMACX_DOCKER_NETWORK={network}",
             "-e", f"SMACX_GAME_SOURCE={game}",
@@ -1124,6 +1125,20 @@ def main() -> int:
         )
         if not boarded.get("ok") or boarded.get("boarded") is not True:
             raise AssertionError(f"native Pact-port boarding failed: {boarded}")
+        # Stress runs after gameplay assertions; its native restore check covers
+        # the temporary rows, visibility and yield-calculation scratch state.
+        site_stress, site_wall_ms, site_probe_gap_ms = measured_bridge_operation(
+            recovered_sidecar, "test_base_site_receipts_stress")
+        site_bytes = len(json.dumps(site_stress, separators=(",", ":")).encode())
+        if site_stress.get("ok") is not True or len(site_stress.get("items", [])) != 32:
+            raise AssertionError("native base-site stress failed")
+        if max(site_wall_ms, site_probe_gap_ms) >= 500 or site_bytes > 256_000:
+            raise AssertionError({"base_site_responsiveness": {"wall_ms": site_wall_ms,
+                                  "probe_gap_ms": site_probe_gap_ms, "bytes": site_bytes}})
+        print(json.dumps({"event": "base_site_stress", "payload": {
+            "owned_base_count": 512, "candidate_count": 32, "radius_squares": 21,
+            "wall_ms": round(site_wall_ms, 3), "probe_gap_ms": round(site_probe_gap_ms, 3),
+            "receipt_bytes": site_bytes, "native_elapsed_ms": site_stress.get("native_elapsed_ms")}}), flush=True)
         api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park",
             {}, csrf, 120,

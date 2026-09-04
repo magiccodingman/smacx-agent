@@ -691,6 +691,17 @@ def main() -> int:
             )}
         assert statuses == {ttl_watch["watch_id"]: "expired",
                             linked_watch["watch_id"]: "expired"}
+        with store._connect() as connection:
+            notices = [json.loads(row[0]) for row in connection.execute(
+                "SELECT payload_json FROM attention_items WHERE attention_kind='watch_lifecycle'")]
+        assert {ttl_watch["watch_id"], linked_watch["watch_id"], entry_watch["watch_id"]} <= {
+            row["watch_id"] for row in notices}
+        # Reconciliation retries do not repeatedly warn about the same loss of vigilance.
+        attention.gc_watches(22)
+        with store._connect() as connection:
+            repeated = [json.loads(row[0])["watch_id"] for row in connection.execute(
+                "SELECT payload_json FROM attention_items WHERE attention_kind='watch_lifecycle'")]
+        assert repeated.count(ttl_watch["watch_id"]) == 1
         operation_refs = ["base-alpha"]
         current_projection = world_store.load(scope, identity.timeline_id)
         assert current_projection is not None

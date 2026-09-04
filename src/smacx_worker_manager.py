@@ -1473,6 +1473,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 and os.environ.get("SMACX_ACCEPTANCE_PACT_PORT") == "1":
             values["SMACX_AGENT_TEST_MODE"] = "1"
             values["SMACX_ACCEPTANCE_PACT_PORT"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_ACCEPTANCE_BASE_SITE") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_ACCEPTANCE_BASE_SITE"] = "1"
         faction_roster = autostart.get("faction_roster")
         if isinstance(faction_roster, list) and len(faction_roster) == 7:
             values["SMACX_AGENT_FACTION_ROSTER"] = ",".join(

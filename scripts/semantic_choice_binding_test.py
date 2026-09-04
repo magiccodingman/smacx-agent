@@ -14,6 +14,10 @@ import smacx_mcp
 
 
 def main() -> int:
+    # Managed query selectors must resolve against current private mappings,
+    # including opaque aliases whose spelling has no numeric meaning.
+    query_source = inspect.getsource(smacx_mcp.smac_world)
+    assert 're.fullmatch' not in query_source and 'match.group(1)' not in query_source
     context = {
         "action_revision": "revision-current",
         "by_ref": {
@@ -50,6 +54,9 @@ def main() -> int:
             "unit_id": 17, "base_id": 4, "target_tile_id": 321,
             "target_unit_id": 23,
         }
+        context["objects"]["location-front"]["status"] = "stale"
+        assert smacx_mcp._resolve_managed_selectors("revision-current", target_location_ref="location-front")[0]["target_tile_id"] == 321
+        context["objects"]["location-front"]["status"] = "active"
         for bad in ("contact-lost", "contact-other-seat", "own-unit-alpha-old"):
             try:
                 smacx_mcp._resolve_managed_selectors(

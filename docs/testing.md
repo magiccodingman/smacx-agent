@@ -331,3 +331,21 @@ Public test documentation should describe repeatable procedures. Sanitized,
 reproducible benchmark aggregates may live under `docs/benchmarks/results`;
 reference-machine diaries, raw transcripts, and maintainer backlog remain
 outside the repository.
+
+## Sovereign checkpoint acceptance
+
+Run `scripts/sovereign_hardening_contract_test.py` and
+`scripts/sovereign_geography_acceptance_test.py` with `PYTHONPATH=src` alongside
+the existing geography, world, observation, fair-play, movement, runtime,
+attention, rollback and semantic-choice contracts. The new fixtures exercise
+actual service queries, cache invalidation/reuse, omitted geography discovery,
+60-base global awareness, distinct theater crises, field predicates, Survey
+entitlement and transport-dependent repair/staging.
+
+The isolated `control_worker_mcp_live_test.py` additionally enables the dual-gated
+base-site receipt stress endpoint. It temporarily installs 512 owned base input
+rows, requests 32 sites with 21-square radii, restores the input state, and checks
+native/UI wall and probe time against the unchanged 500 ms law and a 256 KB
+receipt ceiling. This is a native read-path stress fixture, not a gameplay proof
+that 512 bases were legally founded. Never enable acceptance endpoints in a
+production worker. See the checkpoint report for executed evidence and limitations.

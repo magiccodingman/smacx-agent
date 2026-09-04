@@ -12,7 +12,7 @@ from smacx_journal import CampaignJournal
 from smacx_store import MemoryScope
 from smacx_world_model import PerspectiveProjector, net_deltas
 from smacx_world_store import WorldStore
-from smacx_world_types import WorldIdentity, canonical_json, content_hash
+from smacx_world_types import provider_safe, WorldIdentity, canonical_json, content_hash
 from smacx_attention import AttentionService
 from smacx_entitlements import PerspectiveEntitlements, sanitize_bundle
 
@@ -893,9 +893,12 @@ class ObservationCollector:
             )
             journal_events_written += 1
             observation_rows_written += 1
+        prior_by_ref = {str(item["object_ref"]): provider_safe(item) for item in prior_objects}
         if self.attention is not None and (deltas or temporal_events):
             self.attention.evaluate_watches(
-                deltas, temporal_events=temporal_events,
+                [{**delta, **({"previous": prior_by_ref[str(delta["object_ref"])]}
+                              if str(delta["object_ref"]) in prior_by_ref else {})}
+                 for delta in deltas], temporal_events=temporal_events,
                 observation_cursor=cursor, turn=turn, session_id=self.session_id,
             )
         reconciled = self.journal.append(

@@ -20,7 +20,7 @@ from smacx_world_types import (
 
 
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
-CALCULATOR_VERSION = "smacx.calculators.v2-geography"
+CALCULATOR_VERSION = "smacx.calculators.v3-sovereign"
 
 ENTITLEMENT_EVIDENCE_SOURCES = {
     "unity_survey": EvidenceSource.SURVEY,
@@ -304,6 +304,19 @@ class PerspectiveProjector:
                     fields[name] = _evidence(tile[name], current=current, owned=False, turn=turn,
                                              world_revision=revision_hint,
                                              provenance_ref=provenance)
+            # Survey is topography, never live vision, resources, occupants or ownership.
+            if "features" not in tile and not current:
+                fields["features"] = EpistemicValue(
+                    None, EpistemicStatus.UNKNOWN, EvidenceSource.STALE_MAP,
+                    None, None, revision_hint, provenance,
+                )
+            channels = tile.get("_entitlement_channels", {})
+            for name in ("terrain", "altitude"):
+                if channels.get(name) == "unity_survey" and name in fields:
+                    fields[name] = EpistemicValue(
+                        fields[name].value, EpistemicStatus.DERIVED, EvidenceSource.SURVEY,
+                        turn, turn, revision_hint, provenance,
+                    )
             if not current and isinstance(prior_location, Mapping):
                 prior_fields = prior_location.get("fields") \
                     if isinstance(prior_location.get("fields"), Mapping) else {}
@@ -655,6 +668,11 @@ class SemanticLodProjector:
         landmark_composition: dict[str, dict[str, Any]] = {}
         landmarks: list[dict[str, Any]] = []
         current_forces: dict[str, int] = {}
+        land_contacts: dict[str, int] = {}
+        stale_land_contacts: dict[str, int] = {}
+        owned_land_count = 0
+        owned_base_refs: list[str] = []
+        current_foreign_bases = 0
         naval_contacts: dict[str, int] = {}
         stale_naval_contacts: dict[str, int] = {}
         sea_bases: dict[str, int] = {}
@@ -735,8 +753,13 @@ class SemanticLodProjector:
                     "current_base_count": 0, "stale_known_base_count": 0,
                     "representative_refs": [],
                 })
-                key = "stale_known_base_count" if item.get("status") == "stale" else "current_base_count"
+                current_base = item.get("status") == "active" and cls._field(item, "owner_ref").get("epistemic_status") == "current"
+                key = "current_base_count" if current_base else "stale_known_base_count"
                 row[key] += 1
+                if relationship_by_faction.get(str(owner_ref)) == "self":
+                    owned_base_refs.append(str(item["object_ref"]))
+                elif current_base:
+                    current_foreign_bases += 1
                 if len(row["representative_refs"]) < 4:
                     row["representative_refs"].append(str(item["object_ref"]))
                 if kind == "ocean":
@@ -751,6 +774,13 @@ class SemanticLodProjector:
                     "location_ref": item.get("location_ref"),
                     "epistemic_status": cls._field(item, "name").get("epistemic_status"),
                 })
+            if kind == "land" and cls._field_value(item, "triad") == "land":
+                if item.get("kind") == "own_unit" and item.get("status") == "active":
+                    owned_land_count += 1
+                elif item.get("kind") == "foreign_contact":
+                    contacts = land_contacts if item.get("status") == "active" and cls._field(item, "triad").get("epistemic_status") == "current" else stale_land_contacts
+                    faction = str(owner_ref or "unknown")
+                    contacts[faction] = contacts.get(faction, 0) + 1
             if kind == "ocean" and item.get("kind") in {"own_unit", "foreign_contact"} \
                     and cls._field(item, "triad").get("value") == "sea":
                 faction = str(owner_ref or "unknown")
@@ -797,7 +827,12 @@ class SemanticLodProjector:
                 int(topology.by_ref[ref].current) for ref in mass.location_refs
             ),
             "stale_known_location_count": sum(
-                int(not topology.by_ref[ref].current) for ref in mass.location_refs
+                1 for item in inhabitants if item.get("kind") == "location"
+                and cls._field(item, "terrain").get("epistemic_status") == "stale"
+            ),
+            "survey_known_location_count": sum(
+                1 for item in inhabitants if item.get("kind") == "location"
+                and cls._field(item, "terrain").get("source") == "survey"
             ),
             "current_known_unowned_location_count": current_known_unowned_count,
             "unknown_ownership_location_count": unknown_ownership_count,
@@ -822,6 +857,12 @@ class SemanticLodProjector:
                 if relationship_by_faction.get(faction) == "self"
             ),
             "relevant_coastal_base_refs": sorted(set(coastal_bases))[:12],
+            "owned_base_count": len(owned_base_refs),
+            "owned_base_refs": sorted(owned_base_refs)[:8],
+            "current_foreign_base_count": current_foreign_bases,
+            "owned_land_force_count": owned_land_count,
+            "current_visible_land_contact_counts_by_faction": dict(sorted(land_contacts.items())),
+            "stale_known_land_contact_counts_by_faction": dict(sorted(stale_land_contacts.items())),
             "promoted_by_refs": promoted[:8],
             "lod_level": "operational" if promoted else "geographic",
             "identity_invariant": "terrain connectivity only; ownership, diplomacy, and units do not affect identity",
@@ -877,7 +918,8 @@ class SemanticLodProjector:
               triggered_watch_refs: Iterable[str] = (),
               active_plan_refs: Iterable[str] = (),
               recent_material_refs: Iterable[str] = (),
-              inspection_refs: Iterable[str] = ()) -> dict[str, Any]:
+              inspection_refs: Iterable[str] = (),
+              registry_only: bool = False) -> dict[str, Any]:
         objects = [provider_safe(item)
                    for item in projection.get("objects", ())]
         squares = list(projection.get("known_squares", ()))
@@ -968,7 +1010,7 @@ class SemanticLodProjector:
             world_revision=int(projection.get("world_revision", 0)),
             location_to_mass={**landmass_by_location, **ocean_mass_by_location},
             region_adjacency=region_adjacency, promoted_refs=pinned,
-            recent_material_refs=recent_material_refs,
+            recent_material_refs=recent_material_refs, topology=topology,
         )
         counts: dict[str, int] = {}
         for item in objects:
@@ -1026,7 +1068,12 @@ class SemanticLodProjector:
         }
         strategic = [self._strategic_summary(item) for item in objects
                      if item.get("kind") in strategic_kinds]
-        strategic.sort(key=lambda item: (str(item.get("kind")), str(item.get("object_ref"))))
+        essential = {"economy_state", "research_state", "social_state", "council_state",
+                     "victory_state", "victory_posture", "project_race_state", "project_state",
+                     "ecology_state", "planetary_state"}
+        strategic.sort(key=lambda item: (0 if item.get("kind") in essential else
+                                        1 if item.get("kind") != "base" else 2,
+                                        str(item.get("kind")), str(item.get("object_ref"))))
         # A semantic mipmap is an invariant, not a best-effort trimming pass.
         # Rank active/pinned regions first and aggregate the quiet tail so a
         # fragmented Huge map cannot grow the provider prefix with tile count.
@@ -1037,7 +1084,9 @@ class SemanticLodProjector:
             str(item.get("region_ref")),
         ))
         mass_rows.sort(key=lambda item: (
+            0 if item.get("owned_base_count") else 1,
             0 if item.get("lod_level") == "operational" else 1,
+            0 if item.get("current_foreign_base_count") or item.get("current_visible_land_contact_counts_by_faction") or item.get("current_visible_naval_contact_counts_by_faction") else 1,
             -int(item.get("known_location_count", 0)),
             str(item.get("landmass_ref") or item.get("ocean_mass_ref")),
         ))
@@ -1046,6 +1095,12 @@ class SemanticLodProjector:
         visible_regions = region_rows[:region_limit]
         theater_limit = 12 if self.context_tier == "64k" else 32
         theaters.sort(key=lambda item: (-item.salience, item.theater_ref))
+        pinned_locations = {str(item.get("location_ref")) for item in objects
+                            if str(item.get("object_ref")) in pinned}
+        frontiers.sort(key=lambda item: (
+            0 if item.frontier_ref in pinned or set(item.boundary_refs) & (pinned | pinned_locations) else 1,
+            0 if item.nearby_current_foreign_faction_refs else 1,
+        ))
         frontier_limit = 12 if self.context_tier == "64k" else 24
         strategic_limit = 48 if self.context_tier == "64k" else 128
         active_limit = 24 if self.context_tier == "64k" else 64
@@ -1053,6 +1108,12 @@ class SemanticLodProjector:
         mass_limit = 16 if self.context_tier == "64k" else 32
         omitted_masses = mass_rows[mass_limit:]
         visible_masses = mass_rows[:mass_limit]
+        if registry_only:
+            return {"physical_masses": mass_rows, "regions": region_rows,
+                    "frontiers": [item.as_dict() for item in frontiers],
+                    "active_theaters": [item.as_dict() for item in theaters],
+                    "ownership_interfaces": ownership_interfaces,
+                    "_region_projection": [*regions, *physical_masses]}
         anchor = {
             "schema": "smacx.world-anchor.v1",
             "identity": dict(projection["identity"]),
@@ -1078,10 +1139,13 @@ class SemanticLodProjector:
             },
             "physical_masses": visible_masses,
             "physical_mass_overflow": {
+                "owned_mass_count": sum(bool(item.get("owned_base_count")) for item in omitted_masses),
+                "owned_base_count": sum(int(item.get("owned_base_count", 0)) for item in omitted_masses),
+                "current_foreign_presence_mass_count": sum(bool(item.get("current_foreign_base_count") or item.get("current_visible_land_contact_counts_by_faction") or item.get("current_visible_naval_contact_counts_by_faction")) for item in omitted_masses),
                 "omitted_count": len(omitted_masses),
                 "omitted_known_locations": sum(int(item.get("known_location_count", 0))
                                                  for item in omitted_masses),
-                "query_hint": "Use smac_world area/relation on a mass or frontier for detail.",
+                "query_hint": "Enumerate all geography with area origin_ref=world-geography; query any returned ref.",
             },
             "regions": visible_regions,
             "region_overflow": {
@@ -1090,7 +1154,7 @@ class SemanticLodProjector:
                                          for item in omitted_regions),
                 "omitted_active_contacts": sum(int(item.get("active_foreign_contacts", 0))
                                                 for item in omitted_regions),
-                "query_hint": "Use smac_world area/relation for omitted regional detail.",
+                "query_hint": "Enumerate all regions with area origin_ref=world-geography; query any returned ref.",
             },
             "region_aliases": aliases,
             "frontiers": [item.as_dict() for item in frontiers[:frontier_limit]],
@@ -1121,7 +1185,7 @@ class SemanticLodProjector:
         # Demote least salient detail first. Planet/region summaries are never raw tile lists.
         while anchor["active_detail"] and estimate_tokens(anchor) > content_cap:
             anchor["active_detail"].pop()
-        while anchor["strategic_objects"] and estimate_tokens(anchor) > content_cap:
+        while anchor["strategic_objects"] and anchor["strategic_objects"][-1].get("kind") not in essential and estimate_tokens(anchor) > content_cap:
             anchor["strategic_objects"].pop()
             anchor["lod"]["strategic_objects_truncated"] = True
         if estimate_tokens(anchor) > content_cap:
@@ -1130,7 +1194,9 @@ class SemanticLodProjector:
             anchor["physical_masses"] = [{key: value for key, value in item.items()
                                           if key in {"landmass_ref", "ocean_mass_ref", "version",
                                                      "known_location_count", "lod_level",
-                                                     "promoted_by_refs"}}
+                                                     "promoted_by_refs", "owned_base_count", "owned_base_refs",
+                                                     "current_foreign_base_count", "owned_land_force_count",
+                                                     "current_visible_land_contact_counts_by_faction"}}
                                          for item in anchor["physical_masses"]]
         if estimate_tokens(anchor) > content_cap:
             anchor["regions"] = [{key: value for key, value in item.items()
