@@ -16,6 +16,7 @@ import uuid
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+from control_worker_mcp_live_test import bridge_operation, runtime_context, current_decision
 
 
 def docker(*arguments: str, check: bool = True) -> str:
@@ -67,71 +68,44 @@ async def mcp_tool(url: str, name: str, arguments: dict | None = None) -> dict:
             return mcp_result(await session.call_tool(name, arguments or {}))
 
 
-async def mcp_identity(url: str) -> dict:
-    return await mcp_tool(url, "smac_snapshot")
 
-
-async def prepare_game_management(url: str) -> dict:
-    """Resolve only audited opening notices, then request the guarded management frame."""
-    allowed_parameters = {
-        "response", "option", "phase", "priority", "name", "tech_id",
-    }
-    latest: dict = {}
-    for _ in range(20):
-        latest = await mcp_tool(url, "smac_decision", {"finish_ready_units": True})
-        if not latest.get("ok"):
-            raise AssertionError(f"MCP decision failed while preparing save: {latest}")
-        phase = latest.get("phase")
-        if phase == "turn":
-            return latest
-        if phase == "wait":
-            await mcp_tool(url, "smac_wait", {"seconds": 1})
-            continue
-        if phase != "interaction":
-            raise AssertionError(f"unexpected pre-save decision phase: {latest}")
-        choices = latest.get("choices", [])
-        choice = next((item for item in choices if item.get("command") in {
-            "acknowledge_popup", "choose_research_priority",
-            "advance_technology_presentation",
-        }), None)
-        if not choice:
-            raise AssertionError(f"non-audited interaction blocked save regression: {latest}")
-        guard = latest["required_next"]["guard"]
-        arguments = {"command": choice["command"], **guard}
-        arguments.update({key: choice[key] for key in allowed_parameters if key in choice})
-        result = await mcp_tool(url, "smac_command", arguments)
-        if not result.get("ok"):
-            raise AssertionError(f"opening interaction command failed: {result}")
-    raise AssertionError(f"game did not become actionable for save: {latest}")
-
-
-async def save_multiplayer_host(url: str, slot: str) -> dict:
-    frame = await prepare_game_management(url)
-    choice = next(
-        (item for item in frame.get("choices", []) if item.get("command") == "save_game"),
-        None,
-    )
-    if not choice or choice.get("native_host_only") is not True:
-        raise AssertionError(f"native host save choice was not exposed: {frame}")
-    result = await mcp_tool(url, "smac_command", {
-        "command": "save_game", "slot": slot, **frame["required_next"]["guard"],
-    })
-    if not result.get("ok") or result.get("multiplayer") is not True \
-            or result.get("native_host") is not True:
-        raise AssertionError(f"native multiplayer save failed: {result}")
-    return result
+def managed_effect_state(worker: dict) -> dict:
+    """Read owned agreement effects through the restored provider projection."""
+    sidecar = worker["network"]["mcp_container_name"]
+    endpoint = worker["network"]["mcp_url"]
+    episode = "acceptance-recovery-observation-" + uuid.uuid4().hex
+    runtime_context(sidecar, episode)
+    try:
+        decision = asyncio.run(current_decision(endpoint))
+        assert decision.get("ok"), decision
+        result = asyncio.run(mcp_tool(endpoint, "smac_world", {
+            "mode": "global", "subject_refs": ["global-economy", "global-owned-technologies"],
+            "detail": "deep",
+        }))
+        assert result.get("ok"), result
+        rows = {row["object_ref"]: row for row in result["items"]}
+        economy = rows["global-economy"]["fields"]["state"]
+        technologies = rows["global-owned-technologies"]["fields"]["technologies"]
+        assert economy["epistemic_status"] == technologies["epistemic_status"] == "current"
+        factions = bridge_operation(sidecar, "list_factions")["items"]
+        return {"energy_credits": economy["value"]["energy_credits"],
+                "technologies": technologies["value"],
+                "pact_counterparts": sorted(row["id"] for row in factions
+                                            if row.get("relations", {}).get("pact"))}
+    finally:
+        runtime_context(sidecar, episode, end=True)
 
 
 def main() -> int:
     game = os.environ.get("SMACX_TEST_GAME_SOURCE")
-    proton = os.environ.get("SMACX_TEST_PROTON_SOURCE")
-    directx = os.environ.get("SMACX_TEST_DIRECTX_REDIST")
-    if not all((game, proton, directx)):
-        print(json.dumps({"event": "skip", "reason": "missing_live_assets"}))
+    if not game:
+        print(json.dumps({"event": "skip", "reason": "missing_live_game_source"}))
         return 0
-    for path in (game, proton, directx):
-        if not Path(path).is_absolute():
-            raise SystemExit("live asset paths must be absolute")
+    if not Path(game).is_absolute():
+        raise SystemExit("live game source path must be absolute")
+    control_image = os.environ.get("SMACX_TEST_CONTROL_IMAGE", "smacx-agent-control:dev")
+    worker_image = os.environ.get("SMACX_TEST_WORKER_IMAGE", "smacx-agent-worker:dev")
+    mcp_image = os.environ.get("SMACX_TEST_MCP_IMAGE", control_image)
 
     suffix = uuid.uuid4().hex[:12]
     control_name = f"smacx-control-lan-live-{suffix}"
@@ -158,16 +132,19 @@ def main() -> int:
             "-e", "SMACX_DOCKER_ENABLED=1",
             "-e", "SMACX_DOCKER_SOCKET=/var/run/docker.sock",
             "-e", f"SMACX_DOCKER_NETWORK={network}",
-            "-e", "SMACX_WORKER_IMAGE=smacx-agent-worker:dev",
-            "-e", "SMACX_MCP_IMAGE=smacx-agent-control:dev",
+            "-e", f"SMACX_WORKER_IMAGE={worker_image}",
+            "-e", "SMACX_AGENT_TEST_MODE=1",
+            "-e", "SMACX_ACCEPTANCE_MANAGED_ACTIONS=1",
+            "-e", f"SMACX_GAME_SOURCE={game}",
+            "-e", f"SMACX_MCP_IMAGE={mcp_image}",
             "-e", f"SMACX_CONTROL_DATA_VOLUME={control_volume}",
-            "-e", f"SMACX_DIRECTX_REDIST_HOST={directx}",
+            "-v", f"{game}:{game}:ro",
             "-v", f"{control_volume}:/var/lib/smacx",
             "-v", "/var/run/docker.sock:/var/run/docker.sock",
-            "-p", "127.0.0.1::8080", "--read-only",
+            "-p", "127.0.0.1::8081", "--read-only",
             "--tmpfs", "/tmp:size=64m,mode=1777", "--tmpfs", "/run:size=16m,mode=0755",
             "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
-            "smacx-agent-control:dev",
+            control_image,
         )
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
@@ -176,7 +153,7 @@ def main() -> int:
             time.sleep(0.25)
         else:
             raise AssertionError("Control Center did not become healthy")
-        port = docker("port", control_name, "8080/tcp").rsplit(":", 1)[-1]
+        port = docker("port", control_name, "8081/tcp").rsplit(":", 1)[-1]
         base_url = f"http://127.0.0.1:{port}"
         token = docker("exec", control_name, "smacx-control", "bootstrap-token")
         cookies = CookieJar()
@@ -187,12 +164,10 @@ def main() -> int:
         })
         csrf = next(cookie.value for cookie in cookies if cookie.name == "smacx_csrf")
         installation_id = api(opener, base_url, "GET", "/api/v1/status")["installation_id"]
-        source = api(opener, base_url, "POST", "/api/v1/game-sources/validate", {
-            "display_name": "LAN legal source", "host_path": game,
-        }, csrf, 180)["game_source"]
-        runtime = api(opener, base_url, "POST", "/api/v1/runtimes/import-proton", {
-            "display_name": "LAN private Proton", "source_host_path": proton,
-        }, csrf, 1800)["runtime"]
+        sources = api(opener, base_url, "GET", "/api/v1/game-sources")["game_sources"]
+        source = next(item for item in sources if item.get("host_path") == game)
+        runtimes = api(opener, base_url, "GET", "/api/v1/runtimes")["runtimes"]
+        runtime = next(item for item in runtimes if item.get("status") == "ready")
         agents = [
             api(opener, base_url, "POST", "/api/v1/agents", {
                 "display_name": f"Managed LAN agent {index + 1}",
@@ -203,6 +178,12 @@ def main() -> int:
             "display_name": "Managed native LAN live match",
             "session_name": "Managed LAN Live Test",
             "agent_ids": [agent["agent_id"] for agent in agents],
+            "agent_seats": [{"agent_id": agent["agent_id"], "player_name": f"Managed Seat {index + 1}",
+                             "faction_choice_id": index, "faction_key": ("gaians", "hive")[index],
+                             "faction_name": ("Gaia's Stepdaughters", "Human Hive")[index],
+                             "personality_id": "none"}
+                            for index, agent in enumerate(agents)],
+            "faction_roster_choice_ids": list(range(7)),
             "game_source_id": source["game_source_id"],
             "runtime_id": runtime["runtime_id"],
             "profile": "small_easy", "start_now": True,
@@ -232,7 +213,7 @@ def main() -> int:
         if len(lan_workers) != 2 or any(not worker["network"].get("mcp_url") for worker in lan_workers):
             raise AssertionError("managed LAN did not receive one MCP sidecar per seat")
         snapshots = [
-            asyncio.run(mcp_identity(worker["network"]["mcp_url"])) for worker in lan_workers
+            bridge_operation(worker["network"]["mcp_container_name"], "semantic_snapshot") for worker in lan_workers
         ]
         identities = [snapshot.get("snapshot", {}) for snapshot in snapshots]
         if any(identity.get("match_id") != match_id for identity in identities) \
@@ -244,7 +225,11 @@ def main() -> int:
             if worker["instance_id"] == host_seat["instance_id"]
         )
         save_slot = "managed_lan_checkpoint"
-        saved = asyncio.run(save_multiplayer_host(host_worker["network"]["mcp_url"], save_slot))
+        from managed_human_action_live_test import exercise_human_actions
+        human_evidence = exercise_human_actions(lan_workers, host_worker)
+        before_recovery = {worker["instance_id"]: managed_effect_state(worker) for worker in lan_workers}
+        saved = api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/checkpoint",
+                    {"slot": save_slot}, csrf, 120)["checkpoint"]
         save_path = f"/var/lib/smacx/game/saves/agent/{match_id}/{save_slot}.sav"
         save_bytes = int(docker(
             "exec", host_worker["container_name"], "stat", "-c", "%s", save_path,
@@ -255,11 +240,12 @@ def main() -> int:
         original_factions = {
             seat["seat_index"]: seat["faction_id"] for seat in started["seats"]
         }
-        resumed = api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/start", {
-            "session_name": "Managed LAN Resume Test",
-            "profile": "small_easy",
-            "resume_slot": save_slot,
-        }, csrf, 900)
+        # Recover the native save together with journal/world/identity state.
+        # A plain lobby load does not establish the managed recovery contract.
+        resumed = api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/recover",
+                      {}, csrf, 900)
+        assert len(resumed.get("native_semantic_identity_restore", ())) == 2, resumed
+        assert resumed.get("memory_restore", {}).get("journal_forks"), resumed
         if not resumed.get("ok") or resumed.get("resume_slot") != save_slot \
                 or resumed.get("loaded_checkpoint", {}).get("turn") != saved.get("turn"):
             raise AssertionError(f"managed LAN checkpoint did not resume: {resumed}")
@@ -276,6 +262,10 @@ def main() -> int:
         if any(seat.get("native", {}).get("lifecycle") != "game"
                for seat in resumed_status.get("seats", [])):
             raise AssertionError(f"resumed LAN seats did not enter gameplay: {resumed_status}")
+        restored_workers = [worker for worker in api(opener, base_url, "GET", "/api/v1/workers")["workers"]
+                            if worker["match_id"] == match_id]
+        after_recovery = {worker["instance_id"]: managed_effect_state(worker) for worker in restored_workers}
+        assert after_recovery == before_recovery, "managed agreement effects changed across checkpoint recovery"
         api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/park", {}, csrf, 180)
         print(json.dumps({
             "event": "pass",
@@ -288,9 +278,12 @@ def main() -> int:
                 "one_mcp_sidecar_per_seat": True,
                 "native_host_role_observable": True,
                 "native_host_campaign_save": True,
+                "human_actions": human_evidence,
                 "multiplayer_save_bytes": save_bytes,
                 "stock_multiplayer_lobby_reload": True,
                 "faction_seats_restored": True,
+                "journal_and_native_identity_restored": True,
+                "agreement_effects_preserved_in_current_world_after_recovery": True,
                 "pixels_or_ui_input_used": False,
                 "match_wide_park": True,
             },
@@ -318,6 +311,7 @@ def main() -> int:
     finally:
         keep_failed = failed and os.environ.get("SMACX_TEST_KEEP_ON_FAILURE") == "1"
         if keep_failed:
+            docker("pause", control_name, check=False)
             print(json.dumps({
                 "event": "kept_failed_resources",
                 "control_name": control_name,

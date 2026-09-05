@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -71,7 +72,7 @@ print(json.dumps(bridge_request(sys.argv[1], timeout=30, **json.loads(sys.argv[2
 
 
 def wait_for_native_readiness(container_name: str, timeout: float = 60.0) -> dict:
-    """Require two successful UI-thread reads before destructive fixtures.
+    """Require two actionable UI-thread reads before destructive fixtures.
 
     Worker/container health becomes visible before Wine has necessarily serviced
     its first bounded bridge dispatch after a checkpoint rehost.  Retrying this
@@ -82,7 +83,8 @@ def wait_for_native_readiness(container_name: str, timeout: float = 60.0) -> dic
     latest: dict = {}
     while time.monotonic() < deadline:
         latest = bridge_operation(container_name, "semantic_snapshot")
-        if latest.get("ok") is True:
+        if (latest.get("ok") is True and
+                latest.get("snapshot", {}).get("interaction", {}).get("kind") == "turn"):
             consecutive += 1
             if consecutive >= 2:
                 return latest
@@ -90,7 +92,7 @@ def wait_for_native_readiness(container_name: str, timeout: float = 60.0) -> dic
             consecutive = 0
         time.sleep(0.25)
     raise AssertionError({
-        "message": "native UI thread did not become stably readable",
+        "message": "native UI thread did not become stably actionable",
         "latest": latest,
     })
 
@@ -378,6 +380,7 @@ def main() -> int:
             "-e", "SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1",
             "-e", "SMACX_ACCEPTANCE_PACT_PORT=1",
             "-e", "SMACX_ACCEPTANCE_BASE_SITE=1",
+            "-e", "SMACX_ACCEPTANCE_MANAGED_ACTIONS=1",
             "-e", "SMACX_DOCKER_SOCKET=/var/run/docker.sock",
             "-e", f"SMACX_DOCKER_NETWORK={network}",
             "-e", f"SMACX_GAME_SOURCE={game}",
@@ -1066,10 +1069,17 @@ def main() -> int:
         if not recovered_endpoint or not recovered_sidecar:
             raise AssertionError("fixture isolation recovery omitted its MCP sidecar")
         wait_for_native_readiness(recovered_sidecar)
+        print(json.dumps({"event": "acceptance_stage", "stage": "pact_port"}), flush=True)
         pact_port = bridge_operation(recovered_sidecar, "test_pact_port_fixture")
         if not pact_port.get("ok") or pact_port.get("relationship") != "pact" \
                 or pact_port.get("coastal") is not True:
-            raise AssertionError(f"native Pact-port fixture failed: {pact_port}")
+            # A synchronous native encounter can enter a modal loop during
+            # fixture setup. Observe once for diagnosis; never retry mutation.
+            diagnostic = bridge_operation(recovered_sidecar, "semantic_snapshot")
+            raise AssertionError({"message": "native Pact-port fixture failed",
+                                  "fixture": pact_port,
+                                  "interaction": diagnostic.get("snapshot", {}).get("interaction"),
+                                  "diagnostic_error": diagnostic.get("error")})
         pact_target = int(pact_port["base_tile_id"])
         for actor_key in ("land_entry_id", "sea_entry_id"):
             actor_id = int(pact_port[actor_key])
@@ -1125,6 +1135,24 @@ def main() -> int:
         )
         if not boarded.get("ok") or boarded.get("boarded") is not True:
             raise AssertionError(f"native Pact-port boarding failed: {boarded}")
+        from managed_action_path_live_test import exercise_managed_actions
+        print(json.dumps({"event": "acceptance_stage", "stage": "managed_actions"}), flush=True)
+        managed_fixture = bridge_operation(recovered_sidecar, "test_managed_action_fixture")
+        if not managed_fixture.get("ok"):
+            raise AssertionError({"managed_action_fixture": managed_fixture})
+        managed_episode = "episode-managed-actions-" + suffix
+        lease = runtime_context(recovered_sidecar, managed_episode)
+        if not lease.get("ok"):
+            raise AssertionError({"managed_action_lease": lease})
+        managed_decision = asyncio.run(current_decision(recovered_endpoint))
+        if not managed_decision.get("ok"):
+            raise AssertionError({"managed_action_decision": managed_decision})
+        managed_evidence = exercise_managed_actions(
+            lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
+            lambda operation, **arguments: bridge_operation(recovered_sidecar, operation, **arguments),
+            managed_fixture)
+        runtime_context(recovered_sidecar, managed_episode, end=True)
+        print(json.dumps({"event": "managed_action_paths", "payload": managed_evidence}), flush=True)
         # Stress runs after gameplay assertions; its native restore check covers
         # the temporary rows, visibility and yield-calculation scratch state.
         site_stress, site_wall_ms, site_probe_gap_ms = measured_bridge_operation(
@@ -1212,54 +1240,61 @@ def main() -> int:
             print(json.dumps({"event": "control_logs", "tail": logs[-4000:]}, separators=(",", ":")))
         raise
     finally:
-        if opener and base_url and csrf and worker:
-            try:
-                api(opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park", {}, csrf, 60)
-            except Exception:
-                pass
-        if worker:
-            for container_name in (
-                worker.get("network", {}).get("mcp_container_name"), worker.get("container_name"),
-            ):
-                if container_name:
-                    docker("rm", "-f", str(container_name), check=False)
-        if specialist_name:
-            docker("rm", "-f", specialist_name, check=False)
-        docker("rm", "-f", control_name, check=False)
-        if worker:
-            for volume_name in (
-                worker.get("network", {}).get("secret_volume"), worker.get("data_volume"),
-            ):
-                if volume_name:
-                    docker("volume", "rm", str(volume_name), check=False)
-        if runtime:
-            docker("volume", "rm", str(runtime.get("storage_ref")), check=False)
-        if installation_id:
-            managed_containers = docker(
-                "ps", "-aq", "--filter", f"label=io.smacx.installation={installation_id}",
-                "--filter", "label=io.smacx.managed=true", check=False,
-            ).splitlines()
-            for container in managed_containers:
-                if container:
-                    docker("rm", "-f", container, check=False)
-            for purpose in ("harness-data", "harness-secret"):
-                volumes = docker(
-                    "volume", "ls", "-q",
-                    "--filter", f"label=io.smacx.installation={installation_id}",
-                    "--filter", f"label=io.smacx.purpose={purpose}", check=False,
+        keep = os.environ.get("SMACX_TEST_KEEP_ON_FAILURE") == "1" and sys.exc_info()[0] is not None
+        if keep:
+            docker("pause", control_name, check=False)
+            print(json.dumps({"event": "kept_failed_resources", "control_name": control_name,
+                              "control_volume": control_volume, "network": network,
+                              "installation_id": installation_id}), flush=True)
+        else:
+            if opener and base_url and csrf and worker:
+                try:
+                    api(opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park", {}, csrf, 60)
+                except Exception:
+                    pass
+            if worker:
+                for container_name in (
+                    worker.get("network", {}).get("mcp_container_name"), worker.get("container_name"),
+                ):
+                    if container_name:
+                        docker("rm", "-f", str(container_name), check=False)
+            if specialist_name:
+                docker("rm", "-f", specialist_name, check=False)
+            docker("rm", "-f", control_name, check=False)
+            if worker:
+                for volume_name in (
+                    worker.get("network", {}).get("secret_volume"), worker.get("data_volume"),
+                ):
+                    if volume_name:
+                        docker("volume", "rm", str(volume_name), check=False)
+            if runtime:
+                docker("volume", "rm", str(runtime.get("storage_ref")), check=False)
+            if installation_id:
+                managed_containers = docker(
+                    "ps", "-aq", "--filter", f"label=io.smacx.installation={installation_id}",
+                    "--filter", "label=io.smacx.managed=true", check=False,
                 ).splitlines()
-                for volume in volumes:
-                    if volume:
-                        docker("volume", "rm", volume, check=False)
-            prepared_images = docker(
-                "images", "-q", "--filter", f"label=io.smacx.installation={installation_id}",
-                "--filter", "label=io.smacx.purpose=prepared-worker-image", check=False,
-            ).splitlines()
-            for image_id in dict.fromkeys(prepared_images):
-                if image_id:
-                    docker("image", "rm", image_id, check=False)
-        docker("volume", "rm", control_volume, check=False)
-        docker("network", "rm", network, check=False)
+                for container in managed_containers:
+                    if container:
+                        docker("rm", "-f", container, check=False)
+                for purpose in ("harness-data", "harness-secret"):
+                    volumes = docker(
+                        "volume", "ls", "-q",
+                        "--filter", f"label=io.smacx.installation={installation_id}",
+                        "--filter", f"label=io.smacx.purpose={purpose}", check=False,
+                    ).splitlines()
+                    for volume in volumes:
+                        if volume:
+                            docker("volume", "rm", volume, check=False)
+                prepared_images = docker(
+                    "images", "-q", "--filter", f"label=io.smacx.installation={installation_id}",
+                    "--filter", "label=io.smacx.purpose=prepared-worker-image", check=False,
+                ).splitlines()
+                for image_id in dict.fromkeys(prepared_images):
+                    if image_id:
+                        docker("image", "rm", image_id, check=False)
+            docker("volume", "rm", control_volume, check=False)
+            docker("network", "rm", network, check=False)
     return 0
 
 

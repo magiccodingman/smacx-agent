@@ -82,6 +82,34 @@ docker run --rm --entrypoint /opt/hermes/.venv/bin/python \
   smacx-agent-harness:dev scripts/harness_context_policy_test.py
 ```
 
+Managed parameter-path contracts require the MCP dependency environment. The
+single-player control/MCP live test also runs `managed_action_path_live_test.py`
+against the current managed endpoint; the two-seat control LAN test runs
+`managed_human_action_live_test.py`. Both use isolated installations and the
+packaged native runtime. Build both images from the same checkout and select them
+with `SMACX_TEST_CONTROL_IMAGE`, `SMACX_TEST_MCP_IMAGE`, and
+`SMACX_TEST_WORKER_IMAGE`. Set `SMACX_TEST_GAME_SOURCE` to the operator-owned game
+directory. The managed helpers use native fixtures only for controlled setup and
+native observations for additional effect checks; actions go through issued
+managed choices. Raw logs, saves and game assets must stay outside committed
+evidence.
+
+```bash
+docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  smacx-agent-control:dev scripts/managed_action_path_contract_test.py
+```
+
+The native roster adapter regression runs on the host with a C++ compiler:
+
+```bash
+python3 scripts/native_lan_roster_contract_test.py
+```
+
+It compiles the production adapter with controlled RNG and selector-state inputs.
+Actual loaded-game and journal/identity recovery are separately exercised by the
+control LAN live test; the compiled adapter is not a substitute for that proof.
+
 Additional focused `scripts/*_test.py` files cover individual semantic action
 families. Run the relevant focused contract whenever changing its bridge,
 controller, MCP schema, worker, or portal behavior.

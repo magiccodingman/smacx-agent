@@ -68,3 +68,28 @@ See [checkpoint acceptance](benchmarks/2026-09-04-sovereign-correctness.md).
 | Watches | material publication supplies frozen previous/current field evidence | selected-field changes and typed operators; lifecycle notices for expired/invalid watches | production-field arithmetic cannot trigger an unchanged-production watch; no gameplay automation | publication retry and lifecycle notification deduplication fixtures |
 | Semantic target resolution | current perspective/timeline/epoch/revision private mappings | base-site and Drop query selectors use equality mapping, never ref decoding; remembered map addresses remain valid | guarded opaque action tests and live outside-page Drop execution/cache hit | stale entity, cross-scope and replay gates preserved |
 | Native base-site receipt responsiveness | currently visible nominated squares; owned/current-visible overlap bases | 32 candidates × 21-square radius; shared overlap index; isolated native yield context | dual-gated 512-base stress invokes production receipt and verifies restoration; live pass: 229 ms wall, 215 ms probe, 170,436 bytes; native restoration checks passed | 500 ms operation/probe limits retained; fixture restores base rows, count, visibility and yield scratch state |
+
+## Managed action checkpoint
+
+Checkpoint 2 passed with the following evidence boundaries. Native adapter tests
+prove binding and guards; the isolated single-player and two-seat tests prove the
+managed action/effect chain. See [acceptance and sanitized measurements](benchmarks/2026-09-04-managed-action-paths.md).
+
+| Family | Observed / represented / calculated / provider-queryable | Sovereign expression / execution / verified effect | Recovery and limits |
+| --- | --- | --- | --- |
+| Actor discovery | Ordinary paginated world queries independently discover owned fixture actors and base | Issued semantic refs reach current guarded choices | Native selectors remain private; stale/cross-scope refs rejected |
+| Workshop and upgrades | Current native catalogs and final legality/cost/count receipts | Staged design creation/discovery, single-unit and bulk upgrades execute; world units and costs verified | Draft identity/revision/epoch/expiry/replay tests pass; no claim that retirement was executed |
+| Production, citizens and governors | Owned queue, governor and citizen fields visible through world base queries | Set/append/remove queue, governor and worker/specialist changes execute and appear in world state | Existing guarded journal actions retained; completion/progression attention belongs to checkpoint 3 |
+| Allocation and Social Engineering | Bounded selections and native complete-combination validation | Selected allocation and social models execute and match native/current world state | Changed displayed terms cannot silently rebase consent |
+| Native gifts, technology purchases and loans | Discrete offered gift values and native quotes retain technology, principal and payment schedule | 37-credit unsupported gift rejected before mutation; 125-credit gift, technology purchase and loan effects verified | Price/schedule/session changes reject stale acceptance; arbitrary loan renegotiation is not invented |
+| Human diplomacy | Provider selects issued amount/technology/relationship clauses; recipient reads actual terms | Energy, technology and Pact agreements accepted through managed tools and replicated | Managed checkpoint reload restores journal/world/identity; current treasury, technologies and Pact relationships preserved |
+| Council and research | Closed candidate/yea/nay ballots; directed research command with Blind Research guard | Council proposal/ballot resolves to the observed public result; directed research has adapter proof only | Fresh guarded choices required; no unsupported research exactness claim |
+| Founding, terraforming and transport | Public actors, native legal actions and current colocated rendezvous calculation | Founding yields an observed base; terraforming order appears; boarding increases selected transport cargo by one | Terraform completion is not claimed; nontrivial movement timing retains separate movement/Pact-port evidence |
+| Drop target page | Bounded globally nearest page checked against full-sort exact native oracle | Demanded receipt matches choices; exact outside-page semantic choice executes and is revision-cached | Routine collection omits enumeration; target refs remain private-mapped and revision-bound |
+| Lifecycle and roster | New-game catalog IDs distinguished from loaded save slots; explicit roster preserved | Native saved-slot selection, paired reload and faction seat restoration pass | Whole LAN transition and supervisor observation serialized; current world agreement effects survive restore |
+
+The final native 512-base/32-site probe passed at 222.476 ms wall and 215.505 ms
+maximum concurrent probe gap. Fifteen managed tools and the 492-conservative-token
+world schema remain intact. Concurrent campaign startup stress and provider
+inference remain later integrated gates; this checkpoint does not claim completion
+of intent-linked attention or counterfactual assistance.

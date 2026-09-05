@@ -22,6 +22,7 @@ import uuid
 from mcp.server import MCPServer
 
 from smacx_capabilities import capability_manifest
+from smacx_choice_preparation import ChoicePreparations, PreparationError, bind_numeric_choices, bind_ballot_choices
 from smacx_controller import (
     acknowledge_match_briefing as controller_acknowledge_match_briefing,
     BridgeUnavailable,
@@ -88,6 +89,7 @@ MATCH_BRIEFING_LOCK = threading.Lock()
 DECISION_CACHE: dict[str, dict] = {}
 DECISION_LOCK = threading.Lock()
 DECISION_TTL_SECONDS = 180.0
+CHOICE_PREPARATIONS = ChoicePreparations(ttl=DECISION_TTL_SECONDS)
 AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
 AIRDROP_RECEIPT_LOCK = threading.Lock()
 BASE_SITE_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
@@ -869,6 +871,8 @@ def _semanticize_choice(value: Any, context: Mapping[str, Any] | None) -> Any:
         return value
     result: dict[str, Any] = {}
     for key, item in value.items():
+        if key in {"chassis_id", "weapon_id", "armor_id", "reactor_id", "ability_id_1", "ability_id_2", "prototype_id", "source_prototype_id", "target_prototype_id"}:
+            continue
         list_contract = _CHOICE_REF_LIST_KEYS.get(str(key))
         if list_contract:
             public_key, reverse_name = list_contract
@@ -1706,6 +1710,13 @@ def _decision_advisories(choices: object, *, semantic_context: Mapping[str, Any]
     return advisories
 
 
+def _decision_information(choices: object, context: Mapping | None) -> list[dict]:
+    """Keep the native terms that make a closed response understandable."""
+    return [_semanticize_choice({key: value for key, value in row.items() if key != "id"}, context)
+            for row in choices if isinstance(row, dict) and not row.get("command")
+            and row.get("kind") in {"information", "capability_status"}]
+
+
 def _latest_rule_advisories(match_id: str, session_id: str) -> list[dict]:
     now = time.monotonic()
     with DECISION_LOCK:
@@ -1742,6 +1753,7 @@ def _settlement_rule_explains_request(required_action: str,
 def _cache_decision_choices(identity: dict, choices: object, *,
                             choice_kind: str, choice_arguments: dict,
                             semantic_context: Mapping[str, Any] | None = None,
+                            catalog_information: list[dict] | None = None,
                             focus: dict | None = None,
                             turn: int | None = None,
                             year: int | None = None,
@@ -1752,7 +1764,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
     public: list[dict] = []
     private: dict[str, dict] = {}
     labels: dict[str, str] = {}
-    raw_items = choices if isinstance(choices, list) else []
+    raw_items = bind_ballot_choices(choices) if isinstance(choices, list) else []
     compact: list[dict] = []
     advisories = _decision_advisories(raw_items, semantic_context=semantic_context)
     for raw in raw_items:
@@ -1793,6 +1805,8 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             if isinstance(parameters, dict) else None
         text_name_supported = action == "set_first_base_name" \
             or isinstance(name_contract, dict)
+        if action in {"give_energy_gift", "propose_human_energy"}:
+            parameter_names.add("amount")
         unresolved = {
             key for key in parameter_names
             if key not in bound and not (key == "name" and text_name_supported)
@@ -1813,11 +1827,12 @@ def _cache_decision_choices(identity: dict, choices: object, *,
                 item.pop(key, None)
         item["choice_id"] = choice_id
         if action == "set_first_base_name" or isinstance(name_contract, dict):
+            design_name = action == "create_unit_design"
             item["text_input"] = {
-                "purpose": "base_name",
-                "required": action != "set_first_base_name",
-                "min_length": 1,
-                "max_length": 24,
+                "purpose": "unit_design_name" if design_name else "base_name",
+                "required": action not in {"set_first_base_name", "create_unit_design"},
+                "min_length": 0 if design_name else 1,
+                "max_length": 31 if design_name else 24,
             }
             if action == "set_first_base_name" and raw.get("suggested_name"):
                 item["text_input"]["default"] = raw["suggested_name"]
@@ -1848,10 +1863,14 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             "state_fingerprint": hashlib.sha256(json.dumps({
                 "turn": turn, "year": year, "phase": phase,
                 "focus": focus or {}, "choices": compact,
+                "information": (_decision_information(raw_items, semantic_context)
+                                if catalog_information is None else catalog_information),
             }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "choices": private,
             "choice_labels": labels,
             "advisories": advisories,
+            "information": (_decision_information(raw_items, semantic_context)
+                            if catalog_information is None else catalog_information),
             "consumed": False,
         }
     return decision_id, public
@@ -2389,7 +2408,19 @@ def smac_decision(
                 "then": "Call smac_decision again; never reuse this frame.",
             },
             "choices": public_choices,
+            "information": _decision_information(choices_result.get("choices", []), semantic_context),
         }
+        if any(row.get("command") in {"give_energy_gift", "propose_human_energy"}
+               for row in choices_result.get("choices", ())):
+            semantic_context = _semantic_selector_context(str(identity["revision"]))
+        preparations = CHOICE_PREPARATIONS.begin(
+            choices_result, identity=identity, context=semantic_context,
+            kind=choice_kind, selectors=choice_arguments)
+        if preparations:
+            frame["preparations"] = preparations
+            if not public_choices:
+                frame["required_next"] = {"tool": "smac_choices", "kind": choice_kind,
+                                          "use_returned_preparation": True}
         advisories = _decision_advisories(
             choices_result.get("choices", []), semantic_context=semantic_context,
         )
@@ -2432,13 +2463,16 @@ def smac_list(
     return _call("list_tiles", **arguments)
 
 
-@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. Select owned actors with own_unit_ref/base_ref and exact world targets with target_location_ref/target_unit_ref from the current perspective. Native IDs and coordinates never cross this managed boundary.")
+@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. Select owned actors with own_unit_ref/base_ref and exact world targets with target_location_ref/target_unit_ref from the current perspective. Use returned preparation_ref and option_ref for staged selections; amount is accepted only by an advertised energy prompt. Native IDs and coordinates never cross this managed boundary.")
 def smac_choices(
     kind: Literal["interaction", "research", "energy_allocation", "social_engineering", "diplomacy", "council", "unit_design", "production", "base_management", "base_citizens", "unit_actions", "game_management"],
     base_ref: str = "",
     own_unit_ref: str = "",
     target_location_ref: str = "",
     target_unit_ref: str = "",
+    preparation_ref: str = "",
+    option_ref: str = "",
+    amount: int | None = None,
 ) -> dict:
     authority = _sovereign_gameplay_gate("Native choice enumeration")
     if authority:
@@ -2452,12 +2486,27 @@ def smac_choices(
     if snapshot_result.get("ok") is not True or not isinstance(snapshot, dict):
         return snapshot_result
     expected_revision = str(snapshot.get("revision") or "")
+    prepared = None
     try:
-        choice_arguments, semantic_context = _resolve_managed_selectors(
-            expected_revision, own_unit_ref=own_unit_ref, base_ref=base_ref,
-            target_location_ref=target_location_ref, target_unit_ref=target_unit_ref,
-        )
-    except SemanticSelectorError as exc:
+        if preparation_ref:
+            if any((base_ref, own_unit_ref, target_location_ref, target_unit_ref)):
+                raise PreparationError("preparation_cannot_override_actor")
+            semantic_context = _semantic_selector_context(expected_revision)
+            prepared = CHOICE_PREPARATIONS.advance(
+                preparation_ref, option_ref=option_ref, amount=amount, kind=kind,
+                identity={key: snapshot.get(key, "") for key in ("match_id", "session_id", "revision")},
+                context=semantic_context)
+            if "preparation" in prepared:
+                return {"ok": True, "kind": "preparation_frame", **prepared}
+            choice_arguments = {**prepared["selectors"], **prepared["selected"]}
+        elif option_ref or amount is not None:
+            raise PreparationError("preparation_reference_required")
+        else:
+            choice_arguments, semantic_context = _resolve_managed_selectors(
+                expected_revision, own_unit_ref=own_unit_ref, base_ref=base_ref,
+                target_location_ref=target_location_ref, target_unit_ref=target_unit_ref,
+            )
+    except (SemanticSelectorError, PreparationError) as exc:
         return {"ok": False, "error": {
             "code": "invalid_semantic_selector", "detail": str(exc),
             "message": "Use only a current semantic reference from this seat's active world.",
@@ -2470,18 +2519,42 @@ def smac_choices(
         "session_id": result.get("session_id", ""),
         "revision": result.get("revision", ""),
     }
+    if identity != {key: snapshot.get(key, "") for key in ("match_id", "session_id", "revision")}:
+        return {"ok": False, "error": {"code": "choice_frame_revision_changed"}}
+    raw_choices = bind_numeric_choices(result, choice_arguments)
+    if prepared:
+        prepared_command = prepared.get("command") or {
+            "unit_design": "create_unit_design", "social_engineering": "set_social_engineering",
+            "energy_allocation": "set_energy_allocation",
+            "unit_upgrade": "upgrade_prototype",
+        }.get(prepared["purpose"])
+        raw_choices = [row for row in raw_choices if row.get("command") == prepared_command]
+        if not raw_choices:
+            return {"ok": False, "error": {"code": "prepared_combination_unavailable",
+                    "message": "The current native catalog did not validate this combination; obtain a fresh preparation."}}
     decision_id, choices = _cache_decision_choices(
-        identity, result.get("choices", []), choice_kind=kind,
+        identity, raw_choices, choice_kind=kind,
         choice_arguments=choice_arguments, semantic_context=semantic_context,
+        catalog_information=_decision_information(result.get("choices", []), semantic_context),
     )
     frame = {
         "ok": True, "kind": "choice_frame", "decision_id": decision_id,
         "identity": identity, "choice_kind": kind, "choices": choices,
+        "information": _decision_information(result.get("choices", []), semantic_context),
         "required_next": {
             "tool": "smac_execute_choice", "decision_id": decision_id,
             "execute_at_most": 1,
         },
     }
+    if not prepared:
+        preparations = CHOICE_PREPARATIONS.begin(
+            result, identity=identity, context=semantic_context, kind=kind,
+            selectors=choice_arguments)
+        if preparations:
+            frame["preparations"] = preparations
+            if not choices:
+                frame["required_next"] = {"tool": "smac_choices", "kind": kind,
+                                          "use_returned_preparation": True}
     advisories = _decision_advisories(
         result.get("choices", []), semantic_context=semantic_context,
     )
@@ -2763,7 +2836,14 @@ def _choice_semantic_key(choice: dict) -> str:
     payload = _command_payload(choice, {})
     for key in ("match_id", "session_id", "expected_revision"):
         payload.pop(key, None)
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    # Prices, affected counts, risk and schedules are consent terms even when
+    # the native command takes only an accept/reject enum. Revision churn must
+    # never rebase acceptance onto a different offer or bulk-upgrade cost.
+    argument_keys = set(inspect.signature(smac_command).parameters)
+    terms = {key: value for key, value in choice.items()
+             if key not in argument_keys | {"id", "requires", "parameters"}}
+    return json.dumps({"payload": payload, "terms": terms}, ensure_ascii=False,
+                      sort_keys=True, separators=(",", ":"))
 
 
 def _latch_journal_failure(
@@ -2866,6 +2946,13 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
                     },
                 }
             choice["name"] = supplied
+        elif choice.get("command") == "create_unit_design":
+            supplied = text.strip()
+            if len(supplied.encode("utf-8")) > 31 or any(ord(character) < 32 for character in supplied):
+                return {"ok": False, "error": {"code": "invalid_choice_text",
+                        "message": "Design names accept at most 31 UTF-8 bytes and no control characters; omit for a native name."}}
+            if supplied:
+                choice["name"] = supplied
         elif text:
             return {
                 "ok": False,
@@ -2953,6 +3040,8 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
             "executed_choice": {"choice_id": choice_id, "label": choice_label},
         }
         response.pop("command", None)
+        if choice.get("command") in {"create_unit_design", "retire_unit_design", "upgrade_prototype"}:
+            response = _semanticize_choice(response, {})
         if result.get("ok"):
             after = _call("semantic_snapshot")
             snapshot = after.get("snapshot") if isinstance(after, dict) else None
@@ -3009,10 +3098,13 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         "semantic_choices", kind=str(decision.get("choice_kind") or ""),
         **dict(decision.get("choice_arguments") or {}),
     )
-    if fresh.get("ok"):
+    if (fresh.get("ok") and fresh.get("match_id") == identity.get("match_id")
+            and fresh.get("session_id") == identity.get("session_id")
+            and _decision_information(fresh.get("choices", []), None) ==
+                _decision_information(decision.get("information", []), None)):
         intended = _choice_semantic_key(choice)
         replacement = next(
-            (item for item in fresh.get("choices", [])
+            (item for item in bind_numeric_choices(fresh, decision.get("choice_arguments") or {})
              if isinstance(item, dict) and _choice_semantic_key(item) == intended),
             None,
         )
@@ -3034,6 +3126,8 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
                     "executed_revision": refreshed_identity.get("revision"),
                 }
                 response.pop("command", None)
+                if choice.get("command") in {"create_unit_design", "retire_unit_design", "upgrade_prototype"}:
+                    response = _semanticize_choice(response, {})
                 after = _call("semantic_snapshot")
                 snapshot = after.get("snapshot") if isinstance(after, dict) else None
                 after_turn = snapshot.get("turn") if isinstance(snapshot, dict) else decision.get("turn")

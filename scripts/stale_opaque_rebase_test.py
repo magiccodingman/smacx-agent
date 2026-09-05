@@ -59,9 +59,35 @@ def main() -> int:
                          if operation == "semantic_command"]
         if confirmations != [1, 1]:
             raise AssertionError(confirmations)
+        # Rebase must preserve displayed economic terms and campaign identity,
+        # even if the native command is still simply response=accept.
+        for changed in ("price", "schedule", "session"):
+            attempts = 0
+            identity = {"match_id": "match-terms-" + changed, "session_id": "session-terms", "revision": "r1"}
+            row = {"command": "respond_to_diplomatic_offer", "response": "accept", "energy_credits": 40}
+            terms = {"kind": "information", "offer_type": "loan_offer", "payment_per_turn": 2, "term_turns": 10}
+            decision_id, public = smacx_mcp._cache_decision_choices(
+                identity, [row, terms], choice_kind="interaction", choice_arguments={})
+
+            def changed_bridge(operation, **arguments):
+                nonlocal attempts
+                if operation == "semantic_command":
+                    attempts += 1
+                    return {"ok": False, "error": {"code": "stale_state"}}
+                if operation == "semantic_choices":
+                    return {"ok": True, **identity, "revision": "r2",
+                            "session_id": "different" if changed == "session" else identity["session_id"],
+                            "choices": [{**row, "energy_credits": 50 if changed == "price" else 40},
+                                        {**terms, "payment_per_turn": 3 if changed == "schedule" else 2}]}
+                raise AssertionError(operation)
+
+            smacx_mcp._call = changed_bridge
+            result = smacx_mcp.smac_execute_choice(decision_id, public[0]["choice_id"])
+            assert not result.get("ok") and attempts == 1, (changed, result, attempts)
         print(json.dumps({"event": "pass", "payload": {
             "one_server_side_rebase": True, "model_retry_required": False,
             "revision_churn_hidden": True, "private_confirmation_preserved": True,
+            "changed_price_schedule_and_session_rejected": True,
         }}, separators=(",", ":")))
     finally:
         smacx_mcp._call = original_call

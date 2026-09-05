@@ -1476,6 +1476,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_ACCEPTANCE_BASE_SITE") == "1":
             values["SMACX_AGENT_TEST_MODE"] = "1"
             values["SMACX_ACCEPTANCE_BASE_SITE"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_ACCEPTANCE_MANAGED_ACTIONS") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_ACCEPTANCE_MANAGED_ACTIONS"] = "1"
         faction_roster = autostart.get("faction_roster")
         if isinstance(faction_roster, list) and len(faction_roster) == 7:
             values["SMACX_AGENT_FACTION_ROSTER"] = ",".join(
@@ -2365,6 +2368,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         }
 
     def start_lan_match(self, match_id: str, *, session_name: str | None = None,
+                        profile: str = "small_easy", resume_slot: str | None = None,
+                        scenario_id: str | None = None,
+                        game_settings: Mapping[str, Any] | None = None,
+                        timeout: float = 420.0) -> dict[str, Any]:
+        # The whole paired transition is atomic with recovery and parking,
+        # including the interval between starting the host and joining peers.
+        with self._lifecycle_lock:
+            return self._start_lan_match_locked(
+                match_id, session_name=session_name, profile=profile,
+                resume_slot=resume_slot, scenario_id=scenario_id,
+                game_settings=game_settings, timeout=timeout)
+
+    def _start_lan_match_locked(self, match_id: str, *, session_name: str | None = None,
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,

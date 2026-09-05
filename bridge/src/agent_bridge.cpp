@@ -47,6 +47,8 @@ bool lock_initialized = false;
 volatile LONG started = 0;
 volatile LONG stopping = 0;
 volatile LONG request_getmessage_hits = 0;
+// Test-only operation progress: static stage numbers, no game-state contents.
+volatile LONG acceptance_fixture_stage = 0;
 volatile LONG request_network_wait_hits = 0;
 volatile LONG request_modal_wait_hits = 0;
 volatile LONG request_handler_hits = 0;
@@ -5112,13 +5114,11 @@ VOID CALLBACK energy_gift_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
     BasePop* active = active_default_popup();
     if (!active || !label[0]) return;
     if (!strcmp(label, "OFFERENERGY")) {
-        // make_gift initializes the text field to the current treasury. The
-        // atomic command temporarily narrows that treasury to the requested
-        // amount, so accepting the untouched native default preserves all
-        // native validation, diplomacy bookkeeping, and network hooks.
+        // This is a discrete amount selector, not an editable text field.
+        // Select only a value actually offered by the running native dialog.
         pending_energy_gift_prompt_seen = true;
-        begin_popup_transition(active);
-        BasePop_on_button_clicked(active, 0);
+        if (!submit_popup_choice_id(active, pending_energy_gift_amount))
+            submit_popup_choice_id(active, 0);
         return;
     }
     if (!strncmp(label, "GAVEENERGY", 10)) {
@@ -5126,6 +5126,15 @@ VOID CALLBACK energy_gift_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
         begin_popup_transition(active);
         BasePop_on_button_clicked(active, 0);
     }
+}
+
+std::vector<int> native_energy_gift_options(int treasury) {
+    // Stock make_gift 0x547CD4..0x547D39: initial treasury rounded down to
+    // 25, then successive halves rounded down to 25. Zero means cancel.
+    std::vector<int> amounts;
+    for (int amount = std::max(0, treasury) / 25 * 25; amount > 0;
+         amount = (amount / 2) / 25 * 25) amounts.push_back(amount);
+    return amounts;
 }
 
 VOID CALLBACK test_energy_gift_menu_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
@@ -5344,8 +5353,13 @@ const std::string& label) {
             int available = max(0, Factions[*CurrentPlayerFaction].energy_credits);
             out << "{\"id\":\"diplomacy:energy_payment\"," 
                 "\"command\":\"give_energy_gift\",\"amount_min\":1,\"amount_max\":"
-                << available << ",\"meaning\":" << json_string(options[i].meaning)
-                << '}';
+                << available << ",\"amount_options\":[";
+            const auto amounts = native_energy_gift_options(available);
+            for (size_t j = 0; j < amounts.size(); ++j) {
+                if (j) out << ',';
+                out << amounts[j];
+            }
+            out << "],\"meaning\":" << json_string(options[i].meaning) << '}';
             continue;
         }
         out << "{\"id\":\"diplomacy:" << options[i].name
@@ -8176,10 +8190,13 @@ std::string test_lan_combat_fixture_response(const std::string& request) {
 std::string test_lan_diplomacy_fixture_response(const std::string& request) {
     char test_mode[8] = {};
     char test_lan[8] = {};
+    char managed_acceptance[8] = {};
+    const bool managed = GetEnvironmentVariableA("SMACX_ACCEPTANCE_MANAGED_ACTIONS",
+        managed_acceptance, sizeof(managed_acceptance)) && !strcmp(managed_acceptance, "1");
     if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
         sizeof(test_mode)) || strcmp(test_mode, "1")
-    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_LAN_HOST", test_lan,
-        sizeof(test_lan)) || strcmp(test_lan, "1")) {
+    || (!managed && (!GetEnvironmentVariableA("SMACX_AGENT_TEST_LAN_HOST", test_lan,
+        sizeof(test_lan)) || strcmp(test_lan, "1")))) {
         return error_response("test_mode_disabled",
             "The contained LAN diplomacy fixture is disabled.");
     }
@@ -8531,100 +8548,6 @@ std::string test_airdrop_legality_fixture_response() {
     return out.str();
 }
 
-std::string test_airdrop_collection_stress_fixture_response() {
-    char test_mode[8] = {};
-    char acceptance_mode[8] = {};
-    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
-        sizeof(test_mode)) || strcmp(test_mode, "1")
-    || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_AIRDROP_LEGALITY",
-        acceptance_mode, sizeof(acceptance_mode)) || strcmp(acceptance_mode, "1")) {
-        return error_response("test_mode_disabled",
-            "The contained native Drop collection stress fixture is disabled.");
-    }
-    if (!game_active()) return error_response("not_in_game", "Start a game first.");
-    const int faction_id = *CurrentPlayerFaction;
-    int base_id = -1;
-    for (int index = 0; index < *BaseCount; ++index) {
-        if (Bases[index].faction_id == faction_id) { base_id = index; break; }
-    }
-    if (base_id < 0) return error_response("missing_fixture_base",
-        "An owned base is required for the Drop collection stress fixture.");
-    const int component_techs[] = {
-        Chassis[CHS_INFANTRY].preq_tech, Weapon[WPN_LASER].preq_tech,
-        Armor[ARM_NO_ARMOR].preq_tech, Ability[ABL_ID_DROP_POD].preq_tech,
-        Reactor[REC_FISSION - 1].preq_tech, Rules->tech_preq_orb_insert_wo_space,
-    };
-    for (int tech_id : component_techs) {
-        if (tech_id >= 0 && tech_id < MaxTechnologyNum) TechOwners[tech_id] |= 1 << faction_id;
-    }
-    int drop_proto = -1;
-    const int prototype_begin = faction_id * MaxProtoFactionNum;
-    const int prototype_end = min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum);
-    for (int unit_id = prototype_begin; unit_id < prototype_end; ++unit_id) {
-        if ((Units[unit_id].unit_flags & UNIT_PROTOTYPED)
-        && Units[unit_id].chassis_id == CHS_INFANTRY
-        && has_abil(unit_id, ABL_DROP_POD)) {
-            drop_proto = unit_id;
-            break;
-        }
-    }
-    if (drop_proto < 0) {
-        char drop_name[] = "Harness Orbital Drop Infantry";
-        drop_proto = propose_proto(
-            faction_id, CHS_INFANTRY, WPN_LASER, ARM_NO_ARMOR,
-            ABL_DROP_POD, REC_FISSION, PLAN_COMBAT, drop_name);
-    }
-    if (drop_proto < faction_id * MaxProtoFactionNum
-    || drop_proto >= min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum)) {
-        return error_response("fixture_drop_proto_failed",
-            "Could not create the Drop-capable stress prototype.");
-    }
-    Units[drop_proto].unit_flags |= UNIT_PROTOTYPED;
-    int created = 0;
-    int first_dropper_id = -1;
-    for (int index = 0; index < 128; ++index) {
-        int veh_id = veh_init(drop_proto, faction_id, Bases[base_id].x, Bases[base_id].y);
-        if (veh_id < 0) break;
-        if (first_dropper_id < 0) first_dropper_id = veh_id;
-        Vehs[veh_id].moves_spent = 0;
-        Vehs[veh_id].state &= ~VSTATE_MADE_AIRDROP;
-        ++created;
-    }
-    int outside_target_tile_id = -1;
-    bool enumeration_truncated = false;
-    if (first_dropper_id >= 0) {
-        std::vector<std::pair<int, int>> legal;
-        VEH& dropper = Vehs[first_dropper_id];
-        // This destructive acceptance fixture deliberately maps the test
-        // faction's whole Planet so the demanded-enumeration path traverses
-        // a worst-practical orbital target set. The verified checkpoint is
-        // restored before any unrelated fixture runs.
-        for (int y = 0; y < *MapAreaY; ++y) {
-            for (int x = y & 1; x < *MapAreaX; x += 2) {
-                MAP* square = mapsq(x, y);
-                if (!square) continue;
-                square->visibility |= 1 << faction_id;
-                if (is_ocean(square)
-                || !allow_airdrop(x, y, faction_id, dropper.is_combat_unit(), square)) continue;
-                legal.push_back({map_range(dropper.x, dropper.y, x, y),
-                                 semantic_tile_id(x, y)});
-            }
-        }
-        std::sort(legal.begin(), legal.end());
-        enumeration_truncated = legal.size() > 128;
-        if (enumeration_truncated) outside_target_tile_id = legal[128].second;
-    }
-    reset_semantic_observation_shadow();
-    std::ostringstream out;
-    out << "{\"ok\":true,\"created\":" << created
-        << ",\"first_dropper_id\":" << first_dropper_id
-        << ",\"outside_first_128_target_tile_id\":" << outside_target_tile_id
-        << ",\"enumeration_truncated\":"
-        << (enumeration_truncated ? "true" : "false")
-        << ",\"airdrop_range\":" << drop_range(faction_id)
-        << ",\"map_tiles\":" << (*MapAreaX * *MapAreaY / 2) << '}';
-    return out.str();
-}
 
 std::string test_pact_port_fixture_response() {
     char test_mode[8] = {};
@@ -8637,7 +8560,13 @@ std::string test_pact_port_fixture_response() {
             "The contained native Pact-port fixture is disabled.");
     }
     if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    struct ClearFixtureStage {
+        ~ClearFixtureStage() { InterlockedExchange(&acceptance_fixture_stage, 0); }
+    } clear_stage;
+    InterlockedExchange(&acceptance_fixture_stage, 1); // coastal-site search
     const int faction_id = *CurrentPlayerFaction;
+    if (!human_turn_actionable(faction_id))
+        return error_response("fixture_not_actionable", "Wait for the current player's unobstructed turn.");
     int other = -1;
     for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
         if (candidate != faction_id && is_alive(candidate)) { other = candidate; break; }
@@ -8654,6 +8583,7 @@ std::string test_pact_port_fixture_response() {
         for (int x = y & 1; x < *MapAreaX && base_x < 0; x += 2) {
             MAP* site = mapsq(x, y);
             if (!site || is_ocean(site) || site->base_who() >= 0 || veh_at(x, y) >= 0) continue;
+            if (!can_build_base(x, y, other, TRIAD_LAND)) continue;
             int lx = -1, ly = -1, sx = -1, sy = -1;
             for (int dir = 0; dir < 8; ++dir) {
                 int nx = wrap(x + BaseOffsetX[dir]);
@@ -8672,17 +8602,32 @@ std::string test_pact_port_fixture_response() {
         "No empty coastal land site with land and sea approaches is available.");
     const uint32_t relationship_bits = DIPLO_VENDETTA | DIPLO_TRUCE
         | DIPLO_TREATY | DIPLO_PACT;
+    InterlockedExchange(&acceptance_fixture_stage, 2); // relationship setup
     Factions[faction_id].diplo_status[other] &= ~relationship_bits;
     Factions[other].diplo_status[faction_id] &= ~relationship_bits;
     treaty_on(faction_id, other, DIPLO_COMMLINK | DIPLO_TREATY | DIPLO_PACT);
+    // This fixture establishes an existing, already-discussed Pact. Native
+    // comm_check otherwise opens COMM inside veh_init -> spot_all when this
+    // pair has never spoken (or has a pending talk request). A synchronous
+    // fixture cannot accept that unrelated conversation while its serialized
+    // request is in progress. Preserve the runtime's non-reentry guard.
+    Factions[faction_id].diplo_spoke[other] = *CurrentTurn;
+    Factions[other].diplo_spoke[faction_id] = *CurrentTurn;
+    Factions[faction_id].diplo_status[other] &= ~DIPLO_WANT_TO_TALK;
+    Factions[other].diplo_status[faction_id] &= ~DIPLO_WANT_TO_TALK;
+    InterlockedExchange(&acceptance_fixture_stage, 3); // native base initialization
     const int base_id = mod_base_init(other, base_x, base_y);
     // Keep one ready pair at the Pact base for the native boarding proof and
     // a separate adjacent pair for the legal-entry proof. Entering the base
     // can consume the Scout's last movement point; that is not evidence that
     // co-location or boarding is illegal on its next ready phase.
+    InterlockedExchange(&acceptance_fixture_stage, 4);
     const int passenger_id = veh_init(BSC_SCOUT_PATROL, faction_id, base_x, base_y);
+    InterlockedExchange(&acceptance_fixture_stage, 5);
     const int transport_id = veh_init(BSC_TRANSPORT_FOIL, faction_id, base_x, base_y);
+    InterlockedExchange(&acceptance_fixture_stage, 6);
     const int land_entry_id = veh_init(BSC_SCOUT_PATROL, faction_id, land_x, land_y);
+    InterlockedExchange(&acceptance_fixture_stage, 7);
     const int sea_entry_id = veh_init(BSC_TRANSPORT_FOIL, faction_id, sea_x, sea_y);
     if (base_id < 0 || passenger_id < 0 || transport_id < 0
     || land_entry_id < 0 || sea_entry_id < 0) {
@@ -8696,8 +8641,11 @@ std::string test_pact_port_fixture_response() {
     mapsq(base_x, base_y)->visibility |= 1 << faction_id;
     mapsq(land_x, land_y)->visibility |= 1 << faction_id;
     mapsq(sea_x, sea_y)->visibility |= 1 << faction_id;
+    InterlockedExchange(&acceptance_fixture_stage, 8);
     spot_all(passenger_id, 1);
+    InterlockedExchange(&acceptance_fixture_stage, 9);
     spot_all(transport_id, 1);
+    InterlockedExchange(&acceptance_fixture_stage, 10);
     ensure_semantic_vehicle_handles();
     reset_semantic_observation_shadow();
     std::ostringstream out;
@@ -8891,6 +8839,11 @@ int veh_id, int maximum_targets = 128) {
     const int range = drop_range(faction_id);
     std::vector<SemanticAirdropTarget> legal;
     legal.reserve(std::min(maximum_targets + 1, 256));
+    const auto nearer = [](const SemanticAirdropTarget& left,
+                           const SemanticAirdropTarget& right) {
+        if (left.distance != right.distance) return left.distance < right.distance;
+        return left.tile_id < right.tile_id;
+    };
     for (int y = 0; y < *MapAreaY; ++y) {
         for (int x = y & 1; x < *MapAreaX; x += 2) {
             const int distance = map_range(veh.x, veh.y, x, y);
@@ -8909,9 +8862,17 @@ int veh_id, int maximum_targets = 128) {
                     && !at_war(faction_id, base_owner));
             if (unsafe_relation) continue;
             ++receipt.legal_count;
-            if (static_cast<int>(legal.size()) <= maximum_targets) {
-                legal.push_back({semantic_tile_id(x, y), distance,
-                    base_owner, unit_owner});
+            const SemanticAirdropTarget target = {
+                semantic_tile_id(x, y), distance, base_owner, unit_owner};
+            // Keep the globally nearest bounded page, not merely the first
+            // map-scan prefix sorted after truncation.
+            if (static_cast<int>(legal.size()) < maximum_targets) {
+                legal.push_back(target);
+                std::push_heap(legal.begin(), legal.end(), nearer);
+            } else if (nearer(target, legal.front())) {
+                std::pop_heap(legal.begin(), legal.end(), nearer);
+                legal.back() = target;
+                std::push_heap(legal.begin(), legal.end(), nearer);
             }
         }
     }
@@ -8924,6 +8885,112 @@ int veh_id, int maximum_targets = 128) {
     receipt.targets = std::move(legal);
     receipt.truncated = receipt.legal_count > static_cast<int>(receipt.targets.size());
     return receipt;
+}
+
+std::string test_airdrop_collection_stress_fixture_response() {
+    char test_mode[8] = {};
+    char acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
+        sizeof(test_mode)) || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_AIRDROP_LEGALITY",
+        acceptance_mode, sizeof(acceptance_mode)) || strcmp(acceptance_mode, "1")) {
+        return error_response("test_mode_disabled",
+            "The contained native Drop collection stress fixture is disabled.");
+    }
+    if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    int base_id = -1;
+    for (int index = 0; index < *BaseCount; ++index) {
+        if (Bases[index].faction_id == faction_id) { base_id = index; break; }
+    }
+    if (base_id < 0) return error_response("missing_fixture_base",
+        "An owned base is required for the Drop collection stress fixture.");
+    const int component_techs[] = {
+        Chassis[CHS_INFANTRY].preq_tech, Weapon[WPN_LASER].preq_tech,
+        Armor[ARM_NO_ARMOR].preq_tech, Ability[ABL_ID_DROP_POD].preq_tech,
+        Reactor[REC_FISSION - 1].preq_tech, Rules->tech_preq_orb_insert_wo_space,
+    };
+    for (int tech_id : component_techs) {
+        if (tech_id >= 0 && tech_id < MaxTechnologyNum) TechOwners[tech_id] |= 1 << faction_id;
+    }
+    int drop_proto = -1;
+    const int prototype_begin = faction_id * MaxProtoFactionNum;
+    const int prototype_end = min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum);
+    for (int unit_id = prototype_begin; unit_id < prototype_end; ++unit_id) {
+        if ((Units[unit_id].unit_flags & UNIT_PROTOTYPED)
+        && Units[unit_id].chassis_id == CHS_INFANTRY
+        && has_abil(unit_id, ABL_DROP_POD)) {
+            drop_proto = unit_id;
+            break;
+        }
+    }
+    if (drop_proto < 0) {
+        char drop_name[] = "Harness Orbital Drop Infantry";
+        drop_proto = propose_proto(
+            faction_id, CHS_INFANTRY, WPN_LASER, ARM_NO_ARMOR,
+            ABL_DROP_POD, REC_FISSION, PLAN_COMBAT, drop_name);
+    }
+    if (drop_proto < faction_id * MaxProtoFactionNum
+    || drop_proto >= min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum)) {
+        return error_response("fixture_drop_proto_failed",
+            "Could not create the Drop-capable stress prototype.");
+    }
+    Units[drop_proto].unit_flags |= UNIT_PROTOTYPED;
+    int created = 0;
+    int first_dropper_id = -1;
+    for (int index = 0; index < 128; ++index) {
+        int veh_id = veh_init(drop_proto, faction_id, Bases[base_id].x, Bases[base_id].y);
+        if (veh_id < 0) break;
+        if (first_dropper_id < 0) first_dropper_id = veh_id;
+        Vehs[veh_id].moves_spent = 0;
+        Vehs[veh_id].state &= ~VSTATE_MADE_AIRDROP;
+        ++created;
+    }
+    int outside_target_tile_id = -1;
+    bool enumeration_truncated = false;
+    if (first_dropper_id >= 0) {
+        // Establish the whole controlled visibility state before asking the
+        // production enumerator for the first target beyond its public page.
+        for (int y = 0; y < *MapAreaY; ++y) {
+            for (int x = y & 1; x < *MapAreaX; x += 2) {
+                if (MAP* square = mapsq(x, y)) square->visibility |= 1 << faction_id;
+            }
+        }
+        const auto receipt = semantic_airdrop_target_receipt(first_dropper_id, 129);
+        // Independent full-sort oracle is confined to this destructive test.
+        // Production retains only a bounded heap while traversing the map.
+        std::vector<std::pair<int, int>> oracle;
+        const VEH& dropper = Vehs[first_dropper_id];
+        for (int y = 0; y < *MapAreaY; ++y) {
+            for (int x = y & 1; x < *MapAreaX; x += 2) {
+                const int tile_id = semantic_tile_id(x, y);
+                if (semantic_airdrop_target_allowed(first_dropper_id, tile_id)) {
+                    oracle.push_back({map_range(dropper.x, dropper.y, x, y), tile_id});
+                }
+            }
+        }
+        std::sort(oracle.begin(), oracle.end());
+        if (receipt.legal_count != static_cast<int>(oracle.size())) {
+            return error_response("fixture_drop_count_mismatch", "Drop enumeration differs from exact native legality.");
+        }
+        for (size_t index = 0; index < receipt.targets.size(); ++index) {
+            if (receipt.targets[index].tile_id != oracle[index].second) {
+                return error_response("fixture_drop_order_mismatch", "Drop page differs from the globally nearest native targets.");
+            }
+        }
+        enumeration_truncated = receipt.legal_count > 128;
+        if (receipt.targets.size() > 128) outside_target_tile_id = receipt.targets[128].tile_id;
+    }
+    reset_semantic_observation_shadow();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"created\":" << created
+        << ",\"first_dropper_id\":" << first_dropper_id
+        << ",\"outside_first_128_target_tile_id\":" << outside_target_tile_id
+        << ",\"enumeration_truncated\":"
+        << (enumeration_truncated ? "true" : "false")
+        << ",\"airdrop_range\":" << drop_range(faction_id)
+        << ",\"map_tiles\":" << (*MapAreaX * *MapAreaY / 2) << '}';
+    return out.str();
 }
 
 std::string semantic_airdrop_targets_response(const std::string& request) {
@@ -9089,6 +9156,101 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
     }
     out << "],\"requested_count\":" << target_ids.size()
         << ",\"native_elapsed_ms\":" << (GetTickCount() - started_at) << '}';
+    return out.str();
+}
+
+// Isolated managed-action acceptance inputs. Gameplay mutations in the test
+// still travel through the normal semantic choices and guarded executor.
+std::string test_managed_action_fixture_response(const std::string& request) {
+    char test_mode[8] = {}, acceptance[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+        || strcmp(test_mode, "1")
+        || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_MANAGED_ACTIONS", acceptance, sizeof(acceptance))
+        || strcmp(acceptance, "1"))
+        return error_response("test_mode_disabled", "Managed action fixture is disabled.");
+    const int faction = *CurrentPlayerFaction;
+    const int base_id = game_active() ? first_owned_base(faction) : -1;
+    if (base_id < 0 || !human_turn_actionable(faction))
+        return error_response("fixture_unavailable", "Requires an actionable owned base.");
+    const std::string phase = field_string(request, "phase");
+    if (phase == "council") {
+        for (int other = 1; other < MaxPlayerNum; ++other) {
+            if (other != faction && is_alive(other)) treaty_on(faction, other, DIPLO_COMMLINK);
+        }
+        Factions[faction].council_call_turn = -999;
+        return std::string("{\"ok\":true,\"can_convene\":")
+            + (can_call_council(faction, 0) ? "true}" : "false}");
+    }
+    if (!phase.empty()) {
+        const char* gate = phase == "gift" ? "SMACX_AGENT_TEST_ENERGY_GIFT"
+            : phase == "commerce" ? "SMACX_AGENT_TEST_COMMERCE"
+            : phase == "loan" ? "SMACX_AGENT_TEST_LOANS" : nullptr;
+        if (!gate) return error_response("invalid_fixture_phase", "Unknown managed fixture phase.");
+        char previous[64] = {};
+        const bool existed = GetEnvironmentVariableA(gate, previous, sizeof(previous)) != 0;
+        SetEnvironmentVariableA(gate, "1");
+        if (phase == "gift") ensure_test_energy_gift_fixture();
+        if (phase == "commerce") ensure_test_commerce_fixture();
+        if (phase == "loan") ensure_test_loan_fixture();
+        SetEnvironmentVariableA(gate, existed ? previous : nullptr);
+        return "{\"ok\":true,\"fixture_dialog_queued\":true}";
+    }
+    auto unlock = [&](int technology) {
+        if (technology >= 0 && technology < MaxTechnologyNum) TechOwners[technology] |= 1 << faction;
+    };
+    unlock(Chassis[CHS_INFANTRY].preq_tech);
+    unlock(Weapon[2].preq_tech);
+    unlock(Armor[1].preq_tech);
+    unlock(Reactor[REC_FISSION - 1].preq_tech);
+    unlock(Units[BSC_FORMERS].preq_tech);
+    for (int category = 0; category < MaxSocialCatNum; ++category)
+        for (int model = 0; model < MaxSocialModelNum; ++model)
+            unlock(SocialField[category].soc_preq_tech[model]);
+    Factions[faction].energy_credits = 2000;
+    BASE& base = Bases[base_id];
+    const int scout = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+    int colony = -1, former = -1;
+    for (int tile = 0; tile < *MapAreaTiles && colony < 0; ++tile) {
+        int x = 0, y = 0;
+        if (!semantic_tile_coords(tile, &x, &y) || !can_build_base(x, y, faction, TRIAD_LAND)) continue;
+        colony = veh_init(BSC_COLONY_POD, faction, x, y);
+        former = veh_init(BSC_FORMERS, faction, x, y);
+        if (colony >= 0) spot_all(colony, 1);
+        if (former >= 0) spot_all(former, 1);
+    }
+    int passenger = -1, transport = -1;
+    for (int id = 0; id < *BaseCount && passenger < 0; ++id) {
+        BASE& port = Bases[id];
+        MAP* square = mapsq(port.x, port.y);
+        if (!square || (port.faction_id != faction
+            && (!square->is_visible(faction) || !has_pact(faction, port.faction_id)))) continue;
+        bool coastal = is_ocean(square);
+        for (int direction = 1; direction < 9; ++direction) {
+            int x = 0, y = 0;
+            MAP* neighbor = next_tile(port.x, port.y, direction, &x, &y);
+            if (neighbor && is_ocean(neighbor)) coastal = true;
+        }
+        if (coastal) {
+            passenger = veh_init(BSC_SCOUT_PATROL, faction, port.x, port.y);
+            transport = veh_init(BSC_TRANSPORT_FOIL, faction, port.x, port.y);
+        }
+    }
+    if (scout < 0 || colony < 0 || former < 0 || passenger < 0 || transport < 0)
+        return error_response("fixture_actor_unavailable", "Managed acceptance requires its owned actors and a current coastal port.");
+    ensure_semantic_vehicle_handles();
+    reset_semantic_observation_shadow();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"base_ref\":\"base-location-" << semantic_tile_id(base.x, base.y)
+        << "\",\"scout_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(scout))).c_str())
+        << ",\"colony_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(colony))).c_str())
+        << ",\"former_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(former))).c_str())
+        << ",\"passenger_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(passenger))).c_str())
+        << ",\"transport_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(transport))).c_str())
+        << ",\"source_design_name\":" << json_string(Units[BSC_SCOUT_PATROL].name)
+        << ",\"design_labels\":{\"chassis\":" << json_string(Chassis[CHS_INFANTRY].offsv1_name)
+        << ",\"weapon\":" << json_string(Weapon[2].name)
+        << ",\"armor\":" << json_string(Armor[1].name)
+        << ",\"reactor\":" << json_string(Reactor[REC_FISSION - 1].name) << "}}";
     return out.str();
 }
 
@@ -9281,7 +9443,23 @@ std::string perspective_world_page_response(const std::string& request) {
                         << json_string(Facility[facility_id].name)
                         << ",\"maintenance\":" << fac_maint(facility_id, faction_id) << '}';
                 }
-                out << "],\"base_radius\":[";
+                out << "],\"production_queue\":[";
+                for (int position = 0; position <= base.queue_size && position < 10; ++position) {
+                    if (position) out << ',';
+                    out << "{\"position\":" << position << ",\"name\":"
+                        << json_string(production_name(base.queue_items[position]).c_str()) << '}';
+                }
+                out << "],\"governor\":{\"active\":" << ((base.governor_flags & GOV_ACTIVE) ? "true" : "false")
+                    << ",\"manage_citizens\":" << ((base.governor_flags & GOV_MANAGE_CITIZENS) ? "true" : "false")
+                    << ",\"manage_production\":" << ((base.governor_flags & GOV_MANAGE_PRODUCTION) ? "true" : "false")
+                    << "},\"citizens\":{\"talents\":" << base.talent_total
+                    << ",\"drones\":" << base.drone_total << ",\"specialists\":[";
+                for (int specialist = 0; specialist < base.specialist_total; ++specialist) {
+                    if (specialist) out << ',';
+                    int type = clamp(base.specialist_type(specialist), 0, MaxSpecialistNum - 1);
+                    out << "{\"name\":" << json_string(Citizen[type].singular_name) << '}';
+                }
+                out << "]},\"base_radius\":[";
                 bool radius_comma = false;
                 for (int tile_index = 0; tile_index < 21; ++tile_index) {
                     int tile_x = 0;
@@ -9685,7 +9863,8 @@ std::string semantic_snapshot_response() {
             << "}}";
     }
     out << ']'
-        << ",\"economy\":{\"allocation\":{\"economy\":"
+        << ",\"economy\":{\"energy_credits\":" << faction.energy_credits
+        << ",\"allocation\":{\"economy\":"
         << 10 - faction.SE_alloc_labs - faction.SE_alloc_psych
         << ",\"psych\":" << faction.SE_alloc_psych
         << ",\"labs\":" << faction.SE_alloc_labs << "},\"turn_totals\":{"
@@ -9900,7 +10079,7 @@ std::string research_choices_response(int faction_id) {
             if (comma) out << ',';
             comma = true;
             out << "{\"id\":\"tech:" << tech_id << "\",\"tech_id\":" << tech_id
-                << ",\"name\":" << json_string(Tech[tech_id].name)
+                << ",\"command\":\"choose_research\",\"name\":" << json_string(Tech[tech_id].name)
                 << ",\"category\":" << tech_category(tech_id) << '}';
         }
     }
@@ -9908,7 +10087,7 @@ std::string research_choices_response(int faction_id) {
     return out.str();
 }
 
-std::string energy_allocation_choices_response(int faction_id) {
+std::string energy_allocation_choices_response(int faction_id, const std::string& request) {
     Faction& faction = Factions[faction_id];
     int economy = 10 - faction.SE_alloc_labs - faction.SE_alloc_psych;
     std::ostringstream out;
@@ -9926,10 +10105,23 @@ std::string energy_allocation_choices_response(int faction_id) {
         << "{\"name\":\"research\",\"economy\":4,\"psych\":0,\"labs\":6},"
         << "{\"name\":\"economy\",\"economy\":6,\"psych\":0,\"labs\":4},"
         << "{\"name\":\"psych_support\",\"economy\":4,\"psych\":2,\"labs\":4}]}";
-    return out.str();
+    const int requested_economy = field_int(request, "economy", -1);
+    const int requested_psych = field_int(request, "psych", -1);
+    const int requested_labs = field_int(request, "labs", -1);
+    std::ostringstream prepared;
+    if (requested_economy >= 0 && requested_economy <= 10
+        && requested_psych >= 0 && requested_psych <= 10
+        && requested_labs >= 0 && requested_labs <= 10
+        && requested_economy + requested_psych + requested_labs == 10) {
+        prepared << "{\"command\":\"set_energy_allocation\",\"economy\":" << requested_economy
+            << ",\"psych\":" << requested_psych << ",\"labs\":" << requested_labs
+            << ",\"label\":\"Apply selected energy allocation\"}";
+    }
+    std::string result = out.str(); result.pop_back();
+    return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
-std::string social_engineering_choices_response(int faction_id) {
+std::string social_engineering_choices_response(int faction_id, const std::string& request) {
     Faction& faction = Factions[faction_id];
     const CSocialCategory& selected =
         *reinterpret_cast<const CSocialCategory*>(&faction.SE_Politics_pending);
@@ -9984,7 +10176,29 @@ std::string social_engineering_choices_response(int faction_id) {
         out << "]}";
     }
     out << "]}";
-    return out.str();
+    CSocialCategory proposed = selected;
+    const char* keys[] = {"politics", "economics", "values", "future"};
+    bool complete = !(*GameMoreRules & MRULES_NO_SOCIAL_ENGINEERING);
+    for (int category = 0; category < MaxSocialCatNum; ++category) {
+        int model = field_int(request, keys[category], -1);
+        if (model < 0 || model >= MaxSocialModelNum
+            || !society_avail(category, model, faction_id)) complete = false;
+        else proposed.models[category] = model;
+    }
+    std::ostringstream prepared;
+    const int additional = social_upheaval(faction_id, &proposed) - faction.SE_upheaval_cost_paid;
+    if (complete && additional <= faction.energy_credits) {
+        CSocialEffect effects;
+        social_calc(&proposed, &effects, faction_id, false, false);
+        prepared << "{\"command\":\"set_social_engineering\",\"label\":\"Apply selected social models\"";
+        for (int category = 0; category < MaxSocialCatNum; ++category)
+            prepared << ',' << json_string(keys[category]) << ':' << proposed.models[category];
+        prepared << ",\"additional_energy_cost\":" << additional << ",\"native_effective_ratings\":";
+        append_social_effects(prepared, effects);
+        prepared << '}';
+    }
+    std::string result = out.str(); result.pop_back();
+    return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
 std::string production_choices_response(int faction_id, int base_id) {
@@ -11711,6 +11925,22 @@ uint32_t& ability_flags, std::string& reason) {
     return true;
 }
 
+bool bulk_upgrade_path_legal(int faction_id, int source_id, int target_id) {
+    if (!prototype_available_to_faction(faction_id, source_id)
+        || !owned_custom_prototype(faction_id, target_id)
+        || !Units[target_id].is_active() || source_id == target_id) return false;
+    UNIT& source = Units[source_id];
+    UNIT& target = Units[target_id];
+    const uint32_t lost_abilities = source.ability_flags & ~target.ability_flags & ~ABL_SLOW;
+    return source.chassis_id == target.chassis_id
+        && source.plan <= PLAN_RECON && target.plan <= PLAN_RECON
+        && source.offense_value() > 0 && source.defense_value() > 0
+        && target.offense_value() >= source.offense_value()
+        && target.defense_value() >= source.defense_value()
+        && !lost_abilities
+        && ((source.ability_flags & ABL_ARTILLERY) == (target.ability_flags & ABL_ARTILLERY));
+}
+
 void append_prototype_summary(std::ostringstream& out, int faction_id, int unit_id) {
     UNIT& unit = Units[unit_id];
     int active_units = veh_count(faction_id, unit_id);
@@ -11734,7 +11964,7 @@ void append_prototype_summary(std::ostringstream& out, int faction_id, int unit_
     out << '}';
 }
 
-std::string unit_design_choices_response(int faction_id) {
+std::string unit_design_choices_response(int faction_id, const std::string& request) {
     int custom_begin = faction_id * MaxProtoFactionNum;
     int custom_end = min(MaxProtoNum, custom_begin + MaxProtoFactionNum);
     int active_custom = 0;
@@ -11825,7 +12055,69 @@ std::string unit_design_choices_response(int faction_id) {
         append_prototype_summary(out, faction_id, unit_id);
     }
     out << "]}";
-    return out.str();
+    std::ostringstream prepared;
+    bool prepared_comma = false;
+    if (!*MultiplayerActive) {
+        for (int id = custom_begin; id < custom_end; ++id) {
+            if (!Units[id].is_active() || veh_count(faction_id, id)
+                || prototype_queue_references(faction_id, id)) continue;
+            if (prepared_comma) prepared << ',';
+            prepared_comma = true;
+            prepared << "{\"command\":\"retire_unit_design\",\"prototype_id\":" << id
+                << ",\"confirm_retire\":1,\"destructive\":true,\"name\":" << json_string(Units[id].name)
+                << ",\"label\":\"Retire unused custom design\"}";
+        }
+        const int source_id = field_int(request, "source_prototype_id", -1);
+        const int target_id = field_int(request, "target_prototype_id", -1);
+        if (bulk_upgrade_path_legal(faction_id, source_id, target_id)) {
+            const int active_units = veh_count(faction_id, source_id);
+            const int queued = prototype_queue_references(faction_id, source_id);
+            const int per_unit = 10 * mod_upgrade_cost(faction_id, target_id, source_id);
+            const int total = per_unit * active_units;
+            if ((active_units || queued) && total <= Factions[faction_id].energy_credits) {
+                if (prepared_comma) prepared << ',';
+                prepared_comma = true;
+                prepared << "{\"command\":\"upgrade_prototype\",\"label\":\"Upgrade all units and queues of selected design\""
+                    << ",\"source_prototype_id\":" << source_id << ",\"target_prototype_id\":" << target_id
+                    << ",\"source_name\":" << json_string(Units[source_id].name)
+                    << ",\"target_name\":" << json_string(Units[target_id].name)
+                    << ",\"active_unit_count\":" << active_units << ",\"production_queue_references\":" << queued
+                    << ",\"energy_cost_per_unit\":" << per_unit << ",\"energy_cost_total\":" << total
+                    << ",\"confirm_upgrade\":1,\"consequential\":true}";
+            }
+        }
+        const int chassis = field_int(request, "chassis_id", -1);
+        const int weapon = field_int(request, "weapon_id", -1);
+        const int armor = field_int(request, "armor_id", -1);
+        const int reactor = field_int(request, "reactor_id", -1);
+        const int first_ability = field_int(request, "ability_id_1", -1);
+        const int second_ability = field_int(request, "ability_id_2", -1);
+        uint32_t flags = 0;
+        std::string reason;
+        bool valid = active_custom < MaxProtoFactionNum && valid_design_components(
+            faction_id, chassis, weapon, armor, reactor, first_ability, second_ability, flags, reason);
+        if (valid) {
+            for (int id = 0; id < MaxProtoNum; ++id) {
+                if (prototype_available_to_faction(faction_id, id) && Units[id].chassis_id == chassis
+                    && Units[id].weapon_id == weapon && Units[id].armor_id == armor
+                    && Units[id].reactor_id == reactor && Units[id].ability_flags == flags) valid = false;
+            }
+        }
+        if (valid) {
+            if (prepared_comma) prepared << ',';
+            prepared << "{\"command\":\"create_unit_design\",\"label\":\"Create selected custom design\""
+                << ",\"chassis_id\":" << chassis << ",\"weapon_id\":" << weapon
+                << ",\"armor_id\":" << armor << ",\"reactor_id\":" << reactor
+                << ",\"ability_id_1\":" << first_ability << ",\"ability_id_2\":" << second_ability
+                << ",\"chassis_name\":" << json_string(Chassis[chassis].offsv1_name)
+                << ",\"weapon_name\":" << json_string(Weapon[weapon].name)
+                << ",\"armor_name\":" << json_string(Armor[armor].name)
+                << ",\"reactor_name\":" << json_string(Reactor[reactor - 1].name)
+                << ",\"parameters\":{\"name\":{\"type\":\"string\",\"required\":false,\"max_length\":31}}}";
+        }
+    }
+    std::string result = out.str(); result.pop_back();
+    return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
 std::string game_management_choices_response() {
@@ -13290,11 +13582,11 @@ std::string semantic_choices_response(const std::string& request) {
             "Only interaction choices are available outside the human faction's actionable turn. Follow snapshot.protocol.");
     }
     if (kind == "research") return research_choices_response(faction_id);
-    if (kind == "energy_allocation") return energy_allocation_choices_response(faction_id);
-    if (kind == "social_engineering") return social_engineering_choices_response(faction_id);
+    if (kind == "energy_allocation") return energy_allocation_choices_response(faction_id, request);
+    if (kind == "social_engineering") return social_engineering_choices_response(faction_id, request);
     if (kind == "diplomacy") return diplomacy_choices_response(faction_id);
     if (kind == "council") return council_choices_response(faction_id);
-    if (kind == "unit_design") return unit_design_choices_response(faction_id);
+    if (kind == "unit_design") return unit_design_choices_response(faction_id, request);
     if (kind == "production") return production_choices_response(faction_id, field_int(request, "base_id", -1));
     if (kind == "base_management") return base_management_choices_response(faction_id, field_int(request, "base_id", -1));
     if (kind == "base_citizens") return base_citizen_choices_response(faction_id, field_int(request, "base_id", -1));
@@ -14378,9 +14670,10 @@ std::string semantic_command_response(const std::string& request) {
         }
         int amount = field_int(request, "amount", -1);
         int available = Factions[faction_id].energy_credits;
-        if (amount < 1 || amount > available) {
+        const auto amounts = native_energy_gift_options(available);
+        if (std::find(amounts.begin(), amounts.end(), amount) == amounts.end()) {
             return std::string("{\"ok\":false,\"error\":{\"code\":\"invalid_energy_gift_amount\","
-                "\"message\":\"amount must be within the exact bounds returned by the current interaction choice.\"},"
+                "\"message\":\"Select one of amount_options from the current native gift choice.\"},"
                 "\"amount_min\":1,\"amount_max\":") + std::to_string(max(0, available)) + '}';
         }
         int other = *diplo_second_faction;
@@ -14389,7 +14682,6 @@ std::string semantic_command_response(const std::string& request) {
                 "The native diplomatic counterpart is no longer a valid living faction.");
         }
         int other_before = Factions[other].energy_credits;
-        int withheld = available - amount;
         pending_energy_gift = true;
         pending_energy_gift_faction_id = faction_id;
         pending_energy_gift_other_id = other;
@@ -14415,15 +14707,11 @@ std::string semantic_command_response(const std::string& request) {
             return error_response("energy_gift_timer_unavailable",
                 "The native modal driver could not be scheduled; no gift was submitted.");
         }
-        Factions[faction_id].energy_credits = amount;
         make_gift(faction_id, other);
         *diplo_counter_proposal_id = previous_counter_proposal;
         bool prompt_seen = pending_energy_gift_prompt_seen;
         bool receipt_seen = pending_energy_gift_receipt_seen;
         clear_pending_energy_gift();
-        if (faction_id >= 1 && faction_id < MaxPlayerNum) {
-            Factions[faction_id].energy_credits += withheld;
-        }
         Console_update_data(MapWin, 0);
         int own_after = Factions[faction_id].energy_credits;
         int other_after = Factions[other].energy_credits;
@@ -15263,16 +15551,7 @@ std::string semantic_command_response(const std::string& request) {
         }
         UNIT& source = Units[source_id];
         UNIT& target = Units[target_id];
-        uint32_t lost_abilities = source.ability_flags & ~target.ability_flags & ~ABL_SLOW;
-        bool legal_path = source.chassis_id == target.chassis_id
-            && source.plan <= PLAN_RECON && target.plan <= PLAN_RECON
-            && source.offense_value() > 0 && source.defense_value() > 0
-            && target.offense_value() >= source.offense_value()
-            && target.defense_value() >= source.defense_value()
-            && !lost_abilities
-            && ((source.ability_flags & ABL_ARTILLERY)
-                == (target.ability_flags & ABL_ARTILLERY));
-        if (!legal_path) {
+        if (!bulk_upgrade_path_legal(faction_id, source_id, target_id)) {
             return error_response("illegal_upgrade_path",
                 "Semantic bulk upgrade is limited to same-chassis combat designs that do not reduce offense, defense, abilities, or artillery role.");
         }
@@ -17410,6 +17689,7 @@ std::string execute_request(const std::string& request) {
     if (op == "semantic_airdrop_targets") return semantic_airdrop_targets_response(request);
     if (op == "semantic_base_site_receipts") return semantic_base_site_receipts_response(request);
     if (op == "test_base_site_receipts_stress") return test_base_site_receipts_stress_response();
+    if (op == "test_managed_action_fixture") return test_managed_action_fixture_response(request);
     if (op == "semantic_snapshot") return semantic_snapshot_response();
     if (op == "semantic_chat") return semantic_chat_response(request);
     if (op == "semantic_lan") {
@@ -17548,7 +17828,9 @@ DWORD WINAPI server_worker(void*) {
                         + ", modal_wait="
                         + std::to_string(request_modal_wait_hits)
                         + ", handler="
-                        + std::to_string(request_handler_hits) + '.';
+                        + std::to_string(request_handler_hits)
+                        + ", acceptance_fixture_stage="
+                        + std::to_string(InterlockedCompareExchange(&acceptance_fixture_stage, 0, 0)) + '.';
                     send_all(client, error_response(
                         "game_timeout", timeout_message.c_str()) + "\n");
                     continue;

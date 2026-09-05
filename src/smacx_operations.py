@@ -1139,6 +1139,12 @@ game binaries/assets, credentials, private provider addresses, account data, cha
 
     def reconcile_once(self) -> dict[str, Any]:
         with self._operation_lock:
+            if self.worker_manager is not None:
+                # Observe and decide under the same lifecycle guard as the
+                # mutation. Otherwise a transient missing LAN peer can queue
+                # a recovery that destroys a newly restarted healthy host.
+                with self.worker_manager._lifecycle_lock:
+                    return self._reconcile_once()
             return self._reconcile_once()
 
     def _reconcile_once(self) -> dict[str, Any]:
