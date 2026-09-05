@@ -19,6 +19,8 @@ RUN apt-get update \
     && install -d -o smacx -g smacx /var/lib/smacx-portal
 WORKDIR /opt/smacx-portal
 COPY --from=build /out/ ./
+# Imported artwork can retain owner-only modes; published web assets are public.
+RUN chmod -R a+rX ./wwwroot
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \
     ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
     DOTNET_EnableDiagnostics=0 \

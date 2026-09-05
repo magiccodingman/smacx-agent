@@ -40,18 +40,21 @@ reclaim voting and verified-checkpoint recovery are unchanged.
 - These fixture checks prove UI behavior, not a new successful native campaign
   run. Existing stream/controller endpoints remain the authority at destination.
 
-Deployment verification is recorded below after the image is rebuilt.
+Deployment was verified against the running Docker service below.
 
 ## Deployment
 
-- Release portal image built successfully from implementation commit cca618f.
+- Release portal image built successfully with the final asset-permission correction.
+  The first asset probe caught owner-only permissions on the imported PNG;
+  portal packaging now normalizes public wwwroot read/traverse permissions.
 - Recreated control-api, control-center and specialist-supervisor using the
   existing local Compose configuration; the Compose health wait completed.
   Control API and portal are healthy; specialist supervisor is running (no
   configured health probe). Shared storage/services were preserved.
 - Running portal image matches the rebuilt tag exactly:
-  `sha256:c6f2456e2f7ddbcb6ab69b3c75caa045dbc1053f6767ae50257eed6f406a303e`.
-- The deployed loading image is served successfully and matches the original:
+  `sha256:db658ab6dceeb2108039184bcd344fcfdabc10e5dc5f8bd49dd9986a4e25a85c`.
+- Both a non-root container read and the final deployed HTTP 200 asset probe
+  verify that the image matches the original:
   `010f90ca5358c7142efbbf9e7d8c98a5e509a9d965a26a579ef9e00c2e0ccd58`.
 - No database reset, new native match, or unverified campaign recovery was
   performed as part of this UI deployment.
