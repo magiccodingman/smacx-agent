@@ -9,7 +9,7 @@ import tempfile
 
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
-from smacx_runtime_context import RuntimeContextAssembler
+from smacx_runtime_context import RuntimeContextAssembler, _attention_payload
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world import WorldService
 from smacx_world_model import PerspectiveProjector, estimate_tokens
@@ -18,6 +18,18 @@ from smacx_world_types import WorldIdentity, content_hash
 
 
 def main() -> int:
+    summary = _attention_payload({"attention_kind": "watch_trigger", "payload": {
+        "watch_id": "watch-mobilization", "watch_kind": "milestone", "subject_refs": ["base-home"],
+        "matches": [{"milestone": {"state": "blocked", "ready_count": 1, "required_count": 2,
+                                    "requirements": [{"reason": "details" * 1000}]}}]}})
+    assert summary["watch_id"] == "watch-mobilization"
+    assert summary["matches"][0]["milestone"] == {"state": "blocked", "ready_count": 1, "required_count": 2}
+    assert summary["detail_truncated"] and estimate_tokens(summary) < 200
+    production_summary = _attention_payload({"attention_kind": "production_progress", "payload": {
+        "event_count": 1, "events": [{"event_kind": "production_interrupted", "base_ref": "base-home",
+                                     "item_name": "The Weather Paradigm", "turn": 9, "detail": "x" * 5000}]}})
+    assert production_summary["events"][0]["event_kind"] == "production_interrupted"
+    assert estimate_tokens(production_summary) < 200
     with tempfile.TemporaryDirectory(prefix="smacx-runtime-context-") as raw:
         root = Path(raw)
         store = SmacxStore(root / "state.sqlite3")
@@ -105,6 +117,12 @@ def main() -> int:
                 for index in range(20)
             ]},
         }}
+        journal.append(scope, "memory.plan", {"record": {
+            "plan_key": "authoritative-reserve", "title": "Keep an assigned reserve",
+            "status": "active", "participants": [{"ref": "own-unit-7", "intended_role": "reserve"}],
+        }})
+        # SQL and compact working-state records cannot override journal intent.
+        store.put_plan(scope, "sql-only-plan", "SQL-only projection", "Not journal authority")
         assembler = RuntimeContextAssembler(
             scope=scope, world=WorldService(worlds, scope), attention=attention,
             snapshot=lambda: snapshot, working_state=lambda: working,
@@ -117,6 +135,9 @@ def main() -> int:
         assert compact["identity"] == rich["identity"]
         assert compact["focus"]["focus_id"] == rich["focus"]["focus_id"]
         assert compact["focus"]["mandatory"] is True
+        assert compact["plan_health"]["active_plan_count"] == 1
+        assert compact["plan_health"]["assigned_owned_unit_count"] == 1
+        assert rich["plan_health"] == compact["plan_health"]
         assert any(item["attention_id"] == critical["attention_id"]
                    for item in compact["attention"]["items"])
         assert compact["token_estimate"] <= 13_107

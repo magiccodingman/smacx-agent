@@ -57,6 +57,20 @@ except urllib.error.HTTPError as exc:
     ))
 
 
+def runtime_attention_responded(container_name: str, lease_id: str) -> dict:
+    """Simulate the existing trusted response hook, not provider inference."""
+    script = r'''
+import json, pathlib, sys, urllib.request
+token = pathlib.Path('/run/secrets/bridge-token').read_text(encoding='ascii').strip()
+request = urllib.request.Request('http://127.0.0.1:47816/runtime-context/responded',
+    data=json.dumps({'attention_lease_id': sys.argv[1]}).encode(),
+    headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}, method='POST')
+with urllib.request.urlopen(request, timeout=30) as response:
+    print(response.read().decode())
+'''
+    return json.loads(docker("exec", container_name, "python3", "-c", script, lease_id))
+
+
 def bridge_operation(container_name: str, operation: str, **arguments: object) -> dict:
     """Exercise the real sidecar-to-native adapter without provider content."""
     script = r'''
@@ -1151,7 +1165,21 @@ def main() -> int:
             lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
             lambda operation, **arguments: bridge_operation(recovered_sidecar, operation, **arguments),
             managed_fixture)
+        from intent_checkpoint_live_test import exercise_intent_checkpoint
+        intent_evidence = exercise_intent_checkpoint(
+            lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
+            lambda operation, **arguments: bridge_operation(recovered_sidecar, operation, **arguments),
+            managed_fixture["base_ref"])
+        print(json.dumps({"event": "intent_checkpoint", "payload": intent_evidence}), flush=True)
         runtime_context(recovered_sidecar, managed_episode, end=True)
+        from intent_checkpoint_live_test import verify_intent_attention
+        intent_delivery = verify_intent_attention(
+            lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
+            lambda episode: runtime_context(recovered_sidecar, episode),
+            lambda episode: runtime_context(recovered_sidecar, episode, end=True),
+            lambda lease_id: runtime_attention_responded(recovered_sidecar, lease_id),
+            intent_evidence["milestone_watch_id"], "episode-intent-attention-" + suffix)
+        print(json.dumps({"event": "intent_attention_delivery", "payload": intent_delivery}), flush=True)
         print(json.dumps({"event": "managed_action_paths", "payload": managed_evidence}), flush=True)
         # Stress runs after gameplay assertions; its native restore check covers
         # the temporary rows, visibility and yield-calculation scratch state.
@@ -1167,6 +1195,42 @@ def main() -> int:
             "owned_base_count": 512, "candidate_count": 32, "radius_squares": 21,
             "wall_ms": round(site_wall_ms, 3), "probe_gap_ms": round(site_probe_gap_ms, 3),
             "receipt_bytes": site_bytes, "native_elapsed_ms": site_stress.get("native_elapsed_ms")}}), flush=True)
+        intent_before_restore = bridge_operation(recovered_sidecar, "perspective_world_page",
+                                                 domain="units", cursor=0, limit=256)
+        if intent_before_restore.get("next_cursor") is not None:
+            raise AssertionError("intent recovery fixture exceeded bounded owned-unit page")
+        intent_unit_refs = sorted(row["own_unit_ref"] for row in intent_before_restore.get("items", [])
+                                  if row.get("owned") and row.get("own_unit_ref"))
+        api(opener, base_url, "POST", f"/api/v1/matches/{created['match']['match_id']}/checkpoint",
+            {"slot": "intent_acceptance"}, csrf, 60)
+        api(opener, base_url, "POST", f"/api/v1/matches/{created['match']['match_id']}/park", {}, csrf, 180)
+        intent_restored = api(opener, base_url, "POST", f"/api/v1/matches/{created['match']['match_id']}/recover",
+                              {}, csrf, 900)
+        if not intent_restored.get("ok") or not intent_restored.get("memory_restore", {}).get("journal_forks"):
+            raise AssertionError({"intent_managed_recovery": intent_restored})
+        current_worker = next(item for item in api(opener, base_url, "GET", "/api/v1/workers")["workers"]
+                              if item["instance_id"] == worker["instance_id"])
+        current_sidecar = current_worker["network"]["mcp_container_name"]
+        current_endpoint = current_worker["network"]["mcp_url"]
+        after_intent_restore = bridge_operation(current_sidecar, "perspective_world_page", domain="units", cursor=0, limit=256)
+        restored_unit_refs = sorted(row["own_unit_ref"] for row in after_intent_restore.get("items", [])
+                                    if row.get("owned") and row.get("own_unit_ref"))
+        if restored_unit_refs != intent_unit_refs:
+            raise AssertionError("native completed-unit identities changed during managed recovery")
+        recovered_health = asyncio.run(mcp_tool(current_endpoint, "smac_cognition", {"action": "plan_health"}))
+        if not recovered_health.get("ok") or recovered_health["plan_health"]["active_plan_count"] < 3:
+            raise AssertionError({"journaled_intent_missing_after_recovery": recovered_health})
+        if recovered_health["plan_health"]["conflict_count"] < 1 \
+                or recovered_health["plan_health"]["assigned_owned_unit_count"] < 1:
+            raise AssertionError({"journaled_reservations_changed_after_recovery": recovered_health})
+        discarded_watch = asyncio.run(mcp_tool(current_endpoint, "smac_cognition", {
+            "action": "watch_inspect", "subject_refs": [intent_evidence["milestone_watch_id"]]}))
+        if discarded_watch.get("ok"):
+            raise AssertionError("old-timeline milestone was resurrected after recovery")
+        print(json.dumps({"event": "intent_recovery", "payload": {
+            "native_completed_units_preserved": True, "journaled_plan_preserved": True,
+            "journaled_conflict_and_stationary_assignment_preserved": True,
+            "ephemeral_old_timeline_watch_discarded": True}}), flush=True)
         api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park",
             {}, csrf, 120,

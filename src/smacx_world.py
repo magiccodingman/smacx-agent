@@ -429,9 +429,15 @@ class WorldService:
             # demotion plus the bounded typed-error fallback below.
             body = []
         original_items = len(body)
-        while body and estimate_tokens(result) > budget:
+        # Keep one primary item while demoting auxiliary detail. Otherwise a
+        # large multi-base object envelope can evict every small mechanics
+        # row and falsely report that no single item fits the page.
+        while len(body) > 1 and estimate_tokens(result) > budget:
             body.pop()
             result["truncated"] = True
+        if result.get("mode") == "base" and body and isinstance(result.get("objects"), list):
+            retained = {item.get("base_ref") for item in body if isinstance(item, Mapping)}
+            result["objects"] = [item for item in result["objects"] if item.get("object_ref") in retained]
         # Auxiliary sections are part of the same contractual ceiling.  Trim
         # them deterministically after primary items; callers can re-query the
         # named mode/subject rather than receiving an oversized side channel.
@@ -481,6 +487,20 @@ class WorldService:
             if isinstance(valid, dict) and estimate_tokens(result) > budget:
                 valid.pop("condition", None)
                 result["truncated"] = True
+        if result.get("mode") == "base" and len(body) == 1:
+            # A compact base page must still issue a discoverable base ref
+            # when many units contribute response/support detail. Keep scalar
+            # summaries and qualify omission; deep subject queries recover it.
+            row = body[0]
+            for field in ("friendly_response", "visible_hostile_response", "supported_unit_refs", "garrison_refs"):
+                values = row.get(field) if isinstance(row, dict) else None
+                while isinstance(values, list) and values and WorldService._seal_token_estimate(result) > budget:
+                    values.pop()
+                    row["mechanics_detail_truncated"] = True
+                    result["truncated"] = True
+        if body and estimate_tokens(result) > budget:
+            body.pop()
+            result["truncated"] = True
         result["result_token_estimate"] = WorldService._seal_token_estimate(result)
         # The estimate field is itself serialized.  Re-apply deterministic
         # metadata compaction after sealing so a result that was exactly at the

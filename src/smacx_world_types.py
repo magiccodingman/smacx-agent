@@ -28,6 +28,7 @@ _PRIVATE_EXACT_KEYS = frozenset({
     "to_tile_id", "tile_id", "row_index", "vehicle_id", "base_id",
     "owner", "prototype_id", "home_base_id", "transport_unit_id",
     "order", "order_auto_type",
+    "_scope", "_location_refs", "_subject_location_refs", "_completed", "_state",
 })
 
 

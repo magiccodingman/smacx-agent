@@ -3396,6 +3396,9 @@ int __cdecl mod_base_production() {
             if (veh_id < 0) {
                 return 0;
             }
+            // The unit exists now; retain the occurrence even if founding
+            // this colony consumes its final population and removes the base.
+            agent_observe_production_completed(*CurrentBaseID, item_id, 0, veh_id);
             VEH* veh = &Vehs[veh_id];
             if (Units[item_id].plan == PLAN_COLONY) {
                 if ((base->state_flags & BSTATE_UNK_2000000)
@@ -3467,6 +3470,10 @@ int __cdecl mod_base_production() {
                 mod_base_reset(*CurrentBaseID, 0);
             } else {
                 bool has_queue = base_queue(*CurrentBaseID);
+                agent_observe_production_queue(*CurrentBaseID, has_queue);
+                if (!has_queue && !gov_manage_production()) {
+                    agent_observe_production_selection(*CurrentBaseID, base->queue_items[0] == item_id);
+                }
                 uint32_t warn_flags;
                 parse_says(1, Units[item_id].name, -1, -1);
                 if ((!has_queue && !gov_manage_production())
@@ -3532,6 +3539,7 @@ int __cdecl mod_base_production() {
                 popb(StrBuffer, warn_flags, -1, image, 0);
                 if (!has_queue && gov_manage_production()) {
                     mod_base_reset(*CurrentBaseID, 0);
+                    agent_observe_production_selection(*CurrentBaseID, false);
                 }
             }
             if (is_prototype) {
@@ -3585,6 +3593,7 @@ int __cdecl mod_base_production() {
         }
         if (item_id >= 0) {
             if (SecretProjects[item_id] != SP_Unbuilt) {
+                agent_observe_project_interrupted(*CurrentBaseID, queue_id);
                 if (!is_human(faction_id) || gov_manage_production()) {
                     mod_base_reset(*CurrentBaseID, 0);
                 } else {
@@ -3714,7 +3723,10 @@ int __cdecl mod_base_production() {
         }
     }
     draw_tile(base->x, base->y, 2);
+    agent_observe_production_completed(*CurrentBaseID, -facility_id,
+        facility_id >= SP_ID_First ? 2 : 1);
     int cur_queue = base_queue(*CurrentBaseID);
+    agent_observe_production_queue(*CurrentBaseID, cur_queue != 0);
     bool is_extra = (facility_id >= FAC_SKY_HYDRO_LAB && facility_id <= FAC_STOCKPILE_ENERGY);
     bool is_smacx = (facility_id >= FAC_COVERT_OPS_CENTER && facility_id <= FAC_GEOSYNC_SURVEY_POD);
 
@@ -3999,10 +4011,12 @@ int __cdecl mod_base_production() {
     }
     if (!is_human(faction_id) || (gov_manage_production() && !cur_queue)) {
         mod_base_reset(*CurrentBaseID, 0);
+        agent_observe_production_selection(*CurrentBaseID, false);
     }
     if (is_human(faction_id) && !gov_manage_production()
     && base->queue_items[0] == -facility_id && !base->queue_size) {
         base->queue_items[0] = -FAC_STOCKPILE_ENERGY;
+        agent_observe_production_selection(*CurrentBaseID, false);
         draw_radius(base->x, base->y, 2, 2);
     }
     if (item_id < 0) {
@@ -4976,5 +4990,3 @@ int __cdecl fac_maint(int facility_id, int faction_id) {
     }
     return facility.maint;
 }
-
-

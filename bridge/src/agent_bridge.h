@@ -21,6 +21,14 @@ void agent_observe_base_founded(int base_id);
 void agent_observe_base_destroyed(int base_id);
 void agent_observe_base_captured(int base_id, int old_faction_id,
     int new_faction_id);
+// Owned production occurrences, independent of popup visibility or name
+// changes. category: 0 unit, 1 facility, 2 project. Queue events describe the
+// actual queue result; they never imply that a discarded item completed.
+void agent_observe_production_completed(int base_id, int production_id,
+    int category, int veh_id = -1);
+void agent_observe_production_queue(int base_id, bool advanced);
+void agent_observe_production_selection(int base_id, bool repeat);
+void agent_observe_project_interrupted(int base_id, int production_id);
 
 // Fallback request service at the two stock DirectPlay await loops used by
 // paired human diplomacy. Engine access remains on the game thread.

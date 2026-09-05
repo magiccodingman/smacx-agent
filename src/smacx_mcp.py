@@ -2114,11 +2114,23 @@ def smac_attention_ack(
     description=(
         "Maintain optional bounded cognition scopes. A watch elevates a typed future change; "
         "an operation holds one temporary multi-query problem. These are useful when warranted, "
-        "not rituals for trivial decisions. Plans/goals remain durable sovereign memory."
+        "not rituals for trivial decisions. Plans/goals remain durable sovereign memory. "
+        "scope_create uses subject_refs and predicate_json {type: proximity|geography|"
+        "route_corridor|base_radius|union, radius: 0..16, domain: land|sea|both}. "
+        "Use one base/location center, one issued geographic/route ref, or up to 8 scope refs "
+        "for union. Watch the returned scope_ref with region_entry/region_exit and "
+        "{relationship: hostile}; scope_inspect checks validity; watch_close retires it. "
+        "Milestone watches require linked_plan_id and {mode: all|at_least, at_least?: N, "
+        "requirements: [{ref, kind: exists|current_field|contains|production_completed|"
+        "garrison_count|dependency_valid, field?, value?, count?}]}, at most 16 requirements. "
+        "watch_inspect reads current qualified state. plan_health checks explicit journaled "
+        "participants ({ref,intended_role?,target_ref?,exclusive?,production_item?,energy_credits?,timing?}) "
+        "with timing {start_turn,end_turn}; last_confirmation.dependency_values may record "
+        "{ref,field,value} for a declared dependency. It reports conflicts, never selects a plan."
     )
 )
 def smac_cognition(
-    action: Literal["watch_create", "watch_close", "operation_upsert", "operation_complete"],
+    action: Literal["watch_create", "watch_close", "watch_inspect", "scope_create", "scope_inspect", "plan_health", "operation_upsert", "operation_complete"],
     kind: str = "",
     objective: str = "",
     subject_refs: list[str] | None = None,
@@ -2143,7 +2155,28 @@ def smac_cognition(
                            if item.get("kind") == "turn_state"), {})
         turn_field = turn_state.get("fields", {}).get("turn", {})
         current_turn = turn_field.get("value") if isinstance(turn_field, dict) else None
-        if action == "watch_create":
+        if action == "plan_health":
+            dependencies = attention.semantic_dependency_hashes(projection)
+            active = attention.runtime_state(current_world_revision=int(projection["world_revision"]),
+                                             current_world_epoch=projection_identity.world_epoch,
+                                             object_dependency_hashes=dependencies, current_turn=current_turn)
+            snapshot = _call("semantic_snapshot").get("snapshot", {})
+            ready = [str(item.get("own_unit_ref")) for item in snapshot.get("ready_unit_refs", [])
+                     if isinstance(item, dict)]
+            return {"ok": True, "plan_health": attention.plan_health(projection, active["operations"], ready, dependencies)}
+        if action == "watch_inspect":
+            if len(refs) != 1:
+                raise AttentionError("watch_inspect_requires_one_watch_ref")
+            if current_turn is not None:
+                attention.gc_watches(current_turn)
+            return {"ok": True, "watch": attention.inspect_watch(refs[0])}
+        if action == "scope_inspect":
+            if len(refs) != 1:
+                raise AttentionError("scope_inspect_requires_one_scope_ref")
+            if current_turn is not None:
+                attention.gc_watches(current_turn)
+            return {"ok": True, "scope": attention.inspect_scope(refs[0])}
+        if action in {"watch_create", "scope_create"}:
             try:
                 predicate = json.loads(predicate_json)
             except json.JSONDecodeError as exc:
@@ -2151,7 +2184,8 @@ def smac_cognition(
             if not isinstance(predicate, dict):
                 raise AttentionError("invalid_watch_predicate_json")
             return {"ok": True, **attention.create_watch(
-                kind, refs, predicate, priority=priority, current_turn=current_turn,
+                "spatial_scope" if action == "scope_create" else kind,
+                refs, predicate, priority=priority, current_turn=current_turn,
                 expires_turn=(expires_turn if expires_turn >= 0 else None),
                 linked_goal_id=linked_goal_id or None, linked_plan_id=linked_plan_id or None,
             )}
@@ -2564,7 +2598,7 @@ def smac_choices(
 
 
 def smac_command(
-    command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
+    command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
     session_id: str,
     expected_revision: str,

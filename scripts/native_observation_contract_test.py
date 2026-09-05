@@ -321,6 +321,39 @@ def main() -> int:
         ]
         assert captures[1]["capture_sequence"] == 2
 
+        # Two identical completed items are two native occurrences. Queue
+        # advancement alone is not a completion, and raw native IDs stay private.
+        collector._pending_native_events.extend([
+            {"native_sequence": sequence, "native_kind": kind,
+             "subject_a": 3, "subject_b": 8, "from_tile_id": 44,
+             "to_tile_id": 44, "value_before": 0, "value_after": 777 if sequence == 401 else -1,
+             "item_name": "Scout Patrol", "continuous_visibility": True, "turn": 31}
+            for sequence, kind in ((401, "owned_production_completed"),
+                                   (402, "owned_queue_advanced"),
+                                   (403, "owned_production_completed"),
+                                   (404, "owned_queue_exhausted"),
+                                   (405, "owned_project_interrupted"))
+        ])
+        production = [row for row in collector._coalesce_native_events(
+            current_objects=[], prior_objects=[], turn=31)
+            if row["event_kind"].startswith("production_")]
+        assert [row["event_kind"] for row in production] == [
+            "production_completed", "production_queue_advanced",
+            "production_completed", "production_queue_exhausted", "production_interrupted"]
+        assert len({row["occurrence_ref"] for row in production}) == 5
+        assert production[-1]["item_kind"] == "secret_project"
+        assert production[-1]["reason"] == "project_no_longer_unbuilt"
+        assert "queued_items_remaining" not in production[-1]
+        assert production[0]["item_kind"] == "unit"
+        assert production[0]["unit_ref"] == "own-unit-777"
+        from smacx_milestones import evaluate_milestone
+        missing_birth, _ = evaluate_milestone({"requirements": [{"ref": "base-location-44",
+            "kind": "production_completed", "value": "Scout Patrol"}]},
+            {"base-location-44": {"kind": "base", "status": "active"}}, {}, production)
+        assert missing_birth["state"] == "blocked", missing_birth
+        assert not any(key in row for row in production
+                       for key in ("subject_a", "subject_b", "native_sequence", "value_after"))
+
         collector._pending_native_events.extend([
             {"native_sequence": 307, "native_kind": "project_race_started",
              "subject_a": 39, "subject_b": 2, "value_before": -1,

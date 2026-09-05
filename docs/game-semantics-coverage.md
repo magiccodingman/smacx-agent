@@ -93,3 +93,18 @@ maximum concurrent probe gap. Fifteen managed tools and the 492-conservative-tok
 world schema remain intact. Concurrent campaign startup stress and provider
 inference remain later integrated gates; this checkpoint does not claim completion
 of intent-linked attention or counterfactual assistance.
+
+## Intent and attention checkpoint (accepted)
+
+Checkpoint 3 is **accepted** through the following bounded chains. See the
+[acceptance ledger](benchmarks/2026-09-04-intent-attention.md).
+
+| Capability | Evidence established | Recovery and claim boundary |
+| --- | --- | --- |
+| Semantic spatial scopes | Managed constructor/crossing fixtures pass; native base-radius query succeeds; 65,536-square service yields a 99-token descriptor; dependency invalidation and expiry enforced | Private scope definitions survive restart; rollback discards old-timeline watches; native-table agreement is not yield prediction |
+| Production occurrences | Controlled native repeated units, facility and project completion → observation → managed milestone → runtime attention; project interruption remains distinct; guarded project-information close executes; compact base discovery passes | Completed unit identities preserved by managed recovery; native birth receipts retain immediately destroyed identities; production fixtures invoke real native routines with controlled inputs |
+| Aggregate milestones | Managed create/inspect, all/threshold evaluation, stale qualification, retained destroyed requirements and durable transition delivery; live production becomes ready; SQL-only plans rejected | Journal plan revision expires prior milestones; native recovery discards old-timeline watches; no second plan store or automatic gameplay actions |
+| Plan health | Sovereign writes conflicting production reservations and stationary unit assignment through managed memory; provider query reports them; timed unit/credit conflicts and qualified dependencies covered by fixtures | Managed recovery preserves journaled conflicts and assignment; incomplete intent withholds unassigned counts; runtime stays within existing budgets |
+
+Counterfactual mechanical assistance and the final integrated acceptance remain
+checkpoints 4 and 5; this acceptance does not imply they are complete.

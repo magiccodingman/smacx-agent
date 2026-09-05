@@ -205,6 +205,29 @@ def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
         }}
     if estimate_tokens(payload) <= 768:
         return dict(payload)
+    if item.get("attention_kind") == "watch_trigger":
+        matches = []
+        for match in payload.get("matches", ()):
+            if not isinstance(match, Mapping):
+                continue
+            milestone = match.get("milestone")
+            if isinstance(milestone, Mapping):
+                matches.append({"milestone": {key: milestone.get(key) for key in
+                                               ("state", "ready_count", "required_count")}})
+            event = match.get("temporal_event")
+            if isinstance(event, Mapping):
+                matches.append({"temporal_event": {key: event.get(key) for key in
+                                                    ("event_kind", "contact_ref", "unit_ref", "base_ref", "item_name", "turn")
+                                                    if event.get(key) is not None}})
+        return {"watch_id": payload.get("watch_id"), "watch_kind": payload.get("watch_kind"),
+                "subject_refs": list(payload.get("subject_refs") or ())[:8],
+                "matches": matches[:4], "detail_truncated": True,
+                "detail": "Inspect the watch and its referenced world objects for qualified detail."}
+    if item.get("attention_kind") == "production_progress":
+        return {"event_count": payload.get("event_count"), "details_truncated": True,
+                "events": [{key: event.get(key) for key in ("event_kind", "base_ref", "item_name", "turn")}
+                           for event in list(payload.get("events") or ())[:4]
+                           if isinstance(event, Mapping)]}
     return {"payload_hash": content_hash(payload), "keys": sorted(payload)[:24],
             "detail": "Use smac_world/semantic chat recall for bounded detail."}
 
@@ -255,10 +278,11 @@ class RuntimeContextAssembler:
                            if item.get("kind") == "turn_state"), {})
         turn = _field(turn_state, "turn", snapshot.get("turn"))
         attention_lease = self.attention.lease(episode_id, limit=32)
+        dependencies = self.attention.semantic_dependency_hashes(projection)
         active = self.attention.runtime_state(
             current_world_revision=int(projection["world_revision"]),
             current_world_epoch=projection_identity.world_epoch,
-            object_dependency_hashes=self.attention.semantic_dependency_hashes(projection),
+            object_dependency_hashes=dependencies,
             current_turn=turn,
         )
         focus = _focus(snapshot)
@@ -273,6 +297,25 @@ class RuntimeContextAssembler:
             for ref in (item.get("payload", {}).get("subject_refs", ())
                         if isinstance(item.get("payload"), Mapping) else ())
         ]
+        for item in attention_lease.get("items", ()):
+            if not isinstance(item, Mapping) or item.get("attention_kind") != "watch_trigger":
+                continue
+            payload = item.get("payload", {})
+            if not isinstance(payload, Mapping):
+                continue
+            for match in payload.get("matches", ()):
+                if not isinstance(match, Mapping):
+                    continue
+                event = match.get("temporal_event", {})
+                if isinstance(event, Mapping):
+                    triggered_watch_refs.extend(str(event[key]) for key in
+                                                ("contact_ref", "unit_ref", "base_ref", "location_ref")
+                                                if event.get(key))
+                milestone = match.get("milestone", {})
+                if isinstance(milestone, Mapping):
+                    triggered_watch_refs.extend(str(row["ref"]) for row in milestone.get("requirements", ())
+                                                if isinstance(row, Mapping) and row.get("ref"))
+        triggered_watch_refs = list(dict.fromkeys(triggered_watch_refs))[:64]
         focus_ref = ""
         focus_unit = focus.get("unit") if isinstance(focus.get("unit"), Mapping) else {}
         if focus_unit.get("own_unit_ref"):
@@ -287,7 +330,9 @@ class RuntimeContextAssembler:
         active_plan_refs = [
             str(ref) for plan in cognition.get("plans", ())
             if isinstance(plan, Mapping)
-            for ref in plan.get("target_refs", ())
+            for ref in [*plan.get("target_refs", ()),
+                        *(item.get("ref") for item in plan.get("participants", ())
+                          if isinstance(item, Mapping) and item.get("ref"))]
         ][:64]
         operations = _operation_context(
             active["operations"], token_budget=budgets["operations"],
@@ -343,6 +388,10 @@ class RuntimeContextAssembler:
             "working_cognition": cognition,
             "operations": operations,
             "watch_summary": {"active_count": active["active_watch_count"]},
+            "plan_health": self.attention.plan_health(
+                projection, active["operations"],
+                [str(item.get("own_unit_ref")) for item in snapshot.get("ready_unit_refs", [])
+                 if isinstance(item, Mapping)], dependencies),
             "generated_unix": time.time(),
         }
         if recall_context is not None:

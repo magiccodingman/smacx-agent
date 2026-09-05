@@ -237,6 +237,56 @@ unknown.
   optional goal/plan links, default ten-turn TTL, renewal, deduplication, and
   garbage collection. Platform-critical attention never depends on a watch.
 
+Spatial scopes use that same lifecycle and tool surface. Their constructors
+accept one base/location and a map-distance radius, one issued physical mass,
+mobility region, frontier or theater, one route with a bounded corridor width,
+the native 21-square base working radius, or up to eight existing scopes in a
+union. The journal retains the sovereign definition and frozen dependency
+receipt. Full membership is a private reproducible index; it is not copied
+into a prompt or a map-sized journal entry. Changed geography invalidates the
+scope rather than silently changing its meaning. Inspection reports current
+known coverage, stale terrain and unknown boundaries. Entry/exit watches use
+observed movement segments; a contact appearing after a visibility gap is not
+an inferred crossing. Hostile predicates require current sight and relationship
+evidence.
+
+Plan-linked milestones use `all` or `at_least` over at most 16 requirements.
+Requirement kinds are `exists`, `current_field`, `contains`,
+`production_completed`, `garrison_count` (current owned combat units), and
+`dependency_valid` (an issued geographic/route/scope handle). A requirement has
+an explicit `ref`, and where applicable `field`, scalar `value`, or `count`
+(1–16). Current/stale/unknown survives evaluation. A destroyed required ref
+remains in the set and blocks an all-requirements milestone. Readiness and
+subsequent invalidation produce transitions rather than an event on every poll.
+Changing or completing the linked journaled plan retires its old milestone;
+the sovereign must explicitly renew the revised concern. Native checkpoint
+rollback discards ephemeral old-timeline watches; process restart on the same
+timeline preserves their state and attention IDs.
+
+Production emits owned native occurrences for successful unit, facility and
+project completion, queue advancement/exhaustion, and native repeat/fallback
+selection. Identical successive item names remain distinct completions. The
+existing public project-race stream remains separately qualified. Routine
+mineral increments do not independently create base-change attention; explicit
+field watches still work. Exhausted queues and progression at explicitly
+plan-linked bases enter bounded production attention. Other routine progression
+remains journaled and can satisfy an explicit milestone.
+
+Plan health reads the active journal before compact HUD selection. Participant
+records use `ref` and optional `intended_role`, `target_ref`, `exclusive`,
+`production_item`, or `energy_credits`. An inclusive `timing` interval
+(`start_turn`, `end_turn`), on the participant or plan, declares a reservation;
+it is not an earliest/latest scheduling window. Only simultaneous explicit
+reservations can conflict. Distinct fixed location targets, competing base
+production items, unique/exclusive assets, and current exact credit-pool
+reservations are checked. Broad potentially overlapping regions are not treated
+as incompatible locations. `last_confirmation.dependency_values` can retain
+`{ref, field, value}` expectations for explicit `dependencies`. No objective or
+role prose is converted into hidden mechanical authority, no future income is
+invented, and the platform never selects a winning plan. The request-only HUD
+keeps counts and bounded exceptions; incomplete intent coverage cannot become
+an exact unassigned-unit count.
+
 ## Attention and communication
 
 Attention is at-least-once and uses a sequence independent from the observation

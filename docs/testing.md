@@ -54,6 +54,10 @@ PYTHONPATH=src python3 scripts/movement_mechanics_contract_test.py
 PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
 PYTHONPATH=src python3 scripts/notebook_scale_test.py
 PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
+PYTHONPATH=src python3 scripts/spatial_scope_contract_test.py
+PYTHONPATH=src python3 scripts/spatial_scope_scale_test.py
+PYTHONPATH=src python3 scripts/milestone_contract_test.py
+PYTHONPATH=src python3 scripts/plan_health_contract_test.py
 PYTHONPATH=src python3 scripts/specialist_contract_test.py
 PYTHONPATH=src python3 scripts/specialist_supervisor_contract_test.py
 PYTHONPATH=src python3 scripts/specialist_provider_capture_test.py
@@ -377,3 +381,19 @@ native/UI wall and probe time against the unchanged 500 ms law and a 256 KB
 receipt ceiling. This is a native read-path stress fixture, not a gameplay proof
 that 512 bases were legally founded. Never enable acceptance endpoints in a
 production worker. See the checkpoint report for executed evidence and limitations.
+
+Checkpoint 3 adds `spatial_scope_contract_test.py`, `spatial_scope_scale_test.py`,
+`milestone_contract_test.py`, and `plan_health_contract_test.py`. Use the MCP
+container Python for imports that need `mcp`; the specialist supervisor contract
+still runs on the host. The scope scale fixture exercises the actual journal,
+SQLite watch service and private geometry at 400, 40,000 and 65,536 squares.
+
+The isolated native MCP test calls `intent_checkpoint_live_test.py` to express
+a journaled plan, scope and milestones through the existing managed tools. It
+uses the actual native production routine for repeated units, a facility, a
+Secret Project and an unavailable-project interruption. Native fixture state is
+isolated and dual-gated; ordinary managed choices acknowledge reviewed notices.
+The test then verifies runtime attention delivery, checkpoint recovery and
+discarding old-timeline watches. Its response hook simulates the trusted
+provider-response boundary; it does not claim model inference. Consult the
+checkpoint acceptance ledger for which runs have passed.

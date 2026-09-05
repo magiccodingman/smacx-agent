@@ -19,7 +19,7 @@ WATCH_KINDS = frozenset({
     "base_status", "base_threat", "faction_relationship", "faction_activity",
     "region_entry", "region_exit", "frontier_contact", "rendezvous_progress",
     "route_disruption", "project_progress", "global_system_progress",
-    "resource_threshold", "economic_threshold",
+    "resource_threshold", "economic_threshold", "spatial_scope", "production", "milestone",
 })
 OPERATION_STATUSES = frozenset({"active", "stale", "completed", "expired", "invalid"})
 
@@ -38,6 +38,18 @@ class AttentionService:
     @property
     def timeline_id(self) -> str:
         return self.store.active_timeline_id(self.scope)
+
+    def _active_journal_plan_ids(self, additional: Iterable[str] = ()) -> set[str]:
+        with self.store._connect() as connection:
+            linked = {str(row[0]) for row in connection.execute(
+                "SELECT linked_plan_id FROM world_watches WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND status='active' AND watch_kind='milestone'",
+                self._key(self.timeline_id)).fetchall() if row[0]}
+        linked.update(additional)
+        return {str(plan.get("plan_id"))
+                for plan in self.journal.projection_records(self.scope, "plans", limit=1000,
+                                                          statuses={"active"}, record_ids=linked)
+                if plan.get("status", "active") == "active" and plan.get("plan_id")}
 
     def enqueue(
         self, kind: str, payload: Mapping[str, Any], *, observation_cursor: int,
@@ -475,7 +487,8 @@ class AttentionService:
         ]
         region_refs = {item.region_ref for item in regions}
         region_aliases = {old: item.region_ref for item in regions for old in item.supersedes}
-        normalized_subjects = tuple(region_aliases.get(item, item) for item in subjects)
+        normalized_subjects = subjects if watch_kind == "spatial_scope" else tuple(
+            region_aliases.get(item, item) for item in subjects)
         registry = self._semantic_registry(projection, regions)
         semantic_refs = set(objects) | region_refs | set(registry)
         if any(item not in semantic_refs for item in normalized_subjects):
@@ -484,12 +497,31 @@ class AttentionService:
         predicate = dict(predicate)
         if any(str(key).startswith("_") for key in predicate):
             raise AttentionError("private_watch_predicate_key")
+        if watch_kind == "milestone":
+            from smacx_milestones import validate_milestone
+            if not linked_plan_id:
+                raise AttentionError("milestone_requires_active_plan")
+            if linked_plan_id not in self._active_journal_plan_ids([linked_plan_id]):
+                raise AttentionError("milestone_plan_not_active_in_journal")
+            validate_milestone(predicate, subjects)
+        scope_descriptor = None
+        if watch_kind == "spatial_scope":
+            from smacx_spatial_scope import scope_geometry
+            from smacx_world import WorldService
+            scope_descriptor = scope_geometry(
+                predicate, subjects, WorldService._topology(projection),
+                {str(item["object_ref"]): item for item in projection.get("objects", ())},
+                registry,
+            )
+            # Definition + frozen receipt are authoritative intent. Membership
+            # is a reproducible private index, not another map-sized notebook.
+            predicate = {"_scope": provider_safe(scope_descriptor)}
         resolved_locations = sorted({
             location for subject in subjects
             for location in registry.get(subject, {}).get("location_refs", ())
-            if registry.get(subject, {}).get("kind") != "region"
+            if registry.get(subject, {}).get("kind") not in {"region", "scope"}
         })
-        if resolved_locations:
+        if resolved_locations and watch_kind != "spatial_scope":
             predicate["_subject_location_refs"] = resolved_locations
         with self.store._connect() as connection:
             if linked_plan_id and not connection.execute(
@@ -532,7 +564,9 @@ class AttentionService:
                     "UPDATE world_watches SET expires_turn=?,last_renewed_turn=?,updated_unix=? "
                     "WHERE watch_id=?", (expires, current_turn, time.time(), existing["watch_id"]),
                 )
-                return {"watch_id": existing["watch_id"], "merged": True}
+                return {"watch_id": existing["watch_id"], "merged": True,
+                        **({"scope": {"scope_ref": existing["watch_id"],
+                                      **provider_safe(scope_descriptor)}} if scope_descriptor else {})}
             if count >= 32:
                 raise AttentionError("watch_limit_reached")
             watch_id = "watch-" + uuid.uuid4().hex
@@ -546,12 +580,22 @@ class AttentionService:
                  canonical_json(predicate), min(max(priority, 0), 100), current_turn, expires,
                  current_turn, linked_goal_id, linked_plan_id, normalized, now, now),
             )
-        self.journal.append(self.scope, "attention.watch_created", {
-            "watch_id": watch_id, "watch_kind": watch_kind, "subject_refs": subjects,
-            "typed_predicate": dict(predicate), "expires_turn": expires,
-            "linked_goal_id": linked_goal_id, "linked_plan_id": linked_plan_id,
-        }, turn=current_turn)
-        return {"watch_id": watch_id, "merged": False, "expires_turn": expires}
+        try:
+            self.journal.append(self.scope, "attention.watch_created", {
+                "watch_id": watch_id, "watch_kind": watch_kind, "subject_refs": subjects,
+                "typed_predicate": provider_safe(predicate), "expires_turn": expires,
+                "linked_goal_id": linked_goal_id, "linked_plan_id": linked_plan_id,
+                **({"spatial_scope": provider_safe(scope_descriptor)} if scope_descriptor else {}),
+            }, turn=current_turn)
+        except Exception:
+            # A failed journal append cannot leave an apparently authoritative
+            # active watch behind in the disposable SQL projection.
+            with self.store.transaction() as connection:
+                connection.execute("DELETE FROM world_watches WHERE watch_id=?", (watch_id,))
+            raise
+        return {"watch_id": watch_id, "merged": False, "expires_turn": expires,
+                **({"scope": {"scope_ref": watch_id, **provider_safe(scope_descriptor)}}
+                   if scope_descriptor else {})}
 
     def _semantic_registry(self, projection: Mapping[str, Any],
                            regions: Iterable[Any]) -> dict[str, dict[str, Any]]:
@@ -613,7 +657,123 @@ class AttentionService:
                                          for value in item.get("arrivals", ())
                                          if isinstance(value, Mapping)],
                     }
+        # Scopes form a creation-ordered DAG: unions can reference only already
+        # issued scopes. Recompute source receipts before exposing any handle.
+        # A changed dependency withdraws the handle instead of retargeting it.
+        with self.store._connect() as connection:
+            scopes = connection.execute(
+                "SELECT watch_id,typed_predicate_json,expires_turn FROM world_watches WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND world_epoch=? "
+                "AND watch_kind='spatial_scope' AND status='active' ORDER BY created_unix,watch_id",
+                (*self._key(self.timeline_id), str(projection["identity"]["world_epoch"])),
+            ).fetchall()
+        if scopes:
+            from smacx_spatial_scope import scope_geometry
+            from smacx_world import WorldService
+            topology = WorldService._topology(projection)
+            objects = {str(item["object_ref"]): item for item in projection.get("objects", ())}
+            turn_state = next((item for item in objects.values() if item.get("kind") == "turn_state"), {})
+            current_turn = turn_state.get("fields", {}).get("turn", {}).get("value")
+            for row in scopes:
+                if current_turn is not None and row["expires_turn"] is not None and row["expires_turn"] < current_turn:
+                    continue
+                saved = json.loads(row["typed_predicate_json"]).get("_scope", {})
+                try:
+                    current = scope_geometry(saved["definition"], tuple(saved["source_refs"]),
+                                             topology, objects, registry)
+                except (KeyError, ValueError):
+                    continue
+                if current["dependency_hash"] == saved.get("dependency_hash"):
+                    registry[str(row["watch_id"])] = {
+                        "kind": "scope", "location_refs": current["_location_refs"],
+                        "unknown_boundary": current["unknown_boundary"],
+                        "descriptor": provider_safe(current),
+                    }
         return registry
+
+    def inspect_scope(self, scope_ref: str) -> dict[str, Any]:
+        projection = self.world_store.load(self.scope, self.timeline_id)
+        if not projection:
+            raise AttentionError("world_projection_unavailable")
+        regions = []
+        for profile in ("mobility-land-default", "mobility-sea-default"):
+            regions.extend(self.world_store.load_regions(self.scope, self.timeline_id, profile))
+        descriptor = self._semantic_registry(projection, regions).get(scope_ref, {})
+        if descriptor.get("kind") != "scope":
+            raise AttentionError("scope_not_current_or_unknown")
+        return {"scope_ref": scope_ref, "validity": "current_dependencies",
+                **descriptor["descriptor"]}
+
+    def inspect_watch(self, watch_id: str) -> dict[str, Any]:
+        with self.store._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM world_watches WHERE watch_id=? AND match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=?", (watch_id, *self._key(self.timeline_id)),
+            ).fetchone()
+        if row is None:
+            raise AttentionError("unknown_watch")
+        predicate = json.loads(row["typed_predicate_json"])
+        result = {"watch_id": watch_id, "kind": row["watch_kind"], "status": row["status"],
+                  "subject_refs": json.loads(row["subject_refs_json"]),
+                  "predicate": provider_safe(predicate), "expires_turn": row["expires_turn"],
+                  "linked_plan_id": row["linked_plan_id"]}
+        if row["watch_kind"] == "milestone" and row["status"] == "active":
+            if row["linked_plan_id"] not in self._active_journal_plan_ids():
+                return {**result, "status": "expired", "reason": "plan_not_active_in_journal"}
+            from smacx_milestones import evaluate_milestone
+            projection = self.world_store.load(self.scope, self.timeline_id) or {}
+            objects = {str(item["object_ref"]): item for item in projection.get("objects", ())}
+            regions = []
+            for profile in ("mobility-land-default", "mobility-sea-default"):
+                regions.extend(self.world_store.load_regions(self.scope, self.timeline_id, profile))
+            result["milestone"], _ = evaluate_milestone(
+                predicate, objects, self._semantic_registry(projection, regions), [])
+        return result
+
+    def plan_health(self, projection: Mapping[str, Any], operations: Iterable[Mapping[str, Any]],
+                    ready_refs: Iterable[str], dependencies: Mapping[str, str]) -> dict[str, Any]:
+        from smacx_plan_health import plan_health
+        from smacx_world_model import estimate_tokens
+        # Interpretive intent comes exclusively from the active journal, never
+        # from a mutable SQL search projection or the compact HUD selection.
+        plans = self.journal.projection_records(self.scope, "plans", limit=1000, statuses={"active"})
+        result = plan_health(plans, {str(item["object_ref"]): item for item in projection.get("objects", ())},
+                             list(operations), list(ready_refs), set(dependencies), complete=len(plans) < 1000)
+        while estimate_tokens(result) > 800:
+            field = max(("conflicts", "dependency_exceptions"), key=lambda key: len(result[key]))
+            if not result[field]:
+                break
+            result[field].pop()
+            result["exception_details_truncated"] = True
+        return result
+
+    def capture_production_attention(self, events: Iterable[Mapping[str, Any]], *,
+                                     observation_cursor: int, turn: int | None,
+                                     session_id: str | None = None) -> None:
+        production = [dict(event) for event in events
+                      if str(event.get("event_kind") or "").startswith("production_")]
+        if not production:
+            return
+        plans = self.journal.projection_records(self.scope, "plans", limit=1000, statuses={"active"})
+        linked: dict[str, list[str]] = {}
+        for plan in plans:
+            if plan.get("status", "active") != "active":
+                continue
+            refs = list(plan.get("target_refs") or ())
+            refs.extend(item.get("ref") for item in plan.get("participants", ()) if isinstance(item, Mapping))
+            for ref in refs[:64]:
+                if isinstance(ref, str):
+                    linked.setdefault(ref, []).append(str(plan.get("plan_id") or plan.get("plan_key") or ""))
+        meaningful = []
+        for event in production:
+            plan_refs = linked.get(str(event.get("base_ref") or ""), [])
+            if event.get("event_kind") in {"production_queue_exhausted", "production_interrupted"} or plan_refs:
+                meaningful.append({**event, "linked_plan_refs": plan_refs[:8]})
+        if meaningful:
+            self.enqueue("production_progress", {"events": meaningful[:8],
+                         "event_count": len(meaningful), "details_truncated": len(meaningful) > 8},
+                         observation_cursor=observation_cursor, priority=60, turn=turn,
+                         session_id=session_id, dedupe_key=f"production:{observation_cursor}")
 
     def semantic_dependency_hashes(
         self, projection: Mapping[str, Any] | None = None,
@@ -661,14 +821,30 @@ class AttentionService:
         object_refs = {str(item.get("object_ref")) for item in projection.get("objects", ())
                        if isinstance(item, Mapping)} if projection else set()
         valid_refs = object_refs | {item.region_ref for item in regions} | set(registry)
+        active_plans = self._active_journal_plan_ids()
         with self.store.transaction() as connection:
             rows = connection.execute(
-                "SELECT watch_id,subject_refs_json FROM world_watches WHERE match_id=? "
+                "SELECT watch_id,watch_kind,linked_plan_id,subject_refs_json FROM world_watches WHERE match_id=? "
                 "AND agent_id=? AND perspective_id=? AND timeline_id=? AND status='active'",
                 self._key(self.timeline_id),
             ).fetchall()
             for row in rows:
                 subjects = list(json.loads(row["subject_refs_json"]))
+                if row["watch_kind"] == "milestone":
+                    if row["linked_plan_id"] not in active_plans:
+                        connection.execute("UPDATE world_watches SET status='expired',updated_unix=? WHERE watch_id=?",
+                                           (time.time(), row["watch_id"]))
+                    # Required destroyed/invalid refs must remain in the
+                    # requirement set. Evaluate them as blocked, never drop
+                    # them or silently migrate the sovereign's dependency.
+                    continue
+                if row["watch_kind"] == "spatial_scope":
+                    if row["watch_id"] not in registry:
+                        connection.execute(
+                            "UPDATE world_watches SET status='invalid',updated_unix=? WHERE watch_id=?",
+                            (time.time(), row["watch_id"]),
+                        )
+                    continue
                 migrated, ambiguous = [], False
                 for subject in subjects:
                     targets = aliases.get(str(subject), [])
@@ -797,12 +973,50 @@ class AttentionService:
         }
         projection = self.world_store.load(self.scope, timeline) or {}
         current_objects = {str(item["object_ref"]): item for item in projection.get("objects", ())}
+        registry = self._semantic_registry(projection, regions.values()) if projection else {}
         triggered: list[dict[str, Any]] = []
+        active_plans = self._active_journal_plan_ids() if any(row["watch_kind"] == "milestone" for row in rows) else set()
         for row in rows:
+            if row["world_epoch"] != projection.get("identity", {}).get("world_epoch"):
+                continue
+            if turn is not None and row["expires_turn"] is not None and row["expires_turn"] < turn:
+                continue
             subjects = set(json.loads(row["subject_refs_json"]))
             predicate = json.loads(row["typed_predicate_json"])
             matches = []
             watch_kind = str(row["watch_kind"])
+            if watch_kind == "spatial_scope":
+                continue
+            # A saved member list is not authority after scope invalidation.
+            if watch_kind != "milestone" and any(
+                    subject.startswith("watch-") and subject not in registry for subject in subjects):
+                continue
+            milestone_state = None
+            if watch_kind == "milestone":
+                if row["linked_plan_id"] not in active_plans:
+                    continue
+                from smacx_milestones import evaluate_milestone
+                milestone_state, completed = evaluate_milestone(predicate, current_objects, registry, temporal)
+                prior_state = predicate.get("_state")
+                predicate["_completed"] = completed
+                if prior_state != milestone_state["state"] and (
+                        milestone_state["state"] in {"ready", "blocked"} or prior_state == "ready"):
+                    matches.append({"milestone": milestone_state})
+                # If nothing is emitted this calculation is still durable.
+                # For a transition, persist state only after attention enqueue
+                # so a crash cannot lose the notification.
+                if not matches:
+                    predicate["_state"] = milestone_state["state"]
+                    with self.store.transaction() as connection:
+                        connection.execute("UPDATE world_watches SET typed_predicate_json=? WHERE watch_id=?",
+                                           (canonical_json(predicate), row["watch_id"]))
+            if watch_kind == "production":
+                for event in temporal:
+                    if str(event.get("base_ref") or "") in subjects \
+                            and str(event.get("event_kind") or "").startswith("production_") \
+                            and self._watch_predicate_matches(predicate, {
+                                "change": event["event_kind"], "current": event}):
+                        matches.append({"temporal_event": event})
             if watch_kind in {"region_entry", "region_exit", "frontier_contact",
                               "route_disruption", "rendezvous_progress"}:
                 watched_locations = set(map(str, predicate.get("_subject_location_refs") or ()))
@@ -810,20 +1024,26 @@ class AttentionService:
                     region = regions.get(subject)
                     if region:
                         watched_locations.update(region.location_refs)
+                    elif registry.get(subject, {}).get("kind") == "scope":
+                        watched_locations.update(registry[subject]["location_refs"])
                     elif subject.startswith("location-"):
                         watched_locations.add(subject)
                 for event in temporal:
+                    # A newly visible contact is not evidence of a crossing.
+                    # Native movement records contain individually observed
+                    # segments; never bridge a visibility gap using endpoints.
+                    crossing_event = event.get("event_kind") in {"unit_moved", "contact_moved"}
                     path = event.get("path") if isinstance(event.get("path"), list) else []
                     segments = [(str(step.get("from_location_ref") or ""),
                                  str(step.get("to_location_ref") or ""))
                                 for step in path if isinstance(step, Mapping)]
-                    if not segments:
+                    if not segments and watch_kind not in {"region_entry", "region_exit"}:
                         segments = [(str(event.get("from_location_ref") or ""),
                                      str(event.get("to_location_ref")
                                          or event.get("location_ref") or ""))]
-                    entered = any(before not in watched_locations and after in watched_locations
+                    entered = crossing_event and any(before and after and before not in watched_locations and after in watched_locations
                                   for before, after in segments)
-                    exited = any(before in watched_locations and after not in watched_locations
+                    exited = crossing_event and any(before and after and before in watched_locations and after not in watched_locations
                                  for before, after in segments)
                     direct_refs = {str(event.get(key) or "") for key in
                                    ("contact_ref", "base_ref", "location_ref", "frontier_ref",
@@ -850,12 +1070,16 @@ class AttentionService:
                     if predicate.get("relationship") == "hostile":
                         from smacx_mechanics import relationship_class, field_is_current
                         contact = current_objects.get(str(event.get("contact_ref") or event.get("unit_ref") or ""), {})
-                        matched = matched and contact.get("kind") == "foreign_contact" and contact.get("status") == "active" and field_is_current(contact, "relationship") and relationship_class(contact) == "hostile"
+                        matched = (matched and contact.get("kind") == "foreign_contact"
+                                   and contact.get("status") == "active"
+                                   and field_is_current(contact, "last_seen_turn")
+                                   and field_is_current(contact, "relationship")
+                                   and relationship_class(contact) == "hostile")
                     if matched and self._watch_predicate_matches(predicate, {
                             "change": str(event.get("event_kind") or "changed"),
                             "current": event}):
                         matches.append({"temporal_event": event})
-            for delta in changes if watch_kind not in {"region_entry", "region_exit"} else ():
+            for delta in changes if watch_kind not in {"region_entry", "region_exit", "production", "milestone"} else ():
                 current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
                 candidate_refs = {
                     str(delta.get("object_ref") or ""),
@@ -875,6 +1099,11 @@ class AttentionService:
                 "watch_id": str(row["watch_id"]), "watch_kind": str(row["watch_kind"]),
                 "subject_refs": sorted(subjects), "matches": matches[:8],
             }
+            scope_evidence = [{"scope_ref": ref, **registry[ref]["descriptor"]}
+                              for ref in sorted(subjects)
+                              if registry.get(ref, {}).get("kind") == "scope"]
+            if scope_evidence:
+                payload["scope_evidence"] = scope_evidence
             queued = self.enqueue(
                 "watch_trigger", payload, observation_cursor=observation_cursor,
                 priority=int(row["priority"]), critical=False, turn=turn,
@@ -882,6 +1111,10 @@ class AttentionService:
                 dedupe_key=f"{row['watch_id']}:{observation_cursor}",
             )
             with self.store.transaction() as connection:
+                if milestone_state is not None:
+                    predicate["_state"] = milestone_state["state"]
+                    connection.execute("UPDATE world_watches SET typed_predicate_json=? WHERE watch_id=?",
+                                       (canonical_json(predicate), row["watch_id"]))
                 connection.execute(
                     "UPDATE world_watches SET last_triggered_cursor=?,updated_unix=? "
                     "WHERE watch_id=? AND status='active'",

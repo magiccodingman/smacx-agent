@@ -128,6 +128,12 @@ def main() -> int:
         assert [item["goal_key"] for item in pressured["goals"]] == ["live-goal"]
         assert len(pressured["plans"]) == 1
         assert pressured["plans"][0]["title"] == "Current revision"
+        journal.append(pressure_scope, "memory.plan", {"record": {
+            "plan_id": "plan-completed-newer", "plan_key": "completed-newer", "title": "Resolved",
+            "status": "completed", "created_unix": 10000}})
+        assert journal.projection_records(pressure_scope, "plans", limit=1, statuses={"active"})[0]["plan_key"] == "reserve-plan"
+        assert journal.projection_records(pressure_scope, "plans", limit=1,
+                                          record_ids={"plan-completed-newer"})[0]["status"] == "completed"
         assert journal.search(pressure_scope, "historical", document_kinds=("commitment",))
         print(json.dumps({
             "event": "pass", "payload": {

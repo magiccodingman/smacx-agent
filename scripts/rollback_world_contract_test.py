@@ -65,6 +65,13 @@ def main() -> int:
                           observation_cursor=6, priority=80, critical=True)
         attention.create_watch("base_threat", ["base-home"],
                                {"field": "threatened", "equals": True}, current_turn=6)
+        future_scope = attention.create_watch("spatial_scope", ["base-home"],
+                                             {"type": "proximity", "radius": 2}, current_turn=6)
+        future_plan = store.put_plan(scope, "future-staging", "Future staging", "Future intent")
+        journal.append(scope, "memory.plan", {"record": future_plan})
+        future_milestone = attention.create_watch("milestone", ["base-home"],
+                                                  {"requirements": [{"ref": "base-home", "kind": "exists"}]},
+                                                  current_turn=6, linked_plan_id=future_plan["plan_id"])
         operation_refs = ["base-home"]
         dependencies = attention.semantic_dependency_hashes()
         attention.upsert_operation(

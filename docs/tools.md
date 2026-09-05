@@ -24,10 +24,17 @@ operator/control operations and are not advertised to the model.
   the current at-least-once attention lease. An aborted provider request leaves
   the same IDs eligible for redelivery; acknowledgement never resolves a modal
   or platform incident.
-- `smac_cognition(...)` — create/close a bounded typed watch or create/update/
-  complete one disposable operation. These scopes are useful for real ongoing
-  concerns, not required rituals. Durable goals and plans remain journaled
-  sovereign cognition.
+- `smac_cognition(...)` — create/inspect/close typed watches, create/inspect
+  bounded spatial scopes, inspect journal-authoritative plan health, or maintain
+  one disposable operation. `scope_create` takes existing semantic source refs
+  and `predicate_json` with `type`, optional `radius` (0–16), and `domain`
+  (`land`, `sea`, `both`). Types are `proximity`, `geography`, `route_corridor`,
+  `base_radius`, and `union` (up to eight scope refs). `watch_create` with
+  `kind="milestone"` requires an active journaled plan and at most 16 typed
+  requirements; `watch_inspect` returns qualified readiness. `plan_health`
+  reports explicit assignments, reservations and dependency exceptions.
+  Scopes share the 32-watch limit and ten-turn renewal lifetime. Durable goals
+  and plans remain journaled sovereign cognition.
 - `smac_choices(kind, base_ref, own_unit_ref, target_location_ref, target_unit_ref, preparation_ref, option_ref, amount)` — bounded detailed enumeration for interaction, research, allocation, Social Engineering, diplomacy, Council, Unit Workshop, production, base management, citizens, units, or game management. The service resolves refs only against the active perspective/timeline/epoch and same native revision; stale, lost-contact, foreign-seat, or fabricated refs fail closed. Executable results remain opaque and native selectors remain private. A returned preparation accepts only its issued option or advertised bounded energy amount. Preparation is read-only; its final current native-validated choice executes through `smac_execute_choice`.
 - `smac_wait(seconds)` — bounded wait while the engine or another faction owns the turn.
 - `smac_chat(...)` — list or send guarded native LAN chat scoped to the current match/session and optional recipient faction. It persists delivered speech with network-player/faction associations and exactly-once attention state.

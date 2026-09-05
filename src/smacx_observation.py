@@ -44,8 +44,21 @@ def _delta_attention(delta: Mapping[str, Any]) -> tuple[bool, int] | None:
     if kind == "foreign_contact":
         return True, 90
     if kind == "base":
-        if change in {"appeared", "removed"} or values.get("threatened") \
-                or values.get("drone_riots"):
+        if change in {"appeared", "removed"}:
+            return True, 90
+        previous = delta.get("previous")
+        if isinstance(previous, Mapping):
+            meaningful = {"owner_ref", "population", "drone_riots", "threatened", "facilities",
+                          "production_name", "production_queue", "governor", "nerve_stapling", "eco_damage"}
+            if delta.get("production_occurrence"):
+                meaningful -= {"production_name", "production_queue"}
+            changed = {name for name in meaningful
+                       if _field_value(current, name) != _field_value(previous, name)}
+            if not changed:
+                return None
+            if "owner_ref" in changed or any(name in changed and values.get(name) for name in ("threatened", "drone_riots")):
+                return True, 90
+        elif values.get("threatened") or values.get("drone_riots"):
             return True, 90
         return False, 55
     if kind in {"project", "project_state", "project_race_state", "orbital_state",
@@ -573,6 +586,7 @@ class ObservationCollector:
                 "to_tile_id": item.get("to_tile_id"),
                 "value_before": item.get("value_before"),
                 "value_after": item.get("value_after"),
+                "item_name": str(item.get("item_name") or "")[:64],
                 "continuous_visibility": bool(item.get("continuous_visibility", False)),
             }
             saw_inbound_chat = saw_inbound_chat or payload["native_kind"] == "chat_inbound"
@@ -707,6 +721,42 @@ class ObservationCollector:
                 if kind == "visible_unit_damaged":
                     event.update({"observed_hp_before": raw.get("value_before"),
                                   "observed_hp_after": raw.get("value_after")})
+                events.append(event)
+            elif kind in {"owned_production_completed", "owned_queue_advanced", "owned_queue_exhausted",
+                          "owned_production_repeat", "owned_production_fallback", "owned_project_interrupted"} and location:
+                event = {
+                    "event_kind": {"owned_production_completed": "production_completed",
+                                   "owned_queue_advanced": "production_queue_advanced",
+                                   "owned_queue_exhausted": "production_queue_exhausted",
+                                   "owned_production_repeat": "production_repeat_selected",
+                                   "owned_production_fallback": "production_fallback_selected",
+                                   "owned_project_interrupted": "production_interrupted"}[kind],
+                    "base_ref": f"base-{location}", "location_ref": location,
+                    "item_name": str(raw.get("item_name") or "")[:64],
+                    "turn": raw.get("turn", turn),
+                    "occurrence_ref": "production-" + content_hash({
+                        "session": self.session_id, "timeline": self.timeline_id,
+                        "sequence": raw.get("native_sequence"), "kind": kind,
+                    })[:24],
+                    "evidence_kind": "owned_native_occurrence",
+                }
+                if kind == "owned_production_completed":
+                    event["item_kind"] = {0: "unit", 1: "facility", 2: "secret_project"}.get(
+                        raw.get("value_before"), "unknown")
+                    handle = raw.get("value_after")
+                    completed_unit = current_handle_to_ref.get(f"vehicle-handle-{handle}")
+                    if event["item_kind"] == "unit" and type(handle) is int and handle >= 0:
+                        # The owned-only birth hook already issued this stable
+                        # identity. Preserve it even when the unit was destroyed
+                        # before reconciliation; never substitute a compacted row.
+                        completed_unit = completed_unit or f"own-unit-{handle}"
+                    if completed_unit:
+                        event["unit_ref"] = completed_unit
+                elif kind == "owned_project_interrupted":
+                    event["item_kind"] = "secret_project"
+                    event["reason"] = "project_no_longer_unbuilt"
+                else:
+                    event["queued_items_remaining"] = raw.get("value_before")
                 events.append(event)
             elif kind.startswith("visible_base_"):
                 semantic_kind = {
@@ -856,11 +906,16 @@ class ObservationCollector:
             journal_events_written += 1
             observation_rows_written += 1
 
+        prior_by_ref = {str(item["object_ref"]): provider_safe(item) for item in prior_objects}
+        production_bases = {str(event.get("base_ref")) for event in temporal_events
+                            if str(event.get("event_kind") or "").startswith("production_")}
         attention_groups: dict[tuple[bool, int], list[dict[str, Any]]] = {}
         for delta in deltas:
             if self.attention is None:
                 break
-            classification = _delta_attention(delta)
+            classification = _delta_attention({**delta,
+                "previous": prior_by_ref.get(str(delta.get("object_ref"))),
+                "production_occurrence": str(delta.get("object_ref")) in production_bases})
             if classification is not None:
                 attention_groups.setdefault(classification, []).append(delta)
         if self.attention is not None:
@@ -893,8 +948,9 @@ class ObservationCollector:
             )
             journal_events_written += 1
             observation_rows_written += 1
-        prior_by_ref = {str(item["object_ref"]): provider_safe(item) for item in prior_objects}
         if self.attention is not None and (deltas or temporal_events):
+            self.attention.capture_production_attention(
+                temporal_events, observation_cursor=cursor, turn=turn, session_id=self.session_id)
             self.attention.evaluate_watches(
                 [{**delta, **({"previous": prior_by_ref[str(delta["object_ref"])]}
                               if str(delta["object_ref"]) in prior_by_ref else {})}

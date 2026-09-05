@@ -23,7 +23,7 @@ import tarfile
 import tempfile
 import threading
 import time
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 import uuid
 
 from smacx_store import MemoryScope
@@ -838,12 +838,23 @@ class CampaignJournal:
 
     def projection_records(
         self, scope: MemoryScope, kind: str, *, limit: int = 200,
+        statuses: Iterable[str] | None = None, record_ids: Iterable[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Read a structured projection exclusively from the active journal timeline."""
         allowed = {"claims", "beliefs", "relationships", "commitments", "goals", "plans", "summaries"}
         if kind not in allowed:
             raise JournalError("invalid_projection_kind")
-        return self._current_records(self.replay(scope), kind)[:min(max(int(limit), 1), 1000)]
+        records = self._current_records(self.replay(scope), kind)
+        # Filter binding intent before truncation. Recent resolved records must
+        # never hide an older active plan or revoke an explicitly linked watch.
+        if statuses is not None:
+            selected_statuses = set(map(str, statuses))
+            records = [item for item in records if str(item.get("status") or "active") in selected_statuses]
+        if record_ids is not None:
+            selected_ids = set(map(str, record_ids))
+            id_field = kind.removesuffix("s") + "_id"
+            records = [item for item in records if str(item.get(id_field) or "") in selected_ids]
+        return records[:min(max(int(limit), 1), 1000)]
 
     def chat_messages(
         self, scope: MemoryScope, *, unread_only: bool = False,

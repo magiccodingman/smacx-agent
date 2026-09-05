@@ -107,6 +107,7 @@ struct NativeObservationEvent {
     int value_after;
     bool continuous_visibility;
     char kind[32];
+    char item_name[64];
 };
 NativeObservationEvent observation_events[MaxObservationEvents] = {};
 size_t observation_event_start = 0;
@@ -123,7 +124,7 @@ bool known_project_builder_valid[SP_ID_Last + 1] = {};
 void append_observation_event(const char* kind, int turn, int subject_a = -1,
 int subject_b = -1, int from_tile_id = -1, int to_tile_id = -1,
 int value_before = -1, int value_after = -1,
-bool continuous_visibility = false) {
+bool continuous_visibility = false, const char* item_name = nullptr) {
     if (!kind || !kind[0]) return;
     size_t index = 0;
     if (observation_event_count < MaxObservationEvents) {
@@ -145,6 +146,8 @@ bool continuous_visibility = false) {
     event.value_after = value_after;
     event.continuous_visibility = continuous_visibility;
     lstrcpynA(event.kind, kind, static_cast<int>(sizeof(event.kind)));
+    lstrcpynA(event.item_name, item_name ? item_name : "",
+        static_cast<int>(sizeof(event.item_name)));
 }
 
 int semantic_project_id_from_name(const char* name) {
@@ -1282,6 +1285,9 @@ int test_self_destruct_blast_damage = -1;
 bool test_base_status_fixture_initialized = false;
 int test_base_status_fixture_base_id = -1;
 bool test_production_notice_fixture_initialized = false;
+int test_production_completion_base = -1;
+int test_production_completion_facility = -1;
+bool test_production_interruption = false;
 bool test_endgame_fixture_initialized = false;
 int test_endgame_fixture_stage = -1;
 bool test_full_endgame_fixture_initialized = false;
@@ -3909,7 +3915,12 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "PRODUCEG" || label == "PRODUCEX" || label == "PRODUCEXQ"
         || label == "PRODUCEXG" || label == "PRODUCE2" || label == "PRODUCE3"
         || label == "PRODUCEPROTO" || label == "PRODUCEPROTOQ"
-        || label == "PRODUCEPROTOG";
+        || label == "PRODUCEPROTOG"
+        // These three Script.txt entries contain text only. Production has
+        // already been refused; acknowledgement neither changes the queue
+        // nor chooses replacement production.
+        || label == "ALREADYPROJECT0" || label == "ALREADYPROJECT1"
+        || label == "ALREADYPROJECT2";
     return label.compare(0, 10, "PLANETFALL") == 0
         || label == "SIMULYOU" || label == "SIMULWHOSE"
         || label == "ALIENSARRIVE" || label == "SURPRISE"
@@ -4015,6 +4026,18 @@ bool native_technology_presentation_active() {
     // Stock Alien Crossfire NetTechWindow vtable. Do not treat an unrelated
     // modal object as the passive technology presentation.
     return *reinterpret_cast<uintptr_t*>(NetTechWin) == 0x66CE5C;
+}
+
+int project_information_id() {
+    Win* window = reinterpret_cast<Win*>(DatalinkWin);
+    if (!*WinModalState || !window || *ModalStackCurrent != window
+    || !Win_is_visible(window) || *reinterpret_cast<uintptr_t*>(window) != 0x66AF84) return -1;
+    // help_project (0x44C9E0) opens Datalink::show (0x429180) with
+    // category 11 and the facility ID. Its selected category/item live here.
+    const char* data = reinterpret_cast<const char*>(window);
+    const int category = *reinterpret_cast<const int*>(data + 0x29DC);
+    const int item = *reinterpret_cast<const int*>(data + 0x29E0);
+    return category == 11 && item >= SP_ID_First && item <= SP_ID_Last ? item : -1;
 }
 
 bool technology_presentation_active() {
@@ -4264,6 +4287,7 @@ std::string interaction_kind(int faction_id) {
     if (*WinModalState || *PopupDialogState) {
         if (first_base_name_modal(faction_id)) return "first_base_name";
         if (technology_presentation_active()) return "technology_presentation";
+        if (project_information_id() >= 0) return "project_information";
         if (semantic_popup_label()[0]
         && (endgame_presentation_phase.empty() || active_default_popup())) {
             return "popup";
@@ -4390,7 +4414,7 @@ bool semantic_interaction_command(const std::string& command) {
         "respond_to_nerve_gas", "respond_to_end_turn_confirmation",
         "respond_to_base_obliteration", "respond_to_supreme_leader",
         "respond_to_game_over", "advance_endgame_presentation",
-        "advance_technology_presentation",
+        "advance_technology_presentation", "advance_project_information",
         "respond_to_design_offer",
         "respond_to_artifact", "respond_to_monolith",
         "respond_to_probe_incident", "choose_probe_sabotage_target",
@@ -4467,6 +4491,7 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(*WinModalState));
     mix(static_cast<uint32_t>(*PopupDialogState));
     mix(static_cast<uint32_t>(*GameHalted));
+    mix(static_cast<uint32_t>(project_information_id()));
     mix(semantic_mutation_generation);
     mix(static_cast<uint32_t>(pending_multiplayer_technology_presentations.size()));
     for (size_t index = 0;
@@ -4879,6 +4904,7 @@ std::string observation_feed_response(const std::string& request) {
             << ",\"to_tile_id\":" << event.to_tile_id
             << ",\"value_before\":" << event.value_before
             << ",\"value_after\":" << event.value_after
+            << ",\"item_name\":" << json_string(event.item_name)
             << ",\"continuous_visibility\":"
             << (event.continuous_visibility ? "true" : "false") << '}';
         last = event.sequence;
@@ -9173,6 +9199,90 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
+    if (phase == "production_prepare") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player production fixture only.");
+        for (int facility : {FAC_RECREATION_COMMONS, FAC_WEATHER_PARADIGM}) {
+            const int technology = Facility[facility].preq_tech;
+            if (technology >= 0 && technology < MaxTechnologyNum) TechOwners[technology] |= 1 << faction;
+        }
+        set_fac(FAC_RECREATION_COMMONS, base_id, 0);
+        SecretProjects[FAC_WEATHER_PARADIGM - SP_ID_First] = SP_Unbuilt;
+        ++semantic_mutation_generation;
+        return "{\"ok\":true}";
+    }
+    if (phase == "production_facility" || phase == "production_project" || phase == "production_interrupt") {
+        if (*MultiplayerActive || test_production_completion_base >= 0
+        || deferred_action.status == "pending")
+            return error_response("fixture_unavailable", "Requires an idle single-player production fixture.");
+        const FacilityId facility = phase == "production_facility" ? FAC_RECREATION_COMMONS : FAC_WEATHER_PARADIGM;
+        const int technology = Facility[facility].preq_tech;
+        if (technology >= 0 && technology < MaxTechnologyNum) TechOwners[technology] |= 1 << faction;
+        const bool interrupted = phase == "production_interrupt";
+        if (interrupted && SecretProjects[facility - SP_ID_First] != base_id)
+            return error_response("fixture_unavailable", "Complete the controlled project before testing interruption.");
+        if (facility >= SP_ID_First) {
+            if (!interrupted) SecretProjects[facility - SP_ID_First] = SP_Unbuilt;
+        } else set_fac(facility, base_id, 0);
+        BASE& base = Bases[base_id];
+        base.governor_flags &= ~(GOV_ACTIVE | GOV_MANAGE_PRODUCTION);
+        base.queue_size = 0;
+        base.queue_items[0] = -facility;
+        base.nutrients_accumulated = std::max(0, base.nutrients_accumulated);
+        base.minerals_accumulated = 10000;
+        test_production_completion_base = base_id;
+        test_production_completion_facility = facility;
+        test_production_interruption = interrupted;
+        begin_deferred_action("test_production_completion");
+        if (!PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0)) {
+            test_production_completion_base = -1;
+            deferred_action.status = "rejected";
+            return error_response("fixture_queue_failed", "Could not schedule native production.");
+        }
+        return "{\"ok\":true,\"queued\":true,\"action_id\":" + std::to_string(deferred_action.id)
+            + ",\"item_name\":" + json_string(Facility[facility].name) + "}";
+    }
+    if (phase == "production") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Production comparison is single-player only.");
+        const int prior_base = *CurrentBaseID;
+        const auto prior_warnings = *GameWarnings;
+        const int prior_production_guard = *dword_90EA40;
+        auto restore = cleanup_handler([&] {
+            *GameWarnings = prior_warnings;
+            *dword_90EA40 = prior_production_guard;
+            if (prior_base >= 0 && prior_base < *BaseCount) set_base(prior_base);
+        });
+        // Controlled native comparison: stock production executes twice with
+        // sufficient minerals. Only stop-warning preferences are suppressed
+        // during this dual-gated test; ordinary gameplay is untouched.
+        *GameWarnings = 0;
+        *dword_90EA40 = 0;
+        for (int other = 1; other < MaxPlayerNum; ++other) {
+            Factions[faction].diplo_spoke[other] = *CurrentTurn;
+            Factions[other].diplo_spoke[faction] = *CurrentTurn;
+        }
+        BASE& base = Bases[base_id];
+        base.governor_flags &= ~(GOV_ACTIVE | GOV_MANAGE_PRODUCTION);
+        base.queue_items[0] = BSC_SCOUT_PATROL;
+        base.queue_items[1] = BSC_SCOUT_PATROL;
+        base.queue_size = 1;
+        base.nutrients_accumulated = std::max(0, base.nutrients_accumulated);
+        const int before = *VehCount;
+        for (int iteration = 0; iteration < 2; ++iteration) {
+            set_base(base_id);
+            base_compute(0);
+            base.minerals_accumulated = 10000;
+            mod_base_production();
+        }
+        ++semantic_mutation_generation;
+        std::ostringstream out;
+        const std::string observed_base_ref = "base-location-" + std::to_string(semantic_tile_id(base.x, base.y));
+        out << "{\"ok\":" << (*VehCount == before + 2 ? "true" : "false")
+            << ",\"created_unit_count\":" << *VehCount - before
+            << ",\"base_ref\":" << json_string(observed_base_ref.c_str())
+            << ",\"item_name\":" << json_string(Units[BSC_SCOUT_PATROL].name)
+            << ",\"remaining_queue_size\":" << base.queue_size << '}';
+        return out.str();
+    }
     if (phase == "council") {
         for (int other = 1; other < MaxPlayerNum; ++other) {
             if (other != faction && is_alive(other)) treaty_on(faction, other, DIPLO_COMMLINK);
@@ -9838,7 +9948,7 @@ std::string semantic_snapshot_response() {
         out << "{\"project_id\":" << project_id
             << ",\"name\":" << json_string(Facility[project_id].name)
             << ",\"owner_ref\":\"faction-"
-            << Bases[project_base_id].faction_id << "\"}";
+            << static_cast<int>(Bases[project_base_id].faction_id) << "\"}";
     }
     out << ']'
         << ",\"ready_unit_refs\":[";
@@ -12339,6 +12449,13 @@ std::string semantic_choices_response(const std::string& request) {
                 << ",\"clauses\":";
             append_human_diplomacy_clauses(out);
             out << '}';
+        } else if (project_information_id() >= 0) {
+            const int project = project_information_id();
+            out << "{\"id\":\"project_information:close\","
+                "\"command\":\"advance_project_information\","
+                "\"meaning\":\"Close this passive native Secret Project information window.\"},"
+                "{\"id\":\"project_information:context\",\"kind\":\"information\","
+                "\"project_name\":" << json_string(Facility[project].name) << '}';
         } else if (technology_presentation_active()) {
             int tech_id = technology_presentation_tech_id();
             out << "{\"id\":\"technology_presentation:advance\","
@@ -13904,6 +14021,7 @@ std::string semantic_command_response(const std::string& request) {
             && human_diplomacy_window_active())
         || (command == "advance_technology_presentation"
             && technology_presentation_active())
+        || (command == "advance_project_information" && project_information_id() >= 0)
         || (command == "choose_research_priority"
             && active_label == "TECHRANDOM")
         || validated_multiplayer_move || validated_multiplayer_finish
@@ -14175,6 +14293,15 @@ std::string semantic_command_response(const std::string& request) {
             "\"initiator_faction_id\":") + std::to_string(initiator)
             + ",\"counterpart_faction_id\":" + std::to_string(counterpart)
             + ",\"native_packet_submitted\":true}";
+    }
+    if (command == "advance_project_information") {
+        if (project_information_id() < 0)
+            return error_response("project_information_changed", "The exact passive project window is no longer active. Observe again.");
+        // Datalink's native close button (0x431EF0) and Enter/Escape handler
+        // (0x431FEA) both call vtable +0xE8 = Win_release_modal. This releases
+        // the native modal loop; hiding the window would not complete it.
+        Win_release_modal(reinterpret_cast<Win*>(DatalinkWin));
+        return "{\"ok\":true,\"command\":\"advance_project_information\",\"transition\":\"waiting_for_engine\"}";
     }
     if (command == "advance_technology_presentation") {
         int tech_id = technology_presentation_tech_id();
@@ -17886,6 +18013,57 @@ void agent_observe_unit_destroyed(int veh_id) {
         sampled_vehicles.erase(sampled_vehicles.begin() + veh_id);
 }
 
+void agent_observe_production_completed(int base_id, int production_id,
+int category, int veh_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    const int handle = veh_id >= 0 && veh_id < *VehCount
+        ? semantic_vehicle_handle(veh_id) : -1;
+    append_observation_event("owned_production_completed", *CurrentTurn,
+        base_id, production_id, tile_id, tile_id, category, handle, true,
+        prod_name(production_id));
+}
+
+void agent_observe_project_interrupted(int base_id, int production_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("owned_project_interrupted", *CurrentTurn,
+        base_id, production_id, tile_id, tile_id, 0, 0, true,
+        prod_name(production_id));
+}
+
+void agent_observe_production_queue(int base_id, bool advanced) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event(advanced ? "owned_queue_advanced" : "owned_queue_exhausted",
+        *CurrentTurn, base_id, base.queue_items[0], tile_id, tile_id,
+        base.queue_size, -1, true, prod_name(base.queue_items[0]));
+}
+
+void agent_observe_production_selection(int base_id, bool repeat) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event(repeat ? "owned_production_repeat" : "owned_production_fallback",
+        *CurrentTurn, base_id, base.queue_items[0], tile_id, tile_id,
+        base.queue_size, -1, true, prod_name(base.queue_items[0]));
+}
+
 void agent_observe_base_founded(int base_id) {
     if (!lock_initialized || !game_active() || base_id < 0
     || base_id >= *BaseCount) return;
@@ -18184,6 +18362,41 @@ void agent_bridge_start_once(HWND hwnd) {
 
 bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
     if (msg == WM_SMACX_AGENT_DEFERRED) {
+        if (test_production_completion_base >= 0) {
+            const int base_id = test_production_completion_base;
+            const FacilityId facility = static_cast<FacilityId>(test_production_completion_facility);
+            const bool interrupted = test_production_interruption;
+            test_production_completion_base = -1;
+            test_production_completion_facility = -1;
+            test_production_interruption = false;
+            if (!game_active() || base_id >= *BaseCount
+            || Bases[base_id].faction_id != *CurrentPlayerFaction
+            || !human_turn_actionable(*CurrentPlayerFaction)) {
+                deferred_action.status = "rejected";
+                deferred_action.resolution = "production_fixture_not_actionable";
+                return true;
+            }
+            const int prior_base = *CurrentBaseID;
+            BASE* prior_pointer = *CurrentBase;
+            auto restore = cleanup_handler([&] { *CurrentBaseID = prior_base; *CurrentBase = prior_pointer; });
+            set_base(base_id);
+            base_compute(0);
+            Bases[base_id].minerals_accumulated = 10000;
+            const int unspent_minerals = 10000 + ((Bases[base_id].state_flags & BSTATE_DRONE_RIOTS_ACTIVE)
+                ? 0 : std::max(0, Bases[base_id].mineral_surplus));
+            // Native completion/presentation executes outside the protected
+            // request frame. Any popup remains available to managed choices.
+            mod_base_production();
+            const bool completed = facility >= SP_ID_First
+                ? SecretProjects[facility - SP_ID_First] == base_id : has_fac_built(facility, base_id);
+            const bool verified = completed && (!interrupted
+                || (Bases[base_id].queue_items[0] == -facility && Bases[base_id].minerals_accumulated == unspent_minerals));
+            deferred_action.status = verified ? "completed" : "failed";
+            deferred_action.resolution = verified ? (interrupted ? "native_project_interruption_verified"
+                : "native_production_effect_verified") : "native_production_effect_mismatch";
+            ++semantic_mutation_generation;
+            return true;
+        }
         if (lan_test_lobby_pending) {
             // semantic_lan(host/join) is requested while TOPMENU's SetupWin
             // owns the native modal loop.  Calling multiplayer_init directly
