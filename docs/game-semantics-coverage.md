@@ -276,3 +276,9 @@ This matrix covers the requested provider/effect/recovery chain. It does not cla
 ### H1–H5 integrated acceptance
 
 All 41 distinct scripts pass, including the 22-case publication crash matrix, four concurrent visibility cases, 17 episode/gap adversaries and eight inspection authority cases. The final five exact 25,600-square/nine-scope/four-watch runs pass the unchanged active-publication/probe gates; both five-run H-review distributions and all historical failed/passing timing data are preserved in the [H-review ledger](benchmarks/2026-09-05-h-review.md). Automatic inspection validation also preserves explicit inspection time and rejects changed rulesets. Native adapter compilation passes; the unchanged native cross-build reports no work. This is deterministic/native-shaped/compiled-adapter acceptance, not a new running-game, LAN, .NET or provider-tokenizer run. PR remains unmerged for independent final review.
+
+### Packaged-image deployment checkpoint (2026-09-05)
+
+The control image now includes `smacx_temporal_episodes`; the Graphiti image includes the world-store publication-barrier dependencies. The built control image passes all 17 cross-publication episode cases with only test scripts mounted (production source comes from the image). The built Graphiti image imports its publication dependencies and reads an empty committed cursor using a temporary initialized store. The full Graphiti fixture cannot run unchanged in that image because its timeline-fork setup requires Git, which the projector runtime does not install; no full packaged Graphiti fixture pass is claimed.
+
+Deployment against the existing local database fails closed with `unsupported_prerelease_schema_recreate_database`. Existing volumes are preserved; this checkpoint does not claim a successful current-version live deployment or game acceptance. A fresh compatible database is required by the locked prerelease schema contract.
