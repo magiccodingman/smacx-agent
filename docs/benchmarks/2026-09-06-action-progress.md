@@ -133,3 +133,31 @@ trace; it does not certify every action family or provider behavior. Native save
 binaries and private runtime logs remain excluded from Git. Full managed live
 acceptance, final image deployment, portal validation and the sovereign game
 remain pending.
+
+## Integrated repair acceptance
+
+The final rebuilt control image and worker passed the isolated
+`control_worker_mcp_live_test.py` with `SMACX_TEST_ACTION_CONTAINMENT=1`.
+Four invalid submissions crossed the real MCP endpoint, returned no native
+dispatch, opened the failure circuit, and caused both the native worker and MCP
+collector to become Docker-paused. This verifies deployed containment in an
+isolated installation, not merely the simulated Docker boundary.
+
+The same run passed the existing 15-tool managed action families, controlled
+native counterfactual comparisons, crash/checkpoint restoration, semantic identity
+preservation, journaled plan/reservation recovery, and rejection of old-timeline
+watches and choices. A preceding run also passed the full baseline. Neither run
+used a sovereign provider; provider behavior and the full game remain unproven.
+
+The reviewed engine registry now includes the native receipt/movement-field
+source revision. Final images: control
+`sha256:f70a2c32ec7f15933ffa06eb3ec94022e0dccb449e796417b783d078d8973703`,
+worker `sha256:c1f5297a28a13f4378bd2c7d1fdadd4f96c77c64c29de56b330c7f881944d57c`.
+The local Qwen3.8-27B tokenizer measured the operational prompt at 1,175 tokens
+and the representative compiled stock fixture at 8,340. These are tokenizer
+measurements, not cache reuse or campaign performance claims. Sanitized results
+are in `2026-09-06-action-progress-live.json`.
+
+Production deployment, browser incident presentation, and sustained sovereign
+playthrough remain the next checkpoint. The actual cause of the four native
+move rejections remains unknown; this repair does not assert a movement-engine fix.

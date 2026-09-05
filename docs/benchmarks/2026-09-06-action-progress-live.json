@@ -1,0 +1,81 @@
+{
+  "classification": "isolated real native and MCP acceptance; no sovereign provider gameplay",
+  "results": [
+    {
+      "event": "action_containment",
+      "payload": {
+        "four_real_mcp_protocol_failures": true,
+        "native_action_not_dispatched": true,
+        "native_and_collector_docker_paused": true
+      }
+    },
+    {
+      "event": "pass",
+      "payload": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": true,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 225.258,
+          "maximum_page_bytes": 139529,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 4548,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 253.4,
+          "enumeration_probe_gap_ms": 233.348,
+          "enumeration_payload_bytes": 8670,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 260.673,
+          "exact_probe_gap_ms": 290.979,
+          "exact_payload_bytes": 288,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      }
+    }
+  ],
+  "tokenizer": {
+    "model": "Qwen3.8-27B",
+    "classification": "live tokenizer only; no gameplay or cache-reuse claim",
+    "measurements": [
+      {
+        "name": "operational",
+        "bytes": 5575,
+        "exact_tokens": 1175,
+        "sha256": "75cb162491a082a32a09308d1193d5f92d5eb62f57489bf29367b818725f895a"
+      },
+      {
+        "name": "compiled_stock",
+        "bytes": 43191,
+        "exact_tokens": 8340,
+        "sha256": "f0fcfa87e3974ff7263c03beabc45c59fd5b1a2f0bb0812be36e04342c47e0bc"
+      }
+    ]
+  }
+}
