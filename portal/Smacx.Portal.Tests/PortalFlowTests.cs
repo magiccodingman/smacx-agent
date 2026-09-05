@@ -181,6 +181,16 @@ public sealed class PortalFlowTests : IAsyncLifetime
             "standard", "small", "talent", true, false, false, false, true);
         var created = await PostAsync<LobbyDetails>("api/lobbies", request, csrf.Token);
         var matchId = created.Payload.Data!.MatchId;
+        var startup = factory!.Services.GetRequiredService<Smacx.Portal.Services.LobbyStartupTracker>();
+        Assert.True(startup.TryBegin(matchId));
+        var preparing = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
+        Assert.NotNull(preparing.StartupRequestedAt);
+        Assert.All(preparing.Seats, seat => { Assert.False(seat.CanJoin); Assert.False(seat.CanLeave); });
+        var blockedEdit = await PutAsync<LobbyDetails>($"api/lobbies/{matchId}/seats/0", new UpdateLobbySeatRequest("open"), csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, blockedEdit.Response.StatusCode);
+        startup.End(matchId);
+        Assert.Null((await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}")).StartupRequestedAt);
+
 
         await using var scope = factory!.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

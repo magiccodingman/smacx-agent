@@ -26,7 +26,8 @@ public sealed class LobbiesController(
     WaitingLobbyPresenceTracker waitingPresence,
     WaitingLobbyPolicy waitingLobbyPolicy,
     MatchAccessService matchAccess,
-    PersonalityCardLibrary personalityCards) : ControllerBase
+    PersonalityCardLibrary personalityCards,
+    LobbyStartupTracker startupTracker) : ControllerBase
 {
     private static readonly SemaphoreSlim WaitingLobbyCreationGate = new(1, 1);
     [HttpGet]
@@ -287,7 +288,7 @@ public sealed class LobbiesController(
                 "invalid_join_mode", "Choose browser-managed or direct native play."));
         var profile = await database.PortalMatches.SingleOrDefaultAsync(
             item => item.MatchId == matchId, HttpContext.RequestAborted);
-        if (profile is null || profile.Status != "waiting")
+        if (profile is null || profile.Status != "waiting" || startupTracker.Get(matchId) is not null)
             return Conflict(ApiResponse<LobbyDetails>.Failure(
                 "lobby_not_joinable", "This lobby is not accepting seat changes."));
         if (profile.ManagedClientsOnly && request.JoinMode != "browser")
@@ -347,7 +348,7 @@ public sealed class LobbiesController(
         if (user is null) return Unauthorized();
         var profile = await database.PortalMatches.SingleOrDefaultAsync(
             item => item.MatchId == matchId, HttpContext.RequestAborted);
-        if (profile is null || profile.Status != "waiting")
+        if (profile is null || profile.Status != "waiting" || startupTracker.Get(matchId) is not null)
             return Conflict(ApiResponse<LobbyDetails>.Failure(
                 "seat_leave_requires_waiting_lobby",
                 "A player may leave a seat only before the match starts."));
@@ -383,7 +384,7 @@ public sealed class LobbiesController(
         if (profile is null)
             return NotFound(ApiResponse<bool>.Failure("lobby_not_found", "The lobby was not found."));
         if (!CanManage(profile)) return Forbid();
-        if (profile.Status != "waiting")
+        if (profile.Status != "waiting" || startupTracker.Get(matchId) is not null)
             return Conflict(ApiResponse<bool>.Failure(
                 "close_requires_waiting_lobby",
                 "Only a never-started waiting lobby can be closed. Use the campaign lifecycle after launch."));
@@ -410,7 +411,7 @@ public sealed class LobbiesController(
         if (profile is null) return NotFound(ApiResponse<LobbyDetails>.Failure(
             "lobby_not_found", "The lobby was not found."));
         if (!CanManage(profile)) return Forbid();
-        if (profile.Status != "waiting") return Conflict(ApiResponse<LobbyDetails>.Failure(
+        if (profile.Status != "waiting" || startupTracker.Get(matchId) is not null) return Conflict(ApiResponse<LobbyDetails>.Failure(
             "seat_edit_requires_waiting_lobby", "Seats can be changed only before the match starts."));
         if (seatIndex is < 0 or > 6) return BadRequest(ApiResponse<LobbyDetails>.Failure(
             "invalid_seat_index", "Choose one of the seven faction seats."));
@@ -800,16 +801,29 @@ public sealed class LobbiesController(
             return Conflict(ApiResponse<LobbyDetails>.Failure(
                 "lobby_not_waiting", "Only a waiting lobby can be started."));
         }
-        var failure = await MaterializeAsync(profile, HttpContext.RequestAborted);
-        if (failure is not null)
+        if (!startupTracker.TryBegin(matchId))
+            return Conflict(ApiResponse<LobbyDetails>.Failure("startup_in_progress", "This lobby is already preparing to start."));
+        try
         {
-            return StatusCode(failure.Value.Status,
-                ApiResponse<LobbyDetails>.Failure(failure.Value.Code, failure.Value.Message));
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                "LobbyChanged", matchId, HttpContext.RequestAborted);
+            var failure = await MaterializeAsync(profile, HttpContext.RequestAborted);
+            if (failure is not null)
+            {
+                return StatusCode(failure.Value.Status,
+                    ApiResponse<LobbyDetails>.Failure(failure.Value.Code, failure.Value.Message));
+            }
+            await matchAccess.RecordAssignedPlayersAsync(matchId, HttpContext.RequestAborted);
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                "LobbyChanged", matchId, HttpContext.RequestAborted);
+            return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
         }
-        await matchAccess.RecordAssignedPlayersAsync(matchId, HttpContext.RequestAborted);
-        await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
-            "LobbyChanged", matchId, HttpContext.RequestAborted);
-        return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
+        finally
+        {
+            startupTracker.End(matchId);
+            await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
+                "LobbyChanged", matchId, CancellationToken.None);
+        }
     }
 
     [HttpGet("{matchId}/messages")]
@@ -1450,11 +1464,11 @@ public sealed class LobbiesController(
                 && seat.ControllerKind == "human" && seat.JoinMode == "browser" &&
                 seat.Status == "ready";
             var canSpectate = live && seat.ControlInstanceId is not null && maySpectate;
-            var canJoin = profile.Status == "waiting" && userId is not null &&
+            var canJoin = profile.Status == "waiting" && startupTracker.Get(profile.MatchId) is null && userId is not null &&
                 (seat.ControllerKind == "open" || seat.ControllerKind == "human" &&
                     seat.JoinMode == "browser" && seat.UserId == userId &&
                     seat.Status is "reserved" or "invited");
-            var canLeave = profile.Status == "waiting" && userId is not null &&
+            var canLeave = profile.Status == "waiting" && startupTracker.Get(profile.MatchId) is null && userId is not null &&
                 seat.ControllerKind == "human" && seat.UserId == userId &&
                 seat.Status == "ready";
             var stagingPresenceExpiresAt = profile.Status == "waiting" &&
@@ -1491,7 +1505,7 @@ public sealed class LobbiesController(
             CanManage(profile), seats, ReadSettings(profile.SettingsJson), nativeJoin, profile.LastError,
             profile.CreatedAt, profile.UpdatedAt,
             Presence(profile, seatEntities), incident, runtime.RuntimeGeneration, maintenance,
-            runtime.HasVerifiedRecoveryCheckpoint, recoveryBlockedReason);
+            runtime.HasVerifiedRecoveryCheckpoint, recoveryBlockedReason, startupTracker.Get(profile.MatchId));
     }
 
     private async Task<MaintenanceProgress?> ReadMaintenanceAsync(string matchId)

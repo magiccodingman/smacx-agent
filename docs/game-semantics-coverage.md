@@ -331,3 +331,14 @@ See [final acceptance](doctrine/acceptance.md), [behavior review](doctrine/evide
 | Native initiating stall | Last Explore action observed; bridge request guard latched. Exact native trigger remains **open**. | Fresh and saved-state isolated runs passed turn 5, including repeated saves plus background collector; no claim of native root-cause repair. |
 
 See [incident acceptance and explicit limitations](benchmarks/2026-09-05-worker-incident.md).
+
+### Lobby startup presentation (2026-09-05)
+
+| Capability | Observed → represented → available to user | Verification / limits |
+|---|---|---|
+| Startup visibility | In-flight launch request + existing provisioning/starting/native-lobby status → lobby DTO → responsive image and blue indeterminate progress | HTTP DTO integration assertion; launch-state contracts; real Razor component exercised in Chrome with isolated responses. The in-flight marker is process-local presentation, not native health or recovery authority. |
+| Startup handoff | Running campaign + existing seat permissions → one navigation for a visit that observed startup | Player/spectator/no-access/state-transition contracts; browser spectator handoff. Bounded wait for pending seat reconciliation. No new access privileges. |
+| Later entry | Current seat permissions → prominent Return to game / Watch live | Browser inspection at phone/tablet/desktop sizes; running-lobby visits stay in lobby. Existing controller acquisition and stream authorization still enforce entry. |
+| Failure and dismissal | Error/incident/unavailable status or Stay in lobby → overlay removed, automatic entry disarmed | Contracts and browser failure/offline/dismissal fixtures; polling can restore manual entry but cannot silently rearm the same launch. |
+
+Acceptance details: [Lobby startup UX acceptance](benchmarks/2026-09-05-lobby-startup.md).

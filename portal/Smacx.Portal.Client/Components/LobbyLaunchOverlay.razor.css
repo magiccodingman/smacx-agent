@@ -1,0 +1,13 @@
+.launch-card { width: min(960px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); overflow-y: auto; background: #0b1722; color: #e8f1f8; border: 1px solid #304957; border-radius: 18px; box-shadow: 0 30px 100px #000a; }
+.launch-art { display: block; width: 100%; height: auto; }
+.launch-content { padding: 24px 30px; }
+.launch-eyebrow { color: #74b9ed; font-size: .7rem; letter-spacing: .18em; font-weight: 700; }
+h2 { font-size: clamp(1.3rem, 3vw, 1.85rem); line-height: 1.25; margin: 8px 0; overflow-wrap: anywhere; }
+p { color: #b6c7d5; margin: 8px 0 18px; line-height: 1.5; }
+.launch-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 20px; color: #91aabd; font-size: .78rem; margin-top: 10px; }
+.launch-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid #263c4b; margin-top: 20px; padding-top: 18px; }
+.launch-footer p { margin: 0; font-size: .85rem; max-width: 430px; }
+.launch-footer ::deep button { flex-shrink: 0; }
+.launch-native { overflow-wrap: anywhere; }
+@media(max-width: 600px) { .launch-card { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 12px; } .launch-content { padding: 18px; } .launch-footer { align-items: stretch; flex-direction: column; gap: 14px; } }
+@media(prefers-reduced-motion: reduce) { ::deep .mud-progress-linear-indeterminate { animation: none !important; } }
