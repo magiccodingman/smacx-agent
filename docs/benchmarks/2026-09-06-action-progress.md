@@ -176,3 +176,17 @@ opponents, Standard planet size, Librarian difficulty and spectators enabled.
 Launch is pending a roster decision: this version always fills seven factions,
 so two otherwise-open slots become random bots. This is not yet a running or
 completed full-game acceptance. No original saves or campaign history were deleted.
+
+## Fresh autonomous campaign launched
+
+The user directed autonomous operation with the default remaining roster slots.
+AI - 3 (`match-2a0fe070c51c48089642bfeb556d8b51`) launched with the five named
+seats plus two default native bots. Browser startup overlay handed off to the
+authorized spectator route. A direct spectator stream displayed the native
+Planetfall interaction, and the sovereign was observed reading and acknowledging
+the mandatory match briefing. Worker and MCP containers reported healthy; the
+sovereign run `run-a2b4d48a001d40938f99fc65510e2a3a` reported running.
+
+Ten-minute autonomous check-ins remain active for this exact match, including
+sovereign/specialist activity, native effects, recovery and incidents. Startup
+is verified; a complete turn or game is not yet claimed by this checkpoint.
