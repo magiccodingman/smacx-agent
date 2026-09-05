@@ -37,7 +37,7 @@ def main() -> int:
             "bases": [], "units": [], "factions": [], "global": [],
         }, observation_sequence=1)
         worlds.replace_projection(
-            scope, identity, projection["objects"], observation_cursor=1,
+            scope, identity, projection["objects"], observation_cursor=1000, # all synthetic attention below is already committed
             action_revision="r1", continuity="complete", journal_head_hash="0" * 64,
         )
         attention = AttentionService(store, journal, scope)

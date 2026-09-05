@@ -592,9 +592,13 @@ class GraphitiProjector:
         events = self.journal.events_after(
             scope, cursor.get("last_event_id"), limit=limit,
         )
+        from smacx_world_store import WorldStore
+        committed_cursor = WorldStore(self.store).committed_cursor(scope, self.store.active_timeline_id(scope))
         projected = 0
         skipped = 0
         for event in events:
+            if not WorldStore.event_visible(event, committed_cursor):
+                break
             if not self.should_project(event):
                 self.store.advance_projection_cursor(
                     scope, self.projector_name, event, status="ready", last_error=None,

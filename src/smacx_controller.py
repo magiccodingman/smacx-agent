@@ -1262,8 +1262,12 @@ def read_platform_memory(
             }
         if action == "events":
             raw_events = journal.latest_events(scope, limit=500)
+            from smacx_world_store import WorldStore
+            committed_cursor = WorldStore(store).committed_cursor(scope, store.active_timeline_id(scope))
             safe_events = []
             for event in raw_events:
+                if not WorldStore.event_visible(event, committed_cursor):
+                    continue
                 event_type = str(event.get("event_type") or "")
                 if event_type == "observation.native_event":
                     continue

@@ -119,12 +119,20 @@ class AttentionService:
                 "attention_sequence": attention_sequence,
                 "journal_event_id": journal_event["event_id"], "deduplicated": False}
 
-    def lease(self, episode_id: str, *, limit: int = 32, ttl_seconds: int = 300) -> dict[str, Any]:
+    def lease(self, episode_id: str, *, limit: int = 32, ttl_seconds: int = 300, committed_cursor: int | None = None) -> dict[str, Any]:
         require_ref(episode_id, "episode_id")
         timeline = self.timeline_id
         now = time.time()
         lease_id = "attention-lease-" + uuid.uuid4().hex
         with self.store.transaction() as connection:
+            cap = self.world_store.committed_cursor(self.scope, timeline, connection)
+            if committed_cursor is not None: cap = min(cap, int(committed_cursor))
+            # Never lease past an unpublished earlier item, even if a later
+            # chat/manual item has cursor zero and higher priority.
+            barrier = connection.execute("SELECT MIN(attention_sequence) FROM attention_items "
+                "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                "AND observation_cursor>?", (*self._key(timeline), cap)).fetchone()[0]
+            barrier = int(barrier) if barrier is not None else 9223372036854775807
             # Process loss makes prior placed/leased items eligible for
             # redelivery without changing their attention identity.
             expired = connection.execute(
@@ -141,6 +149,12 @@ class AttentionService:
                 "ORDER BY leased_unix DESC LIMIT 1",
                 (*self._key(timeline), episode_id, now),
             ).fetchone()
+            if existing and connection.execute("SELECT 1 FROM attention_items i JOIN attention_lease_items li "
+                    "ON i.attention_id=li.attention_id WHERE li.attention_lease_id=? AND "
+                    "(i.observation_cursor>? OR i.attention_sequence>=?) LIMIT 1",
+                    (existing["attention_lease_id"], cap, barrier)).fetchone():
+                self._abandon_locked(connection, str(existing["attention_lease_id"]))
+                existing = None
             if existing:
                 rows = connection.execute(
                     "SELECT i.*,li.redelivery_count FROM attention_items i JOIN "
@@ -161,8 +175,8 @@ class AttentionService:
                 }
             rows = connection.execute(
                 "SELECT * FROM attention_items WHERE match_id=? AND agent_id=? AND perspective_id=? "
-                "AND timeline_id=? AND status='queued' ORDER BY critical DESC,priority DESC,"
-                "attention_sequence ASC LIMIT ?", (*self._key(timeline), min(max(limit, 1), 64)),
+                "AND timeline_id=? AND status='queued' AND attention_sequence<? ORDER BY critical DESC,priority DESC,"
+                "attention_sequence ASC LIMIT ?", (*self._key(timeline), barrier, min(max(limit, 1), 64)),
             ).fetchall()
             through = max((int(row["attention_sequence"]) for row in rows), default=0)
             connection.execute(
@@ -264,11 +278,16 @@ class AttentionService:
 
     def pending_summary(self) -> dict[str, Any]:
         with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.world_store.committed_cursor(self.scope, self.timeline_id, connection)
+            barrier = connection.execute("SELECT MIN(attention_sequence) FROM attention_items WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND observation_cursor>?",
+                (*self._key(self.timeline_id), cap)).fetchone()[0]
             rows = connection.execute(
                 "SELECT attention_kind,critical,COUNT(*) AS count,MAX(priority) AS priority "
                 "FROM attention_items WHERE match_id=? AND agent_id=? AND perspective_id=? "
-                "AND timeline_id=? AND status='queued' GROUP BY attention_kind,critical",
-                self._key(self.timeline_id),
+                "AND timeline_id=? AND status='queued' AND attention_sequence<? GROUP BY attention_kind,critical",
+                (*self._key(self.timeline_id), barrier if barrier is not None else 9223372036854775807),
             ).fetchall()
         groups = [dict(row) for row in rows]
         return {"count": sum(int(row["count"]) for row in groups), "groups": groups,

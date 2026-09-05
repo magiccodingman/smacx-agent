@@ -1,0 +1,1 @@
+{"passed": true, "classification": "concurrent native-shaped production collector", "cases": [{"phase": "pre_head", "crash_restart": false, "passed": true}, {"phase": "pre_head", "crash_restart": true, "passed": true}, {"phase": "post_head", "crash_restart": false, "passed": true}, {"phase": "post_head", "crash_restart": true, "passed": true}]}

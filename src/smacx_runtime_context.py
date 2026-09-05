@@ -277,7 +277,7 @@ class RuntimeContextAssembler:
         turn_state = next((item for item in projection.get("objects", [])
                            if item.get("kind") == "turn_state"), {})
         turn = _field(turn_state, "turn", snapshot.get("turn"))
-        attention_lease = self.attention.lease(episode_id, limit=32)
+        attention_lease = self.attention.lease(episode_id, limit=32, committed_cursor=int(projection["observation_cursor"]))
         dependencies = self.attention.semantic_dependency_hashes(projection)
         active = self.attention.runtime_state(
             current_world_revision=int(projection["world_revision"]),
@@ -408,7 +408,7 @@ class RuntimeContextAssembler:
             operation_refs=operation_refs, triggered_watch_refs=triggered_watch_refs,
             active_plan_refs=active_plan_refs,
             recent_material_refs=recent_material_refs,
-            token_cap=anchor_cap,
+            token_cap=anchor_cap, captured_projection=(projection_identity, projection),
         )
         payload["world"] = {
             "world_anchor_id": anchor["world_anchor_id"],

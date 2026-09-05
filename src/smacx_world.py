@@ -307,8 +307,9 @@ class WorldService:
                active_plan_refs: Iterable[str] = (),
                recent_material_refs: Iterable[str] = (),
                inspection_refs: Iterable[str] = (),
-               token_cap: int | None = None) -> dict[str, Any]:
-        identity, projection = self._projection()
+               token_cap: int | None = None,
+               captured_projection: tuple | None = None) -> dict[str, Any]:
+        identity, projection = captured_projection or self._projection()
         operation_refs = tuple(operation_refs)
         triggered_watch_refs = tuple(triggered_watch_refs)
         active_plan_refs = tuple(active_plan_refs)
@@ -743,6 +744,8 @@ class WorldService:
             "radius": radius, "since_cursor": int(since_cursor), "detail": detail,
             "continuation": continuation,
         }
+        if mode == "changes":
+            request["committed_observation_cursor"] = int(projection["observation_cursor"])
         if airdrop_evidence:
             request["_airdrop_evidence"] = airdrop_evidence
         if spatial_center:
@@ -1198,17 +1201,17 @@ class WorldService:
                 )]
                 result["coverage"] = {"known_world_only": True, "unknown_not_traversed": True}
         elif mode == "changes":
-            anchor = self.anchor(context_length=context_length)
+            anchor = self.anchor(context_length=context_length, captured_projection=(identity, projection))
             result["anchor_identity"] = {
                 "world_anchor_id": anchor["world_anchor_id"],
                 "world_anchor_revision": anchor["world_anchor_revision"],
                 "anchor_observation_cursor": anchor["anchor_observation_cursor"],
             }
             result["items"] = self.store.changes_since(
-                self.scope, identity.timeline_id, int(since_cursor), limit=512,
+                self.scope, identity.timeline_id, int(since_cursor), limit=512, through_cursor=int(projection["observation_cursor"]),
             )
             result["temporal_events"] = self.store.temporal_events_since(
-                self.scope, identity.timeline_id, int(since_cursor), limit=256,
+                self.scope, identity.timeline_id, int(since_cursor), limit=256, through_cursor=int(projection["observation_cursor"]),
             )
         elif mode == "render":
             topology = self._topology(projection)

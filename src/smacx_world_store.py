@@ -227,6 +227,7 @@ class WorldStore:
     def load(self, scope: MemoryScope, timeline_id: str) -> dict[str, Any] | None:
         self.store.require_scope(scope)
         with self.store._connect() as connection:  # projection-private API
+            connection.execute("BEGIN")  # head and objects belong to one SQLite read snapshot
             head = connection.execute(
                 "SELECT * FROM world_heads WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=?",
@@ -373,17 +374,35 @@ class WorldStore:
                  for observation, journal_event_id in observations),
             )
 
+    def committed_cursor(self, scope: MemoryScope, timeline_id: str, connection=None) -> int:
+        if connection is None:
+            with self.store._connect() as connection:
+                return self.committed_cursor(scope, timeline_id, connection)
+        row = connection.execute("SELECT observation_cursor FROM world_heads WHERE match_id=? "
+            "AND agent_id=? AND perspective_id=? AND timeline_id=?",
+            self._scope_tuple(scope, timeline_id)).fetchone()
+        return int(row[0]) if row else 0
+
+    @staticmethod
+    def event_visible(event: Mapping[str, Any], committed_cursor: int) -> bool:
+        payload = event.get("payload") or {}
+        cursor = payload.get("observation_cursor", payload.get("observation_sequence", 0))
+        return int(cursor or 0) <= committed_cursor
+
     def changes_since(self, scope: MemoryScope, timeline_id: str, since_cursor: int,
-                      *, limit: int = 512) -> list[dict[str, Any]]:
+                      *, limit: int = 512, through_cursor: int | None = None) -> list[dict[str, Any]]:
         row_limit = min(max(int(limit), 1), 2048)
         with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.committed_cursor(scope, timeline_id, connection)
+            if through_cursor is not None: cap = min(cap, int(through_cursor))
             rows = connection.execute(
                 "SELECT observation_sequence,journal_event_id,turn,payload_json,continuity "
                 "FROM world_observation_projection WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=? AND observation_kind IN "
                 "('world_object','world_batch') "
-                "AND observation_sequence>? ORDER BY observation_sequence,rowid LIMIT ?",
-                (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)),
+                "AND observation_sequence>? AND observation_sequence<=? ORDER BY observation_sequence,rowid LIMIT ?",
+                (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)), cap,
                  row_limit),
             ).fetchall()
         result: list[dict[str, Any]] = []
@@ -405,17 +424,20 @@ class WorldStore:
         return result
 
     def temporal_events_since(self, scope: MemoryScope, timeline_id: str,
-                              since_cursor: int, *, limit: int = 256) -> list[dict[str, Any]]:
+                              since_cursor: int, *, limit: int = 256, through_cursor: int | None = None) -> list[dict[str, Any]]:
         """Return bounded provider-safe semantic history, never native feed rows."""
         row_limit = min(max(int(limit), 1), 1024)
         with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.committed_cursor(scope, timeline_id, connection)
+            if through_cursor is not None: cap = min(cap, int(through_cursor))
             rows = connection.execute(
                 "SELECT observation_sequence,journal_event_id,turn,payload_json,continuity "
                 "FROM world_observation_projection WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=? AND observation_kind IN "
                 "('semantic_event','semantic_batch') "
-                "AND observation_sequence>? ORDER BY observation_sequence,rowid LIMIT ?",
-                (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)),
+                "AND observation_sequence>? AND observation_sequence<=? ORDER BY observation_sequence,rowid LIMIT ?",
+                (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)), cap,
                  row_limit),
             ).fetchall()
         result: list[dict[str, Any]] = []
@@ -672,8 +694,8 @@ class WorldStore:
         """
         since = max(0, int(observation_cursor) - max(1, min(sequence_window, 32)))
         rows = [
-            *self.changes_since(scope, timeline_id, since, limit=min(limit, 128)),
-            *self.temporal_events_since(scope, timeline_id, since, limit=min(limit, 128)),
+            *self.changes_since(scope, timeline_id, since, limit=min(limit, 128), through_cursor=observation_cursor),
+            *self.temporal_events_since(scope, timeline_id, since, limit=min(limit, 128), through_cursor=observation_cursor),
         ]
         refs: list[str] = []
 
@@ -723,7 +745,7 @@ class WorldStore:
             # The frozen analyst view includes semantic, provider-safe temporal
             # evidence only. Collector-private native rows never enter it.
             "temporal_events": self.temporal_events_since(
-                scope, identity.timeline_id, 0, limit=1024,
+                scope, identity.timeline_id, 0, limit=1024, through_cursor=int(projection["observation_cursor"]),
             ),
         }
         digest = content_hash(payload)

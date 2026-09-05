@@ -193,7 +193,7 @@ def main() -> int:
         for index in range(32):
             attention.enqueue(
                 "diagnostic_burst", {"index": index, "detail": "x" * 2048},
-                observation_cursor=100 + index, priority=40,
+                observation_cursor=9, priority=40, # diagnostic burst belongs to the installed world
             )
         burst = assembler.build(
             episode_id="episode-runtime-32-attention",

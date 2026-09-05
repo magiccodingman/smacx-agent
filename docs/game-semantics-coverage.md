@@ -249,3 +249,7 @@ section copying and a disposable canonical filename index reduce repeated work.
 ### H4 canonical persistence checkpoint (2026-09-05)
 
 Observed real event-file/manifest crash → verified canonical chain → recovered manifest → collector frozen retry → distinct S+2 append → replay/hash verification. Invalid or ambiguous suffixes fail closed. See [H review acceptance](benchmarks/2026-09-05-h-review.md). This closes the journal crash seam; the other H findings remain pending.
+
+### H1 provider visibility checkpoint (2026-09-05)
+
+Persisted N evidence → installed-head visibility cap → normal history/snapshot/runtime queries → contiguous leased delivery → acknowledgment/restart verification. Four concurrent publication/recovery cases pass. Internal pre-head durability remains permitted; provider reads cannot advance beyond their captured world. See [H review acceptance](benchmarks/2026-09-05-h-review.md).
