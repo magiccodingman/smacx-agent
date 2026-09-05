@@ -486,3 +486,30 @@ containing physical masses and mobility regions directly. If many owned masses
 exceed rich LOD, overflow retains owned-base and current foreign-presence counts.
 An issued theater handle used by a plan or operation promotes its previously
 known participants even after the local activity becomes quiet.
+
+### Shared semantic consumer validity
+
+Physical masses, mobility regions, frontiers, theaters, routes and current scopes
+share one private spatial resolver. World area inspection and watch evaluation
+use identical membership. Theater membership is local activity plus explicit
+linked route evidence; containing regions are context, not a watch perimeter.
+An empty or unsupported perimeter fails at creation. Current scopes are queried
+with `smac_world(mode="area", origin_ref=<scope_ref>)` using bounded items,
+coverage and continuations; private full membership stays server-held.
+
+Issued route/rendezvous validity uses the complete dependency set/hash, scope,
+timeline, epoch and rules/calculator versions. Cache-row creation revision is
+not lifetime authority. Native-backed routes also retain private receipt fields
+and require the original action revision. Disposable two-entry caches reuse
+geographic/scope calculations without renewing frozen intent or native receipts.
+
+Crossing events retain their original observed episode and event-time
+relationship. Current whereabouts can become unknown after a legitimate crossing.
+Visibility gaps never authorize an interpolated unseen path. Active journal plan
+dependencies retain bounded prior health so a current unavailable→available
+transition emits one attention item, durably before publication acknowledgement.
+Unknown/stale evidence cannot produce positive availability. Threshold milestone
+states distinguish impossible thresholds from optional blocked requirements.
+
+See the [focused acceptance ledger](benchmarks/2026-09-05-peer-review-corrections.md)
+for supported consumers, evidence classes, recovery and simultaneous-scope costs.

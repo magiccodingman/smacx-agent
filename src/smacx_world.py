@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Iterable, Mapping
 
 from smacx_counterfactual import deployment_alternatives, feasible_outputs, parse_scenario
@@ -109,10 +110,9 @@ class WorldService:
                           "horizontal_wrap": True}
         return PerspectiveTopology(MapShape(**shape_data), locations)
 
-    def _derived_geography(self, projection: Mapping[str, Any]) -> dict[str, Any]:
+    def _derived_geography(self, projection: Mapping[str, Any], *, persist_regions: bool = True) -> dict[str, Any]:
         """Build the complete server-held geography, independently of provider LOD."""
         identity = WorldIdentity(**projection["identity"])
-        topology = self._topology(projection)
         # Reproduce every geography ref that the current provider-facing
         # anchors could have issued, including quiet plan/watch/inspection
         # promotion.  The distinction among promotion causes matters in the
@@ -125,6 +125,13 @@ class WorldService:
             promoted.update(map(str, issued.get("payload", {}).get(
                 "lod", {}
             ).get("promotion_refs", ())))
+        cache_key = content_hash({"identity": identity.as_dict(), "agent": self.scope.agent_id,
+                                  "revision": projection["world_revision"], "promoted": sorted(promoted)})
+        with self.store.store._spatial_cache_lock:
+            cached = self.store.store._geography_cache.get(cache_key)
+        if cached is not None and not persist_regions:
+            return cached
+        topology = self._topology(projection)
         previous = [
             *self.store.load_regions(self.scope, identity.timeline_id, "mobility-land-default"),
             *self.store.load_regions(self.scope, identity.timeline_id, "mobility-sea-default"),
@@ -137,11 +144,82 @@ class WorldService:
             previous_regions=previous,
             operation_refs=sorted(promoted), registry_only=True,
         )
-        self.store.save_regions(self.scope, identity.timeline_id, payload["_region_projection"],
-                                int(projection["world_revision"]), mobility_profiles=(
-                                    "mobility-land-default", "mobility-sea-default",
-                                    PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE))
+        with self.store.store._spatial_cache_lock:
+            cache = self.store.store._geography_cache
+            cache[cache_key] = payload
+            while len(cache) > 2:
+                cache.pop(next(iter(cache)))
+        if persist_regions:
+            self.store.save_regions(self.scope, identity.timeline_id, payload["_region_projection"],
+                                    int(projection["world_revision"]), mobility_profiles=(
+                                        "mobility-land-default", "mobility-sea-default",
+                                        PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE))
         return payload
+
+    @staticmethod
+    def _dependency_hash(mode, objects, subjects, origin_ref, dependency_refs):
+        def dependency_digest(ref):
+            item = objects.get(ref)
+            if item is None:
+                return None
+            if mode == "base" and subjects and item.get("kind") == "base" and ref not in subjects:
+                # Remote base population/production is not read by response mechanics;
+                # access/refuelling/gates still are, even outside the queried base.
+                item = {**item, "fields": {name: value for name, value in item.get("fields", {}).items()
+                        if name in {"owner_ref", "coastal", "is_ocean", "facilities", "psi_gate_ready"}}}
+            digest = material_hash(item)
+            if mode == "area" and origin_ref not in objects and item.get("kind") == "location":
+                return content_hash({"material": digest, "map_verification": {
+                    name: value.get("last_verified_turn") for name, value in item.get("fields", {}).items()
+                    if name in {"terrain", "altitude", "features", "owner_ref"} and isinstance(value, Mapping)}})
+            return digest
+        return content_hash({ref: dependency_digest(ref) for ref in dependency_refs})
+
+    def valid_derived_results(self, projection):
+        """Validate issued route/rendezvous handles using the query's own contract.
+
+        Creation revision is diagnostic, not lifetime authority. Recompute the
+        complete dependency set too, so newly appeared relevant objects count.
+        """
+        identity = WorldIdentity(**projection["identity"])
+        base_objects = self._objects(projection)
+        with self.store.store._connect() as connection:
+            rows = connection.execute(
+                "SELECT request_json,result_json,dependency_hash FROM world_query_cache "
+                "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                "AND world_epoch=? AND ruleset_hash=? AND calculator_version=?",
+                (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id,
+                 identity.timeline_id, identity.world_epoch, self.ruleset_hash, CALCULATOR_VERSION)).fetchall()
+        results = []
+        for row in rows:
+            request = json.loads(row["request_json"])
+            result = json.loads(row["result_json"])
+            if not result.get("route", {}).get("route_ref") and not any(
+                    isinstance(item, Mapping) and item.get("rendezvous_ref") for item in result.get("items", ())):
+                continue
+            objects = base_objects
+            receipt = request.get("_airdrop_evidence")
+            if receipt:
+                # Native legality has the stronger action-revision lifetime.
+                # Keep its private evidence available to downstream consumers,
+                # but never renew it from a dependency-only world cache hit.
+                if receipt.get("action_revision") != projection.get("action_revision"):
+                    continue
+                origin_ref = request.get("origin_ref", "")
+                if origin_ref not in objects:
+                    continue
+                objects = dict(objects)
+                origin = dict(objects[origin_ref])
+                origin["fields"] = {**origin.get("fields", {}), **receipt["fields"]}
+                objects[origin_ref] = origin
+            mode = request["mode"]
+            subjects = tuple(request.get("subject_refs", ()))
+            origin = request.get("origin_ref", "")
+            refs = self._dependency_refs(mode, objects, subjects=subjects, origin_ref=origin,
+                target_ref=request.get("target_ref", ""), radius=request.get("radius", 0), projection=projection)
+            if self._dependency_hash(mode, objects, subjects, origin, refs) == row["dependency_hash"]:
+                results.append(result)
+        return results
 
     def _dependency_refs(self, mode: str, objects: Mapping[str, Mapping[str, Any]], *,
                          subjects: tuple[str, ...], origin_ref: str, target_ref: str,
@@ -607,6 +685,20 @@ class WorldService:
             raise WorldQueryError("site_economy_requires_one_to_four_nominated_sites")
         identity, projection = self._projection()
         objects = self._objects(projection)
+        spatial_center = None
+        area_ref = origin_ref or (subjects[0] if subjects else "")
+        if mode == "area" and area_ref not in objects and area_ref not in {"world-geography", "world-map", ""}:
+            from smacx_spatial_scope import semantic_spatial_registry
+            resolved = semantic_spatial_registry(self.store, self.scope, projection).get(area_ref)
+            if resolved and resolved.get("kind") in {"scope", "route", "rendezvous", "region", "frontier", "theater"}:
+                spatial_center = resolved
+                if "descriptor" not in spatial_center:
+                    spatial_center = {**resolved, "descriptor": {"kind": resolved["kind"],
+                        "source_ref": area_ref, "known_coverage_count": len(resolved["location_refs"]),
+                        "coverage_kind": "perspective_known_geometry"}}
+            elif area_ref.startswith("watch-"):
+                raise WorldQueryError("scope_not_current_or_unknown")
+        airdrop_evidence = None
         if runtime_airdrop_receipt and origin_ref in objects:
             receipt_revision = str(runtime_airdrop_receipt.get("action_revision") or "")
             if receipt_revision == str(projection.get("action_revision") or ""):
@@ -635,12 +727,19 @@ class WorldService:
                 }
                 origin["fields"] = fields
                 objects[origin_ref] = origin
+                airdrop_evidence = {"action_revision": receipt_revision, "fields": {
+                    name: {key: value for key, value in fields[name].items() if key != "world_revision"}
+                    for name in ("airdrop_target_tile_ids", "airdrop_target_count", "airdrop_targets_truncated")}}
         request = {
             "mode": mode, "subject_refs": subjects, "origin_ref": origin_ref,
             "target_ref": target_ref, "movement_profile_ref": movement_profile_ref,
             "radius": radius, "since_cursor": int(since_cursor), "detail": detail,
             "continuation": continuation,
         }
+        if airdrop_evidence:
+            request["_airdrop_evidence"] = airdrop_evidence
+        if spatial_center:
+            request["spatial_scope_dependency"] = content_hash(spatial_center)
         if scenario:
             request["scenario"] = scenario
             request["action_revision"] = projection.get("action_revision")
@@ -665,22 +764,7 @@ class WorldService:
             mode, objects, subjects=subjects, origin_ref=origin_ref,
             target_ref=target_ref, radius=radius, projection=projection,
         )
-        def dependency_digest(ref):
-            item = objects.get(ref)
-            if item is None:
-                return None
-            if mode == "base" and subjects and item.get("kind") == "base" and ref not in subjects:
-                # Remote base population/production is not read by response mechanics;
-                # access/refuelling/gates still are, even outside the queried base.
-                item = {**item, "fields": {name: value for name, value in item.get("fields", {}).items()
-                        if name in {"owner_ref", "coastal", "is_ocean", "facilities", "psi_gate_ready"}}}
-            digest = material_hash(item)
-            if mode == "area" and origin_ref not in objects and item.get("kind") == "location":
-                return content_hash({"material": digest, "map_verification": {
-                    name: value.get("last_verified_turn") for name, value in item.get("fields", {}).items()
-                    if name in {"terrain", "altitude", "features", "owner_ref"} and isinstance(value, Mapping)}})
-            return digest
-        dependency_hash = content_hash({ref: dependency_digest(ref) for ref in dependency_refs})
+        dependency_hash = self._dependency_hash(mode, objects, subjects, origin_ref, dependency_refs)
         fingerprint = content_hash({
             "scope": identity.as_dict(),
             "ruleset_hash": self.ruleset_hash, "calculator_version": CALCULATOR_VERSION,
@@ -695,7 +779,7 @@ class WorldService:
                 "world_revision": projection["world_revision"],
                 "condition": "listed dependency_refs retain dependency_hash",
             }
-            if scenario:
+            if scenario or airdrop_evidence:
                 cached["valid_while"]["action_revision"] = projection.get("action_revision")
                 cached["valid_while"]["condition"] += "; native action_revision remains unchanged"
             cached = self._trim(provider_safe(cached), budget)
@@ -721,6 +805,10 @@ class WorldService:
                 for row in geography.get(field, ()):
                     if isinstance(row, Mapping) and row.get(key):
                         derived_registry[str(row[key])] = dict(row)
+        if spatial_center:
+            derived_registry.setdefault(area_ref, {
+                "scope_ref" if spatial_center["kind"] == "scope" else "spatial_ref": area_ref,
+                **spatial_center["descriptor"]})
         supplied_refs = [*subjects]
         if mode in {"area", "relation", "route", "reachability", "compare", "counterfactual"}:
             supplied_refs.extend(value for value in (origin_ref, target_ref) if value)
@@ -751,6 +839,9 @@ class WorldService:
             "epistemic_note": "Unknown and stale evidence remain explicit; absence is not negative evidence.",
             "truncated": False,
         }
+        if airdrop_evidence:
+            result["valid_while"]["action_revision"] = projection.get("action_revision")
+            result["valid_while"]["condition"] += "; native action_revision remains unchanged"
         topology: PerspectiveTopology | None = None
         if mode == "counterfactual":
             result["scenario"] = scenario
@@ -909,6 +1000,14 @@ class WorldService:
                             "possible_or_required; query logistics with a scout and frontier location",
                         "calculation_scope": "lazy_query_only",
                     }
+                if spatial_center:
+                    membership = set(spatial_center["location_refs"])
+                    result["items"] = [_public_object(item) for item in objects.values()
+                                       if str(item.get("location_ref") or item.get("object_ref")) in membership]
+                    result["coverage"] = {
+                        "scope_ref" if spatial_center["kind"] == "scope" else "spatial_ref": area_ref,
+                        "validity": "current_dependencies",
+                        "membership_server_held": True, **spatial_center["descriptor"]}
                 mass_locations: set[str] = set()
                 mass_ref = derived_center.get("landmass_ref") or derived_center.get("ocean_mass_ref") or derived_center.get("region_ref")
                 if mass_ref:
@@ -919,7 +1018,7 @@ class WorldService:
                             mass_locations = set(region.location_refs)
                             break
                     result["items"] = [_public_object(item) for item in objects.values()
-                                       if str(item.get("location_ref") or "") in mass_locations]
+                                       if str(item.get("location_ref") or item.get("object_ref")) in mass_locations]
                 center_ref = ""
             if center_ref == "world-map":
                 known = set(topology.by_ref)
@@ -993,25 +1092,17 @@ class WorldService:
                 "target_physical_mass_ref": land_by_location.get(str(target_location))
                     or ocean_by_location.get(str(target_location)),
             }
-            component_by_ref = {region.region_ref: region for region in geography_regions}
             left = result["relation"]["origin_physical_mass_ref"]
             right = result["relation"]["target_physical_mass_ref"]
-            def open_boundary(ref):
-                region = component_by_ref.get(ref)
-                return bool(region) and any(
-                    sum(neighbor.terrain != "unknown" for neighbor in topology.adjacent(location).values()) < len(topology.shape.neighbors(
-                        (topology.by_ref[location].x, topology.by_ref[location].y)))
-                    for location in region.location_refs)
-            same_domain = a.ocean == b.ocean
-            possible = bool(left and right and left != right and same_domain
-                            and open_boundary(left) and open_boundary(right))
+            possible = bool(left and right and left != right
+                            and topology.potential_physical_connection(origin_location, target_location))
             result["relation"]["physical_connectivity"] = {
                 "qualification": "same_known_physical_mass" if left and left == right else
                     "distinct_known_components_unknown_connection_possible" if possible else
                     "separation_established_by_known_geography" if left and right else "unknown",
                 "unknown_geography_may_connect": possible if left and right else None,
                 "epistemic_status": "derived",
-                "evidence": "terrain-connected known components and their unresolved boundaries",
+                "evidence": "potential connectivity through matching known terrain and unknown cells; opposite terrain blocks",
             }
             profile = mobility_profile(objects, movement_profile_ref,
                                        subject_ref=origin_ref, topology=topology)

@@ -90,20 +90,40 @@ def main() -> int:
             assert land["ok"], land
             public = mcp.smac_cognition(action="scope_inspect", subject_refs=[land["watch_id"]])
             assert public["ok"] and public["scope"]["known_coverage_count"] > 0
-        sea = attention.create_watch("spatial_scope", [center],
-                                     {"type": "proximity", "radius": 2, "domain": "sea"}, current_turn=4)
-        combined = attention.create_watch("spatial_scope", [land["watch_id"], sea["watch_id"]],
-                                          {"type": "union"}, current_turn=4)
+        def managed_cognition(**kwargs):
+            with patch.object(mcp, "_managed_scope_identity", return_value=(scope.match_id, "session-scope", scope.agent_id, scope.perspective_id)), \
+                 patch.object(mcp, "controller_world_service", return_value=(scope, service, attention)):
+                result = mcp.smac_cognition(**kwargs)
+                assert result["ok"], result
+                return result
+        sea = managed_cognition(action="scope_create", subject_refs=[center],
+                                predicate_json=json.dumps({"type": "proximity", "radius": 2, "domain": "sea"}))
+        combined = managed_cognition(action="scope_create", subject_refs=[land["watch_id"], sea["watch_id"]],
+                                     predicate_json='{"type":"union"}')
         descriptor = attention.inspect_scope(combined["watch_id"])
         assert descriptor["known_coverage_count"] == 25
         assert "_location_refs" not in json.dumps(combined)
-        entry = attention.create_watch("region_entry", [combined["watch_id"]],
-                                       {"relationship": "hostile"}, current_turn=4)
+        def inspect_managed_area():
+            with patch.object(mcp, "_managed_scope_identity", return_value=(scope.match_id, "session-scope", scope.agent_id, scope.perspective_id)), \
+                 patch.object(mcp, "controller_world_service", return_value=(scope, service, attention)), \
+                 patch.object(mcp, "_refresh_managed_world", return_value={"ok": True}):
+                result = mcp.smac_world(mode="area", origin_ref=combined["watch_id"], detail="deep")
+            assert result["ok"] and result["items"] and result["result_token_estimate"] <= 8192, result
+            members = set(attention._semantic_registry(worlds.load(scope, identity.timeline_id), [])[combined["watch_id"]]["location_refs"])
+            assert all(str(row.get("location_ref") or row.get("object_ref")) in members for row in result["items"])
+            return result
+        inspect_managed_area()
+        entry = managed_cognition(action="watch_create", kind="region_entry", subject_refs=[combined["watch_id"]],
+                                  predicate_json='{"relationship":"hostile"}')
         exit_watch = attention.create_watch("region_exit", [combined["watch_id"]],
                                             {"relationship": "hostile"}, current_turn=4)
         def move(ref: str, destination: str, origin: str = "location-156") -> dict:
             return {"event_kind": "contact_moved", "contact_ref": ref,
-                    "path": [{"from_location_ref": origin, "to_location_ref": destination}]}
+                    "path": [{"from_location_ref": origin, "to_location_ref": destination,
+                              "evidence_kind": "observed_native_movement", "continuous_visibility": True,
+                              "occurrence_sequence": 1,
+                              "relationship": {"value": "allied" if ref == "contact-ally" else "hostile",
+                                               "epistemic_status": "current_at_occurrence"}}]}
         events = [move("contact-land", center), move("contact-sea", "location-126"),
                   move("contact-ally", center), move("contact-distant", "location-157"),
                   {"event_kind": "contact_appeared", "contact_ref": "contact-land", "location_ref": center},
@@ -113,6 +133,7 @@ def main() -> int:
         assert len(triggered) == 1 and triggered[0]["watch_id"] == entry["watch_id"]
         assert [match["temporal_event"]["contact_ref"] for match in triggered[0]["matches"]] \
             == ["contact-land", "contact-sea"]
+        inspect_managed_area()
         # Restart preserves membership, and repeated observations do not duplicate attention.
         reopened = AttentionService(SmacxStore(root / "state.sqlite3"), journal, scope)
         assert reopened.inspect_scope(combined["watch_id"]) == descriptor
@@ -123,7 +144,8 @@ def main() -> int:
         stale = deepcopy(objects)
         next(row for row in stale if row["object_ref"] == "contact-land")["fields"]["last_seen_turn"]["epistemic_status"] = "stale"
         save(stale, 4)
-        assert not reopened.evaluate_watches([], temporal_events=[events[0]], observation_cursor=4, turn=4)
+        assert not reopened.evaluate_watches([], temporal_events=[{"event_kind": "contact_moved", "contact_ref": "contact-land",
+            "path": [{"from_location_ref": "location-156", "to_location_ref": center}]}], observation_cursor=4, turn=4)
         changed = deepcopy(objects)
         next(row for row in changed if row["object_ref"] == center)["fields"]["terrain"]["value"] = "ocean"
         save(changed, 5)

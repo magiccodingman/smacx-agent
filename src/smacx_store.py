@@ -1328,6 +1328,12 @@ class SmacxStore:
         self.path = Path(path).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialization_lock = threading.Lock()
+        # Disposable spatial calculation caches, bounded to two recent keys.
+        # Keys carry perspective/timeline/epoch/revision and issued inputs.
+        self._spatial_cache_lock = threading.RLock()
+        self._plan_dependency_lock = threading.RLock()
+        self._spatial_registry_cache = {}
+        self._geography_cache = {}
         self._initialize_schema()
 
     def _connect(self) -> sqlite3.Connection:

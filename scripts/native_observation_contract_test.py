@@ -224,15 +224,15 @@ def main() -> int:
             "events": [
                 {"sequence": 1501, "kind": "visible_unit_moved", "turn": 30,
                  "subject_a": 91, "subject_b": 2, "from_tile_id": 17,
-                 "to_tile_id": 18, "continuous_visibility": True},
+                 "to_tile_id": 18, "continuous_visibility": True, "relationship_at_occurrence": "hostile"},
                 {"sequence": 1502, "kind": "visible_unit_moved", "turn": 30,
                  "subject_a": 91, "subject_b": 2, "from_tile_id": 18,
-                 "to_tile_id": 34, "continuous_visibility": True},
+                 "to_tile_id": 34, "continuous_visibility": True, "relationship_at_occurrence": "allied"},
             ],
         })
         assert collector._continuous_contact_moves["vehicle-handle-91"] == [
-            {"from": "location-17", "to": "location-18", "native_sequence": 1501},
-            {"from": "location-18", "to": "location-34", "native_sequence": 1502},
+            {"from": "location-17", "to": "location-18", "native_sequence": 1501, "relationship_at_occurrence": "hostile"},
+            {"from": "location-18", "to": "location-34", "native_sequence": 1502, "relationship_at_occurrence": "allied"},
         ]
         collector._append_native_feed({
             "continuity": "complete", "next_sequence": 1503,

@@ -445,3 +445,22 @@ batched observation-cache commits. Canonical journal events precede the cache
 transaction; frozen-publication replay reconstructs cache rows and preserves
 exactly-once events. `observation_collector_benchmark.py` prints measured case
 values in latency assertion failures without relaxing its existing gates.
+
+## Focused semantic consumer acceptance
+
+The [PR #48 correction ledger](benchmarks/2026-09-05-peer-review-corrections.md)
+lists the exact 30 scripts executed and their evidence classes. New focused
+contracts cover direct physical watches, local theater membership, managed
+route/cache/scope/watch/area chains, paginated omitted references, event-time
+episodes, native-backed receipt lifetime, threshold transitions and journal plan
+reactivation. `plan_dependency_publication_test.py` injects a failure after the
+positive transition is durable but before publication acknowledgement.
+
+Run `active_scope_benchmark.py` and `active_scope_collector_benchmark.py` in the
+MCP container. Set `SMACX_SCOPE_BENCH_WIDTH=320` and
+`SMACX_SCOPE_BENCH_HEIGHT=160` for 25,600 squares; defaults are 6,400. Both use
+nine simultaneous scopes and four watches. Their independent probe is a
+production-pipeline responsiveness check, not a measurement of a running game
+UI. `native_event_time_contract_test.py` compiles the production event adapter on
+the host with controlled native-shaped inputs; also cross-build the bridge.
+The unchanged full collector gates and failed timing evidence remain explicit.

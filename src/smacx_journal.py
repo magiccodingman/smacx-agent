@@ -522,7 +522,7 @@ class CampaignJournal:
             "commitments": {}, "goals": {}, "plans": {}, "summaries": {}, "notebook": {},
             "chat": {}, "chat_groups": {}, "chat_groups_snapshot_seen": False,
             "recent_actions": [], "lifecycle": [], "world_objects": {},
-            "project_reports": {},
+            "project_reports": {}, "plan_dependency_health": {},
             "world_observations": [], "world_continuity": "complete",
             "world_observation_cursor": 0,
         }
@@ -570,7 +570,9 @@ class CampaignJournal:
         if not isinstance(payload, dict):
             return
         kind = str(event.get("event_type") or "")
-        if kind == "memory.fact":
+        if kind == "attention.plan_dependency_state":
+            state["plan_dependency_health"] = dict(payload.get("states") or {})
+        elif kind == "memory.fact":
             state["facts"][str(payload.get("key") or event["event_id"])] = payload
         elif kind.startswith("memory."):
             memory_kind = kind.split(".", 1)[1]

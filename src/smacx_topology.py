@@ -187,6 +187,31 @@ class PerspectiveTopology:
                 for direction, position in self.shape.neighbors((square.x, square.y)).items()
                 if position in self.by_position}
 
+    def potential_physical_connection(self, origin_ref: str, target_ref: str) -> bool:
+        """Possibility graph: matching known terrain and unknown cells only.
+
+        No hidden terrain is read. Known opposite-domain squares block the
+        search, even when each endpoint touches a different pocket of fog.
+        """
+        origin, target = self.by_ref[origin_ref], self.by_ref[target_ref]
+        if origin.terrain not in {"land", "ocean"} or origin.terrain != target.terrain:
+            return False
+        pending = [(origin.x, origin.y)]
+        seen = set(pending)
+        goal = (target.x, target.y)
+        while pending:
+            position = pending.pop()
+            if position == goal:
+                return True
+            for neighbor in self.shape.neighbors(position).values():
+                if neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                square = self.by_position.get(neighbor)
+                if square is None or square.terrain in {"unknown", origin.terrain}:
+                    pending.append(neighbor)
+        return False
+
     @staticmethod
     def _passable(square: KnownSquare, profile: MobilityProfile) -> bool:
         if square.terrain == "unknown":

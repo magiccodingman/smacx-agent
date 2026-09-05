@@ -5,6 +5,8 @@ runtime regressions. It is not a validation diary and never contains game
 files, screenshots, model conversations, chat, prompts, responses, reasoning,
 tool arguments, provider addresses, credentials, or private host details.
 
+- [2026-09-05 focused PR #48 semantic corrections](2026-09-05-peer-review-corrections.md)
+
 ## Required test conditions
 
 - Use a test-owned match and isolated managed workers.

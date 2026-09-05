@@ -379,6 +379,12 @@ class SpecialistService:
         if not projection:
             raise SpecialistError("world_projection_unavailable")
         identity = WorldIdentity(**projection["identity"])
+        if faculty == "world":
+            snapshot_refs = {str(item["object_ref"]) for item in projection.get("objects", ())}
+            if any(ref not in snapshot_refs for ref in subjects):
+                # Disposable snapshots retain objects, not live scope/watch or
+                # query-cache handles. Do not accept an inert child input.
+                raise SpecialistError("specialist_subject_requires_immutable_world_object")
         if operation_id:
             with self.store._connect() as connection:
                 operation = connection.execute(

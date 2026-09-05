@@ -62,7 +62,14 @@ def evaluate_milestone(
         item = objects.get(ref)
         state = "unknown"
         if kind == "dependency_valid":
-            state = "ready" if ref in registry else "blocked"
+            if ref in registry:
+                state = "ready"
+            elif item is None or item.get("status", "active") in {"destroyed", "removed"}:
+                state = "blocked"
+            else:
+                state = "ready" if item.get("status", "active") == "active" and (
+                    item.get("kind") != "foreign_contact" or field_is_current(item, "last_seen_turn")) and any(
+                    field_is_current(item, name) for name in item.get("fields", {}) if name != "owner_ref") else "unknown"
         elif item is None or item.get("status", "active") in {"destroyed", "removed"}:
             state = "blocked"
         elif item.get("status", "active") != "active":
@@ -113,7 +120,10 @@ def evaluate_milestone(
         rows.append({"requirement_index": index, "ref": ref, "state": state})
     threshold = len(rows) if predicate.get("mode", "all") == "all" else predicate["at_least"]
     ready = sum(row["state"] == "ready" for row in rows)
-    state = "ready" if ready >= threshold else "blocked" if any(row["state"] == "blocked" for row in rows) \
-        else "unknown" if any(row["state"] == "unknown" for row in rows) else "pending"
-    return {"state": state, "ready_count": ready, "required_count": threshold,
+    potential = sum(row["state"] != "blocked" for row in rows)
+    known_possible = sum(row["state"] in {"ready", "pending"} for row in rows)
+    state = "ready" if ready >= threshold else "blocked" if potential < threshold \
+        else "unknown" if known_possible < threshold else "pending"
+    return {"state": state, "ready_count": ready, "potential_count": potential,
+            "required_count": threshold,
             "requirements": rows}, completed

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plan-linked milestone transitions, epistemics and durable attention."""
 
+from itertools import product
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -25,6 +26,26 @@ def main():
     assert _delta_attention({"change": "changed", "previous": base(1), "current": base(2)}) is None
     assert _delta_attention({"change": "changed", "previous": base(1, True), "current": base(2, True)}) is None
     assert _delta_attention({"change": "changed", "previous": base(1), "current": base(2, True)}) == (True, 90)
+    # Exhaustive threshold feasibility, including blocked optional members.
+    matrix_cases = 0
+    for states in product(("ready", "pending", "unknown", "blocked"), repeat=3):
+        objects = {str(i): {"status": "active", "fields": {"available": {
+            "value": state == "ready", "epistemic_status": "stale" if state == "unknown" else "current"}}}
+            for i, state in enumerate(states) if state != "blocked"}
+        for mode, threshold in (("all", 3), ("at_least", 1), ("at_least", 2), ("at_least", 3)):
+            predicate = {"mode": mode, "requirements": [
+                {"ref": str(i), "kind": "current_field", "field": "available", "value": True}
+                for i in range(3)]}
+            if mode == "at_least":
+                predicate["at_least"] = threshold
+            actual, _ = evaluate_milestone(predicate, objects, {}, [])
+            possible = states.count("ready") + states.count("pending") + states.count("unknown")
+            expected = ("ready" if states.count("ready") >= threshold else
+                        "blocked" if possible < threshold else
+                        "pending" if states.count("ready") + states.count("pending") >= threshold else "unknown")
+            assert actual["state"] == expected, (states, threshold, actual)
+            assert [row["state"] for row in actual["requirements"]] == list(states)
+            matrix_cases += 1
     with tempfile.TemporaryDirectory(prefix="smacx-milestone-") as raw:
         root = Path(raw)
         store = SmacxStore(root / "state.sqlite3")
@@ -119,7 +140,7 @@ def main():
         assert old["status"] == "expired" and old["linked_plan_id"] == plan["plan_id"]
         assert not reopened.evaluate_watches([], temporal_events=[completion], observation_cursor=8, turn=4)
     print(json.dumps({"ok": True, "managed_milestone_create_inspect": True,
-                      "all_and_threshold": True, "destroyed_requirement_retained": True,
+                      "all_and_threshold": True, "threshold_matrix_cases": matrix_cases, "destroyed_requirement_retained": True,
                       "stale_is_unknown": True, "repeat_completion_deduplication": True,
                       "restart_attention_delivery": True}))
 

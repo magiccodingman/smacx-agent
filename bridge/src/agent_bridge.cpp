@@ -108,6 +108,7 @@ struct NativeObservationEvent {
     bool continuous_visibility;
     char kind[32];
     char item_name[64];
+    char relationship[12];
 };
 NativeObservationEvent observation_events[MaxObservationEvents] = {};
 size_t observation_event_start = 0;
@@ -121,10 +122,18 @@ uint64_t last_observed_popup_generation = 0;
 int known_project_builder[SP_ID_Last + 1] = {};
 bool known_project_builder_valid[SP_ID_Last + 1] = {};
 
+const char* observed_event_relationship(int faction_id, int other) {
+    if (other == faction_id) return "self";
+    if (other == 0 || (Factions[faction_id].diplo_status[other] & DIPLO_VENDETTA)) return "hostile";
+    if (Factions[faction_id].diplo_status[other] & DIPLO_PACT) return "allied";
+    return "neutral";
+}
+
 void append_observation_event(const char* kind, int turn, int subject_a = -1,
 int subject_b = -1, int from_tile_id = -1, int to_tile_id = -1,
 int value_before = -1, int value_after = -1,
-bool continuous_visibility = false, const char* item_name = nullptr) {
+bool continuous_visibility = false, const char* item_name = nullptr,
+const char* relationship = nullptr) {
     if (!kind || !kind[0]) return;
     size_t index = 0;
     if (observation_event_count < MaxObservationEvents) {
@@ -145,6 +154,8 @@ bool continuous_visibility = false, const char* item_name = nullptr) {
     event.value_before = value_before;
     event.value_after = value_after;
     event.continuous_visibility = continuous_visibility;
+    lstrcpynA(event.relationship, relationship ? relationship : "unknown",
+        static_cast<int>(sizeof(event.relationship)));
     lstrcpynA(event.kind, kind, static_cast<int>(sizeof(event.kind)));
     lstrcpynA(event.item_name, item_name ? item_name : "",
         static_cast<int>(sizeof(event.item_name)));
@@ -4759,7 +4770,8 @@ void CALLBACK semantic_observation_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
                 "visible_unit_moved", *CurrentTurn,
                 semantic_vehicle_handle(index), current.faction_id,
                 semantic_tile_id(prior.x, prior.y),
-                semantic_tile_id(current.x, current.y), -1, -1, true);
+                semantic_tile_id(current.x, current.y), -1, -1, true, nullptr,
+                observed_event_relationship(faction_id, current.faction_id));
         }
         if (prior.visible && current.visible
         && prior.hitpoints != current.hitpoints) {
@@ -4906,6 +4918,7 @@ std::string observation_feed_response(const std::string& request) {
             << ",\"value_before\":" << event.value_before
             << ",\"value_after\":" << event.value_after
             << ",\"item_name\":" << json_string(event.item_name)
+            << ",\"relationship_at_occurrence\":" << json_string(event.relationship)
             << ",\"continuous_visibility\":"
             << (event.continuous_visibility ? "true" : "false") << '}';
         last = event.sequence;

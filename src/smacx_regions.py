@@ -365,10 +365,12 @@ class Theater:
     transport_dependency_refs: tuple[str, ...] = ()
     recent_material_refs: tuple[str, ...] = ()
     promoted_by_refs: tuple[str, ...] = ()
+    location_refs: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "theater_ref": self.theater_ref, "region_refs": list(self.region_refs),
+            "_location_refs": list(self.location_refs),
             "landmass_refs": list(self.landmass_refs),
             "subject_refs": list(self.subject_refs), "reason": self.reason,
             "salience": self.salience, "source_world_revision": self.source_world_revision,
@@ -458,6 +460,16 @@ def build_theaters(
             involved_regions.update((mapped,) if isinstance(mapped, str) else mapped)
         subjects = sorted({str(item.get("object_ref")) for item in involved if item.get("object_ref")})
         locations = {str(item.get("location_ref")) for item in involved if item.get("location_ref")}
+        # Spatial footprint is actual activity plus explicit linked route
+        # evidence, never all cells of a containing mobility region.
+        for route in rows:
+            if route.get("kind") not in {"route", "convoy", "operation"}:
+                continue
+            linked = set(map(str, _field_value(route, "subject_refs") or ()))
+            linked.update(str(_field_value(route, name) or "") for name in ("origin_ref", "target_ref"))
+            if linked & (set(subjects) | locations):
+                locations.update(str(ref) for ref in (_field_value(route, "path") or ())
+                                 if topology and str(ref) in topology.by_ref)
         factions = {str(_field_value(item, "owner_ref")) for item in involved
                     if _field_value(item, "owner_ref")}
         allied = {str(_field_value(item, "owner_ref")) for item in involved
@@ -486,6 +498,6 @@ def build_theaters(
                                          - {""})[:12]), tuple(sorted(factions)[:8]),
             tuple(sorted(allied)[:8]), tuple(sorted(hostile)[:8]),
             tuple(sorted(threatened)[:12]), tuple(sorted(transports)[:12]),
-            tuple(sorted(recent_here)[:12]), tuple(sorted(promoted_here)[:12]),
+            tuple(sorted(recent_here)[:12]), tuple(sorted(promoted_here)[:12]), tuple(sorted(locations)),
         ))
     return theaters

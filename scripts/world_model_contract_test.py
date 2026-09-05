@@ -167,6 +167,12 @@ def main() -> int:
             },
         )
         assert receipt_hit["cache"]["hit"] is True
+        receipt_ref = receipt_hit["route"]["route_ref"]
+        from smacx_spatial_scope import semantic_spatial_registry
+        assert receipt_ref in semantic_spatial_registry(world_store, scope, loaded)
+        assert receipt_ref in semantic_spatial_registry(WorldStore(SmacxStore(root / "smacx.sqlite3")), scope, loaded)
+        advanced = {**loaded, "action_revision": "action-new-native"}
+        assert receipt_ref not in semantic_spatial_registry(world_store, scope, advanced)
         persisted_after_receipt = world_store.load(scope, "timeline-main")
         persisted_dropper = next(item for item in persisted_after_receipt["objects"]
                                  if item["object_ref"] == "own-unit-7")
@@ -204,8 +210,8 @@ def main() -> int:
         moved_bundle["units"][-1]["tile_id"] = 2 * 16 + 2
         moved_bundle["_continuous_visible_contact_moves"] = {
             "hidden-engine-91": [
-                {"from": "location-17", "to": "location-18"},
-                {"from": "location-18", "to": "location-34"},
+                {"from": "location-17", "to": "location-18", "native_sequence": 1},
+                {"from": "location-18", "to": "location-34", "native_sequence": 2},
             ],
         }
         moved = PerspectiveProjector(identity, prior_projection=loaded).project(
@@ -228,9 +234,9 @@ def main() -> int:
         loop_bundle = bundle()
         loop_bundle["_continuous_visible_contact_moves"] = {
             "hidden-engine-91": [
-                {"from": "location-17", "to": "location-18"},
-                {"from": "location-18", "to": "location-34"},
-                {"from": "location-34", "to": "location-17"},
+                {"from": "location-17", "to": "location-18", "native_sequence": 1},
+                {"from": "location-18", "to": "location-34", "native_sequence": 2},
+                {"from": "location-34", "to": "location-17", "native_sequence": 3},
             ],
         }
         looped = PerspectiveProjector(identity, prior_projection=loaded).project(
@@ -411,7 +417,9 @@ def main() -> int:
             [], temporal_events=[{
                 "event_kind": "contact_moved", "contact_ref": "contact-visible",
                 "path": [{"from_location_ref": "unknown-outside",
-                          "to_location_ref": frontier["boundary_refs"][0]}],
+                          "to_location_ref": frontier["boundary_refs"][0],
+                          "evidence_kind": "observed_native_movement", "continuous_visibility": True,
+                          "occurrence_sequence": 1}],
             }], observation_cursor=35, turn=12,
         )
         assert [item["watch_id"] for item in frontier_trigger] == [

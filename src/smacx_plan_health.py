@@ -135,3 +135,39 @@ def plan_health(
             "conflict_count": len(conflicts), "conflicts": conflicts[:8],
             "dependency_exception_count": len(dependencies), "dependency_exceptions": dependencies[:8],
             "exception_details_truncated": len(conflicts) > 8 or len(dependencies) > 8}
+
+
+def dependency_states(plans, objects, valid_refs):
+    """Only explicit dependencies of current journal plan revisions are tracked."""
+    states = {}
+    for plan in plans[:128]:
+        if plan.get("status", "active") != "active":
+            continue
+        plan_ref = str(plan.get("plan_id") or plan.get("plan_key") or "")
+        declared = plan.get("dependencies") or []
+        if not isinstance(declared, list):
+            continue
+        confirmation = plan.get("last_confirmation") or {}
+        expected = confirmation.get("dependency_values", []) if isinstance(confirmation, Mapping) else []
+        for ref in declared[:64]:
+            if not isinstance(ref, str):
+                continue
+            item = objects.get(ref)
+            state = "available" if ref in valid_refs else "unavailable"
+            if item is not None:
+                if item.get("status", "active") in {"destroyed", "removed"}:
+                    state = "unavailable"
+                elif item.get("status", "active") != "active" or (
+                        item.get("kind") == "foreign_contact" and not field_is_current(item, "last_seen_turn")) or not any(
+                        field_is_current(item, name) for name in item.get("fields", {}) if name != "owner_ref"):
+                    state = "unknown"
+            tests = [row for row in expected[:16] if isinstance(row, Mapping)
+                     and row.get("ref") == ref and isinstance(row.get("field"), str) and "value" in row]
+            if tests and state != "unavailable":
+                if any(not field_is_current(item or {}, row["field"]) for row in tests):
+                    state = "unknown"
+                elif any(type(field_value(item, row["field"])) is not type(row["value"]) or
+                         field_value(item, row["field"]) != row["value"] for row in tests):
+                    state = "unavailable"
+            states[plan_ref + ":" + ref] = {"plan_ref": plan_ref, "dependency_ref": ref, "state": state}
+    return states

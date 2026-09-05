@@ -20,7 +20,7 @@ from smacx_world_types import (
 
 
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
-CALCULATOR_VERSION = "smacx.calculators.v4-counterfactual"
+CALCULATOR_VERSION = "smacx.calculators.v5-semantic-consumers"
 
 ENTITLEMENT_EVIDENCE_SOURCES = {
     "unity_survey": EvidenceSource.SURVEY,
@@ -412,7 +412,13 @@ class PerspectiveProjector:
                 metadata = {"native_observation_key": native_key}
                 safe_path = [
                     {"from_location_ref": str(step.get("from")),
-                     "to_location_ref": str(step.get("to"))}
+                     "to_location_ref": str(step.get("to")),
+                     "evidence_kind": "observed_native_movement",
+                     "continuous_visibility": True, "occurrence_sequence": step.get("native_sequence"),
+                     "relationship": {"value": step.get("relationship_at_occurrence", "unknown"),
+                                      "epistemic_status": "current_at_occurrence" if step.get("relationship_at_occurrence")
+                                         in {"self", "hostile", "allied", "neutral"} else "unknown",
+                                      "source": "native_visible_transition"}}
                     for step in path
                     if isinstance(step, Mapping) and step.get("from") and step.get("to")
                 ] if isinstance(path, Iterable) and not isinstance(path, (str, bytes, Mapping)) else []

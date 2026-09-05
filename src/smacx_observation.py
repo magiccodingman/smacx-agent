@@ -229,6 +229,7 @@ class ObservationCollector:
                     "from": f"location-{payload['from_tile_id']}",
                     "to": f"location-{payload['to_tile_id']}",
                     "native_sequence": payload["native_sequence"],
+                    "relationship_at_occurrence": payload.get("relationship_at_occurrence", "unknown"),
                 })
             elif kind in {"visible_unit_lost", "visible_unit_destroyed"} and key:
                 self._continuous_contact_moves.pop(key, None)
@@ -588,6 +589,7 @@ class ObservationCollector:
                 "value_after": item.get("value_after"),
                 "item_name": str(item.get("item_name") or "")[:64],
                 "continuous_visibility": bool(item.get("continuous_visibility", False)),
+                "relationship_at_occurrence": str(item.get("relationship_at_occurrence") or "unknown"),
             }
             saw_inbound_chat = saw_inbound_chat or payload["native_kind"] == "chat_inbound"
             staged_events.append({**payload, "turn": item.get("turn")})
@@ -664,6 +666,7 @@ class ObservationCollector:
         move_by_contact: dict[str, dict[str, Any]] = {}
         base_capture_history: dict[str, dict[str, Any]] = {}
         broken_handles: set[str] = set()
+        episode_refs = dict(prior_handle_to_ref)
         destroyed_handles = {
             f"vehicle-handle-{item['subject_a']}"
             for item in self._pending_native_events
@@ -674,18 +677,25 @@ class ObservationCollector:
             kind = str(raw.get("native_kind") or "")
             handle = raw.get("subject_a")
             handle_key = f"vehicle-handle-{handle}"
-            if kind in {"visible_unit_lost", "visible_unit_destroyed"}:
-                unit_ref = prior_handle_to_ref.get(handle_key) \
-                    or current_handle_to_ref.get(handle_key)
-            elif kind == "visible_unit_appeared" and handle_key in broken_handles:
-                unit_ref = current_handle_to_ref.get(handle_key)
-            else:
-                unit_ref = current_handle_to_ref.get(handle_key) \
-                    or prior_handle_to_ref.get(handle_key)
+            if kind == "contact_identity_reset":
+                for key, ref in list(episode_refs.items()):
+                    if ref_kinds.get(ref) == "foreign_contact":
+                        episode_refs.pop(key, None)
+                        broken_handles.add(key)
+                continue
+            if kind == "visible_unit_appeared":
+                candidate = current_handle_to_ref.get(handle_key)
+                if handle_key not in broken_handles or candidate != prior_handle_to_ref.get(handle_key):
+                    if candidate:
+                        episode_refs[handle_key] = candidate
+            unit_ref = episode_refs.get(handle_key) or (
+                current_handle_to_ref.get(handle_key) if handle_key not in broken_handles else None)
             at = raw.get("to_tile_id") if isinstance(raw.get("to_tile_id"), int) \
                 and raw.get("to_tile_id", -1) >= 0 else raw.get("from_tile_id")
             location = f"location-{at}" if isinstance(at, int) and at >= 0 else None
-            if kind == "visible_unit_moved" and unit_ref:
+            if kind == "visible_unit_moved" and unit_ref and raw.get("continuous_visibility") is True:
+                if handle_key in broken_handles and unit_ref == prior_handle_to_ref.get(handle_key):
+                    continue
                 own = ref_kinds.get(unit_ref) == "own_unit"
                 row = move_by_contact.setdefault(unit_ref, {
                     "event_kind": "unit_moved" if own else "contact_moved",
@@ -697,6 +707,13 @@ class ObservationCollector:
                     row["path"].append({
                         "from_location_ref": f"location-{before}",
                         "to_location_ref": f"location-{after}",
+                        "evidence_kind": "observed_native_movement",
+                        "continuous_visibility": True,
+                        "occurrence_sequence": raw["native_sequence"],
+                        "relationship": {"value": raw.get("relationship_at_occurrence", "unknown"),
+                                         "epistemic_status": "current_at_occurrence" if raw.get("relationship_at_occurrence")
+                                         in {"self", "hostile", "allied", "neutral"} else "unknown",
+                                         "source": "native_visible_transition"},
                     })
                     row["from_location_ref"] = row["path"][0]["from_location_ref"]
                     row["to_location_ref"] = row["path"][-1]["to_location_ref"]
@@ -706,7 +723,9 @@ class ObservationCollector:
                     broken_handles.add(handle_key)
                     if handle_key in destroyed_handles:
                         continue
+                    episode_refs.pop(handle_key, None)
                 elif kind == "visible_unit_destroyed":
+                    episode_refs.pop(handle_key, None)
                     broken_handles.add(handle_key)
                 own = ref_kinds.get(unit_ref) == "own_unit"
                 semantic_kind = {
@@ -971,6 +990,11 @@ class ObservationCollector:
             observation_cursor=cursor, action_revision=action_revision,
             continuity=continuity, journal_head_hash=str(manifest["head_hash"]),
         )
+        if self.attention is not None:
+            # Availability is evaluated against the just-published current
+            # projection. Keep the frozen package until its transition notice
+            # is durable, so a crash can retry without losing the wakeup.
+            self.attention.capture_current_plan_dependencies()
         self.world_store.acknowledge_native_observation_publication(
             self.scope, self.timeline_id, cursor,
         )

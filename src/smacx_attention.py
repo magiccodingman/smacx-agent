@@ -513,16 +513,17 @@ class AttentionService:
                 {str(item["object_ref"]): item for item in projection.get("objects", ())},
                 registry,
             )
+            if not scope_descriptor["_location_refs"]:
+                raise AttentionError("scope_has_no_known_spatial_footprint")
             # Definition + frozen receipt are authoritative intent. Membership
             # is a reproducible private index, not another map-sized notebook.
             predicate = {"_scope": provider_safe(scope_descriptor)}
-        resolved_locations = sorted({
-            location for subject in subjects
-            for location in registry.get(subject, {}).get("location_refs", ())
-            if registry.get(subject, {}).get("kind") not in {"region", "scope"}
-        })
-        if resolved_locations and watch_kind != "spatial_scope":
-            predicate["_subject_location_refs"] = resolved_locations
+        if watch_kind in {"region_entry", "region_exit"}:
+            for subject in subjects:
+                if not registry.get(subject, {}).get("location_refs") and not any(
+                        item.get("object_ref") == subject and item.get("kind") == "location"
+                        for item in projection.get("objects", ())):
+                    raise AttentionError("watch_subject_has_no_supported_spatial_footprint")
         with self.store._connect() as connection:
             if linked_plan_id and not connection.execute(
                 "SELECT 1 FROM plans WHERE plan_id=? AND match_id=? AND agent_id=? "
@@ -599,97 +600,8 @@ class AttentionService:
 
     def _semantic_registry(self, projection: Mapping[str, Any],
                            regions: Iterable[Any]) -> dict[str, dict[str, Any]]:
-        """Resolve provider-safe derived handles actually issued to this perspective."""
-        registry: dict[str, dict[str, Any]] = {}
-        from smacx_regions import PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE
-        region_rows = [*regions,
-            *self.world_store.load_regions(self.scope, self.timeline_id, PHYSICAL_LAND_PROFILE),
-            *self.world_store.load_regions(self.scope, self.timeline_id, PHYSICAL_OCEAN_PROFILE)]
-        for region in region_rows:
-            registry[region.region_ref] = {
-                "kind": "region", "location_refs": sorted(region.location_refs),
-            }
-        anchor = self.world_store.current_anchor(
-            self.scope, self.timeline_id, "256k",
-        ) or self.world_store.current_anchor(self.scope, self.timeline_id, "64k")
-        payload = anchor.get("payload", {}) if anchor else {}
-        if isinstance(payload, Mapping):
-            for frontier in payload.get("frontiers", ()):
-                if isinstance(frontier, Mapping) and frontier.get("frontier_ref"):
-                    registry[str(frontier["frontier_ref"])] = {
-                        "kind": "frontier",
-                        "location_refs": list(frontier.get("boundary_refs") or ()),
-                    }
-            regions_by_ref = {item.region_ref: item for item in region_rows}
-            for theater in payload.get("active_theaters", ()):
-                if not isinstance(theater, Mapping) or not theater.get("theater_ref"):
-                    continue
-                locations = {
-                    location
-                    for ref in theater.get("region_refs", ())
-                    for location in getattr(regions_by_ref.get(str(ref)), "location_refs", ())
-                }
-                registry[str(theater["theater_ref"])] = {
-                    "kind": "theater", "location_refs": sorted(locations),
-                    "subject_refs": list(theater.get("subject_refs") or ()),
-                }
-        with self.store._connect() as connection:
-            rows = connection.execute(
-                "SELECT result_json FROM world_query_cache WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND world_epoch=? AND world_revision=?",
-                (*self._key(self.timeline_id), str(projection["identity"]["world_epoch"]),
-                 int(projection["world_revision"])),
-            ).fetchall()
-        for row in rows:
-            result = json.loads(row["result_json"])
-            route = result.get("route")
-            if isinstance(route, Mapping) and route.get("route_ref"):
-                registry[str(route["route_ref"])] = {
-                    "kind": "route", "location_refs": list(route.get("path") or ()),
-                }
-            for item in result.get("items", ()) if isinstance(result.get("items"), list) else ():
-                if isinstance(item, Mapping) and item.get("rendezvous_ref"):
-                    registry[str(item["rendezvous_ref"])] = {
-                        "kind": "rendezvous",
-                        "location_refs": [str(item.get("candidate_ref"))]
-                        if item.get("candidate_ref") else [],
-                        "subject_refs": [str(value.get("participant_ref"))
-                                         for value in item.get("arrivals", ())
-                                         if isinstance(value, Mapping)],
-                    }
-        # Scopes form a creation-ordered DAG: unions can reference only already
-        # issued scopes. Recompute source receipts before exposing any handle.
-        # A changed dependency withdraws the handle instead of retargeting it.
-        with self.store._connect() as connection:
-            scopes = connection.execute(
-                "SELECT watch_id,typed_predicate_json,expires_turn FROM world_watches WHERE match_id=? "
-                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND world_epoch=? "
-                "AND watch_kind='spatial_scope' AND status='active' ORDER BY created_unix,watch_id",
-                (*self._key(self.timeline_id), str(projection["identity"]["world_epoch"])),
-            ).fetchall()
-        if scopes:
-            from smacx_spatial_scope import scope_geometry
-            from smacx_world import WorldService
-            topology = WorldService._topology(projection)
-            objects = {str(item["object_ref"]): item for item in projection.get("objects", ())}
-            turn_state = next((item for item in objects.values() if item.get("kind") == "turn_state"), {})
-            current_turn = turn_state.get("fields", {}).get("turn", {}).get("value")
-            for row in scopes:
-                if current_turn is not None and row["expires_turn"] is not None and row["expires_turn"] < current_turn:
-                    continue
-                saved = json.loads(row["typed_predicate_json"]).get("_scope", {})
-                try:
-                    current = scope_geometry(saved["definition"], tuple(saved["source_refs"]),
-                                             topology, objects, registry)
-                except (KeyError, ValueError):
-                    continue
-                if current["dependency_hash"] == saved.get("dependency_hash"):
-                    registry[str(row["watch_id"])] = {
-                        "kind": "scope", "location_refs": current["_location_refs"],
-                        "unknown_boundary": current["unknown_boundary"],
-                        "descriptor": provider_safe(current),
-                    }
-        return registry
+        from smacx_spatial_scope import semantic_spatial_registry
+        return semantic_spatial_registry(self.world_store, self.scope, projection)
 
     def inspect_scope(self, scope_ref: str) -> dict[str, Any]:
         projection = self.world_store.load(self.scope, self.timeline_id)
@@ -737,6 +649,8 @@ class AttentionService:
         # Interpretive intent comes exclusively from the active journal, never
         # from a mutable SQL search projection or the compact HUD selection.
         plans = self.journal.projection_records(self.scope, "plans", limit=1000, statuses={"active"})
+        self.capture_plan_dependency_transitions(plans,
+            {str(item["object_ref"]): item for item in projection.get("objects", ())}, set(dependencies), projection)
         result = plan_health(plans, {str(item["object_ref"]): item for item in projection.get("objects", ())},
                              list(operations), list(ready_refs), set(dependencies), complete=len(plans) < 1000)
         while estimate_tokens(result) > 800:
@@ -746,6 +660,46 @@ class AttentionService:
             result[field].pop()
             result["exception_details_truncated"] = True
         return result
+
+    def capture_current_plan_dependencies(self):
+        plans = self.journal.projection_records(self.scope, "plans", limit=1000, statuses={"active"})
+        projection = self.world_store.load(self.scope, self.timeline_id) or {}
+        objects = {str(row["object_ref"]): row for row in projection.get("objects", ())}
+        refs = set(objects)
+        if any(ref not in refs for plan in plans for ref in (plan.get("dependencies") or ()) if isinstance(ref, str)):
+            refs.update(self._semantic_registry(projection, []))
+        self.capture_plan_dependency_transitions(plans, objects, refs, projection)
+
+    def capture_plan_dependency_transitions(self, plans, objects, valid_refs, projection):
+        with self.store._plan_dependency_lock:
+            self._capture_plan_dependency_transitions(plans, objects, valid_refs, projection)
+
+    def _capture_plan_dependency_transitions(self, plans, objects, valid_refs, projection):
+        from smacx_plan_health import dependency_states
+        current = dependency_states(plans, objects, valid_refs)
+        prior = self.journal.replay(self.scope).get("plan_dependency_health", {})
+        for key, row in current.items():
+            old = prior.get(key, {})
+            cursor = int(projection.get("observation_cursor", 0))
+            if cursor < int(old.get("observation_cursor", 0)):
+                current[key] = old
+                continue
+            changed = old.get("state") != row["state"]
+            row["observation_cursor"] = cursor if changed else int(old.get("observation_cursor", cursor))
+            row["generation"] = int(old.get("generation", 0)) + int(changed)
+            # Unknown evidence cannot itself establish availability. Preserve
+            # a previously established blocker until current evidence resolves it.
+            row["was_unavailable"] = row["state"] == "unavailable" or (
+                row["state"] == "unknown" and old.get("was_unavailable", False))
+            if changed and row["state"] == "available" and old.get("was_unavailable"):
+                self.enqueue("plan_dependency_available", {
+                    "plan_ref": row["plan_ref"], "dependency_ref": row["dependency_ref"],
+                    "epistemic_status": "current", "meaning": "Explicit plan dependency is now mechanically available."},
+                    observation_cursor=int(projection.get("observation_cursor", 0)), priority=60,
+                    dedupe_key="plan-dependency:" + content_hash({"key": key, "generation": row["generation"]}))
+        if current != prior:
+            self.journal.append(self.scope, "attention.plan_dependency_state", {"states": current},
+                idempotency_key="plan-dependency-state:" + content_hash({"prior": prior, "current": current}))
 
     def capture_production_attention(self, events: Iterable[Mapping[str, Any]], *,
                                      observation_cursor: int, turn: int | None,
@@ -1019,14 +973,10 @@ class AttentionService:
                         matches.append({"temporal_event": event})
             if watch_kind in {"region_entry", "region_exit", "frontier_contact",
                               "route_disruption", "rendezvous_progress"}:
-                watched_locations = set(map(str, predicate.get("_subject_location_refs") or ()))
+                watched_locations = set()
                 for subject in subjects:
-                    region = regions.get(subject)
-                    if region:
-                        watched_locations.update(region.location_refs)
-                    elif registry.get(subject, {}).get("kind") == "scope":
-                        watched_locations.update(registry[subject]["location_refs"])
-                    elif subject.startswith("location-"):
+                    watched_locations.update(registry.get(subject, {}).get("location_refs", ()))
+                    if current_objects.get(subject, {}).get("kind") == "location":
                         watched_locations.add(subject)
                 for event in temporal:
                     # A newly visible contact is not evidence of a crossing.
@@ -1036,7 +986,13 @@ class AttentionService:
                     path = event.get("path") if isinstance(event.get("path"), list) else []
                     segments = [(str(step.get("from_location_ref") or ""),
                                  str(step.get("to_location_ref") or ""))
-                                for step in path if isinstance(step, Mapping)]
+                                for step in path if isinstance(step, Mapping)
+                                and step.get("evidence_kind") == "observed_native_movement"
+                                and step.get("continuous_visibility") is True
+                                and type(step.get("occurrence_sequence")) is int
+                                and (not predicate.get("relationship") or
+                                     step.get("relationship", {}).get("epistemic_status") == "current_at_occurrence"
+                                     and step.get("relationship", {}).get("value") == predicate["relationship"])]
                     if not segments and watch_kind not in {"region_entry", "region_exit"}:
                         segments = [(str(event.get("from_location_ref") or ""),
                                      str(event.get("to_location_ref")
@@ -1067,14 +1023,16 @@ class AttentionService:
                            and (bool(subjects & direct_refs)
                                 or bool(watched_locations & event_locations))
                     )
-                    if predicate.get("relationship") == "hostile":
-                        from smacx_mechanics import relationship_class, field_is_current
-                        contact = current_objects.get(str(event.get("contact_ref") or event.get("unit_ref") or ""), {})
-                        matched = (matched and contact.get("kind") == "foreign_contact"
-                                   and contact.get("status") == "active"
-                                   and field_is_current(contact, "last_seen_turn")
-                                   and field_is_current(contact, "relationship")
-                                   and relationship_class(contact) == "hostile")
+                    if predicate.get("relationship"):
+                        if crossing_event:
+                            matched = matched and bool(segments)
+                        else:
+                            from smacx_mechanics import relationship_class, field_is_current
+                            contact = current_objects.get(str(event.get("contact_ref") or event.get("unit_ref") or ""), {})
+                            matched = (matched and contact.get("status") == "active"
+                                       and field_is_current(contact, "last_seen_turn")
+                                       and field_is_current(contact, "relationship")
+                                       and relationship_class(contact) == predicate["relationship"])
                     if matched and self._watch_predicate_matches(predicate, {
                             "change": str(event.get("event_kind") or "changed"),
                             "current": event}):

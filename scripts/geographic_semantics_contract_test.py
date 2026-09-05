@@ -51,6 +51,27 @@ def initialized(root: Path):
 
 def main() -> int:
     results = {}
+    possibility_cases = 0
+    for wrapped in (False, True):
+        for domain, barrier in (("land", "ocean"), ("ocean", "land")):
+            shape = MapShape(16, 6, wrapped)
+            terrain = {(x, y): barrier for y in range(6) for x in range(y % 2, 16, 2)}
+            terrain[(2, 2)] = terrain[(10, 2)] = domain
+            for fog, expected in ((set(), False), ({(4, 2), (8, 2)}, False),
+                                  ({(4, 2), (6, 2), (8, 2)}, True)):
+                squares = [KnownSquare(f"p{x}-{y}", x, y, value) for (x, y), value in terrain.items()
+                           if (x, y) not in fog]
+                graph = PerspectiveTopology(shape, squares)
+                assert graph.potential_physical_connection("p2-2", "p10-2") is expected
+                possibility_cases += 1
+    # A possible corridor through the cylinder seam exists only with wrap.
+    for wrapped in (False, True):
+        squares = [KnownSquare(f"p{x}", x, 0, "land" if x in {2, 14} else "ocean")
+                   for x in range(2, 16, 2)]
+        assert PerspectiveTopology(MapShape(16, 1, wrapped), squares).potential_physical_connection(
+            "p2", "p14") is wrapped
+        possibility_cases += 1
+    results["potential_connectivity_cases"] = possibility_cases
     builder = RegionBuilder()
     shape = MapShape(20, 8, False)
     base_squares = [

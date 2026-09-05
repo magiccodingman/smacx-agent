@@ -147,3 +147,53 @@ single-player and two-seat LAN processes both passed uninterrupted.
 | LAN Social Engineering | Current native staged choice and predicted switch charge | Both replicas receive pending models and exactly-once charge through existing tools | Selected policy and agreements survive R12 checkpoint recovery; all derived social ratings are not independently compared |
 | Counterfactual and intent integration | Native effects match tested site/terraform/social/action predictions; explicit plans and milestones are queryable | Six native production upkeeps and deterministic movement match; production/interrupt attention delivered in seven acknowledged batches | First recovered plan query preserves conflict/assignment; completed identities survive; old watches and preview choices rejected; constant-surplus timing is not full campaign simulation |
 | Native responsiveness | Demanded receipts retain current visibility and guarded legality | R12 32-site receipt: 231.477 ms wall / 222.187 ms probe / 169,970 bytes; four-site economy: 210.431 ms / 218.370 ms / 52,338 bytes | Read-state restoration passes; unchanged 500 ms and payload gates; 129-unit routine Drop paging and exact outside-page execution also pass |
+
+## Focused peer-review corrections (R1–R8)
+
+The [acceptance ledger](benchmarks/2026-09-05-peer-review-corrections.md) and
+[numeric evidence](benchmarks/results/2026-09-05-peer-review-corrections.json)
+qualify this checkpoint. These rows amend the corresponding domains above.
+A supported read-only capability is proved through observed → represented →
+calculated → provider-queryable → sovereign-expressible → effect verified →
+recovery-safe. Watch/operation execution here means activating declared
+bookkeeping and receiving its verified event; it does not claim a native game
+action. Native action coverage remains in the earlier checkpoint rows.
+
+| Ref kind | World area | Direct spatial watch / scope | Operation / explicit plan or milestone dependency | Immutable specialist input | Lifetime and evidence |
+| --- | --- | --- | --- | --- | --- |
+| Physical landmass | Supported | Entry/exit and geography; identical membership | Supported | Explicitly rejected | Terrain identity independent of mobility; direct/wrapped crossings; omitted mass paginated discovery |
+| Physical ocean mass | Supported | Entry/exit and geography; identical membership | Supported | Explicitly rejected | Perspective-known ocean membership; direct/wrapped crossings |
+| Mobility region | Supported | Entry/exit and geography | Supported | Explicitly rejected | Mobility dependency validity; no physical-identity substitution |
+| Frontier | Supported | Frontier contact, spatial perimeter and geography | Supported | Explicitly rejected | Complete known frontier reconstruction; omitted frontier paginated discovery |
+| Theater | Supported | Activity footprint and geography | Supported | Explicitly rejected | Local participant/explicit route cells; containing continent never becomes footprint; amphibious case retained |
+| Route | Supported | Perimeter and route corridor | Supported | Explicitly rejected | Complete dependency set/hash, rules/calculator, perspective/timeline/epoch; native receipts additionally require unchanged action revision |
+| Spatial scope | Supported | Perimeter and union | Supported | Explicitly rejected | Same private frozen membership, dependency invalidation, expiration and timeline rules |
+| Base | Supported | Direct perimeter rejected; explicit base-radius scope supported | Supported | Supported object snapshot | Current object fields; stale/unknown qualification retained |
+| Own unit | Supported | Direct perimeter/geography rejected | Supported | Supported object snapshot | Current owned semantic identity; explicitly nominate a location for geography |
+| Current foreign contact | Supported | Direct perimeter/geography rejected | Supported, stale sighting becomes unknown | Supported object snapshot | Visible episode identity; no reuse across visibility gap |
+
+The specialist column describes commissioning inputs: live-derived handles are
+not part of the immutable object snapshot and now fail explicitly. The specialist
+can derive geography inside its frozen perspective from nominated world objects.
+Positive snapshot evidence is the specialist contract suite, not merely class
+existence. No live capability is smuggled into that snapshot.
+
+R3 crossings retain observed episode identity, continuous path segments, native
+sequence and relationship at occurrence. A later loss, destruction or diplomacy
+change does not erase an observed crossing; appearance without motion and stale
+reports do not create crossings. Evidence combines the compiled production
+adapter with native-shaped publication and deterministic episode tests, not a
+new running-game timing or combat-mechanics comparison.
+
+R6 threshold milestones count ready and feasible requirements, preserving each
+optional blocker without falsely blocking the aggregate. R7 potential terrain
+connectivity uses matching known terrain plus unknown cells and stops at known
+opposite terrain, including flat/wrapped parity boundaries. R8 active journal
+plan revisions retain prior explicit dependency health and produce one positive
+availability notification; unknown evidence cannot satisfy it. Restart, rollback,
+plan revision/completion and pre-publication-ack crash retries are covered.
+
+Multiple-scope and full collector acceptance passed unchanged gates. The ledger
+also retains a prior 55.9-second quiet collector failure whose cause was not
+established. Native Pact contact/reopening map refresh remains unverified by a
+clean controlled comparison; no continuous allied live vision is implied.
