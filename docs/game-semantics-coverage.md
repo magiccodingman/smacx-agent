@@ -342,3 +342,12 @@ See [incident acceptance and explicit limitations](benchmarks/2026-09-05-worker-
 | Failure and dismissal | Error/incident/unavailable status or Stay in lobby → overlay removed, automatic entry disarmed | Contracts and browser failure/offline/dismissal fixtures; polling can restore manual entry but cannot silently rearm the same launch. |
 
 Acceptance details: [Lobby startup UX acceptance](benchmarks/2026-09-05-lobby-startup.md).
+
+### AI - 2 action-progress repairs (in progress)
+
+| Capability | Evidence chain and status | Verification / limits |
+|---|---|---|
+| Supervisor progress classification | Observed failure receipt churn → production fingerprint excludes receipts → unchanged-state timer can retain its baseline | Deterministic fingerprint and continuation contracts pass; live snapshot effect completeness and full incident containment remain open. |
+| Managed rejection recovery | Preserved transcript distinguishes protocol-rejected Skip from eventual native success | Alternating targets, stale IDs, shared outcome receipts and bounded operator containment still require repair and integrated acceptance. Not complete. |
+
+See [action-progress repair evidence](benchmarks/2026-09-06-action-progress.md).
