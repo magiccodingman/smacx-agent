@@ -290,3 +290,11 @@ Deployment against the existing local database fails closed with `unsupported_pr
 | Owned production, then movement/damage/destruction absent from both snapshots | Lifecycle-scoped owned proof in the existing private episode checkpoint; shared semantic occurrence assignment | Normal temporal history retains production and owned destruction on `own-unit-777`; no fabricated contact destruction | 20 targeted cases, canonical journal assertions, packaged-image pass, existing gap/crash suites green |
 
 See [I1 acceptance and deployment evidence](benchmarks/2026-09-05-i1-review.md). No new executable action or live-game mechanics claim. Future schema changes require forward migrations; this deployment alone uses the explicitly authorized fresh prerelease database.
+
+### Gameplay doctrine checkpoint 1
+
+| Capability | Evidence chain | Status |
+| --- | --- | --- |
+| Static literacy and 16 match blocks | Authored doctrine → paragraph inventory/source review → typed deterministic compiler → 18 rendered prompts and 3 deliberate errors | Content fixtures pass; managed/provider integration and behavior evaluation remain pending |
+
+See [doctrine acceptance](doctrine/acceptance.md). Source evidence is distinguished from running-game comparisons; stock defaults are not inferred for unknown rulesets.

@@ -1,0 +1,90 @@
+{
+  "input": {
+    "schema": "smacx.confirmed-gameplay-context.v1",
+    "compatibility": {
+      "profile": "thinker-smacx-doctrine.v1",
+      "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "invariant_overrides": []
+    },
+    "self_faction": {
+      "name": "Gaia's Stepdaughters",
+      "progenitor": false,
+      "mechanics": [
+        {
+          "kind": "social",
+          "name": "EFFICIENCY",
+          "amount": 2
+        },
+        {
+          "kind": "social",
+          "name": "PLANET",
+          "amount": 1
+        },
+        {
+          "kind": "social",
+          "name": "MORALE",
+          "amount": -1
+        },
+        {
+          "kind": "social",
+          "name": "POLICE",
+          "amount": -1
+        },
+        {
+          "kind": "starting_technology",
+          "name": "Centauri Ecology"
+        },
+        {
+          "kind": "fungus_nutrients",
+          "amount": 1
+        },
+        {
+          "kind": "prohibited_model",
+          "name": "Free Market"
+        }
+      ]
+    },
+    "rules": {
+      "victory_conquest": true,
+      "victory_economic": true,
+      "victory_diplomatic": true,
+      "victory_transcendence": true,
+      "victory_cooperative": false,
+      "do_or_die": false,
+      "look_first": false,
+      "time_warp": false,
+      "ironman": false,
+      "blind_research": true,
+      "tech_stagnation": false,
+      "spoils_of_war": false,
+      "unity_survey": false,
+      "unity_scattering": true,
+      "random_events": true
+    },
+    "research_mode": "blind",
+    "difficulty": {
+      "name": "Librarian",
+      "natural_content": 3,
+      "ecology": "standard",
+      "research": "loaded",
+      "se_cost": "paid",
+      "event_first_turn": 45
+    },
+    "opening": {
+      "kind": "planetfall",
+      "initial_pod_placement": true
+    },
+    "world": {
+      "width": 80,
+      "height": 40,
+      "ocean_coverage": 1,
+      "erosive_forces": 1,
+      "cloud_cover": 1,
+      "native_life": 1
+    },
+    "participants": []
+  },
+  "expected": {
+    "error": "doctrine_required_input:victory"
+  }
+}

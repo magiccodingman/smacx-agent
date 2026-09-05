@@ -1,0 +1,24 @@
+{
+  "installed_concepts": {
+    "path": "conceptsx.txt",
+    "sha256": "b0eaa5ab92ab1e66ee1d4d4bb185681d70d7e4a508787e49d5c383c91f072296",
+    "classification": "shipped player documentation, not running-game comparison"
+  },
+  "loaded_alpha": {
+    "path": "alphax.txt",
+    "sha256": "bb01e3ac23793da0a46713f4851d65e63b599c24aef8300ffe45e7e57b332c42",
+    "classification": "public installed rule definition; compatibility candidate"
+  },
+  "native": {
+    "classification": "repository native implementation source, not live comparison",
+    "paths": [
+      "bridge/src/base.cpp",
+      "bridge/src/faction.cpp",
+      "bridge/src/game.cpp",
+      "bridge/src/gameturn.cpp",
+      "bridge/src/tech.cpp",
+      "bridge/src/probe.cpp",
+      "bridge/src/agent_bridge.cpp"
+    ]
+  }
+}

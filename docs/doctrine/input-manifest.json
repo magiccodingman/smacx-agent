@@ -1,0 +1,88 @@
+{
+  "classification": {
+    "schema": "required",
+    "compatibility": "required",
+    "self_faction": "required",
+    "rules": "required",
+    "research_mode": "required",
+    "difficulty": "required",
+    "victory": "required",
+    "opening": "required",
+    "participants": "optional",
+    "world": "optional"
+  },
+  "blocks": {
+    "SELF_FACTION_CONTEXT": [
+      "self_faction",
+      "victory.eligible"
+    ],
+    "OPPONENT_FACTION_CONTEXT": [
+      "participants"
+    ],
+    "DIFFICULTY_BASE_CONTEXT": [
+      "difficulty.name",
+      "difficulty.natural_content"
+    ],
+    "WORLD_CONTEXT": [
+      "world",
+      "participants"
+    ],
+    "EXPLORATION_RULE_CONTEXT": [
+      "rules.unity_survey",
+      "rules.unity_scattering",
+      "rules.random_events",
+      "difficulty.event_first_turn"
+    ],
+    "OPENING_RULE_CONTEXT": [
+      "opening",
+      "rules.look_first",
+      "rules.time_warp"
+    ],
+    "PERSISTENCE_RULE_CONTEXT": [
+      "rules.ironman"
+    ],
+    "DIFFICULTY_ECOLOGY_CONTEXT": [
+      "difficulty.ecology"
+    ],
+    "RESEARCH_RULE_CONTEXT": [
+      "research_mode",
+      "rules.blind_research",
+      "self_faction.progenitor",
+      "rules.tech_stagnation",
+      "rules.spoils_of_war",
+      "difficulty.research"
+    ],
+    "DIFFICULTY_SOCIAL_CONTEXT": [
+      "difficulty.se_cost"
+    ],
+    "SPECIAL_DIPLOMACY_CONTEXT": [
+      "self_faction.progenitor",
+      "participants",
+      "victory.progenitor"
+    ],
+    "DIPLOMATIC_VICTORY_CONTEXT": [
+      "rules.victory_diplomatic",
+      "victory.eligible",
+      "victory.supreme_fraction"
+    ],
+    "ENABLED_VICTORY_CONTEXT": [
+      "rules",
+      "victory.eligible",
+      "victory.ending_year"
+    ],
+    "COOPERATIVE_VICTORY_CONTEXT": [
+      "rules.victory_cooperative"
+    ],
+    "PROGENITOR_VICTORY_CONTEXT": [
+      "self_faction.progenitor",
+      "participants",
+      "victory.progenitor"
+    ],
+    "ELIMINATION_RULE_CONTEXT": [
+      "rules.do_or_die"
+    ]
+  },
+  "authority": "authenticated native UI-thread receipt projected to an allowlisted public seat configuration; never request settings or model-authored text",
+  "stock_fallback": "none in v1; missing required loaded facts fail; custom mechanics need supported mappings and compatible base rules",
+  "optional_policy": "omit unavailable generation priors and public roster; never infer their values from defaults"
+}

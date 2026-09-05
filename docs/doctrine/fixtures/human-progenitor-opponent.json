@@ -1,0 +1,154 @@
+{
+  "input": {
+    "schema": "smacx.confirmed-gameplay-context.v1",
+    "compatibility": {
+      "profile": "thinker-smacx-doctrine.v1",
+      "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "invariant_overrides": []
+    },
+    "self_faction": {
+      "name": "Gaia's Stepdaughters",
+      "progenitor": false,
+      "mechanics": [
+        {
+          "kind": "social",
+          "name": "EFFICIENCY",
+          "amount": 2
+        },
+        {
+          "kind": "social",
+          "name": "PLANET",
+          "amount": 1
+        },
+        {
+          "kind": "social",
+          "name": "MORALE",
+          "amount": -1
+        },
+        {
+          "kind": "social",
+          "name": "POLICE",
+          "amount": -1
+        },
+        {
+          "kind": "starting_technology",
+          "name": "Centauri Ecology"
+        },
+        {
+          "kind": "fungus_nutrients",
+          "amount": 1
+        },
+        {
+          "kind": "prohibited_model",
+          "name": "Free Market"
+        }
+      ]
+    },
+    "rules": {
+      "victory_conquest": true,
+      "victory_economic": true,
+      "victory_diplomatic": true,
+      "victory_transcendence": true,
+      "victory_cooperative": false,
+      "do_or_die": false,
+      "look_first": false,
+      "time_warp": false,
+      "ironman": false,
+      "blind_research": true,
+      "tech_stagnation": false,
+      "spoils_of_war": false,
+      "unity_survey": false,
+      "unity_scattering": true,
+      "random_events": true
+    },
+    "research_mode": "blind",
+    "difficulty": {
+      "name": "Librarian",
+      "natural_content": 3,
+      "ecology": "standard",
+      "research": "loaded",
+      "se_cost": "paid",
+      "event_first_turn": 45
+    },
+    "victory": {
+      "eligible": [
+        "conquest",
+        "economic",
+        "diplomatic",
+        "transcendence"
+      ],
+      "ending_year": 2500,
+      "supreme_fraction": 75,
+      "progenitor": {
+        "generators": 6,
+        "population": 10,
+        "cooperative": true
+      }
+    },
+    "opening": {
+      "kind": "planetfall",
+      "initial_pod_placement": true
+    },
+    "world": {
+      "width": 80,
+      "height": 40,
+      "ocean_coverage": 1,
+      "erosive_forces": 1,
+      "cloud_cover": 1,
+      "native_life": 1
+    },
+    "participants": [
+      {
+        "name": "Manifold Caretakers",
+        "progenitor": true,
+        "mechanics": [
+          {
+            "kind": "social",
+            "name": "PLANET",
+            "amount": 1
+          },
+          {
+            "kind": "defense",
+            "amount": 125
+          },
+          {
+            "kind": "free_facility",
+            "name": "Recycling Tanks"
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "metadata": {
+      "doctrine_version": "smacx.sovereign-doctrine.v1",
+      "compiler_version": "smacx.doctrine-compiler.v1",
+      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "compatibility": {
+        "profile": "thinker-smacx-doctrine.v1",
+        "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "invariant_overrides": []
+      },
+      "fixed_configuration_sha256": "3ffa79608cb00aaa6699a1d05fe51789d66aa5d50a40a496503e26eb2ee25547",
+      "gameplay_sha256": "827ae6cbb4038ed69b4695d2e5f9b1a85429f485ec726973d22441f74aaff313"
+    },
+    "blocks": {
+      "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
+      "OPPONENT_FACTION_CONTEXT": "- **Manifold Caretakers**: +1 PLANET; Conventional defense modifier: 125%; Free facility: Recycling Tanks.",
+      "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
+      "WORLD_CONTEXT": "- World dimensions: 80 × 40 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
+      "EXPLORATION_RULE_CONTEXT": "Unity Survey is unavailable: unexplored geography must be discovered or legitimately learned. Unity Pods are scattered broadly across Planet. Random Events are enabled; ordinary qualifying events become eligible from turn 45. Eligibility does not guarantee an event.",
+      "OPENING_RULE_CONTEXT": "",
+      "PERSISTENCE_RULE_CONTEXT": "",
+      "DIFFICULTY_ECOLOGY_CONTEXT": "",
+      "RESEARCH_RULE_CONTEXT": "Blind Research applies to this seat: choose broad Explore, Discover, Build and Conquer priorities rather than an exact technology. Research investment follows the loaded rules; use current research costs rather than an assumed difficulty multiplier.",
+      "DIFFICULTY_SOCIAL_CONTEXT": "Social Engineering changes can cost Energy. Inspect the exact current cost, including any same-turn credit, before switching.",
+      "SPECIAL_DIPLOMACY_CONTEXT": "Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Use current legal diplomacy choices for human–Progenitor agreements.",
+      "DIPLOMATIC_VICTORY_CONTEXT": "Diplomatic Victory is enabled: the Supreme Leader election requires 75% of Council votes after its enabling technology. A defied result may require defeating or subjugating holdouts; inspect candidate eligibility and current native requirements. Unconquered Progenitor factions prevent ordinary Diplomatic Victory.",
+      "ENABLED_VICTORY_CONTEXT": "Enabled standard victory paths: Conquest, Economic, Diplomatic, Transcendence.\nConquest resolves through defeating or subjugating the independent opposition under the loaded rules. Preparation, peace and alliances can serve that objective; constant war is not required.\nEconomic victory requires the enabling technology and enough Energy to corner the Global Energy Market. Protect the Headquarters and survive the announced countdown; inspect the actual required cost and duration.\nAn eligible faction follows the late scientific and Planetary sequence through The Voice of Planet and then completes The Ascent to Transcendence.\nThe match also has a time-limit ending in mission year 2500; account for the native end-of-game scoring conditions.",
+      "COOPERATIVE_VICTORY_CONTEXT": "Cooperative Victory is disabled: friendship, Treaty, Pact or private promises do not make factions joint mechanical winners.",
+      "PROGENITOR_VICTORY_CONTEXT": "**Progenitor Victory:** complete 6 Subspace Generators in bases of at least size 10. This is an opponent victory threat. The loaded rules permit a cooperative Pact outcome when Cooperative Victory applies.",
+      "ELIMINATION_RULE_CONTEXT": "Do or Die is disabled: an eliminated faction may escape and restart when native eligibility conditions permit; do not assume its first defeat is permanent."
+    }
+  }
+}
