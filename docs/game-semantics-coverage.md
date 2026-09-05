@@ -245,3 +245,7 @@ large-map runs passed at 8.489/11.255/23.245 seconds and 242/316/327 ms probes.
 Earlier failures and the original unexplained 55.9-second outlier remain in the
 ledger. Canonical journal writes and verification remain intact; only detached
 section copying and a disposable canonical filename index reduce repeated work.
+
+### H4 canonical persistence checkpoint (2026-09-05)
+
+Observed real event-file/manifest crash → verified canonical chain → recovered manifest → collector frozen retry → distinct S+2 append → replay/hash verification. Invalid or ambiguous suffixes fail closed. See [H review acceptance](benchmarks/2026-09-05-h-review.md). This closes the journal crash seam; the other H findings remain pending.

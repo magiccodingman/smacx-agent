@@ -93,6 +93,7 @@ class CampaignJournal:
         self._timeline_resolver = timeline_resolver
         self._replay_cache: dict[str, dict[str, Any]] = {}
         self._idempotency_event_index: dict[str, dict[str, Any]] = {}
+        self._recovered_heads: dict[str, tuple[Any, ...]] = {}
         self._cache_lock = threading.RLock()
 
     def timeline_id(self, scope: MemoryScope, requested: str = "") -> str:
@@ -151,6 +152,70 @@ class CampaignJournal:
             "updated_unix": now,
         }
 
+    def _validate_event(self, event, scope, timeline, sequence, previous, filename):
+        if not isinstance(event, dict):
+            raise JournalError("journal_invalid_event")
+        if (event.get("schema") != "smacx.campaign-event.v1"
+                or any(event.get(key) != value for key, value in (
+                    ("match_id", scope.match_id), ("agent_id", scope.agent_id),
+                    ("perspective_id", scope.perspective_id), ("timeline_id", timeline)))
+                or type(event.get("sequence")) is not int or event["sequence"] != sequence
+                or not re.fullmatch(r"journal-[0-9a-f]{32}", str(event.get("event_id", "")))
+                or filename != f"{sequence:012d}-{event['event_id']}.json"
+                or not isinstance(event.get("payload"), dict)
+                or not KEY.fullmatch(str(event.get("event_type", "")))
+                or event.get("previous_hash") != previous):
+            raise JournalError("journal_invalid_event_identity_or_chain")
+        body = {key: value for key, value in event.items() if key != "event_hash"}
+        actual = hashlib.sha256(previous.encode("ascii") + _canonical(body)).hexdigest()
+        if event.get("event_hash") != actual:
+            raise JournalError("journal_invalid_event_hash")
+
+    def _recover_suffix_locked(self, scope, timeline, path):
+        """Reconcile installed canonical events before returning/allocating a head.
+
+        Only a completely verified unique chain may advance the manifest. The
+        directory/head memo is disposable and is updated only after our writes.
+        """
+        manifest = self._manifest(scope, timeline)
+        directory = path / "events"
+        signature = (directory.stat().st_mtime_ns if directory.is_dir() else None,
+                     manifest.get("sequence"), manifest.get("head_hash"))
+        if self._recovered_heads.get(str(path)) == signature:
+            return manifest
+        if any(manifest.get(key) != value for key, value in (
+                ("match_id", scope.match_id), ("agent_id", scope.agent_id),
+                ("perspective_id", scope.perspective_id), ("timeline_id", timeline))):
+            raise JournalError("journal_invalid_manifest_identity")
+        head_sequence = int(manifest.get("sequence") or 0)
+        previous = "0" * 64
+        recovered = dict(manifest)
+        files = sorted(directory.glob("*.json")) if directory.is_dir() else []
+        if head_sequence < 0 or head_sequence > len(files):
+            raise JournalError("journal_manifest_sequence_mismatch")
+        for sequence, event_file in enumerate(files, 1):
+            event = self._load(event_file, None)
+            self._validate_event(event, scope, timeline, sequence, previous, event_file.name)
+            previous = event["event_hash"]
+            if sequence == head_sequence and previous != manifest.get("head_hash"):
+                raise JournalError("journal_manifest_head_mismatch")
+            if sequence > head_sequence:
+                recovered.update(sequence=sequence, head_hash=previous,
+                    last_event_id=event["event_id"], updated_unix=event["recorded_unix"])
+                for field in ("turn", "year"):
+                    if event.get(field) is not None:
+                        recovered["last_" + field] = event[field]
+        if head_sequence == 0 and manifest.get("head_hash") != "0" * 64:
+            raise JournalError("journal_manifest_head_mismatch")
+        if len(files) > head_sequence:
+            _atomic_json(path / "manifest.json", recovered)
+            self._replay_cache.pop(str(path), None)
+            self._update_catalog(scope, timeline, recovered)
+        self._recovered_heads[str(path)] = (signature[0], recovered["sequence"], recovered["head_hash"])
+        while len(self._recovered_heads) > 2:
+            self._recovered_heads.pop(next(iter(self._recovered_heads)))
+        return recovered
+
     def append(
         self,
         scope: MemoryScope,
@@ -177,6 +242,7 @@ class CampaignJournal:
         # Backups take the exclusive form of the root lock. An archive can
         # therefore never split an event write from its manifest/head update.
         with self._locked(self.root, shared=True), self._locked(path):
+            manifest = self._recover_suffix_locked(scope, timeline, path)
             events_directory = path / "events"
             prior_events_signature = events_directory.stat().st_mtime_ns if events_directory.is_dir() else None
             if idempotency_key:
@@ -188,6 +254,10 @@ class CampaignJournal:
                     if event_name else None
                 if isinstance(existing, dict) \
                         and existing.get("idempotency_key") == idempotency_key:
+                    self._validate_event(existing, scope, timeline, existing["sequence"],
+                                         existing["previous_hash"], event_name)
+                    if existing["sequence"] > manifest["sequence"]:
+                        raise JournalError("journal_uncommitted_idempotency_event")
                     return existing
                 # Recover marker loss from canonical events. Cache only the
                 # key-to-filename index, never event authority. A changed event
@@ -213,8 +283,11 @@ class CampaignJournal:
                     _atomic_json(path / "idempotency" / f"{marker_name}.json", {
                         "idempotency_key": idempotency_key, "event_file": event_name,
                         "event_id": existing.get("event_id"), "sequence": existing.get("sequence")})
+                    self._validate_event(existing, scope, timeline, existing["sequence"],
+                                         existing["previous_hash"], event_name)
+                    if existing["sequence"] > manifest["sequence"]:
+                        raise JournalError("journal_uncommitted_idempotency_event")
                     return existing
-            manifest = self._manifest(scope, timeline)
             sequence = int(manifest.get("sequence") or 0) + 1
             previous = str(manifest.get("head_hash") or "0" * 64)
             body = {
@@ -253,6 +326,8 @@ class CampaignJournal:
                     "event_id": body["event_id"],
                     "sequence": sequence,
                 })
+            self._recovered_heads[str(path)] = ((path / "events").stat().st_mtime_ns,
+                                                sequence, body["event_hash"])
             self._update_catalog(scope, timeline, manifest)
             cache_key = str(path)
             with self._cache_lock:
@@ -520,7 +595,8 @@ class CampaignJournal:
         def detached(state):
             return copy.deepcopy(state if selected is None else {key: value for key, value in state.items() if key in selected})
         path = self.perspective_root(scope, timeline_id)
-        manifest = self._manifest(scope, timeline_id)
+        with self._locked(self.root, shared=True), self._locked(path):
+            manifest = self._recover_suffix_locked(scope, self.timeline_id(scope, timeline_id), path)
         cache_key = str(path)
         with self._cache_lock:
             cached = self._replay_cache.get(cache_key)

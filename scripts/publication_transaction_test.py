@@ -55,7 +55,7 @@ def main():
         with patch.object(f.attention,'evaluate_watches',side_effect=invalidated):collect().collect_once()
     cases=[]
     for boundary in ('before_watch','after_watch_enqueue','after_head','before_dependency','before_available_enqueue',
-                     'after_available_enqueue','before_dependency_state','before_ack','during_ack','after_ack'):
+                     'after_available_enqueue','before_dependency_state','inside_journal','before_ack','during_ack','after_ack'):
         for reverse in (False,True):
             with tempfile.TemporaryDirectory() as tmp:
                 f,native,collect,plan=setup(Path(tmp))
@@ -92,6 +92,13 @@ def main():
                     return call
                 from contextlib import ExitStack
                 with ExitStack() as stack:
+                    if boundary=='inside_journal':
+                        import smacx_journal as journal_module
+                        atomic=journal_module._atomic_json
+                        def journal_crash(path,value):
+                            atomic(path,value)
+                            if path.parent.name=='events' and not fired[0]:fail()
+                        stack.enter_context(patch.object(journal_module,'_atomic_json',side_effect=journal_crash))
                     for obj,name in [(f.attention,'evaluate_watches'),(f.attention,'enqueue'),(f.attention,'capture_current_plan_dependencies'),
                                      (f.worlds,'replace_projection'),(f.journal,'append'),(f.worlds,'acknowledge_native_observation_publication')]:
                         stack.enter_context(patch.object(obj,name,side_effect=wrap(name)))
