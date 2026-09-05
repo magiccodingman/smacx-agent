@@ -659,7 +659,7 @@ class WorldStore:
                  identity.timeline_id, identity.world_epoch, world_revision, observation_cursor,
                  ruleset_hash, calculator_version, dependency_hash, canonical_json(request),
                  canonical_json({**result,"_inspection":{"world_revision":world_revision,
-                    "action_revision":action_revision,"validated_unix":time.time()}}), token_estimate, time.time()),
+                    "action_revision":(result.get("valid_while") or {}).get("action_revision"),"validated_unix":time.time()}}), token_estimate, time.time()),
             )
         self.prune_query_cache(scope, identity.timeline_id, identity.world_epoch)
         return fingerprint
@@ -674,7 +674,8 @@ class WorldStore:
                 "AND q.agent_id=h.agent_id AND q.perspective_id=h.perspective_id AND q.timeline_id=h.timeline_id "
                 "AND q.world_epoch=h.world_epoch WHERE q.match_id=? AND q.agent_id=? "
                 "AND q.perspective_id=? AND q.timeline_id=? AND json_extract(q.result_json,'$._inspection.world_revision')=? "
-                "AND json_extract(q.result_json,'$._inspection.action_revision') IS h.action_revision "
+                "AND (json_extract(q.result_json,'$.valid_while.action_revision') IS NULL "
+                "OR json_extract(q.result_json,'$._inspection.action_revision') IS h.action_revision) "
                 "ORDER BY json_extract(q.result_json,'$._inspection.validated_unix') DESC LIMIT ?",
                 (*self._scope_tuple(scope, timeline_id), int(world_revision), max(1, min(limit, 32))),
             ).fetchall()

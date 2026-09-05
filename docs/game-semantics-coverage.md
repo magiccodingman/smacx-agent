@@ -257,3 +257,7 @@ Persisted N evidence → installed-head visibility cap → normal history/snapsh
 ### H2/H3 temporal continuity checkpoint (2026-09-05)
 
 Observed native segment → private perspective/epoch episode assignment → single semantic occurrence → normal temporal history/watch access → frozen publish/ack checkpoint → next-publication extension/closure and restart verification. Seventeen adversaries plus existing transient/native contracts pass. Gaps qualify new identity without discarding observed movement; unstable feed cuts cannot equate an earlier episode with a later snapshot contact. See [H review acceptance](benchmarks/2026-09-05-h-review.md).
+
+### H5 inspection lifetime checkpoint (2026-09-05)
+
+Successful semantic query → cache authority → recent inspection → normal anchor promotion → action-only churn and restart → dependency invalidation. Eight cold/warm route/area/geography/native-receipt cases pass. Native action-bound authority still expires on revision change. See [H review acceptance](benchmarks/2026-09-05-h-review.md).

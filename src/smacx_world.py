@@ -789,12 +789,12 @@ class WorldService:
                 "world_revision": projection["world_revision"],
                 "condition": "listed dependency_refs retain dependency_hash",
             }
-            if scenario or airdrop_evidence:
+            if scenario or airdrop_evidence or runtime_base_site_receipts or runtime_counterfactual_receipt:
                 cached["valid_while"]["action_revision"] = projection.get("action_revision")
                 cached["valid_while"]["condition"] += "; native action_revision remains unchanged"
             cached = self._trim(provider_safe(cached), budget)
             if cached.get("ok") is not False:
-                self.store.record_inspection(fingerprint, int(projection["world_revision"]), projection.get("action_revision"))
+                self.store.record_inspection(fingerprint, int(projection["world_revision"]), cached.get("valid_while", {}).get("action_revision"))
             self.store.telemetry("world_query", "cache_hit", 1, scope=self.scope,
                                  timeline_id=identity.timeline_id, dimensions={"mode": mode})
             return provider_safe(cached)
@@ -851,7 +851,7 @@ class WorldService:
             "epistemic_note": "Unknown and stale evidence remain explicit; absence is not negative evidence.",
             "truncated": False,
         }
-        if airdrop_evidence:
+        if airdrop_evidence or runtime_base_site_receipts or runtime_counterfactual_receipt:
             result["valid_while"]["action_revision"] = projection.get("action_revision")
             result["valid_while"]["condition"] += "; native action_revision remains unchanged"
         topology: PerspectiveTopology | None = None
@@ -904,7 +904,7 @@ class WorldService:
             result["valid_while"]["action_revision"] = projection.get("action_revision")
             result["valid_while"]["condition"] += "; native action_revision remains unchanged"
         elif mode == "overview":
-            result["anchor"] = self.anchor(context_length=context_length)
+            result["anchor"] = self.anchor(context_length=context_length, captured_projection=(identity, projection))
         elif mode in {"base", "forces", "intel", "global", "logistics"}:
             kinds = {
                 "base": {"base"}, "forces": {"own_unit", "foreign_contact"},

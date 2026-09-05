@@ -442,7 +442,7 @@ def main() -> int:
                               "to_location_ref": frontier["boundary_refs"][0],
                               "evidence_kind": "observed_native_movement", "continuous_visibility": True,
                               "occurrence_sequence": 1}],
-                }], observation_cursor=35, turn=12,
+                }], observation_cursor=4, turn=12, # synthetic watch uses the installed publication
             )
             assert [item["watch_id"] for item in frontier_trigger] == [
                 frontier_watch["watch_id"]]
