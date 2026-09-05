@@ -20,7 +20,7 @@ from smacx_hermes import COMMUNICATION_MCP_TOOLS, configure_profile
 from smacx_prompt import compose_player_system_prompt, prompt_sha256
 
 
-IMAGE = "smacx-agent-harness:dev"
+IMAGE = os.environ.get("SMACX_TEST_HARNESS_IMAGE", "smacx-agent-harness:dev")
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -174,7 +174,10 @@ def main() -> int:
                 agent_id = f"agent-provider-capture-{suffix}"
                 match_id = f"match-provider-capture-{suffix}"
                 profile_id = f"smacx-provider-capture-{suffix}"
+                from smacx_doctrine import compile_doctrine
+                from doctrine_content_contract_test import fixtures
                 prompt = compose_player_system_prompt(
+                    gameplay_doctrine=compile_doctrine(fixtures()["stock-blind"])["text"],
                     agent_name="Provider Capture Player", agent_id=agent_id,
                     match_id=match_id, match_name="Provider capture",
                     perspective_id=f"perspective-provider-capture-{suffix}", ruleset_id="smacx",

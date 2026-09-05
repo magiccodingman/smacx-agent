@@ -11,6 +11,8 @@ const UINT WM_SMACX_AGENT_DEFERRED = WM_APP + 0x316;
 void agent_bridge_start_once(HWND hwnd);
 bool agent_bridge_handle_message(HWND hwnd, UINT msg);
 void agent_bridge_stop();
+// UI-thread rule-loader attestation, invalidated before each attempted reload.
+void agent_doctrine_rules_loading(const char* alpha_path, bool complete);
 
 // Exact semantic lifecycle hooks invoked by native mutation sites on the game
 // thread.  They capture only events visible to the managed perspective; the

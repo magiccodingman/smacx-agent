@@ -245,6 +245,12 @@ def main() -> int:
             instance["instance_id"], desired_status="running", observed_status="running",
             instance_status="running",
         )
+        from doctrine_content_contract_test import fixtures as doctrine_fixtures
+        with store.transaction() as connection:
+            row = connection.execute("SELECT metadata_json FROM seat_assignments WHERE match_id=? AND agent_id=?", (scope.match_id,scope.agent_id)).fetchone()
+            seat_meta = json.loads(row["metadata_json"])
+            seat_meta["gameplay_context"] = doctrine_fixtures()["stock-blind"]
+            connection.execute("UPDATE seat_assignments SET metadata_json=? WHERE match_id=? AND agent_id=?", (json.dumps(seat_meta),scope.match_id,scope.agent_id))
         descriptor = control.prepare_hermes_profile(
             scope.match_id, provider["provider_id"], reasoning_effort="low",
         )
@@ -254,7 +260,13 @@ def main() -> int:
             raise AssertionError("Hermes descriptor was not scoped to the exact seat and worker")
         managed_profile = control.get_harness_profile(descriptor["harness_profile_id"])
         managed_prompt = managed_profile.get("system_prompt", "")
-        if descriptor.get("system_prompt_schema") != "smacx.player-system.v6" \
+        # Re-open the actual persisted store and run the production assembly seam.
+        restarted = ControlPlane(SmacxStore(store.path), control.vault.root)
+        repeated = restarted.prepare_hermes_profile(scope.match_id, provider["provider_id"], reasoning_effort="low")
+        repeated_profile = restarted.get_harness_profile(repeated["harness_profile_id"])
+        assert repeated_profile["system_prompt"].encode() == managed_prompt.encode()
+        assert repeated_profile["metadata"]["gameplay_doctrine"] == managed_profile["metadata"]["gameplay_doctrine"]
+        if descriptor.get("system_prompt_schema") != "smacx.player-gameplay.v1" \
                 or descriptor.get("system_prompt_sha256") \
                 != managed_profile.get("metadata", {}).get("system_prompt_sha256") \
                 or "smac_match_briefing" not in managed_prompt \

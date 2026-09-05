@@ -1,0 +1,116 @@
+{
+  "classification": "live-provider frozen advisory-decision ablation; no native execution or tool loop",
+  "corpus_sha256": "e76063d411eff3393869b1711c00e3d21f89b349f95af5d0bb2e6921ea165072",
+  "model": "Qwen3.8-27B",
+  "seed": 1729,
+  "temperature": 0,
+  "results": [
+    {
+      "case": "support-rating-explicit",
+      "arm": "A",
+      "request_sha256": "dbcf0c7fd32d6429366242c95bd5710e51b2825887d3e65a31d9c4e930ea61b2",
+      "system_sha256": "d315aacf52723f6f411b074af42307c8bad2eeb01a69fc933818ec8f56a899bf",
+      "model": "Qwen3.8-27B",
+      "latency_seconds": 5.527,
+      "usage": {
+        "prompt_tokens": 1297,
+        "total_tokens": 1549,
+        "completion_tokens": 252,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "response": "{\n  \"choice_id\": null,\n  \"rationale\": \"The decision is consequential and the exact resulting mineral upkeep is missing. The army already consumes most mineral surplus, so a policy that raises income but lowers SUPPORT could create a mineral deficit or destabilize the economy. Without the precise upkeep figure, the net effect cannot be evaluated. Fixed faction bonuses are already included, so no adjustment is needed there. I recommend investigating the exact mineral upkeep and SUPPORT impact before choosing.\",\n  \"investigate\": [\n    \"Exact resulting mineral upkeep after adopting the new policy\",\n    \"Current mineral surplus and army mineral consumption\",\n    \"Consequences of the lowered SUPPORT rating (e.g., unit maintenance, stability, or other effects)\",\n    \"Income increase magnitude and whether it offsets the 72 Energy Credit cost\"\n  ],\n  \"uncertainties\": [\n    \"Exact mineral upkeep after the policy change is not yet given\",\n    \"Whether the income increase fully offsets the 72 Energy Credit cost\",\n    \"Downstream effects of the lowered SUPPORT rating on the army or other systems\",\n    \"Whether the army's mineral consumption will change under the new policy\"\n  ]\n}",
+      "parsed": {
+        "choice_id": null,
+        "rationale": "The decision is consequential and the exact resulting mineral upkeep is missing. The army already consumes most mineral surplus, so a policy that raises income but lowers SUPPORT could create a mineral deficit or destabilize the economy. Without the precise upkeep figure, the net effect cannot be evaluated. Fixed faction bonuses are already included, so no adjustment is needed there. I recommend investigating the exact mineral upkeep and SUPPORT impact before choosing.",
+        "investigate": [
+          "Exact resulting mineral upkeep after adopting the new policy",
+          "Current mineral surplus and army mineral consumption",
+          "Consequences of the lowered SUPPORT rating (e.g., unit maintenance, stability, or other effects)",
+          "Income increase magnitude and whether it offsets the 72 Energy Credit cost"
+        ],
+        "uncertainties": [
+          "Exact mineral upkeep after the policy change is not yet given",
+          "Whether the income increase fully offsets the 72 Energy Credit cost",
+          "Downstream effects of the lowered SUPPORT rating on the army or other systems",
+          "Whether the army's mineral consumption will change under the new policy"
+        ]
+      },
+      "offered_choice_or_investigation": true
+    },
+    {
+      "case": "support-rating-explicit",
+      "arm": "B",
+      "request_sha256": "2d77f2a86a9cf1a794b7e693392922d432825f9d3cf594147fae08babfe818a8",
+      "system_sha256": "4d739d55e8433006f511a04b4c1a70474e0903f1e3da1edbb7c42017c3ac03d3",
+      "model": "Qwen3.8-27B",
+      "latency_seconds": 6.723,
+      "usage": {
+        "prompt_tokens": 7742,
+        "total_tokens": 8068,
+        "completion_tokens": 326,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "response": "{\n  \"choice_id\": null,\n  \"rationale\": \"The decision is materially blocked by a missing consequential mechanic: the exact resulting mineral upkeep after the SUPPORT rating change. The doctrine explicitly warns that a lower SUPPORT rating is a penalty that can increase mineral upkeep, and the army already consumes most mineral surplus. Without the exact upkeep figure, the net effect on the mineral budget cannot be evaluated, so neither choice can be responsibly recommended. The 72-credit cost is affordable (80 available), but the ongoing support penalty could erode the mineral surplus that the army already depends on, potentially starving production or forcing unit disbandment. This is a high-stakes, uncertain, and partially irreversible choice (policy changes can cost credits to reverse), justifying investigation before acting.\",\n  \"investigate\": [\n    \"Exact resulting mineral support cost per base and total army upkeep after the SUPPORT rating change\",\n    \"Current mineral surplus and production rate to determine whether the increased upkeep is sustainable\",\n    \"Whether the policy change is reversible and its reversal cost\",\n    \"Current and proposed SUPPORT rating values and their specific mechanical effects on support thresholds and costs\"\n  ],\n  \"uncertainties\": [\n    \"The exact mineral upkeep increase from the lower SUPPORT rating is not yet given\",\n    \"Whether the army's current mineral consumption leaves enough surplus to absorb the increased upkeep\",\n    \"Whether the income increase from the policy change offsets the support penalty in net terms\",\n    \"Whether the policy change is reversible and at what cost\"\n  ]\n}",
+      "parsed": {
+        "choice_id": null,
+        "rationale": "The decision is materially blocked by a missing consequential mechanic: the exact resulting mineral upkeep after the SUPPORT rating change. The doctrine explicitly warns that a lower SUPPORT rating is a penalty that can increase mineral upkeep, and the army already consumes most mineral surplus. Without the exact upkeep figure, the net effect on the mineral budget cannot be evaluated, so neither choice can be responsibly recommended. The 72-credit cost is affordable (80 available), but the ongoing support penalty could erode the mineral surplus that the army already depends on, potentially starving production or forcing unit disbandment. This is a high-stakes, uncertain, and partially irreversible choice (policy changes can cost credits to reverse), justifying investigation before acting.",
+        "investigate": [
+          "Exact resulting mineral support cost per base and total army upkeep after the SUPPORT rating change",
+          "Current mineral surplus and production rate to determine whether the increased upkeep is sustainable",
+          "Whether the policy change is reversible and its reversal cost",
+          "Current and proposed SUPPORT rating values and their specific mechanical effects on support thresholds and costs"
+        ],
+        "uncertainties": [
+          "The exact mineral upkeep increase from the lower SUPPORT rating is not yet given",
+          "Whether the army's current mineral consumption leaves enough surplus to absorb the increased upkeep",
+          "Whether the income increase from the policy change offsets the support penalty in net terms",
+          "Whether the policy change is reversible and at what cost"
+        ]
+      },
+      "offered_choice_or_investigation": true
+    },
+    {
+      "case": "support-rating-explicit",
+      "arm": "C",
+      "request_sha256": "404a88c294df037dcb641016e7d0b1bb843a304e96df27684dd8714f1b122de0",
+      "system_sha256": "a3da87e298393d9dec972231fe441307c92fccc849a6c7f78d3078112460544b",
+      "model": "Qwen3.8-27B",
+      "latency_seconds": 6.659,
+      "usage": {
+        "prompt_tokens": 8326,
+        "total_tokens": 8636,
+        "completion_tokens": 310,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "response": "{\n  \"choice_id\": null,\n  \"rationale\": \"The decision hinges on the exact resulting mineral upkeep, which is not yet given. The army already consumes most mineral surplus, and the policy lowers SUPPORT (a penalty that can increase mineral upkeep) while raising income. Without the concrete support-cost delta, the net effect on mineral balance is unknown, and a 72-credit spend is large relative to 80 available. This is a high-stakes, consequential, partially irreversible choice where the missing mechanic materially changes the outcome, so it warrants investigation rather than a guess.\",\n  \"investigate\": [\n    \"Exact resulting mineral support cost per base and total army upkeep under the proposed policy (SUPPORT rating change and any support-cost penalty).\",\n    \"Current total mineral income and surplus, and the net mineral balance after the 72-credit policy change and any same-turn credit cost.\",\n    \"Whether the raised income (ECONOMY/energy/commerce) offsets the increased mineral upkeep over the relevant horizon, and any Social Engineering change cost beyond the 72 credits.\"\n  ],\n  \"uncertainties\": [\n    \"The exact mineral upkeep delta from the lowered SUPPORT rating is not provided.\",\n    \"Whether the income increase is sufficient to cover the added upkeep given the army already consumes most mineral surplus.\",\n    \"Whether the 72-credit cost is the full cost or whether additional same-turn credit costs apply.\"\n  ]\n}",
+      "parsed": {
+        "choice_id": null,
+        "rationale": "The decision hinges on the exact resulting mineral upkeep, which is not yet given. The army already consumes most mineral surplus, and the policy lowers SUPPORT (a penalty that can increase mineral upkeep) while raising income. Without the concrete support-cost delta, the net effect on mineral balance is unknown, and a 72-credit spend is large relative to 80 available. This is a high-stakes, consequential, partially irreversible choice where the missing mechanic materially changes the outcome, so it warrants investigation rather than a guess.",
+        "investigate": [
+          "Exact resulting mineral support cost per base and total army upkeep under the proposed policy (SUPPORT rating change and any support-cost penalty).",
+          "Current total mineral income and surplus, and the net mineral balance after the 72-credit policy change and any same-turn credit cost.",
+          "Whether the raised income (ECONOMY/energy/commerce) offsets the increased mineral upkeep over the relevant horizon, and any Social Engineering change cost beyond the 72 credits."
+        ],
+        "uncertainties": [
+          "The exact mineral upkeep delta from the lowered SUPPORT rating is not provided.",
+          "Whether the income increase is sufficient to cover the added upkeep given the army already consumes most mineral surplus.",
+          "Whether the 72-credit cost is the full cost or whether additional same-turn credit costs apply."
+        ]
+      },
+      "offered_choice_or_investigation": true
+    }
+  ],
+  "errors": 0
+}

@@ -290,3 +290,32 @@ Deployment against the existing local database fails closed with `unsupported_pr
 | Owned production, then movement/damage/destruction absent from both snapshots | Lifecycle-scoped owned proof in the existing private episode checkpoint; shared semantic occurrence assignment | Normal temporal history retains production and owned destruction on `own-unit-777`; no fabricated contact destruction | 20 targeted cases, canonical journal assertions, packaged-image pass, existing gap/crash suites green |
 
 See [I1 acceptance and deployment evidence](benchmarks/2026-09-05-i1-review.md). No new executable action or live-game mechanics claim. Future schema changes require forward migrations; this deployment alone uses the explicitly authorized fresh prerelease database.
+
+### Gameplay doctrine checkpoint 1
+
+| Capability | Evidence chain | Status |
+| --- | --- | --- |
+| Static literacy and 16 match blocks | Authored doctrine → paragraph inventory/source review → typed deterministic compiler → 18 rendered prompts and 3 deliberate errors | Content fixtures pass; managed/provider integration and behavior evaluation remain pending |
+
+See [doctrine acceptance](doctrine/acceptance.md). Source evidence is distinguished from running-game comparisons; stock defaults are not inferred for unknown rulesets.
+
+### Gameplay doctrine checkpoint 2
+
+| Capability | Evidence chain | Status |
+| --- | --- | --- |
+| Confirmed public match literacy | Native rule-loader/seat receipt → typed public adapter → 16 blocks → SQLite profile and hashes → real Hermes provider capture | Implemented; actual isolated native receipt plus integration/adversarial and provider-wire evidence |
+| Restart and fair-play boundaries | Session-scoped receipt → frozen opening/roster → exact persisted bytes after SQLite reopen; controller/runtime sentinels excluded | Integration checks pass; no hidden faction roster or live world state in doctrine |
+| Longer prefix capacity | Conservative system/tool reserve → minimum remaining history guard → unchanged 15 tools and semantic-GC policy | Capacity checks pass; exact costs and behavioral ablation remain checkpoint 3 |
+
+See [checkpoint acceptance and limitations](doctrine/acceptance.md) and [assembly architecture](doctrine/implementation.md). These receipts do not certify new native actions or full-game strategic performance.
+
+### Gameplay doctrine checkpoint 3
+
+| Capability | Evidence chain | Status |
+| --- | --- | --- |
+| Dynamic gameplay literacy delivery | Rule-load attestation → public receipt → compiler → persisted bytes → actual Hermes provider capture → live frozen response evaluation | Implemented and returned for review; exact final contract evidence recorded |
+| Behavioral usefulness and limitations | 23 cases × A/B/C, initial/final raw outputs, per-case source/evidence review, separate explicit SUPPORT supplement | Measured, mixed results; specialist and Progenitor comprehension improvements with remaining timing, cap and epistemic errors; no full-game competence claim |
+| Cost and persistence | Exact provider tokenizer → 8,034–8,380 system tokens → 15-tool budget and context reserve → 4,944/8,217 live cache hits; SQLite restart exact bytes | Verified at the stated interfaces/provider; no promise of complete cache reuse |
+| Recovery and failure behavior | Required-input/compatibility rejection → explicit recompile → corrupted/oversized prompt fail-closed checks, including swallowed-startup-error simulation | Contract checks pass; uses existing persistence, no database rebuild or new schema |
+
+See [final acceptance](doctrine/acceptance.md), [behavior review](doctrine/evidence/behavior-review.json), and [reproduction commands](doctrine/validation.md). Doctrine has no new executable action; native legality and effect verification remain the existing managed action path's authority.

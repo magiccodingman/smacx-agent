@@ -1,0 +1,560 @@
+{
+  "classification": "Author qualitative review of frozen advisory outputs; not blinded, not an independent native legality oracle or a win-rate estimate",
+  "rubric": {
+    "mechanical_correctness": "Check explicit causal/eligibility claims against source doctrine and scenario evidence; a valid candidate ID is not proof of native legality.",
+    "strategic_coherence": "Allow different capable choices; look for objective, bottleneck, cost, timing and occupation reasoning.",
+    "epistemic_discipline": "Flag facts invented from priors, stale evidence or absent costs; requested investigation cannot retroactively justify an asserted fact.",
+    "investigation": "Judge redundant versus material questions; count requested investigations only, no actual tool-call or tool-latency measurement.",
+    "fairness": "Private state is absent from this corpus. Actual hidden/controller exclusion is tested by adapter and native/provider boundary tests.",
+    "limitations": "One model, fixed seed, temperature zero, thinking disabled, one response per arm/case; no longitudinal strategy or native action execution."
+  },
+  "cases": [
+    {
+      "case": "first-base",
+      "review_dimensions": [
+        "opportunity cost",
+        "unknown surroundings"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "move",
+          "investigation_requests": 3,
+          "review": "River benefits partly guessed; useful questions, but adds water/defense concepts not supplied."
+        },
+        "B": {
+          "choice_id": "move",
+          "investigation_requests": 3,
+          "review": "Learns river Energy/movement; still assumes adjacent productivity and undervalues unknown site comparison."
+        },
+        "C": {
+          "choice_id": "move",
+          "investigation_requests": 3,
+          "review": "Learns river mechanics; improperly describes a proposed move as converting unknown terrain into verified higher-value geography."
+        }
+      }
+    },
+    {
+      "case": "early-expansion",
+      "review_dimensions": [
+        "population/support cost",
+        "compounding"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "pod",
+          "investigation_requests": 3,
+          "review": "Valid expansion preference; requests material costs and site legality."
+        },
+        "B": {
+          "choice_id": "pod",
+          "investigation_requests": 4,
+          "review": "Valid expansion preference with cost/site questions; treats infrastructure too categorically as least compounding."
+        },
+        "C": {
+          "choice_id": "pod",
+          "investigation_requests": 0,
+          "review": "Valid expansion preference; fewer questions, but no cost preview and overstates reversibility of population/production spending."
+        }
+      }
+    },
+    {
+      "case": "consolidation",
+      "review_dimensions": [
+        "development bottleneck",
+        "no universal base count"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "roads",
+          "investigation_requests": 3,
+          "review": "Suggests connectivity unlocks shared infrastructure/economic output; unsupported mechanical association."
+        },
+        "B": {
+          "choice_id": "roads",
+          "investigation_requests": 0,
+          "review": "Recognizes reinforcement logistics but still implies roads activate idle tile potential."
+        },
+        "C": {
+          "choice_id": "roads",
+          "investigation_requests": 0,
+          "review": "Recognizes road movement and coordination; no verified basis to rank every alternative, but preference is permissible."
+        }
+      }
+    },
+    {
+      "case": "drone-crisis",
+      "review_dimensions": [
+        "restore productive stability",
+        "specialist opportunity cost"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "psych",
+          "investigation_requests": 3,
+          "review": "Incorrectly says Specialist assignment does not address riots."
+        },
+        "B": {
+          "choice_id": "specialists",
+          "investigation_requests": 0,
+          "review": "After clarification, understands Specialists can relieve riots; exact three-to-one Drone result remains unverified."
+        },
+        "C": {
+          "choice_id": "specialists",
+          "investigation_requests": 0,
+          "review": "After clarification, understands Specialist relief and lost yields; rationale still overstates the exact resulting balance."
+        }
+      }
+    },
+    {
+      "case": "former-priorities",
+      "review_dimensions": [
+        "resource caps",
+        "worked tile and logistics"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": null,
+          "investigation_requests": 3,
+          "review": "Appropriately investigates current yield and cap before choosing."
+        },
+        "B": {
+          "choice_id": "farm",
+          "investigation_requests": 3,
+          "review": "Acknowledges cap, then assumes a nutrient bottleneck not supplied."
+        },
+        "C": {
+          "choice_id": "farm",
+          "investigation_requests": 0,
+          "review": "Claims immediate farm gain and invents a nutrient bottleneck without checking whether the tile is capped."
+        }
+      }
+    },
+    {
+      "case": "project-race",
+      "review_dimensions": [
+        "stale report",
+        "sunk/opportunity cost"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "inspect",
+          "investigation_requests": 3,
+          "review": "Preserves stale status and inspects before spending most reserves."
+        },
+        "B": {
+          "choice_id": null,
+          "investigation_requests": 4,
+          "review": "Preserves stale status and inspects Project effect/timing."
+        },
+        "C": {
+          "choice_id": null,
+          "investigation_requests": 4,
+          "review": "Preserves stale status and opportunity cost; unnecessarily re-asks whether its own competing Project exists."
+        }
+      }
+    },
+    {
+      "case": "technology-choice",
+      "review_dimensions": [
+        "bottleneck and threat uncertainty"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "food",
+          "investigation_requests": 3,
+          "review": "Food preference is coherent; asks for current threat/cost evidence."
+        },
+        "B": {
+          "choice_id": "food",
+          "investigation_requests": 3,
+          "review": "Food preference uses stated growth constraint and stale-threat distinction."
+        },
+        "C": {
+          "choice_id": "food",
+          "investigation_requests": 0,
+          "review": "Food preference is coherent and keeps threat stale; no fresh threat query requested, which is a risk preference rather than proof of absence."
+        }
+      }
+    },
+    {
+      "case": "blind-research",
+      "review_dimensions": [
+        "no invented exact technology"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": null,
+          "investigation_requests": 3,
+          "review": "Confuses categories with unmatched exact technology choices; correctly seeks mapping rather than issuing an invalid exact choice."
+        },
+        "B": {
+          "choice_id": null,
+          "investigation_requests": 2,
+          "review": "Static-only arm still lacks effective Blind Research behavior; treats categories as concrete tech identities to resolve."
+        },
+        "C": {
+          "choice_id": "discover",
+          "investigation_requests": 2,
+          "review": "Uses legal broad priority, but guesses Discover is the right resource-lifting category before checking the mapping."
+        }
+      }
+    },
+    {
+      "case": "social-switch",
+      "review_dimensions": [
+        "support and switching cost"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": null,
+          "investigation_requests": 4,
+          "review": "Requests missing cost deltas. Original wording reduces support is ambiguous."
+        },
+        "B": {
+          "choice_id": "switch",
+          "investigation_requests": 2,
+          "review": "Interprets reduces support as lower upkeep. Not a clean rating-comprehension test; see separate explicit-rating supplement."
+        },
+        "C": {
+          "choice_id": "switch",
+          "investigation_requests": 0,
+          "review": "No longer misattributes fixed Morgan bonuses to policy effects; original wording remains ambiguous. See supplement."
+        }
+      }
+    },
+    {
+      "case": "weak-frontier",
+      "review_dimensions": [
+        "response time",
+        "replacement capacity"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "reserve",
+          "investigation_requests": 3,
+          "review": "Contradicts five-turn reserve versus three-turn enemy arrival by claiming reserve closes the gap."
+        },
+        "B": {
+          "choice_id": "reserve",
+          "investigation_requests": 3,
+          "review": "Same timing error; additionally calls ceasefire only political, overlooking a native Truce effect."
+        },
+        "C": {
+          "choice_id": "reserve",
+          "investigation_requests": 4,
+          "review": "Same timing error despite mentioning two-turn exposure and asking about alternative routes."
+        }
+      }
+    },
+    {
+      "case": "unexpected-neighbor",
+      "review_dimensions": [
+        "no stock personality inference",
+        "unknown force"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "expand",
+          "investigation_requests": 3,
+          "review": "Alternative-site strategy is legitimate; does not invent the neighbor's faction identity or hidden depth."
+        },
+        "B": {
+          "choice_id": "contact",
+          "investigation_requests": 3,
+          "review": "Diplomacy preference is legitimate; says opening can establish commlink although commlink is a prerequisite."
+        },
+        "C": {
+          "choice_id": "contact",
+          "investigation_requests": 3,
+          "review": "Same commlink confusion, partially caught by its own investigation question; no hidden identity claim."
+        }
+      }
+    },
+    {
+      "case": "treaty-pact",
+      "review_dimensions": [
+        "speech does not enact Pact",
+        "no continuous vision assumption"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "session",
+          "investigation_requests": 1,
+          "review": "Keeps native formal transaction separate from chat."
+        },
+        "B": {
+          "choice_id": "session",
+          "investigation_requests": 3,
+          "review": "Correctly opens native session without treating chat as a Pact."
+        },
+        "C": {
+          "choice_id": null,
+          "investigation_requests": 1,
+          "review": "Correctly requests native offer inspection, but inaccurately calls opening the session read-only."
+        }
+      }
+    },
+    {
+      "case": "unreliable-ally",
+      "review_dimensions": [
+        "trust evidence",
+        "no automatic betrayal certainty"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "coordinate",
+          "investigation_requests": 3,
+          "review": "Proportionate cooperation with verification and contingency."
+        },
+        "B": {
+          "choice_id": "coordinate",
+          "investigation_requests": 0,
+          "review": "Proportionate cooperation; absence of betrayal evidence is not certainty."
+        },
+        "C": {
+          "choice_id": "coordinate",
+          "investigation_requests": 3,
+          "review": "Cooperation plus reserves/Probe protection; re-asks ordinary private-promise mechanics already explained."
+        }
+      }
+    },
+    {
+      "case": "probe-opportunity",
+      "review_dimensions": [
+        "exposure and treaty consequences"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": null,
+          "investigation_requests": 3,
+          "review": "Trade is a legitimate risk preference; requests material discovery consequences."
+        },
+        "B": {
+          "choice_id": "trade",
+          "investigation_requests": 3,
+          "review": "Trade is legitimate; asks an unnecessary generic technology-theft atrocity question."
+        },
+        "C": {
+          "choice_id": "trade",
+          "investigation_requests": 4,
+          "review": "Trade is legitimate and acknowledges native diplomacy; redundantly re-requests cost/success already described as current."
+        }
+      }
+    },
+    {
+      "case": "council-vote",
+      "review_dimensions": [
+        "vote versus promise",
+        "mechanical effect not claimed"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": null,
+          "investigation_requests": 3,
+          "review": "Speech/transfer distinction retained; over-investigates basic arithmetic and current stated vote counts."
+        },
+        "B": {
+          "choice_id": null,
+          "investigation_requests": 3,
+          "review": "Correctly identifies missing candidate-offer identity; unrelated Charter query adds investigation cost."
+        },
+        "C": {
+          "choice_id": null,
+          "investigation_requests": 3,
+          "review": "Retains speech/ballot distinction; repeats known chat and basic vote-weight questions."
+        }
+      }
+    },
+    {
+      "case": "naval-logistics",
+      "review_dimensions": [
+        "transport capacity",
+        "reinforcement and repair"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "scout",
+          "investigation_requests": 3,
+          "review": "Fresh reconnaissance before inadequate lift/damaged escort commitment is coherent."
+        },
+        "B": {
+          "choice_id": "scout",
+          "investigation_requests": 3,
+          "review": "Recognizes transport, repair and stale defenses."
+        },
+        "C": {
+          "choice_id": "scout",
+          "investigation_requests": 4,
+          "review": "Recognizes transport/repair uncertainty; no claim of magically fitting the entire army."
+        }
+      }
+    },
+    {
+      "case": "defensive-war",
+      "review_dimensions": [
+        "survival objective",
+        "force preservation tradeoff"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "defend",
+          "investigation_requests": 4,
+          "review": "Conditional hold with combat and reinforcement questions is coherent."
+        },
+        "B": {
+          "choice_id": "defend",
+          "investigation_requests": 4,
+          "review": "Explicitly conditions hold on surviving two turns and preserves withdrawal alternative."
+        },
+        "C": {
+          "choice_id": "defend",
+          "investigation_requests": 4,
+          "review": "Asks odds, but asserts two turns is short enough that holding is likely without evidence of relative forces."
+        }
+      }
+    },
+    {
+      "case": "offensive-objective",
+      "review_dimensions": [
+        "objective-driven war",
+        "occupation burden"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "port",
+          "investigation_requests": 2,
+          "review": "Limited port campaign matches objective; negotiation remains a valid competing strategy."
+        },
+        "B": {
+          "choice_id": "port",
+          "investigation_requests": 3,
+          "review": "Bounded occupation logic is useful, but calls the neighbor unreliable without evidence."
+        },
+        "C": {
+          "choice_id": "port",
+          "investigation_requests": 4,
+          "review": "Bounded campaign with occupation/route questions; negotiated access remains a capable alternative, not an error."
+        }
+      }
+    },
+    {
+      "case": "war-termination",
+      "review_dimensions": [
+        "marginal cost",
+        "conquest not permanent war"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "terms",
+          "investigation_requests": 2,
+          "review": "Further terms is a legitimate consolidation strategy."
+        },
+        "B": {
+          "choice_id": "terms",
+          "investigation_requests": 3,
+          "review": "Further terms preserves a bounded objective; some unrelated Charter investigation."
+        },
+        "C": {
+          "choice_id": "truce",
+          "investigation_requests": 0,
+          "review": "Truce and repair is a legitimate alternative with the objective already secured; does not prolong war by default."
+        }
+      }
+    },
+    {
+      "case": "enemy-victory",
+      "review_dimensions": [
+        "countdown threat",
+        "HQ and logistics"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "coalition",
+          "investigation_requests": 4,
+          "review": "Recognizes urgent endgame denial and coalition/logistics needs."
+        },
+        "B": {
+          "choice_id": "coalition",
+          "investigation_requests": 3,
+          "review": "Recognizes countdown, stale defenses and route constraints."
+        },
+        "C": {
+          "choice_id": "coalition",
+          "investigation_requests": 4,
+          "review": "Recognizes endgame urgency; speculative Council interruption question is not established mechanics."
+        }
+      }
+    },
+    {
+      "case": "progenitor",
+      "review_dimensions": [
+        "own special route",
+        "Council eligibility"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "hab",
+          "investigation_requests": 0,
+          "review": "Chooses habitation bottleneck, but does not demonstrate special eligibility knowledge."
+        },
+        "B": {
+          "choice_id": "governor",
+          "investigation_requests": 3,
+          "review": "Invalidly recommends Governor for a Progenitor seat; missing compiled restrictions matter."
+        },
+        "C": {
+          "choice_id": "hab",
+          "investigation_requests": 3,
+          "review": "Uses six/size-ten requirements and chooses habitation; avoids Governor but still does not explicitly restate its ineligibility. Cost/population and threat questions remain bounded."
+        }
+      }
+    },
+    {
+      "case": "time-warp",
+      "review_dimensions": [
+        "actual start replaces opening script"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "assess",
+          "investigation_requests": 5,
+          "review": "Rejects mismatched opening and assesses actual position."
+        },
+        "B": {
+          "choice_id": "assess",
+          "investigation_requests": 5,
+          "review": "Rejects mismatched opening and identifies potential bottlenecks."
+        },
+        "C": {
+          "choice_id": "assess",
+          "investigation_requests": 6,
+          "review": "Uses compiled campaign-start condition and assesses actual constraints without a build order."
+        }
+      }
+    },
+    {
+      "case": "huge-sparse",
+      "review_dimensions": [
+        "prior is not hidden map fact",
+        "proportional caution"
+      ],
+      "arms": {
+        "A": {
+          "choice_id": "explore",
+          "investigation_requests": 2,
+          "review": "Rejects stripping defenses based on no contact."
+        },
+        "B": {
+          "choice_id": "explore",
+          "investigation_requests": 0,
+          "review": "Explicitly treats generation settings as priors, not rival locations."
+        },
+        "C": {
+          "choice_id": "explore",
+          "investigation_requests": 0,
+          "review": "Preserves unknown map/rival state and rejects no-contact safety inference."
+        }
+      }
+    }
+  ]
+}

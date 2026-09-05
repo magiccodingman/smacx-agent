@@ -1,0 +1,107 @@
+{
+  "classification": {
+    "schema": "required",
+    "compatibility": "required",
+    "self_faction": "required",
+    "rules": "required",
+    "research_mode": "required",
+    "difficulty": "required",
+    "victory": "required",
+    "opening": "required",
+    "participants": "optional",
+    "world": "optional"
+  },
+  "blocks": {
+    "SELF_FACTION_CONTEXT": [
+      "self_faction",
+      "victory.eligible"
+    ],
+    "OPPONENT_FACTION_CONTEXT": [
+      "participants"
+    ],
+    "DIFFICULTY_BASE_CONTEXT": [
+      "difficulty.name",
+      "difficulty.natural_content"
+    ],
+    "WORLD_CONTEXT": [
+      "world",
+      "participants"
+    ],
+    "EXPLORATION_RULE_CONTEXT": [
+      "rules.unity_survey",
+      "rules.unity_scattering",
+      "rules.random_events",
+      "difficulty.event_first_turn"
+    ],
+    "OPENING_RULE_CONTEXT": [
+      "opening",
+      "rules.look_first",
+      "rules.time_warp"
+    ],
+    "PERSISTENCE_RULE_CONTEXT": [
+      "rules.ironman"
+    ],
+    "DIFFICULTY_ECOLOGY_CONTEXT": [
+      "difficulty.ecology"
+    ],
+    "RESEARCH_RULE_CONTEXT": [
+      "research_mode",
+      "rules.blind_research",
+      "self_faction.progenitor",
+      "rules.tech_stagnation",
+      "rules.spoils_of_war",
+      "difficulty.research"
+    ],
+    "DIFFICULTY_SOCIAL_CONTEXT": [
+      "difficulty.se_cost"
+    ],
+    "SPECIAL_DIPLOMACY_CONTEXT": [
+      "self_faction.progenitor",
+      "participants",
+      "victory.progenitor"
+    ],
+    "DIPLOMATIC_VICTORY_CONTEXT": [
+      "rules.victory_diplomatic",
+      "victory.eligible",
+      "victory.supreme_fraction"
+    ],
+    "ENABLED_VICTORY_CONTEXT": [
+      "rules",
+      "victory.eligible",
+      "victory.ending_year"
+    ],
+    "COOPERATIVE_VICTORY_CONTEXT": [
+      "rules.victory_cooperative"
+    ],
+    "PROGENITOR_VICTORY_CONTEXT": [
+      "self_faction.progenitor",
+      "participants",
+      "victory.progenitor"
+    ],
+    "ELIMINATION_RULE_CONTEXT": [
+      "rules.do_or_die"
+    ]
+  },
+  "authority": "authenticated native UI-thread receipt projected to an allowlisted public seat configuration; never request settings or model-authored text",
+  "stock_fallback": "No missing-required-field fallback. Explicit reviewed version-bound constants (e.g. Council fraction, FANATIC modifier, cooperative implementation) require positive source/build compatibility. Unknown/custom base rules fail.",
+  "optional_policy": "omit unavailable generation priors and public roster; never infer their values from defaults",
+  "native_provenance": {
+    "compatibility": "read_rules bookended source-file SHA256 captured at successful load; reviewed build source digest; supported thinker.ini; loaded CRules unchanged; scenario gate",
+    "self_faction": "MFactions[CurrentPlayerFaction] public rule fields and resolved public labels; never requested faction choice",
+    "rules": "loaded GameRules/GameState allowlist (15 flags)",
+    "research_mode": "loaded Blind Research rule bit used by native research_choices; no alien-name inference",
+    "difficulty.name": "Factions[self].diff_level via public difficulty label",
+    "difficulty.natural_content": "native mod_psych_check uses conf.content_pop_player[global DiffLevel]; receipt calls it directly rather than substituting seat difficulty",
+    "difficulty.ecology": "reviewed base.cpp difficulty classification using loaded seat difficulty",
+    "difficulty.research": "loaded current costs remain authoritative; no generic difficulty multiplier",
+    "difficulty.se_cost": "reviewed faction.cpp social_upheaval free/paid distinction using seat difficulty",
+    "difficulty.event_first_turn": "reviewed gameturn.cpp formula 75 - loaded global DiffLevel*10",
+    "victory.eligible": "enabled loaded rules plus resolved public Progenitor identity; potential routes, not current unlocks",
+    "victory.ending_year": "EndingMissionYear",
+    "victory.supreme_fraction": "reviewed version-bound 75% public Council requirement; current native candidate/defiance evidence still controls",
+    "victory.progenitor": "Rules.subspace_gen_req and base_size_subspace_gen; reviewed game.cpp cooperative outcome",
+    "opening": "initial CurrentTurn/base_count and loaded Look First/Time Warp; freeze at first assembly, imported positions omit irrelevant clauses",
+    "participants": "alive factions with self commlink, only if complete public roster at initial assembly; freeze roster thereafter; no hidden selected factions",
+    "world": "MapAreaX/MapAreaY and generation priors MapOceanCoverage/MapErosiveForces/MapCloudCover/MapNativeLifeForms; no tile reading"
+  }
+}

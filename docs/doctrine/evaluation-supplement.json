@@ -1,0 +1,31 @@
+{
+  "version": "smacx.doctrine-eval.supplement.v1",
+  "reason": "The frozen original says reduces support, which can be misread as reducing upkeep. This separately reported case makes the rating direction explicit without rewriting the original corpus.",
+  "cases": [
+    {
+      "id": "support-rating-explicit",
+      "configuration": "morgan",
+      "evidence": {
+        "situation": "A policy change costs 72 Energy Credits out of 80 available. It lowers the SUPPORT rating and raises income. The exact resulting mineral upkeep is not yet given. The army already consumes most mineral surplus. These are proposed policy effects; fixed faction bonuses are already included in the current position.",
+        "choices": [
+          {
+            "id": "switch",
+            "label": "Adopt new policy"
+          },
+          {
+            "id": "keep",
+            "label": "Keep existing policy"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "lower SUPPORT rating is not reduced mineral upkeep",
+        "fixed faction bonuses are not proposed action deltas",
+        "inspect consequential missing cost",
+        "reserve opportunity cost"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    }
+  ]
+}

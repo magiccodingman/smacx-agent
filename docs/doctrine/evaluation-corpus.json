@@ -1,0 +1,609 @@
+{
+  "version": "smacx.doctrine-eval.v1",
+  "cases": [
+    {
+      "id": "first-base",
+      "configuration": "stock-blind",
+      "evidence": {
+        "situation": "Initial Colony Pod can found now on adequate food or move one turn toward a visible river; surrounding terrain is unknown.",
+        "choices": [
+          {
+            "id": "found",
+            "label": "Found here"
+          },
+          {
+            "id": "move",
+            "label": "Move toward visible river"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "opportunity cost",
+        "unknown surroundings"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "early-expansion",
+      "configuration": "morgan",
+      "evidence": {
+        "situation": "Capital size 3 has a useful vacant settlement site nearby, one Former, and mineral support pressure.",
+        "choices": [
+          {
+            "id": "pod",
+            "label": "Produce Colony Pod"
+          },
+          {
+            "id": "former",
+            "label": "Produce Former"
+          },
+          {
+            "id": "facility",
+            "label": "Build infrastructure"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "population/support cost",
+        "compounding"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "consolidation",
+      "configuration": "university",
+      "evidence": {
+        "situation": "Six young bases, two Formers, three idle unconnected worked tiles, no current enemy threat.",
+        "choices": [
+          {
+            "id": "pod",
+            "label": "Another Colony Pod"
+          },
+          {
+            "id": "former",
+            "label": "More Formers"
+          },
+          {
+            "id": "roads",
+            "label": "Connect existing bases"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "development bottleneck",
+        "no universal base count"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "drone-crisis",
+      "configuration": "university",
+      "evidence": {
+        "situation": "Important base has 3 Drones and 1 Talent and is rioting; two citizens can become Specialists. Psych adjustment is available.",
+        "choices": [
+          {
+            "id": "specialists",
+            "label": "Assign Specialists"
+          },
+          {
+            "id": "psych",
+            "label": "Increase Psych"
+          },
+          {
+            "id": "project",
+            "label": "Continue current Project order"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "restore productive stability",
+        "specialist opportunity cost"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "former-priorities",
+      "configuration": "stock-blind",
+      "evidence": {
+        "situation": "Former can improve a tile currently worked by the capital or build a road to a planned frontier base. Ordinary nutrient restriction has not been lifted.",
+        "choices": [
+          {
+            "id": "farm",
+            "label": "Farm worked tile"
+          },
+          {
+            "id": "road",
+            "label": "Build frontier road"
+          },
+          {
+            "id": "forest",
+            "label": "Plant forest"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "resource caps",
+        "worked tile and logistics"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "project-race",
+      "configuration": "directed",
+      "evidence": {
+        "situation": "Rival is reported near completing a unique Project. Your base is 12 turns away; hurrying consumes most reserves; report is stale.",
+        "choices": [
+          {
+            "id": "hurry",
+            "label": "Hurry Project"
+          },
+          {
+            "id": "switch",
+            "label": "Switch production"
+          },
+          {
+            "id": "inspect",
+            "label": "Inspect available race evidence"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "stale report",
+        "sunk/opportunity cost"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "technology-choice",
+      "configuration": "directed",
+      "evidence": {
+        "situation": "Two available research choices improve food capacity or weapons. Growth is constrained; a possible threat was last seen 8 turns ago.",
+        "choices": [
+          {
+            "id": "food",
+            "label": "Research food technology"
+          },
+          {
+            "id": "weapon",
+            "label": "Research weapon technology"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "bottleneck and threat uncertainty"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "blind-research",
+      "configuration": "stock-blind",
+      "evidence": {
+        "situation": "Research selection focus offers Explore, Discover, Build, Conquer. Desired resource-lifting technology is not an exact legal choice.",
+        "choices": [
+          {
+            "id": "explore",
+            "label": "Explore"
+          },
+          {
+            "id": "discover",
+            "label": "Discover"
+          },
+          {
+            "id": "build",
+            "label": "Build"
+          },
+          {
+            "id": "conquer",
+            "label": "Conquer"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "no invented exact technology"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "social-switch",
+      "configuration": "morgan",
+      "evidence": {
+        "situation": "A new policy reduces support and increases income. Army already consumes most mineral surplus; current legal change costs 72 credits of 80.",
+        "choices": [
+          {
+            "id": "switch",
+            "label": "Adopt new policy"
+          },
+          {
+            "id": "keep",
+            "label": "Keep existing policy"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "support and switching cost"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "weak-frontier",
+      "configuration": "stock-blind",
+      "evidence": {
+        "situation": "Frontier base has one obsolete defender. Mobile reserve is five turns away by road; visible enemy force could arrive in three.",
+        "choices": [
+          {
+            "id": "hurry",
+            "label": "Hurry defender"
+          },
+          {
+            "id": "reserve",
+            "label": "Redirect reserve"
+          },
+          {
+            "id": "diplomacy",
+            "label": "Seek ceasefire"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "response time",
+        "replacement capacity"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "unexpected-neighbor",
+      "configuration": "tiny-crowded",
+      "evidence": {
+        "situation": "Newly observed faction controls the nearest expansion corridor. Its public name is known; military depth and intentions are unknown.",
+        "choices": [
+          {
+            "id": "contact",
+            "label": "Open legal diplomacy"
+          },
+          {
+            "id": "expand",
+            "label": "Claim alternative settlement site"
+          },
+          {
+            "id": "attack",
+            "label": "Attack visible scout"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "no stock personality inference",
+        "unknown force"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "treaty-pact",
+      "configuration": "human-progenitor-opponent",
+      "evidence": {
+        "situation": "Treaty partner asks for Pact in ordinary chat. Your legal diplomacy choices offer opening a native session or waiting.",
+        "choices": [
+          {
+            "id": "session",
+            "label": "Open native diplomacy"
+          },
+          {
+            "id": "wait",
+            "label": "Delay discussion"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "speech does not enact Pact",
+        "no continuous vision assumption"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "unreliable-ally",
+      "configuration": "cooperative",
+      "evidence": {
+        "situation": "Pact partner broke an earlier private promise but has honored formal agreements. Mutual enemy threatens both; betrayal preparations are unobserved.",
+        "choices": [
+          {
+            "id": "coordinate",
+            "label": "Coordinate defensive plan"
+          },
+          {
+            "id": "cancel",
+            "label": "Open Pact cancellation negotiation"
+          },
+          {
+            "id": "reserve",
+            "label": "Hold a reserve"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "trust evidence",
+        "no automatic betrayal certainty"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "probe-opportunity",
+      "configuration": "directed",
+      "evidence": {
+        "situation": "Probe can attempt theft from a Treaty partner with valuable technology. Cost and success receipt are current; diplomatic discovery remains a risk.",
+        "choices": [
+          {
+            "id": "steal",
+            "label": "Attempt theft"
+          },
+          {
+            "id": "withdraw",
+            "label": "Withdraw probe"
+          },
+          {
+            "id": "trade",
+            "label": "Seek technology trade"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "exposure and treaty consequences"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "council-vote",
+      "configuration": "cooperative",
+      "evidence": {
+        "situation": "Governor election: you have 20 votes, two candidates have 50 each. One offers a technology for your vote in chat; no transfer or ballot cast yet.",
+        "choices": [
+          {
+            "id": "candidate-a",
+            "label": "Vote A"
+          },
+          {
+            "id": "candidate-b",
+            "label": "Vote B"
+          },
+          {
+            "id": "abstain",
+            "label": "Abstain"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "vote versus promise",
+        "mechanical effect not claimed"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "naval-logistics",
+      "configuration": "custom-map",
+      "evidence": {
+        "situation": "Army exceeds transport capacity. Distant objective is across ocean; one escort is damaged and target defenses are stale.",
+        "choices": [
+          {
+            "id": "launch",
+            "label": "Launch first wave"
+          },
+          {
+            "id": "repair",
+            "label": "Repair and consolidate fleet"
+          },
+          {
+            "id": "scout",
+            "label": "Scout target"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "transport capacity",
+        "reinforcement and repair"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "defensive-war",
+      "configuration": "stock-blind",
+      "evidence": {
+        "situation": "Current hostile force threatens a productive base; withdrawing defenders saves units but likely loses the base. Reinforcements arrive in two turns.",
+        "choices": [
+          {
+            "id": "defend",
+            "label": "Hold base"
+          },
+          {
+            "id": "withdraw",
+            "label": "Withdraw defenders"
+          },
+          {
+            "id": "counter",
+            "label": "Counterattack supply approach"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "survival objective",
+        "force preservation tradeoff"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "offensive-objective",
+      "configuration": "conquest-only",
+      "evidence": {
+        "situation": "A weaker neighbor blocks the only known coast access. War could secure one port, but occupying its entire interior would be costly.",
+        "choices": [
+          {
+            "id": "port",
+            "label": "Plan limited port campaign"
+          },
+          {
+            "id": "trade",
+            "label": "Negotiate access"
+          },
+          {
+            "id": "total",
+            "label": "Plan full conquest"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "objective-driven war",
+        "occupation burden"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "war-termination",
+      "configuration": "conquest-only",
+      "evidence": {
+        "situation": "Original port objective is secured. Enemy offers Truce. Your forces need repair; enemy interior is poorly known.",
+        "choices": [
+          {
+            "id": "truce",
+            "label": "Accept native Truce"
+          },
+          {
+            "id": "advance",
+            "label": "Continue offensive"
+          },
+          {
+            "id": "terms",
+            "label": "Negotiate further terms"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "marginal cost",
+        "conquest not permanent war"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "enemy-victory",
+      "configuration": "directed",
+      "evidence": {
+        "situation": "Native evidence announces rival economic victory countdown. Its Headquarters location is known but stale defenses and a long sea route complicate attack.",
+        "choices": [
+          {
+            "id": "coalition",
+            "label": "Seek coordinated intervention"
+          },
+          {
+            "id": "raid",
+            "label": "Prepare Headquarters raid"
+          },
+          {
+            "id": "ignore",
+            "label": "Continue routine infrastructure"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "countdown threat",
+        "HQ and logistics"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "progenitor",
+      "configuration": "progenitor",
+      "evidence": {
+        "situation": "You have five eligible Subspace Generators; sixth base can reach the required population with habitation infrastructure. Human Council politics are active.",
+        "choices": [
+          {
+            "id": "hab",
+            "label": "Build needed habitation"
+          },
+          {
+            "id": "governor",
+            "label": "Pursue Governor election"
+          },
+          {
+            "id": "defense",
+            "label": "Secure generator bases"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "own special route",
+        "Council eligibility"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "time-warp",
+      "configuration": "time-warp",
+      "evidence": {
+        "situation": "Campaign begins with developed bases, several technologies, and transport access. The ordinary early opening build order was written before seeing this position.",
+        "choices": [
+          {
+            "id": "assess",
+            "label": "Assess current constraints"
+          },
+          {
+            "id": "opening",
+            "label": "Repeat ordinary opening sequence"
+          },
+          {
+            "id": "expand",
+            "label": "Expand from developed core"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "actual start replaces opening script"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    },
+    {
+      "id": "huge-sparse",
+      "configuration": "huge-sparse",
+      "evidence": {
+        "situation": "No rival contact yet. Only a small portion of the map is explored; public generation settings describe a Huge sparse match.",
+        "choices": [
+          {
+            "id": "explore",
+            "label": "Expand exploration"
+          },
+          {
+            "id": "grow",
+            "label": "Develop productive core"
+          },
+          {
+            "id": "unguarded",
+            "label": "Remove all defenses because rivals must be far away"
+          }
+        ],
+        "scope": "same legitimate frozen evidence for all arms; missing consequential mechanics may be investigated"
+      },
+      "review_dimensions": [
+        "prior is not hidden map fact",
+        "proportional caution"
+      ],
+      "grading": "No unique optimal strategy. Inspect legality, evidence use, assumptions, bottlenecks, logistics and victory awareness; requests to investigate missing material rules are valid."
+    }
+  ]
+}

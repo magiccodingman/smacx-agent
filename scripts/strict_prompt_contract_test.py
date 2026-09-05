@@ -29,7 +29,9 @@ def run_probe(package_root: Path, prompt_path: Path, expected_hash: str) -> subp
     })
     return subprocess.run(
         [sys.executable, "-c", (
-            "import json; from types import SimpleNamespace; import smacx_strict_prompt; "
+            "import json\nfrom types import SimpleNamespace\n"
+            "try:\n import smacx_strict_prompt\n"
+            "except Exception:\n pass # Python site/.pth swallows startup exceptions\n"
             "import agent.system_prompt as s; "
             "agent=SimpleNamespace(); "
             "value=s.build_system_prompt(agent, 'upstream additive text'); "
@@ -57,6 +59,10 @@ def main() -> int:
         seat_index=2, match_policy={"ranking_mode": "unranked"},
     ):
         raise AssertionError("system prompt composition is not deterministic")
+    from doctrine_integration_contract_test import SEAT
+    from doctrine_content_contract_test import fixtures
+    from smacx_doctrine import compose_managed_prompt
+    prompt, _ = compose_managed_prompt(fixtures()["stock-blind"], **SEAT)
     with tempfile.TemporaryDirectory(prefix="smacx-strict-prompt-") as temporary:
         root = Path(temporary)
         package = root / "agent"
@@ -92,6 +98,10 @@ def main() -> int:
         corrupted = run_probe(root, prompt_path, hashlib.sha256(b"wrong").hexdigest())
         if corrupted.returncode == 0 or "smacx_strict_prompt_integrity_failure" not in corrupted.stderr:
             raise AssertionError("strict hook did not fail closed on prompt hash mismatch")
+        prompt_path.write_text(prompt + 'x' * 100000, encoding='utf-8')
+        oversized = run_probe(root, prompt_path, prompt_sha256(prompt_path.read_text()))
+        if oversized.returncode == 0 or 'managed_prompt_context_headroom_insufficient' not in oversized.stderr:
+            raise AssertionError('oversized prompt fell back to upstream builder')
     print(json.dumps({
         "event": "pass",
         "payload": {
@@ -99,6 +109,7 @@ def main() -> int:
             "upstream_prompt_replaced": True,
             "provider_system_message_exact": True,
             "integrity_failure_closed": True,
+            "oversized_prompt_failure_closed_after_site_startup": True,
             "personality_seam_only": True,
         },
     }, separators=(",", ":")))

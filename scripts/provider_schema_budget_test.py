@@ -62,6 +62,12 @@ def main() -> int:
     )
     count, tokenizer = exact_tokens(prompt)
     prompt_proxy = (len(prompt.encode()) + 2) // 3
+    tool_text = "\n".join(by_name[name] for name in sorted(by_name))
+    tool_tokens, _ = exact_tokens(tool_text)
+    world_tokens, _ = exact_tokens(by_name["smac_world"])
+    tool_proxy = (len(tool_text.encode()) + 2) // 3
+    if tool_proxy > 8192:
+        raise AssertionError("managed schemas exceed doctrine tool reserve")
     if count is not None and count > 1600:
         raise AssertionError(f"v6 system prompt exceeds exact Qwen hard gate: {count}")
     # Without the tokenizer, retain a visible proxy rather than falsely
@@ -76,6 +82,9 @@ def main() -> int:
         "system_prompt_exact_tokens": count, "tokenizer": tokenizer,
         "system_prompt_sha256": prompt_sha256(prompt),
         "total_tool_schema_bytes": sum(len(value.encode()) for value in by_name.values()),
+        "total_tool_schema_exact_tokens": tool_tokens,
+        "total_tool_schema_conservative_token_proxy": tool_proxy,
+        "smac_world_schema_exact_tokens": world_tokens,
     }}, separators=(",", ":")))
     return 0
 

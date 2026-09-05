@@ -75,7 +75,20 @@ target_link_options(thinkerlib PRIVATE
 )
 target_compile_definitions(thinkerlib PRIVATE BUILD_DLL)
 set_target_properties(thinkerlib PROPERTIES PREFIX "" OUTPUT_NAME "thinker" SUFFIX ".dll")
-target_link_libraries(thinkerlib PRIVATE user32 gdi32 winmm psapi ws2_32 ole32)
+# The doctrine compatibility registry pins the reviewed engine source, not a faction name.
+file(GLOB DOCTRINE_ENGINE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
+list(SORT DOCTRINE_ENGINE_FILES)
+set(DOCTRINE_ENGINE_MANIFEST "")
+foreach(DOCTRINE_SOURCE IN LISTS DOCTRINE_ENGINE_FILES)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${DOCTRINE_SOURCE}")
+    file(SHA256 "${DOCTRINE_SOURCE}" DOCTRINE_SOURCE_HASH)
+    get_filename_component(DOCTRINE_SOURCE_NAME "${DOCTRINE_SOURCE}" NAME)
+    string(APPEND DOCTRINE_ENGINE_MANIFEST "${DOCTRINE_SOURCE_NAME}:${DOCTRINE_SOURCE_HASH}\n")
+endforeach()
+string(SHA256 DOCTRINE_ENGINE_HASH "${DOCTRINE_ENGINE_MANIFEST}")
+target_compile_definitions(thinkerlib PRIVATE DOCTRINE_ENGINE_SHA256="${DOCTRINE_ENGINE_HASH}")
+
+target_link_libraries(thinkerlib PRIVATE user32 gdi32 winmm psapi ws2_32 ole32 advapi32)
 
 # ---------- Launch executable ----------
 file(GLOB THINKER_LAUNCH_SOURCES

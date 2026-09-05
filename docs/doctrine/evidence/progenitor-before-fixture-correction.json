@@ -1,0 +1,36 @@
+{
+  "case": "progenitor",
+  "arm": "C",
+  "request_sha256": "7fcec1dce807db47dafb18ebea372968db166e726ce18f1a32bbb53e53c6d6af",
+  "system_sha256": "784bb0dad7fc278798cbdb20a88939217e4799ae4c74b689c7b79199bd136797",
+  "model": "Qwen3.8-27B",
+  "latency_seconds": 10.142,
+  "usage": {
+    "prompt_tokens": 8529,
+    "total_tokens": 8873,
+    "completion_tokens": 344,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "finish_reason": "stop",
+  "response": "{\n  \"choice_id\": \"hab\",\n  \"rationale\": \"Progenitor Victory requires six Subspace Generators in bases of at least size 10. Five are eligible; the sixth base can reach the required population only with the needed habitation infrastructure. Building it is the direct, necessary step to complete the faction's special victory route. Governor pursuit is a human Council political path that does not advance Progenitor Victory, and securing generator bases is defensive maintenance that does not remove the population bottleneck. With the sixth base's growth explicitly gated on habitation, that is the current constraint to solve.\",\n  \"investigate\": [\n    \"Exact population/habitation requirement for the sixth base to reach size 10 and any faction-specific population limit modifiers\",\n    \"Whether the sixth Subspace Generator is already built or still must be produced, and its production cost/timing\",\n    \"Current state of the UN Charter and any Council or human-faction actions that could block, sanction, or delay Progenitor Victory\",\n    \"Whether the loaded rules permit a cooperative Pact outcome for Progenitor Victory and what it requires\"\n  ],\n  \"uncertainties\": [\n    \"Whether the sixth base's terrain and existing facilities can actually support the required population once habitation is built\",\n    \"Whether rival factions or human Council politics could contest the sixth base or the Subspace Generator completion\",\n    \"Whether the five existing eligible generators remain secure and undamaged\",\n    \"Exact remaining turns to mission year 2500 and whether the Progenitor route can complete before the time-limit ending\"\n  ]\n}",
+  "parsed": {
+    "choice_id": "hab",
+    "rationale": "Progenitor Victory requires six Subspace Generators in bases of at least size 10. Five are eligible; the sixth base can reach the required population only with the needed habitation infrastructure. Building it is the direct, necessary step to complete the faction's special victory route. Governor pursuit is a human Council political path that does not advance Progenitor Victory, and securing generator bases is defensive maintenance that does not remove the population bottleneck. With the sixth base's growth explicitly gated on habitation, that is the current constraint to solve.",
+    "investigate": [
+      "Exact population/habitation requirement for the sixth base to reach size 10 and any faction-specific population limit modifiers",
+      "Whether the sixth Subspace Generator is already built or still must be produced, and its production cost/timing",
+      "Current state of the UN Charter and any Council or human-faction actions that could block, sanction, or delay Progenitor Victory",
+      "Whether the loaded rules permit a cooperative Pact outcome for Progenitor Victory and what it requires"
+    ],
+    "uncertainties": [
+      "Whether the sixth base's terrain and existing facilities can actually support the required population once habitation is built",
+      "Whether rival factions or human Council politics could contest the sixth base or the Subspace Generator completion",
+      "Whether the five existing eligible generators remain secure and undamaged",
+      "Exact remaining turns to mission year 2500 and whether the Progenitor route can complete before the time-limit ending"
+    ]
+  },
+  "offered_choice_or_investigation": true
+}

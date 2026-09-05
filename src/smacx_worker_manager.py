@@ -733,6 +733,24 @@ class WorkerManager:
         except BridgeUnavailable as exc:
             raise WorkerManagerError("game_worker_bridge_unavailable") from exc
 
+    def confirm_gameplay_context(self, instance_id: str) -> dict[str, Any]:
+        """Resolve actual public rules before preparing the managed provider profile."""
+        from smacx_doctrine_native import confirmed_context
+        spec = self.control.get_worker_spec(instance_id)
+        game = self.docker.inspect_container(spec["container_name"])
+        self.docker.require_owned(game, self.installation_id, purpose="game-worker")
+        session_id = str(game.get("Config", {}).get("Labels", {}).get("io.smacx.session") or "")
+        with self.store.transaction() as connection:
+            seat = connection.execute("SELECT seat_index,faction_id,metadata_json FROM seat_assignments WHERE instance_id=? AND status='assigned'",(instance_id,)).fetchone()
+        if not seat or not session_id:
+            raise WorkerManagerError("doctrine_native_scope_unavailable")
+        metadata = json.loads(seat["metadata_json"])
+        receipt = self._native_request(instance_id,"doctrine_context",timeout=20)
+        context = confirmed_context(receipt,match_id=spec["match_id"],session_id=session_id,
+            faction_id=seat["faction_id"],previous=metadata.get("gameplay_context"))
+        self.control.update_lan_seat(spec["match_id"],seat["seat_index"],metadata={"gameplay_context":context})
+        return context
+
     def _wait_native(self, instance_id: str, operation: str, predicate, *,
                      timeout: float, poll_seconds: float = 0.25,
                      context: str | None = None,

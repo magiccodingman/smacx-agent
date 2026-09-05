@@ -192,6 +192,13 @@ def main() -> int:
             if status != 401:
                 raise AssertionError("revoked session remained usable")
 
+            from smacx_control_server import ControlRequestHandler
+            from smacx_doctrine import DoctrineError
+            handler = object.__new__(ControlRequestHandler)
+            diagnostics = []
+            handler._error = lambda *args: diagnostics.append(args)
+            handler._handle_exception(DoctrineError("doctrine_unverified_loaded_ruleset"))
+            assert diagnostics[0][:2] == (409, "doctrine_unverified_loaded_ruleset")
             print(json.dumps({
                 "event": "pass",
                 "payload": {
@@ -205,6 +212,7 @@ def main() -> int:
                     "static_traversal_rejected": True,
                     "logout_revokes_session": True,
                     "portal_service_auth": True,
+                    "doctrine_failure_diagnostic": True,
                 },
             }, separators=(",", ":")))
         finally:
