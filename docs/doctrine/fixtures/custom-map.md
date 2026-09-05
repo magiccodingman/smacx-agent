@@ -10,7 +10,7 @@ This doctrine teaches gameplay concepts within its reviewed ruleset compatibilit
 
 A **faction** is a civilization controlling bases, population, units, research, economy, and diplomacy.
 
-You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.
+You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.
 
 The other participating factions are:
 
@@ -35,7 +35,7 @@ Citizen assignments and happiness are distinct. Workers work terrain, while Spec
 - A **Worker** works a terrain tile and collects its resources.
 - A **Talent** is a particularly happy citizen that offsets one Drone when determining unrest.
 - A **Drone** is a discontented citizen.
-- A **Specialist** does not work terrain; it instead produces the specialized economic, scientific, or social output of its available specialist type.
+- A **Specialist** does not work terrain; it instead produces the specialized economic, scientific, or social output of its available specialist type. Specialists are excluded from the ordinary Drone/Talent population, so reassignment can relieve a riot even when that Specialist does not produce Psych. Verify the resulting citizen balance and lost tile yields; a Specialist is not itself a Talent.
 
 If a base has more Drones than Talents, it enters a **Drone Riot**. Food is still consumed, but normal mineral production, Energy income, and Labs stop until order is restored; prolonged riots can cause further damage. Psych, Talents, Specialists, police-capable units, facilities, Projects, and Social Engineering can control unrest.
 
@@ -126,7 +126,7 @@ Energy Credits provide flexibility: they can hurry production, fund covert actio
 
 - **ECONOMY:** Energy generation and commerce.
 - **EFFICIENCY:** Energy lost to inefficiency, penalties for uneven Energy allocation, and some bureaucracy pressure.
-- **SUPPORT:** how many units bases can maintain before paying mineral support.
+- **SUPPORT:** how many units bases can maintain before paying mineral support and, at poor ratings, their support cost. A lower SUPPORT rating is a penalty that can increase mineral upkeep; it does not mean lower support expenditure. Compare the resulting base support costs before changing models.
 - **MORALE:** conventional military quality.
 - **POLICE:** how effectively military units can suppress Drones and whether forces away from home create pacifism Drones.
 - **GROWTH:** the nutrient surplus required for population growth.

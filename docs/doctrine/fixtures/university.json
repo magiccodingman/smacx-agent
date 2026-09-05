@@ -89,17 +89,17 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "doctrine_sha256": "790ba661c4b6a45a77065fbcc112187db5e75654bb8cecb12ea46b5ea0e10c26",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "5120eb105f538238831d34cf33361a14f9f3300a52d7344acc07fb13ef5cd96e",
-      "gameplay_sha256": "e2c60bdb96259da780f40e53cfbeaf341b63718f81b160573ba2bf420f257ecd"
+      "gameplay_sha256": "20824e69e72b949af405a695ea57750956dffde2f7823d2455d59706714507f2"
     },
     "blocks": {
-      "SELF_FACTION_CONTEXT": "You govern **University of Planet**: +2 RESEARCH; -2 PROBE; Free facility: Network Node; One extra Drone per 4 citizens (rounded down). These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
+      "SELF_FACTION_CONTEXT": "You govern **University of Planet**: +2 RESEARCH; -2 PROBE; Free facility: Network Node; One extra Drone per 4 citizens (rounded down). These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
       "WORLD_CONTEXT": "- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",

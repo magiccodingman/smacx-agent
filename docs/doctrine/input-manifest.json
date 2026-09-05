@@ -91,7 +91,7 @@
     "rules": "loaded GameRules/GameState allowlist (15 flags)",
     "research_mode": "loaded Blind Research rule bit used by native research_choices; no alien-name inference",
     "difficulty.name": "Factions[self].diff_level via public difficulty label",
-    "difficulty.natural_content": "conf.content_pop_player[seat difficulty]",
+    "difficulty.natural_content": "native mod_psych_check uses conf.content_pop_player[global DiffLevel]; receipt calls it directly rather than substituting seat difficulty",
     "difficulty.ecology": "reviewed base.cpp difficulty classification using loaded seat difficulty",
     "difficulty.research": "loaded current costs remain authoritative; no generic difficulty multiplier",
     "difficulty.se_cost": "reviewed faction.cpp social_upheaval free/paid distinction using seat difficulty",

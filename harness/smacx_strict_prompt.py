@@ -408,13 +408,15 @@ def _install() -> None:
             raise RuntimeError("smacx_strict_prompt_integrity_failure")
         if not value.strip():
             raise RuntimeError("smacx_strict_prompt_empty")
+        # Validate while building a request, after the override is installed.
+        # Python's .pth loader swallows startup exceptions; validating there
+        # could leave Hermes's additive builder active after a budget failure.
+        if sovereign_mode:
+            reserve = validate_managed_context(value, int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536")))
+            os.environ["SMACX_SYSTEM_TOOL_TOKEN_RESERVE"] = str(max(
+                reserve, int(os.environ.get("SMACX_SYSTEM_TOOL_TOKEN_RESERVE", "12000")),
+            ))
         return value
-
-    if sovereign_mode:
-        reserve = validate_managed_context(load(), int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536")))
-        os.environ["SMACX_SYSTEM_TOOL_TOKEN_RESERVE"] = str(max(
-            reserve, int(os.environ.get("SMACX_SYSTEM_TOOL_TOKEN_RESERVE", "12000")),
-        ))
 
     # Importing at interpreter startup ensures later ``from ... import`` sites
     # receive these functions rather than Hermes's additive prompt builder.

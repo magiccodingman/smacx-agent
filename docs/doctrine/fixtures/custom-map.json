@@ -103,17 +103,17 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "doctrine_sha256": "790ba661c4b6a45a77065fbcc112187db5e75654bb8cecb12ea46b5ea0e10c26",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "1fef59d04c033e66004960e81069333aae691cfd30beed3952ffab7938b261a0",
-      "gameplay_sha256": "ca252ad978d99de0c1fc5c35922855f93060e300165c8d577638807cf732fe27"
+      "gameplay_sha256": "f9e18b23cebe50725f92cb170aaadb03fb6e0e9399264af4b2a1c9352b2b2e1e"
     },
     "blocks": {
-      "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
+      "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
       "WORLD_CONTEXT": "- World dimensions: 192 × 32 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",

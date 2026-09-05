@@ -308,3 +308,14 @@ See [doctrine acceptance](doctrine/acceptance.md). Source evidence is distinguis
 | Longer prefix capacity | Conservative system/tool reserve → minimum remaining history guard → unchanged 15 tools and semantic-GC policy | Capacity checks pass; exact costs and behavioral ablation remain checkpoint 3 |
 
 See [checkpoint acceptance and limitations](doctrine/acceptance.md) and [assembly architecture](doctrine/implementation.md). These receipts do not certify new native actions or full-game strategic performance.
+
+### Gameplay doctrine checkpoint 3
+
+| Capability | Evidence chain | Status |
+| --- | --- | --- |
+| Dynamic gameplay literacy delivery | Rule-load attestation → public receipt → compiler → persisted bytes → actual Hermes provider capture → live frozen response evaluation | Implemented and returned for review; exact final contract evidence recorded |
+| Behavioral usefulness and limitations | 23 cases × A/B/C, initial/final raw outputs, per-case source/evidence review, separate explicit SUPPORT supplement | Measured, mixed results; specialist and Progenitor comprehension improvements with remaining timing, cap and epistemic errors; no full-game competence claim |
+| Cost and persistence | Exact provider tokenizer → 8,034–8,380 system tokens → 15-tool budget and context reserve → 4,944/8,217 live cache hits; SQLite restart exact bytes | Verified at the stated interfaces/provider; no promise of complete cache reuse |
+| Recovery and failure behavior | Required-input/compatibility rejection → explicit recompile → corrupted/oversized prompt fail-closed checks, including swallowed-startup-error simulation | Contract checks pass; uses existing persistence, no database rebuild or new schema |
+
+See [final acceptance](doctrine/acceptance.md), [behavior review](doctrine/evidence/behavior-review.json), and [reproduction commands](doctrine/validation.md). Doctrine has no new executable action; native legality and effect verification remain the existing managed action path's authority.

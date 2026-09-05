@@ -76,17 +76,17 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "doctrine_sha256": "790ba661c4b6a45a77065fbcc112187db5e75654bb8cecb12ea46b5ea0e10c26",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "0330c7650ec3b100dba5cafd1e1c06adf53d4e1429686ce51d72c30ed8a7e9d2",
-      "gameplay_sha256": "08679ca0b85367228bd37704f70e06938a2137d982dc2a5cb5705d0dd786a7a5"
+      "gameplay_sha256": "62e12bcd3c425195227a5a05e86363928a2f162772d9f88319b8af043f66e3d5"
     },
     "blocks": {
-      "SELF_FACTION_CONTEXT": "You govern **Public custom faction**: +3 INDUSTRY. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
+      "SELF_FACTION_CONTEXT": "You govern **Public custom faction**: +3 INDUSTRY. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
       "WORLD_CONTEXT": "- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",

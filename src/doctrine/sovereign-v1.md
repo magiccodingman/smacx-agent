@@ -35,7 +35,7 @@ Citizen assignments and happiness are distinct. Workers work terrain, while Spec
 - A **Worker** works a terrain tile and collects its resources.
 - A **Talent** is a particularly happy citizen that offsets one Drone when determining unrest.
 - A **Drone** is a discontented citizen.
-- A **Specialist** does not work terrain; it instead produces the specialized economic, scientific, or social output of its available specialist type.
+- A **Specialist** does not work terrain; it instead produces the specialized economic, scientific, or social output of its available specialist type. Specialists are excluded from the ordinary Drone/Talent population, so reassignment can relieve a riot even when that Specialist does not produce Psych. Verify the resulting citizen balance and lost tile yields; a Specialist is not itself a Talent.
 
 If a base has more Drones than Talents, it enters a **Drone Riot**. Food is still consumed, but normal mineral production, Energy income, and Labs stop until order is restored; prolonged riots can cause further damage. Psych, Talents, Specialists, police-capable units, facilities, Projects, and Social Engineering can control unrest.
 
@@ -122,7 +122,7 @@ Energy Credits provide flexibility: they can hurry production, fund covert actio
 
 - **ECONOMY:** Energy generation and commerce.
 - **EFFICIENCY:** Energy lost to inefficiency, penalties for uneven Energy allocation, and some bureaucracy pressure.
-- **SUPPORT:** how many units bases can maintain before paying mineral support.
+- **SUPPORT:** how many units bases can maintain before paying mineral support and, at poor ratings, their support cost. A lower SUPPORT rating is a penalty that can increase mineral upkeep; it does not mean lower support expenditure. Compare the resulting base support costs before changing models.
 - **MORALE:** conventional military quality.
 - **POLICE:** how effectively military units can suppress Drones and whether forces away from home create pacifism Drones.
 - **GROWTH:** the nutrient surplus required for population growth.

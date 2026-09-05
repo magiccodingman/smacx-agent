@@ -68,7 +68,9 @@ std::string doctrine_context_response() {
     if (!game_active() || id <= 0 || id >= MaxPlayerNum || !is_human(id))
         return error_response("doctrine_seat_unavailable", "An active human-equivalent gameplay seat is required.");
     int difficulty=Factions[id].diff_level;
-    if (difficulty<0 || difficulty>=MaxDiffNum) return error_response("doctrine_difficulty_unavailable", "Loaded seat difficulty is invalid.");
+    if (difficulty<0 || difficulty>=MaxDiffNum || *DiffLevel<0 || *DiffLevel>=MaxDiffNum) return error_response("doctrine_difficulty_unavailable", "Loaded difficulty is invalid.");
+    int32_t content_population = 0, bureaucracy_limit = 0;
+    mod_psych_check(id, &content_population, &bureaucracy_limit);
     // Scenario mechanics without reviewed overrides must not inherit normal doctrine.
     bool scenario_compatible = (*ObjectiveReqVictory == 0 || *ObjectiveReqVictory == 9999)
         && (*ObjectivesSuddenDeathVictory == 0 || *ObjectivesSuddenDeathVictory == 9999)
@@ -84,7 +86,7 @@ std::string doctrine_context_response() {
         << ",\"self_faction\":";
     append_doctrine_faction(out,id);
     out << ",\"difficulty\":{\"name\":" << json_string(lan_difficulty_name(difficulty))
-        << ",\"natural_content\":" << conf.content_pop_player[difficulty]
+        << ",\"natural_content\":" << content_population
         << ",\"ecology\":" << json_string(difficulty>=DIFF_THINKER ? "harsher" : "standard")
         << ",\"se_cost\":" << json_string(difficulty==0 ? "free" : "paid")
         << ",\"research\":\"loaded\",\"event_first_turn\":" << (75-*DiffLevel*10) << '}'

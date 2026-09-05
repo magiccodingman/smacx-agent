@@ -94,17 +94,17 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "doctrine_sha256": "790ba661c4b6a45a77065fbcc112187db5e75654bb8cecb12ea46b5ea0e10c26",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "b6e62aa92f60599e7286f2ef04d515544388844c60612aba3788456ecb88824a",
-      "gameplay_sha256": "ec950d48bc9713f93ffca074ce234681dff8e6eea2921a18dc895d0b5172a768"
+      "gameplay_sha256": "2a41d86b3afd3a99ce3ce0e03d04c068b96892c6d12d3915e3135cc5db613f0a"
     },
     "blocks": {
-      "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
+      "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
       "WORLD_CONTEXT": "",

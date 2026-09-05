@@ -35,7 +35,7 @@
       "look_first": false,
       "time_warp": false,
       "ironman": false,
-      "blind_research": true,
+      "blind_research": false,
       "tech_stagnation": false,
       "spoils_of_war": false,
       "unity_survey": false,
@@ -54,6 +54,8 @@
     "victory": {
       "eligible": [
         "conquest",
+        "economic",
+        "transcendence",
         "progenitor"
       ],
       "ending_year": 2500,
@@ -82,17 +84,17 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "doctrine_sha256": "790ba661c4b6a45a77065fbcc112187db5e75654bb8cecb12ea46b5ea0e10c26",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
-      "fixed_configuration_sha256": "c6ec5ef8340e2801b492a3dcb1ee970cfdcfef9dfcbb2ef284a306b34bdbd8fe",
-      "gameplay_sha256": "9dd4da4e0da6854a079b5aa584bab309e12a99bb5850e60c6a2914f09eabc98e"
+      "fixed_configuration_sha256": "3f035f6ecc2219de9d7919ee05a89ff58d48fa34cafe620db6f978817819bfc3",
+      "gameplay_sha256": "05b3ad4a643ba39e697ab28385101212514df8f02d157154b74b815de844baa8"
     },
     "blocks": {
-      "SELF_FACTION_CONTEXT": "You govern **Manifold Caretakers**: +1 PLANET; Conventional defense modifier: 125%; Free facility: Recycling Tanks. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda. The loaded build rules can close the Voice/Ascent route after the Subspace Generator prerequisite is discovered; inspect current native eligibility before relying on Transcendence. The globally enabled Economic route is not available to your faction; treat it as an opponent threat. The globally enabled Diplomatic route is not available to your faction; treat it as an opponent threat. The globally enabled Transcendence route is not available to your faction; treat it as an opponent threat.",
+      "SELF_FACTION_CONTEXT": "You govern **Manifold Caretakers**: +1 PLANET; Conventional defense modifier: 125%; Free facility: Recycling Tanks. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda. The loaded build rules can close the Voice/Ascent route after the Subspace Generator prerequisite is discovered; inspect current native eligibility before relying on Transcendence. The globally enabled Diplomatic route is not available to your faction; treat it as an opponent threat.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
       "WORLD_CONTEXT": "- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
@@ -100,9 +102,9 @@
       "OPENING_RULE_CONTEXT": "",
       "PERSISTENCE_RULE_CONTEXT": "",
       "DIFFICULTY_ECOLOGY_CONTEXT": "",
-      "RESEARCH_RULE_CONTEXT": "Directed Research applies to this seat: select a currently available technology through the legal choices. A verified seat-specific override takes precedence over the global Blind Research flag. Research investment follows the loaded rules; use current research costs rather than an assumed difficulty multiplier.",
+      "RESEARCH_RULE_CONTEXT": "Directed Research applies to this seat: select a currently available technology through the legal choices. Research investment follows the loaded rules; use current research costs rather than an assumed difficulty multiplier.",
       "DIFFICULTY_SOCIAL_CONTEXT": "Social Engineering changes can cost Energy. Inspect the exact current cost, including any same-turn credit, before switching.",
-      "SPECIAL_DIPLOMACY_CONTEXT": "Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Use current legal diplomacy choices for human–Progenitor agreements.",
+      "SPECIAL_DIPLOMACY_CONTEXT": "Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Progenitors have no Council votes and are ineligible for Planetary Governor or Supreme Leader. Use current legal diplomacy choices for human–Progenitor agreements.",
       "DIPLOMATIC_VICTORY_CONTEXT": "Diplomatic Victory is enabled: the Supreme Leader election requires 75% of Council votes after its enabling technology. A defied result may require defeating or subjugating holdouts; inspect candidate eligibility and current native requirements. This is an opponent route, not your own victory path. Unconquered Progenitor factions prevent ordinary Diplomatic Victory.",
       "ENABLED_VICTORY_CONTEXT": "Enabled standard victory paths: Conquest, Economic, Diplomatic, Transcendence.\nConquest resolves through defeating or subjugating the independent opposition under the loaded rules. Preparation, peace and alliances can serve that objective; constant war is not required.\nEconomic victory requires the enabling technology and enough Energy to corner the Global Energy Market. Protect the Headquarters and survive the announced countdown; inspect the actual required cost and duration.\nAn eligible faction follows the late scientific and Planetary sequence through The Voice of Planet and then completes The Ascent to Transcendence.\nThe match also has a time-limit ending in mission year 2500; account for the native end-of-game scoring conditions.",
       "COOPERATIVE_VICTORY_CONTEXT": "Cooperative Victory is disabled: friendship, Treaty, Pact or private promises do not make factions joint mechanical winners.",

@@ -32,6 +32,11 @@ def resolve(raw,previous=None):return confirmed_context(raw,match_id='match-doct
 
 def main():
     raw=receipt();c=resolve(raw)
+    alien=copy.deepcopy(raw);alien['self_faction'].update(progenitor=True,flags=128)
+    alien['rules']['blind_research']=False
+    alien_context=resolve(alien)
+    assert alien_context['research_mode']=='directed'
+    assert alien_context['victory']['eligible']==['conquest','economic','transcendence','progenitor']
     text,metadata=compose_managed_prompt(c,**SEAT)
     assert 'Resolved actual faction' in text and 'random_leader_agendas' not in text
     assert text.index('# SMACX sovereign player contract')<text.index('# Sovereign Gameplay Doctrine')
@@ -47,6 +52,7 @@ def main():
     for label_,mutate in [
         ('wrong-scope',lambda r:r.update(match_id='match-other')),
         ('unknown-rules',lambda r:r.update(rules_file_sha256='0'*64)),
+        ('unreviewed-engine',lambda r:r.update(engine_source_sha256='0'*64)),
         ('unsupported-config',lambda r:r.update(config_supported=False)),
         ('unsupported-scenario',lambda r:r.update(scenario_supported=False)),
         ('missing-research',lambda r:r['rules'].pop('blind_research')),

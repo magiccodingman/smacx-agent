@@ -155,7 +155,7 @@ def compile_doctrine(context: Mapping[str, Any]) -> dict:
     if opening.get('kind') not in ('planetfall','time_warp','imported'):raise DoctrineError('doctrine_unknown_opening')
     require(opening,'initial_pod_placement',bool)
     b={key:'' for key in BLOCKS}
-    b['SELF_FACTION_CONTEXT']='You govern '+faction_text(f)+' These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.'
+    b['SELF_FACTION_CONTEXT']='You govern '+faction_text(f)+' These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.'
     others=c.get('participants')
     if others is not None and type(others) is not list:raise DoctrineError('doctrine_invalid_participants')
     if others is not None and len(others)>7:raise DoctrineError('doctrine_participant_limit')
@@ -165,7 +165,7 @@ def compile_doctrine(context: Mapping[str, Any]) -> dict:
         pv=require(v,'progenitor',dict)
         count=require(pv,'generators',int);size=require(pv,'population',int);require(pv,'cooperative',bool)
         if count<1 or size<1:raise DoctrineError('doctrine_invalid_progenitor_requirements')
-        b['SPECIAL_DIPLOMACY_CONTEXT']='Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Use current legal diplomacy choices for human–Progenitor agreements.'
+        b['SPECIAL_DIPLOMACY_CONTEXT']='Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Progenitors have no Council votes and are ineligible for Planetary Governor or Supreme Leader. Use current legal diplomacy choices for human–Progenitor agreements.'
         if f['progenitor']:b['SELF_FACTION_CONTEXT']+=' The loaded build rules can close the Voice/Ascent route after the Subspace Generator prerequisite is discovered; inspect current native eligibility before relying on Transcendence.'
         b['PROGENITOR_VICTORY_CONTEXT']=f'**Progenitor Victory:** complete {count} Subspace Generators in bases of at least size {size}. '+('This is your faction’s special route.' if f['progenitor'] else 'This is an opponent victory threat.')+' '+('The loaded rules permit a cooperative Pact outcome when Cooperative Victory applies.' if pv['cooperative'] else 'The loaded rules do not permit sharing this special victory.')
     if f['progenitor'] and 'progenitor' not in eligible:raise DoctrineError('doctrine_missing_progenitor_eligibility')

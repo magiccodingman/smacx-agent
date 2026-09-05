@@ -123,17 +123,17 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "doctrine_sha256": "790ba661c4b6a45a77065fbcc112187db5e75654bb8cecb12ea46b5ea0e10c26",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "3a189575189fa6775fe7eb9e92a22af47244f752ac8c4ccf1eeb900a9aa40d6b",
-      "gameplay_sha256": "e5f0d7898761319e55f7662b1daca2c7439d875562f5b30e5c437a25847bbf83"
+      "gameplay_sha256": "9a6a611458d364393338ec2a01ac6548f475f164a34c42eed6b723d8631196bf"
     },
     "blocks": {
-      "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
+      "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
       "OPPONENT_FACTION_CONTEXT": "- **Manifold Caretakers**: +1 PLANET; Conventional defense modifier: 125%; Free facility: Recycling Tanks.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
       "WORLD_CONTEXT": "- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
@@ -143,7 +143,7 @@
       "DIFFICULTY_ECOLOGY_CONTEXT": "",
       "RESEARCH_RULE_CONTEXT": "Blind Research applies to this seat: choose broad Explore, Discover, Build and Conquer priorities rather than an exact technology. Research investment follows the loaded rules; use current research costs rather than an assumed difficulty multiplier.",
       "DIFFICULTY_SOCIAL_CONTEXT": "Social Engineering changes can cost Energy. Inspect the exact current cost, including any same-turn credit, before switching.",
-      "SPECIAL_DIPLOMACY_CONTEXT": "Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Use current legal diplomacy choices for human–Progenitor agreements.",
+      "SPECIAL_DIPLOMACY_CONTEXT": "Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Progenitors have no Council votes and are ineligible for Planetary Governor or Supreme Leader. Use current legal diplomacy choices for human–Progenitor agreements.",
       "DIPLOMATIC_VICTORY_CONTEXT": "Diplomatic Victory is enabled: the Supreme Leader election requires 75% of Council votes after its enabling technology. A defied result may require defeating or subjugating holdouts; inspect candidate eligibility and current native requirements. Unconquered Progenitor factions prevent ordinary Diplomatic Victory.",
       "ENABLED_VICTORY_CONTEXT": "Enabled standard victory paths: Conquest, Economic, Diplomatic, Transcendence.\nConquest resolves through defeating or subjugating the independent opposition under the loaded rules. Preparation, peace and alliances can serve that objective; constant war is not required.\nEconomic victory requires the enabling technology and enough Energy to corner the Global Energy Market. Protect the Headquarters and survive the announced countdown; inspect the actual required cost and duration.\nAn eligible faction follows the late scientific and Planetary sequence through The Voice of Planet and then completes The Ascent to Transcendence.\nThe match also has a time-limit ending in mission year 2500; account for the native end-of-game scoring conditions.",
       "COOPERATIVE_VICTORY_CONTEXT": "Cooperative Victory is disabled: friendship, Treaty, Pact or private promises do not make factions joint mechanical winners.",

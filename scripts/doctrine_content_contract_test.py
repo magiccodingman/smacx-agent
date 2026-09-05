@@ -34,7 +34,7 @@ def fixtures():
     variant('morgan',lambda c:c.update(self_faction=morgan))
     variant('university',lambda c:c.update(self_faction=university))
     variant('directed',lambda c:(c['rules'].update(blind_research=False),c.update(research_mode='directed')))
-    variant('progenitor',lambda c:(c.update(self_faction=alien,research_mode='directed'),c['victory'].update(eligible=['conquest','progenitor'])))
+    variant('progenitor',lambda c:(c.update(self_faction=alien,research_mode='directed'),c['rules'].update(blind_research=False),c['victory'].update(eligible=['conquest','economic','transcendence','progenitor'])))
     variant('human-progenitor-opponent',lambda c:c.update(participants=[alien]))
     variant('cooperative',lambda c:c['rules'].update(victory_cooperative=True))
     variant('conquest-only',lambda c:(c['rules'].update(victory_economic=False,victory_diplomatic=False,victory_transcendence=False),c['victory'].update(eligible=['conquest'])))
@@ -56,6 +56,10 @@ def fixtures():
 
 def main():
     write='--write-goldens' in sys.argv
+    inventory=json.loads((ROOT/'docs/doctrine/claim-inventory.json').read_text())
+    paragraphs=[p.strip() for p in TEMPLATE.read_text().split('\n\n') if p.strip() and not p.startswith('#')]
+    assert [row['text'] for row in inventory]==paragraphs, 'doctrine inventory drift'
+    assert all(row['text_sha256']==hashlib.sha256(row['text'].encode()).hexdigest() for row in inventory)
     results=[]
     for name,c in fixtures().items():
         try:rendered=compile_doctrine(c);out={'metadata':rendered['metadata'],'blocks':rendered['blocks']}
@@ -70,6 +74,7 @@ def main():
             if name=='optional-unknown':assert not out['blocks']['WORLD_CONTEXT']
             if name=='conquest-only':assert not out['blocks']['DIPLOMATIC_VICTORY_CONTEXT']
             if name=='custom-faction-compatible':assert "Gaia" not in rendered['text']
+            if name=='progenitor':assert 'ineligible for Planetary Governor' in out['blocks']['SPECIAL_DIPLOMACY_CONTEXT']
         target=ROOT/'docs/doctrine/fixtures'/f'{name}.json'
         golden={'input':c,'expected':out}
         if write:

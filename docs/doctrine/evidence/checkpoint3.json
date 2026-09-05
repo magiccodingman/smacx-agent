@@ -1,0 +1,57 @@
+{
+  "classification": "Live frozen advisory evaluation and exact provider costs; no native action loop or win-rate certification",
+  "model": "Qwen3.8-27B",
+  "thinking": false,
+  "seed": 1729,
+  "temperature": 0,
+  "corpus_sha256": "931520989fed177f43ff4d8121750538eb86ccc603a80bb52670600d05052305",
+  "arms": {
+    "A": {
+      "responses": 23,
+      "offered_candidate_or_investigation": 23,
+      "mean_prompt_tokens": 1274.4,
+      "mean_completion_tokens": 298.2,
+      "median_response_seconds": 6.56,
+      "requested_investigation_items": 66,
+      "truncated_responses": 0
+    },
+    "B": {
+      "responses": 23,
+      "offered_candidate_or_investigation": 23,
+      "mean_prompt_tokens": 7719.4,
+      "mean_completion_tokens": 301.1,
+      "median_response_seconds": 7.58,
+      "requested_investigation_items": 60,
+      "truncated_responses": 0
+    },
+    "C": {
+      "responses": 23,
+      "offered_candidate_or_investigation": 23,
+      "mean_prompt_tokens": 8323.1,
+      "mean_completion_tokens": 261.2,
+      "median_response_seconds": 6.93,
+      "requested_investigation_items": 52,
+      "truncated_responses": 0
+    }
+  },
+  "initial_run_preserved": true,
+  "final_run_reused_unchanged_A_requests": true,
+  "supplement": "One separately frozen explicit SUPPORT-rating case, A/B/C; all requested missing upkeep before choosing. Original ambiguous case retained.",
+  "source_corrections": [
+    "Specialists can relieve riots without being Talents.",
+    "Lower SUPPORT is a penalty, not lower support expenditure.",
+    "Fixed faction modifiers are not proposed-action effects.",
+    "Explicit Progenitor Council/Governor eligibility.",
+    "Call native mod_psych_check for baseline contentment; do not substitute seat difficulty for its global difficulty input.",
+    "Progenitor fixture now mirrors native potential economic/transcendence eligibility and the loaded directed-research bit; final C case rerun, earlier response preserved."
+  ],
+  "limitations": [
+    "One model and deterministic response per condition; author review is not blinded.",
+    "Candidate ID validity is not running-game legal/effect verification.",
+    "Investigations are requested text items, not actual tool calls. No tool latency measured in this advisory corpus.",
+    "Prompted reasoning still makes mechanics, timing and epistemic errors. No overall strategic superiority or full-game competence claim.",
+    "Cache counters prove partial reuse on this provider; provider usage itself returns no cached-token field."
+  ],
+  "live_main_corpus_generations": 116,
+  "live_supplement_generations": 3
+}

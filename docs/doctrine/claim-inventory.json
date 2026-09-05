@@ -148,14 +148,14 @@
   {
     "id": "D014",
     "section": "# Bases, Citizens, and Resources",
-    "text_sha256": "aaa783ec312a1d364f10231d8ebb16c4233c4efb62d8839ff115b1fa7dc6b7f7",
-    "text": "- A **Worker** works a terrain tile and collects its resources.\n- A **Talent** is a particularly happy citizen that offsets one Drone when determining unrest.\n- A **Drone** is a discontented citizen.\n- A **Specialist** does not work terrain; it instead produces the specialized economic, scientific, or social output of its available specialist type.",
-    "classification": "general_player_documentation_with_native_authority_override",
+    "text_sha256": "0a1cfef09738e762c62d3102c42045194859bcb8bd4e72b61cf447e4df0f8d92",
+    "text": "- A **Worker** works a terrain tile and collects its resources.\n- A **Talent** is a particularly happy citizen that offsets one Drone when determining unrest.\n- A **Drone** is a discontented citizen.\n- A **Specialist** does not work terrain; it instead produces the specialized economic, scientific, or social output of its available specialist type. Specialists are excluded from the ordinary Drone/Talent population, so reassignment can relieve a riot even when that Specialist does not produce Psych. Verify the resulting citizen balance and lost tile yields; a Specialist is not itself a Talent.",
+    "classification": "native_implementation_source_review",
     "sources": [
-      "conceptsx.txt (fingerprinted in evidence/sources.json)",
-      "bridge/src/agent_bridge.cpp (current semantic choices outrank prose)"
+      "bridge/src/base.cpp: adjust_psych, unit_support_cost, unit_support_free",
+      "conceptsx.txt: public citizen and Social Engineering concepts"
     ],
-    "limits": "No new live-game equivalence claim; detailed numerical/custom rules require the loaded compatibility gate."
+    "limits": "Source-backed conceptual rules; no new live-game predictive mechanics claim."
   },
   {
     "id": "D015",
@@ -509,14 +509,14 @@
   {
     "id": "D047",
     "section": "# Social Engineering",
-    "text_sha256": "2c5e69cf33a86c21d740798584ec62a0c65a92912843b40d1c39e15e478dc411",
-    "text": "- **ECONOMY:** Energy generation and commerce.\n- **EFFICIENCY:** Energy lost to inefficiency, penalties for uneven Energy allocation, and some bureaucracy pressure.\n- **SUPPORT:** how many units bases can maintain before paying mineral support.\n- **MORALE:** conventional military quality.\n- **POLICE:** how effectively military units can suppress Drones and whether forces away from home create pacifism Drones.\n- **GROWTH:** the nutrient surplus required for population growth.\n- **PLANET:** ecological affinity, native-life interaction, and psi-combat effects.\n- **PROBE:** covert effectiveness and resistance to hostile Probe operations.\n- **INDUSTRY:** mineral cost of units, facilities, and Projects.\n- **RESEARCH:** Labs output.",
-    "classification": "general_player_documentation_with_native_authority_override",
+    "text_sha256": "bde57558c1bd0d42046b84d1f6c19044db00dd6bf383c673482e8467f5f3a44e",
+    "text": "- **ECONOMY:** Energy generation and commerce.\n- **EFFICIENCY:** Energy lost to inefficiency, penalties for uneven Energy allocation, and some bureaucracy pressure.\n- **SUPPORT:** how many units bases can maintain before paying mineral support and, at poor ratings, their support cost. A lower SUPPORT rating is a penalty that can increase mineral upkeep; it does not mean lower support expenditure. Compare the resulting base support costs before changing models.\n- **MORALE:** conventional military quality.\n- **POLICE:** how effectively military units can suppress Drones and whether forces away from home create pacifism Drones.\n- **GROWTH:** the nutrient surplus required for population growth.\n- **PLANET:** ecological affinity, native-life interaction, and psi-combat effects.\n- **PROBE:** covert effectiveness and resistance to hostile Probe operations.\n- **INDUSTRY:** mineral cost of units, facilities, and Projects.\n- **RESEARCH:** Labs output.",
+    "classification": "native_implementation_source_review",
     "sources": [
-      "conceptsx.txt (fingerprinted in evidence/sources.json)",
-      "bridge/src/agent_bridge.cpp (current semantic choices outrank prose)"
+      "bridge/src/base.cpp: adjust_psych, unit_support_cost, unit_support_free",
+      "conceptsx.txt: public citizen and Social Engineering concepts"
     ],
-    "limits": "No new live-game equivalence claim; detailed numerical/custom rules require the loaded compatibility gate."
+    "limits": "Source-backed conceptual rules; no new live-game predictive mechanics claim."
   },
   {
     "id": "D048",
@@ -1465,49 +1465,49 @@
     "id": "D137",
     "section": "# Strategic Cadence",
     "text_sha256": "b3788e5db32fc3d7941a34253b5d4e025c1fa560237db8966ec2ffcf77497ab0",
-    "text": "**SURVIVAL** \u2014 What important base, force, relationship, or victory position is immediately threatened?",
+    "text": "**SURVIVAL** — What important base, force, relationship, or victory position is immediately threatened?",
     "classification": "authored_strategic_principle"
   },
   {
     "id": "D138",
     "section": "# Strategic Cadence",
     "text_sha256": "750d4ecdb25c38942992580a92b71c07a4430552b5ec820c72a7d9ab2d9115c9",
-    "text": "**CONSTRAINTS** \u2014 What currently limits strength or freedom?",
+    "text": "**CONSTRAINTS** — What currently limits strength or freedom?",
     "classification": "authored_strategic_principle"
   },
   {
     "id": "D139",
     "section": "# Strategic Cadence",
     "text_sha256": "348086ec463ae86a364b7e4c5d640c19f35faf06423983147af8b1194780a78e",
-    "text": "**OPPORTUNITIES** \u2014 What valuable opportunity may disappear?",
+    "text": "**OPPORTUNITIES** — What valuable opportunity may disappear?",
     "classification": "authored_strategic_principle"
   },
   {
     "id": "D140",
     "section": "# Strategic Cadence",
     "text_sha256": "49464e7f9d6de598f796f635dd535f7719105a0aba29d2017e3567e57ff13425",
-    "text": "**OTHER ACTORS** \u2014 What are the other factions likely trying to accomplish, and how confident are you?",
+    "text": "**OTHER ACTORS** — What are the other factions likely trying to accomplish, and how confident are you?",
     "classification": "authored_strategic_principle"
   },
   {
     "id": "D141",
     "section": "# Strategic Cadence",
     "text_sha256": "6e04221822b9934c891a2eff5e373b3b7e7aafd25b3a27129b89d6d2186a622f",
-    "text": "**ACTION** \u2014 What choice or sequence most improves the position?",
+    "text": "**ACTION** — What choice or sequence most improves the position?",
     "classification": "authored_strategic_principle"
   },
   {
     "id": "D142",
     "section": "# Strategic Cadence",
     "text_sha256": "1b59e8b946ac79973b0f559e744bff382be95fdfc106f8139e27e761c8650b6d",
-    "text": "**CONSEQUENCES** \u2014 What will it consume, expose, delay, provoke, or enable?",
+    "text": "**CONSEQUENCES** — What will it consume, expose, delay, provoke, or enable?",
     "classification": "authored_strategic_principle"
   },
   {
     "id": "D143",
     "section": "# Strategic Cadence",
-    "text_sha256": "cff0b0af4233978f0dfd5d31e346971dd22df2f70090621f2ad85de6f8f78b79",
-    "text": "Periodically ask: **Does the current strategy still fit the match that actually exists?** If not, change it.\n",
+    "text_sha256": "2b03026d21281dbdbe5c4138f16b5ab8d94e9ebd7fc1ba9ed0b047914b10b2c8",
+    "text": "Periodically ask: **Does the current strategy still fit the match that actually exists?** If not, change it.",
     "classification": "authored_strategic_principle"
   }
 ]
