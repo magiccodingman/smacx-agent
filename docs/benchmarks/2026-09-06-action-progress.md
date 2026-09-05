@@ -190,3 +190,18 @@ sovereign run `run-a2b4d48a001d40938f99fc65510e2a3a` reported running.
 Ten-minute autonomous check-ins remain active for this exact match, including
 sovereign/specialist activity, native effects, recovery and incidents. Startup
 is verified; a complete turn or game is not yet claimed by this checkpoint.
+
+## First periodic gameplay check
+
+At the first scheduled check, AI - 3 advanced from turn 5 to turn 6 (2106).
+Control state reported no incident and zero error restarts. The turn-4 recovery
+checkpoint was bridge-verified and included native save, journal head, world
+snapshot and Hermes memory archive. The sovereign transcript showed fresh
+decision/choice pairs, successful alien-arrival acknowledgement, and an explore
+order with `execution_status=order_assigned`. No specialist missions had been
+requested. Worker and collector remained healthy.
+
+A read-only transcript query was interrupted by normal episode container
+replacement; reinspection confirmed turn 6 and the same healthy logical run
+with zero error restarts. This is progress beyond the earlier turn-4 stall,
+not full-game acceptance or proof of every strategic behavior.
