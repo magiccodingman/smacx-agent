@@ -412,6 +412,37 @@ CREATE UNIQUE INDEX goals_one_current
 CREATE INDEX goals_active
     ON goals(match_id, agent_id, perspective_id, status, priority DESC);
 
+CREATE TABLE plans (
+    plan_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id),
+    perspective_id TEXT NOT NULL REFERENCES perspectives(perspective_id),
+    plan_key TEXT NOT NULL,
+    plan_revision INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    status TEXT NOT NULL,
+    target_refs_json TEXT NOT NULL DEFAULT '[]',
+    participants_json TEXT NOT NULL DEFAULT '[]',
+    timing_json TEXT NOT NULL DEFAULT '{}',
+    dependencies_json TEXT NOT NULL DEFAULT '[]',
+    intended_role TEXT,
+    contingencies_json TEXT NOT NULL DEFAULT '[]',
+    last_confirmation_json TEXT NOT NULL DEFAULT '{}',
+    linked_commitments_json TEXT NOT NULL DEFAULT '[]',
+    contradictory_evidence_json TEXT NOT NULL DEFAULT '[]',
+    source_event_id TEXT REFERENCES events(event_id),
+    supersedes_plan_id TEXT REFERENCES plans(plan_id),
+    superseded_by_plan_id TEXT REFERENCES plans(plan_id),
+    created_unix REAL NOT NULL,
+    UNIQUE (match_id, agent_id, perspective_id, plan_key, plan_revision)
+);
+CREATE UNIQUE INDEX plans_one_current
+    ON plans(match_id, agent_id, perspective_id, plan_key)
+    WHERE status != 'superseded';
+CREATE INDEX plans_active
+    ON plans(match_id, agent_id, perspective_id, status, created_unix DESC);
+
 CREATE TABLE summaries (
     summary_id TEXT PRIMARY KEY,
     match_id TEXT NOT NULL REFERENCES matches(match_id),
@@ -436,8 +467,10 @@ CREATE TABLE memory_budgets (
 );
 INSERT INTO memory_budgets(section, max_tokens) VALUES
     ('situation', 1200),
+    ('beliefs', 1000),
     ('relationships', 1200),
     ('goals', 800),
+    ('plans', 1000),
     ('commitments', 800),
     ('recent_events', 1600),
     ('chat', 1200);
@@ -512,6 +545,409 @@ CREATE TABLE legacy_imports (
     content_sha256 TEXT NOT NULL,
     result_json TEXT NOT NULL
 );
+"""
+
+INITIAL_SCHEMA_WORLD = r"""
+CREATE TABLE world_heads (
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id),
+    perspective_id TEXT NOT NULL REFERENCES perspectives(perspective_id),
+    timeline_id TEXT NOT NULL,
+    world_epoch TEXT NOT NULL,
+    world_revision INTEGER NOT NULL DEFAULT 0,
+    action_revision TEXT,
+    observation_cursor INTEGER NOT NULL DEFAULT 0,
+    continuity TEXT NOT NULL CHECK (continuity IN ('complete', 'incomplete')),
+    journal_head_hash TEXT,
+    projection_checksum TEXT NOT NULL,
+    material_checksum TEXT NOT NULL,
+    updated_unix REAL NOT NULL,
+    PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id)
+);
+
+CREATE TABLE world_objects (
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    world_epoch TEXT NOT NULL,
+    object_ref TEXT NOT NULL,
+    object_kind TEXT NOT NULL,
+    location_ref TEXT,
+    parent_ref TEXT,
+    status TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    dependency_hash TEXT NOT NULL,
+    updated_revision INTEGER NOT NULL,
+    updated_unix REAL NOT NULL,
+    PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id, object_ref),
+    FOREIGN KEY (match_id, agent_id, perspective_id, timeline_id)
+        REFERENCES world_heads(match_id, agent_id, perspective_id, timeline_id)
+        ON DELETE CASCADE
+);
+CREATE INDEX world_objects_kind
+    ON world_objects(match_id, perspective_id, timeline_id, object_kind, status);
+
+CREATE TABLE world_regions (
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    mobility_profile_ref TEXT NOT NULL,
+    region_ref TEXT NOT NULL,
+    lineage_ref TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    anchor_location_ref TEXT NOT NULL,
+    location_refs_json TEXT NOT NULL,
+    supersedes_json TEXT NOT NULL,
+    lineage_birth_revision INTEGER NOT NULL,
+    updated_world_revision INTEGER NOT NULL,
+    PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id, mobility_profile_ref, region_ref)
+);
+
+CREATE TABLE world_observation_projection (
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    observation_sequence INTEGER NOT NULL,
+    journal_event_id TEXT NOT NULL,
+    observation_kind TEXT NOT NULL,
+    turn INTEGER,
+    payload_hash TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    continuity TEXT NOT NULL,
+    PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id, observation_sequence, journal_event_id)
+);
+CREATE INDEX world_observation_projection_cursor
+    ON world_observation_projection(
+        match_id, agent_id, perspective_id, timeline_id, observation_sequence
+    );
+
+CREATE TABLE world_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    world_epoch TEXT NOT NULL,
+    world_revision INTEGER NOT NULL,
+    journal_head_hash TEXT NOT NULL,
+    journal_sequence INTEGER NOT NULL,
+    observation_cursor INTEGER NOT NULL,
+    projection_checksum TEXT NOT NULL,
+    calculator_versions_json TEXT NOT NULL,
+    content_path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    created_unix REAL NOT NULL
+);
+CREATE INDEX world_snapshots_scope
+    ON world_snapshots(match_id, perspective_id, timeline_id, journal_sequence DESC);
+
+CREATE TABLE world_snapshot_pins (
+    snapshot_id TEXT NOT NULL REFERENCES world_snapshots(snapshot_id) ON DELETE CASCADE,
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('specialist_mission','checkpoint','recovery')),
+    owner_id TEXT NOT NULL,
+    pinned_unix REAL NOT NULL,
+    PRIMARY KEY (snapshot_id, owner_kind, owner_id)
+);
+
+CREATE TABLE campaign_checkpoint_generations (
+    match_id TEXT PRIMARY KEY REFERENCES matches(match_id) ON DELETE CASCADE,
+    generation INTEGER NOT NULL CHECK (generation >= 0),
+    checkpoint_id TEXT,
+    completed_unix REAL NOT NULL
+);
+
+CREATE TABLE world_anchors (
+    world_anchor_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    world_epoch TEXT NOT NULL,
+    world_anchor_revision INTEGER NOT NULL,
+    anchor_observation_cursor INTEGER NOT NULL,
+    context_tier TEXT NOT NULL,
+    projection_integrity_hash TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('current', 'superseded')),
+    created_unix REAL NOT NULL,
+    superseded_unix REAL
+);
+CREATE UNIQUE INDEX world_anchor_current
+    ON world_anchors(match_id, agent_id, perspective_id, timeline_id, context_tier)
+    WHERE status='current';
+CREATE TABLE world_anchor_baselines (
+    world_anchor_id TEXT NOT NULL REFERENCES world_anchors(world_anchor_id) ON DELETE CASCADE,
+    object_ref TEXT NOT NULL,
+    object_hash TEXT NOT NULL,
+    PRIMARY KEY (world_anchor_id, object_ref)
+);
+
+CREATE TABLE world_query_cache (
+    query_fingerprint TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    world_epoch TEXT NOT NULL,
+    world_revision INTEGER NOT NULL,
+    observation_cursor INTEGER NOT NULL,
+    ruleset_hash TEXT NOT NULL,
+    calculator_version TEXT NOT NULL,
+    dependency_hash TEXT NOT NULL,
+    request_json TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    hit_count INTEGER NOT NULL DEFAULT 0,
+    created_unix REAL NOT NULL,
+    last_hit_unix REAL
+);
+CREATE INDEX world_query_scope
+    ON world_query_cache(match_id, perspective_id, timeline_id, world_revision);
+
+CREATE TABLE attention_items (
+    attention_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    attention_sequence INTEGER NOT NULL,
+    observation_cursor INTEGER NOT NULL,
+    attention_kind TEXT NOT NULL,
+    priority INTEGER NOT NULL CHECK (priority BETWEEN 0 AND 100),
+    critical INTEGER NOT NULL CHECK (critical IN (0,1)),
+    payload_json TEXT NOT NULL,
+    dependency_hash TEXT NOT NULL,
+    captured_unix REAL NOT NULL,
+    persisted_unix REAL NOT NULL,
+    acknowledged_unix REAL,
+    status TEXT NOT NULL CHECK (status IN ('queued','leased','responded','acknowledged','superseded'))
+);
+CREATE UNIQUE INDEX attention_sequence_unique
+    ON attention_items(match_id, agent_id, perspective_id, timeline_id, attention_sequence);
+CREATE INDEX attention_pending
+    ON attention_items(match_id, perspective_id, timeline_id, status, priority DESC, attention_sequence);
+
+CREATE TABLE attention_heads (
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    next_sequence INTEGER NOT NULL DEFAULT 1,
+    acknowledged_cursor INTEGER NOT NULL DEFAULT 0,
+    updated_unix REAL NOT NULL,
+    PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id)
+);
+
+CREATE TABLE attention_leases (
+    attention_lease_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    episode_id TEXT NOT NULL,
+    through_cursor INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('leased','placed','responded','acknowledged','abandoned')),
+    leased_unix REAL NOT NULL,
+    placed_unix REAL,
+    responded_unix REAL,
+    acknowledged_unix REAL,
+    expires_unix REAL NOT NULL
+);
+CREATE TABLE attention_lease_items (
+    attention_lease_id TEXT NOT NULL REFERENCES attention_leases(attention_lease_id) ON DELETE CASCADE,
+    attention_id TEXT NOT NULL REFERENCES attention_items(attention_id),
+    redelivery_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (attention_lease_id, attention_id)
+);
+
+CREATE TABLE world_watches (
+    watch_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    world_epoch TEXT NOT NULL,
+    watch_kind TEXT NOT NULL,
+    subject_refs_json TEXT NOT NULL,
+    typed_predicate_json TEXT NOT NULL,
+    priority INTEGER NOT NULL CHECK (priority BETWEEN 0 AND 100),
+    created_turn INTEGER,
+    expires_turn INTEGER,
+    last_renewed_turn INTEGER,
+    linked_goal_id TEXT,
+    linked_plan_id TEXT,
+    last_triggered_cursor INTEGER,
+    status TEXT NOT NULL CHECK (status IN ('active','expired','closed','invalid')),
+    normalized_hash TEXT NOT NULL,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+CREATE UNIQUE INDEX world_watch_active_equivalent
+    ON world_watches(match_id, agent_id, perspective_id, timeline_id, normalized_hash)
+    WHERE status='active';
+
+CREATE TABLE cognitive_operations (
+    operation_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    operation_kind TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    referenced_world_objects_json TEXT NOT NULL,
+    linked_plan_id TEXT,
+    linked_goal_id TEXT,
+    created_turn INTEGER,
+    last_renewed_turn INTEGER,
+    source_world_revision INTEGER NOT NULL,
+    source_world_epoch TEXT NOT NULL,
+    source_dependency_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active','stale','completed','expired','invalid')),
+    foreground INTEGER NOT NULL DEFAULT 0 CHECK (foreground IN (0,1)),
+    compact_outcome TEXT,
+    specialist_result_receipts_json TEXT NOT NULL DEFAULT '[]',
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL
+);
+CREATE UNIQUE INDEX cognitive_operation_foreground
+    ON cognitive_operations(match_id, agent_id, perspective_id, timeline_id)
+    WHERE foreground=1 AND status IN ('active','stale');
+
+CREATE TABLE sovereign_leases (
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    episode_id TEXT NOT NULL,
+    episode_mode TEXT NOT NULL CHECK (episode_mode IN ('gameplay','communication','recovery')),
+    lease_token_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active','committed','cancelled','expired')),
+    acquired_unix REAL NOT NULL,
+    expires_unix REAL NOT NULL,
+    PRIMARY KEY (match_id, agent_id, perspective_id, timeline_id)
+);
+
+CREATE TABLE specialist_missions (
+    mission_id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    world_epoch TEXT NOT NULL,
+    source_world_revision INTEGER NOT NULL,
+    observation_cursor INTEGER NOT NULL,
+    world_snapshot_id TEXT,
+    world_view_hash TEXT,
+    faculty TEXT NOT NULL CHECK (faculty IN ('reference','world')),
+    normalized_objective TEXT NOT NULL,
+    subject_refs_json TEXT NOT NULL DEFAULT '[]',
+    linked_operation_id TEXT,
+    parent_episode_id TEXT,
+    corpus_revision TEXT,
+    reference_snapshot_path TEXT,
+    reference_snapshot_hash TEXT,
+    system_prompt_version TEXT NOT NULL,
+    system_prompt_hash TEXT NOT NULL,
+    tool_contract_version TEXT NOT NULL,
+    tool_contract_hash TEXT NOT NULL,
+    execution_class TEXT NOT NULL CHECK (execution_class IN ('synthesis','investigation')),
+    model_profile_revision TEXT NOT NULL,
+    model_profile_json TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    associated_checkpoint_generation INTEGER NOT NULL DEFAULT 0,
+    tool_budget INTEGER NOT NULL,
+    provider_call_budget INTEGER NOT NULL,
+    provider_token_budget INTEGER NOT NULL,
+    context_token_ceiling INTEGER NOT NULL,
+    output_token_budget INTEGER NOT NULL,
+    deadline_unix REAL NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued','active','retry_wait','accepted','stale','failed','cancelled')),
+    result_scope TEXT NOT NULL CHECK (result_scope IN ('query','operation','turn')),
+    result_json TEXT,
+    result_receipt_json TEXT,
+    result_hash TEXT,
+    result_preview TEXT,
+    accepted_attempt_id TEXT,
+    completion_journal_sequence INTEGER,
+    stale_reason TEXT,
+    cancellation_reason TEXT,
+    created_unix REAL NOT NULL,
+    updated_unix REAL NOT NULL,
+    UNIQUE (match_id,agent_id,perspective_id,timeline_id,idempotency_key)
+);
+CREATE INDEX specialist_missions_scope
+    ON specialist_missions(match_id, perspective_id, timeline_id, status, created_unix DESC);
+
+CREATE TABLE specialist_attempts (
+    attempt_id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL REFERENCES specialist_missions(mission_id),
+    attempt_number INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('starting','running','validating','completed',
+        'provider_failed','mcp_failed','invalid_schema','token_budget_exhausted',
+        'tool_budget_exhausted','timed_out','orphaned','cancelled')),
+    runtime_owner TEXT,
+    process_id INTEGER,
+    heartbeat_expires_unix REAL,
+    provider_calls INTEGER NOT NULL DEFAULT 0,
+    tool_calls INTEGER NOT NULL DEFAULT 0,
+    provider_tokens INTEGER NOT NULL DEFAULT 0,
+    peak_context_tokens INTEGER NOT NULL DEFAULT 0,
+    result_bytes INTEGER NOT NULL DEFAULT 0,
+    failure_reason TEXT,
+    trace_path TEXT,
+    trace_hash TEXT,
+    trace_bytes INTEGER,
+    started_unix REAL NOT NULL,
+    completed_unix REAL,
+    UNIQUE (mission_id,attempt_number)
+);
+CREATE INDEX specialist_attempts_status
+    ON specialist_attempts(status, heartbeat_expires_unix);
+
+CREATE TABLE specialist_dependencies (
+    mission_id TEXT NOT NULL REFERENCES specialist_missions(mission_id),
+    attempt_id TEXT NOT NULL REFERENCES specialist_attempts(attempt_id),
+    dependency_kind TEXT NOT NULL,
+    dependency_ref TEXT NOT NULL,
+    dependency_hash TEXT NOT NULL,
+    dependency_payload_json TEXT NOT NULL DEFAULT '{}',
+    source_call_sequence INTEGER NOT NULL,
+    PRIMARY KEY (attempt_id,dependency_kind,dependency_ref)
+);
+
+CREATE TABLE specialist_trace_manifests (
+    attempt_id TEXT PRIMARY KEY REFERENCES specialist_attempts(attempt_id),
+    mission_id TEXT NOT NULL REFERENCES specialist_missions(mission_id),
+    timeline_id TEXT NOT NULL,
+    checkpoint_generation INTEGER NOT NULL,
+    outcome_class TEXT NOT NULL,
+    content_path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    model_visible INTEGER NOT NULL DEFAULT 0 CHECK (model_visible IN (0,1)),
+    rolled_back INTEGER NOT NULL DEFAULT 0 CHECK (rolled_back IN (0,1)),
+    created_unix REAL NOT NULL
+);
+
+CREATE TABLE world_telemetry (
+    telemetry_id TEXT PRIMARY KEY,
+    match_id TEXT,
+    agent_id TEXT,
+    perspective_id TEXT,
+    timeline_id TEXT,
+    category TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    value_real REAL,
+    dimensions_json TEXT NOT NULL DEFAULT '{}',
+    recorded_unix REAL NOT NULL
+);
+CREATE INDEX world_telemetry_scope
+    ON world_telemetry(match_id, perspective_id, category, recorded_unix DESC);
 """
 
 INITIAL_SCHEMA_CONTROL = r"""
@@ -844,11 +1280,12 @@ CREATE INDEX supervision_incidents_open
 
 INITIAL_SCHEMA = "\n".join((
     INITIAL_SCHEMA_FOUNDATION,
+    INITIAL_SCHEMA_WORLD,
     INITIAL_SCHEMA_CONTROL,
     INITIAL_SCHEMA_HARNESS,
 ))
 SCHEMA_REVISION = 1
-CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260830-managed-play"
+CANONICAL_SCHEMA_FINGERPRINT = "smacx-canonical-20260903-world-specialist-checkpoint-generations"
 
 
 def _new_id(kind: str) -> str:
@@ -891,6 +1328,12 @@ class SmacxStore:
         self.path = Path(path).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialization_lock = threading.Lock()
+        # Disposable spatial calculation caches, bounded to two recent keys.
+        # Keys carry perspective/timeline/epoch/revision and issued inputs.
+        self._spatial_cache_lock = threading.RLock()
+        self._plan_dependency_lock = threading.RLock()
+        self._spatial_registry_cache = {}
+        self._geography_cache = {}
         self._initialize_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -1090,6 +1533,43 @@ class SmacxStore:
                 (match_id, installation_id, display_name, mode, ruleset_id, _json(metadata), now, now),
             )
             return dict(connection.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone())
+
+    def checkpoint_generation(self, match_id: str) -> int:
+        """Return the latest fully published recovery-checkpoint generation."""
+        _require_id(match_id, "match_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT generation FROM campaign_checkpoint_generations WHERE match_id=?",
+                (match_id,),
+            ).fetchone()
+        return int(row["generation"]) if row else 0
+
+    def complete_checkpoint_generation(self, match_id: str, checkpoint_id: str) -> int:
+        """Atomically publish one monotonic generation after a checkpoint is complete.
+
+        Re-publishing the same checkpoint id is idempotent.  This counter is
+        deliberately independent from world/specialist snapshots: only a
+        complete native + journal + cognition recovery boundary advances it.
+        """
+        _require_id(match_id, "match_id")
+        _require_id(checkpoint_id, "checkpoint_id")
+        now = time.time()
+        with self.transaction() as connection:
+            existing = connection.execute(
+                "SELECT generation,checkpoint_id FROM campaign_checkpoint_generations "
+                "WHERE match_id=?", (match_id,),
+            ).fetchone()
+            if existing and str(existing["checkpoint_id"] or "") == checkpoint_id:
+                return int(existing["generation"])
+            generation = int(existing["generation"] if existing else 0) + 1
+            connection.execute(
+                "INSERT INTO campaign_checkpoint_generations(match_id,generation,checkpoint_id,"
+                "completed_unix) VALUES(?,?,?,?) ON CONFLICT(match_id) DO UPDATE SET "
+                "generation=excluded.generation,checkpoint_id=excluded.checkpoint_id,"
+                "completed_unix=excluded.completed_unix",
+                (match_id, generation, checkpoint_id, now),
+            )
+        return generation
 
     def create_perspective(
         self,
@@ -2559,6 +3039,77 @@ class SmacxStore:
             return self._decode_row(
                 connection.execute("SELECT * FROM goals WHERE goal_id = ?", (goal_id,)).fetchone(),
                 "trigger_json",
+            )
+
+    def put_plan(
+        self, scope: MemoryScope, plan_key: str, title: str, objective: str, *,
+        status: str = "active", target_refs: Sequence[str] = (),
+        participants: Sequence[Mapping[str, Any]] = (), timing: Mapping[str, Any] | None = None,
+        dependencies: Sequence[str] = (), intended_role: str = "",
+        contingencies: Sequence[str] = (), last_confirmation: Mapping[str, Any] | None = None,
+        linked_commitments: Sequence[str] = (), contradictory_evidence: Sequence[str] = (),
+        source_event_id: str | None = None, session_id: str | None = None,
+        turn: int | None = None, year: int | None = None,
+    ) -> dict[str, Any]:
+        plan_key = _require_key(plan_key, "plan_key")
+        title = _bounded_text(title, "plan_title", 200)
+        objective = _bounded_text(objective, "plan_objective", 8000)
+        status = _require_key(status, "plan_status")
+        if status not in {"proposed", "active", "paused", "completed", "abandoned", "failed"}:
+            raise InvalidRecord("invalid_plan_status")
+        for value in (*target_refs, *dependencies, *linked_commitments):
+            _require_id(str(value), "plan_reference")
+        now = time.time()
+        plan_id = _new_id("plan")
+        with self.transaction() as connection:
+            self.require_scope(scope, connection=connection)
+            if session_id:
+                self.require_session(scope, session_id, connection=connection)
+            self._require_event_scope(connection, scope, source_event_id)
+            current = connection.execute(
+                "SELECT * FROM plans WHERE match_id=? AND agent_id=? AND perspective_id=? "
+                "AND plan_key=? AND status!='superseded'",
+                (scope.match_id, scope.agent_id, scope.perspective_id, plan_key),
+            ).fetchone()
+            revision = int(current["plan_revision"]) + 1 if current else 1
+            if current:
+                connection.execute("UPDATE plans SET status='superseded' WHERE plan_id=?",
+                                   (current["plan_id"],))
+            connection.execute(
+                "INSERT INTO plans(plan_id,match_id,agent_id,perspective_id,plan_key,plan_revision," \
+                "title,objective,status,target_refs_json,participants_json,timing_json," \
+                "dependencies_json,intended_role,contingencies_json,last_confirmation_json," \
+                "linked_commitments_json,contradictory_evidence_json,source_event_id," \
+                "supersedes_plan_id,created_unix) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (plan_id, scope.match_id, scope.agent_id, scope.perspective_id, plan_key,
+                 revision, title, objective, status, _json(list(target_refs)),
+                 _json(list(participants)), _json(dict(timing or {})),
+                 _json(list(dependencies)), intended_role[:1000] or None,
+                 _json(list(contingencies)), _json(dict(last_confirmation or {})),
+                 _json(list(linked_commitments)), _json(list(contradictory_evidence)),
+                 source_event_id, current["plan_id"] if current else None, now),
+            )
+            if current:
+                connection.execute(
+                    "UPDATE plans SET superseded_by_plan_id=? WHERE plan_id=?",
+                    (plan_id, current["plan_id"]),
+                )
+            self._append_event(
+                connection, scope, "memory.plan_updated",
+                {"plan_id": plan_id, "plan_key": plan_key, "revision": revision,
+                 "status": status}, session_id=session_id, turn=turn, year=year,
+                subject_id=plan_id, importance=75, search_text=f"{title} {objective}",
+            )
+            self._index_document(
+                connection, scope, document_kind="plan", source_id=plan_id,
+                title=title, body=objective, tags=f"plan {status}", importance=75,
+                created_unix=now,
+            )
+            return self._decode_row(
+                connection.execute("SELECT * FROM plans WHERE plan_id=?", (plan_id,)).fetchone(),
+                "target_refs_json", "participants_json", "timing_json", "dependencies_json",
+                "contingencies_json", "last_confirmation_json", "linked_commitments_json",
+                "contradictory_evidence_json",
             )
 
     def add_summary(

@@ -34,7 +34,7 @@ if [ ! -f "$SMACX_GAME_SOURCE/terranx.exe" ]; then
     exit 2
 fi
 
-services="knowledge-service control-api control-center edge ddns"
+services="knowledge-service control-api control-center specialist-supervisor edge ddns"
 # Proton sealing and Blazor AOT-style optimization are memory-intensive build
 # phases. Keep first-run builds deterministic on small home-lab hosts instead
 # of letting Compose build all images concurrently.
@@ -54,7 +54,7 @@ case "${SMACX_VIRTUAL_LAN:-none}" in
             exit 2
         fi
         set -- "$@" -f compose.tailscale.yaml
-        services="knowledge-service control-api control-center edge ddns tailscale-router"
+        services="knowledge-service control-api control-center specialist-supervisor edge ddns tailscale-router"
         ;;
     *)
         echo "Unsupported SMACX_VIRTUAL_LAN: ${SMACX_VIRTUAL_LAN}" >&2

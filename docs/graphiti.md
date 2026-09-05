@@ -7,6 +7,13 @@ hash-linked campaign journal. SQLite holds only its rebuildable projection
 cursor and query caches. Gameplay continues if Graphiti, FalkorDB, embeddings,
 or its extraction model is unavailable.
 
+Graphiti stores interpretive political memory, not the mechanical board.
+Native observations, the campaign journal, and the perspective-world projection
+own map state, units, bases, routes, visibility, and current rules. Graph recall
+may inform beliefs, relationships, and historical interpretation, but it cannot
+override fresh scoped native/focus evidence or manufacture a current mechanical
+fact.
+
 ## What is projected
 
 The projector intentionally does **not** mirror the event stream. It queues only

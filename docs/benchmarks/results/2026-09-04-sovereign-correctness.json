@@ -1,0 +1,620 @@
+{
+  "amphibious": {
+    "event": "pass",
+    "payload": {
+      "bounded_embark_frontier": 4,
+      "bounded_landing_frontier": 8,
+      "elapsed_ms": 2393.031,
+      "known_squares": 4096,
+      "route_found": true
+    }
+  },
+  "anchor_baseline": {
+    "huge_quiet_growth_percent": 0.31185031185030354,
+    "method": "deterministic semantic token estimator: canonical UTF-8 bytes / 4",
+    "passed": true,
+    "profiles": {
+      "huge_chaotic_256k": {
+        "milliseconds": 843.060337996576,
+        "regions_omitted": 0,
+        "strategic_objects_truncated": true,
+        "tokens": 15901
+      },
+      "huge_chaotic_64k": {
+        "milliseconds": 909.3617949984036,
+        "regions_omitted": 0,
+        "strategic_objects_truncated": true,
+        "tokens": 5894
+      },
+      "huge_fragmented_64k": {
+        "milliseconds": 391.44499599933624,
+        "regions_omitted": 3176,
+        "tokens": 4751
+      },
+      "huge_quiet_256k": {
+        "milliseconds": 832.6968849869445,
+        "tokens": 966
+      },
+      "huge_quiet_64k": {
+        "milliseconds": 894.8423659894615,
+        "tokens": 965
+      },
+      "small_quiet_64k": {
+        "milliseconds": 6.3379170023836195,
+        "tokens": 962
+      }
+    },
+    "schema": "smacx.world-benchmark.v1",
+    "tile_count": {
+      "huge": 25600,
+      "small": 256
+    },
+    "underlying_fact_equivalence": true
+  },
+  "anchor_current": {
+    "huge_quiet_growth_percent": 0.2849002849002913,
+    "method": "deterministic semantic token estimator: canonical UTF-8 bytes / 4",
+    "passed": true,
+    "profiles": {
+      "huge_chaotic_256k": {
+        "milliseconds": 1261.9702400406823,
+        "regions_omitted": 0,
+        "strategic_objects_truncated": true,
+        "tokens": 15809
+      },
+      "huge_chaotic_64k": {
+        "milliseconds": 1221.5106280054897,
+        "regions_omitted": 0,
+        "strategic_objects_truncated": true,
+        "tokens": 5668
+      },
+      "huge_fragmented_64k": {
+        "milliseconds": 526.7866349895485,
+        "regions_omitted": 3176,
+        "tokens": 5449
+      },
+      "huge_quiet_256k": {
+        "milliseconds": 1165.3626199695282,
+        "tokens": 1057
+      },
+      "huge_quiet_64k": {
+        "milliseconds": 1257.0703770034015,
+        "tokens": 1056
+      },
+      "small_quiet_64k": {
+        "milliseconds": 32.466589007526636,
+        "tokens": 1053
+      }
+    },
+    "schema": "smacx.world-benchmark.v1",
+    "tile_count": {
+      "huge": 25600,
+      "small": 256
+    },
+    "underlying_fact_equivalence": true
+  },
+  "baseline_commit": "b5c70fb93bc39f37d228316756d9b0d267aad9b5",
+  "checkpoint": 1,
+  "collector_native_shaped": {
+    "event": "pass",
+    "payload": {
+      "bounded_native_backlog": true,
+      "cases": [
+        {
+          "bases": 1,
+          "case": "small_quiet",
+          "contacts": 0,
+          "initial": {
+            "attention_batches_written": 5,
+            "bridge_calls": 11,
+            "journal_events_written": 4,
+            "material_deltas": 279,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 0.159,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 3,
+            "projection_object_rows_written": 279,
+            "projection_rows_written": 280,
+            "reconciled": true,
+            "semantic_events": 9,
+            "wall_ms": 322.659,
+            "world_objects": 279
+          },
+          "journal_replay_object_count": 279,
+          "known_tiles": 256,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 2,
+          "sqlite_bytes": 1634304,
+          "ui_probe_max_gap_ms": 18.21,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 11,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 0.506,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 131.893,
+            "world_objects": 279
+          }
+        },
+        {
+          "bases": 1,
+          "case": "stock_huge_quiet",
+          "contacts": 0,
+          "initial": {
+            "attention_batches_written": 5,
+            "bridge_calls": 35,
+            "journal_events_written": 33,
+            "material_deltas": 6423,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 4.94,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 32,
+            "projection_object_rows_written": 6423,
+            "projection_rows_written": 6424,
+            "reconciled": true,
+            "semantic_events": 9,
+            "wall_ms": 3332.526,
+            "world_objects": 6423
+          },
+          "journal_replay_object_count": 6423,
+          "known_tiles": 6400,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 2,
+          "sqlite_bytes": 16977920,
+          "ui_probe_max_gap_ms": 82.052,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 35,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 11.357,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 1965.048,
+            "world_objects": 6423
+          }
+        },
+        {
+          "bases": 80,
+          "case": "stock_huge_active",
+          "contacts": 300,
+          "initial": {
+            "attention_batches_written": 12,
+            "bridge_calls": 36,
+            "journal_events_written": 37,
+            "material_deltas": 6802,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 5.312,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 36,
+            "projection_object_rows_written": 6802,
+            "projection_rows_written": 6803,
+            "reconciled": true,
+            "semantic_events": 388,
+            "wall_ms": 3983.662,
+            "world_objects": 6802
+          },
+          "journal_replay_object_count": 6802,
+          "known_tiles": 6400,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 78733,
+          "sqlite_bytes": 19873792,
+          "ui_probe_max_gap_ms": 89.933,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 36,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 12.371,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 2137.799,
+            "world_objects": 6802
+          }
+        },
+        {
+          "bases": 1,
+          "case": "large_custom_quiet",
+          "contacts": 0,
+          "initial": {
+            "attention_batches_written": 5,
+            "bridge_calls": 110,
+            "journal_events_written": 123,
+            "material_deltas": 25623,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 19.253,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 122,
+            "projection_object_rows_written": 25623,
+            "projection_rows_written": 25624,
+            "reconciled": true,
+            "semantic_events": 9,
+            "wall_ms": 19178.655,
+            "world_objects": 25623
+          },
+          "journal_replay_object_count": 25623,
+          "known_tiles": 25600,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 2,
+          "sqlite_bytes": 64987136,
+          "ui_probe_max_gap_ms": 274.16,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 110,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 46.539,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 8199.002,
+            "world_objects": 25623
+          }
+        },
+        {
+          "bases": 64,
+          "case": "orbital_drop_dense_25600",
+          "contacts": 128,
+          "initial": {
+            "attention_batches_written": 8,
+            "bridge_calls": 110,
+            "journal_events_written": 126,
+            "material_deltas": 25942,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 21.429,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 125,
+            "projection_object_rows_written": 25942,
+            "projection_rows_written": 25943,
+            "reconciled": true,
+            "semantic_events": 200,
+            "wall_ms": 39170.828,
+            "world_objects": 25942
+          },
+          "journal_replay_object_count": 25942,
+          "known_tiles": 25600,
+          "ready_drop_units": 128,
+          "routine_unit_payload_bytes": 73339,
+          "sqlite_bytes": 67145728,
+          "ui_probe_max_gap_ms": 328.525,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 110,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 48.872,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 9453.44,
+            "world_objects": 25942
+          }
+        },
+        {
+          "bases": 24,
+          "case": "action_dense_overflow",
+          "contacts": 80,
+          "initial": {
+            "attention_batches_written": 6,
+            "bridge_calls": 16,
+            "journal_events_written": 12,
+            "material_deltas": 1150,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 3.808,
+            "native_continuity_incomplete": true,
+            "native_events_drained": 768,
+            "native_feed_pages": 3,
+            "observation_rows_written": 11,
+            "projection_object_rows_written": 1150,
+            "projection_rows_written": 1151,
+            "reconciled": true,
+            "semantic_events": 880,
+            "wall_ms": 940.83,
+            "world_objects": 1150
+          },
+          "journal_replay_object_count": 1150,
+          "known_tiles": 1024,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 20854,
+          "sqlite_bytes": 4423680,
+          "ui_probe_max_gap_ms": 19.085,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 14,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 3.103,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 399.352,
+            "world_objects": 1150
+          }
+        }
+      ],
+      "incremental_projection_writes": true,
+      "independent_ui_responsiveness_probe": true,
+      "production_collector_pipeline": true
+    }
+  },
+  "contracts": [
+    {
+      "exit_code": 0,
+      "seconds": 10.5,
+      "test": "world_model_contract_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 3.29,
+      "test": "native_observation_contract_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.11,
+      "test": "fair_play_world_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 2.56,
+      "test": "strategic_world_fixtures_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.1,
+      "test": "geographic_semantics_contract_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.81,
+      "test": "global_world_pipeline_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 0.62,
+      "test": "movement_mechanics_contract_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 16.86,
+      "test": "runtime_context_contract_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.79,
+      "test": "attention_communication_contract_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.11,
+      "test": "rollback_world_contract_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.38,
+      "test": "provider_schema_budget_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.3,
+      "test": "managed_tool_surface_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.3,
+      "test": "semantic_choice_binding_test"
+    },
+    {
+      "exit_code": 0,
+      "seconds": 1.88,
+      "test": "sovereign_hardening_contract_test"
+    }
+  ],
+  "diagnostic_history": [
+    "Managed selector initially rejected persisted map addresses because shape lookup used transient projector metadata; fixed and covered against SQLite reconstruction and opaque aliases.",
+    "A diagnostic address-book attempt confirmed this Drop target was already mapped; the final test uses its persisted private binding.",
+    "One rerun timed out during initial runtime-context acquisition; another during the native Pact fixture. No timeout or responsiveness gate was increased. The final complete isolated rerun passed.",
+    "Native yield scratch state and current-base context are now isolated; the stress fixture verifies exact restoration. The earlier timeout causes are not conclusively attributed to that fix."
+  ],
+  "dotnet": {
+    "failed": 0,
+    "passed": 63
+  },
+  "geography": {
+    "fragmented_anchor_tokens": 4156,
+    "geography_queries": {
+      "area": {
+        "cold_ms": 1101.893,
+        "result_tokens": 1854,
+        "warm_ms": 252.09
+      },
+      "compare": {
+        "cold_ms": 770.866,
+        "result_tokens": 813,
+        "warm_ms": 321.135
+      },
+      "logistics": {
+        "cold_ms": 370.265,
+        "result_tokens": 635,
+        "warm_ms": 517.615
+      },
+      "relation": {
+        "cold_ms": 1128.752,
+        "result_tokens": 636,
+        "warm_ms": 501.144
+      }
+    },
+    "mature_empire_anchor_tokens": 4002,
+    "passed": true
+  },
+  "limitations": [
+    "Collector timing uses the production collector with native-shaped input, not the running game.",
+    "No live provider/tokenizer run was required; exact Qwen token count and prefix-cache measurements are historical baseline evidence.",
+    "Native-shaped Survey entitlement fixtures prove adapter behavior; native production source compiled.",
+    "Managed parameter workflows, intent bookkeeping, counterfactual predictions and final integrated acceptance remain subsequent checkpoints.",
+    "Optional live model/provider tests were not enabled. Earlier native startup/Pact timeouts remain part of diagnostic history for final integrated reliability review."
+  ],
+  "name": "correctness-and-reliability",
+  "native_base_site_stress": {
+    "candidate_count": 32,
+    "native_elapsed_ms": 0,
+    "owned_base_count": 512,
+    "probe_gap_ms": 214.944,
+    "radius_squares": 21,
+    "receipt_bytes": 170436,
+    "wall_ms": 229.131
+  },
+  "native_cross_build": {
+    "existing_compiler_warnings": 22,
+    "passed": true
+  },
+  "native_live": {
+    "authenticated_control_lifecycle": true,
+    "bridge_verified_checkpoint": true,
+    "dedicated_mcp_sidecar": true,
+    "hermes_low_reasoning": false,
+    "hermes_managed_container": false,
+    "hermes_native_revision_advanced": false,
+    "hermes_semantic_turn": false,
+    "hermes_session_backup_verified": false,
+    "hermes_usage": null,
+    "live_worker_volume_backup_verified": true,
+    "managed_lifecycle_blocked": true,
+    "mcp_bound_to_exact_match": true,
+    "mcp_tool_count": 15,
+    "native_airdrop_collection_stress": {
+      "demand_receipt_matches_actions": true,
+      "enumeration_native_ms": 0.0,
+      "enumeration_payload_bytes": 8613,
+      "enumeration_probe_gap_ms": 227.68,
+      "enumeration_target_count": 2848,
+      "enumeration_wall_ms": 226.902,
+      "exact_native_ms": 0.0,
+      "exact_payload_bytes": 288,
+      "exact_probe_gap_ms": 228.498,
+      "exact_wall_ms": 221.381,
+      "map_tiles": 8192,
+      "maximum_page_bytes": 127982,
+      "maximum_page_latency_ms": 224.25,
+      "outside_first_128_semantic_choice_executed": true,
+      "provider_model_supplied_raw_tile_id": false,
+      "ready_drop_units": 129,
+      "revision_cache_hit": true
+    },
+    "native_airdrop_diplomacy_and_anti_drop_guards": true,
+    "native_base_geography_and_unit_traits": true,
+    "native_crash_recovered_without_ui": true,
+    "native_global_projection_world_runtime_path": true,
+    "native_no_timer": true,
+    "native_orbital_project_global_adapter": true,
+    "native_pact_port_amphibious_sequence": true,
+    "native_unity_governor_entitlements": true,
+    "recovered_checkpoint_turn": 1,
+    "semantic_vehicle_identity_survived_native_restart": true,
+    "sidecar_removed_on_park": true,
+    "specialist": null
+  },
+  "native_live_status": "passed",
+  "provider_schema": {
+    "event": "pass",
+    "payload": {
+      "managed_tool_count": 15,
+      "smac_world_conservative_token_proxy": 492,
+      "smac_world_hard_gate": 900,
+      "smac_world_schema_bytes": 1475,
+      "smac_world_target": 700,
+      "system_prompt_bytes": 5280,
+      "system_prompt_conservative_token_proxy": 1760,
+      "system_prompt_exact_tokens": null,
+      "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+      "tokenizer": "conservative_utf8_proxy",
+      "total_tool_schema_bytes": 18391
+    }
+  },
+  "schema": "smacx.sovereign-checkpoint.v1",
+  "specialist_supervisor_host": {
+    "event": "pass",
+    "payload": {
+      "bounded_parallelism": true,
+      "bounded_retry": true,
+      "compressed_trace_manifest": true,
+      "exact_one_mcp": true,
+      "fair_cross_seat_scheduling": true,
+      "fresh_disposable_processes": true,
+      "hard_cancellation_kill": true,
+      "hard_provider_token_budget": true,
+      "hard_timeout_kill": true,
+      "hard_tool_budget": true,
+      "mcp_failure_retry_bounded": true,
+      "orphan_reconciliation": true,
+      "schema_repair_bounded": true,
+      "sovereign_state_isolated": true,
+      "trace_byte_ceiling_warning": true,
+      "trace_generation_retention": true,
+      "trace_hash_and_redaction": true,
+      "trace_high_retention": true
+    }
+  }
+}

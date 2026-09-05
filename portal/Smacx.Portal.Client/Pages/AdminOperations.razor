@@ -15,6 +15,7 @@ else if (snapshot is not null)
  <div class="metric-grid operations-metrics">
   <MetricCard Label="CONTROL" Value="@Text(snapshot.Operations, "status", "ready")" Detail="Supervisor state" Icon="@Icons.Material.Filled.MonitorHeart" />
   <MetricCard Label="GRAPHITI" Value="@GraphitiLabel" Detail="Campaign journal remains authoritative" Icon="@Icons.Material.Filled.AccountTree" Tone="violet" />
+  <MetricCard Label="SPECIALISTS" Value="@SpecialistLabel" Detail="Read-only evidence helpers" Icon="@Icons.Material.Filled.Psychology" Tone="gold" />
   <MetricCard Label="RULES" Value="@KnowledgeLabel" Detail="Local semantic mechanics" Icon="@Icons.Material.Filled.MenuBook" Tone="blue" />
   <MetricCard Label="SCHEDULES" Value="@Count(snapshot.Schedules).ToString()" Detail="Configured jobs" Icon="@Icons.Material.Filled.Schedule" Tone="gold" />
   <MetricCard Label="BACKUPS" Value="@Count(snapshot.Backups).ToString()" Detail="Recorded sets" Icon="@Icons.Material.Filled.Backup" Tone="blue" />
@@ -41,6 +42,65 @@ else if (snapshot is not null)
      </div>
     }
     <span class="field-help flush">Long-term relationship and event memories are built in the background. Recall uses a limited time and context budget; gameplay continues normally if Graphiti is unavailable. Each match can opt out, and memories remain isolated by match and AI player.</span>
+   </section>
+   <section class="surface-panel form-panel">
+    <h2>Disposable evidence specialists</h2>
+    <p class="section-copy">Hermes runs each mechanics researcher or frozen-world analyst in a fresh disposable process. The sovereign sees one investigation faculty; a child receives exactly one read-only instrument, bounded budgets, and no gameplay, chat, memory, files, terminal, web, personality, or sovereign transcript.</p>
+    <MudSelect T="string" Value="@specialistProfileId" ValueChanged="SpecialistProfileChanged"
+               Label="Dedicated helper profile (optional)" Clearable="true" Variant="Variant.Outlined"
+               Disabled="busy" HelperText="Leave blank to use each sovereign seat's own provider profile.">
+     @foreach(var profile in profiles.Where(item=>item.Active)){<MudSelectItem Value="@profile.ProfileId">@profile.DisplayName · @profile.ModelId · @profile.ReasoningEffort</MudSelectItem>}
+    </MudSelect>
+    <div class="field-pair">
+    <MudNumericField T="int" @bind-Value="specialistMaxConcurrency" Label="Installation-wide concurrent children"
+                     Min="1" Max="16" Variant="Variant.Outlined"/>
+    <MudNumericField T="int" @bind-Value="specialistSeatConcurrency" Label="Concurrent children per AI seat"
+                     Min="1" Max="1" Disabled="true" Variant="Variant.Outlined"
+                     HelperText="One sovereign may run only one disposable specialist at a time."/>
+    </div>
+    <MudExpansionPanels>
+     <MudExpansionPanel Text="Budgets and retry policy">
+      <div class="field-pair">
+       <MudNumericField T="int" @bind-Value="specialistAutomaticRetries" Label="Transient retries" Min="0" Max="2" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="specialistSchemaRepairs" Label="Schema repair retries" Min="0" Max="1" Variant="Variant.Outlined"/>
+      </div>
+      <h3>Quick synthesis</h3>
+      <div class="field-pair">
+       <MudNumericField T="int" @bind-Value="synthesisToolBudget" Label="Tool calls" Min="1" Max="128" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="synthesisProviderCalls" Label="Provider calls" Min="1" Max="64" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="synthesisProviderTokens" Label="Cumulative provider tokens" Min="1000" Max="1000000" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="synthesisContext" Label="Per-request context ceiling" Min="65536" Max="1048576" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="synthesisOutput" Label="Published result tokens" HelperText="Caps the compact validated result returned to the sovereign; provider reasoning and tool-loop work use a separate bounded allowance." Min="128" Max="4096" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="synthesisWall" Label="Wall time (seconds)" Min="5" Max="3600" Variant="Variant.Outlined"/>
+      </div>
+      <h3>Deep investigation</h3>
+      <div class="field-pair">
+       <MudNumericField T="int" @bind-Value="investigationToolBudget" Label="Tool calls" Min="1" Max="128" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="investigationProviderCalls" Label="Provider calls" Min="1" Max="64" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="investigationProviderTokens" Label="Cumulative provider tokens" Min="1000" Max="1000000" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="investigationContext" Label="Per-request context ceiling" Min="65536" Max="1048576" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="investigationOutput" Label="Published result tokens" HelperText="Caps the compact validated result returned to the sovereign; provider reasoning and tool-loop work use a separate bounded allowance." Min="128" Max="4096" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="investigationWall" Label="Wall time (seconds)" Min="5" Max="3600" Variant="Variant.Outlined"/>
+      </div>
+     </MudExpansionPanel>
+     <MudExpansionPanel Text="Diagnostic trace retention">
+      <MudSwitch @bind-Value="specialistTraceCapture" Color="Color.Primary">Capture compressed specialist traces</MudSwitch>
+      <MudSwitch @bind-Value="specialistHighRetention" Color="Color.Warning">Development high-retention mode</MudSwitch>
+      <div class="field-pair">
+       <MudNumericField T="int" @bind-Value="specialistSuccessGenerations" Label="Successful generations retained" Min="0" Max="10000" Variant="Variant.Outlined"/>
+       <MudNumericField T="int" @bind-Value="specialistFailedGenerations" Label="Failed generations retained" Min="0" Max="10000" Variant="Variant.Outlined"/>
+       <MudNumericField T="long" @bind-Value="specialistTraceMegabytes" Label="Trace ceiling (MiB)" Min="16" Max="1048576" Variant="Variant.Outlined"/>
+      </div>
+      <span class="field-help flush">Failed and recent traces are protected. If they exceed the ceiling, capture pauses and Operations shows a warning instead of silently deleting evidence.</span>
+      <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="GcSpecialistTraces" Disabled="busy" StartIcon="@Icons.Material.Filled.CleaningServices">Run trace cleanup</MudButton>
+     </MudExpansionPanel>
+    </MudExpansionPanels>
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+     <strong>@SpecialistLabel:</strong> @SpecialistRuntimeLabel · @SpecialistMissionSummary. Results are dependency-checked and rejected after rollback or relevant world change.
+    </MudAlert>
+    @if(snapshot.Specialists.TryGetProperty("trace_warning",out var traceWarning)&&traceWarning.ValueKind==JsonValueKind.Object){<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@Text(traceWarning,"code","Trace retention needs attention")</MudAlert>}
+    <div class="form-actions"><MudButton Variant="Variant.Filled" Color="Color.Primary"
+       OnClick="SaveSpecialists" Disabled="busy">Save specialist policy</MudButton></div>
    </section>
    <section class="surface-panel form-panel">
     <h2>Campaign save retention</h2>
@@ -95,6 +155,26 @@ else if (snapshot is not null)
   }
  </section>
  <section class="surface-panel admin-list-panel mt-4">
+  <div class="panel-heading"><div><span class="panel-kicker">DISPOSABLE COGNITION</span><h2>Specialist missions</h2><p class="section-copy">Content-light operational history. Open a mission for attempts, dependency provenance, and retained diagnostic downloads.</p></div><MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Reload" aria-label="Refresh specialist missions" /></div>
+  @if(specialistMissions.ValueKind!=JsonValueKind.Array||specialistMissions.GetArrayLength()==0)
+  {<div class="empty-state compact"><MudIcon Icon="@Icons.Material.Filled.Psychology"/><strong>No specialist missions yet</strong><span>Mechanics and world investigations will appear here.</span></div>}
+  else @foreach(var item in specialistMissions.EnumerateArray())
+  {
+   var missionId=Text(item,"mission_id");
+   <div class="admin-list-row"><div><strong>@Text(item,"faculty") · @Text(item,"execution_class")</strong><small>@missionId · @Text(item,"match_id")</small></div><span class="status-badge">@Text(item,"status")</span><span>@Text(item,"provider_tokens","0") tokens · @Text(item,"tool_calls","0") tools</span><MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => LoadSpecialistMission(missionId)">Inspect</MudButton></div>
+  }
+  @if(selectedSpecialistMission.ValueKind==JsonValueKind.Object)
+  {
+   <MudPaper Class="pa-4 mt-3" Outlined="true">
+    <div class="panel-heading"><div><span class="panel-kicker">MISSION DETAIL</span><h3>@Text(selectedSpecialistMission,"mission_id")</h3></div><MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseSpecialistMission" aria-label="Close mission details"/></div>
+    <p>@Text(selectedSpecialistMission,"faculty") · @Text(selectedSpecialistMission,"status") · world revision @Text(selectedSpecialistMission,"source_world_revision")</p>
+    @if(selectedSpecialistMission.TryGetProperty("result_preview",out var resultPreview)&&resultPreview.ValueKind==JsonValueKind.String){<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">@resultPreview.GetString()</MudAlert>}
+    @if(selectedSpecialistMission.TryGetProperty("attempts",out var attempts)&&attempts.ValueKind==JsonValueKind.Array)
+    {@foreach(var attempt in attempts.EnumerateArray()){var attemptId=Text(attempt,"attempt_id");<div class="admin-list-row"><div><strong>Attempt @Text(attempt,"attempt_number")</strong><small>@attemptId</small></div><span>@Text(attempt,"status")</span><span>@Text(attempt,"provider_tokens","0") tokens · @Text(attempt,"tool_calls","0") tools</span>@if(attempt.TryGetProperty("trace_path",out var tracePath)&&tracePath.ValueKind==JsonValueKind.String){<MudButton Href="@($"api/admin/specialists/traces/{Uri.EscapeDataString(attemptId)}/download")" Target="_blank" Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download">Trace</MudButton>}</div>}}
+   </MudPaper>
+  }
+ </section>
+ <section class="surface-panel admin-list-panel mt-4">
   <div class="panel-heading"><div><span class="panel-kicker">UNATTENDED WORK</span><h2>Schedules</h2></div></div>
   @foreach (var item in snapshot.Schedules.EnumerateArray())
   {
@@ -108,20 +188,28 @@ else if (snapshot is not null)
 @if(!string.IsNullOrEmpty(message)){<MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mt-4">@message</MudAlert>}@if(!string.IsNullOrEmpty(error)){<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@error</MudAlert>}
 
 @code {
- private AdminSnapshot? snapshot; private List<AiProfile> profiles=[]; private bool loading=true,busy,includeSecrets=true,includeWorkers=true,retainFullTurnHistory; private string? error,message,graphitiProfileId; private string scheduleName="Nightly control backup",operationKind="backup"; private int intervalSeconds=86400,recentCheckpoints=10,milestoneInterval=25;
+ private AdminSnapshot? snapshot; private List<AiProfile> profiles=[]; private JsonElement specialistMissions,selectedSpecialistMission; private bool loading=true,busy,includeSecrets=true,includeWorkers=true,retainFullTurnHistory,specialistTraceCapture=true,specialistHighRetention; private string? error,message,graphitiProfileId,specialistProfileId; private string scheduleName="Nightly control backup",operationKind="backup"; private int intervalSeconds=86400,recentCheckpoints=10,milestoneInterval=25,specialistMaxConcurrency=2,specialistSeatConcurrency=1,specialistAutomaticRetries=1,specialistSchemaRepairs=1,specialistSuccessGenerations=10,specialistFailedGenerations=25,synthesisToolBudget=4,synthesisProviderCalls=4,synthesisProviderTokens=96000,synthesisContext=65536,synthesisOutput=1500,synthesisWall=90,investigationToolBudget=24,investigationProviderCalls=16,investigationProviderTokens=512000,investigationContext=262144,investigationOutput=4000,investigationWall=300; private long specialistTraceMegabytes=2048;
  private bool GraphitiEnabled => snapshot is not null && Bool(snapshot.Graphiti,"enabled");
  private AiProfile? SelectedGraphitiProfile => profiles.FirstOrDefault(item=>item.ProfileId==graphitiProfileId);
  private string GraphitiLabel => snapshot is not null && Bool(snapshot.Graphiti, "enabled") ? "ON" : "OFF";
+ private string SpecialistLabel => snapshot is not null && Text(snapshot.Specialists,"mode","")=="dedicated" ? "DEDICATED" : "SEAT FALLBACK";
+ private string SpecialistRuntimeLabel => snapshot is not null&&snapshot.Specialists.TryGetProperty("runtime",out var runtime)?$"supervisor {Text(runtime,"status","unavailable")}":"supervisor unavailable";
+ private string SpecialistMissionSummary => snapshot is not null&&snapshot.Specialists.TryGetProperty("mission_counts",out var counts)&&counts.ValueKind==JsonValueKind.Object?$"{counts.EnumerateObject().Sum(item=>item.Value.TryGetInt32(out var value)?value:0)} recorded missions":"no recorded missions";
  private bool GraphitiRuntimeReady => snapshot is not null&&snapshot.Graphiti.TryGetProperty("runtime",out var runtime)&&Text(runtime,"status","")=="ready";
  private string GraphitiProbeDescription { get { if(snapshot is null||!snapshot.Graphiti.TryGetProperty("last_probe",out var probe)||probe.ValueKind!=JsonValueKind.Object)return "Not tested yet. This probe performs a real structured-output call without writing to the memory graph.";var state=Text(probe,"state","not tested");var detail=Text(probe,"message","");return $"Last extraction probe: {state.Replace('_',' ')}. {detail}"; } }
  private string KnowledgeLabel => snapshot is not null && Bool(snapshot.Knowledge,"ok") ? (snapshot.Knowledge.TryGetProperty("state",out var state)&&state.ValueKind==JsonValueKind.Object?Text(state,"state","ready"):"ready").ToUpperInvariant() : "DEGRADED";
  private string StorageSummary => snapshot is null ? "No completed archives yet." : $"Completed archive: {Int(snapshot.Storage,"completed_campaigns",0)} campaigns · {Int(snapshot.Storage,"completed_archive_saves",0)} final saves · {Bytes(snapshot.Storage,"completed_archive_bytes")}";
  protected override async Task OnInitializedAsync()=>await Reload();
- private async Task Reload(){loading=true;try{snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;profiles=(await Api.GetAsync<IReadOnlyList<AiProfile>>("api/admin/ai-profiles"))?.Data?.ToList()??[];graphitiProfileId=null;if(snapshot is not null){recentCheckpoints=Int(snapshot.Storage,"recent_checkpoints",10);milestoneInterval=Int(snapshot.Storage,"milestone_interval",25);retainFullTurnHistory=Bool(snapshot.Storage,"retain_full_turn_history");if(snapshot.Graphiti.TryGetProperty("profile",out var profile)&&profile.ValueKind==JsonValueKind.Object)graphitiProfileId=Text(profile,"profile_id","");}}catch(Exception ex){error=ex.Message;}finally{loading=false;}}
+ private async Task Reload(){loading=true;try{snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;profiles=(await Api.GetAsync<IReadOnlyList<AiProfile>>("api/admin/ai-profiles"))?.Data?.ToList()??[];specialistMissions=(await Api.GetAsync<JsonElement>("api/admin/specialists/missions?limit=100"))?.Data??default;graphitiProfileId=null;specialistProfileId=null;if(snapshot is not null){recentCheckpoints=Int(snapshot.Storage,"recent_checkpoints",10);milestoneInterval=Int(snapshot.Storage,"milestone_interval",25);retainFullTurnHistory=Bool(snapshot.Storage,"retain_full_turn_history");if(snapshot.Graphiti.TryGetProperty("profile",out var profile)&&profile.ValueKind==JsonValueKind.Object)graphitiProfileId=Text(profile,"profile_id","");if(snapshot.Specialists.TryGetProperty("profile",out var specialistProfile)&&specialistProfile.ValueKind==JsonValueKind.Object)specialistProfileId=Text(specialistProfile,"profile_id","");if(snapshot.Specialists.TryGetProperty("policy",out var policy)&&policy.ValueKind==JsonValueKind.Object){specialistMaxConcurrency=Int(policy,"installation_concurrency",2);specialistSeatConcurrency=Int(policy,"seat_concurrency",1);specialistAutomaticRetries=Int(policy,"automatic_retries",1);specialistSchemaRepairs=Int(policy,"schema_repairs",1);specialistTraceCapture=Bool(policy,"trace_capture");specialistHighRetention=Bool(policy,"trace_high_retention");specialistSuccessGenerations=Int(policy,"trace_success_generations",10);specialistFailedGenerations=Int(policy,"trace_failed_generations",25);specialistTraceMegabytes=Long(policy,"trace_byte_ceiling",2147483648)/1048576;if(policy.TryGetProperty("synthesis",out var syn)){synthesisToolBudget=Int(syn,"tool_budget",4);synthesisProviderCalls=Int(syn,"provider_call_budget",4);synthesisProviderTokens=Int(syn,"provider_token_budget",96000);synthesisContext=Int(syn,"context_token_ceiling",65536);synthesisOutput=Int(syn,"output_token_budget",1500);synthesisWall=Int(syn,"wall_seconds",90);}if(policy.TryGetProperty("investigation",out var inv)){investigationToolBudget=Int(inv,"tool_budget",24);investigationProviderCalls=Int(inv,"provider_call_budget",16);investigationProviderTokens=Int(inv,"provider_token_budget",512000);investigationContext=Int(inv,"context_token_ceiling",262144);investigationOutput=Int(inv,"output_token_budget",4000);investigationWall=Int(inv,"wall_seconds",300);}}}}catch(Exception ex){error=ex.Message;}finally{loading=false;}}
  private async Task GraphitiProfileChanged(string? profileId){graphitiProfileId=profileId;if(string.IsNullOrWhiteSpace(profileId))return;await ConfigureGraphiti(true,profileId,"Graphiti memory enabled with the selected extraction profile.");}
  private async Task GraphitiEnabledChanged(bool enabled){if(enabled){if(!string.IsNullOrWhiteSpace(graphitiProfileId))await ConfigureGraphiti(true,graphitiProfileId,"Graphiti memory enabled.");return;}await ConfigureGraphiti(false,null,"Graphiti memory disabled and its extraction profile cleared.");}
  private async Task ConfigureGraphiti(bool enabled,string? profileId,string success){busy=true;error=null;message=null;var result=await Api.PostAsync<JsonElement>("api/admin/graphiti",new GraphitiConfigurationRequest(enabled,profileId));if(result.Payload?.Ok==true){message=success;if(enabled){for(var attempt=0;attempt<20;attempt++){snapshot=(await Api.GetAsync<AdminSnapshot>("api/admin/snapshot"))?.Data;if(GraphitiRuntimeReady)break;await Task.Delay(1000);}}}else error=result.Payload?.Error?.Message;await Reload();busy=false;}
  private async Task ProbeGraphiti(){busy=true;error=null;message=null;try{var result=await Api.PostAsync<JsonElement>("api/admin/graphiti/probe",new{});if(result.Payload?.Ok==true&&result.Payload.Data.ValueKind==JsonValueKind.Object&&Bool(result.Payload.Data,"accepted"))message="Graphiti accepted a real structured extraction through the selected profile.";else error=result.Payload?.Data.ValueKind==JsonValueKind.Object?Text(result.Payload.Data,"message","Graphiti extraction was rejected."):result.Payload?.Error?.Message;}finally{await Reload();busy=false;}}
+ private Task SpecialistProfileChanged(string? value){specialistProfileId=value;return Task.CompletedTask;}
+ private async Task SaveSpecialists(){busy=true;error=null;message=null;var syn=new SpecialistWorkloadPolicyRequest(synthesisToolBudget,synthesisProviderCalls,synthesisProviderTokens,synthesisContext,synthesisOutput,synthesisWall);var inv=new SpecialistWorkloadPolicyRequest(investigationToolBudget,investigationProviderCalls,investigationProviderTokens,investigationContext,investigationOutput,investigationWall);var result=await Api.PostAsync<JsonElement>("api/admin/specialists",new SpecialistConfigurationRequest(specialistProfileId,specialistMaxConcurrency,specialistSeatConcurrency,specialistAutomaticRetries,specialistSchemaRepairs,specialistTraceCapture,specialistSuccessGenerations,specialistFailedGenerations,specialistTraceMegabytes*1048576,specialistHighRetention,syn,inv));if(result.Payload?.Ok==true)message=string.IsNullOrWhiteSpace(specialistProfileId)?"Specialists will use each sovereign seat's provider profile.":"Dedicated specialist profile and policy saved.";else error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private async Task GcSpecialistTraces(){busy=true;error=null;message=null;var result=await Api.PostAsync<JsonElement>("api/admin/specialists/traces/gc",new{});if(result.Payload?.Ok==true)message=$"Trace cleanup removed {Text(result.Payload.Data,"removed","0")} files.";else error=result.Payload?.Error?.Message;await Reload();busy=false;}
+ private async Task LoadSpecialistMission(string id){var result=await Api.GetAsync<JsonElement>($"api/admin/specialists/missions/{Uri.EscapeDataString(id)}");if(result?.Ok==true)selectedSpecialistMission=result.Data;else error=result?.Error?.Message;}
+ private void CloseSpecialistMission()=>selectedSpecialistMission=default;
  private async Task CreateBackup(){busy=true;var result=await Api.PostAsync<JsonElement>("api/admin/backups",new BackupRequest(includeSecrets,includeWorkers));if(result.Payload?.Ok==true)message="Backup created.";else error=result.Payload?.Error?.Message;await Reload();busy=false;}
  private async Task SaveStoragePolicy(){busy=true;error=null;message=null;var result=await Api.PostAsync<JsonElement>("api/admin/storage-policy",new StoragePolicyRequest(recentCheckpoints,milestoneInterval,retainFullTurnHistory));if(result.Payload?.Ok==true)message="Save retention policy updated.";else error=result.Payload?.Error?.Message;await Reload();busy=false;}
  private async Task Verify(string id){busy=true;var result=await Api.PostAsync<JsonElement>($"api/admin/backups/{id}/verify",new{});if(result.Payload?.Ok==true)message="Backup manifest verified.";else error=result.Payload?.Error?.Message;busy=false;}
@@ -130,6 +218,7 @@ else if (snapshot is not null)
  private static string Text(JsonElement item,string name,string fallback="—")=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)&&value.ValueKind!=JsonValueKind.Null?value.ToString():fallback;
  private static bool Bool(JsonElement item,string name)=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.True;
  private static int Int(JsonElement item,string name,int fallback)=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)&&value.TryGetInt32(out var number)?number:fallback;
+ private static long Long(JsonElement item,string name,long fallback)=>item.ValueKind==JsonValueKind.Object&&item.TryGetProperty(name,out var value)&&value.TryGetInt64(out var number)?number:fallback;
  private static string Bytes(JsonElement item,string name){if(item.ValueKind!=JsonValueKind.Object||!item.TryGetProperty(name,out var value)||!value.TryGetInt64(out var bytes))return "0 B";string[] units=["B","KB","MB","GB"];var amount=(double)bytes;var unit=0;while(amount>=1024&&unit<units.Length-1){amount/=1024;unit++;}return $"{amount:0.#} {units[unit]}";}
  private static int Count(JsonElement item)=>item.ValueKind==JsonValueKind.Array?item.GetArrayLength():0;
  private static string Unix(JsonElement item,string name){if(item.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.Number)return DateTimeOffset.FromUnixTimeMilliseconds((long)(value.GetDouble()*1000)).ToLocalTime().ToString("g");return "—";}

@@ -117,6 +117,35 @@ def main() -> int:
         if target is None:
             emit("failure", {"stage": "airdrop_target", "choice": airdrop})
             return 10
+        world_units = bridge_request(
+            "perspective_world_page", domain="units", cursor=0, limit=256,
+        )
+        native_receipt = bridge_request(
+            "semantic_airdrop_targets", unit_id=unit_id, maximum_targets=128,
+        )
+        projected_unit = next(
+            (item for item in world_units.get("items", [])
+             if int(item.get("id", -1)) == unit_id),
+            None,
+        )
+        choice_target_ids = {
+            int(item["target_tile_id"]) for item in airdrop.get("targets", [])
+        }
+        receipt_target_ids = {
+            int(item["target_tile_id"]) for item in native_receipt.get("targets", [])
+        }
+        if projected_unit is None or not projected_unit.get("airdrop_ready") \
+                or "airdrop_target_tile_ids" in projected_unit \
+                or receipt_target_ids != choice_target_ids \
+                or bool(native_receipt.get("targets_truncated")) \
+                != bool(airdrop.get("targets_truncated")):
+            emit("failure", {
+                "stage": "airdrop_projection_receipt",
+                "projected_unit": projected_unit,
+                "choice": airdrop,
+                "native_receipt": native_receipt,
+            })
+            return 14
         dropped = command(
             action_choices,
             "airdrop_unit",
@@ -131,6 +160,7 @@ def main() -> int:
         emit("pass", {
             "native_airdrop": True,
             "visible_rule_validated_target": True,
+            "provider_safe_target_receipt_matches_action_surface": True,
             "unit_design_integration": True,
             "coordinates_or_pixels_used": False,
             "target_tile_id_only": True,

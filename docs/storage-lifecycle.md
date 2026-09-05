@@ -19,6 +19,14 @@ running seat still receives its own container, display, processes, registry
 changes, network identity, secrets, and copy-on-write layer. Only its small
 managed state volume is durable.
 
+The control database also stores rebuildable perspective projections: world
+heads, topology/region metadata, query dependencies, attention leases, watches,
+operations, cognition projections, specialist missions/attempts/dependencies,
+trace manifests, and one current materialized
+world anchor per perspective/context tier. It does not store a historical anchor
+copy for every decision. The hash-linked campaign journal remains the temporal
+authority; these tables accelerate current queries and can be rebuilt.
+
 Changing any supplied game/mod file (personal save folders are excluded) or
 rebuilding the worker image produces a new prepared image automatically;
 existing match records retain their exact image reference.
@@ -66,6 +74,12 @@ events are still atomically durable and join the next boundary commit.
 `working-state.json`, notebook entry files, SQLite/FTS indexes, and Graphiti are
 rebuildable projections of the journal.
 
+Notebook enumeration is provider-safe at mature-campaign scale: list/search
+returns a paged metadata projection with short abstracts and a 2,048-token
+result ceiling. Full content is returned only by targeted key lookup and has an
+8,192-token ceiling. Hundreds of large durable notes therefore do not become
+one provider result or automatic runtime context.
+
 ## Coherent AI recovery snapshots
 
 The `control_recovery.sav` file is only one member of a verified recovery
@@ -94,7 +108,10 @@ crash after publication can at worst leave an extra obsolete directory.
 
 Normal control backups freeze and include the complete campaign tree and Git
 history alongside the platform database, worker archives, Hermes volumes, and
-the exact recovery-snapshot files referenced by the captured database. Restore
+the exact recovery-snapshot files referenced by the captured database. Retained
+compressed specialist traces are included as one separately hashed archive;
+restore validates its entries and atomically restores that exact generation.
+Restore
 verifies hashes and rejects traversal, links, devices, and unexpected archive
 roots before replacing either the campaign tree or recovery-snapshot tree.
 
@@ -113,11 +130,36 @@ the campaign's autonomous callers and retires every seat. Only the managed host
 checkpoint is promoted to the completed archive; redundant client volumes are
 released. Repeated completion reconciliation is safe.
 
-A `.sav` is resumable world state, not a replay. Checkpoint recovery uses an
+A `.sav` is resumable native state, not a replay. Each verified checkpoint also
+names the exact campaign-journal head, observation cursor, world epoch/revision,
+Hermes boundary, Graphiti generation, and a content-addressed perspective-world
+snapshot. That snapshot is a replay accelerator, never a second source of
+truth. A checksum, version, or journal-head mismatch discards it and rebuilds
+the projection from authoritative journal evidence.
+
+Disposable specialist world snapshots use the same content-addressed format but
+carry mission-owned pins. Completion, cancellation, staleness, rollback, and
+non-retriable expiry release the pin. A retry-eligible terminal failure instead
+keeps its exact frozen snapshot through a bounded manual-retry horizon; normal
+GC cannot remove it during that window, and retry atomically reclaims the same
+snapshot before queuing a fresh isolated attempt. After the horizon, a zero-pin
+snapshot with no retained checkpoint or recovery owner is collected with its
+content file. Checkpoint-owned snapshots remain governed by checkpoint
+retention. This keeps repeated Huge-world investigations storage-bounded
+without weakening exact-input retry or recovery.
+
+Checkpoint recovery uses an
 explicit child timeline anchored to an immutable parent event hash and native
 save digest, rotates native sessions, restores Hermes, and rebuilds the derived
 Graphiti projection. The UI does not expose arbitrary turn rewind. Retaining
 native saves alone is never treated as safe AI-memory recovery.
+
+Rollback creates a new active timeline and removes every derived future fact:
+attention acknowledgements and leases, watch triggers, operations, foreign
+contact identities, query caches, specialist results, world snapshots/anchors,
+Graphiti projection, and Hermes provider-visible cognition beyond the restored
+boundary. The restored native save and journal head therefore cannot coexist
+with memories of actions that no longer happened.
 
 Prepared game and compatibility layers are paid once per distinct fingerprint.
 Running containers add only changed blocks; parked matches retain compressed

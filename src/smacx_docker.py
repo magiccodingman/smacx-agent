@@ -215,6 +215,28 @@ class DockerClient:
         _, data = self._request(
             "GET", f"/containers/{quote(identifier, safe='')}/logs?{query}", expected=(200,),
         )
+        # Non-TTY Docker log streams are multiplexed. Each payload has an
+        # eight-byte header: stream byte, three reserved bytes, and a
+        # big-endian payload length. Decoding that framing as text can leave a
+        # printable length byte in front of valid helper JSON. TTY/raw output
+        # has no framing, so retain it when the complete response is not a
+        # valid frame sequence.
+        cursor = 0
+        frames: list[bytes] = []
+        while cursor + 8 <= len(data):
+            header = data[cursor:cursor + 8]
+            if header[0] not in (0, 1, 2) or header[1:4] != b"\x00\x00\x00":
+                frames = []
+                break
+            length = int.from_bytes(header[4:8], "big")
+            end = cursor + 8 + length
+            if end > len(data):
+                frames = []
+                break
+            frames.append(data[cursor + 8:end])
+            cursor = end
+        if frames and cursor == len(data):
+            data = b"".join(frames)
         return data.decode("utf-8", errors="replace")
 
     def put_archive(self, identifier: str, destination: str, archive: bytes) -> None:

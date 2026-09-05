@@ -34,7 +34,7 @@ def main() -> int:
     if not started.get("ok"):
         return 2
     deadline = time.monotonic() + 90
-    amount = 75
+    amount = 125
     submitted = False
     energy_before = -1
     while time.monotonic() < deadline:
@@ -53,7 +53,8 @@ def main() -> int:
             gift = next((item for item in choices.get("choices", [])
                          if item.get("command") == "give_energy_gift"), None)
             if not gift or int(gift.get("amount_min", -1)) != 1 \
-                    or int(gift.get("amount_max", -1)) != 500:
+                    or int(gift.get("amount_max", -1)) != 500 \
+                    or gift.get("amount_options") != [500, 250, 125, 50, 25]:
                 emit("failure", {"stage": "gift_bounds", "choices": choices})
                 return 3
             energy_before = int(current.get("faction", {}).get("energy_credits", -1))

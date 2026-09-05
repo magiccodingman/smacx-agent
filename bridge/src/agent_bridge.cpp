@@ -20,7 +20,9 @@
 #include "veh_action.h"
 #include "veh_combat.h"
 
+#include <algorithm>
 #include <sstream>
+#include <set>
 #include <vector>
 
 namespace {
@@ -45,6 +47,8 @@ bool lock_initialized = false;
 volatile LONG started = 0;
 volatile LONG stopping = 0;
 volatile LONG request_getmessage_hits = 0;
+// Test-only operation progress: static stage numbers, no game-state contents.
+volatile LONG acceptance_fixture_stage = 0;
 volatile LONG request_network_wait_hits = 0;
 volatile LONG request_modal_wait_hits = 0;
 volatile LONG request_handler_hits = 0;
@@ -86,10 +90,346 @@ LPARAM message_pointer) {
     return CallNextHookEx(request_getmessage_hook, code, remove, message_pointer);
 }
 int semantic_tile_id(int x, int y);
+bool semantic_tile_coords(int tile_id, int* x, int* y);
 // Monotonic bridge-side generation for accepted semantic mutations.  A pure
 // state hash can repeat when an action is applied and then cancelled, which
 // would make an older optimistic-concurrency token valid again.
 uint64_t semantic_mutation_generation = 0;
+const size_t MaxObservationEvents = 1024;
+struct NativeObservationEvent {
+    uint64_t sequence;
+    int turn;
+    int subject_a;
+    int subject_b;
+    int from_tile_id;
+    int to_tile_id;
+    int value_before;
+    int value_after;
+    bool continuous_visibility;
+    char kind[32];
+    char item_name[64];
+    char relationship[12];
+};
+NativeObservationEvent observation_events[MaxObservationEvents] = {};
+size_t observation_event_start = 0;
+size_t observation_event_count = 0;
+uint64_t next_observation_sequence = 1;
+uint64_t lost_after_observation_sequence = 0;
+std::string last_observed_action_revision;
+uint64_t last_observed_popup_generation = 0;
+// Secret Project IDs occupy the facility namespace above MaxFacilityNum;
+// index these report-only registries by the complete native ID range.
+int known_project_builder[SP_ID_Last + 1] = {};
+bool known_project_builder_valid[SP_ID_Last + 1] = {};
+
+const char* observed_event_relationship(int faction_id, int other) {
+    if (other == faction_id) return "self";
+    if (other == 0 || (Factions[faction_id].diplo_status[other] & DIPLO_VENDETTA)) return "hostile";
+    if (Factions[faction_id].diplo_status[other] & DIPLO_PACT) return "allied";
+    return "neutral";
+}
+
+void append_observation_event(const char* kind, int turn, int subject_a = -1,
+int subject_b = -1, int from_tile_id = -1, int to_tile_id = -1,
+int value_before = -1, int value_after = -1,
+bool continuous_visibility = false, const char* item_name = nullptr,
+const char* relationship = nullptr) {
+    if (!kind || !kind[0]) return;
+    size_t index = 0;
+    if (observation_event_count < MaxObservationEvents) {
+        index = (observation_event_start + observation_event_count) % MaxObservationEvents;
+        ++observation_event_count;
+    } else {
+        lost_after_observation_sequence = observation_events[observation_event_start].sequence;
+        observation_event_start = (observation_event_start + 1) % MaxObservationEvents;
+        index = (observation_event_start + observation_event_count - 1) % MaxObservationEvents;
+    }
+    NativeObservationEvent& event = observation_events[index];
+    event.sequence = next_observation_sequence++;
+    event.turn = turn;
+    event.subject_a = subject_a;
+    event.subject_b = subject_b;
+    event.from_tile_id = from_tile_id;
+    event.to_tile_id = to_tile_id;
+    event.value_before = value_before;
+    event.value_after = value_after;
+    event.continuous_visibility = continuous_visibility;
+    lstrcpynA(event.relationship, relationship ? relationship : "unknown",
+        static_cast<int>(sizeof(event.relationship)));
+    lstrcpynA(event.kind, kind, static_cast<int>(sizeof(event.kind)));
+    lstrcpynA(event.item_name, item_name ? item_name : "",
+        static_cast<int>(sizeof(event.item_name)));
+}
+
+int semantic_project_id_from_name(const char* name) {
+    if (!name || !name[0]) return -1;
+    for (int project_id = SP_ID_First; project_id <= SP_ID_Last; ++project_id) {
+        if (!strcmp(name, Facility[project_id].name)) return project_id;
+    }
+    return -1;
+}
+
+int semantic_faction_id_from_report_name(const char* name) {
+    if (!name || !name[0]) return -1;
+    for (int faction_id = 1; faction_id < MaxPlayerNum; ++faction_id) {
+        if (!strcmp(name, MFactions[faction_id].noun_faction)
+        || !strcmp(name, MFactions[faction_id].adj_name_faction)
+        || !strcmp(name, MFactions[faction_id].formal_name_faction)
+        || !strcmp(name, MFactions[faction_id].name_leader)) return faction_id;
+    }
+    return -1;
+}
+
+void capture_project_report_popup() {
+    const uint64_t generation = agent_popup_generation();
+    if (!generation || generation == last_observed_popup_generation) return;
+    last_observed_popup_generation = generation;
+    const char* label = agent_popup_last_started_label();
+    int project_id = -1;
+    int prior_project_id = -1;
+    int faction_id = -1;
+    const char* event_kind = NULL;
+    if (!strcmp(label, "BEGINPROJECT")) {
+        project_id = semantic_project_id_from_name(agent_popup_parse_string(3));
+        faction_id = semantic_faction_id_from_report_name(agent_popup_parse_string(2));
+        event_kind = "project_race_started";
+    } else if (!strcmp(label, "CHANGEPROJECT")) {
+        prior_project_id = semantic_project_id_from_name(agent_popup_parse_string(1));
+        project_id = semantic_project_id_from_name(agent_popup_parse_string(3));
+        faction_id = semantic_faction_id_from_report_name(agent_popup_parse_string(2));
+        event_kind = "project_race_changed";
+    } else if (!strcmp(label, "HALTPROJECT")) {
+        project_id = semantic_project_id_from_name(agent_popup_parse_string(3));
+        faction_id = semantic_faction_id_from_report_name(agent_popup_parse_string(2));
+        event_kind = "project_race_halted";
+    } else if (!strcmp(label, "SURVIVEPROJECT")) {
+        project_id = semantic_project_id_from_name(agent_popup_parse_string(1));
+        faction_id = semantic_faction_id_from_report_name(agent_popup_parse_string(0));
+        event_kind = "project_race_continued";
+    } else if (!strcmp(label, "DONEPROJECT")) {
+        project_id = semantic_project_id_from_name(agent_popup_parse_string(1));
+        faction_id = semantic_faction_id_from_report_name(agent_popup_parse_string(0));
+        event_kind = "project_race_nearing_completion";
+    }
+    if (!event_kind || project_id < SP_ID_First || project_id > SP_ID_Last) return;
+    if (prior_project_id >= SP_ID_First && prior_project_id <= SP_ID_Last) {
+        known_project_builder_valid[prior_project_id] = false;
+    }
+    if (strcmp(event_kind, "project_race_halted")) {
+        known_project_builder[project_id] = faction_id;
+        known_project_builder_valid[project_id] = faction_id >= 1;
+    } else {
+        known_project_builder_valid[project_id] = false;
+    }
+    append_observation_event(event_kind, *CurrentTurn, project_id, faction_id,
+                             -1, -1, prior_project_id, project_id);
+}
+
+void reset_project_report_memory() {
+    last_observed_popup_generation = 0;
+    memset(known_project_builder, 0, sizeof(known_project_builder));
+    memset(known_project_builder_valid, 0, sizeof(known_project_builder_valid));
+}
+
+struct ObservedVehicleState {
+    bool present = false;
+    bool visible = false;
+    int faction_id = -1;
+    int unit_id = -1;
+    int x = -1;
+    int y = -1;
+    int hitpoints = -1;
+};
+
+struct ObservedBaseState {
+    bool present = false;
+    bool visible = false;
+    int faction_id = -1;
+    int x = -1;
+    int y = -1;
+    int population = -1;
+};
+
+struct ObservedTileState {
+    bool sampled = false;
+    bool known = false;
+    bool visible = false;
+    uint32_t items = 0;
+    int altitude = -1;
+    int climate = -1;
+    int owner = -1;
+};
+
+std::vector<ObservedVehicleState> observed_vehicles;
+std::vector<ObservedBaseState> observed_bases;
+std::vector<ObservedTileState> observed_tiles;
+std::vector<ObservedVehicleState> sampled_vehicles;
+std::vector<ObservedBaseState> sampled_bases;
+size_t observed_tile_cursor = 0;
+bool semantic_observation_shadow_ready = false;
+// VEH rows are compacted with memmove on destruction. A private monotonic
+// handle vector is compacted in the same hook, giving every surviving row a
+// stable semantic identity without revealing its native array index.
+std::vector<int> semantic_vehicle_handles;
+int next_semantic_vehicle_handle = 1;
+std::string field_string(const std::string& json, const char* name);
+int field_int(const std::string& json, const char* name, int fallback);
+std::string error_response(const char* error, const char* message);
+void reset_semantic_observation_shadow();
+bool game_active();
+
+void ensure_semantic_vehicle_handles() {
+    const size_t count = static_cast<size_t>(std::max(0, *VehCount));
+    if (semantic_vehicle_handles.size() > count) {
+        semantic_vehicle_handles.clear();
+        observed_vehicles.clear();
+        semantic_observation_shadow_ready = false;
+    }
+    while (semantic_vehicle_handles.size() < count) {
+        // Zero is an unobserved private row.  Allocating handles only when a
+        // unit is legitimately visible prevents hidden row layout/count from
+        // perturbing provider-visible refs or action revisions.
+        semantic_vehicle_handles.push_back(0);
+    }
+}
+
+int semantic_vehicle_handle(int row) {
+    ensure_semantic_vehicle_handles();
+    if (row < 0 || row >= static_cast<int>(semantic_vehicle_handles.size())) return -1;
+    if (!semantic_vehicle_handles[row])
+        semantic_vehicle_handles[row] = next_semantic_vehicle_handle++;
+    return semantic_vehicle_handles[row];
+}
+
+uint64_t semantic_vehicle_layout_hash() {
+    // Platform-private proof that a semantic-handle vector belongs to this
+    // exact restored native VEH layout. It is never provider-visible.
+    uint64_t hash = 1469598103934665603ULL;
+    auto mix = [&](uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ULL;
+    };
+    mix(static_cast<uint32_t>(*CurrentTurn));
+    mix(static_cast<uint32_t>(*CurrentPlayerFaction));
+    mix(static_cast<uint32_t>(*VehCount));
+    for (int row = 0; row < *VehCount; ++row) {
+        VEH& veh = Vehs[row];
+        mix(static_cast<uint32_t>(veh.faction_id));
+        mix(static_cast<uint32_t>(veh.unit_id));
+        mix(static_cast<uint32_t>(veh.x));
+        mix(static_cast<uint32_t>(veh.y));
+        mix(static_cast<uint32_t>(veh.home_base_id + 1));
+        mix(static_cast<uint32_t>(veh.order));
+        mix(static_cast<uint32_t>(veh.moves_spent));
+        mix(static_cast<uint32_t>(veh.cur_hitpoints()));
+    }
+    return hash;
+}
+
+std::vector<int> field_int_array(const std::string& json, const char* name,
+                                 bool* valid) {
+    if (valid) *valid = false;
+    std::vector<int> result;
+    std::string needle = std::string("\"") + name + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return result;
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return result;
+    pos = json.find('[', pos + 1);
+    if (pos == std::string::npos) return result;
+    ++pos;
+    while (pos < json.size()) {
+        while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t'
+        || json[pos] == '\r' || json[pos] == '\n' || json[pos] == ',')) ++pos;
+        if (pos < json.size() && json[pos] == ']') {
+            if (valid) *valid = true;
+            return result;
+        }
+        if (pos >= json.size() || json[pos] < '0' || json[pos] > '9') return {};
+        char* end = NULL;
+        long value = strtol(json.c_str() + pos, &end, 10);
+        if (!end || end == json.c_str() + pos || value < 0 || value > 0x7fffffffL)
+            return {};
+        result.push_back(static_cast<int>(value));
+        if (result.size() > static_cast<size_t>(MaxVehNum)) return {};
+        pos = static_cast<size_t>(end - json.c_str());
+        while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t'
+        || json[pos] == '\r' || json[pos] == '\n')) ++pos;
+        if (pos < json.size() && json[pos] != ',' && json[pos] != ']') return {};
+    }
+    return {};
+}
+
+std::string semantic_identity_state_response(const std::string& request) {
+    if (!game_active()) return error_response(
+        "game_not_active", "Semantic identity state requires an active game.");
+    std::string action = field_string(request, "action");
+    if (action == "export") {
+        ensure_semantic_vehicle_handles();
+        std::ostringstream out;
+        out << "{\"ok\":true,\"schema\":\"smacx.private-vehicle-identity.v1\""
+            << ",\"turn\":" << *CurrentTurn
+            << ",\"faction_id\":" << *CurrentPlayerFaction
+            << ",\"native_validation_hash\":\""
+            << semantic_vehicle_layout_hash() << "\""
+            << ",\"next_semantic_vehicle_handle\":"
+            << next_semantic_vehicle_handle << ",\"semantic_vehicle_handles\":[";
+        for (size_t index = 0; index < semantic_vehicle_handles.size(); ++index) {
+            if (index) out << ',';
+            out << semantic_vehicle_handles[index];
+        }
+        out << "]}";
+        return out.str();
+    }
+    if (action == "import") {
+        if (field_string(request, "schema") != "smacx.private-vehicle-identity.v1")
+            return error_response("identity_schema_mismatch", "Unsupported identity capsule.");
+        const std::string expected = field_string(request, "native_validation_hash");
+        if (expected.empty() || expected != std::to_string(semantic_vehicle_layout_hash()))
+            return error_response("identity_native_state_mismatch",
+                                  "Identity capsule does not match the restored native state.");
+        bool valid = false;
+        std::vector<int> handles = field_int_array(
+            request, "semantic_vehicle_handles", &valid);
+        const int next_handle = field_int(
+            request, "next_semantic_vehicle_handle", -1);
+        if (!valid || handles.size() != static_cast<size_t>(*VehCount))
+            return error_response("identity_handle_count_mismatch",
+                                  "Identity capsule handle count is invalid.");
+        std::set<int> unique;
+        int maximum = 0;
+        for (size_t index = 0; index < handles.size(); ++index) {
+            if (handles[index] <= 0) continue;
+            unique.insert(handles[index]);
+            maximum = std::max(maximum, handles[index]);
+        }
+        const size_t assigned = static_cast<size_t>(std::count_if(
+            handles.begin(), handles.end(), [](int value) { return value > 0; }));
+        if (unique.size() != assigned || next_handle <= maximum)
+            return error_response("identity_handle_set_invalid",
+                                  "Identity capsule handles are not unique and monotonic.");
+        semantic_vehicle_handles.swap(handles);
+        next_semantic_vehicle_handle = next_handle;
+        reset_semantic_observation_shadow();
+        return std::string("{\"ok\":true,\"restored\":true,\"handle_count\":")
+            + std::to_string(semantic_vehicle_handles.size()) + '}';
+    }
+    return error_response("bad_identity_action", "Use export or import.");
+}
+int semantic_observation_faction = -1;
+UINT_PTR semantic_observation_timer_id = 0;
+
+void reset_semantic_observation_shadow() {
+    observed_vehicles.clear();
+    observed_bases.clear();
+    observed_tiles.clear();
+    sampled_vehicles.clear();
+    sampled_bases.clear();
+    observed_tile_cursor = 0;
+    semantic_observation_shadow_ready = false;
+    semantic_observation_faction = -1;
+}
+
 const size_t MaxChatEvents = 64;
 struct ChatEvent {
     uint64_t sequence;
@@ -714,6 +1054,8 @@ int recipient_faction_id, const char* text, const char* client_message_id = "") 
     event.turn = game_active() ? *CurrentTurn : -1;
     event.text = text ? text : "";
     event.client_message_id = client_message_id ? client_message_id : "";
+    append_observation_event(outbound ? "chat_outbound" : "chat_inbound",
+        event.turn, sender_faction_id, recipient_faction_id);
 }
 
 const ChatEvent* find_outbound_chat(const std::string& client_message_id) {
@@ -760,6 +1102,8 @@ int origin_x = -1, int origin_y = -1, int target_x = -1, int target_y = -1) {
     deferred_action.observed_x = origin_x;
     deferred_action.observed_y = origin_y;
     deferred_action.resolution.clear();
+    append_observation_event("deferred_action_queued", *CurrentTurn,
+        static_cast<int>(deferred_action.id), unit_id);
 }
 
 std::string deferred_action_response(uint32_t requested_id = 0) {
@@ -952,6 +1296,10 @@ int test_self_destruct_blast_damage = -1;
 bool test_base_status_fixture_initialized = false;
 int test_base_status_fixture_base_id = -1;
 bool test_production_notice_fixture_initialized = false;
+int test_production_completion_base = -1;
+int test_production_completion_facility = -1;
+bool test_production_interruption = false;
+bool test_production_preserve_progress = false;
 bool test_endgame_fixture_initialized = false;
 int test_endgame_fixture_stage = -1;
 bool test_full_endgame_fixture_initialized = false;
@@ -2376,14 +2724,8 @@ void ensure_test_psi_gate_fixture() {
     test_psi_gate_fixture_initialized = true;
 }
 
-void ensure_test_order_fixture() {
-    if (test_order_fixture_initialized || !game_active()) return;
-    char test_mode[8] = {};
-    char test_orders[8] = {};
-    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
-    || strcmp(test_mode, "1")
-    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_ORDERS", test_orders,
-        sizeof(test_orders)) || strcmp(test_orders, "1")) return;
+bool create_test_order_fixture() {
+    if (test_order_fixture_initialized || !game_active()) return false;
     int faction_id = *CurrentPlayerFaction;
     int base_id = -1;
     for (int candidate = 0; candidate < *BaseCount; ++candidate) {
@@ -2392,13 +2734,38 @@ void ensure_test_order_fixture() {
             break;
         }
     }
-    if (base_id < 0) return;
+    if (base_id < 0) return false;
     int former_id = veh_init(BSC_FORMERS, faction_id, Bases[base_id].x, Bases[base_id].y);
     int patrol_id = veh_init(BSC_SCOUT_PATROL, faction_id, Bases[base_id].x, Bases[base_id].y);
-    if (former_id < 0 || patrol_id < 0) return;
+    if (former_id < 0 || patrol_id < 0) return false;
     spot_all(former_id, 1);
     spot_all(patrol_id, 1);
     test_order_fixture_initialized = true;
+    return true;
+}
+
+void ensure_test_order_fixture() {
+    char test_mode[8] = {};
+    char test_orders[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+    || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_ORDERS", test_orders,
+        sizeof(test_orders)) || strcmp(test_orders, "1")) return;
+    create_test_order_fixture();
+}
+
+std::string test_identity_compaction_fixture_response() {
+    char enabled[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION", enabled,
+        sizeof(enabled)) || strcmp(enabled, "1")) {
+        return error_response("acceptance_fixture_disabled",
+            "The private native identity-compaction fixture is disabled.");
+    }
+    if (!create_test_order_fixture()) {
+        return error_response("acceptance_fixture_unavailable",
+            "The private native identity-compaction fixture could not be created.");
+    }
+    return "{\"ok\":true,\"fixture\":\"own_unit_compaction\"}";
 }
 
 void ensure_test_return_home_fixture() {
@@ -3236,6 +3603,15 @@ int semantic_air_safe_range(int veh_id) {
     return max(0, total_moves / Rules->move_rate_roads);
 }
 
+int semantic_air_full_safe_range(int veh_id) {
+    if (veh_id < 0 || veh_id >= *VehCount || Rules->move_rate_roads <= 0) return -1;
+    VEH& veh = Vehs[veh_id];
+    if (veh.triad() != TRIAD_AIR || veh.is_missile()) return -1;
+    if (!veh.range()) return 9999;
+    return max(0, (static_cast<int>(veh.range()) * veh_speed(veh_id, 0))
+        / Rules->move_rate_roads);
+}
+
 bool semantic_bombing_run_unit_eligible(int faction_id, int veh_id) {
     if (veh_id < 0 || veh_id >= *VehCount) return false;
     VEH& veh = Vehs[veh_id];
@@ -3551,7 +3927,12 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "PRODUCEG" || label == "PRODUCEX" || label == "PRODUCEXQ"
         || label == "PRODUCEXG" || label == "PRODUCE2" || label == "PRODUCE3"
         || label == "PRODUCEPROTO" || label == "PRODUCEPROTOQ"
-        || label == "PRODUCEPROTOG";
+        || label == "PRODUCEPROTOG"
+        // These three Script.txt entries contain text only. Production has
+        // already been refused; acknowledgement neither changes the queue
+        // nor chooses replacement production.
+        || label == "ALREADYPROJECT0" || label == "ALREADYPROJECT1"
+        || label == "ALREADYPROJECT2";
     return label.compare(0, 10, "PLANETFALL") == 0
         || label == "SIMULYOU" || label == "SIMULWHOSE"
         || label == "ALIENSARRIVE" || label == "SURPRISE"
@@ -3657,6 +4038,18 @@ bool native_technology_presentation_active() {
     // Stock Alien Crossfire NetTechWindow vtable. Do not treat an unrelated
     // modal object as the passive technology presentation.
     return *reinterpret_cast<uintptr_t*>(NetTechWin) == 0x66CE5C;
+}
+
+int project_information_id() {
+    Win* window = reinterpret_cast<Win*>(DatalinkWin);
+    if (!*WinModalState || !window || *ModalStackCurrent != window
+    || !Win_is_visible(window) || *reinterpret_cast<uintptr_t*>(window) != 0x66AF84) return -1;
+    // help_project (0x44C9E0) opens Datalink::show (0x429180) with
+    // category 11 and the facility ID. Its selected category/item live here.
+    const char* data = reinterpret_cast<const char*>(window);
+    const int category = *reinterpret_cast<const int*>(data + 0x29DC);
+    const int item = *reinterpret_cast<const int*>(data + 0x29E0);
+    return category == 11 && item >= SP_ID_First && item <= SP_ID_Last ? item : -1;
 }
 
 bool technology_presentation_active() {
@@ -3906,6 +4299,7 @@ std::string interaction_kind(int faction_id) {
     if (*WinModalState || *PopupDialogState) {
         if (first_base_name_modal(faction_id)) return "first_base_name";
         if (technology_presentation_active()) return "technology_presentation";
+        if (project_information_id() >= 0) return "project_information";
         if (semantic_popup_label()[0]
         && (endgame_presentation_phase.empty() || active_default_popup())) {
             return "popup";
@@ -4032,7 +4426,7 @@ bool semantic_interaction_command(const std::string& command) {
         "respond_to_nerve_gas", "respond_to_end_turn_confirmation",
         "respond_to_base_obliteration", "respond_to_supreme_leader",
         "respond_to_game_over", "advance_endgame_presentation",
-        "advance_technology_presentation",
+        "advance_technology_presentation", "advance_project_information",
         "respond_to_design_offer",
         "respond_to_artifact", "respond_to_monolith",
         "respond_to_probe_incident", "choose_probe_sabotage_target",
@@ -4106,11 +4500,10 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(*CurrentTurn));
     mix(static_cast<uint32_t>(*CurrentFaction));
     mix(static_cast<uint32_t>(*CurrentPlayerFaction));
-    mix(static_cast<uint32_t>(*VehCount));
-    mix(static_cast<uint32_t>(*BaseCount));
     mix(static_cast<uint32_t>(*WinModalState));
     mix(static_cast<uint32_t>(*PopupDialogState));
     mix(static_cast<uint32_t>(*GameHalted));
+    mix(static_cast<uint32_t>(project_information_id()));
     mix(semantic_mutation_generation);
     mix(static_cast<uint32_t>(pending_multiplayer_technology_presentations.size()));
     for (size_t index = 0;
@@ -4141,26 +4534,34 @@ std::string semantic_revision() {
     mix(endgame_presentation_generation);
     mix(static_cast<uint32_t>(deferred_diplomacy_faction_id + 1));
     mix(static_cast<uint32_t>(deferred_council_faction_id + 1));
-    mix(static_cast<uint32_t>(deferred_nerve_staple_base_id + 1));
-    mix(static_cast<uint32_t>(deferred_obliterate_base_id + 1));
-    mix(static_cast<uint32_t>(deferred_obliterate_unit_id + 1));
-    mix(static_cast<uint32_t>(active_obliterate_base_id + 1));
-    mix(static_cast<uint32_t>(active_obliterate_unit_id + 1));
+    auto base_ref_token = [&](int base_id) {
+        return base_id >= 0 && base_id < *BaseCount
+            ? semantic_tile_id(Bases[base_id].x, Bases[base_id].y) + 1 : 0;
+    };
+    auto unit_ref_token = [&](int veh_id) {
+        return veh_id >= 0 && veh_id < *VehCount
+            ? semantic_vehicle_handle(veh_id) + 1 : 0;
+    };
+    mix(static_cast<uint32_t>(base_ref_token(deferred_nerve_staple_base_id)));
+    mix(static_cast<uint32_t>(base_ref_token(deferred_obliterate_base_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_obliterate_unit_id)));
+    mix(static_cast<uint32_t>(base_ref_token(active_obliterate_base_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(active_obliterate_unit_id)));
     mix(static_cast<uint32_t>(active_obliterate_decision + 1));
-    mix(static_cast<uint32_t>(deferred_destroy_unit_id + 1));
-    mix(static_cast<uint32_t>(deferred_destroy_former_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_unit_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_former_id)));
     mix(static_cast<uint32_t>(deferred_destroy_owner_id + 2));
     mix(static_cast<uint32_t>(deferred_destroy_hostility_confirmed));
-    mix(static_cast<uint32_t>(deferred_move_unit_id + 1));
-    mix(static_cast<uint32_t>(deferred_probe_unit_id + 1));
-    mix(static_cast<uint32_t>(deferred_probe_base_id + 1));
-    mix(static_cast<uint32_t>(deferred_probe_target_unit_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_move_unit_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_probe_unit_id)));
+    mix(static_cast<uint32_t>(base_ref_token(deferred_probe_base_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_probe_target_unit_id)));
     mix(static_cast<uint32_t>(deferred_probe_action_id + 2));
-    mix(static_cast<uint32_t>(deferred_missile_unit_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_missile_unit_id)));
     mix(static_cast<uint32_t>(deferred_missile_x + 1));
     mix(static_cast<uint32_t>(deferred_missile_y + 1));
-    mix(static_cast<uint32_t>(active_probe_unit_id + 1));
-    mix(static_cast<uint32_t>(active_probe_base_id + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(active_probe_unit_id)));
+    mix(static_cast<uint32_t>(base_ref_token(active_probe_base_id)));
     mix(static_cast<uint32_t>(active_probe_abort_requested));
     mix(static_cast<uint32_t>(deferred_move_direction + 1));
     mix(static_cast<uint32_t>(deferred_move_x + 1));
@@ -4257,14 +4658,12 @@ std::string semantic_revision() {
             if (base.faction_id != faction_id) {
                 MAP* sq = mapsq(base.x, base.y);
                 if (sq && sq->is_visible(faction_id)) {
-                    mix(static_cast<uint32_t>(i));
                     mix(static_cast<uint32_t>(base.x));
                     mix(static_cast<uint32_t>(base.y));
                     mix(static_cast<uint32_t>(base.faction_id));
                 }
                 continue;
             }
-            mix(static_cast<uint32_t>(i));
             mix(static_cast<uint32_t>(base.x));
             mix(static_cast<uint32_t>(base.y));
             mix(static_cast<uint32_t>(base.pop_size));
@@ -4291,7 +4690,7 @@ std::string semantic_revision() {
             VEH& veh = Vehs[i];
             bool visible = veh.faction_id == faction_id || (veh.visibility & (1 << faction_id));
             if (!visible) continue;
-            mix(static_cast<uint32_t>(i));
+            mix(static_cast<uint32_t>(semantic_vehicle_handle(i)));
             mix(static_cast<uint32_t>(veh.faction_id));
             mix(static_cast<uint32_t>(veh.unit_id));
             mix(static_cast<uint32_t>(veh.x));
@@ -4306,7 +4705,7 @@ std::string semantic_revision() {
                 mix(static_cast<uint32_t>(veh.waypoint_count));
                 mix(static_cast<uint32_t>(veh.is_patrol_order() ? 1 : 0));
                 mix(static_cast<uint32_t>(veh.moves_spent));
-                mix(static_cast<uint32_t>(veh.home_base_id + 1));
+                mix(static_cast<uint32_t>(base_ref_token(veh.home_base_id)));
                 mix(static_cast<uint32_t>(veh.waypoint_x[0] + 2));
                 mix(static_cast<uint32_t>(veh.waypoint_y[0] + 2));
                 mix(semantic_vehicle_state_flags(veh));
@@ -4315,6 +4714,225 @@ std::string semantic_revision() {
         }
     }
     return std::to_string(hash);
+}
+
+void CALLBACK semantic_observation_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
+    // Runs only on the native UI thread.  It samples bounded semantic state,
+    // never waits, allocates no provider payload, and emits no animation rows.
+    if (!lock_initialized || !game_active()) {
+        reset_semantic_observation_shadow();
+        reset_project_report_memory();
+        semantic_vehicle_handles.clear();
+        return;
+    }
+    const int faction_id = *CurrentPlayerFaction;
+    if (faction_id < 1 || faction_id >= MaxPlayerNum) {
+        reset_semantic_observation_shadow();
+        return;
+    }
+    if (semantic_observation_faction != faction_id) {
+        reset_semantic_observation_shadow();
+        reset_project_report_memory();
+        semantic_observation_faction = faction_id;
+    }
+
+    capture_project_report_popup();
+    ensure_semantic_vehicle_handles();
+    sampled_vehicles.assign(
+        static_cast<size_t>(std::max(0, *VehCount)), ObservedVehicleState());
+    for (int index = 0; index < *VehCount; ++index) {
+        VEH& veh = Vehs[index];
+        ObservedVehicleState& current = sampled_vehicles[index];
+        current.present = true;
+        current.visible = veh.faction_id == faction_id
+            || (veh.visibility & (1 << faction_id));
+        current.faction_id = veh.faction_id;
+        current.unit_id = veh.unit_id;
+        current.x = veh.x;
+        current.y = veh.y;
+        current.hitpoints = veh.cur_hitpoints();
+        if (!semantic_observation_shadow_ready
+        || index >= static_cast<int>(observed_vehicles.size())) continue;
+        const ObservedVehicleState& prior = observed_vehicles[index];
+        const bool same_native_row = prior.present
+            && prior.faction_id == current.faction_id
+            && prior.unit_id == current.unit_id;
+        if (!same_native_row) {
+            if (current.visible) append_observation_event(
+                "visible_unit_appeared", *CurrentTurn,
+                semantic_vehicle_handle(index), current.faction_id,
+                -1, semantic_tile_id(current.x, current.y));
+            continue;
+        }
+        if (prior.visible && current.visible
+        && (prior.x != current.x || prior.y != current.y)) {
+            append_observation_event(
+                "visible_unit_moved", *CurrentTurn,
+                semantic_vehicle_handle(index), current.faction_id,
+                semantic_tile_id(prior.x, prior.y),
+                semantic_tile_id(current.x, current.y), -1, -1, true, nullptr,
+                observed_event_relationship(faction_id, current.faction_id));
+        }
+        if (prior.visible && current.visible
+        && prior.hitpoints != current.hitpoints) {
+            append_observation_event(
+                "visible_unit_damaged", *CurrentTurn,
+                semantic_vehicle_handle(index), current.faction_id,
+                semantic_tile_id(current.x, current.y),
+                semantic_tile_id(current.x, current.y),
+                prior.hitpoints, current.hitpoints, true);
+        }
+        if (prior.visible && !current.visible) {
+            append_observation_event(
+                "visible_unit_lost", *CurrentTurn,
+                semantic_vehicle_handle(index), current.faction_id,
+                semantic_tile_id(prior.x, prior.y));
+        } else if (!prior.visible && current.visible) {
+            append_observation_event(
+                "visible_unit_appeared", *CurrentTurn,
+                semantic_vehicle_handle(index), current.faction_id,
+                -1, semantic_tile_id(current.x, current.y));
+        }
+    }
+
+    sampled_bases.assign(
+        static_cast<size_t>(std::max(0, *BaseCount)), ObservedBaseState());
+    for (int index = 0; index < *BaseCount; ++index) {
+        BASE& base = Bases[index];
+        MAP* square = mapsq(base.x, base.y);
+        ObservedBaseState& current = sampled_bases[index];
+        current.present = true;
+        current.visible = base.faction_id == faction_id
+            || (square && square->is_visible(faction_id));
+        current.faction_id = base.faction_id;
+        current.x = base.x;
+        current.y = base.y;
+        current.population = base.pop_size;
+        if (!semantic_observation_shadow_ready
+        || index >= static_cast<int>(observed_bases.size())) continue;
+        const ObservedBaseState& prior = observed_bases[index];
+        if (prior.present && prior.x == current.x && prior.y == current.y
+        && prior.visible && current.visible) {
+            if (prior.faction_id != current.faction_id) {
+                append_observation_event(
+                    "visible_base_captured", *CurrentTurn, index, current.faction_id,
+                    semantic_tile_id(current.x, current.y),
+                    semantic_tile_id(current.x, current.y),
+                    prior.faction_id, current.faction_id, true);
+            } else if (prior.population != current.population) {
+                append_observation_event(
+                    "visible_base_changed", *CurrentTurn, index, current.faction_id,
+                    semantic_tile_id(current.x, current.y),
+                    semantic_tile_id(current.x, current.y),
+                    prior.population, current.population, true);
+            }
+        }
+    }
+
+    if (observed_tiles.size() != static_cast<size_t>(std::max(0, *MapAreaTiles))) {
+        observed_tiles.assign(static_cast<size_t>(std::max(0, *MapAreaTiles)), {});
+        observed_tile_cursor = 0;
+    }
+    const size_t tile_count = observed_tiles.size();
+    const size_t sample_count = std::min<size_t>(512, tile_count);
+    for (size_t scanned = 0; scanned < sample_count; ++scanned) {
+        const size_t tile_id = (observed_tile_cursor + scanned) % tile_count;
+        int x = -1, y = -1;
+        if (!semantic_tile_coords(static_cast<int>(tile_id), &x, &y)) continue;
+        MAP* square = mapsq(x, y);
+        if (!square) continue;
+        ObservedTileState current;
+        current.sampled = true;
+        current.known = is_known(x, y, faction_id);
+        if (current.known) {
+            current.visible = square->is_visible(faction_id);
+            current.items = current.visible ? square->items : square->visible_items[faction_id - 1];
+            current.altitude = current.visible ? square->alt_level() : -1;
+            current.climate = current.visible ? square->climate : -1;
+            current.owner = current.visible ? square->owner : -1;
+        }
+        const ObservedTileState prior = observed_tiles[tile_id];
+        if (semantic_observation_shadow_ready && prior.sampled && prior.known
+        && current.known && prior.visible != current.visible) {
+            append_observation_event(
+                "known_tile_visibility", *CurrentTurn, static_cast<int>(tile_id), -1,
+                static_cast<int>(tile_id), static_cast<int>(tile_id),
+                prior.visible ? 1 : 0, current.visible ? 1 : 0, true);
+        } else if (semantic_observation_shadow_ready && prior.sampled && prior.known
+        && current.known && prior.visible == current.visible && (prior.items != current.items
+            || prior.altitude != current.altitude || prior.climate != current.climate
+            || prior.owner != current.owner)) {
+            append_observation_event(
+                "known_tile_changed", *CurrentTurn, static_cast<int>(tile_id), -1,
+                static_cast<int>(tile_id), static_cast<int>(tile_id),
+                static_cast<int>(prior.items), static_cast<int>(current.items), true);
+        }
+        observed_tiles[tile_id] = current;
+    }
+    if (tile_count) observed_tile_cursor = (observed_tile_cursor + sample_count) % tile_count;
+    observed_vehicles.swap(sampled_vehicles);
+    observed_bases.swap(sampled_bases);
+    semantic_observation_shadow_ready = true;
+}
+
+std::string observation_feed_response(const std::string& request) {
+    // The collector calls this independently of sovereign decisions. Capturing
+    // a revision transition is bounded and records no full native structures.
+    std::string current_revision = game_active() ? semantic_revision() : "menu";
+    if (current_revision != last_observed_action_revision) {
+        append_observation_event("perspective_changed",
+            game_active() ? *CurrentTurn : -1);
+        last_observed_action_revision = current_revision;
+    }
+    uint64_t after = static_cast<uint64_t>(std::max(0,
+        field_int(request, "after_sequence", 0)));
+    int limit = std::min(256, std::max(1, field_int(request, "limit", 128)));
+    uint64_t oldest = observation_event_count
+        ? observation_events[observation_event_start].sequence
+        : next_observation_sequence;
+    bool incomplete = after && after + 1 < oldest;
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.native-observation-feed.v1\""
+        << ",\"action_revision\":" << json_string(current_revision.c_str())
+        << ",\"continuity\":" << json_string(incomplete ? "incomplete" : "complete")
+        << ",\"lost_after_observation_sequence\":";
+    if (incomplete) out << after;
+    else if (lost_after_observation_sequence) out << lost_after_observation_sequence;
+    else out << "null";
+    out << ",\"reconciliation_required\":" << (incomplete ? "true" : "false")
+        << ",\"events\":[";
+    int emitted = 0;
+    uint64_t last = after;
+    for (size_t offset = 0; offset < observation_event_count && emitted < limit; ++offset) {
+        const NativeObservationEvent& event = observation_events[
+            (observation_event_start + offset) % MaxObservationEvents];
+        if (event.sequence <= after) continue;
+        if (emitted++) out << ',';
+        out << "{\"sequence\":" << event.sequence
+            << ",\"kind\":" << json_string(event.kind)
+            << ",\"turn\":" << event.turn
+            << ",\"subject_a\":" << event.subject_a
+            << ",\"subject_b\":" << event.subject_b
+            << ",\"from_tile_id\":" << event.from_tile_id
+            << ",\"to_tile_id\":" << event.to_tile_id
+            << ",\"value_before\":" << event.value_before
+            << ",\"value_after\":" << event.value_after
+            << ",\"item_name\":" << json_string(event.item_name)
+            << ",\"relationship_at_occurrence\":" << json_string(event.relationship)
+            << ",\"continuous_visibility\":"
+            << (event.continuous_visibility ? "true" : "false") << '}';
+        last = event.sequence;
+    }
+    out << "],\"next_sequence\":" << last
+        << ",\"has_more\":";
+    bool has_more = false;
+    if (observation_event_count) {
+        const NativeObservationEvent& newest = observation_events[
+            (observation_event_start + observation_event_count - 1) % MaxObservationEvents];
+        has_more = newest.sequence > last;
+    }
+    out << (has_more ? "true" : "false") << '}';
+    return out.str();
 }
 
 std::string validate_semantic_guard(const std::string& request) {
@@ -4536,13 +5154,11 @@ VOID CALLBACK energy_gift_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
     BasePop* active = active_default_popup();
     if (!active || !label[0]) return;
     if (!strcmp(label, "OFFERENERGY")) {
-        // make_gift initializes the text field to the current treasury. The
-        // atomic command temporarily narrows that treasury to the requested
-        // amount, so accepting the untouched native default preserves all
-        // native validation, diplomacy bookkeeping, and network hooks.
+        // This is a discrete amount selector, not an editable text field.
+        // Select only a value actually offered by the running native dialog.
         pending_energy_gift_prompt_seen = true;
-        begin_popup_transition(active);
-        BasePop_on_button_clicked(active, 0);
+        if (!submit_popup_choice_id(active, pending_energy_gift_amount))
+            submit_popup_choice_id(active, 0);
         return;
     }
     if (!strncmp(label, "GAVEENERGY", 10)) {
@@ -4550,6 +5166,15 @@ VOID CALLBACK energy_gift_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
         begin_popup_transition(active);
         BasePop_on_button_clicked(active, 0);
     }
+}
+
+std::vector<int> native_energy_gift_options(int treasury) {
+    // Stock make_gift 0x547CD4..0x547D39: initial treasury rounded down to
+    // 25, then successive halves rounded down to 25. Zero means cancel.
+    std::vector<int> amounts;
+    for (int amount = std::max(0, treasury) / 25 * 25; amount > 0;
+         amount = (amount / 2) / 25 * 25) amounts.push_back(amount);
+    return amounts;
 }
 
 VOID CALLBACK test_energy_gift_menu_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
@@ -4768,8 +5393,13 @@ const std::string& label) {
             int available = max(0, Factions[*CurrentPlayerFaction].energy_credits);
             out << "{\"id\":\"diplomacy:energy_payment\"," 
                 "\"command\":\"give_energy_gift\",\"amount_min\":1,\"amount_max\":"
-                << available << ",\"meaning\":" << json_string(options[i].meaning)
-                << '}';
+                << available << ",\"amount_options\":[";
+            const auto amounts = native_energy_gift_options(available);
+            for (size_t j = 0; j < amounts.size(); ++j) {
+                if (j) out << ',';
+                out << amounts[j];
+            }
+            out << "],\"meaning\":" << json_string(options[i].meaning) << '}';
             continue;
         }
         out << "{\"id\":\"diplomacy:" << options[i].name
@@ -6808,6 +7438,50 @@ bool semantic_request_tile(const std::string& request, int* tile_id, int* x, int
     return true;
 }
 
+int semantic_road_edge_cost() {
+    return conf.magtube_movement_rate > 0 ? conf.road_movement_rate : 1;
+}
+
+int semantic_magtube_edge_cost() {
+    return conf.magtube_movement_rate > 0 ? 1 : 0;
+}
+
+int semantic_fungus_movement_cost(VEH& veh) {
+    const int scale = std::max(1, Rules->move_rate_roads);
+    const int road = semantic_road_edge_cost();
+    const bool xeno = veh.faction_id > 0
+        && has_project(FAC_XENOEMPATHY_DOME, veh.faction_id);
+    if (veh.triad() == TRIAD_SEA) {
+        return (veh.unit_id == BSC_SEALURK || veh.unit_id == BSC_ISLE_OF_THE_DEEP || xeno)
+            ? scale : 3 * scale;
+    }
+    if (veh.triad() != TRIAD_LAND) return scale;
+    if (xeno || !veh.faction_id || veh.unit_id == BSC_MIND_WORMS
+    || veh.unit_id == BSC_SPORE_LAUNCHER) return road;
+    if (Units[veh.unit_id].chassis_id == CHS_HOVERTANK
+    || has_abil(veh.unit_id, ABL_ANTIGRAV_STRUTS)) return scale;
+    int cost = 3 * scale;
+    if (Units[veh.unit_id].plan == PLAN_TERRAFORM
+    || Units[veh.unit_id].plan == PLAN_ARTIFACT
+    || Factions[veh.faction_id].SE_planet > 0) {
+        cost = std::max(scale, proto_speed(veh.unit_id));
+    }
+    if (conf.fast_fungus_movement > 0) {
+        cost = std::min(std::max(proto_speed(veh.unit_id), scale), cost);
+    }
+    return cost;
+}
+
+bool semantic_fungus_connects_to_road(VEH& veh) {
+    return veh.faction_id > 0 && has_project(FAC_XENOEMPATHY_DOME, veh.faction_id);
+}
+
+bool semantic_ignores_rough_movement(VEH& veh) {
+    return veh.triad() == TRIAD_LAND
+        && (Units[veh.unit_id].chassis_id == CHS_HOVERTANK
+            || has_abil(veh.unit_id, ABL_ANTIGRAV_STRUTS));
+}
+
 std::string bases_response() {
     if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
     ensure_test_base_action_fixture();
@@ -6825,10 +7499,17 @@ std::string bases_response() {
         BASE& base = Bases[i];
         if (base.faction_id != faction_id) continue;
         if (matched++ < offset) continue;
+        set_base(i);
+        base_compute(1);
         if (emitted++) out << ',';
         out << "{\"id\":" << i << ",\"name\":" << json_string(base.name)
             << ",\"tile_id\":" << semantic_tile_id(base.x, base.y)
+            << ",\"is_ocean\":" << (is_ocean(&base) ? "true" : "false")
+            << ",\"coastal\":" << (coast_tiles(base.x, base.y) ? "true" : "false")
             << ",\"population\":" << static_cast<int>(base.pop_size)
+            << ",\"psi_gate_ready\":"
+            << (has_fac_built(FAC_PSI_GATE, i)
+                && !(base.state_flags & BSTATE_PSI_GATE_USED) ? "true" : "false")
             << ",\"citizens\":{\"talents\":" << base.talent_total
             << ",\"drones\":" << base.drone_total
             << ",\"superdrones\":" << base.superdrone_total
@@ -6845,6 +7526,7 @@ std::string bases_response() {
             << ",\"accumulated\":" << base.nutrients_accumulated << '}'
             << ",\"minerals\":{\"intake\":" << base.mineral_intake_2
             << ",\"consumption\":" << base.mineral_consumption
+            << ",\"unit_support_cost\":" << *BaseForcesMaintCost
             << ",\"surplus\":" << base.mineral_surplus
             << ",\"accumulated\":" << base.minerals_accumulated << '}'
             << ",\"energy\":{\"intake\":" << base.energy_intake_2
@@ -6855,6 +7537,7 @@ std::string bases_response() {
             << ",\"eco_damage\":" << base.eco_damage
             << ",\"production_id\":" << base.queue_items[0]
             << ",\"production_name\":" << json_string(production_name(base.queue_items[0]).c_str())
+            << ",\"production_cost\":" << mineral_cost(i, base.queue_items[0])
             << ",\"production_queue\":[";
         for (int queue_index = 0; queue_index <= base.queue_size && queue_index < 10; ++queue_index) {
             if (queue_index) out << ',';
@@ -6886,6 +7569,28 @@ std::string bases_response() {
             out << "{\"facility_id\":" << facility_id << ",\"name\":"
                 << json_string(Facility[facility_id].name)
                 << ",\"maintenance\":" << fac_maint(facility_id, faction_id) << '}';
+        }
+        out << ']'
+            << ",\"base_radius\":[";
+        bool radius_comma = false;
+        // The owned-base citizen screen is a legitimate report surface for
+        // its 21 production squares.  Publish semantic tile references and
+        // computed yields, never native coordinates.
+        for (int tile_index = 0; tile_index < 21; ++tile_index) {
+            int tile_x = 0;
+            int tile_y = 0;
+            MAP* tile = next_tile(base.x, base.y, tile_index, &tile_x, &tile_y);
+            if (!tile || !tile->is_visible(faction_id)) continue;
+            if (radius_comma) out << ',';
+            radius_comma = true;
+            const bool worked = (base.worked_tiles & (1 << tile_index)) != 0;
+            out << "{\"location_ref\":\"location-" << semantic_tile_id(tile_x, tile_y)
+                << "\",\"worked\":" << (worked ? "true" : "false")
+                << ",\"yields\":{\"nutrients\":"
+                << mod_crop_yield(faction_id, i, tile_x, tile_y, 0)
+                << ",\"minerals\":" << mod_mine_yield(faction_id, i, tile_x, tile_y, 0)
+                << ",\"energy\":" << mod_energy_yield(faction_id, i, tile_x, tile_y, 0)
+                << "}}";
         }
         out << ']'
             << ",\"drone_riots\":" << (base.drone_riots_active() ? "true" : "false")
@@ -6955,6 +7660,42 @@ std::string units_response() {
             }
             out << ",\"prototype_id\":" << veh.unit_id
                 << ",\"triad\":" << json_string(triad)
+                << ",\"movement_points\":" << veh_speed(i, 0)
+                << ",\"movement_scale\":" << Rules->move_rate_roads
+                << ",\"moves_remaining\":" << std::max(0, veh_speed(i, 0) - static_cast<int>(veh.moves_spent))
+                << ",\"road_movement_cost\":" << semantic_road_edge_cost()
+                << ",\"magtube_movement_cost\":" << semantic_magtube_edge_cost()
+                << ",\"fungus_movement_cost\":" << semantic_fungus_movement_cost(veh)
+                << ",\"fungus_connects_to_road\":"
+                << (semantic_fungus_connects_to_road(veh) ? "true" : "false")
+                << ",\"ignores_rough_movement\":"
+                << (semantic_ignores_rough_movement(veh) ? "true" : "false")
+                << ",\"air_range\":" << static_cast<int>(veh.range())
+                << ",\"air_fuel_turns_used\":" << static_cast<int>(veh.movement_turns)
+                << ",\"air_safe_range\":" << semantic_air_safe_range(i)
+                << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(i)
+                << ",\"air_origin_refuels\":"
+                << (semantic_friendly_air_refuel_tile(faction_id, veh.x, veh.y)
+                    ? "true" : "false")
+                << ",\"airdrop_ready\":"
+                << (can_airdrop(i, mapsq(veh.x, veh.y)) ? "true" : "false")
+                << ",\"airdrop_range\":" << drop_range(faction_id)
+                << ",\"abilities\":[";
+            bool ability_comma = false;
+            struct SemanticAbility { VehAblFlag flag; const char* name; };
+            const SemanticAbility semantic_abilities[] = {
+                {ABL_CLOAKED, "cloaked"}, {ABL_AMPHIBIOUS, "amphibious"},
+                {ABL_DROP_POD, "drop_pod"}, {ABL_ANTIGRAV_STRUTS, "antigrav_struts"},
+                {ABL_CLEAN_REACTOR, "clean_reactor"},
+                {ABL_FUEL_NANOCELLS, "fuel_nanocells"},
+            };
+            for (const auto& ability : semantic_abilities) {
+                if (!has_abil(veh.unit_id, ability.flag)) continue;
+                if (ability_comma) out << ',';
+                ability_comma = true;
+                out << json_string(ability.name);
+            }
+            out << ']'
                 << ",\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
                 << ",\"former\":" << (veh.is_former() ? "true" : "false")
                 << ",\"combat\":" << (veh.is_combat_unit() ? "true" : "false")
@@ -6965,6 +7706,14 @@ std::string units_response() {
                 << ",\"artillery\":" << (can_arty(veh.unit_id, true) ? "true" : "false")
                 << ",\"missile\":" << (veh.is_missile() ? "true" : "false")
                 << ",\"missile_kind\":" << json_string(missile_kind(veh))
+                << ",\"native_life\":" << (veh.is_native_unit() ? "true" : "false")
+                << ",\"wild_native\":" << (veh.is_native_unit() && !veh.faction_id ? "true" : "false")
+                << ",\"controlled_native\":" << (veh.is_native_unit() && veh.faction_id ? "true" : "false")
+                << ",\"progenitor_force\":" << (!veh.is_native_unit() && is_alien(veh.faction_id) ? "true" : "false")
+                << ",\"airdrop_capable\":" << (has_abil(veh.unit_id, ABL_DROP_POD) ? "true" : "false")
+                << ",\"airdrop_used\":" << ((veh.state & VSTATE_MADE_AIRDROP) ? "true" : "false")
+                << ",\"amphibious\":" << (has_abil(veh.unit_id, ABL_AMPHIBIOUS) ? "true" : "false")
+                << ",\"cloaked\":" << (has_abil(veh.unit_id, ABL_CLOAKED) ? "true" : "false")
                 << ",\"boarded\":" << (boarded_on >= 0 ? "true" : "false") << '}'
                 << ",\"combat_values\":{\"offense\":" << veh.offense_value()
                 << ",\"defense\":" << veh.defense_value()
@@ -6986,6 +7735,18 @@ std::string units_response() {
                 << ",\"order_auto_type\":" << static_cast<int>(veh.order_auto_type)
                 << ",\"moves_spent\":" << static_cast<int>(veh.moves_spent)
                 << ",\"home_base_id\":" << veh.home_base_id
+                << ",\"requires_support\":"
+                << ((veh.state & VSTATE_REQUIRES_SUPPORT) ? "true" : "false")
+                << ",\"convoy_resource\":";
+            if (veh.order == ORDER_CONVOY) {
+                out << json_string(veh.order_auto_type == RSC_NUTRIENT ? "nutrients"
+                    : veh.order_auto_type == RSC_MINERAL ? "minerals"
+                    : veh.order_auto_type == RSC_ENERGY ? "energy" : "unknown");
+            } else out << "null";
+            out
+                << ",\"convoy_amount\":"
+                << (veh.order == ORDER_CONVOY
+                    ? contribution(i, veh.order_auto_type) : 0)
                 << ",\"transport_unit_id\":" << boarded_on
                 << ",\"designated_defender\":"
                 << ((veh.state & VSTATE_DESIGNATE_DEFENDER) ? "true" : "false")
@@ -7469,10 +8230,13 @@ std::string test_lan_combat_fixture_response(const std::string& request) {
 std::string test_lan_diplomacy_fixture_response(const std::string& request) {
     char test_mode[8] = {};
     char test_lan[8] = {};
+    char managed_acceptance[8] = {};
+    const bool managed = GetEnvironmentVariableA("SMACX_ACCEPTANCE_MANAGED_ACTIONS",
+        managed_acceptance, sizeof(managed_acceptance)) && !strcmp(managed_acceptance, "1");
     if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
         sizeof(test_mode)) || strcmp(test_mode, "1")
-    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_LAN_HOST", test_lan,
-        sizeof(test_lan)) || strcmp(test_lan, "1")) {
+    || (!managed && (!GetEnvironmentVariableA("SMACX_AGENT_TEST_LAN_HOST", test_lan,
+        sizeof(test_lan)) || strcmp(test_lan, "1")))) {
         return error_response("test_mode_disabled",
             "The contained LAN diplomacy fixture is disabled.");
     }
@@ -7601,6 +8365,346 @@ std::string test_lan_ai_contact_fixture_response(const std::string& request) {
     return out.str();
 }
 
+std::string test_airdrop_legality_fixture_response() {
+    char test_mode[8] = {};
+    char acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
+        sizeof(test_mode)) || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_AIRDROP_LEGALITY",
+        acceptance_mode, sizeof(acceptance_mode)) || strcmp(acceptance_mode, "1")) {
+        return error_response("test_mode_disabled",
+            "The contained native airdrop legality fixture is disabled.");
+    }
+    if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    int other = -1;
+    for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+        if (candidate != faction_id && is_alive(candidate)) {
+            other = candidate;
+            break;
+        }
+    }
+    if (other < 0) return error_response("missing_fixture_faction",
+        "No live counterpart faction is available for the airdrop fixture.");
+    const uint32_t relationship_bits = DIPLO_VENDETTA | DIPLO_TRUCE
+        | DIPLO_TREATY | DIPLO_PACT;
+    // Establish a neutral mechanical baseline before selecting sites. This
+    // removes unrelated player ZOC while candidate selection excludes any
+    // remaining native-life ZOC. Individual rows then alter only `other`.
+    for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+        if (candidate == faction_id || !is_alive(candidate)) continue;
+        Factions[faction_id].diplo_status[candidate] &= ~relationship_bits;
+        Factions[candidate].diplo_status[faction_id] &= ~relationship_bits;
+        Factions[faction_id].diplo_status[candidate] |= DIPLO_PACT;
+        Factions[candidate].diplo_status[faction_id] |= DIPLO_PACT;
+    }
+    std::vector<std::pair<int, int>> sites;
+    for (int y = 0; y < *MapAreaY && sites.size() < 9; ++y) {
+        for (int x = y & 1; x < *MapAreaX && sites.size() < 9; x += 2) {
+            MAP* sq = mapsq(x, y);
+            if (!sq || is_ocean(sq) || sq->base_who() >= 0 || veh_at(x, y) >= 0
+            || mod_zoc_move(x, y, faction_id)) continue;
+            bool separated = true;
+            for (const auto& site : sites) {
+                if (map_range(site.first, site.second, x, y) <= 1) {
+                    separated = false;
+                    break;
+                }
+            }
+            if (separated && sites.size() >= 5
+            && map_range(sites[4].first, sites[4].second, x, y)
+                <= std::max(1, AerospaceDefenseRange)) {
+                separated = false;
+            }
+            if (separated) sites.push_back({x, y});
+        }
+    }
+    if (sites.size() < 9) return error_response("missing_fixture_sites",
+        "Nine distinct empty land sites are required for the airdrop fixture.");
+    auto set_relationship = [&](uint32_t bit) {
+        Factions[faction_id].diplo_status[other] &= ~relationship_bits;
+        Factions[other].diplo_status[faction_id] &= ~relationship_bits;
+        Factions[faction_id].diplo_status[other] |= bit;
+        Factions[other].diplo_status[faction_id] |= bit;
+    };
+    auto spawn_occupant = [&](size_t site_index) {
+        int id = veh_init(BSC_SCOUT_PATROL, other,
+                          sites[site_index].first, sites[site_index].second);
+        if (id >= 0) spot_all(id, 1);
+        return id;
+    };
+    set_relationship(DIPLO_VENDETTA);
+    if (spawn_occupant(0) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the hostile airdrop target.");
+    MAP* hostile = mapsq(sites[0].first, sites[0].second);
+    const bool hostile_combat = allow_airdrop(
+        sites[0].first, sites[0].second, faction_id, true, hostile);
+    const bool hostile_noncombat = allow_airdrop(
+        sites[0].first, sites[0].second, faction_id, false, hostile);
+
+    set_relationship(DIPLO_PACT);
+    if (spawn_occupant(1) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the Pact airdrop target.");
+    MAP* pact = mapsq(sites[1].first, sites[1].second);
+    const bool pact_combat = allow_airdrop(
+        sites[1].first, sites[1].second, faction_id, true, pact);
+    const bool pact_noncombat = allow_airdrop(
+        sites[1].first, sites[1].second, faction_id, false, pact);
+
+    set_relationship(DIPLO_TREATY);
+    if (spawn_occupant(2) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the treaty airdrop target.");
+    MAP* treaty = mapsq(sites[2].first, sites[2].second);
+    const bool treaty_combat = allow_airdrop(
+        sites[2].first, sites[2].second, faction_id, true, treaty);
+    const bool treaty_noncombat = allow_airdrop(
+        sites[2].first, sites[2].second, faction_id, false, treaty);
+
+    set_relationship(0);
+    if (spawn_occupant(3) < 0) return error_response("fixture_spawn_failed",
+        "Could not create the unknown-relation airdrop target.");
+    MAP* unknown = mapsq(sites[3].first, sites[3].second);
+    const bool unknown_combat = allow_airdrop(
+        sites[3].first, sites[3].second, faction_id, true, unknown);
+    const bool unknown_noncombat = allow_airdrop(
+        sites[3].first, sites[3].second, faction_id, false, unknown);
+
+    set_relationship(DIPLO_VENDETTA);
+    const int defense_base_id = mod_base_init(
+        other, sites[4].first, sites[4].second);
+    if (defense_base_id < 0) return error_response("fixture_base_failed",
+        "Could not create the Aerospace Complex target.");
+    Bases[defense_base_id].facilities_built[FAC_AEROSPACE_COMPLEX / 8]
+        |= 1 << (FAC_AEROSPACE_COMPLEX % 8);
+    MAP* defended = mapsq(sites[4].first, sites[4].second);
+    const bool aerospace_defended = !allow_airdrop(
+        sites[4].first, sites[4].second, faction_id, true, defended);
+    Bases[defense_base_id].facilities_built[FAC_AEROSPACE_COMPLEX / 8]
+        &= ~(1 << (FAC_AEROSPACE_COMPLEX % 8));
+    const int component_techs[] = {
+        Chassis[CHS_NEEDLEJET].preq_tech,
+        Weapon[WPN_LASER].preq_tech,
+        Armor[ARM_NO_ARMOR].preq_tech,
+        Ability[ABL_ID_AIR_SUPERIORITY].preq_tech,
+        Reactor[REC_FISSION - 1].preq_tech,
+    };
+    for (int tech_id : component_techs) {
+        if (tech_id >= 0 && tech_id < MaxTechnologyNum) {
+            TechOwners[tech_id] |= 1 << other;
+        }
+    }
+    char interceptor_name[] = "Harness Airdrop Defender";
+    const int interceptor_proto = propose_proto(
+        other, CHS_NEEDLEJET, WPN_LASER, ARM_NO_ARMOR,
+        ABL_AIR_SUPERIORITY, REC_FISSION, PLAN_AIR_SUPERIORITY,
+        interceptor_name);
+    if (interceptor_proto < other * MaxProtoFactionNum
+    || interceptor_proto >= min(MaxProtoNum, (other + 1) * MaxProtoFactionNum)) {
+        return error_response("fixture_interceptor_failed",
+            "Could not create the Air Superiority defender prototype.");
+    }
+    Units[interceptor_proto].unit_flags |= UNIT_PROTOTYPED;
+    if (veh_init(interceptor_proto, other, sites[4].first, sites[4].second) < 0) {
+        return error_response("fixture_interceptor_failed",
+            "Could not station the Air Superiority defender.");
+    }
+    const bool air_superiority_defended = !allow_airdrop(
+        sites[4].first, sites[4].second, faction_id, true, defended);
+
+    int owned_base_id = first_owned_base(faction_id);
+    if (owned_base_id < 0) return error_response("missing_fixture_base",
+        "An owned base is required for the native target-path fixture.");
+    const int drop_techs[] = {
+        Chassis[CHS_INFANTRY].preq_tech, Weapon[WPN_LASER].preq_tech,
+        Armor[ARM_NO_ARMOR].preq_tech, Ability[ABL_ID_DROP_POD].preq_tech,
+        Reactor[REC_FISSION - 1].preq_tech, Rules->tech_preq_orb_insert_wo_space,
+    };
+    for (int tech_id : drop_techs) {
+        if (tech_id >= 0 && tech_id < MaxTechnologyNum) TechOwners[tech_id] |= 1 << faction_id;
+    }
+    char drop_name[] = "Harness Native Target Dropper";
+    int drop_proto = propose_proto(
+        faction_id, CHS_INFANTRY, WPN_LASER, ARM_NO_ARMOR,
+        ABL_DROP_POD, REC_FISSION, PLAN_COMBAT, drop_name);
+    if (drop_proto < faction_id * MaxProtoFactionNum
+    || drop_proto >= min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum)) {
+        return error_response("fixture_drop_proto_failed",
+            "Could not create the native target-path Drop prototype.");
+    }
+    Units[drop_proto].unit_flags |= UNIT_PROTOTYPED;
+    int dropper_id = veh_init(
+        drop_proto, faction_id, Bases[owned_base_id].x, Bases[owned_base_id].y);
+    if (dropper_id < 0) return error_response("fixture_dropper_failed",
+        "Could not create the native target-path Drop unit.");
+    Vehs[dropper_id].moves_spent = 0;
+    Vehs[dropper_id].state &= ~VSTATE_MADE_AIRDROP;
+    Factions[faction_id].player_flags &= ~PFLAG_MAP_REVEALED;
+    MAP* mapped_fog = mapsq(sites[5].first, sites[5].second);
+    MAP* unmapped = mapsq(sites[6].first, sites[6].second);
+    mapped_fog->visibility |= 1 << faction_id;
+    unmapped->visibility &= ~(1 << faction_id);
+    const bool mapped_fog_native_target = action_airdrop(
+        dropper_id, sites[5].first, sites[5].second, 0) != 0;
+    const bool unmapped_native_target = action_airdrop(
+        dropper_id, sites[6].first, sites[6].second, 0) != 0;
+    int hidden_unit_id = veh_init(
+        BSC_SCOUT_PATROL, other, sites[7].first, sites[7].second);
+    if (hidden_unit_id < 0) return error_response("fixture_hidden_unit_failed",
+        "Could not create the hidden unit target.");
+    Vehs[hidden_unit_id].visibility &= ~(1 << faction_id);
+    mapsq(sites[7].first, sites[7].second)->visibility &= ~(1 << faction_id);
+    const bool hidden_unit_rejected = action_airdrop(
+        dropper_id, sites[7].first, sites[7].second, 0) == 0;
+    int hidden_base_id = mod_base_init(other, sites[8].first, sites[8].second);
+    if (hidden_base_id < 0) return error_response("fixture_hidden_base_failed",
+        "Could not create the hidden base target.");
+    mapsq(sites[8].first, sites[8].second)->visibility &= ~(1 << faction_id);
+    const bool hidden_hostile_base_native_target = action_airdrop(
+        dropper_id, sites[8].first, sites[8].second, 0) != 0;
+
+    std::ostringstream out;
+    out << "{\"ok\":true,\"hostile_combat\":"
+        << (hostile_combat ? "true" : "false")
+        << ",\"hostile_noncombat\":" << (hostile_noncombat ? "true" : "false")
+        << ",\"pact_combat\":" << (pact_combat ? "true" : "false")
+        << ",\"pact_noncombat\":" << (pact_noncombat ? "true" : "false")
+        << ",\"treaty_combat\":" << (treaty_combat ? "true" : "false")
+        << ",\"treaty_noncombat\":" << (treaty_noncombat ? "true" : "false")
+        << ",\"unknown_combat\":" << (unknown_combat ? "true" : "false")
+        << ",\"unknown_noncombat\":" << (unknown_noncombat ? "true" : "false")
+        << ",\"aerospace_defended\":" << (aerospace_defended ? "true" : "false")
+        << ",\"air_superiority_defended\":"
+        << (air_superiority_defended ? "true" : "false")
+        << ",\"mapped_fog_native_target\":"
+        << (mapped_fog_native_target ? "true" : "false")
+        << ",\"unmapped_native_target\":"
+        << (unmapped_native_target ? "true" : "false")
+        << ",\"hidden_unit_rejected\":"
+        << (hidden_unit_rejected ? "true" : "false")
+        << ",\"hidden_hostile_base_native_target\":"
+        << (hidden_hostile_base_native_target ? "true" : "false")
+        << ",\"native_target_path_uses_visibility_gate\":false"
+        << '}';
+    return out.str();
+}
+
+
+std::string test_pact_port_fixture_response() {
+    char test_mode[8] = {};
+    char acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
+        sizeof(test_mode)) || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_PACT_PORT",
+        acceptance_mode, sizeof(acceptance_mode)) || strcmp(acceptance_mode, "1")) {
+        return error_response("test_mode_disabled",
+            "The contained native Pact-port fixture is disabled.");
+    }
+    if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    struct ClearFixtureStage {
+        ~ClearFixtureStage() { InterlockedExchange(&acceptance_fixture_stage, 0); }
+    } clear_stage;
+    InterlockedExchange(&acceptance_fixture_stage, 1); // coastal-site search
+    const int faction_id = *CurrentPlayerFaction;
+    if (!human_turn_actionable(faction_id))
+        return error_response("fixture_not_actionable", "Wait for the current player's unobstructed turn.");
+    int other = -1;
+    for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+        if (candidate != faction_id && is_alive(candidate)) { other = candidate; break; }
+    }
+    if (other < 0) return error_response("missing_fixture_faction",
+        "No live counterpart faction is available for the Pact-port fixture.");
+    int base_x = -1;
+    int base_y = -1;
+    int land_x = -1;
+    int land_y = -1;
+    int sea_x = -1;
+    int sea_y = -1;
+    for (int y = 1; y + 1 < *MapAreaY && base_x < 0; ++y) {
+        for (int x = y & 1; x < *MapAreaX && base_x < 0; x += 2) {
+            MAP* site = mapsq(x, y);
+            if (!site || is_ocean(site) || site->base_who() >= 0 || veh_at(x, y) >= 0) continue;
+            if (!can_build_base(x, y, other, TRIAD_LAND)) continue;
+            int lx = -1, ly = -1, sx = -1, sy = -1;
+            for (int dir = 0; dir < 8; ++dir) {
+                int nx = wrap(x + BaseOffsetX[dir]);
+                int ny = y + BaseOffsetY[dir];
+                MAP* neighbor = mapsq(nx, ny);
+                if (!neighbor || neighbor->base_who() >= 0 || veh_at(nx, ny) >= 0) continue;
+                if (is_ocean(neighbor) && sx < 0) { sx = nx; sy = ny; }
+                if (!is_ocean(neighbor) && lx < 0) { lx = nx; ly = ny; }
+            }
+            if (lx >= 0 && sx >= 0) {
+                base_x = x; base_y = y; land_x = lx; land_y = ly; sea_x = sx; sea_y = sy;
+            }
+        }
+    }
+    if (base_x < 0) return error_response("missing_fixture_site",
+        "No empty coastal land site with land and sea approaches is available.");
+    const uint32_t relationship_bits = DIPLO_VENDETTA | DIPLO_TRUCE
+        | DIPLO_TREATY | DIPLO_PACT;
+    InterlockedExchange(&acceptance_fixture_stage, 2); // relationship setup
+    Factions[faction_id].diplo_status[other] &= ~relationship_bits;
+    Factions[other].diplo_status[faction_id] &= ~relationship_bits;
+    treaty_on(faction_id, other, DIPLO_COMMLINK | DIPLO_TREATY | DIPLO_PACT);
+    // This fixture establishes an existing, already-discussed Pact. Native
+    // comm_check otherwise opens COMM inside veh_init -> spot_all when this
+    // pair has never spoken (or has a pending talk request). A synchronous
+    // fixture cannot accept that unrelated conversation while its serialized
+    // request is in progress. Preserve the runtime's non-reentry guard.
+    Factions[faction_id].diplo_spoke[other] = *CurrentTurn;
+    Factions[other].diplo_spoke[faction_id] = *CurrentTurn;
+    Factions[faction_id].diplo_status[other] &= ~DIPLO_WANT_TO_TALK;
+    Factions[other].diplo_status[faction_id] &= ~DIPLO_WANT_TO_TALK;
+    InterlockedExchange(&acceptance_fixture_stage, 3); // native base initialization
+    const int base_id = mod_base_init(other, base_x, base_y);
+    // Keep one ready pair at the Pact base for the native boarding proof and
+    // a separate adjacent pair for the legal-entry proof. Entering the base
+    // can consume the Scout's last movement point; that is not evidence that
+    // co-location or boarding is illegal on its next ready phase.
+    InterlockedExchange(&acceptance_fixture_stage, 4);
+    const int passenger_id = veh_init(BSC_SCOUT_PATROL, faction_id, base_x, base_y);
+    InterlockedExchange(&acceptance_fixture_stage, 5);
+    const int transport_id = veh_init(BSC_TRANSPORT_FOIL, faction_id, base_x, base_y);
+    InterlockedExchange(&acceptance_fixture_stage, 6);
+    const int land_entry_id = veh_init(BSC_SCOUT_PATROL, faction_id, land_x, land_y);
+    InterlockedExchange(&acceptance_fixture_stage, 7);
+    const int sea_entry_id = veh_init(BSC_TRANSPORT_FOIL, faction_id, sea_x, sea_y);
+    if (base_id < 0 || passenger_id < 0 || transport_id < 0
+    || land_entry_id < 0 || sea_entry_id < 0) {
+        return error_response("fixture_creation_failed",
+            "Could not create the Pact base and its boarding/entry actors.");
+    }
+    Vehs[passenger_id].moves_spent = 0;
+    Vehs[transport_id].moves_spent = 0;
+    Vehs[land_entry_id].moves_spent = 0;
+    Vehs[sea_entry_id].moves_spent = 0;
+    mapsq(base_x, base_y)->visibility |= 1 << faction_id;
+    mapsq(land_x, land_y)->visibility |= 1 << faction_id;
+    mapsq(sea_x, sea_y)->visibility |= 1 << faction_id;
+    InterlockedExchange(&acceptance_fixture_stage, 8);
+    spot_all(passenger_id, 1);
+    InterlockedExchange(&acceptance_fixture_stage, 9);
+    spot_all(transport_id, 1);
+    InterlockedExchange(&acceptance_fixture_stage, 10);
+    ensure_semantic_vehicle_handles();
+    reset_semantic_observation_shadow();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"relationship\":\"pact\",\"counterpart_faction_id\":"
+        << other << ",\"base_id\":" << base_id
+        << ",\"base_ref\":\"base-location-" << semantic_tile_id(base_x, base_y)
+        << "\",\"base_tile_id\":" << semantic_tile_id(base_x, base_y)
+        << ",\"passenger_id\":" << passenger_id
+        << ",\"passenger_ref\":" << json_string(
+            (std::string("own-unit-") + std::to_string(semantic_vehicle_handle(passenger_id))).c_str())
+        << ",\"transport_id\":" << transport_id
+        << ",\"transport_ref\":" << json_string(
+            (std::string("own-unit-") + std::to_string(semantic_vehicle_handle(transport_id))).c_str())
+        << ",\"land_entry_id\":" << land_entry_id
+        << ",\"sea_entry_id\":" << sea_entry_id
+        << ",\"coastal\":true}";
+    return out.str();
+}
+
 std::string item_names(uint32_t items) {
     struct NamedBit { uint32_t bit; const char* name; };
     const NamedBit named[] = {
@@ -7623,6 +8727,38 @@ std::string item_names(uint32_t items) {
             comma = true;
             out << json_string(named[i].name);
         }
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string visible_landmark_records(MAP* sq, int x, int y) {
+    // Called only for a square currently visible to the perspective faction.
+    // The live MAP landmark word is not a remembered-state surface, so callers
+    // must never use this helper for a fogged square.
+    std::ostringstream out;
+    out << '[';
+    bool comma = false;
+    const uint32_t mask = sq ? static_cast<uint32_t>(sq->lm_items()) : 0;
+    for (int bit = 0; bit < MaxNaturalNum; ++bit) {
+        const uint32_t flag = 1u << bit;
+        if (!(mask & flag)) continue;
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"landmark_type_id\":" << bit
+            << ",\"landmark_type\":" << json_string(Natural[bit].name_short)
+            << ",\"natural_name\":" << json_string(Natural[bit].name)
+            << ",\"landmark_code\":" << (sq ? sq->code_at() : 0)
+            << ",\"named_center\":false}";
+    }
+    for (int index = 0; index < *MapLandmarkCount; ++index) {
+        if (Landmarks[index].x != x || Landmarks[index].y != y) continue;
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"landmark_type_id\":null,\"landmark_type\":\"named_natural_landmark\""
+            << ",\"natural_name\":" << json_string(Landmarks[index].name)
+            << ",\"landmark_code\":" << (sq ? sq->code_at() : 0)
+            << ",\"named_center\":true}";
     }
     out << ']';
     return out.str();
@@ -7684,6 +8820,1362 @@ std::string tiles_response(const std::string& request) {
         }
     }
     out << "],\"fair_play_note\":\"Non-visible tiles expose only remembered features; current terrain and owner are omitted.\"}";
+    return out.str();
+}
+
+struct SemanticAirdropTarget {
+    int tile_id;
+    int distance;
+    int base_owner;
+    int unit_owner;
+};
+
+struct SemanticAirdropTargetReceipt {
+    bool available = false;
+    int legal_count = 0;
+    bool truncated = false;
+    std::vector<SemanticAirdropTarget> targets;
+};
+
+bool semantic_airdrop_target_allowed(int veh_id, int target_tile_id,
+int* target_x = nullptr, int* target_y = nullptr) {
+    if (veh_id < 0 || veh_id >= *VehCount) return false;
+    VEH& veh = Vehs[veh_id];
+    const int faction_id = *CurrentPlayerFaction;
+    int x = -1;
+    int y = -1;
+    if (veh.faction_id != faction_id
+    || !semantic_tile_coords(target_tile_id, &x, &y)
+    || !can_airdrop(veh_id, mapsq(veh.x, veh.y))
+    || map_range(veh.x, veh.y, x, y) > drop_range(faction_id)) return false;
+    MAP* sq = mapsq(x, y);
+    if (!sq || is_ocean(sq)
+    || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), sq)) return false;
+    const int unit_owner = sq->veh_who();
+    const int base_owner = sq->base_who();
+    const bool unsafe_relation =
+        (unit_owner >= 0 && unit_owner != faction_id
+            && !has_pact(faction_id, unit_owner) && !at_war(faction_id, unit_owner))
+        || (base_owner >= 0 && base_owner != faction_id
+            && !has_pact(faction_id, base_owner) && !at_war(faction_id, base_owner));
+    if (unsafe_relation) return false;
+    if (target_x) *target_x = x;
+    if (target_y) *target_y = y;
+    return true;
+}
+
+// One authoritative enumerator serves both provider-safe observation and the
+// executable semantic action surface. Omitted anti-drop reasons remain hidden;
+// membership is the current native legality receipt.
+SemanticAirdropTargetReceipt semantic_airdrop_target_receipt(
+int veh_id, int maximum_targets = 128) {
+    SemanticAirdropTargetReceipt receipt;
+    if (veh_id < 0 || veh_id >= *VehCount) return receipt;
+    VEH& veh = Vehs[veh_id];
+    const int faction_id = *CurrentPlayerFaction;
+    if (veh.faction_id != faction_id
+    || !can_airdrop(veh_id, mapsq(veh.x, veh.y))) return receipt;
+    receipt.available = true;
+    const int range = drop_range(faction_id);
+    std::vector<SemanticAirdropTarget> legal;
+    legal.reserve(std::min(maximum_targets + 1, 256));
+    const auto nearer = [](const SemanticAirdropTarget& left,
+                           const SemanticAirdropTarget& right) {
+        if (left.distance != right.distance) return left.distance < right.distance;
+        return left.tile_id < right.tile_id;
+    };
+    for (int y = 0; y < *MapAreaY; ++y) {
+        for (int x = y & 1; x < *MapAreaX; x += 2) {
+            const int distance = map_range(veh.x, veh.y, x, y);
+            if (distance > range) continue;
+            MAP* sq = mapsq(x, y);
+            if (!sq || !sq->is_visible(faction_id) || is_ocean(sq)
+            || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), sq)) continue;
+            const int unit_owner = sq->veh_who();
+            const int base_owner = sq->base_who();
+            const bool unsafe_relation =
+                (unit_owner >= 0 && unit_owner != faction_id
+                    && !has_pact(faction_id, unit_owner)
+                    && !at_war(faction_id, unit_owner))
+                || (base_owner >= 0 && base_owner != faction_id
+                    && !has_pact(faction_id, base_owner)
+                    && !at_war(faction_id, base_owner));
+            if (unsafe_relation) continue;
+            ++receipt.legal_count;
+            const SemanticAirdropTarget target = {
+                semantic_tile_id(x, y), distance, base_owner, unit_owner};
+            // Keep the globally nearest bounded page, not merely the first
+            // map-scan prefix sorted after truncation.
+            if (static_cast<int>(legal.size()) < maximum_targets) {
+                legal.push_back(target);
+                std::push_heap(legal.begin(), legal.end(), nearer);
+            } else if (nearer(target, legal.front())) {
+                std::pop_heap(legal.begin(), legal.end(), nearer);
+                legal.back() = target;
+                std::push_heap(legal.begin(), legal.end(), nearer);
+            }
+        }
+    }
+    std::sort(legal.begin(), legal.end(), [](const SemanticAirdropTarget& left,
+                                             const SemanticAirdropTarget& right) {
+        if (left.distance != right.distance) return left.distance < right.distance;
+        return left.tile_id < right.tile_id;
+    });
+    if (static_cast<int>(legal.size()) > maximum_targets) legal.resize(maximum_targets);
+    receipt.targets = std::move(legal);
+    receipt.truncated = receipt.legal_count > static_cast<int>(receipt.targets.size());
+    return receipt;
+}
+
+std::string test_airdrop_collection_stress_fixture_response() {
+    char test_mode[8] = {};
+    char acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
+        sizeof(test_mode)) || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_AIRDROP_LEGALITY",
+        acceptance_mode, sizeof(acceptance_mode)) || strcmp(acceptance_mode, "1")) {
+        return error_response("test_mode_disabled",
+            "The contained native Drop collection stress fixture is disabled.");
+    }
+    if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    int base_id = -1;
+    for (int index = 0; index < *BaseCount; ++index) {
+        if (Bases[index].faction_id == faction_id) { base_id = index; break; }
+    }
+    if (base_id < 0) return error_response("missing_fixture_base",
+        "An owned base is required for the Drop collection stress fixture.");
+    const int component_techs[] = {
+        Chassis[CHS_INFANTRY].preq_tech, Weapon[WPN_LASER].preq_tech,
+        Armor[ARM_NO_ARMOR].preq_tech, Ability[ABL_ID_DROP_POD].preq_tech,
+        Reactor[REC_FISSION - 1].preq_tech, Rules->tech_preq_orb_insert_wo_space,
+    };
+    for (int tech_id : component_techs) {
+        if (tech_id >= 0 && tech_id < MaxTechnologyNum) TechOwners[tech_id] |= 1 << faction_id;
+    }
+    int drop_proto = -1;
+    const int prototype_begin = faction_id * MaxProtoFactionNum;
+    const int prototype_end = min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum);
+    for (int unit_id = prototype_begin; unit_id < prototype_end; ++unit_id) {
+        if ((Units[unit_id].unit_flags & UNIT_PROTOTYPED)
+        && Units[unit_id].chassis_id == CHS_INFANTRY
+        && has_abil(unit_id, ABL_DROP_POD)) {
+            drop_proto = unit_id;
+            break;
+        }
+    }
+    if (drop_proto < 0) {
+        char drop_name[] = "Harness Orbital Drop Infantry";
+        drop_proto = propose_proto(
+            faction_id, CHS_INFANTRY, WPN_LASER, ARM_NO_ARMOR,
+            ABL_DROP_POD, REC_FISSION, PLAN_COMBAT, drop_name);
+    }
+    if (drop_proto < faction_id * MaxProtoFactionNum
+    || drop_proto >= min(MaxProtoNum, (faction_id + 1) * MaxProtoFactionNum)) {
+        return error_response("fixture_drop_proto_failed",
+            "Could not create the Drop-capable stress prototype.");
+    }
+    Units[drop_proto].unit_flags |= UNIT_PROTOTYPED;
+    int created = 0;
+    int first_dropper_id = -1;
+    for (int index = 0; index < 128; ++index) {
+        int veh_id = veh_init(drop_proto, faction_id, Bases[base_id].x, Bases[base_id].y);
+        if (veh_id < 0) break;
+        if (first_dropper_id < 0) first_dropper_id = veh_id;
+        Vehs[veh_id].moves_spent = 0;
+        Vehs[veh_id].state &= ~VSTATE_MADE_AIRDROP;
+        ++created;
+    }
+    int outside_target_tile_id = -1;
+    bool enumeration_truncated = false;
+    if (first_dropper_id >= 0) {
+        // Establish the whole controlled visibility state before asking the
+        // production enumerator for the first target beyond its public page.
+        for (int y = 0; y < *MapAreaY; ++y) {
+            for (int x = y & 1; x < *MapAreaX; x += 2) {
+                if (MAP* square = mapsq(x, y)) square->visibility |= 1 << faction_id;
+            }
+        }
+        const auto receipt = semantic_airdrop_target_receipt(first_dropper_id, 129);
+        // Independent full-sort oracle is confined to this destructive test.
+        // Production retains only a bounded heap while traversing the map.
+        std::vector<std::pair<int, int>> oracle;
+        const VEH& dropper = Vehs[first_dropper_id];
+        for (int y = 0; y < *MapAreaY; ++y) {
+            for (int x = y & 1; x < *MapAreaX; x += 2) {
+                const int tile_id = semantic_tile_id(x, y);
+                if (semantic_airdrop_target_allowed(first_dropper_id, tile_id)) {
+                    oracle.push_back({map_range(dropper.x, dropper.y, x, y), tile_id});
+                }
+            }
+        }
+        std::sort(oracle.begin(), oracle.end());
+        if (receipt.legal_count != static_cast<int>(oracle.size())) {
+            return error_response("fixture_drop_count_mismatch", "Drop enumeration differs from exact native legality.");
+        }
+        for (size_t index = 0; index < receipt.targets.size(); ++index) {
+            if (receipt.targets[index].tile_id != oracle[index].second) {
+                return error_response("fixture_drop_order_mismatch", "Drop page differs from the globally nearest native targets.");
+            }
+        }
+        enumeration_truncated = receipt.legal_count > 128;
+        if (receipt.targets.size() > 128) outside_target_tile_id = receipt.targets[128].tile_id;
+    }
+    reset_semantic_observation_shadow();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"created\":" << created
+        << ",\"first_dropper_id\":" << first_dropper_id
+        << ",\"outside_first_128_target_tile_id\":" << outside_target_tile_id
+        << ",\"enumeration_truncated\":"
+        << (enumeration_truncated ? "true" : "false")
+        << ",\"airdrop_range\":" << drop_range(faction_id)
+        << ",\"map_tiles\":" << (*MapAreaX * *MapAreaY / 2) << '}';
+    return out.str();
+}
+
+std::string semantic_airdrop_targets_response(const std::string& request) {
+    const DWORD started_at = GetTickCount();
+    if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    const int veh_id = field_int(request, "unit_id", -1);
+    if (veh_id < 0 || veh_id >= *VehCount || Vehs[veh_id].faction_id != faction_id) {
+        return error_response("invalid_owned_unit", "Use the current owned unit reference.");
+    }
+    VEH& veh = Vehs[veh_id];
+    if (!can_airdrop(veh_id, mapsq(veh.x, veh.y))) {
+        return error_response("airdrop_unavailable", "This owned unit cannot air drop now.");
+    }
+    const int target_tile_id = field_int(request, "target_tile_id", -1);
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.native-airdrop-receipt.v1\""
+        << ",\"action_revision\":" << json_string(semantic_revision().c_str())
+        << ",\"unit_id\":" << veh_id
+        << ",\"max_range\":" << drop_range(faction_id);
+    if (target_tile_id >= 0) {
+        int x = -1;
+        int y = -1;
+        const bool valid = semantic_tile_coords(target_tile_id, &x, &y);
+        bool allowed = valid && semantic_airdrop_target_allowed(
+            veh_id, target_tile_id, &x, &y);
+        out << ",\"query\":\"target\",\"target_tile_id\":" << target_tile_id
+            << ",\"allowed\":" << (allowed ? "true" : "false")
+            << ",\"targets\":[";
+        if (allowed) {
+            out << "{\"target_tile_id\":" << target_tile_id
+                << ",\"range\":" << map_range(veh.x, veh.y, x, y) << '}';
+        }
+        out << "],\"target_count\":" << (allowed ? 1 : 0)
+            << ",\"targets_truncated\":false,\"native_elapsed_ms\":"
+            << (GetTickCount() - started_at) << '}';
+        return out.str();
+    }
+    const int maximum_targets = std::min(128, std::max(1,
+        field_int(request, "maximum_targets", 128)));
+    const SemanticAirdropTargetReceipt receipt =
+        semantic_airdrop_target_receipt(veh_id, maximum_targets);
+    out << ",\"query\":\"enumeration\",\"targets\":[";
+    for (size_t index = 0; index < receipt.targets.size(); ++index) {
+        if (index) out << ',';
+        const SemanticAirdropTarget& target = receipt.targets[index];
+        out << "{\"target_tile_id\":" << target.tile_id
+            << ",\"range\":" << target.distance
+            << ",\"base_owner\":" << target.base_owner
+            << ",\"unit_owner\":" << target.unit_owner << '}';
+    }
+    out << "],\"target_count\":" << receipt.legal_count
+        << ",\"targets_truncated\":" << (receipt.truncated ? "true" : "false")
+        << ",\"native_elapsed_ms\":" << (GetTickCount() - started_at)
+        << '}';
+    return out.str();
+}
+
+// A temporary unused base slot lets the native tile-yield helpers see exactly
+// the founding facilities without borrowing an existing base's project/events.
+// No base_compute, action, territory rebuild, RNG, networking or UI pump runs.
+struct SiteEconomyReadGuard {
+    int base_id = *BaseCount;
+    int faction_id;
+    BASE previous_slot;
+    BASE* previous_base = *CurrentBase;
+    MAP* square;
+    MAP previous_square;
+    int previous_faction_count;
+    int previous_reduce = *BaseTerraformReduce;
+    int previous_energy = *BaseTerraformEnergy;
+    SiteEconomyReadGuard(int faction, int x, int y)
+        : faction_id(faction), previous_slot(Bases[base_id]), square(mapsq(x, y)),
+          previous_square(*square), previous_faction_count(Factions[faction].base_count) {
+        BASE& base = Bases[base_id];
+        base = {};
+        base.x = x; base.y = y; base.faction_id = faction;
+        base.faction_id_former = faction;
+        base.pop_size = has_project(FAC_PLANETARY_TRANSIT_SYSTEM, faction)
+            ? PlanetaryTransitPopSize : 1;
+        base.visibility = (1 << faction) | square->visibility;
+        ++*BaseCount;
+        ++Factions[faction].base_count;
+        square->items |= BIT_BASE_IN_TILE;
+        square->owner = faction;
+        initialize_founded_base_facilities(base_id);
+        *CurrentBase = &base;
+    }
+    ~SiteEconomyReadGuard() {
+        *CurrentBase = previous_base;
+        Bases[base_id] = previous_slot;
+        *square = previous_square;
+        *BaseCount = base_id;
+        Factions[faction_id].base_count = previous_faction_count;
+        *BaseTerraformReduce = previous_reduce;
+        *BaseTerraformEnergy = previous_energy;
+    }
+};
+
+std::string site_economy_receipt(int faction_id, int x, int y) {
+    MAP* center = mapsq(x, y);
+    if (*BaseCount >= MaxBaseNum || !center || center->is_base()
+        || !can_build_base(x, y, faction_id, is_ocean(center) ? TRIAD_SEA : TRIAD_LAND)) {
+        return "{\"coverage\":\"currently_unavailable_founding\"}";
+    }
+    // Only owned worker assignments may reserve squares in this calculation.
+    std::set<int> occupied_workers;
+    std::map<int, std::vector<int>> known_radius_bases;
+    for (int id = 0; id < *BaseCount; ++id) {
+        BASE& base = Bases[id];
+        MAP* base_square = mapsq(base.x, base.y);
+        if (base.faction_id == faction_id || (base_square && base_square->is_visible(faction_id))) {
+            for (int offset = 1; offset < 21; ++offset) {
+                int bx = 0, by = 0;
+                if (next_tile(base.x, base.y, offset, &bx, &by))
+                    known_radius_bases[semantic_tile_id(bx, by)].push_back(semantic_tile_id(base.x, base.y));
+            }
+        }
+        if (base.faction_id != faction_id) continue;
+        for (int offset = 1; offset < 21; ++offset) {
+            int bx = 0, by = 0;
+            if ((base.worked_tiles & (1 << offset)) && next_tile(base.x, base.y, offset, &bx, &by))
+                occupied_workers.insert(semantic_tile_id(bx, by));
+        }
+    }
+    SiteEconomyReadGuard guard(faction_id, x, y);
+    auto yields = [&](int tx, int ty) {
+        std::ostringstream value;
+        MAP* sq = mapsq(tx, ty);
+        bool energy_known = true;
+        if (!sq->is_base() && (sq->items & BIT_SOLAR)) {
+            for (auto& adjacent : iterate_tiles(tx, ty, 1, 9))
+                if (!adjacent.sq->is_visible(faction_id)) energy_known = false;
+        }
+        value << "{\"nutrients\":" << mod_crop_yield(faction_id, guard.base_id, tx, ty, 0)
+            << ",\"minerals\":" << mod_mine_yield(faction_id, guard.base_id, tx, ty, 0)
+            << ",\"energy\":";
+        if (energy_known) value << mod_energy_yield(faction_id, guard.base_id, tx, ty, 0);
+        else value << "null"; // Do not infer hypothetical bonuses from hidden mirrors.
+        value << '}';
+        return value.str();
+    };
+    std::ostringstream out;
+    out << "{\"coverage\":\"fixed_current_territory_and_owned_worker_assignments\""
+        << ",\"evidence_kind\":\"native_helper_hypothesis\",\"epistemic_status\":\"conditional\""
+        << ",\"center\":{\"location_ref\":\"location-" << semantic_tile_id(x, y)
+        << "\",\"epistemic_status\":\"conditional\",\"yields\":" << yields(x, y) << '}'
+        << ",\"squares\":[";
+    std::set<int> seen = {semantic_tile_id(x, y)};
+    bool comma = false;
+    std::vector<std::pair<int, int>> known;
+    for (int offset = 1; offset < 21; ++offset) {
+        int tx = 0, ty = 0;
+        MAP* sq = next_tile(x, y, offset, &tx, &ty);
+        if (!sq || !sq->is_visible(faction_id)) continue;
+        int tile_id = semantic_tile_id(tx, ty);
+        if (!seen.insert(tile_id).second) continue;
+        bool occupied = false;
+        for (int id = 0; id < *VehCount; ++id) {
+            VEH& veh = Vehs[id];
+            if (veh.x == tx && veh.y == ty && (veh.faction_id == faction_id
+                || veh.is_visible(faction_id)) && (veh.faction_id != faction_id
+                || veh.order == ORDER_CONVOY)) occupied = true;
+        }
+        bool workable = !sq->is_base() && (sq->owner < 0 || sq->owner == faction_id)
+            && !occupied_workers.count(tile_id) && !occupied;
+        if (workable) known.push_back({tx, ty});
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"location_ref\":\"location-" << tile_id
+            << "\",\"epistemic_status\":\"conditional\",\"workable\":" << (workable ? "true" : "false")
+            << ",\"reserved_by_owned_worker\":" << (occupied_workers.count(tile_id) ? "true" : "false")
+            << ",\"current_owner_ref\":";
+        if (sq->owner >= 0) out << "\"faction-" << int(sq->owner) << '"'; else out << "null";
+        out << ",\"shared_known_base_refs\":[";
+        const auto& shared = known_radius_bases[tile_id];
+        for (size_t index = 0; index < shared.size() && index < 8; ++index) {
+            if (index) out << ',';
+            out << "\"base-location-" << shared[index] << '"';
+        }
+        out << "],\"shared_known_base_count\":" << shared.size()
+            << ",\"shared_base_refs_truncated\":" << (shared.size() > 8 ? "true" : "false")
+            << ",\"yields\":" << yields(tx, ty) << '}';
+    }
+    out << "],\"current_extraction_caps\":[";
+    const int techs[] = {Rules->tech_preq_allow_3_nutrients_sq,
+        Rules->tech_preq_allow_3_minerals_sq, Rules->tech_preq_allow_3_energy_sq};
+    const char* names[] = {"nutrients", "minerals", "energy"};
+    for (int i = 0; i < 3; ++i) {
+        if (i) out << ',';
+        out << "{\"resource\":" << json_string(names[i]) << ",\"ordinary_tile_limit\":";
+        if (has_tech(techs[i], faction_id)) out << "null";
+        else out << conf.tile_output_limit[i];
+        out << ",\"bonus_and_improvement_exceptions_apply\":true}";
+    }
+    out << "],\"material_extraction_unlocks\":[";
+    comma = false;
+    std::set<int> tested;
+    for (int tech : techs) {
+        if (tech < 0 || tech >= MaxTechnologyNum || has_tech(tech, faction_id)
+            || !tested.insert(tech).second) continue;
+        std::vector<std::string> before;
+        for (auto tile : known) before.push_back(yields(tile.first, tile.second));
+        struct TechReadGuard {
+            int tech; uint8_t prior;
+            TechReadGuard(int id, int faction) : tech(id), prior(TechOwners[id]) {
+                TechOwners[id] |= 1 << faction;
+            }
+            ~TechReadGuard() { TechOwners[tech] = prior; }
+        } tech_guard(tech, faction_id);
+        int changes = 0;
+        for (size_t i = 0; i < known.size(); ++i)
+            if (before[i] != yields(known[i].first, known[i].second)) ++changes;
+        if (!changes) continue;
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"technology\":" << json_string(Tech[tech].name)
+            << ",\"changed_known_square_count\":" << changes
+            << ",\"research_selection_assumed\":false}";
+    }
+    out << "],\"material_facility_unlocks\":[";
+    comma = false;
+    const FacilityId facilities[] = {FAC_RECYCLING_TANKS, FAC_TREE_FARM, FAC_HYBRID_FOREST,
+        FAC_AQUAFARM, FAC_SUBSEA_TRUNKLINE, FAC_THERMOCLINE_TRANSDUCER};
+    std::vector<std::pair<int, int>> facility_tiles = known;
+    facility_tiles.push_back({x, y});
+    for (FacilityId facility : facilities) {
+        if (has_fac_built(facility, guard.base_id)) continue;
+        std::vector<std::string> before;
+        for (auto tile : facility_tiles) before.push_back(yields(tile.first, tile.second));
+        struct FacilityReadGuard {
+            int base_id; FacilityId facility; bool added_tree;
+            FacilityReadGuard(int id, FacilityId item) : base_id(id), facility(item),
+                added_tree(item == FAC_HYBRID_FOREST && !has_fac_built(FAC_TREE_FARM, id)) {
+                if (added_tree) set_fac(FAC_TREE_FARM, id, true);
+                set_fac(item, id, true);
+            }
+            ~FacilityReadGuard() {
+                set_fac(facility, base_id, false);
+                if (added_tree) set_fac(FAC_TREE_FARM, base_id, false);
+            }
+        } facility_guard(guard.base_id, facility);
+        std::ostringstream changes;
+        int count = 0;
+        for (size_t index = 0; index < facility_tiles.size(); ++index) {
+            auto tile = facility_tiles[index];
+            const std::string after = yields(tile.first, tile.second);
+            if (before[index] == after) continue;
+            if (count++ >= 4) continue;
+            if (count > 1) changes << ',';
+            changes << "{\"location_ref\":\"location-" << semantic_tile_id(tile.first, tile.second)
+                << "\",\"before\":" << before[index] << ",\"after\":" << after << '}';
+        }
+        if (!count) continue;
+        if (comma) out << ','; comma = true;
+        const int prerequisite = Facility[facility].preq_tech;
+        out << "{\"facility\":" << json_string(Facility[facility].name)
+            << ",\"prerequisite_technology\":";
+        if (prerequisite >= 0 && prerequisite < MaxTechnologyNum) out << json_string(Tech[prerequisite].name);
+        else out << "null";
+        out << ",\"prerequisite_known\":" << (has_tech(prerequisite, faction_id) ? "true" : "false")
+            << ",\"includes_prerequisite_tree_farm\":" << (facility_guard.added_tree ? "true" : "false")
+            << ",\"changed_workable_or_center_square_count\":" << count
+            << ",\"sample_deltas\":[" << changes.str() << "],\"samples_truncated\":" << (count > 4 ? "true" : "false")
+            << ",\"current_buildability_asserted\":false,\"research_selection_assumed\":false}";
+    }
+    out << "],\"material_improvement_changes\":[";
+    comma = false;
+    const FormerItem improvements[] = {FORMER_FARM, FORMER_MINE, FORMER_SOLAR, FORMER_FOREST};
+    for (FormerItem improvement : improvements) {
+        int count = 0;
+        std::ostringstream changes;
+        for (auto tile : known) {
+            MAP* sq = mapsq(tile.first, tile.second);
+            if (!sq || (sq->items & Terraform[improvement].bit) || sq->is_base()) continue;
+            const int prerequisite = is_ocean(sq) ? Terraform[improvement].preq_tech_sea : Terraform[improvement].preq_tech;
+            if (prerequisite < TECH_None) continue;
+            // These are individual local hypotheses, not an aggregate order
+            // or a claim that a Former is presently available at every square.
+            const std::string before = yields(tile.first, tile.second);
+            struct TileReadGuard {
+                MAP* square; MAP before;
+                TileReadGuard(MAP* sq) : square(sq), before(*sq) {}
+                ~TileReadGuard() { *square = before; }
+            } tile_guard(sq);
+            sq->items = (sq->items & ~Terraform[improvement].bit_incompatible) | Terraform[improvement].bit;
+            const std::string after = yields(tile.first, tile.second);
+            if (before == after) continue;
+            if (count++ >= 4) continue;
+            if (count > 1) changes << ',';
+            const int preq = is_ocean(sq) ? Terraform[improvement].preq_tech_sea : Terraform[improvement].preq_tech;
+            changes << "{\"location_ref\":\"location-" << semantic_tile_id(tile.first, tile.second)
+                << "\",\"before\":" << before << ",\"after\":" << after
+                << ",\"prerequisite_technology\":";
+            if (preq >= 0 && preq < MaxTechnologyNum) changes << json_string(Tech[preq].name);
+            else changes << "null";
+            changes << ",\"terrain_technology_available\":"
+                << (terrain_avail(improvement, is_ocean(sq), faction_id) ? "true" : "false") << '}';
+        }
+        if (!count) continue;
+        if (comma) out << ','; comma = true;
+        out << "{\"improvement\":" << json_string(Terraform[improvement].name)
+            << ",\"independent_changed_square_count\":" << count << ",\"sample_deltas\":[" << changes.str()
+            << "],\"samples_truncated\":" << (count > 4 ? "true" : "false")
+            << ",\"current_former_order_legality_asserted\":false}";
+    }
+    out << "],\"limitations\":[\"future territorial claims and foreign worker allocations are not predicted\","
+        << "\"gross tile output excludes support, inefficiency, citizen psych, and empire totals\","
+        << "\"solar energy is unknown when adjacent mirror evidence is incomplete\","
+        << "\"extraction unlocks hold all other faction properties fixed\"]}";
+    return out.str();
+}
+
+std::string semantic_base_site_receipts_response(const std::string& request) {
+    if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    bool targets_valid = false;
+    std::vector<int> target_ids = field_int_array(
+        request, "target_tile_ids", &targets_valid);
+    if (!targets_valid || target_ids.size() > 32) {
+        return error_response("invalid_target_tiles",
+            "target_tile_ids must contain at most 32 non-negative tile identifiers.");
+    }
+    const bool include_economy = field_bool(request, "include_economy", false);
+    if (include_economy && target_ids.size() > 4)
+        return error_response("site_economy_bound", "At most four nominated sites are supported.");
+    const DWORD started_at = GetTickCount();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.native-base-site-receipts.v1\""
+        << ",\"action_revision\":" << json_string(semantic_revision().c_str())
+        << ",\"items\":[";
+    // Native yield helpers update the base-computation scratch accumulator and
+    // energy mirrors consult CurrentBase's faction. A read-only candidate probe
+    // must neither retain that scratch mutation nor borrow another base's owner.
+    struct YieldReadGuard {
+        BASE query_base = {};
+        BASE* previous_base = *CurrentBase;
+        int previous_reduce = *BaseTerraformReduce;
+        int previous_energy = *BaseTerraformEnergy;
+        explicit YieldReadGuard(int owner) {
+            query_base.faction_id = owner;
+            *CurrentBase = &query_base;
+        }
+        ~YieldReadGuard() {
+            *CurrentBase = previous_base;
+            *BaseTerraformReduce = previous_reduce;
+            *BaseTerraformEnergy = previous_energy;
+        }
+    } yield_read_guard(faction_id);
+    std::map<int, std::vector<int>> known_base_radius;
+    for (int base_id = 0; base_id < *BaseCount; ++base_id) {
+        BASE& base = Bases[base_id];
+        MAP* base_sq = mapsq(base.x, base.y);
+        if (base.faction_id != faction_id && (!base_sq || !base_sq->is_visible(faction_id))) continue;
+        for (int offset = 0; offset < 21; ++offset) {
+            int x = 0, y = 0;
+            if (next_tile(base.x, base.y, offset, &x, &y))
+                known_base_radius[semantic_tile_id(x, y)].push_back(base_id);
+        }
+    }
+    bool comma = false;
+    for (int tile_id : target_ids) {
+        int x = -1, y = -1;
+        if (!semantic_tile_coords(tile_id, &x, &y)) continue;
+        MAP* sq = mapsq(x, y);
+        if (!sq || !sq->is_visible(faction_id)) continue;
+        if (comma) out << ',';
+        comma = true;
+        const bool ocean = is_ocean(sq);
+        out << "{\"location_ref\":\"location-" << tile_id << "\",\"tile_id\":" << tile_id
+            << ",\"epistemic_status\":\"current\",\"source\":\"native_guarded_receipt\""
+            << ",\"legal_for_land_colony\":"
+            << (can_build_base(x, y, faction_id, TRIAD_LAND) ? "true" : "false")
+            << ",\"legal_for_sea_colony\":"
+            << (can_build_base(x, y, faction_id, TRIAD_SEA) ? "true" : "false")
+            << ",\"terrain_kind\":" << json_string(ocean ? "ocean" : "land")
+            << ",\"current_tile_yields\":{\"nutrients\":"
+            << mod_crop_yield(faction_id, -1, x, y, 0)
+            << ",\"minerals\":" << mod_mine_yield(faction_id, -1, x, y, 0)
+            << ",\"energy\":" << mod_energy_yield(faction_id, -1, x, y, 0)
+            << "},\"known_radius\":[";
+        bool radius_comma = false;
+        int known_radius_count = 0;
+        for (int offset = 0; offset < 21; ++offset) {
+            int rx = 0, ry = 0;
+            MAP* radius_sq = next_tile(x, y, offset, &rx, &ry);
+            if (!radius_sq || !radius_sq->is_visible(faction_id)) continue;
+            if (radius_comma) out << ',';
+            radius_comma = true;
+            ++known_radius_count;
+            out << "{\"location_ref\":\"location-" << semantic_tile_id(rx, ry)
+                << "\",\"features\":" << item_names(radius_sq->items)
+                << ",\"yields\":{\"nutrients\":"
+                << mod_crop_yield(faction_id, -1, rx, ry, 0)
+                << ",\"minerals\":" << mod_mine_yield(faction_id, -1, rx, ry, 0)
+                << ",\"energy\":" << mod_energy_yield(faction_id, -1, rx, ry, 0)
+                << "}}";
+        }
+        out << "],\"known_radius_location_count\":" << known_radius_count
+            << ",\"radius_complete_currently_visible\":"
+            << (known_radius_count == 21 ? "true" : "false")
+            << ",\"overlapping_known_bases\":[";
+        bool base_comma = false;
+        std::map<int, int> overlaps;
+        for (int offset = 0; offset < 21; ++offset) {
+            int rx = 0, ry = 0;
+            if (!next_tile(x, y, offset, &rx, &ry)) continue;
+            auto found = known_base_radius.find(semantic_tile_id(rx, ry));
+            if (found != known_base_radius.end())
+                for (int base_id : found->second) ++overlaps[base_id];
+        }
+        for (const auto& entry : overlaps) {
+            const int base_id = entry.first;
+            const int overlap = entry.second;
+            BASE& base = Bases[base_id];
+            if (base_comma) out << ',';
+            base_comma = true;
+            out << "{\"base_ref\":\"base-location-" << semantic_tile_id(base.x, base.y)
+                << "\",\"owner_ref\":\"faction-" << static_cast<int>(base.faction_id)
+                << "\",\"overlapping_radius_location_count\":" << overlap << '}';
+        }
+        out << "],\"hidden_reasons_excluded\":true";
+        if (include_economy) out << ",\"site_economy\":" << site_economy_receipt(faction_id, x, y);
+        out << '}';
+    }
+    out << "],\"requested_count\":" << target_ids.size()
+        << ",\"native_elapsed_ms\":" << (GetTickCount() - started_at) << '}';
+    return out.str();
+}
+
+// Isolated managed-action acceptance inputs. Gameplay mutations in the test
+// still travel through the normal semantic choices and guarded executor.
+std::string test_managed_action_fixture_response(const std::string& request) {
+    char test_mode[8] = {}, acceptance[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+        || strcmp(test_mode, "1")
+        || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_MANAGED_ACTIONS", acceptance, sizeof(acceptance))
+        || strcmp(acceptance, "1"))
+        return error_response("test_mode_disabled", "Managed action fixture is disabled.");
+    const int faction = *CurrentPlayerFaction;
+    const int base_id = game_active() ? first_owned_base(faction) : -1;
+    if (base_id < 0 || !human_turn_actionable(faction))
+        return error_response("fixture_unavailable", "Requires an actionable owned base.");
+    const std::string phase = field_string(request, "phase");
+    if (phase == "counterfactual_inputs") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player counterfactual fixture only.");
+        BASE& base = Bases[base_id];
+        int former = -1;
+        for (int offset = 1; offset < 21 && former < 0; ++offset) {
+            int x = 0, y = 0;
+            MAP* sq = next_tile(base.x, base.y, offset, &x, &y);
+            if (!sq || sq->is_base() || is_ocean(sq)) continue;
+            sq->climate = (sq->climate & ~0x18u) | 0x08u; // controlled moist land
+            sq->val3 &= 0x3fu; // level terrain
+            sq->items &= ~(BIT_FARM | BIT_SOIL_ENRICHER | BIT_FOREST | BIT_FUNGUS
+                | BIT_MINE | BIT_SOLAR | BIT_THERMAL_BORE | BIT_MONOLITH | BIT_CONDENSER);
+            former = veh_init(BSC_FORMERS, faction, x, y);
+            if (former < 0) continue;
+            Vehs[former].home_base_id = base_id;
+            Vehs[former].order = ORDER_FARM;
+            Vehs[former].movement_turns = 2 * Terraform[FORMER_FARM].rate;
+            Vehs[former].moves_spent = 0;
+            spot_all(former, 1);
+            // The guarded provider correctly exposes only activation for a
+            // persistent worker. Keep this worker's accrued work and nominate
+            // a fresh cooperating Former through the ordinary action path.
+            const int actor = veh_init(BSC_FORMERS, faction, x, y);
+            if (actor < 0) return error_response("fixture_unavailable", "Could not create the cooperating Former.");
+            Vehs[actor].home_base_id = base_id;
+            spot_all(actor, 1);
+            former = actor;
+        }
+        int destination = -1;
+        for (int id = 0; id < *BaseCount; ++id)
+            if (id != base_id && Bases[id].faction_id == faction) { destination = id; break; }
+        if (former < 0 || destination < 0)
+            return error_response("fixture_unavailable", "Requires a land radius square and a second owned base.");
+        const int scout = veh_init(BSC_SCOUT_PATROL, faction, Bases[destination].x, Bases[destination].y);
+        if (scout < 0) return error_response("fixture_unavailable", "Could not create the support actor.");
+        Vehs[scout].home_base_id = base_id;
+        spot_all(scout, 1);
+        const int technology = Facility[FAC_RECYCLING_TANKS].preq_tech;
+        if (technology >= 0 && technology < MaxTechnologyNum) TechOwners[technology] |= 1 << faction;
+        set_fac(FAC_RECYCLING_TANKS, base_id, false);
+        base.queue_size = 0; base.queue_items[0] = BSC_SCOUT_PATROL;
+        base.production_id_last = BSC_SCOUT_PATROL;
+        base.minerals_accumulated = base.minerals_accumulated_2 = 40;
+        base.governor_flags &= ~(GOV_ACTIVE | GOV_MANAGE_PRODUCTION);
+        base.state_flags &= ~BSTATE_HURRY_PRODUCTION;
+        Factions[faction].energy_credits = 2000;
+        ensure_semantic_vehicle_handles();
+        reset_semantic_observation_shadow();
+        ++semantic_mutation_generation;
+        std::ostringstream out;
+        out << "{\"ok\":true,\"base_ref\":\"base-location-" << semantic_tile_id(base.x, base.y)
+            << "\",\"destination_base_ref\":\"base-location-" << semantic_tile_id(Bases[destination].x, Bases[destination].y)
+            << "\",\"former_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(former))).c_str())
+            << ",\"scout_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(scout))).c_str())
+            << ",\"facility_name\":" << json_string(Facility[FAC_RECYCLING_TANKS].name) << '}';
+        return out.str();
+    }
+    if (phase == "counterfactual_facility_step") {
+        const int target = field_int(request, "base_id", -1);
+        if (*MultiplayerActive || target < 0 || target >= *BaseCount || Bases[target].faction_id != faction
+            || Bases[target].queue_items[0] != -FAC_RECYCLING_TANKS || test_production_completion_base >= 0
+            || deferred_action.status == "pending")
+            return error_response("fixture_unavailable", "Requires an owned current Recycling Tanks production choice.");
+        test_production_completion_base = target;
+        test_production_completion_facility = FAC_RECYCLING_TANKS;
+        test_production_interruption = false;
+        test_production_preserve_progress = true;
+        begin_deferred_action("test_production_completion");
+        if (!PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0)) {
+            test_production_completion_base = -1;
+            test_production_preserve_progress = false;
+            deferred_action.status = "rejected";
+            return error_response("fixture_queue_failed", "Could not schedule native production.");
+        }
+        return "{\"ok\":true,\"queued\":true,\"action_id\":" + std::to_string(deferred_action.id) + '}';
+    }
+    if (phase == "counterfactual_production_step") {
+        const int target = field_int(request, "base_id", -1);
+        if (*MultiplayerActive || target < 0 || target >= *BaseCount || Bases[target].faction_id != faction
+            || Bases[target].queue_items[0] < 0 || Units[Bases[target].queue_items[0]].plan == PLAN_COLONY)
+            return error_response("fixture_unavailable", "Requires an owned non-colony unit production choice.");
+        const int prior_base = *CurrentBaseID;
+        const auto warnings = *GameWarnings;
+        const int production_guard = *dword_90EA40;
+        auto restore = cleanup_handler([&] {
+            *GameWarnings = warnings; *dword_90EA40 = production_guard;
+            if (prior_base >= 0 && prior_base < *BaseCount) set_base(prior_base);
+        });
+        *GameWarnings = 0; *dword_90EA40 = 0;
+        set_base(target); base_compute(0);
+        const int before = *VehCount;
+        const int surplus = Bases[target].mineral_surplus;
+        mod_base_production(); // One real upkeep, with no mineral injection.
+        ensure_semantic_vehicle_handles();
+        ++semantic_mutation_generation;
+        return std::string("{\"ok\":true,\"created_unit_count\":") + std::to_string(*VehCount - before)
+            + ",\"observed_surplus\":" + std::to_string(surplus)
+            + ",\"observed_progress\":" + std::to_string(Bases[target].minerals_accumulated) + '}';
+    }
+    if (phase == "production_prepare") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player production fixture only.");
+        for (int facility : {FAC_RECREATION_COMMONS, FAC_WEATHER_PARADIGM}) {
+            const int technology = Facility[facility].preq_tech;
+            if (technology >= 0 && technology < MaxTechnologyNum) TechOwners[technology] |= 1 << faction;
+        }
+        set_fac(FAC_RECREATION_COMMONS, base_id, 0);
+        SecretProjects[FAC_WEATHER_PARADIGM - SP_ID_First] = SP_Unbuilt;
+        ++semantic_mutation_generation;
+        return "{\"ok\":true}";
+    }
+    if (phase == "production_facility" || phase == "production_project" || phase == "production_interrupt") {
+        if (*MultiplayerActive || test_production_completion_base >= 0
+        || deferred_action.status == "pending")
+            return error_response("fixture_unavailable", "Requires an idle single-player production fixture.");
+        const FacilityId facility = phase == "production_facility" ? FAC_RECREATION_COMMONS : FAC_WEATHER_PARADIGM;
+        const int technology = Facility[facility].preq_tech;
+        if (technology >= 0 && technology < MaxTechnologyNum) TechOwners[technology] |= 1 << faction;
+        const bool interrupted = phase == "production_interrupt";
+        if (interrupted && SecretProjects[facility - SP_ID_First] != base_id)
+            return error_response("fixture_unavailable", "Complete the controlled project before testing interruption.");
+        if (facility >= SP_ID_First) {
+            if (!interrupted) SecretProjects[facility - SP_ID_First] = SP_Unbuilt;
+        } else set_fac(facility, base_id, 0);
+        BASE& base = Bases[base_id];
+        base.governor_flags &= ~(GOV_ACTIVE | GOV_MANAGE_PRODUCTION);
+        base.queue_size = 0;
+        base.queue_items[0] = -facility;
+        base.nutrients_accumulated = std::max(0, base.nutrients_accumulated);
+        base.minerals_accumulated = 10000;
+        test_production_completion_base = base_id;
+        test_production_completion_facility = facility;
+        test_production_interruption = interrupted;
+        test_production_preserve_progress = false;
+        begin_deferred_action("test_production_completion");
+        if (!PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0)) {
+            test_production_completion_base = -1;
+            deferred_action.status = "rejected";
+            return error_response("fixture_queue_failed", "Could not schedule native production.");
+        }
+        return "{\"ok\":true,\"queued\":true,\"action_id\":" + std::to_string(deferred_action.id)
+            + ",\"item_name\":" + json_string(Facility[facility].name) + "}";
+    }
+    if (phase == "production") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Production comparison is single-player only.");
+        const int prior_base = *CurrentBaseID;
+        const auto prior_warnings = *GameWarnings;
+        const int prior_production_guard = *dword_90EA40;
+        auto restore = cleanup_handler([&] {
+            *GameWarnings = prior_warnings;
+            *dword_90EA40 = prior_production_guard;
+            if (prior_base >= 0 && prior_base < *BaseCount) set_base(prior_base);
+        });
+        // Controlled native comparison: stock production executes twice with
+        // sufficient minerals. Only stop-warning preferences are suppressed
+        // during this dual-gated test; ordinary gameplay is untouched.
+        *GameWarnings = 0;
+        *dword_90EA40 = 0;
+        for (int other = 1; other < MaxPlayerNum; ++other) {
+            Factions[faction].diplo_spoke[other] = *CurrentTurn;
+            Factions[other].diplo_spoke[faction] = *CurrentTurn;
+        }
+        BASE& base = Bases[base_id];
+        base.governor_flags &= ~(GOV_ACTIVE | GOV_MANAGE_PRODUCTION);
+        base.queue_items[0] = BSC_SCOUT_PATROL;
+        base.queue_items[1] = BSC_SCOUT_PATROL;
+        base.queue_size = 1;
+        base.nutrients_accumulated = std::max(0, base.nutrients_accumulated);
+        const int before = *VehCount;
+        for (int iteration = 0; iteration < 2; ++iteration) {
+            set_base(base_id);
+            base_compute(0);
+            base.minerals_accumulated = 10000;
+            mod_base_production();
+        }
+        ++semantic_mutation_generation;
+        std::ostringstream out;
+        const std::string observed_base_ref = "base-location-" + std::to_string(semantic_tile_id(base.x, base.y));
+        out << "{\"ok\":" << (*VehCount == before + 2 ? "true" : "false")
+            << ",\"created_unit_count\":" << *VehCount - before
+            << ",\"base_ref\":" << json_string(observed_base_ref.c_str())
+            << ",\"item_name\":" << json_string(Units[BSC_SCOUT_PATROL].name)
+            << ",\"remaining_queue_size\":" << base.queue_size << '}';
+        return out.str();
+    }
+    if (phase == "council") {
+        for (int other = 1; other < MaxPlayerNum; ++other) {
+            if (other != faction && is_alive(other)) treaty_on(faction, other, DIPLO_COMMLINK);
+        }
+        Factions[faction].council_call_turn = -999;
+        return std::string("{\"ok\":true,\"can_convene\":")
+            + (can_call_council(faction, 0) ? "true}" : "false}");
+    }
+    if (!phase.empty()) {
+        const char* gate = phase == "gift" ? "SMACX_AGENT_TEST_ENERGY_GIFT"
+            : phase == "commerce" ? "SMACX_AGENT_TEST_COMMERCE"
+            : phase == "loan" ? "SMACX_AGENT_TEST_LOANS" : nullptr;
+        if (!gate) return error_response("invalid_fixture_phase", "Unknown managed fixture phase.");
+        char previous[64] = {};
+        const bool existed = GetEnvironmentVariableA(gate, previous, sizeof(previous)) != 0;
+        SetEnvironmentVariableA(gate, "1");
+        if (phase == "gift") ensure_test_energy_gift_fixture();
+        if (phase == "commerce") ensure_test_commerce_fixture();
+        if (phase == "loan") ensure_test_loan_fixture();
+        SetEnvironmentVariableA(gate, existed ? previous : nullptr);
+        return "{\"ok\":true,\"fixture_dialog_queued\":true}";
+    }
+    auto unlock = [&](int technology) {
+        if (technology >= 0 && technology < MaxTechnologyNum) TechOwners[technology] |= 1 << faction;
+    };
+    unlock(Chassis[CHS_INFANTRY].preq_tech);
+    unlock(Weapon[2].preq_tech);
+    unlock(Armor[1].preq_tech);
+    unlock(Reactor[REC_FISSION - 1].preq_tech);
+    unlock(Units[BSC_FORMERS].preq_tech);
+    for (int category = 0; category < MaxSocialCatNum; ++category)
+        for (int model = 0; model < MaxSocialModelNum; ++model)
+            unlock(SocialField[category].soc_preq_tech[model]);
+    Factions[faction].energy_credits = 2000;
+    BASE& base = Bases[base_id];
+    const int scout = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+    int colony = -1, former = -1;
+    for (int tile = 0; tile < *MapAreaTiles && colony < 0; ++tile) {
+        int x = 0, y = 0;
+        if (!semantic_tile_coords(tile, &x, &y) || !can_build_base(x, y, faction, TRIAD_LAND)) continue;
+        colony = veh_init(BSC_COLONY_POD, faction, x, y);
+        former = veh_init(BSC_FORMERS, faction, x, y);
+        if (colony >= 0) spot_all(colony, 1);
+        if (former >= 0) spot_all(former, 1);
+    }
+    int passenger = -1, transport = -1;
+    for (int id = 0; id < *BaseCount && passenger < 0; ++id) {
+        BASE& port = Bases[id];
+        MAP* square = mapsq(port.x, port.y);
+        if (!square || (port.faction_id != faction
+            && (!square->is_visible(faction) || !has_pact(faction, port.faction_id)))) continue;
+        bool coastal = is_ocean(square);
+        for (int direction = 1; direction < 9; ++direction) {
+            int x = 0, y = 0;
+            MAP* neighbor = next_tile(port.x, port.y, direction, &x, &y);
+            if (neighbor && is_ocean(neighbor)) coastal = true;
+        }
+        if (coastal) {
+            passenger = veh_init(BSC_SCOUT_PATROL, faction, port.x, port.y);
+            transport = veh_init(BSC_TRANSPORT_FOIL, faction, port.x, port.y);
+        }
+    }
+    if (scout < 0 || colony < 0 || former < 0 || passenger < 0 || transport < 0)
+        return error_response("fixture_actor_unavailable", "Managed acceptance requires its owned actors and a current coastal port.");
+    ensure_semantic_vehicle_handles();
+    reset_semantic_observation_shadow();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"base_ref\":\"base-location-" << semantic_tile_id(base.x, base.y)
+        << "\",\"scout_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(scout))).c_str())
+        << ",\"colony_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(colony))).c_str())
+        << ",\"former_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(former))).c_str())
+        << ",\"passenger_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(passenger))).c_str())
+        << ",\"transport_ref\":" << json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(transport))).c_str())
+        << ",\"source_design_name\":" << json_string(Units[BSC_SCOUT_PATROL].name)
+        << ",\"design_labels\":{\"chassis\":" << json_string(Chassis[CHS_INFANTRY].offsv1_name)
+        << ",\"weapon\":" << json_string(Weapon[2].name)
+        << ",\"armor\":" << json_string(Armor[1].name)
+        << ",\"reactor\":" << json_string(Reactor[REC_FISSION - 1].name) << "}}";
+    return out.str();
+}
+
+// Contained latency fixture. The production operation remains read-only; only
+// an isolated dual-gated test worker may temporarily install these input rows.
+std::string test_base_site_receipts_stress_response(const std::string& input) {
+    char test_mode[8] = {}, acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+        || strcmp(test_mode, "1")
+        || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_BASE_SITE", acceptance_mode, sizeof(acceptance_mode))
+        || strcmp(acceptance_mode, "1"))
+        return error_response("test_mode_disabled", "Base-site stress is disabled.");
+    if (!game_active() || *BaseCount < 1 || *MapAreaTiles < MaxBaseNum)
+        return error_response("fixture_unavailable", "Requires an active sufficiently large map.");
+    const int original_count = *BaseCount;
+    const bool economy = field_bool(input, "include_economy", false);
+    BASE* original_current_base = *CurrentBase;
+    const int original_reduce = *BaseTerraformReduce;
+    const int original_energy = *BaseTerraformEnergy;
+    std::vector<BASE> original(Bases, Bases + MaxBaseNum);
+    std::vector<std::pair<MAP*, uint8_t>> visibility;
+    visibility.reserve(*MapAreaTiles);
+    std::string receipt;
+    {
+    struct FixtureRestore {
+        const std::vector<BASE>& bases;
+        const std::vector<std::pair<MAP*, uint8_t>>& visibility;
+        int count;
+        ~FixtureRestore() {
+            std::copy(bases.begin(), bases.end(), Bases);
+            *BaseCount = count;
+            for (const auto& entry : visibility) entry.first->visibility = entry.second;
+        }
+    } restore{original, visibility, original_count};
+    int own_base = 0;
+    for (int i = 0; i < original_count; ++i)
+        if (Bases[i].faction_id == *CurrentPlayerFaction) { own_base = i; break; }
+    std::ostringstream request;
+    request << "{\"target_tile_ids\":[";
+    for (int i = 0; i < MaxBaseNum; ++i) {
+        int x = 0, y = 0;
+        semantic_tile_coords(i, &x, &y);
+        Bases[i] = original[own_base];
+        Bases[i].x = x; Bases[i].y = y;
+        Bases[i].faction_id = *CurrentPlayerFaction;
+        if (!economy && i < 32) { if (i) request << ','; request << i; }
+    }
+    // Preserve every visibility byte exactly; the fixture leaks nothing into
+    // later managed observation and is never available to the sovereign.
+    for (int i = 0; i < *MapAreaTiles; ++i) {
+        int x = 0, y = 0; semantic_tile_coords(i, &x, &y);
+        MAP* sq = mapsq(x, y);
+        if (!sq) continue;
+        visibility.push_back({sq, sq->visibility});
+        sq->visibility |= (1 << *CurrentPlayerFaction);
+    }
+    *BaseCount = MaxBaseNum - (economy ? 1 : 0);
+    if (economy) {
+        // Leave one slot for each transient founding hypothesis. Demand the
+        // full four-site query far from the dense temporary base rows.
+        int selected = 0;
+        for (int tile = *MapAreaTiles / 2; tile < *MapAreaTiles && selected < 4; ++tile) {
+            int x = 0, y = 0;
+            if (!semantic_tile_coords(tile, &x, &y)) continue;
+            MAP* sq = mapsq(x, y);
+            if (sq && can_build_base(x, y, *CurrentPlayerFaction, is_ocean(sq) ? TRIAD_SEA : TRIAD_LAND)) {
+                if (selected++) request << ',';
+                request << tile;
+            }
+        }
+        if (selected != 4) return error_response("fixture_unavailable", "Could not nominate four stress sites.");
+    }
+    request << "],\"include_economy\":" << (economy ? "true" : "false") << '}';
+    receipt = semantic_base_site_receipts_response(request.str());
+    }
+    if (*BaseCount != original_count || *CurrentBase != original_current_base
+        || *BaseTerraformReduce != original_reduce || *BaseTerraformEnergy != original_energy
+        || memcmp(original.data(), Bases, sizeof(BASE) * MaxBaseNum)
+        || std::any_of(visibility.begin(), visibility.end(), [](const std::pair<MAP*, uint8_t>& row) {
+            return row.first->visibility != row.second;
+        })) {
+        return error_response("fixture_restore_failed", "Base-site probe changed native state.");
+    }
+    return receipt;
+}
+
+std::string perspective_world_page_response(const std::string& request) {
+    if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
+    const int faction_id = *CurrentPlayerFaction;
+    const std::string domain = field_string(request, "domain");
+    const int cursor = std::max(0, field_int(request, "cursor", 0));
+    const int limit = std::min(256, std::max(1, field_int(request, "limit", 128)));
+    const std::string revision = semantic_revision();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"smacx.perspective-world-page.v1\""
+        << ",\"domain\":" << json_string(domain.c_str())
+        << ",\"action_revision\":" << json_string(revision.c_str())
+        << ",\"turn\":" << *CurrentTurn << ",\"year\":" << *CurrentMissionYear
+        << ",\"faction_id\":" << faction_id;
+    if (domain == "summary") {
+        out << ",\"map\":{\"width\":" << *MapAreaX
+            << ",\"height\":" << *MapAreaY
+            << ",\"horizontal_wrap\":" << (map_is_flat() ? "false" : "true")
+            << ",\"known_all\":" << (map_is_known(faction_id) ? "true" : "false")
+            << "},\"unity_survey\":"
+            << ((*GameRules & RULES_NO_UNITY_SURVEY) ? "false" : "true")
+            << ",\"is_governor\":"
+            << (*GovernorFaction == faction_id ? "true" : "false")
+            << ",\"repair_rules\":{\"minimal\":" << conf.repair_minimal
+            << ",\"fungus_native\":" << conf.repair_fungus
+            << ",\"friendly_territory_bonus\":" << conf.repair_friendly
+            << ",\"airbase_bonus\":" << conf.repair_airbase
+            << ",\"bunker_bonus\":" << conf.repair_bunker
+            << ",\"base_bonus\":" << conf.repair_base
+            << ",\"native_base_bonus\":" << conf.repair_base_native
+            << ",\"base_facility_bonus\":" << conf.repair_base_facility
+            << ",\"nano_factory_bonus\":" << conf.repair_nano_factory
+            << ",\"battle_ogre_cap\":" << conf.repair_battle_ogre << '}'
+            << ",\"items\":[],\"next_cursor\":null}";
+        return out.str();
+    }
+    out << ",\"items\":[";
+    int emitted = 0;
+    int next_cursor = -1;
+    if (domain == "tiles") {
+        int index = cursor;
+        for (; index < *MapAreaTiles && emitted < limit; ++index) {
+            int x = -1, y = -1;
+            const bool survey = !(*GameRules & RULES_NO_UNITY_SURVEY);
+            if (!semantic_tile_coords(index, &x, &y)) continue;
+            const bool mapped = is_known(x, y, faction_id);
+            if (!mapped && !survey) continue;
+            MAP* sq = mapsq(x, y);
+            if (!sq) continue;
+            if (emitted++) out << ',';
+            const bool visible = sq->is_visible(faction_id);
+            const uint32_t remembered = visible ? sq->items : mapped ? sq->visible_items[faction_id - 1] : 0;
+            out << "{\"tile_id\":" << index << ",\"x\":" << x << ",\"y\":" << y
+                << ",\"visible_now\":" << (visible ? "true" : "false");
+            if (mapped || visible) out << ",\"features\":" << item_names(remembered);
+            if (!visible && survey) {
+                out << ",\"entitled_fields\":{\"terrain\":{\"channel\":\"unity_survey\",\"value\":"
+                    << json_string(is_ocean(sq) ? "ocean" : "land")
+                    << "},\"altitude\":{\"channel\":\"unity_survey\",\"value\":" << sq->alt_level() << "}}";
+            }
+            if (visible) {
+                out << ",\"altitude\":" << sq->alt_level()
+                    << ",\"is_ocean\":" << (is_ocean(sq) ? "true" : "false")
+                    << ",\"rainfall\":" << ((sq->climate >> 3) & 3)
+                    << ",\"temperature\":" << (sq->climate & 7)
+                    << ",\"rockiness\":" << sq->rocky_level()
+                    << ",\"landmarks\":" << visible_landmark_records(sq, x, y)
+                    << ",\"owner_ref\":";
+                if (sq->owner >= 0 && sq->owner < MaxPlayerNum) {
+                    out << json_string((std::string("faction-")
+                        + std::to_string(static_cast<int>(sq->owner))).c_str());
+                } else out << "null";
+            }
+            out << '}';
+        }
+        next_cursor = index < *MapAreaTiles ? index : -1;
+    } else if (domain == "bases") {
+        int index = cursor;
+        for (; index < *BaseCount && emitted < limit; ++index) {
+            BASE& base = Bases[index];
+            MAP* square = mapsq(base.x, base.y);
+            const bool owned = base.faction_id == faction_id;
+            const bool visible = square && square->is_visible(faction_id);
+            if (!owned && !visible) continue;
+            if (emitted++) out << ',';
+            out << "{\"id\":" << index << ",\"base_ref\":\"base-location-"
+                << semantic_tile_id(base.x, base.y) << "\",\"tile_id\":"
+                << semantic_tile_id(base.x, base.y) << ",\"owned\":"
+                << (owned ? "true" : "false") << ",\"visible_now\":"
+                << (visible ? "true" : "false") << ",\"name\":"
+                << json_string(base.name) << ",\"owner_ref\":\"faction-"
+                << static_cast<int>(base.faction_id) << "\""
+                << ",\"coastal\":"
+                << (coast_tiles(base.x, base.y) ? "true" : "false");
+            if (owned) {
+                set_base(index);
+                base_compute(1);
+                out << ",\"population\":" << static_cast<int>(base.pop_size)
+                    << ",\"nutrient_surplus\":" << base.nutrient_surplus
+                    << ",\"mineral_surplus\":" << base.mineral_surplus
+                    << ",\"energy_surplus\":" << base.energy_surplus
+                    << ",\"minerals_accumulated\":" << base.minerals_accumulated
+                    << ",\"minerals\":{\"intake\":" << base.mineral_intake_2
+                    << ",\"consumption\":" << base.mineral_consumption
+                    << ",\"unit_support_cost\":" << *BaseForcesMaintCost
+                    << ",\"surplus\":" << base.mineral_surplus
+                    << ",\"accumulated\":" << base.minerals_accumulated << '}'
+                    << ",\"production_id\":" << base.queue_items[0]
+                    << ",\"production_name\":"
+                    << json_string(production_name(base.queue_items[0]).c_str())
+                    << ",\"eco_damage\":" << base.eco_damage
+                    << ",\"drone_riots\":"
+                    << (base.drone_riots_active() ? "true" : "false")
+                    << ",\"facilities\":[";
+                bool facility_comma = false;
+                for (int facility_id = Fac_ID_First; facility_id < SP_ID_First;
+                ++facility_id) {
+                    if (!has_fac_built(static_cast<FacilityId>(facility_id), index)) continue;
+                    if (facility_comma) out << ',';
+                    facility_comma = true;
+                    out << "{\"facility_id\":" << facility_id << ",\"name\":"
+                        << json_string(Facility[facility_id].name)
+                        << ",\"maintenance\":" << fac_maint(facility_id, faction_id) << '}';
+                }
+                out << "],\"production_queue\":[";
+                for (int position = 0; position <= base.queue_size && position < 10; ++position) {
+                    if (position) out << ',';
+                    out << "{\"position\":" << position << ",\"name\":"
+                        << json_string(production_name(base.queue_items[position]).c_str()) << '}';
+                }
+                out << "],\"governor\":{\"active\":" << ((base.governor_flags & GOV_ACTIVE) ? "true" : "false")
+                    << ",\"manage_citizens\":" << ((base.governor_flags & GOV_MANAGE_CITIZENS) ? "true" : "false")
+                    << ",\"manage_production\":" << ((base.governor_flags & GOV_MANAGE_PRODUCTION) ? "true" : "false")
+                    << "},\"citizens\":{\"talents\":" << base.talent_total
+                    << ",\"drones\":" << base.drone_total << ",\"specialists\":[";
+                for (int specialist = 0; specialist < base.specialist_total; ++specialist) {
+                    if (specialist) out << ',';
+                    int type = clamp(base.specialist_type(specialist), 0, MaxSpecialistNum - 1);
+                    out << "{\"name\":" << json_string(Citizen[type].singular_name) << '}';
+                }
+                out << "]},\"base_radius\":[";
+                bool radius_comma = false;
+                for (int tile_index = 0; tile_index < 21; ++tile_index) {
+                    int tile_x = 0;
+                    int tile_y = 0;
+                    MAP* tile = next_tile(base.x, base.y, tile_index, &tile_x, &tile_y);
+                    if (!tile || !tile->is_visible(faction_id)) continue;
+                    if (radius_comma) out << ',';
+                    radius_comma = true;
+                    out << "{\"location_ref\":\"location-"
+                        << semantic_tile_id(tile_x, tile_y)
+                        << "\",\"worked\":"
+                        << ((base.worked_tiles & (1 << tile_index)) ? "true" : "false")
+                        << ",\"yields\":{\"nutrients\":"
+                        << mod_crop_yield(faction_id, index, tile_x, tile_y, 0)
+                        << ",\"minerals\":"
+                        << mod_mine_yield(faction_id, index, tile_x, tile_y, 0)
+                        << ",\"energy\":"
+                        << mod_energy_yield(faction_id, index, tile_x, tile_y, 0)
+                        << "}}";
+                }
+                out << ']';
+            }
+            out << '}';
+        }
+        next_cursor = index < *BaseCount ? index : -1;
+    } else if (domain == "units") {
+        ensure_semantic_vehicle_handles();
+        int index = cursor;
+        for (; index < *VehCount && emitted < limit; ++index) {
+            VEH& veh = Vehs[index];
+            const bool owned = veh.faction_id == faction_id;
+            const bool visible = owned || (veh.visibility & (1 << faction_id));
+            if (!visible) continue;
+            if (emitted++) out << ',';
+            const int stable_handle = semantic_vehicle_handle(index);
+            const bool airdrop_ready = owned
+                && can_airdrop(index, mapsq(veh.x, veh.y));
+            const int page_carrier_capacity = owned ? semantic_carrier_capacity(index) : 0;
+            int page_boarded_on = -1;
+            if (owned && veh.order == ORDER_SENTRY_BOARD && veh.waypoint_x[0] >= 0
+                && veh.waypoint_x[0] < *VehCount && veh.waypoint_x[0] != index) {
+                const int candidate = veh.waypoint_x[0];
+                VEH& transport = Vehs[candidate];
+                if (transport.faction_id == faction_id && transport.x == veh.x && transport.y == veh.y
+                    && (veh_cargo(candidate) > 0 || semantic_aircraft_boarded_on(index, candidate)))
+                    page_boarded_on = candidate;
+            }
+            out << "{\"id\":" << index
+                << ",\"own_unit_ref\":";
+            if (owned) out << json_string(
+                (std::string("own-unit-") + std::to_string(stable_handle)).c_str());
+            else out << "null";
+            out
+                << ",\"native_observation_key\":" << json_string(
+                    (std::string("vehicle-handle-") + std::to_string(stable_handle)).c_str())
+                << ",\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
+                << ",\"owned\":" << (owned ? "true" : "false")
+                << ",\"owner_ref\":\"faction-" << static_cast<int>(veh.faction_id)
+                << "\",\"name\":" << json_string(veh.name())
+                << ",\"hp\":" << veh.cur_hitpoints()
+                << ",\"max_hp\":" << veh.max_hitpoints()
+                << ",\"triad\":" << json_string(
+                    veh.triad() == TRIAD_LAND ? "land" : veh.triad() == TRIAD_SEA ? "sea" : "air")
+                << ",\"movement_points\":" << veh_speed(index, 0)
+                << ",\"movement_scale\":" << Rules->move_rate_roads
+                << ",\"road_movement_cost\":" << semantic_road_edge_cost()
+                << ",\"magtube_movement_cost\":" << semantic_magtube_edge_cost()
+                << ",\"fungus_movement_cost\":" << semantic_fungus_movement_cost(veh)
+                << ",\"fungus_connects_to_road\":"
+                << (semantic_fungus_connects_to_road(veh) ? "true" : "false")
+                << ",\"ignores_rough_movement\":"
+                << (semantic_ignores_rough_movement(veh) ? "true" : "false")
+                << ",\"air_range\":" << static_cast<int>(veh.range())
+                << ",\"air_fuel_turns_used\":" << static_cast<int>(veh.movement_turns)
+                << ",\"air_safe_range\":" << semantic_air_safe_range(index)
+                << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(index)
+                << ",\"air_origin_refuels\":"
+                << (owned && semantic_friendly_air_refuel_tile(
+                    faction_id, veh.x, veh.y) ? "true" : "false")
+                << ",\"airdrop_ready\":"
+                << (airdrop_ready ? "true" : "false")
+                << ",\"airdrop_range\":" << (owned ? drop_range(faction_id) : -1);
+            out << ",\"abilities\":[";
+            bool page_ability_comma = false;
+            struct PageAbility { VehAblFlag flag; const char* name; };
+            const PageAbility page_abilities[] = {
+                {ABL_CLOAKED, "cloaked"}, {ABL_AMPHIBIOUS, "amphibious"},
+                {ABL_DROP_POD, "drop_pod"}, {ABL_ANTIGRAV_STRUTS, "antigrav_struts"},
+                {ABL_CLEAN_REACTOR, "clean_reactor"},
+                {ABL_FUEL_NANOCELLS, "fuel_nanocells"},
+            };
+            for (const auto& ability : page_abilities) {
+                if (!has_abil(veh.unit_id, ability.flag)) continue;
+                if (page_ability_comma) out << ',';
+                page_ability_comma = true;
+                out << json_string(ability.name);
+            }
+            out << ']'
+                << ",\"roles\":{\"combat\":" << (veh.is_combat_unit() ? "true" : "false")
+                << ",\"colony\":" << (veh.is_colony() ? "true" : "false")
+                << ",\"former\":" << (veh.is_former() ? "true" : "false")
+                << ",\"probe\":" << (veh.is_probe() ? "true" : "false")
+                << ",\"supply\":" << (veh.is_supply() ? "true" : "false")
+                << ",\"transport\":" << (veh.is_transport() ? "true" : "false")
+                << ",\"planet_life\":" << (veh.is_native_unit() ? "true" : "false")
+                << ",\"wild_native\":" << (veh.is_native_unit() && !veh.faction_id ? "true" : "false")
+                << ",\"controlled_native\":" << (veh.is_native_unit() && veh.faction_id ? "true" : "false")
+                << ",\"progenitor_force\":" << (!veh.is_native_unit() && is_alien(veh.faction_id) ? "true" : "false")
+                << ",\"airdrop_capable\":" << (has_abil(veh.unit_id, ABL_DROP_POD) ? "true" : "false")
+                << ",\"airdrop_used\":" << ((veh.state & VSTATE_MADE_AIRDROP) ? "true" : "false")
+                << ",\"amphibious\":" << (has_abil(veh.unit_id, ABL_AMPHIBIOUS) ? "true" : "false")
+                << ",\"cloaked\":" << (has_abil(veh.unit_id, ABL_CLOAKED) ? "true" : "false")
+                << (owned ? std::string(",\"carrier\":") + (page_carrier_capacity > 0 ? "true" : "false")
+                    + ",\"boarded\":" + (page_boarded_on >= 0 ? "true" : "false") : "")
+                << '}';
+            if (owned) {
+                out << ",\"moves_spent\":" << static_cast<int>(veh.moves_spent)
+                    << ",\"requires_support\":"
+                    << ((veh.state & VSTATE_REQUIRES_SUPPORT) ? "true" : "false")
+                    << ",\"transport_unit_ref\":";
+                if (page_boarded_on >= 0) out << "\"own-unit-" << semantic_vehicle_handle(page_boarded_on) << '"';
+                else out << "null";
+                out << ",\"cargo\":{\"capacity\":" << (page_carrier_capacity > 0 ? page_carrier_capacity : veh_cargo(index))
+                    << ",\"loaded\":" << veh_cargo_loaded(index);
+                if (page_carrier_capacity > 0)
+                    out << ",\"kind\":\"aircraft_carrier\",\"inbound_reserved\":" << semantic_carrier_inbound_count(index)
+                        << ",\"unboarded_co_located\":" << semantic_carrier_unboarded_count(index)
+                        << ",\"recovery_locked\":" << (semantic_carrier_dependency_count(index) > 0 ? "true" : "false");
+                out << "},\"convoy_resource\":";
+                if (veh.order == ORDER_CONVOY) {
+                    out << json_string(veh.order_auto_type == RSC_NUTRIENT ? "nutrients"
+                        : veh.order_auto_type == RSC_MINERAL ? "minerals"
+                        : veh.order_auto_type == RSC_ENERGY ? "energy" : "unknown");
+                } else out << "null";
+                out
+                    << ",\"convoy_amount\":"
+                    << (veh.order == ORDER_CONVOY
+                        ? contribution(index, veh.order_auto_type) : 0)
+                    << ",\"home_base_ref\":";
+                if (veh.home_base_id >= 0 && veh.home_base_id < *BaseCount) {
+                    out << "\"base-location-"
+                        << semantic_tile_id(Bases[veh.home_base_id].x, Bases[veh.home_base_id].y)
+                        << "\"";
+                } else out << "null";
+                out << ",\"order_name\":" << json_string(semantic_unit_order_name(veh));
+            }
+            out << '}';
+        }
+        next_cursor = index < *VehCount ? index : -1;
+    } else if (domain == "factions") {
+        int index = std::max(1, cursor);
+        for (; index < MaxPlayerNum && emitted < limit; ++index) {
+            if (index != faction_id && (!is_alive(index)
+            || !has_treaty(faction_id, index, DIPLO_COMMLINK))) continue;
+            if (emitted++) out << ',';
+            const int status = Factions[faction_id].diplo_status[index];
+            const bool infiltrated = (status & DIPLO_HAVE_INFILTRATOR) != 0;
+            const bool pact = (status & DIPLO_PACT) != 0;
+            const bool governor_report = *GovernorFaction == faction_id
+                && !MFactions[index].is_alien();
+            const bool project_report = has_project(FAC_EMPATH_GUILD, faction_id);
+            // These channels mirror the stock faction-profile/diplomacy
+            // report predicates. Pact exposes energy reserves; infiltration
+            // or the Planetary Governor's non-Progenitor report exposes the
+            // wider faction intelligence surface. The external entitlement
+            // boundary independently verifies the selected channel.
+            const char* profile_channel = infiltrated ? "infiltration"
+                : project_report ? "project_intelligence"
+                : governor_report ? "governor" : "";
+            const char* energy_channel = infiltrated ? "infiltration"
+                : pact ? "pact_shared" : project_report ? "project_intelligence"
+                : governor_report ? "governor" : "";
+            out << "{\"id\":" << index << ",\"faction_ref\":\"faction-" << index
+                << "\",\"owned\":" << (index == faction_id ? "true" : "false")
+                << ",\"faction_name\":" << json_string(MFactions[index].formal_name_faction)
+                << ",\"leader_name\":" << json_string(MFactions[index].name_leader)
+                << ",\"relations\":{\"commlink\":"
+                << ((status & DIPLO_COMMLINK) ? "true" : "false")
+                << ",\"vendetta\":" << ((status & DIPLO_VENDETTA) ? "true" : "false")
+                << ",\"truce\":" << ((status & DIPLO_TRUCE) ? "true" : "false")
+                << ",\"treaty\":" << ((status & DIPLO_TREATY) ? "true" : "false")
+                << ",\"pact\":" << ((status & DIPLO_PACT) ? "true" : "false")
+                << ",\"infiltrated\":"
+                << ((status & DIPLO_HAVE_INFILTRATOR) ? "true" : "false") << "}"
+                << ",\"entitled_fields\":{"
+                << "\"pact_shared_vision\":{\"value\":true,\"channel\":\"pact_shared\",\"owner_ref\":\"faction-"
+                << index << "\"},"
+                << "\"foreign_energy_credits\":{\"value\":" << Factions[index].energy_credits
+                << ",\"channel\":" << json_string(energy_channel)
+                << ",\"owner_ref\":\"faction-" << index << "\"},"
+                << "\"foreign_research_technology_id\":{\"value\":" << Factions[index].tech_research_id
+                << ",\"channel\":" << json_string(profile_channel)
+                << ",\"owner_ref\":\"faction-" << index << "\"},"
+                << "\"foreign_research_accumulated\":{\"value\":" << Factions[index].tech_accumulated
+                << ",\"channel\":" << json_string(profile_channel)
+                << ",\"owner_ref\":\"faction-" << index << "\"},"
+                << "\"foreign_satellites\":{\"value\":{\"nutrient\":" << Factions[index].satellites_nutrient
+                << ",\"mineral\":" << Factions[index].satellites_mineral
+                << ",\"energy\":" << Factions[index].satellites_energy
+                << ",\"orbital_defense\":" << Factions[index].satellites_ODP
+                << "},\"channel\":" << json_string(profile_channel)
+                << ",\"owner_ref\":\"faction-" << index << "\"}"
+                << "}}";
+        }
+        next_cursor = index < MaxPlayerNum ? index : -1;
+    } else {
+        return error_response("invalid_world_domain",
+            "Use summary, tiles, bases, units, or factions.");
+    }
+    out << "],\"next_cursor\":";
+    if (next_cursor >= 0) out << next_cursor;
+    else out << "null";
+    out << ",\"bounded_native_page\":true}";
     return out.str();
 }
 
@@ -7794,6 +10286,85 @@ std::string semantic_snapshot_response() {
         << ",\"objective_required\":" << *ObjectiveReqVictory
         << ",\"objective_sudden_death\":" << *ObjectivesSuddenDeathVictory
         << ",\"ending_mission_year\":" << *EndingMissionYear << '}'
+        << ",\"movement_rules\":{\"road_movement_scale\":" << Rules->move_rate_roads
+        << ",\"road_edge_cost\":"
+        << (conf.magtube_movement_rate > 0 ? conf.road_movement_rate : 1)
+        << ",\"magtube_edge_cost\":"
+        << (conf.magtube_movement_rate > 0 ? 1 : 0)
+        << ",\"max_airdrop_range\":" << Rules->max_airdrop_rng_wo_orbital_insert
+        << "}"
+        << ",\"ecology\":{\"sea_level\":" << *MapSeaLevel
+        << ",\"sea_level_council_pressure\":" << *MapSeaLevelCouncil
+        << ",\"sunspot_duration\":" << *SunspotDuration
+        << ",\"perihelion_active\":"
+        << ((*GameState & STATE_PERIHELION_ACTIVE) ? "true" : "false")
+        << ",\"volcano_erupted\":"
+        << ((*GameState & STATE_VOLCANO_ERUPTED) ? "true" : "false") << '}'
+        << ",\"own_planetary_state\":{\"tectonic_detonations\":"
+        << TectonicDetonationCount[faction_id]
+        << ",\"random_event_id\":" << faction.net_random_event
+        << ",\"transcendent_thoughts\":" << faction.tech_count_transcendent << '}'
+        << ",\"victory_posture\":{\"enabled\":{\"conquest\":"
+        << ((*GameRules & RULES_VICTORY_CONQUEST) ? "true" : "false")
+        << ",\"economic\":" << ((*GameRules & RULES_VICTORY_ECONOMIC) ? "true" : "false")
+        << ",\"diplomatic\":" << ((*GameRules & RULES_VICTORY_DIPLOMATIC) ? "true" : "false")
+        << ",\"transcendence\":" << ((*GameRules & RULES_VICTORY_TRANSCENDENCE) ? "true" : "false")
+        << ",\"cooperative\":" << ((*GameRules & RULES_VICTORY_COOPERATIVE) ? "true" : "false")
+        << "},\"economic\":{\"active\":" << (faction.corner_market_active() ? "true" : "false")
+        << ",\"completion_turn\":" << faction.corner_market_turn
+        << ",\"committed_energy\":" << faction.corner_market_cost << "}"
+        << ",\"diplomatic\":{\"own_council_votes\":" << council_votes(faction_id)
+        << ",\"governor\":" << (*GovernorFaction == faction_id ? "true" : "false") << "}"
+        << ",\"transcendence\":{\"active\":"
+        << (transcending(faction_id) ? "true" : "false") << "}"
+        << ",\"scenario_objectives\":{\"owned_or_cooperative_count\":"
+        << num_objectives(faction_id, *GameRules & RULES_VICTORY_COOPERATIVE)
+        << ",\"required\":" << *ObjectiveReqVictory
+        << ",\"sudden_death_required\":" << *ObjectivesSuddenDeathVictory << "}"
+        << ",\"alien_crossfire\":{\"progenitor_faction\":"
+        << (is_alien(faction_id) ? "true" : "false")
+        << ",\"current_victory_type_id\":" << *GameVictoryType << "}}"
+        << ",\"known_project_races\":[";
+    bool race_comma = false;
+    for (int project_id = SP_ID_First; project_id <= SP_ID_Last; ++project_id) {
+        uint32_t word = 0;
+        uint32_t bit = 0;
+        bitmask(project_id - SP_ID_First, &word, &bit);
+        if (word >= 8 || !(faction.secret_project_intel[word] & bit)) continue;
+        if (race_comma) out << ',';
+        race_comma = true;
+        out << "{\"project_id\":" << project_id << ",\"name\":"
+            << json_string(Facility[project_id].name);
+        if (known_project_builder_valid[project_id]) {
+            out << ",\"builder_ref\":\"faction-"
+                << known_project_builder[project_id]
+                << "\",\"builder_identity\":\"observed_report\"";
+        } else {
+            out << ",\"builder_identity\":\"unknown\"";
+        }
+        out << ",\"source\":\"public_report\"}";
+    }
+    out << ']'
+        << ",\"governor_faction_id\":" << *GovernorFaction
+        << ",\"intelligence_entitlements\":{\"empath_guild_reports\":"
+        << (has_project(FAC_EMPATH_GUILD, faction_id) ? "true" : "false") << '}'
+        << ",\"own_orbitals\":{\"nutrient\":" << faction.satellites_nutrient
+        << ",\"mineral\":" << faction.satellites_mineral
+        << ",\"energy\":" << faction.satellites_energy
+        << ",\"orbital_defense\":" << faction.satellites_ODP << '}'
+        << ",\"public_projects\":[";
+    bool project_comma = false;
+    for (int project_id = SP_ID_First; project_id <= SP_ID_Last; ++project_id) {
+        const int project_base_id = SecretProjects[project_id - SP_ID_First];
+        if (project_base_id < 0 || project_base_id >= *BaseCount) continue;
+        if (project_comma) out << ',';
+        project_comma = true;
+        out << "{\"project_id\":" << project_id
+            << ",\"name\":" << json_string(Facility[project_id].name)
+            << ",\"owner_ref\":\"faction-"
+            << static_cast<int>(Bases[project_base_id].faction_id) << "\"}";
+    }
+    out << ']'
         << ",\"ready_unit_refs\":[";
     bool ready_comma = false;
     for (int veh_id = 0; veh_id < *VehCount; ++veh_id) {
@@ -7801,8 +10372,12 @@ std::string semantic_snapshot_response() {
         if (veh.faction_id != faction_id || !semantic_unit_requires_decision(veh_id)) continue;
         if (ready_comma) out << ',';
         ready_comma = true;
-        out << "{\"id\":" << veh_id << ",\"name\":" << json_string(veh.name())
-            << ",\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
+        out << "{\"own_unit_ref\":" << json_string(
+            (std::string("own-unit-")
+             + std::to_string(semantic_vehicle_handle(veh_id))).c_str())
+            << ",\"location_ref\":\"location-"
+            << semantic_tile_id(veh.x, veh.y) << "\""
+            << ",\"name\":" << json_string(veh.name())
             << ",\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
             << ",\"former\":" << (veh.is_former() ? "true" : "false")
             << ",\"combat\":" << (veh.is_combat_unit() ? "true" : "false")
@@ -7812,7 +10387,8 @@ std::string semantic_snapshot_response() {
             << "}}";
     }
     out << ']'
-        << ",\"economy\":{\"allocation\":{\"economy\":"
+        << ",\"economy\":{\"energy_credits\":" << faction.energy_credits
+        << ",\"allocation\":{\"economy\":"
         << 10 - faction.SE_alloc_labs - faction.SE_alloc_psych
         << ",\"psych\":" << faction.SE_alloc_psych
         << ",\"labs\":" << faction.SE_alloc_labs << "},\"turn_totals\":{"
@@ -7856,8 +10432,11 @@ std::string semantic_snapshot_response() {
             out << ",\"resolution\":" << json_string(deferred_action.resolution.c_str());
         }
         if (deferred_action.unit_id >= 0) {
-            out << ",\"unit_id\":" << deferred_action.unit_id
-                << ",\"origin_tile_id\":"
+            // A completed destructive action may already have compacted VEH,
+            // so its former row is neither a safe identity nor resolvable to
+            // a current semantic handle. Locations retain the useful outcome
+            // without publishing a raw or potentially reassigned row ID.
+            out << ",\"origin_tile_id\":"
                 << semantic_tile_id(deferred_action.origin_x, deferred_action.origin_y)
                 << ",\"target_tile_id\":"
                 << semantic_tile_id(deferred_action.target_x, deferred_action.target_y)
@@ -8024,7 +10603,7 @@ std::string research_choices_response(int faction_id) {
             if (comma) out << ',';
             comma = true;
             out << "{\"id\":\"tech:" << tech_id << "\",\"tech_id\":" << tech_id
-                << ",\"name\":" << json_string(Tech[tech_id].name)
+                << ",\"command\":\"choose_research\",\"name\":" << json_string(Tech[tech_id].name)
                 << ",\"category\":" << tech_category(tech_id) << '}';
         }
     }
@@ -8032,7 +10611,7 @@ std::string research_choices_response(int faction_id) {
     return out.str();
 }
 
-std::string energy_allocation_choices_response(int faction_id) {
+std::string energy_allocation_choices_response(int faction_id, const std::string& request) {
     Faction& faction = Factions[faction_id];
     int economy = 10 - faction.SE_alloc_labs - faction.SE_alloc_psych;
     std::ostringstream out;
@@ -8050,10 +10629,23 @@ std::string energy_allocation_choices_response(int faction_id) {
         << "{\"name\":\"research\",\"economy\":4,\"psych\":0,\"labs\":6},"
         << "{\"name\":\"economy\",\"economy\":6,\"psych\":0,\"labs\":4},"
         << "{\"name\":\"psych_support\",\"economy\":4,\"psych\":2,\"labs\":4}]}";
-    return out.str();
+    const int requested_economy = field_int(request, "economy", -1);
+    const int requested_psych = field_int(request, "psych", -1);
+    const int requested_labs = field_int(request, "labs", -1);
+    std::ostringstream prepared;
+    if (requested_economy >= 0 && requested_economy <= 10
+        && requested_psych >= 0 && requested_psych <= 10
+        && requested_labs >= 0 && requested_labs <= 10
+        && requested_economy + requested_psych + requested_labs == 10) {
+        prepared << "{\"command\":\"set_energy_allocation\",\"economy\":" << requested_economy
+            << ",\"psych\":" << requested_psych << ",\"labs\":" << requested_labs
+            << ",\"label\":\"Apply selected energy allocation\"}";
+    }
+    std::string result = out.str(); result.pop_back();
+    return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
-std::string social_engineering_choices_response(int faction_id) {
+std::string social_engineering_choices_response(int faction_id, const std::string& request) {
     Faction& faction = Factions[faction_id];
     const CSocialCategory& selected =
         *reinterpret_cast<const CSocialCategory*>(&faction.SE_Politics_pending);
@@ -8108,7 +10700,29 @@ std::string social_engineering_choices_response(int faction_id) {
         out << "]}";
     }
     out << "]}";
-    return out.str();
+    CSocialCategory proposed = selected;
+    const char* keys[] = {"politics", "economics", "values", "future"};
+    bool complete = !(*GameMoreRules & MRULES_NO_SOCIAL_ENGINEERING);
+    for (int category = 0; category < MaxSocialCatNum; ++category) {
+        int model = field_int(request, keys[category], -1);
+        if (model < 0 || model >= MaxSocialModelNum
+            || !society_avail(category, model, faction_id)) complete = false;
+        else proposed.models[category] = model;
+    }
+    std::ostringstream prepared;
+    const int additional = social_upheaval(faction_id, &proposed) - faction.SE_upheaval_cost_paid;
+    if (complete && additional <= faction.energy_credits) {
+        CSocialEffect effects;
+        social_calc(&proposed, &effects, faction_id, false, false);
+        prepared << "{\"command\":\"set_social_engineering\",\"label\":\"Apply selected social models\"";
+        for (int category = 0; category < MaxSocialCatNum; ++category)
+            prepared << ',' << json_string(keys[category]) << ':' << proposed.models[category];
+        prepared << ",\"additional_energy_cost\":" << additional << ",\"native_effective_ratings\":";
+        append_social_effects(prepared, effects);
+        prepared << '}';
+    }
+    std::string result = out.str(); result.pop_back();
+    return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
 std::string production_choices_response(int faction_id, int base_id) {
@@ -9444,41 +12058,40 @@ int target_tile_id = -1, int target_unit_id = -1) {
             }
         }
     }
-    if (can_airdrop(veh_id, mapsq(veh.x, veh.y))) {
+    if (target_tile_id >= 0) {
+        int exact_x = -1;
+        int exact_y = -1;
+        if (can_airdrop(veh_id, mapsq(veh.x, veh.y))
+        && semantic_airdrop_target_allowed(
+                veh_id, target_tile_id, &exact_x, &exact_y)) {
+            out << ",{\"id\":\"airdrop:" << veh_id << ':' << target_tile_id
+                << "\",\"command\":\"airdrop_unit\",\"unit_id\":" << veh_id
+                << ",\"target_tile_id\":" << target_tile_id
+                << ",\"range\":" << map_range(veh.x, veh.y, exact_x, exact_y)
+                << ",\"target_specific\":true,"
+                << "\"meaning\":\"Execute one native-validated air drop to this exact semantic location. A rejection never reveals hidden blockers.\"}";
+        }
+    } else {
+        const SemanticAirdropTargetReceipt airdrop_receipt =
+            semantic_airdrop_target_receipt(veh_id);
+        if (airdrop_receipt.available) {
         int range = drop_range(faction_id);
-        int emitted_targets = 0;
-        int legal_targets = 0;
         std::ostringstream targets;
-        for (int distance = 0; distance <= range; ++distance) {
-            for (int y = 0; y < *MapAreaY; ++y) {
-                for (int x = y & 1; x < *MapAreaX; x += 2) {
-                    if (map_range(veh.x, veh.y, x, y) != distance) continue;
-                    MAP* sq = mapsq(x, y);
-                    if (!sq || !sq->is_visible(faction_id) || is_ocean(sq)
-                    || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), sq)) continue;
-                    int unit_owner = sq->veh_who();
-                    int base_owner = sq->base_who();
-                    bool unsafe_relation = (unit_owner >= 0 && unit_owner != faction_id
-                            && !has_pact(faction_id, unit_owner) && !at_war(faction_id, unit_owner))
-                        || (base_owner >= 0 && base_owner != faction_id
-                            && !has_pact(faction_id, base_owner) && !at_war(faction_id, base_owner));
-                    if (unsafe_relation) continue;
-                    ++legal_targets;
-                    if (emitted_targets >= 128) continue;
-                    if (emitted_targets++) targets << ',';
-                    targets << "{\"target_tile_id\":" << semantic_tile_id(x, y)
-                        << ",\"range\":" << distance
-                        << ",\"base_owner\":" << base_owner
-                        << ",\"unit_owner\":" << unit_owner << '}';
-                }
-            }
+        for (size_t index = 0; index < airdrop_receipt.targets.size(); ++index) {
+            if (index) targets << ',';
+            const SemanticAirdropTarget& target = airdrop_receipt.targets[index];
+            targets << "{\"target_tile_id\":" << target.tile_id
+                << ",\"range\":" << target.distance
+                << ",\"base_owner\":" << target.base_owner
+                << ",\"unit_owner\":" << target.unit_owner << '}';
         }
         out << ",{\"id\":\"airdrop:" << veh_id
             << "\",\"command\":\"airdrop_unit\",\"unit_id\":" << veh_id
             << ",\"max_range\":" << range << ",\"targets\":[" << targets.str()
-            << "],\"target_count\":" << legal_targets
-            << ",\"targets_truncated\":" << (legal_targets > emitted_targets ? "true" : "false")
-            << ",\"meaning\":\"Execute one native air drop to a currently visible, rule-validated land target.\"}";
+            << "],\"target_count\":" << airdrop_receipt.legal_count
+            << ",\"targets_truncated\":" << (airdrop_receipt.truncated ? "true" : "false")
+            << ",\"meaning\":\"Execute one native air drop to an enumerated currently visible legal land target, or query an exact semantic location.\"}";
+        }
     }
     if (can_arty(veh.unit_id, true)) {
         int range = arty_range(veh.unit_id);
@@ -9836,6 +12449,22 @@ uint32_t& ability_flags, std::string& reason) {
     return true;
 }
 
+bool bulk_upgrade_path_legal(int faction_id, int source_id, int target_id) {
+    if (!prototype_available_to_faction(faction_id, source_id)
+        || !owned_custom_prototype(faction_id, target_id)
+        || !Units[target_id].is_active() || source_id == target_id) return false;
+    UNIT& source = Units[source_id];
+    UNIT& target = Units[target_id];
+    const uint32_t lost_abilities = source.ability_flags & ~target.ability_flags & ~ABL_SLOW;
+    return source.chassis_id == target.chassis_id
+        && source.plan <= PLAN_RECON && target.plan <= PLAN_RECON
+        && source.offense_value() > 0 && source.defense_value() > 0
+        && target.offense_value() >= source.offense_value()
+        && target.defense_value() >= source.defense_value()
+        && !lost_abilities
+        && ((source.ability_flags & ABL_ARTILLERY) == (target.ability_flags & ABL_ARTILLERY));
+}
+
 void append_prototype_summary(std::ostringstream& out, int faction_id, int unit_id) {
     UNIT& unit = Units[unit_id];
     int active_units = veh_count(faction_id, unit_id);
@@ -9859,7 +12488,7 @@ void append_prototype_summary(std::ostringstream& out, int faction_id, int unit_
     out << '}';
 }
 
-std::string unit_design_choices_response(int faction_id) {
+std::string unit_design_choices_response(int faction_id, const std::string& request) {
     int custom_begin = faction_id * MaxProtoFactionNum;
     int custom_end = min(MaxProtoNum, custom_begin + MaxProtoFactionNum);
     int active_custom = 0;
@@ -9950,7 +12579,69 @@ std::string unit_design_choices_response(int faction_id) {
         append_prototype_summary(out, faction_id, unit_id);
     }
     out << "]}";
-    return out.str();
+    std::ostringstream prepared;
+    bool prepared_comma = false;
+    if (!*MultiplayerActive) {
+        for (int id = custom_begin; id < custom_end; ++id) {
+            if (!Units[id].is_active() || veh_count(faction_id, id)
+                || prototype_queue_references(faction_id, id)) continue;
+            if (prepared_comma) prepared << ',';
+            prepared_comma = true;
+            prepared << "{\"command\":\"retire_unit_design\",\"prototype_id\":" << id
+                << ",\"confirm_retire\":1,\"destructive\":true,\"name\":" << json_string(Units[id].name)
+                << ",\"label\":\"Retire unused custom design\"}";
+        }
+        const int source_id = field_int(request, "source_prototype_id", -1);
+        const int target_id = field_int(request, "target_prototype_id", -1);
+        if (bulk_upgrade_path_legal(faction_id, source_id, target_id)) {
+            const int active_units = veh_count(faction_id, source_id);
+            const int queued = prototype_queue_references(faction_id, source_id);
+            const int per_unit = 10 * mod_upgrade_cost(faction_id, target_id, source_id);
+            const int total = per_unit * active_units;
+            if ((active_units || queued) && total <= Factions[faction_id].energy_credits) {
+                if (prepared_comma) prepared << ',';
+                prepared_comma = true;
+                prepared << "{\"command\":\"upgrade_prototype\",\"label\":\"Upgrade all units and queues of selected design\""
+                    << ",\"source_prototype_id\":" << source_id << ",\"target_prototype_id\":" << target_id
+                    << ",\"source_name\":" << json_string(Units[source_id].name)
+                    << ",\"target_name\":" << json_string(Units[target_id].name)
+                    << ",\"active_unit_count\":" << active_units << ",\"production_queue_references\":" << queued
+                    << ",\"energy_cost_per_unit\":" << per_unit << ",\"energy_cost_total\":" << total
+                    << ",\"confirm_upgrade\":1,\"consequential\":true}";
+            }
+        }
+        const int chassis = field_int(request, "chassis_id", -1);
+        const int weapon = field_int(request, "weapon_id", -1);
+        const int armor = field_int(request, "armor_id", -1);
+        const int reactor = field_int(request, "reactor_id", -1);
+        const int first_ability = field_int(request, "ability_id_1", -1);
+        const int second_ability = field_int(request, "ability_id_2", -1);
+        uint32_t flags = 0;
+        std::string reason;
+        bool valid = active_custom < MaxProtoFactionNum && valid_design_components(
+            faction_id, chassis, weapon, armor, reactor, first_ability, second_ability, flags, reason);
+        if (valid) {
+            for (int id = 0; id < MaxProtoNum; ++id) {
+                if (prototype_available_to_faction(faction_id, id) && Units[id].chassis_id == chassis
+                    && Units[id].weapon_id == weapon && Units[id].armor_id == armor
+                    && Units[id].reactor_id == reactor && Units[id].ability_flags == flags) valid = false;
+            }
+        }
+        if (valid) {
+            if (prepared_comma) prepared << ',';
+            prepared << "{\"command\":\"create_unit_design\",\"label\":\"Create selected custom design\""
+                << ",\"chassis_id\":" << chassis << ",\"weapon_id\":" << weapon
+                << ",\"armor_id\":" << armor << ",\"reactor_id\":" << reactor
+                << ",\"ability_id_1\":" << first_ability << ",\"ability_id_2\":" << second_ability
+                << ",\"chassis_name\":" << json_string(Chassis[chassis].offsv1_name)
+                << ",\"weapon_name\":" << json_string(Weapon[weapon].name)
+                << ",\"armor_name\":" << json_string(Armor[armor].name)
+                << ",\"reactor_name\":" << json_string(Reactor[reactor - 1].name)
+                << ",\"parameters\":{\"name\":{\"type\":\"string\",\"required\":false,\"max_length\":31}}}";
+        }
+    }
+    std::string result = out.str(); result.pop_back();
+    return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
 std::string game_management_choices_response() {
@@ -10172,6 +12863,13 @@ std::string semantic_choices_response(const std::string& request) {
                 << ",\"clauses\":";
             append_human_diplomacy_clauses(out);
             out << '}';
+        } else if (project_information_id() >= 0) {
+            const int project = project_information_id();
+            out << "{\"id\":\"project_information:close\","
+                "\"command\":\"advance_project_information\","
+                "\"meaning\":\"Close this passive native Secret Project information window.\"},"
+                "{\"id\":\"project_information:context\",\"kind\":\"information\","
+                "\"project_name\":" << json_string(Facility[project].name) << '}';
         } else if (technology_presentation_active()) {
             int tech_id = technology_presentation_tech_id();
             out << "{\"id\":\"technology_presentation:advance\","
@@ -11415,11 +14113,11 @@ std::string semantic_choices_response(const std::string& request) {
             "Only interaction choices are available outside the human faction's actionable turn. Follow snapshot.protocol.");
     }
     if (kind == "research") return research_choices_response(faction_id);
-    if (kind == "energy_allocation") return energy_allocation_choices_response(faction_id);
-    if (kind == "social_engineering") return social_engineering_choices_response(faction_id);
+    if (kind == "energy_allocation") return energy_allocation_choices_response(faction_id, request);
+    if (kind == "social_engineering") return social_engineering_choices_response(faction_id, request);
     if (kind == "diplomacy") return diplomacy_choices_response(faction_id);
     if (kind == "council") return council_choices_response(faction_id);
-    if (kind == "unit_design") return unit_design_choices_response(faction_id);
+    if (kind == "unit_design") return unit_design_choices_response(faction_id, request);
     if (kind == "production") return production_choices_response(faction_id, field_int(request, "base_id", -1));
     if (kind == "base_management") return base_management_choices_response(faction_id, field_int(request, "base_id", -1));
     if (kind == "base_citizens") return base_citizen_choices_response(faction_id, field_int(request, "base_id", -1));
@@ -11737,6 +14435,7 @@ std::string semantic_command_response(const std::string& request) {
             && human_diplomacy_window_active())
         || (command == "advance_technology_presentation"
             && technology_presentation_active())
+        || (command == "advance_project_information" && project_information_id() >= 0)
         || (command == "choose_research_priority"
             && active_label == "TECHRANDOM")
         || validated_multiplayer_move || validated_multiplayer_finish
@@ -12008,6 +14707,15 @@ std::string semantic_command_response(const std::string& request) {
             "\"initiator_faction_id\":") + std::to_string(initiator)
             + ",\"counterpart_faction_id\":" + std::to_string(counterpart)
             + ",\"native_packet_submitted\":true}";
+    }
+    if (command == "advance_project_information") {
+        if (project_information_id() < 0)
+            return error_response("project_information_changed", "The exact passive project window is no longer active. Observe again.");
+        // Datalink's native close button (0x431EF0) and Enter/Escape handler
+        // (0x431FEA) both call vtable +0xE8 = Win_release_modal. This releases
+        // the native modal loop; hiding the window would not complete it.
+        Win_release_modal(reinterpret_cast<Win*>(DatalinkWin));
+        return "{\"ok\":true,\"command\":\"advance_project_information\",\"transition\":\"waiting_for_engine\"}";
     }
     if (command == "advance_technology_presentation") {
         int tech_id = technology_presentation_tech_id();
@@ -12503,9 +15211,10 @@ std::string semantic_command_response(const std::string& request) {
         }
         int amount = field_int(request, "amount", -1);
         int available = Factions[faction_id].energy_credits;
-        if (amount < 1 || amount > available) {
+        const auto amounts = native_energy_gift_options(available);
+        if (std::find(amounts.begin(), amounts.end(), amount) == amounts.end()) {
             return std::string("{\"ok\":false,\"error\":{\"code\":\"invalid_energy_gift_amount\","
-                "\"message\":\"amount must be within the exact bounds returned by the current interaction choice.\"},"
+                "\"message\":\"Select one of amount_options from the current native gift choice.\"},"
                 "\"amount_min\":1,\"amount_max\":") + std::to_string(max(0, available)) + '}';
         }
         int other = *diplo_second_faction;
@@ -12514,7 +15223,6 @@ std::string semantic_command_response(const std::string& request) {
                 "The native diplomatic counterpart is no longer a valid living faction.");
         }
         int other_before = Factions[other].energy_credits;
-        int withheld = available - amount;
         pending_energy_gift = true;
         pending_energy_gift_faction_id = faction_id;
         pending_energy_gift_other_id = other;
@@ -12540,15 +15248,11 @@ std::string semantic_command_response(const std::string& request) {
             return error_response("energy_gift_timer_unavailable",
                 "The native modal driver could not be scheduled; no gift was submitted.");
         }
-        Factions[faction_id].energy_credits = amount;
         make_gift(faction_id, other);
         *diplo_counter_proposal_id = previous_counter_proposal;
         bool prompt_seen = pending_energy_gift_prompt_seen;
         bool receipt_seen = pending_energy_gift_receipt_seen;
         clear_pending_energy_gift();
-        if (faction_id >= 1 && faction_id < MaxPlayerNum) {
-            Factions[faction_id].energy_credits += withheld;
-        }
         Console_update_data(MapWin, 0);
         int own_after = Factions[faction_id].energy_credits;
         int other_after = Factions[other].energy_credits;
@@ -13388,16 +16092,7 @@ std::string semantic_command_response(const std::string& request) {
         }
         UNIT& source = Units[source_id];
         UNIT& target = Units[target_id];
-        uint32_t lost_abilities = source.ability_flags & ~target.ability_flags & ~ABL_SLOW;
-        bool legal_path = source.chassis_id == target.chassis_id
-            && source.plan <= PLAN_RECON && target.plan <= PLAN_RECON
-            && source.offense_value() > 0 && source.defense_value() > 0
-            && target.offense_value() >= source.offense_value()
-            && target.defense_value() >= source.defense_value()
-            && !lost_abilities
-            && ((source.ability_flags & ABL_ARTILLERY)
-                == (target.ability_flags & ABL_ARTILLERY));
-        if (!legal_path) {
+        if (!bulk_upgrade_path_legal(faction_id, source_id, target_id)) {
             return error_response("illegal_upgrade_path",
                 "Semantic bulk upgrade is limited to same-chassis combat designs that do not reduce offense, defense, abilities, or artillery role.");
         }
@@ -13556,6 +16251,10 @@ std::string semantic_command_response(const std::string& request) {
         // refunds only the legal upheaval delta.
         synch_alloc(faction_id);
         synch_soc(faction_id);
+        // The native dialog applies social_set locally only outside network
+        // play (terranx 0x5B566B..0x5B5682). A single-player synch_soc alone
+        // leaves pending effects and base stocks under the old policy.
+        if (!*MultiplayerActive) social_set(faction_id);
         if (cost_delta) net_energy(faction_id, -cost_delta, 0, 0, 0);
         CSocialEffect effective;
         social_calc(&desired, &effective, faction_id, false, false);
@@ -14903,24 +17602,10 @@ std::string semantic_command_response(const std::string& request) {
         int y = -1;
         bool target_tile_valid = semantic_request_tile(
             request, &target_tile_id, &x, &y);
-        MAP* origin = mapsq(veh.x, veh.y);
-        MAP* target = mapsq(x, y);
-        if (!target_tile_valid || !can_airdrop(veh_id, origin)
-        || !target || !target->is_visible(faction_id)
-        || is_ocean(target) || map_range(veh.x, veh.y, x, y) > drop_range(faction_id)
-        || !allow_airdrop(x, y, faction_id, veh.is_combat_unit(), target)) {
+        if (!target_tile_valid
+        || !semantic_airdrop_target_allowed(veh_id, target_tile_id, &x, &y)) {
             return error_response("invalid_airdrop_target",
-                "Use a currently returned visible, rule-validated target from this unit's fresh airdrop choice.");
-        }
-        int unit_owner = target->veh_who();
-        int base_owner = target->base_who();
-        bool unsafe_relation = (unit_owner >= 0 && unit_owner != faction_id
-                && !has_pact(faction_id, unit_owner) && !at_war(faction_id, unit_owner))
-            || (base_owner >= 0 && base_owner != faction_id
-                && !has_pact(faction_id, base_owner) && !at_war(faction_id, base_owner));
-        if (unsafe_relation) {
-            return error_response("airdrop_requires_diplomatic_decision",
-                "A semantic airdrop will not implicitly break a treaty or truce. Resolve diplomacy first.");
+                "The exact semantic airdrop target is not currently legal. Hidden blockers are not disclosed.");
         }
         int old_x = veh.x;
         int old_y = veh.y;
@@ -15497,6 +18182,511 @@ std::string act_response(HWND hwnd, const std::string& request) {
 
 #endif
 
+std::string terraform_counterfactual_receipt(const std::string& request, int faction_id,
+                                               const std::string& revision) {
+    int id = field_int(request, "unit_id", -1);
+    int improvement = field_int(request, "former_id", -1);
+    if (id < 0 || id >= *VehCount || Vehs[id].faction_id != faction_id || !Vehs[id].is_former())
+        return error_response("invalid_former", "Use an owned Former's current choice.");
+    VEH& veh = Vehs[id];
+    MAP* sq = mapsq(veh.x, veh.y);
+    if (!sq || !sq->is_visible(faction_id) || sq->is_base()
+        || improvement < FORMER_FARM || improvement > FORMER_MONOLITH
+        || !terrain_avail(static_cast<FormerItem>(improvement), is_ocean(sq), faction_id))
+        return error_response("cannot_terraform", "The nominated order is no longer available on this tile.");
+    // Match the native order's automatic farm/road upgrade before quoting it.
+    if (improvement == FORMER_FARM && !is_ocean(sq) && (sq->items & BIT_FARM)
+        && has_tech(Terraform[FORMER_SOIL_ENR].preq_tech, faction_id)) improvement = FORMER_SOIL_ENR;
+    if (improvement == FORMER_ROAD && (sq->items & BIT_ROAD)
+        && has_tech(is_ocean(sq) ? Terraform[FORMER_MAGTUBE].preq_tech_sea
+                    : Terraform[FORMER_MAGTUBE].preq_tech, faction_id)) improvement = FORMER_MAGTUBE;
+    struct TerraformReadGuard {
+        MAP* square; MAP prior;
+        BASE dummy = {};
+        BASE* previous_base = *CurrentBase;
+        int reduce = *BaseTerraformReduce;
+        int energy = *BaseTerraformEnergy;
+        TerraformReadGuard(MAP* value, int faction) : square(value), prior(*value) {
+            dummy.faction_id = faction;
+        }
+        ~TerraformReadGuard() {
+            *square = prior; *CurrentBase = previous_base;
+            *BaseTerraformReduce = reduce; *BaseTerraformEnergy = energy;
+        }
+    } guard(sq, faction_id);
+    const bool changes_climate = improvement == FORMER_CONDENSER || improvement == FORMER_THERMAL_BORE
+        || improvement == FORMER_AQUIFER || improvement == FORMER_RAISE_LAND || improvement == FORMER_LOWER_LAND;
+    auto yields = [&](int base_id) {
+        *CurrentBase = base_id >= 0 ? &Bases[base_id] : &guard.dummy;
+        bool energy_known = true;
+        if (sq->items & BIT_SOLAR)
+            for (auto& adjacent : iterate_tiles(veh.x, veh.y, 1, 9))
+                if (!adjacent.sq->is_visible(faction_id)) energy_known = false;
+        std::ostringstream value;
+        value << "{\"nutrients\":" << mod_crop_yield(faction_id, base_id, veh.x, veh.y, 0)
+            << ",\"minerals\":" << mod_mine_yield(faction_id, base_id, veh.x, veh.y, 0)
+            << ",\"energy\":";
+        if (energy_known) value << mod_energy_yield(faction_id, base_id, veh.x, veh.y, 0);
+        else value << "null";
+        value << '}'; return value.str();
+    };
+    auto apply_local = [&]() {
+        sq->items = (guard.prior.items & ~Terraform[improvement].bit_incompatible) | Terraform[improvement].bit;
+        if (improvement == FORMER_LEVEL_TERRAIN && sq->rocky_level())
+            sq->val3 = (sq->val3 & 0x3f) | ((sq->rocky_level() - 1) << 6);
+    };
+    int work = Terraform[improvement].rate;
+    if (improvement == FORMER_SOLAR) work += work * sq->rocky_level() / 2;
+    if (improvement == FORMER_ROAD || improvement == FORMER_MAGTUBE) {
+        work = Terraform[sq->items & BIT_ROAD ? FORMER_MAGTUBE : FORMER_ROAD].rate;
+        work += (sq->items & BIT_RIVER ? 1 : 0) + (sq->is_fungus() ? 2 : 0)
+            + (sq->items & BIT_FOREST ? 2 : sq->rocky_level());
+    }
+    if (improvement == FORMER_REMOVE_FUNGUS && has_abil(veh.unit_id, ABL_FUNGICIDAL)) work /= 2;
+    if (!is_human(faction_id) && *DiffLevel > 3 && work > 3) --work;
+    const int actor_rate = contribution(id, improvement);
+    int rate = actor_rate;
+    int done = veh.movement_turns;
+    for (int other_id = 0; other_id < *VehCount; ++other_id) {
+        VEH& other = Vehs[other_id];
+        if (other_id != id && other.faction_id == faction_id && other.x == veh.x && other.y == veh.y
+            && other.order == improvement + VehOrderFormerFirst) {
+            rate += contribution(other_id, improvement); done += other.movement_turns;
+        }
+    }
+    // The issued toggle=1 order transfers accrued helper work but spends
+    // only this actor's contribution now. Subsequent whole-turn estimates
+    // assume all current owned cooperating Formers continue working.
+    done += actor_rate;
+    int eta = max(0, (2 * work - done + min(rate, 255) - 1) / max(1, min(rate, 255)));
+    int preq = is_ocean(sq) ? Terraform[improvement].preq_tech_sea : Terraform[improvement].preq_tech;
+    std::ostringstream out;
+    out << "{\"ok\":true,\"kind\":\"terraform\",\"action_revision\":" << json_string(revision.c_str())
+        << ",\"unit_id\":" << id << ",\"location_ref\":\"location-" << semantic_tile_id(veh.x, veh.y)
+        << "\",\"epistemic_status\":\"conditional\",\"current_legality\":true,\"proposed_improvement\":"
+        << json_string(is_ocean(sq) ? Terraform[improvement].name_sea : Terraform[improvement].name)
+        << ",\"prerequisite_technology\":";
+    if (preq >= 0 && preq < MaxTechnologyNum) out << json_string(Tech[preq].name);
+    else out << "null";
+    out << ",\"project_override_may_satisfy_prerequisite\":true,\"estimated_remaining_turns\":" << eta
+        << ",\"timing_kind\":\"fixed_owned_former_contributions\",\"yield_cases\":[";
+    std::vector<int> bases = {-1};
+    for (int base_id = 0; base_id < *BaseCount; ++base_id) {
+        BASE& base = Bases[base_id];
+        if (base.faction_id != faction_id || map_range(base.x, base.y, veh.x, veh.y) > 2) continue;
+        for (int offset = 1; offset < 21; ++offset) {
+            int x = 0, y = 0;
+            if (next_tile(base.x, base.y, offset, &x, &y) && x == veh.x && y == veh.y) {
+                bases.push_back(base_id); break;
+            }
+        }
+    }
+    bool comma = false;
+    int shown = 0;
+    for (int base_id : bases) {
+        if (shown++ >= 9) break;
+        if (comma) out << ','; comma = true;
+        *sq = guard.prior;
+        out << "{\"base_ref\":";
+        if (base_id >= 0) out << json_string(("base-location-" + std::to_string(
+            semantic_tile_id(Bases[base_id].x, Bases[base_id].y))).c_str());
+        else out << "null";
+        out << ",\"current_yield\":" << yields(base_id) << ",\"resulting_yield\":";
+        if (changes_climate) out << "null";
+        else { apply_local(); out << yields(base_id); }
+        out << '}';
+    }
+    out << "],\"affected_owned_base_count\":" << bases.size() - 1
+        << ",\"base_details_truncated\":" << (bases.size() > 9 ? "true" : "false")
+        << ",\"coverage\":" << json_string(changes_climate ? "climate_and_altitude_consequences_unmodeled" : "local_tile_yield_delta")
+        << ",\"assumptions\":[\"owned helpers continue their current order\",\"tile, technology, social ratings, and facilities otherwise stay fixed\"],"
+        << "\"limitations\":[\"foreign helper work is excluded\",\"forest harvest credits, worker reassignment, diplomacy, and climate effects are not predicted\"],"
+        << "\"evidence_kind\":\"native_yield_helpers_under_local_change\",\"executes_action\":false}";
+    return out.str();
+}
+
+void append_counterfactual_prototype(std::ostringstream& out, int faction_id, int prototype_id) {
+    VEH unit = {};
+    unit.unit_id = prototype_id; unit.faction_id = faction_id;
+    UNIT& prototype = Units[prototype_id];
+    int speed = proto_speed(prototype_id);
+    if (prototype.triad() == TRIAD_SEA && has_project(FAC_MARITIME_CONTROL_CENTER, faction_id))
+        speed += Rules->move_rate_roads * 2;
+    out << "{\"name\":" << json_string(prototype.name)
+        << ",\"owner_ref\":\"faction-" << faction_id << "\",\"triad\":"
+        << json_string(prototype.triad() == TRIAD_LAND ? "land" : prototype.triad() == TRIAD_SEA ? "sea" : "air")
+        << ",\"movement_points\":" << min(conf.max_movement_rate, speed)
+        << ",\"movement_scale\":" << Rules->move_rate_roads
+        << ",\"air_safe_range\":" << (prototype.triad() != TRIAD_AIR || unit.is_missile() ? -1
+            : !prototype.range() ? 9999 : prototype.range() * min(conf.max_movement_rate, speed) / max(1, Rules->move_rate_roads))
+        << ",\"air_full_safe_range\":" << (prototype.triad() != TRIAD_AIR || unit.is_missile() ? -1
+            : !prototype.range() ? 9999 : prototype.range() * min(conf.max_movement_rate, speed) / max(1, Rules->move_rate_roads))
+        << ",\"road_movement_cost\":" << semantic_road_edge_cost()
+        << ",\"magtube_movement_cost\":" << semantic_magtube_edge_cost()
+        << ",\"fungus_movement_cost\":" << semantic_fungus_movement_cost(unit)
+        << ",\"fungus_connects_to_road\":" << (semantic_fungus_connects_to_road(unit) ? "true" : "false")
+        << ",\"ignores_rough_movement\":" << (semantic_ignores_rough_movement(unit) ? "true" : "false")
+        << ",\"roles\":{\"combat\":" << (unit.is_combat_unit() ? "true" : "false")
+        << ",\"colony\":" << (unit.is_colony() ? "true" : "false")
+        << ",\"former\":" << (unit.is_former() ? "true" : "false")
+        << ",\"probe\":" << (unit.is_probe() ? "true" : "false")
+        << ",\"supply\":" << (unit.is_supply() ? "true" : "false")
+        << ",\"transport\":" << (unit.is_transport() ? "true" : "false")
+        << ",\"cloaked\":" << (has_abil(prototype_id, ABL_CLOAKED) ? "true" : "false")
+        << ",\"amphibious\":" << (has_abil(prototype_id, ABL_AMPHIBIOUS) ? "true" : "false") << '}'
+        << ",\"chassis\":" << json_string(Chassis[prototype.chassis_id].offsv1_name)
+        << ",\"weapon\":" << json_string(Weapon[prototype.weapon_id].name)
+        << ",\"armor\":" << json_string(Armor[prototype.armor_id].name)
+        << ",\"reactor\":" << json_string(Reactor[prototype.reactor_id - 1].name)
+        << ",\"movement_assumption\":\"undamaged_nonelite_prototype_under_current_faction_rules\"}";
+}
+
+std::string action_counterfactual_receipt(const std::string& request, int faction_id,
+                                         const std::string& revision) {
+    const std::string command = field_string(request, "command");
+    const std::string kind = field_string(request, "kind");
+    std::ostringstream out;
+    out << "{\"ok\":true,\"kind\":" << json_string(kind.c_str())
+        << ",\"action_revision\":" << json_string(revision.c_str())
+        << ",\"epistemic_status\":\"conditional\",\"proposed_action\":" << json_string(command.c_str());
+    if (command == "set_production" || command == "hurry_production") {
+        const int id = field_int(request, "base_id", -1);
+        if (id < 0 || id >= *BaseCount || Bases[id].faction_id != faction_id)
+            return error_response("invalid_base", "Use a current owned base choice.");
+        BASE& base = Bases[id];
+        const int prior_item = base.queue_items[0];
+        const int item = command == "hurry_production" ? prior_item : field_int(request, "item_id", 99999);
+        if (!production_item_buildable(faction_id, id, item))
+            return error_response("invalid_production", "The nominated item is no longer buildable.");
+        int loss = 0, retained = base.minerals_accumulated;
+        if (command == "set_production" && item != prior_item) {
+            struct QueueReadGuard {
+                BASE& base; int prior;
+                QueueReadGuard(BASE& value, int item) : base(value), prior(value.queue_items[0]) { base.queue_items[0] = item; }
+                ~QueueReadGuard() { base.queue_items[0] = prior; }
+            } guard(base, item);
+            loss = mod_base_lose_minerals(id, item);
+            retained = base.minerals_accumulated_2 - loss;
+        }
+        const int cost = mineral_cost(id, item);
+        int hurry_energy = 0;
+        if (command == "hurry_production") {
+            const int missing = max(0, cost - retained);
+            hurry_energy = hurry_cost(id, item, missing);
+            if (*MultiplayerActive || !base.can_hurry_item() || missing <= 0 || hurry_energy <= 0
+                || hurry_energy > Factions[faction_id].energy_credits - Factions[faction_id].hurry_cost_total)
+                return error_response("cannot_hurry_production", "The nominated hurry is no longer legal and affordable.");
+            retained += missing;
+        }
+        out << ",\"base_id\":" << id << ",\"origin_location_ref\":\"location-"
+            << semantic_tile_id(base.x, base.y) << "\",\"current_production\":"
+            << json_string(production_name(prior_item).c_str())
+            << ",\"resulting_production\":" << json_string(production_name(item).c_str())
+            << ",\"current_progress\":" << base.minerals_accumulated
+            << ",\"resulting_progress\":" << retained << ",\"retool_penalty\":" << loss
+            << ",\"mineral_cost\":" << cost << ",\"mineral_surplus\":" << base.mineral_surplus
+            << ",\"energy_cost\":" << hurry_energy << ",\"estimated_production_turns\":";
+        const bool colony_population_decision = item >= 0 && Units[item].plan == PLAN_COLONY
+            && base.pop_size == 1 && Factions[faction_id].diff_level > 1;
+        const bool completion_available = item != -FAC_STOCKPILE_ENERGY
+            && base.nutrients_accumulated >= 0 && !colony_population_decision;
+        if (!completion_available) out << "null";
+        else if (retained >= cost) out << 1; // Completion still requires native production upkeep.
+        else if (base.mineral_surplus > 0 && !base.drone_riots_active()) out << max(1, (cost - retained + base.mineral_surplus - 1) / base.mineral_surplus);
+        else out << "null";
+        out << ",\"completion_constraints\":{\"ongoing_stockpile\":" << (item == -FAC_STOCKPILE_ENERGY ? "true" : "false")
+            << ",\"negative_nutrient_stock\":" << (base.nutrients_accumulated < 0 ? "true" : "false")
+            << ",\"mineral_accumulation_halted_by_riots\":" << (base.drone_riots_active() ? "true" : "false")
+            << ",\"colony_population_decision_required\":" << (colony_population_decision ? "true" : "false") << '}';
+        if (item >= 0) { out << ",\"prototype\":"; append_counterfactual_prototype(out, faction_id, item); }
+        out << ",\"assumptions\":[\"net mineral surplus and production remain fixed\",\"completion occurs at native production upkeep\"]";
+    } else if (command == "upgrade_unit") {
+        const int id = field_int(request, "unit_id", -1);
+        const int target = field_int(request, "target_prototype_id", -1);
+        if (id < 0 || id >= *VehCount || Vehs[id].faction_id != faction_id || *MultiplayerActive
+            || !single_unit_upgrade_path_legal(faction_id, Vehs[id].unit_id, target))
+            return error_response("illegal_single_unit_upgrade", "Use a current legal owned unit upgrade.");
+        const int cost = 10 * mod_upgrade_cost(faction_id, target, Vehs[id].unit_id);
+        if (cost > Factions[faction_id].energy_credits)
+            return error_response("single_unit_upgrade_unaffordable", "The nominated upgrade is no longer affordable.");
+        out << ",\"unit_id\":" << id << ",\"energy_cost\":" << cost
+            << ",\"estimated_preparation_turns\":1,\"origin_location_ref\":\"location-"
+            << semantic_tile_id(Vehs[id].x, Vehs[id].y) << "\",\"current_prototype\":";
+        append_counterfactual_prototype(out, faction_id, Vehs[id].unit_id);
+        out << ",\"prototype\":"; append_counterfactual_prototype(out, faction_id, target);
+        out << ",\"assumptions\":[\"upgrade consumes the current turn\",\"subsequent route assumes undamaged nonelite movement\"]";
+    } else if (command == "rehome_unit" || command == "disband_unit" || command == "move_unit") {
+        const int id = field_int(request, "unit_id", -1);
+        if (id < 0 || id >= *VehCount || Vehs[id].faction_id != faction_id)
+            return error_response("invalid_unit", "Use a current owned unit choice.");
+        VEH& actor = Vehs[id];
+        int next_home = actor.home_base_id;
+        MAP* destination = nullptr;
+        if (command == "rehome_unit") {
+            next_home = field_int(request, "base_id", -1);
+            if (next_home < 0 || next_home >= *BaseCount || Bases[next_home].faction_id != faction_id
+                || Bases[next_home].x != actor.x || Bases[next_home].y != actor.y)
+                return error_response("invalid_rehome_base", "The destination must be the owned base under this unit.");
+        }
+        if (command == "move_unit") {
+            int x = 0, y = 0;
+            if (semantic_tile_coords(field_int(request, "target_tile_id", -1), &x, &y)) {
+                MAP* target = mapsq(x, y);
+                if (target && target->is_visible(faction_id)) destination = target;
+            }
+        }
+        out << ",\"unit_id\":" << id << ",\"home_base_id\":" << actor.home_base_id
+            << ",\"support_changes\":[";
+        bool comma = false;
+        std::set<int> affected = {actor.home_base_id, next_home};
+        for (int base_id : affected) {
+            if (base_id < 0 || base_id >= *BaseCount || Bases[base_id].faction_id != faction_id) continue;
+            int before = 0, after = 0;
+            for (int other_id = 0; other_id < *VehCount; ++other_id) {
+                VEH& other = Vehs[other_id];
+                if (other.faction_id != faction_id || other.plan() > unit_support_plan()
+                    || has_abil(other.unit_id, ABL_CLEAN_REACTOR)) continue;
+                MAP* tile = mapsq(other.x, other.y);
+                bool eligible = tile && (!other.is_native_unit() || !tile->is_fungus());
+                if (other.home_base_id == base_id && eligible) ++before;
+                if (other_id == id) {
+                    if (command == "disband_unit") continue;
+                    if (command == "move_unit" && destination)
+                        eligible = !other.is_native_unit() || !destination->is_fungus();
+                    if (next_home == base_id && eligible) ++after;
+                } else if (other.home_base_id == base_id && eligible) ++after;
+            }
+            const int support = Factions[faction_id].SE_support_pending;
+            const int free = unit_support_free(support, Bases[base_id].pop_size)
+                + (is_human(faction_id) ? 0 : conf.unit_support_bonus[*DiffLevel]);
+            if (comma) out << ','; comma = true;
+            out << "{\"base_id\":" << base_id << ",\"current_support_minerals\":"
+                << max(0, before - free) * unit_support_cost(support) << ",\"resulting_support_minerals\":";
+            if (command == "move_unit" && !destination) out << "null";
+            else out << max(0, after - free) * unit_support_cost(support);
+            out << '}';
+        }
+        out << "],\"local_police_capacity\":[";
+        bool police_comma = false;
+        if (command == "move_unit" || command == "disband_unit") {
+            for (int base_id = 0; base_id < *BaseCount; ++base_id) {
+                BASE& base = Bases[base_id];
+                if (base.faction_id != faction_id || base.x != actor.x || base.y != actor.y) continue;
+                const int police = base.SE_police(SE_Pending);
+                const int count = clamp((police == -1) + police + 1, 0, 3);
+                const int value = 1 + (police >= 3);
+                const bool worm = MFactions[faction_id].rule_flags & RFLAG_WORMPOLICE;
+                std::vector<int> before, after;
+                if (police >= -1) {
+                    if (has_project(FAC_SELF_AWARE_COLONY, faction_id)) { before.push_back(value); after.push_back(value); }
+                    for (int other_id = 0; other_id < *VehCount; ++other_id) {
+                        VEH& other = Vehs[other_id];
+                        if (other.x != base.x || other.y != base.y || other.plan() > PLAN_RECON
+                            || other.triad() == TRIAD_SEA || (other.faction_id != faction_id && !other.is_visible(faction_id))) continue;
+                        const int contribution = value + (has_abil(other.unit_id, ABL_POLICE_2X) != 0)
+                            + (worm && other.triad() == TRIAD_LAND && other.is_native_unit());
+                        before.push_back(contribution);
+                        if (other_id != id) after.push_back(contribution);
+                    }
+                }
+                auto capacity = [&](std::vector<int>& units) {
+                    std::sort(units.rbegin(), units.rend());
+                    int total = 0;
+                    for (int i = 0; i < count && i < static_cast<int>(units.size()); ++i) total += units[i];
+                    return total;
+                };
+                const int prior = capacity(before), next = capacity(after);
+                if (police_comma) out << ','; police_comma = true;
+                out << "{\"base_id\":" << base_id << ",\"effective_police_rating\":" << police
+                    << ",\"known_unit_capacity_before\":" << prior << ",\"known_unit_capacity_after\":" << next
+                    << ",\"drone_increase_upper_bound_from_local_police_loss\":" << max(0, prior - next)
+                    << ",\"actual_drone_or_riot_change\":null}";
+            }
+        }
+        out << "],\"assumptions\":[\"the nominated action succeeds\",\"other units, populations, and social settings remain fixed\"]";
+    } else {
+        return error_response("unsupported_action_preview", "This action has no native production or upgrade preview.");
+    }
+    out << ",\"limitations\":[\"future random events, social changes, morale and damage changes are not predicted\"],"
+        << "\"evidence_kind\":\"native_current_costs_and_conditional_fixed_state_calculation\",\"executes_action\":false}";
+    return out.str();
+}
+
+std::string semantic_counterfactual_response(const std::string& request) {
+    if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
+    const std::string revision = semantic_revision();
+    if (field_string(request, "expected_revision") != revision)
+        return error_response("stale_counterfactual_choice", "Enumerate a current choice before previewing it.");
+    const int faction_id = *CurrentPlayerFaction;
+    const std::string kind = field_string(request, "kind");
+    if (kind == "action" || kind == "deployment") return action_counterfactual_receipt(request, faction_id, revision);
+    if (kind == "terraform") return terraform_counterfactual_receipt(request, faction_id, revision);
+    if (kind != "social") return error_response("unsupported_counterfactual_kind", "Unknown bounded preview kind.");
+    if (*GameMoreRules & MRULES_NO_SOCIAL_ENGINEERING)
+        return error_response("social_engineering_disabled", "Social Engineering is disabled by the scenario.");
+    CSocialCategory desired;
+    const char* keys[] = {"politics", "economics", "values", "future"};
+    for (int category = 0; category < MaxSocialCatNum; ++category) {
+        int model = field_int(request, keys[category], -1);
+        if (model < 0 || model >= MaxSocialModelNum || !society_avail(category, model, faction_id))
+            return error_response("unavailable_social_model", "Use a complete current Social Engineering choice.");
+        desired.models[category] = model;
+    }
+    Faction& faction = Factions[faction_id];
+    CSocialCategory selected;
+    memcpy(&selected, &faction.SE_Politics_pending, sizeof(selected));
+    CSocialEffect before, after;
+    social_calc(&selected, &before, faction_id, false, false);
+    social_calc(&desired, &after, faction_id, false, false);
+    const int old_nutrient_factor = mod_cost_factor(faction_id, RSC_NUTRIENT, -1);
+    const int old_mineral_factor = mod_cost_factor(faction_id, RSC_MINERAL, -1);
+    int next_nutrient_factor = 0, next_mineral_factor = 0;
+    {
+        struct PendingEffectsReadGuard {
+            Faction& faction; CSocialEffect prior;
+            PendingEffectsReadGuard(Faction& value, const CSocialEffect& proposed) : faction(value) {
+                memcpy(&prior, &faction.SE_economy_pending, sizeof(prior));
+                memcpy(&faction.SE_economy_pending, &proposed, sizeof(proposed));
+            }
+            ~PendingEffectsReadGuard() { memcpy(&faction.SE_economy_pending, &prior, sizeof(prior)); }
+        } guard(faction, after);
+        next_nutrient_factor = mod_cost_factor(faction_id, RSC_NUTRIENT, -1);
+        next_mineral_factor = mod_cost_factor(faction_id, RSC_MINERAL, -1);
+    }
+    const int cost = social_upheaval(faction_id, &desired) - faction.SE_upheaval_cost_paid;
+    if (cost > faction.energy_credits)
+        return error_response("insufficient_energy", "The nominated configuration is no longer affordable.");
+    std::ostringstream out;
+    out << "{\"ok\":true,\"action_revision\":" << json_string(revision.c_str())
+        << ",\"kind\":\"social\",\"epistemic_status\":\"conditional\",\"confirmed_mechanics\":{\"current_models\":";
+    append_social_models(out, selected);
+    out << ",\"proposed_models\":"; append_social_models(out, desired);
+    out << ",\"current_ratings\":"; append_social_effects(out, before);
+    out << ",\"resulting_ratings\":"; append_social_effects(out, after);
+    out << ",\"switch_energy_cost\":" << cost << "},\"derived\":{\"support_by_base\":[";
+    bool comma = false;
+    int before_total = 0, after_total = 0, base_count = 0;
+    std::map<int, int> eligible_by_base;
+    for (int unit = 0; unit < *VehCount; ++unit) {
+        VEH& veh = Vehs[unit];
+        if (veh.faction_id != faction_id || veh.home_base_id < 0
+            || veh.plan() > unit_support_plan() || has_abil(veh.unit_id, ABL_CLEAN_REACTOR)) continue;
+        MAP* sq = mapsq(veh.x, veh.y);
+        if (sq && (!veh.is_native_unit() || !sq->is_fungus())) ++eligible_by_base[veh.home_base_id];
+    }
+    for (int id = 0; id < *BaseCount; ++id) {
+        BASE& base = Bases[id];
+        if (base.faction_id != faction_id) continue;
+        int eligible = eligible_by_base[id];
+        const int bonus = is_human(faction_id) ? 0 : conf.unit_support_bonus[*DiffLevel];
+        const int prior = max(0, eligible - unit_support_free(before.support, base.pop_size) - bonus)
+            * unit_support_cost(before.support);
+        const int next = max(0, eligible - unit_support_free(after.support, base.pop_size) - bonus)
+            * unit_support_cost(after.support);
+        before_total += prior; after_total += next;
+        if (base_count++ >= 16) continue;
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"base_ref\":\"base-location-" << semantic_tile_id(base.x, base.y)
+            << "\",\"current_support_minerals\":" << prior
+            << ",\"resulting_support_minerals\":" << next
+            << ",\"current_police_unit_limit\":" << clamp((before.police + 2 * has_fac_built(FAC_BROOD_PIT, id) == -1)
+                + before.police + 2 * has_fac_built(FAC_BROOD_PIT, id) + 1, 0, 3)
+            << ",\"resulting_police_unit_limit\":" << clamp((after.police + 2 * has_fac_built(FAC_BROOD_PIT, id) == -1)
+                + after.police + 2 * has_fac_built(FAC_BROOD_PIT, id) + 1, 0, 3)
+            << ",\"current_minerals_accumulated\":" << base.minerals_accumulated
+            << ",\"resulting_minerals_accumulated\":" << (old_mineral_factor == next_mineral_factor
+                ? base.minerals_accumulated : (base.minerals_accumulated * next_mineral_factor + old_mineral_factor / 2) / max(1, old_mineral_factor))
+            << ",\"current_nutrients_accumulated\":" << base.nutrients_accumulated
+            << ",\"resulting_nutrients_accumulated\":" << (old_nutrient_factor == next_nutrient_factor
+                ? base.nutrients_accumulated : (base.nutrients_accumulated * next_nutrient_factor + old_nutrient_factor / 2) / max(1, old_nutrient_factor))
+            << ",\"eligible_units\":" << eligible << '}';
+    }
+    out << "],\"owned_base_count\":" << base_count
+        << ",\"base_details_truncated\":" << (base_count > 16 ? "true" : "false")
+        << ",\"current_empire_support_minerals\":" << before_total
+        << ",\"resulting_empire_support_minerals\":" << after_total
+        << ",\"current_mineral_row_factor\":" << old_mineral_factor
+        << ",\"resulting_mineral_row_factor\":" << next_mineral_factor
+        << "},\"assumptions\":[\"unit locations, home bases, populations, and facilities remain unchanged\"],"
+        << "\"limitations\":[\"full base psych, individual police strengths, inefficiency, commerce, and research output are not recomputed\"],"
+        << "\"evidence_kind\":\"native_helpers_and_deterministic_support_rules\",\"executes_action\":false}";
+    return out.str();
+}
+
+std::string test_counterfactual_read_safety_response(const std::string& request) {
+    char test_mode[8] = {}, acceptance[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+        || strcmp(test_mode, "1")
+        || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_MANAGED_ACTIONS", acceptance, sizeof(acceptance))
+        || strcmp(acceptance, "1"))
+        return error_response("test_mode_disabled", "Counterfactual acceptance is disabled.");
+    if (!game_active()) return error_response("not_in_game", "Requires an active isolated game.");
+    const int base_count = *BaseCount, veh_count = *VehCount;
+    const int current_base_id = *CurrentBaseID;
+    BASE* current_base = *CurrentBase;
+    const int reduce = *BaseTerraformReduce, energy = *BaseTerraformEnergy;
+    std::vector<BASE> bases(Bases, Bases + MaxBaseNum);
+    std::vector<VEH> units(Vehs, Vehs + veh_count);
+    std::vector<Faction> factions(Factions, Factions + MaxPlayerNum);
+    std::vector<MAP> tiles(*MapTiles, *MapTiles + *MapAreaTiles);
+    std::vector<uint8_t> technologies(TechOwners, TechOwners + MaxTechnologyNum);
+    const std::string revision = semantic_revision();
+    const std::string receipt = field_string(request, "kind") == "site_economy"
+        ? semantic_base_site_receipts_response(request) : semantic_counterfactual_response(request);
+    bool hidden_independent = true;
+    int changed_hidden_tiles = 0;
+    if (field_string(request, "kind") == "site_economy"
+        && field_bool(request, "check_hidden_independence", false)) {
+        bool valid = false;
+        const auto targets = field_int_array(request, "target_tile_ids", &valid);
+        std::vector<std::pair<int, int>> sites;
+        std::vector<std::string> original;
+        if (valid && targets.size() <= 4) {
+            for (int target : targets) {
+                int x = 0, y = 0;
+                if (!semantic_tile_coords(target, &x, &y) || !mapsq(x, y)->is_visible(*CurrentPlayerFaction)) continue;
+                sites.push_back({x, y});
+                original.push_back(site_economy_receipt(*CurrentPlayerFaction, x, y));
+            }
+        }
+        // Change only unobserved hypothetical mirror evidence and foreign
+        // worker allocations. No UI messages or native actions run inside
+        // this dual-gated acceptance probe; restore before returning.
+        for (int index = 0; index < *MapAreaTiles; ++index) {
+            MAP& tile = (*MapTiles)[index];
+            if (!tile.is_visible(*CurrentPlayerFaction)) {
+                tile.items ^= BIT_ECH_MIRROR;
+                ++changed_hidden_tiles;
+            }
+        }
+        for (int index = 0; index < *BaseCount; ++index)
+            if (Bases[index].faction_id != *CurrentPlayerFaction)
+                Bases[index].worked_tiles ^= 0x1ffffe;
+        for (size_t index = 0; index < sites.size(); ++index)
+            hidden_independent &= original[index] == site_economy_receipt(
+                *CurrentPlayerFaction, sites[index].first, sites[index].second);
+        memcpy(*MapTiles, tiles.data(), tiles.size() * sizeof(MAP));
+        for (int index = 0; index < base_count; ++index)
+            Bases[index].worked_tiles = bases[index].worked_tiles;
+        hidden_independent &= !sites.empty();
+    }
+    const bool unchanged = base_count == *BaseCount && veh_count == *VehCount
+        && current_base == *CurrentBase && current_base_id == *CurrentBaseID
+        && reduce == *BaseTerraformReduce && energy == *BaseTerraformEnergy
+        && !memcmp(bases.data(), Bases, bases.size() * sizeof(BASE))
+        && !memcmp(units.data(), Vehs, units.size() * sizeof(VEH))
+        && !memcmp(factions.data(), Factions, factions.size() * sizeof(Faction))
+        && !memcmp(tiles.data(), *MapTiles, tiles.size() * sizeof(MAP))
+        && !memcmp(technologies.data(), TechOwners, technologies.size())
+        && revision == semantic_revision();
+    return std::string("{\"ok\":") + (unchanged && hidden_independent ? "true" : "false")
+        + ",\"native_probe_state_unchanged\":" + (unchanged ? "true" : "false")
+        + ",\"hidden_input_independence\":" + (hidden_independent ? "true" : "false")
+        + ",\"changed_hidden_tile_count\":" + std::to_string(changed_hidden_tiles)
+        + ",\"receipt\":" + receipt + '}';
+}
+
 std::string execute_request(const std::string& request) {
     if (field_string(request, "token") != auth_token) return error_response("unauthorized", "Invalid bridge token.");
     apply_deferred_semantics();
@@ -15505,6 +18695,8 @@ std::string execute_request(const std::string& request) {
     if (op == "human_ui_state") return human_ui_state_response();
     if (op == "human_ui_control") return human_ui_control_response(request);
     if (op == "observe") return observe_response();
+    if (op == "observation_feed") return observation_feed_response(request);
+    if (op == "semantic_identity_state") return semantic_identity_state_response(request);
     if (op == "list_bases") return bases_response();
     if (op == "list_units") return units_response();
     if (op == "list_factions") return factions_response();
@@ -15530,7 +18722,26 @@ std::string execute_request(const std::string& request) {
     if (op == "test_lan_ai_contact_fixture") {
         return test_lan_ai_contact_fixture_response(request);
     }
+    if (op == "test_airdrop_legality_fixture") {
+        return test_airdrop_legality_fixture_response();
+    }
+    if (op == "test_airdrop_collection_stress_fixture") {
+        return test_airdrop_collection_stress_fixture_response();
+    }
+    if (op == "test_pact_port_fixture") {
+        return test_pact_port_fixture_response();
+    }
+    if (op == "test_identity_compaction_fixture") {
+        return test_identity_compaction_fixture_response();
+    }
     if (op == "list_tiles") return tiles_response(request);
+    if (op == "perspective_world_page") return perspective_world_page_response(request);
+    if (op == "semantic_airdrop_targets") return semantic_airdrop_targets_response(request);
+    if (op == "semantic_counterfactual") return semantic_counterfactual_response(request);
+    if (op == "semantic_base_site_receipts") return semantic_base_site_receipts_response(request);
+    if (op == "test_base_site_receipts_stress") return test_base_site_receipts_stress_response(request);
+    if (op == "test_counterfactual_read_safety") return test_counterfactual_read_safety_response(request);
+    if (op == "test_managed_action_fixture") return test_managed_action_fixture_response(request);
     if (op == "semantic_snapshot") return semantic_snapshot_response();
     if (op == "semantic_chat") return semantic_chat_response(request);
     if (op == "semantic_lan") {
@@ -15669,7 +18880,9 @@ DWORD WINAPI server_worker(void*) {
                         + ", modal_wait="
                         + std::to_string(request_modal_wait_hits)
                         + ", handler="
-                        + std::to_string(request_handler_hits) + '.';
+                        + std::to_string(request_handler_hits)
+                        + ", acceptance_fixture_stage="
+                        + std::to_string(InterlockedCompareExchange(&acceptance_fixture_stage, 0, 0)) + '.';
                     send_all(client, error_response(
                         "game_timeout", timeout_message.c_str()) + "\n");
                     continue;
@@ -15695,6 +18908,134 @@ DWORD WINAPI server_worker(void*) {
 }
 
 } // namespace
+
+void agent_observe_unit_destroyed(int veh_id) {
+    if (!lock_initialized || !game_active() || veh_id < 0
+    || veh_id >= *VehCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    VEH& veh = Vehs[veh_id];
+    // The VEH array is compacted after this hook for every destruction,
+    // including units outside the current perspective.  Keep our private
+    // identity/shadow arrays in exact lockstep even when fair-play rules mean
+    // no observation event may be emitted for the destroyed row.
+    ensure_semantic_vehicle_handles();
+    if (perspective >= 1 && perspective < MaxPlayerNum
+    && (veh.faction_id == perspective
+        || (veh.visibility & (1 << perspective)))) {
+        const int stable_handle = semantic_vehicle_handle(veh_id);
+        const int tile_id = semantic_tile_id(veh.x, veh.y);
+        append_observation_event("visible_unit_destroyed", *CurrentTurn,
+            stable_handle, veh.faction_id, tile_id, tile_id,
+            veh.cur_hitpoints(), 0, true);
+    }
+    // Mirror the native memmove that immediately follows this hook. Surviving
+    // semantic handles and observation shadows retain their exact identity.
+    if (veh_id < static_cast<int>(semantic_vehicle_handles.size()))
+        semantic_vehicle_handles.erase(semantic_vehicle_handles.begin() + veh_id);
+    if (veh_id < static_cast<int>(observed_vehicles.size()))
+        observed_vehicles.erase(observed_vehicles.begin() + veh_id);
+    if (veh_id < static_cast<int>(sampled_vehicles.size()))
+        sampled_vehicles.erase(sampled_vehicles.begin() + veh_id);
+}
+
+void agent_observe_production_completed(int base_id, int production_id,
+int category, int veh_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    const int handle = veh_id >= 0 && veh_id < *VehCount
+        ? semantic_vehicle_handle(veh_id) : -1;
+    append_observation_event("owned_production_completed", *CurrentTurn,
+        base_id, production_id, tile_id, tile_id, category, handle, true,
+        prod_name(production_id));
+}
+
+void agent_observe_project_interrupted(int base_id, int production_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("owned_project_interrupted", *CurrentTurn,
+        base_id, production_id, tile_id, tile_id, 0, 0, true,
+        prod_name(production_id));
+}
+
+void agent_observe_production_queue(int base_id, bool advanced) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event(advanced ? "owned_queue_advanced" : "owned_queue_exhausted",
+        *CurrentTurn, base_id, base.queue_items[0], tile_id, tile_id,
+        base.queue_size, -1, true, prod_name(base.queue_items[0]));
+}
+
+void agent_observe_production_selection(int base_id, bool repeat) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount || *CurrentPlayerFaction < 1
+    || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event(repeat ? "owned_production_repeat" : "owned_production_fallback",
+        *CurrentTurn, base_id, base.queue_items[0], tile_id, tile_id,
+        base.queue_size, -1, true, prod_name(base.queue_items[0]));
+}
+
+void agent_observe_base_founded(int base_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    const BASE& base = Bases[base_id];
+    MAP* square = mapsq(base.x, base.y);
+    if (perspective < 1 || perspective >= MaxPlayerNum
+    || (base.faction_id != perspective
+        && !(square && square->is_visible(perspective)))) return;
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("visible_base_founded", *CurrentTurn,
+        base_id, base.faction_id, -1, tile_id, -1, base.pop_size, true);
+}
+
+void agent_observe_base_destroyed(int base_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    const BASE& base = Bases[base_id];
+    MAP* square = mapsq(base.x, base.y);
+    if (perspective < 1 || perspective >= MaxPlayerNum
+    || (base.faction_id != perspective
+        && !(square && square->is_visible(perspective)))) return;
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("visible_base_destroyed", *CurrentTurn,
+        base_id, base.faction_id, tile_id, tile_id, base.pop_size, 0, true);
+    observed_bases.clear();
+    semantic_observation_shadow_ready = false;
+}
+
+void agent_observe_base_captured(int base_id, int old_faction_id,
+int new_faction_id) {
+    if (!lock_initialized || !game_active() || base_id < 0
+    || base_id >= *BaseCount) return;
+    const int perspective = *CurrentPlayerFaction;
+    const BASE& base = Bases[base_id];
+    MAP* square = mapsq(base.x, base.y);
+    if (perspective < 1 || perspective >= MaxPlayerNum
+    || (old_faction_id != perspective && new_faction_id != perspective
+        && !(square && square->is_visible(perspective)))) return;
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("visible_base_captured", *CurrentTurn,
+        base_id, new_faction_id, tile_id, tile_id,
+        old_faction_id, new_faction_id, true);
+    observed_bases.clear();
+    semantic_observation_shadow_ready = false;
+}
 
 void agent_set_probe_excuse_context(int offender_faction_id, int target_faction_id,
 int action_id, bool framed, bool pact) {
@@ -15939,11 +19280,50 @@ void agent_bridge_start_once(HWND hwnd) {
     request_getmessage_hook = SetWindowsHookExA(
         WH_GETMESSAGE, agent_request_getmessage_hook, NULL,
         GetCurrentThreadId());
+    semantic_observation_timer_id = SetTimer(
+        NULL, 0, 50, semantic_observation_timer_proc);
     worker_thread = CreateThread(NULL, 0, server_worker, NULL, 0, NULL);
 }
 
 bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
     if (msg == WM_SMACX_AGENT_DEFERRED) {
+        if (test_production_completion_base >= 0) {
+            const int base_id = test_production_completion_base;
+            const FacilityId facility = static_cast<FacilityId>(test_production_completion_facility);
+            const bool interrupted = test_production_interruption;
+            const bool preserve_progress = test_production_preserve_progress;
+            test_production_completion_base = -1;
+            test_production_completion_facility = -1;
+            test_production_interruption = false;
+            test_production_preserve_progress = false;
+            if (!game_active() || base_id >= *BaseCount
+            || Bases[base_id].faction_id != *CurrentPlayerFaction
+            || !human_turn_actionable(*CurrentPlayerFaction)) {
+                deferred_action.status = "rejected";
+                deferred_action.resolution = "production_fixture_not_actionable";
+                return true;
+            }
+            const int prior_base = *CurrentBaseID;
+            BASE* prior_pointer = *CurrentBase;
+            auto restore = cleanup_handler([&] { *CurrentBaseID = prior_base; *CurrentBase = prior_pointer; });
+            set_base(base_id);
+            base_compute(0);
+            if (!preserve_progress) Bases[base_id].minerals_accumulated = 10000;
+            const int unspent_minerals = Bases[base_id].minerals_accumulated + ((Bases[base_id].state_flags & BSTATE_DRONE_RIOTS_ACTIVE)
+                ? 0 : std::max(0, Bases[base_id].mineral_surplus));
+            // Native completion/presentation executes outside the protected
+            // request frame. Any popup remains available to managed choices.
+            mod_base_production();
+            const bool completed = facility >= SP_ID_First
+                ? SecretProjects[facility - SP_ID_First] == base_id : has_fac_built(facility, base_id);
+            const bool verified = completed && (!interrupted
+                || (Bases[base_id].queue_items[0] == -facility && Bases[base_id].minerals_accumulated == unspent_minerals));
+            deferred_action.status = verified ? "completed" : "failed";
+            deferred_action.resolution = verified ? (interrupted ? "native_project_interruption_verified"
+                : "native_production_effect_verified") : "native_production_effect_mismatch";
+            ++semantic_mutation_generation;
+            return true;
+        }
         if (lan_test_lobby_pending) {
             // semantic_lan(host/join) is requested while TOPMENU's SetupWin
             // owns the native modal loop.  Calling multiplayer_init directly
@@ -16711,6 +20091,11 @@ void agent_bridge_stop() {
         KillTimer(NULL, deferred_end_turn_timer_id);
         deferred_end_turn_timer_id = 0;
     }
+    if (semantic_observation_timer_id) {
+        KillTimer(NULL, semantic_observation_timer_id);
+        semantic_observation_timer_id = 0;
+    }
+    reset_semantic_observation_shadow();
     clear_pending_council_vote();
     InterlockedExchange(&stopping, 1);
     if (listen_socket != INVALID_SOCKET) closesocket(listen_socket);

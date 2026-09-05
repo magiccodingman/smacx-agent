@@ -64,6 +64,14 @@ def required_snapshot(port: int, context: str) -> dict:
     return snapshot
 
 
+def native_id_for_ready_ref(port: int, ready: dict) -> int:
+    units = request(port, "list_units", scope="own", limit=256)
+    return next(
+        int(item["id"]) for item in units.get("items", [])
+        if item.get("own_unit_ref") == ready.get("own_unit_ref")
+    )
+
+
 def wait_bridge(port: int, seconds: float = 50) -> None:
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -2151,8 +2159,9 @@ def main() -> int:
         safe_move: dict | None = None
         inspected_move_choices: list[dict] = []
         for unit in host_after_research.get("ready_unit_refs", []):
+            unit_id = native_id_for_ready_ref(HOST_PORT, unit)
             choices = wait_unit_choices(
-                HOST_PORT, unit["id"], peer_port=JOIN_PORT,
+                HOST_PORT, unit_id, peer_port=JOIN_PORT,
             )
             inspected_move_choices.append(choices)
             moves = [
@@ -2165,9 +2174,10 @@ def main() -> int:
                 safe_move = moves[0]
                 break
         if safe_move_choices is None or safe_move is None:
-            origin_tile_id = host_after_research.get("ready_unit_refs", [{}])[0].get(
-                "tile_id", -1
+            location_ref = host_after_research.get("ready_unit_refs", [{}])[0].get(
+                "location_ref", "location--1"
             )
+            origin_tile_id = int(str(location_ref).removeprefix("location-"))
             raise AssertionError(
                 "host had no validated safe adjacent LAN move: "
                 f"snapshot={host_after_research}; choices={inspected_move_choices}; "
@@ -2211,17 +2221,18 @@ def main() -> int:
         skip_choices: dict | None = None
         skip_unit_id: int | None = None
         for unit in host_ready.get("ready_unit_refs", []):
-            if unit["id"] == safe_move["unit_id"]:
+            unit_id = native_id_for_ready_ref(HOST_PORT, unit)
+            if unit_id == safe_move["unit_id"]:
                 continue
             choices = wait_unit_choices(
-                HOST_PORT, unit["id"], peer_port=JOIN_PORT,
+                HOST_PORT, unit_id, peer_port=JOIN_PORT,
             )
             if any(
                 choice.get("command") == "skip_unit"
                 for choice in choices.get("choices", [])
             ):
                 skip_choices = choices
-                skip_unit_id = unit["id"]
+                skip_unit_id = unit_id
                 break
         if skip_choices is None or skip_unit_id is None:
             raise AssertionError(f"no guarded LAN skip choice was available: {host_ready}")
@@ -2279,7 +2290,8 @@ def main() -> int:
             if not remaining:
                 break
             execute_finish_action(
-                HOST_PORT, JOIN_PORT, remaining[0]["id"], "skip_unit",
+                HOST_PORT, JOIN_PORT,
+                native_id_for_ready_ref(HOST_PORT, remaining[0]), "skip_unit",
             )
 
         host_turn = wait_snapshot_predicate(
@@ -2319,9 +2331,8 @@ def main() -> int:
         if join_turn.get("interaction", {}).get("kind") != "turn":
             raise AssertionError(f"native LAN turn did not transfer to joiner: {join_turn}")
 
-        join_ready_ids = [
-            unit["id"] for unit in join_turn.get("ready_unit_refs", [])
-        ]
+        join_ready_ids = [native_id_for_ready_ref(JOIN_PORT, unit)
+                          for unit in join_turn.get("ready_unit_refs", [])]
         if len(join_ready_ids) < 2:
             raise AssertionError(
                 f"joiner lacked units needed for hold/sentry regression: {join_turn}"

@@ -30,6 +30,7 @@ PYTHONPATH=src python3 scripts/control_http_test.py
 PYTHONPATH=src python3 scripts/worker_contract_test.py
 PYTHONPATH=src python3 scripts/capability_manifest_test.py
 PYTHONPATH=src python3 scripts/mcp_command_schema_test.py
+PYTHONPATH=src python3 scripts/semantic_choice_binding_test.py
 PYTHONPATH=src python3 scripts/stale_revision_recovery_test.py
 PYTHONPATH=src python3 scripts/match_briefing_contract_test.py
 PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
@@ -43,6 +44,32 @@ PYTHONPATH=src python3 scripts/campaign_journal_test.py
 PYTHONPATH=src python3 scripts/ai_memory_checkpoint_test.py
 PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
 PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
+PYTHONPATH=src python3 scripts/world_model_contract_test.py
+PYTHONPATH=src python3 scripts/native_observation_contract_test.py
+PYTHONPATH=src python3 scripts/fair_play_world_test.py
+PYTHONPATH=src python3 scripts/strategic_world_fixtures_test.py
+PYTHONPATH=src python3 scripts/geographic_semantics_contract_test.py
+PYTHONPATH=src python3 scripts/global_world_pipeline_test.py
+PYTHONPATH=src python3 scripts/movement_mechanics_contract_test.py
+PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
+PYTHONPATH=src python3 scripts/notebook_scale_test.py
+PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
+PYTHONPATH=src python3 scripts/spatial_scope_contract_test.py
+PYTHONPATH=src python3 scripts/spatial_scope_scale_test.py
+PYTHONPATH=src python3 scripts/milestone_contract_test.py
+PYTHONPATH=src python3 scripts/plan_health_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_supervisor_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_provider_capture_test.py
+PYTHONPATH=src python3 scripts/specialist_provider_meter_test.py
+PYTHONPATH=src python3 scripts/managed_memory_scale_test.py
+PYTHONPATH=src python3 scripts/rollback_world_contract_test.py
+PYTHONPATH=src python3 scripts/provider_schema_budget_test.py
+PYTHONPATH=src python3 scripts/reference_bounding_contract_test.py
+PYTHONPATH=src python3 scripts/specialist_snapshot_gc_scale_test.py
+PYTHONPATH=src python3 scripts/world_context_benchmark.py
+PYTHONPATH=src python3 scripts/observation_collector_benchmark.py
+PYTHONPATH=src python3 scripts/amphibious_query_benchmark.py
 ```
 
 The provider-wire context policy must run inside the built Hermes image because
@@ -58,6 +85,34 @@ docker run --rm --entrypoint /opt/hermes/.venv/bin/python \
   -v "$PWD:/workspace:ro" -w /workspace \
   smacx-agent-harness:dev scripts/harness_context_policy_test.py
 ```
+
+Managed parameter-path contracts require the MCP dependency environment. The
+single-player control/MCP live test also runs `managed_action_path_live_test.py`
+against the current managed endpoint; the two-seat control LAN test runs
+`managed_human_action_live_test.py`. Both use isolated installations and the
+packaged native runtime. Build both images from the same checkout and select them
+with `SMACX_TEST_CONTROL_IMAGE`, `SMACX_TEST_MCP_IMAGE`, and
+`SMACX_TEST_WORKER_IMAGE`. Set `SMACX_TEST_GAME_SOURCE` to the operator-owned game
+directory. The managed helpers use native fixtures only for controlled setup and
+native observations for additional effect checks; actions go through issued
+managed choices. Raw logs, saves and game assets must stay outside committed
+evidence.
+
+```bash
+docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  smacx-agent-control:dev scripts/managed_action_path_contract_test.py
+```
+
+The native roster adapter regression runs on the host with a C++ compiler:
+
+```bash
+python3 scripts/native_lan_roster_contract_test.py
+```
+
+It compiles the production adapter with controlled RNG and selector-state inputs.
+Actual loaded-game and journal/identity recovery are separately exercised by the
+control LAN live test; the compiled adapter is not a substitute for that proof.
 
 Additional focused `scripts/*_test.py` files cover individual semantic action
 families. Run the relevant focused contract whenever changing its bridge,
@@ -116,6 +171,38 @@ Tests against a real OpenAI-compatible provider are opt-in. Supply credentials
 through ignored environment variables or secret files, never command output,
 fixtures, snapshots, or commits.
 
+The v6 prompt and `smac_world` gates use the provider's exact tokenizer when
+available, and the prefix-cache test reads content-free vLLM counters:
+
+```bash
+SMACX_QWEN_TOKENIZE_URL=http://provider.example/v1/tokenize \
+  SMACX_QWEN_TOKENIZE_MODEL=model-id \
+  PYTHONPATH=src python3 scripts/provider_schema_budget_test.py
+
+PYTHONPATH=src python3 scripts/provider_prefix_cache_live_test.py \
+  --base-url http://provider.example/v1 --model model-id
+
+PYTHONPATH=src python3 scripts/specialist_provider_live_test.py \
+  --base-url http://provider.example/v1 --model model-id
+```
+
+The specialist capture and live gates start real disposable Hermes processes.
+Each child receives exactly one faculty instrument, no personality or sovereign
+transcript, no game volume, and no unrestricted terminal/files/web/chat/memory/
+delegation/mutation authority. The tests cover iterative retrieval, stable
+system/tool prefixes, actual-call dependency capture, strict results, fresh
+attempt isolation, hard leashes, cancellation, retry, schema repair, scheduling,
+and trace retention. `specialist_provider_meter_test.py` separately proves the
+attempt-local provider proxy enforces actual calls, cumulative usage,
+per-request context, and output reservations even when a failed response omits
+usage. It also proves that `/chat/completions` and `/v1/chat/completions` inputs
+resolve to exactly one `/v1` prefix when the configured provider base already
+contains it. Live scripts print only content-free usage/cache/latency aggregates.
+The provider-facing child evidence envelope contains a bounded semantic result
+and one opaque query receipt; internal object/material hashes and dependency
+graphs remain in the retained diagnostic trace rather than being replayed into
+the child's next prompt.
+
 ## Native game integration
 
 Native semantic tests require the user's installed game, the built bridge, and
@@ -127,6 +214,71 @@ PYTHONPATH=src python3 scripts/native_automation_turn_test.py
 PYTHONPATH=src python3 scripts/save_load_test.py
 PYTHONPATH=src python3 scripts/full_endgame_pipeline_test.py
 ```
+
+`native_observation_contract_test.py` checks the native observation adapters,
+including more than 256 events, cross-page visible movement continuity, visible
+destruction versus fog loss, capture/recapture, tile visibility transitions,
+chat, global events, public Secret Project report transitions, durable
+two-phase publication across both injected crash windows, and a staged drain
+larger than the native ring. The adversarial recovery fixture mutates the native
+feed and action revision after partial journal publication and proves N finishes
+from its original immutable package before N+1 consumes the new event. It also
+rejects action revisions coupled to native
+row indices and verifies that loss/reappearance retires only the affected
+foreign visible-episode identity. The managed real-game gate deliberately
+compacts an owned VEH row before checkpoint, kills the native worker, and
+proves the surviving stable refs and private identity capsule restore exactly.
+`global_world_pipeline_test.py` carries legitimate global, intelligence,
+base-geography, support, convoy, native-life, orbital, project, ecology,
+victory, anchor, runtime, and frozen-specialist facts through the complete
+provider-safe projection path.
+
+`movement_mechanics_contract_test.py` proves route, reachability, response, and
+lost-contact envelopes share one stateful arrival engine across turn
+boundaries, fungus, rough terrain, roads, rivers, tubes, ZOC, occupancy and
+remaining movement, including residual disappearance phases and refreshed
+movement after unseen turn boundaries. It routes own, Pact, truce, hostile and
+epistemically unknown subjects under subject-relative access, including
+foreign aircraft refuelling/carrier/gate isolation. Transport fixtures cover
+adjacent-coast rejection, same-square coastal-port rendezvous, passenger and
+transport arrivals, 0/partial/full residual movement, same-turn transport
+movement after boarding, the passenger's mandatory post-board refresh,
+charged disembark movement, same-turn land continuation, and final aggregate
+ETA. Exact embark fixtures require an active provider-safe base object with
+current owned-or-Pact coastal and relationship evidence and reject stale,
+destroyed, missing, enemy, Treaty, Truce, and neutral ports. A winding-region adversary proves preparatory
+arrival search exhausts the finite known graph instead of stopping at
+`width + height`. Foreign-airdrop fixtures cover same-owner, sovereign, Pact,
+war, treaty, and unknown occupants/bases without borrowing sovereign ZOC or
+diplomacy; owned Drop receipts are demand-driven per specific unit/action
+revision and expose truncation, while routine collection reports only readiness
+and range. The amphibious benchmark separately enforces bounded candidate
+frontiers, explicit search completeness/optimality, transport ownership and
+diplomatic access, capacity/boarding legality, and conditional opposed landing
+on a 4,096-square custom world. `native_airdrop_legality_test.py` is the focused
+entry point for an isolated native worker deliberately launched with both
+`SMACX_AGENT_TEST_MODE=1` and `SMACX_ACCEPTANCE_AIRDROP_LEGALITY=1`; either flag
+alone is rejected by the destructive endpoint and production workers receive
+neither. The managed live worker gate covers the same narrow fixture in its
+isolated game process and runs the real
+`allow_airdrop` diplomacy, Aerospace Complex, and stationed Air Superiority
+matrices plus many-ready-orbital-Drop routine-page latency/payload checks before
+parking its disposable no-timer worker.
+
+The geographic/LOD acceptance suite is deterministic and uses native-shaped
+tile, base, unit, faction, landmark, repair-rule, and guarded site-receipt rows:
+
+```bash
+PYTHONPATH=src python3 scripts/geographic_semantics_contract_test.py
+```
+
+It proves physical land/ocean identity invariance, terrain split/merge,
+coastal mobility separation, territorial/resource/landmark aggregation,
+unknown-connectivity frontiers, lazy scout access, cross-region theaters,
+active-plan/recent-event promotion, non-ranking expansion mechanics,
+repair/staging logistics, and Huge fragmented-map bounding.
+The latest content-free measurements are recorded in
+[Geographic semantics and hierarchical LOD acceptance](benchmarks/2026-09-04-geographic-semantics.md).
 
 LAN integration additionally requires isolated native workers and appropriate
 DirectPlay networking. Use the dedicated scripts for the path being changed:
@@ -141,6 +293,29 @@ PYTHONPATH=src python3 scripts/virtual_lan_contract_test.py
 Native tests must use an isolated display and test-owned match/data roots. They
 must never send input to the developer's normal desktop or reuse a live player
 campaign.
+
+The whole managed path has one opt-in, self-cleaning integration fixture. The
+worker contains the pinned Proton/DirectX runtime, so the only acquired runtime
+input is the absolute game-directory path. Use distinct test image tags; the
+fixture binds its control API to an ephemeral loopback port and does not touch a
+running portal stack:
+
+```bash
+SMACX_TEST_GAME_SOURCE=/absolute/path/to/your/game \
+SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+SMACX_TEST_MCP_IMAGE=smacx-agent-control:test \
+SMACX_TEST_HERMES_IMAGE=smacx-agent-harness:test \
+  PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
+```
+
+To add the managed-provider gate, also set `SMACX_TEST_PROVIDER_URL` and
+`SMACX_TEST_PROVIDER_MODEL` through the local environment. The provider run is
+successful only after a journal-observed semantic revision changes; merely
+starting Hermes or allowing native time to pass is not success. The test also
+checks exact-seat sidecar binding, the 15-tool managed surface, checkpoint and
+backup integrity, native crash recovery, a fresh recovery-side sovereign lease,
+low-reasoning profile selection, and clean parking. Output is content-free.
 
 Every autonomous-play benchmark must set the native multiplayer turn clock to
 **None**. A timed game can advance on the model's behalf and is not evidence of
@@ -164,7 +339,10 @@ malformed records, exact repetition, compression health, handoff compliance,
 and token totals. Neither tool emits prompts, responses, chat, reasoning text,
 arguments, endpoints, secrets, game assets, or saves.
 
-The first published comparison using this procedure is the
+The strategic-world rebuild additionally has a deterministic 64K/256K and Huge
+map acceptance report in
+[Strategic world and provider context](benchmarks/2026-09-03-strategic-world-rebuild.md).
+The first published gameplay comparison using this procedure is the
 [bounded-runtime no-timer smoke test](benchmarks/2026-09-02-bounded-runtime.md).
 
 ## Repository boundaries
@@ -185,3 +363,128 @@ Public test documentation should describe repeatable procedures. Sanitized,
 reproducible benchmark aggregates may live under `docs/benchmarks/results`;
 reference-machine diaries, raw transcripts, and maintainer backlog remain
 outside the repository.
+
+## Sovereign checkpoint acceptance
+
+Run `scripts/sovereign_hardening_contract_test.py` and
+`scripts/sovereign_geography_acceptance_test.py` with `PYTHONPATH=src` alongside
+the existing geography, world, observation, fair-play, movement, runtime,
+attention, rollback and semantic-choice contracts. The new fixtures exercise
+actual service queries, cache invalidation/reuse, omitted geography discovery,
+60-base global awareness, distinct theater crises, field predicates, Survey
+entitlement and transport-dependent repair/staging.
+
+The isolated `control_worker_mcp_live_test.py` additionally enables the dual-gated
+base-site receipt stress endpoint. It temporarily installs 512 owned base input
+rows, requests 32 sites with 21-square radii, restores the input state, and checks
+native/UI wall and probe time against the unchanged 500 ms law and a 256 KB
+receipt ceiling. This is a native read-path stress fixture, not a gameplay proof
+that 512 bases were legally founded. Never enable acceptance endpoints in a
+production worker. See the checkpoint report for executed evidence and limitations.
+
+Checkpoint 3 adds `spatial_scope_contract_test.py`, `spatial_scope_scale_test.py`,
+`milestone_contract_test.py`, and `plan_health_contract_test.py`. Use the MCP
+container Python for imports that need `mcp`; the specialist supervisor contract
+still runs on the host. The scope scale fixture exercises the actual journal,
+SQLite watch service and private geometry at 400, 40,000 and 65,536 squares.
+
+The isolated native MCP test calls `intent_checkpoint_live_test.py` to express
+a journaled plan, scope and milestones through the existing managed tools. It
+uses the actual native production routine for repeated units, a facility, a
+Secret Project and an unavailable-project interruption. Native fixture state is
+isolated and dual-gated; ordinary managed choices acknowledge reviewed notices.
+The test then verifies runtime attention delivery, checkpoint recovery and
+discarding old-timeline watches. Its response hook simulates the trusted
+provider-response boundary; it does not claim model inference. Consult the
+checkpoint acceptance ledger for which runs have passed.
+
+Checkpoint 4 adds `counterfactual_contract_test.py` and
+`counterfactual_choice_contract_test.py`. Run both with the MCP container Python:
+
+```sh
+docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  smacx-agent-control:dev scripts/counterfactual_contract_test.py
+docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  smacx-agent-control:dev scripts/counterfactual_choice_contract_test.py
+```
+
+These prove attainable distinct-worker outputs against exhaustive enumeration,
+stale-input qualification, routing composition, total response budgets and
+opaque preview scope/revision/consumption rules. They do not prove agreement
+with native economic outcomes. The isolated native MCP campaign additionally
+calls `counterfactual_checkpoint_live_test.py` to compare predictions with
+managed actions and observed effects. Controlled production timing invokes
+real native production upkeep without adding minerals; it is not a full
+campaign-turn simulation. Native read-safety probes compare state before and
+after hypotheses and test hidden-mirror/foreign-worker independence. All such
+native inputs and probes are restricted to isolated dual-gated acceptance
+installations. The [checkpoint-4 ledger](benchmarks/2026-09-05-counterfactual.md)
+distinguishes passing comparisons from outstanding acceptance.
+
+## Final sovereign integration
+
+`managed_runtime_readiness_test.py` blocks the first observation and verifies
+that runtime readiness is not advertised until it finishes. The two-seat
+`control_lan_live_test.py` additionally exercises a staged Social Engineering
+choice, native pending-model/charge replication, and selected-policy recovery.
+`platform_controller_test.py` checks that geographic speech stays untrusted
+text with no structured map payload; this does not certify stock Pact map
+exchange or refresh behavior.
+
+Run the single-player and LAN scripts with distinct test-created installations
+to exercise concurrent startup. Run the heavy collector benchmark separately
+when recording its dedicated latency gate, preserving failures under contention
+as separate evidence. Do not raise the 30-second collection or 500 ms probe
+thresholds to hide a failure. Checkpoint evidence records the workload and any
+remaining limitations.
+
+`observation_batch_recovery_test.py` injects failures before, during and after
+batched observation-cache commits. Canonical journal events precede the cache
+transaction; frozen-publication replay reconstructs cache rows and preserves
+exactly-once events. `observation_collector_benchmark.py` prints measured case
+values in latency assertion failures without relaxing its existing gates.
+
+## Focused semantic consumer acceptance
+
+The [PR #48 correction ledger](benchmarks/2026-09-05-peer-review-corrections.md)
+lists the exact 30 scripts executed and their evidence classes. New focused
+contracts cover direct physical watches, local theater membership, managed
+route/cache/scope/watch/area chains, paginated omitted references, event-time
+episodes, native-backed receipt lifetime, threshold transitions and journal plan
+reactivation. `plan_dependency_publication_test.py` injects a failure after the
+positive transition is durable but before publication acknowledgement.
+
+Run `active_scope_benchmark.py` and `active_scope_collector_benchmark.py` in the
+MCP container. Set `SMACX_SCOPE_BENCH_WIDTH=320` and
+`SMACX_SCOPE_BENCH_HEIGHT=160` for 25,600 squares; defaults are 6,400. Both use
+nine simultaneous scopes and four watches. Their independent probe is a
+production-pipeline responsiveness check, not a measurement of a running game
+UI. `native_event_time_contract_test.py` compiles the production event adapter on
+the host with controlled native-shaped inputs; also cross-build the bridge.
+The unchanged full collector gates and failed timing evidence remain explicit.
+
+## Final hostile-review transaction and lifecycle gates
+
+`publication_transaction_test.py` exercises candidate-N birth/garrison/field/
+scope effects and ten crash boundaries with both unchanged and reversed native
+state. It reconstructs service instances, including the journal and SQLite store,
+and interrupts acknowledgement after the durable stage write. The frozen N
+transaction must finish before native N+1 is drained.
+
+`transient_episode_publication_test.py` covers entirely between-snapshot episodes,
+256-event page boundaries, stage restart and post-head retry. `derived_lifecycle_test.py`
+checks actual land/ocean version/split/merge changes before history refresh and
+normal cold/warm route and area inspection promotion. `query_pin_consumers_test.py`
+checks each pin type separately. `query_history_scaling_test.py` seeds 100/1,000/
+5,000 distinct historical receipt rows and measures cleanup, watch, inspection
+and runtime work; this is storage/resolution evidence, not thousands of live
+provider executions.
+
+`collector_tail_benchmark.py` prints all three repeated 25,600-square runs before
+asserting unchanged 30-second/500-ms gates. Preserve the whole distribution,
+including failures. `journal_idempotency_index_test.py` verifies canonical marker
+loss/restart/external-writer recovery and that new keys do not reparse all prior
+events. Selected journal sections remain detached copies and hash-chain checks
+are unchanged. See the final hostile-review ledger for exact executions.

@@ -25,7 +25,11 @@ from smacx_game_settings import (
     normalize_lan_game_settings,
 )
 from smacx_journal import CampaignJournal, JournalError
+from smacx_specialists import SpecialistService
 from smacx_store import InvalidRecord, MemoryScope, ScopeViolation, StoreError
+from smacx_world_model import CALCULATOR_VERSION
+from smacx_world_store import WorldStore, WorldStoreError
+from smacx_world_types import WorldIdentity
 
 
 RESOURCE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$")
@@ -1455,6 +1459,29 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             values["SMACX_AGENT_STARTUP_SCENARIO"] = autostart["scenario_id"]
         if isinstance(autostart.get("lan_scenario_id"), str):
             values["SMACX_AGENT_LAN_SCENARIO"] = autostart["lan_scenario_id"]
+        # Native acceptance fixtures must never leak into a production
+        # worker. A deliberately test-mode Control Center may propagate only
+        # the narrow fixtures explicitly enabled by a live regression.
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" \
+                and os.environ.get("SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION") == "1":
+            values["SMACX_ACCEPTANCE_OWN_UNIT_COMPACTION"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" \
+                and os.environ.get("SMACX_ACCEPTANCE_AIRDROP_LEGALITY") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_ACCEPTANCE_AIRDROP_LEGALITY"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" \
+                and os.environ.get("SMACX_ACCEPTANCE_PACT_PORT") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_ACCEPTANCE_PACT_PORT"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_ACCEPTANCE_BASE_SITE") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_ACCEPTANCE_BASE_SITE"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_ACCEPTANCE_MANAGED_ACTIONS") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_ACCEPTANCE_MANAGED_ACTIONS"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_AGENT_TEST_LAN_HOST") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_AGENT_TEST_LAN_HOST"] = "1"
         faction_roster = autostart.get("faction_roster")
         if isinstance(faction_roster, list) and len(faction_roster) == 7:
             values["SMACX_AGENT_FACTION_ROSTER"] = ",".join(
@@ -2344,6 +2371,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         }
 
     def start_lan_match(self, match_id: str, *, session_name: str | None = None,
+                        profile: str = "small_easy", resume_slot: str | None = None,
+                        scenario_id: str | None = None,
+                        game_settings: Mapping[str, Any] | None = None,
+                        timeout: float = 420.0) -> dict[str, Any]:
+        # The whole paired transition is atomic with recovery and parking,
+        # including the interval between starting the host and joining peers.
+        with self._lifecycle_lock:
+            return self._start_lan_match_locked(
+                match_id, session_name=session_name, profile=profile,
+                resume_slot=resume_slot, scenario_id=scenario_id,
+                game_settings=game_settings, timeout=timeout)
+
+    def _start_lan_match_locked(self, match_id: str, *, session_name: str | None = None,
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,
@@ -3547,6 +3587,29 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             frozen_signature = observe_signature()
             if frozen_signature != previous_signature:
                 raise WorkerManagerError("checkpoint_state_changed_before_ai_freeze")
+            native_identity_by_instance: dict[str, dict[str, Any]] = {}
+            for instance_id in managed_instances:
+                capsule = self._native_request(
+                    instance_id, "semantic_identity_state", timeout=20.0,
+                    action="export",
+                )
+                if capsule.get("ok") is not True \
+                        or capsule.get("schema") != "smacx.private-vehicle-identity.v1":
+                    raise WorkerManagerError(
+                        "checkpoint_semantic_identity_export_failed"
+                    )
+                native_identity_by_instance[instance_id] = {
+                    "schema": capsule["schema"],
+                    "turn": capsule.get("turn"),
+                    "faction_id": capsule.get("faction_id"),
+                    "native_validation_hash": capsule.get("native_validation_hash"),
+                    "next_semantic_vehicle_handle": capsule.get(
+                        "next_semantic_vehicle_handle"
+                    ),
+                    "semantic_vehicle_handles": list(
+                        capsule.get("semantic_vehicle_handles") or []
+                    ),
+                }
             choices = self._native_request(
                 host_instance_id, "semantic_choices", kind="game_management",
                 timeout=30.0,
@@ -3578,8 +3641,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "quiescence_samples": stable_samples,
                 "frozen_ai_controllers": len(paused_harnesses),
                 "managed_peer_count": len(managed_instances),
+                # Strictly platform-private derived metadata. This capsule is
+                # never journaled, projected, or supplied to a provider.
+                "native_semantic_identity": native_identity_by_instance,
             }
             journal_checkpoints: list[dict[str, Any]] = []
+            world_snapshots: list[dict[str, Any]] = []
             checkpoint_chat_groups = self.store.export_chat_groups(match_id)
             for scope in self.store.scopes_for_match(match_id):
                 timeline_id = self.store.active_timeline_id(scope)
@@ -3610,7 +3677,21 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "event_id": event["event_id"],
                     "head_hash": event["event_hash"],
                 })
+                world_store = WorldStore(self.store)
+                projection = world_store.load(scope, timeline_id)
+                if projection:
+                    world_snapshots.append(world_store.snapshot(
+                        scope,
+                        WorldIdentity(
+                            scope.match_id, scope.perspective_id, timeline_id,
+                            str(projection["identity"]["world_epoch"]),
+                        ),
+                        journal_head_hash=str(event["event_hash"]),
+                        journal_sequence=int(event["sequence"]),
+                        calculator_versions={"world": CALCULATOR_VERSION},
+                    ))
             checkpoint["campaign_journal"] = journal_checkpoints
+            checkpoint["world_snapshots"] = world_snapshots
             checkpoint["chat_group_count"] = len(checkpoint_chat_groups)
             checkpoint["ai_memory"] = {
                 "schema": "smacx.ai-memory-checkpoint.v1",
@@ -3626,6 +3707,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 match_id, "running", metadata={
                     "recovery_checkpoint": checkpoint, "recovery_required": False,
                 },
+            )
+            checkpoint["generation"] = self.store.complete_checkpoint_generation(
+                match_id, checkpoint_id,
             )
             # Publish the new complete checkpoint before reclaiming the old
             # one. A process failure can therefore leave harmless extra bytes,
@@ -3694,6 +3778,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         scopes = self.store.scopes_for_match(match_id)
         if set(by_scope) != {(scope.agent_id, scope.perspective_id) for scope in scopes}:
             raise WorkerManagerError("journal_checkpoint_scope_mismatch")
+        snapshot_rows = checkpoint.get("world_snapshots")
+        if not isinstance(snapshot_rows, list):
+            raise WorkerManagerError("world_snapshot_checkpoint_required")
+        snapshots_by_scope = {
+            (str(item.get("agent_id") or ""), str(item.get("perspective_id") or "")): item
+            for item in snapshot_rows if isinstance(item, Mapping)
+        }
 
         match_before_restore = self.control.get_match(match_id)
         prior_restore = match_before_restore.get("metadata", {}).get("memory_restore", {})
@@ -3717,12 +3808,24 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )) + 1
         timeline_id = f"timeline-restore-{uuid.uuid4().hex[:24]}"
         forks: list[dict[str, Any]] = []
+        verified_world_payloads: dict[tuple[str, str], dict[str, Any]] = {}
         for scope in scopes:
             row = by_scope[(scope.agent_id, scope.perspective_id)]
             parent_timeline = str(row.get("timeline_id") or "")
             head_hash = str(row.get("head_hash") or "")
             if not re.fullmatch(r"[0-9a-f]{64}", head_hash):
                 raise WorkerManagerError("invalid_journal_checkpoint_head")
+            snapshot_row = snapshots_by_scope.get((scope.agent_id, scope.perspective_id))
+            if snapshot_row is not None:
+                snapshot_id = str(snapshot_row.get("snapshot_id") or "")
+                try:
+                    verified_world_payloads[(scope.agent_id, scope.perspective_id)] = \
+                        WorldStore(self.store).verify_snapshot(
+                            snapshot_id, journal_head_hash=head_hash,
+                            journal_sequence=int(snapshot_row.get("journal_sequence") or 0),
+                        )
+                except (ValueError, WorldStoreError) as exc:
+                    raise WorkerManagerError("world_snapshot_checkpoint_mismatch") from exc
             fork = self.journal.fork_timeline(
                 scope, timeline_id, native_save_sha256=native_digest,
                 from_event_hash=head_hash, parent_timeline_id=parent_timeline,
@@ -3779,6 +3882,26 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         )
         rebuilds: list[dict[str, Any]] = []
         for scope in scopes:
+            # All world/attention/specialist state is derived from the active
+            # journal head. No future-timeline cache, lease, watch, or result
+            # may survive the fork.
+            world_store = WorldStore(self.store)
+            source_row = by_scope[(scope.agent_id, scope.perspective_id)]
+            source_head = str(source_row.get("head_hash") or "")
+            payload = verified_world_payloads.get((scope.agent_id, scope.perspective_id))
+            if payload is not None:
+                world_store.restore_projection_from_snapshot(
+                    scope, payload, target_timeline_id=timeline_id,
+                    journal_head_hash=source_head,
+                )
+            # Specialist attempts are disposable, but their durable missions
+            # and traces remain diagnostic.  Revoke every future-timeline
+            # attempt before derived state is discarded so a late child can
+            # never publish into restored cognition.
+            SpecialistService(
+                self.store, world_store, scope, journal=self.journal,
+            ).cancel_for_rollback(timeline_id)
+            world_store.discard_future(scope, timeline_id)
             old_namespace = old_namespaces[(scope.agent_id, scope.perspective_id)]
             event = self.journal.append(
                 scope, "recovery.timeline_activated", {
@@ -3790,6 +3913,18 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 year=(int(checkpoint["year"]) if checkpoint.get("year") is not None else None),
                 commit_reason=f"Restore checkpoint generation {generation}",
             )
+            restored_projection = world_store.load(scope, timeline_id)
+            if restored_projection:
+                world_store.snapshot(
+                    scope,
+                    WorldIdentity(
+                        scope.match_id, scope.perspective_id, timeline_id,
+                        str(restored_projection["identity"]["world_epoch"]),
+                    ),
+                    journal_head_hash=str(event["event_hash"]),
+                    journal_sequence=int(event["sequence"]),
+                    calculator_versions={"world": CALCULATOR_VERSION},
+                )
             rebuild = self.control.request_graphiti_rebuild(
                 match_id, scope.agent_id, scope.perspective_id,
                 retired_namespaces=retired_by_scope[
@@ -3900,6 +4035,34 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                       "loaded_checkpoint": loaded}
         else:
             raise WorkerManagerError("unsupported_match_recovery_mode")
+        identity_capsules = checkpoint.get("native_semantic_identity")
+        if not isinstance(identity_capsules, Mapping):
+            raise WorkerManagerError("checkpoint_semantic_identity_missing")
+        restored_identity: list[dict[str, Any]] = []
+        for seat in seats:
+            instance_id = seat.get("instance_id")
+            if not isinstance(instance_id, str) or not instance_id:
+                continue
+            if seat.get("metadata", {}).get("delegation_status") == "active":
+                continue
+            capsule = identity_capsules.get(instance_id)
+            if not isinstance(capsule, Mapping):
+                raise WorkerManagerError(
+                    f"checkpoint_semantic_identity_missing_for_instance:{instance_id}"
+                )
+            response = self._native_request(
+                instance_id, "semantic_identity_state", timeout=20.0,
+                action="import", **dict(capsule),
+            )
+            if response.get("ok") is not True or response.get("restored") is not True:
+                detail = json.dumps(response, separators=(",", ":"))[:1000]
+                raise WorkerManagerError(
+                    f"checkpoint_semantic_identity_restore_failed:{instance_id}:{detail}"
+                )
+            restored_identity.append({
+                "instance_id": instance_id,
+                "handle_count": response.get("handle_count"),
+            })
         self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_required": False,
                                            "last_recovered_unix": time.time(),
@@ -3908,6 +4071,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if refresh_runtime:
             result["runtime_refresh"] = runtime_refresh
         result["memory_restore"] = memory_restore
+        result["native_semantic_identity_restore"] = restored_identity
         return result
 
     def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:
@@ -3964,6 +4128,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         self.docker.require_owned(game, self.installation_id, purpose="game-worker")
         if not game.get("State", {}).get("Running"):
             raise WorkerManagerError("game_worker_not_running")
+        session_id = str(
+            game.get("Config", {}).get("Labels", {}).get("io.smacx.session") or ""
+        )
+        if not session_id:
+            raise WorkerManagerError("game_worker_session_identity_unavailable")
         self.docker.inspect_image(self.mcp_image)
         self.docker.inspect_volume(self.control_data_volume)
         for volume_name, purpose in (
@@ -4037,6 +4206,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 f"SMACX_REFERENCE_URL={os.environ.get('SMACX_REFERENCE_URL', 'http://knowledge-service:8090')}",
                 f"SMACX_GRAPHITI_RECALL_URL={os.environ.get('SMACX_GRAPHITI_RECALL_URL', 'http://graphiti-projector:8091')}",
                 "SMACX_CAPABILITY_GAP_LOG=/var/lib/smacx/capability-gaps.jsonl",
+                f"SMACX_AGENT_MATCH_ID={spec['match_id']}",
+                f"SMACX_AGENT_SESSION_ID={session_id}",
                 f"SMACX_AGENT_ID={spec['agent_id']}",
                 f"SMACX_PERSPECTIVE_ID={spec['perspective_id']}",
                 f"SMACX_GAME_SOURCE_ID={spec['game_source_id']}",
@@ -4044,7 +4215,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             ],
             "Tty": True,
             "Labels": labels,
-            "ExposedPorts": {"47815/tcp": {}},
+            "ExposedPorts": {"47815/tcp": {}, "47816/tcp": {}},
             "Healthcheck": {
                 "Test": [
                     "CMD", "python3", "-c",
@@ -4052,7 +4223,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 ],
                 "Interval": 2_000_000_000,
                 "Timeout": 3_000_000_000,
-                "StartPeriod": 5_000_000_000,
+                # MCP opens only after initial active-world reconciliation.
+                # Keep cold-start grace within the existing 90-second sidecar
+                # startup budget; native/UI probe limits are unchanged.
+                "StartPeriod": 60_000_000_000,
                 "Retries": 10,
             },
             "HostConfig": {

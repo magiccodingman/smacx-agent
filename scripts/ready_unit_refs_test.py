@@ -48,22 +48,25 @@ def main() -> int:
         emit("failure", {"stage": "reference_count", "refs": refs,
                          "ready_count": ready_count})
         return 5
-    ids = [int(item.get("id", -1)) for item in refs]
-    if len(ids) != len(set(ids)) or any(value < 0 for value in ids):
+    semantic_refs = [str(item.get("own_unit_ref") or "") for item in refs]
+    if len(semantic_refs) != len(set(semantic_refs)) or any(
+            not value.startswith("own-unit-") for value in semantic_refs):
         emit("failure", {"stage": "reference_ids", "refs": refs})
         return 6
 
     units = bridge_request("list_units", scope="own")
-    unit_by_id = {int(item["id"]): item for item in units.get("items", [])}
+    unit_by_ref = {str(item["own_unit_ref"]): item for item in units.get("items", [])}
     for ref in refs:
-        unit = unit_by_id.get(int(ref["id"]))
+        unit = unit_by_ref.get(str(ref["own_unit_ref"]))
         if not unit or not unit.get("ready") or unit.get("name") != ref.get("name") \
-                or int(unit.get("tile_id", -1)) != int(ref.get("tile_id", -2)):
+                or f"location-{unit.get('tile_id')}" != ref.get("location_ref"):
             emit("failure", {"stage": "reference_truth", "ref": ref, "unit": unit})
             return 7
 
     chosen = refs[0]
-    choices = bridge_request("semantic_choices", kind="unit_actions", unit_id=int(chosen["id"]))
+    native_unit = unit_by_ref[str(chosen["own_unit_ref"])]
+    native_id = int(native_unit["id"])
+    choices = bridge_request("semantic_choices", kind="unit_actions", unit_id=native_id)
     skip = next((item for item in choices.get("choices", [])
                  if item.get("command") == "skip_unit"), None)
     if choices.get("revision") != snapshot.get("revision") or not skip:
@@ -73,7 +76,7 @@ def main() -> int:
     result = bridge_request(
         "semantic_command", command="skip_unit",
         match_id=choices["match_id"], session_id=choices["session_id"],
-        expected_revision=choices["revision"], unit_id=int(chosen["id"]),
+        expected_revision=choices["revision"], unit_id=native_id,
     )
     if not result.get("ok"):
         emit("failure", {"stage": "guarded_skip", "result": result})
@@ -88,7 +91,7 @@ def main() -> int:
         time.sleep(0.05)
     after_refs = after.get("ready_unit_refs", [])
     if len(after_refs) != ready_count - 1 \
-            or any(int(item.get("id", -1)) == int(chosen["id"]) for item in after_refs):
+            or any(item.get("own_unit_ref") == chosen["own_unit_ref"] for item in after_refs):
         emit("failure", {"stage": "post_mutation_refs", "before": refs, "after": after_refs})
         return 10
 
@@ -96,7 +99,7 @@ def main() -> int:
         "ready_count": ready_count,
         "refs_match_owned_ready_units": True,
         "snapshot_revision_matches_choices": True,
-        "guarded_action_used_snapshot_id": int(chosen["id"]),
+        "guarded_action_resolved_semantic_ref": chosen["own_unit_ref"],
         "refs_refresh_after_mutation": True,
         "pixels_or_input_used": False,
     })

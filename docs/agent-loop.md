@@ -2,12 +2,32 @@
 
 SMACX Agent uses an explicit state machine and optimistic concurrency. The model does not send a stream of keys or clicks.
 
+Every sovereign provider call also receives one request-only runtime envelope.
+It supplies the current world anchor and net delta, immediate focus, leased
+attention, active operation summary, watches, and projected durable cognition.
+It is appended to the current request tail after semantic garbage collection;
+it is not a transcript message and never accumulates as historical world
+snapshots. The anchor is peripheral awareness. Use `smac_world` to zoom into a
+decision-relevant area, route, relationship, base, force, logistical problem,
+change, or global system, then reuse that evidence while its dependency and
+world metadata remain valid.
+
+For a specific mechanical question, `smac_world(mode="counterfactual")` can
+preview nominated sites or current production, upgrade, Social Engineering and
+Former choices, or compose preparation and travel for a requested capability.
+These calculations stay outside routine context. They do not consume the
+choice, create an operation, select strategy or revise a plan. The sovereign
+reviews the assumptions and unknowns, then executes through the same guarded
+opaque choice and verifies the effect. Stale or unavailable evidence requires
+a fresh observation; it cannot be repaired by treating a projection as fact.
+
 Before this loop is available in a new match, the player calls
 `smac_match_briefing(action="read")`. The versioned configuration contract
 combines the exact faction, difficulty, generated map, victory toggles,
 advanced rules, multiplayer clock, scenario restrictions, match policy, and
-game-artifact fingerprint. The player reviews unfamiliar non-default mechanics
-through `smac_reference`, then acknowledges the exact returned hash.
+game-artifact fingerprint. The player can investigate unfamiliar non-default
+mechanics through `smac_investigate(faculty="reference")`, then acknowledges the
+exact returned hash.
 `smac_decision` returns no choices and `smac_execute_choice` rejects mutation until
 that configuration is acknowledged.
 
@@ -29,15 +49,15 @@ The three guard values have different lifetimes:
 | `session_id` | Identity of one running game process | Every fresh launch or reload | Reusing engine objects or commands from a prior process; it does not by itself invalidate an unchanged configuration acknowledgement |
 | `revision` | Fingerprint of the current fair-play decision state | Whenever action-relevant public/owned state changes | Replaying a choice after the board, modal, resources, or turn phase changed |
 
-Object IDs are session-local observations, not durable knowledge keys. A snapshot's `ready_unit_refs` provides the current actionable unit IDs, names, opaque tile IDs, and compact roles at that exact revision; request `unit_actions` with one of those IDs rather than guessing. A `tile_id` is not an encoded planning coordinate: never do arithmetic on it or infer neighbors from it. Re-list bases, units, factions, tiles, and choices after every mutation that can create, consume, capture, reorder, or destroy an engine object.
+Native object IDs are private session-local implementation details, not provider knowledge keys. A snapshot's `ready_unit_refs` provides current actionable `own_unit_ref` values, names, semantic locations, and compact roles at that exact revision. Managed choice queries accept only semantic `own_unit_ref`, `base_ref`, `target_location_ref`, and `target_unit_ref` values from the active perspective. Never derive a native selector from a ref's spelling. Obtain fresh world refs and choices after every mutation that can create, consume, capture, reorder, or destroy an engine object.
 
 The preferred loop is intentionally small. `smac_decision` assembles one
 revision-stable focus and returns short semantic labels plus opaque
 `choice_id` values. Native command names, confirmation flags, and raw revision
 guards stay server-side. Execute at most one returned choice through
 `smac_execute_choice(decision_id, choice_id)`, discard the frame, and call
-`smac_decision` again. `smac_choices` remains available for bounded specialist
-queries, but it also returns opaque executable choices.
+`smac_decision` again. `smac_choices` remains available for bounded detailed
+choice-family queries, but it also returns opaque executable choices.
 
 The managed loop is:
 
@@ -48,11 +68,11 @@ The managed loop is:
 4. Execute exactly one opaque choice.
 5. Discard both IDs and obtain a fresh decision.
 
-Supplying a `unit_id` is allowed only for a unit present in a fresh decision
+Supplying an `own_unit_ref` is allowed only for a unit present in a fresh decision
 frame; omission selects the first ready unit deterministically. After actually
 considering the remaining units and deciding all are finished,
 `finish_ready_units=true` switches that one frame to guarded game-management
-choices. Combining it with `unit_id` is rejected.
+choices. Combining it with `own_unit_ref` is rejected.
 
 This is also the action-legality pipeline. The current interaction phase
 selects the only usable choice family; the server binds each opaque ID to the
@@ -110,7 +130,7 @@ native automation moved from one turn into the next without exposing a stable
 wait phase. No legal choices are returned across that boundary. Make no more
 tool calls in that Hermes episode. The player emits one assistant message
 headed `TURN HANDOFF`, under 120 words, with `Outcome`,
-`Reasoning`, `What changed`, `Next turn`, and `Uncertainty`. Hermes retains and
+`Rationale`, `Changed conclusions`, `Next intent`, and `Uncertainty`. Hermes retains and
 later compresses this durable decision summary. Raw interleaved reasoning is
 kept throughout the active episode but stripped after the next user/episode
 boundary. Completed tool protocol from earlier episodes is likewise omitted
@@ -118,6 +138,13 @@ from later provider requests while remaining in durable diagnostics. Current
 episode tool calls/results stay coherent, and only superseded state payloads
 inside that episode are compacted. The supervisor treats the handoff as a clean
 yield and resumes the same campaign conversation; it is not match completion.
+
+The handoff preserves why consequential choices mattered and what the sovereign
+now believes or intends. Do not copy ordinary unit locations, raw map slices,
+or event lists into it. The campaign journal and world projection preserve
+mechanical observation history. Durable cognition is for beliefs, suspicions,
+strategic conclusions, relationships, commitments, goals, plans, named
+territories/concepts, and unresolved strategic questions.
 
 Alien Artifact entry is another staged movement interaction. `ARTIFACT` exposes `no_action`, technology linking, and—only when natively present—acceleration of the exact current Secret Project or unprototyped unit. The two consuming choices require `confirm_consume_artifact=1`. A link can open a following technology notice; acknowledge it and keep waiting until the original move reports `native_artifact_consumed`.
 
@@ -135,7 +162,7 @@ The end-turn gate is enforced twice. `game_management` returns a non-executable 
 
 Base-status and production-completion popups are observations followed by one acknowledgement. Read their structured context first (event, owned base identity when available, completed item, and governor/queue metadata), acknowledge through the returned interaction choice, then re-list the affected base. Do not infer the post-notice state from the popup alone.
 
-The choice families also encode local prerequisites. For example, `base_citizens` will not expose manual assignment commands while the governor manages citizens, held/sentry units expose `activate_unit` instead of movement, and boarded sea passengers expose only `remain_boarded` or legal disembarkation targets. Map state uses opaque match-local `tile_id` values; call `unit_actions` with `target_tile_id` to obtain exact route, patrol, Road To, missile, or other target choices. Native x/y values never cross MCP. Base routing instead selects a fair-play owned `base_id`; land/sea compatibility and aircraft safe fuel range are independently revalidated. A fuel-limited aircraft route additionally reports `air_recovery` for a friendly base/standalone airbase or `air_round_trip` for a safe non-refueling sortie; an absent route is not permission to retry the same tile through generic `go_to`. Carrier recovery instead queries the carrier's fresh `target_unit_id`: `recover_to_carrier` reserves capacity and holds the carrier, `carrier_recovery_lock` forbids carrier commands until arrival/cancellation, and `board_carrier` creates native boarded/refueled state. Generic `go_to` to an owned carrier tile is rejected. Probe missions are bundled only for visible adjacent non-pact bases and require the returned incident confirmation; the target and mission are revalidated before native execution. Genetic plague additionally requires the returned atrocity confirmation. A targeted-sabotage tuple never contains facility data: copy a target only from the later `interaction` choices after the native game opens `VIRUS`, and resolve a returned `MILVIRUS`/`HQVIRUS` warning before doing anything else. A rescue tuple likewise contains no captive identity; choose one only if the successful native mission later opens `FREEWHO`. Air drops are limited to returned visible target tile IDs; artillery is limited to returned visible non-pact stacks and requires immediate re-observation because combat can shift unit IDs. Missiles first return one compact target-query contract: query one `target_tile_id` from fair-play state, and launch only a returned exact tuple. Planet Busters require a separately deliberate atrocity confirmation. Every launch consumes a missile, so re-list units. `disband_unit` requires explicit confirmation. `unit_design` exposes component catalogs instead of a combinatorial list: copy only returned IDs, use no more than two abilities, and inspect a fresh design record before confirming retirement or an upgrade. An `ASKSEEDESIGN` open response transitions to this semantic workshop without exposing the native coordinate-oriented window. Colony Pods found bases and can shift later unit IDs when consumed, so re-list units afterward; Formers improve terrain.
+The choice families also encode local prerequisites. For example, `base_citizens` will not expose manual assignment commands while the governor manages citizens, held/sentry units expose `activate_unit` instead of movement, and boarded sea passengers expose only `remain_boarded` or legal disembarkation targets. Use `target_location_ref` for exact route, patrol, Road To, missile, artillery, terrain, and Drop targeting; `base_ref` for owned-base selection; and `target_unit_ref` for a current owned carrier or mechanically current foreign contact. The server resolves and revalidates private native selectors only after checking the active match, perspective, timeline, epoch, and revision. A fuel-limited aircraft route additionally reports `air_recovery` for a friendly base/standalone airbase or `air_round_trip` for a safe non-refueling sortie; an absent route is not permission to retry through generic `go_to`. Carrier recovery reserves capacity and holds the carrier until arrival/cancellation. Probe missions are bundled only for visible adjacent non-Pact bases and require the returned opaque incident-confirmed choice. Air Drop enumeration is bounded to 128 mapped legal destinations, while any different mapped semantic location—or a paginated opaque unmapped location obtained through `smac_world(mode="area", origin_ref="world-map")`—may be submitted for one exact guarded native receipt. A rejected exact target reveals no hidden reason. Artillery remains limited to visible non-Pact stacks and requires immediate re-observation because combat can compact native rows. Every missile launch consumes the unit, so obtain fresh refs. Unit-design component IDs remain catalog values rather than world-object selectors.
 
 Non-executable `capability_status` records may appear beside valid choices. They document a native option that the bridge deliberately withholds because its continuation is not yet safe. Never submit their IDs or infer a command from their names. Do not invent a proposal-menu `offer_units` action: reverse engineering confirmed that its text is an unused `Script.txt` row which the executable never inserts into `PROPOSAL`; native ID 12 is used by the separate Council-vote request path. Direct unit transfer is available only as a confirmation-gated `give_unit` tuple on an eligible unit standing in visible Pact territory.
 
@@ -166,10 +193,23 @@ Hermes history, journal-backed search/recall/chat/notebook state, and derived
 Graphiti memory are restored together, so an action abandoned with the old
 native process cannot remain as an AI memory in the recovered world.
 
-Record learned player behavior and strategic facts through `smac_knowledge`, not a free-form cross-game memory. A `put` requires the current match, session, and observation revision and automatically records the turn/year provenance. Stable keys hold the latest correction while `history` preserves every prior value. While a game is running, reads for any other match are rejected so another playthrough's intelligence cannot leak into the current one.
+Record durable conclusions through typed `smac_memory_update` records or named
+`smac_notebook` entries, not free-form cross-game memory. Mechanical observed
+history already belongs to the world projection and campaign journal; do not
+duplicate raw map frames or ordinary unit positions merely to retain them.
+Stable keys create canonical revisions with turn/year provenance. Managed reads
+remain scoped to the active match, seat, perspective, and timeline so another
+playthrough's intelligence cannot leak into the current one.
 
 Save/load, process stop, checkpoint recovery, and worker replacement are
 authenticated Control Center operations. They are deliberately absent from a
 managed player's MCP surface.
 
 The spectator window is output only. Screenshots, coordinates, mouse input, keyboard input, and raw UI text entry are not MCP capabilities.
+
+Managed sidecar startup reconciles an already active native world before opening
+its runtime/MCP listeners, so cold collection does not consume the first provider
+request's HTTP timeout. Background observation starts afterward. A lobby can
+remain available without an active world; every gameplay runtime request still
+requires successful current reconciliation. Startup grace is separate from the
+unchanged native/UI request responsiveness limits.

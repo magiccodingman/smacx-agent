@@ -475,6 +475,49 @@ Check `graphiti-db` and `graphiti-projector` logs. Do not point multiple
 installations at one namespace without the installation/match/agent/perspective
 isolation enforced by the projector.
 
+Graphiti is interpretive political memory, not mechanical world authority.
+The native observation journal and perspective-world projection continue when
+Graphiti is unavailable. Do not repair a world mismatch by treating Graphiti
+facts as current native state.
+
+## World context is unavailable or reports a continuity gap
+
+The managed player fails closed when its request-only runtime context cannot be
+validated for the exact match, perspective, timeline, and world epoch. Check the
+seat MCP/runtime-context endpoint and its private token mount; do not bypass the
+context hook or inject a hand-written world summary into Hermes history.
+
+`observation_continuity_gap` means the collector fell behind the bounded native
+event ring. It is critical attention independent of model-created watches. The
+collector records the missing interval, marks the projection incomplete, and
+performs a full paged perspective reconciliation. The event may be acknowledged
+only after it reaches cognition; the projection itself remains incomplete until
+reconciliation succeeds.
+
+If the runtime reports `context_budget_exhausted`, inspect the per-component
+token telemetry. Pinned identity, rules, anchor, blocking focus, critical
+attention, foreground operation, and binding commitments are never discarded
+to make a request fit. Reduce disposable query evidence or provider output/
+reasoning reserves, or use a valid larger context profile; 64K remains the
+minimum supported provider context.
+
+## A specialist result is stale or unavailable
+
+Specialists are optional read-only Hermes investigators. Every attempt receives
+a fresh isolated process and exactly one bounded instrument over either a pinned
+world snapshot or the pinned Datalinks corpus. `stale` means the timeline,
+world epoch, corpus revision, or one of the dependencies recorded from actual
+child calls changed before publication. Re-investigate current evidence if the
+question still matters; never apply a stale conclusion as mechanical truth.
+
+Provider, MCP, timeout, schema, token, and cancellation failures are recorded as
+typed attempt outcomes. A bounded retry or strict-schema repair uses a new child
+process. Per-seat and installation concurrency are configured under
+**Operations & recovery**. Ordinary gameplay and bounded direct `smac_world`
+queries remain available if specialist capacity or its provider is unavailable.
+The Operations page exposes content-free mission status and retained redacted
+trace downloads for diagnosis.
+
 ## The game reaches an unsupported mandatory state
 
 Do not use vision or UI input. The agent calls `smac_report_capability_gap` once

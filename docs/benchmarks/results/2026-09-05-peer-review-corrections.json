@@ -1,0 +1,630 @@
+{
+  "active_collector": {
+    "UI_probe_max_gap_ms": 455.875,
+    "active_collection_ms": 11366.944,
+    "active_scopes": 9,
+    "crossing_watches": 4,
+    "evidence": "native_shaped_full_collector_publication",
+    "initial_collection_ms": 19143.136,
+    "known_tiles": 25600,
+    "loss_in_same_publication": true,
+    "observed_crossing_attention_count": 2,
+    "passed": true,
+    "scope_creation_total_ms": 34173.297
+  },
+  "active_scopes": [
+    {
+      "active_crossing_watches": 4,
+      "active_scopes": 9,
+      "all_scope_inspection_ms": 698.336,
+      "creation_ms": [
+        141.257,
+        218.714,
+        279.923,
+        223.407,
+        253.466,
+        308.016,
+        511.571,
+        416.423,
+        478.181
+      ],
+      "initial_registry_ms": 582.113,
+      "known_tiles": 6400,
+      "maximum_descriptor_tokens": 113,
+      "native_interaction": false,
+      "passed": true,
+      "registry_ms": 68.92,
+      "watch_evaluation_ms": 140.557,
+      "workload": "four proximities, two geography, one corridor, two unions, observed movement"
+    },
+    {
+      "active_crossing_watches": 4,
+      "active_scopes": 9,
+      "all_scope_inspection_ms": 2968.526,
+      "creation_ms": [
+        574.584,
+        988.847,
+        1122.044,
+        953.71,
+        1212.753,
+        1222.724,
+        1800.212,
+        1995.549,
+        1879.083
+      ],
+      "initial_registry_ms": 2423.763,
+      "known_tiles": 25600,
+      "maximum_descriptor_tokens": 113,
+      "native_interaction": false,
+      "passed": true,
+      "registry_ms": 244.946,
+      "watch_evaluation_ms": 356.164,
+      "workload": "four proximities, two geography, one corridor, two unions, observed movement"
+    }
+  ],
+  "collector": {
+    "bounded_native_backlog": true,
+    "cases": [
+      {
+        "bases": 1,
+        "case": "small_quiet",
+        "contacts": 0,
+        "initial": {
+          "attention_batches_written": 5,
+          "bridge_calls": 11,
+          "journal_events_written": 4,
+          "material_deltas": 279,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 0.152,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 3,
+          "projection_object_rows_written": 279,
+          "projection_rows_written": 280,
+          "reconciled": true,
+          "semantic_events": 9,
+          "wall_ms": 342.853,
+          "world_objects": 279
+        },
+        "journal_replay_object_count": 279,
+        "known_tiles": 256,
+        "ready_drop_units": 0,
+        "routine_unit_payload_bytes": 2,
+        "sqlite_bytes": 1634304,
+        "ui_probe_max_gap_ms": 17.619,
+        "unchanged": {
+          "attention_batches_written": 0,
+          "bridge_calls": 11,
+          "journal_events_written": 1,
+          "material_deltas": 0,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 0.415,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 0,
+          "projection_object_rows_written": 0,
+          "projection_rows_written": 1,
+          "reconciled": true,
+          "semantic_events": 0,
+          "wall_ms": 156.459,
+          "world_objects": 279
+        }
+      },
+      {
+        "bases": 1,
+        "case": "stock_huge_quiet",
+        "contacts": 0,
+        "initial": {
+          "attention_batches_written": 5,
+          "bridge_calls": 35,
+          "journal_events_written": 33,
+          "material_deltas": 6423,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 4.65,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 32,
+          "projection_object_rows_written": 6423,
+          "projection_rows_written": 6424,
+          "reconciled": true,
+          "semantic_events": 9,
+          "wall_ms": 3271.081,
+          "world_objects": 6423
+        },
+        "journal_replay_object_count": 6423,
+        "known_tiles": 6400,
+        "ready_drop_units": 0,
+        "routine_unit_payload_bytes": 2,
+        "sqlite_bytes": 16977920,
+        "ui_probe_max_gap_ms": 81.429,
+        "unchanged": {
+          "attention_batches_written": 0,
+          "bridge_calls": 35,
+          "journal_events_written": 1,
+          "material_deltas": 0,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 11.108,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 0,
+          "projection_object_rows_written": 0,
+          "projection_rows_written": 1,
+          "reconciled": true,
+          "semantic_events": 0,
+          "wall_ms": 2153.977,
+          "world_objects": 6423
+        }
+      },
+      {
+        "bases": 80,
+        "case": "stock_huge_active",
+        "contacts": 300,
+        "initial": {
+          "attention_batches_written": 12,
+          "bridge_calls": 36,
+          "journal_events_written": 37,
+          "material_deltas": 6802,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 5.359,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 36,
+          "projection_object_rows_written": 6802,
+          "projection_rows_written": 6803,
+          "reconciled": true,
+          "semantic_events": 388,
+          "wall_ms": 4061.78,
+          "world_objects": 6802
+        },
+        "journal_replay_object_count": 6802,
+        "known_tiles": 6400,
+        "ready_drop_units": 0,
+        "routine_unit_payload_bytes": 78733,
+        "sqlite_bytes": 19873792,
+        "ui_probe_max_gap_ms": 90.779,
+        "unchanged": {
+          "attention_batches_written": 0,
+          "bridge_calls": 36,
+          "journal_events_written": 1,
+          "material_deltas": 0,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 11.304,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 0,
+          "projection_object_rows_written": 0,
+          "projection_rows_written": 1,
+          "reconciled": true,
+          "semantic_events": 0,
+          "wall_ms": 2473.44,
+          "world_objects": 6802
+        }
+      },
+      {
+        "bases": 1,
+        "case": "large_custom_quiet",
+        "contacts": 0,
+        "initial": {
+          "attention_batches_written": 5,
+          "bridge_calls": 110,
+          "journal_events_written": 123,
+          "material_deltas": 25623,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 21.021,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 122,
+          "projection_object_rows_written": 25623,
+          "projection_rows_written": 25624,
+          "reconciled": true,
+          "semantic_events": 9,
+          "wall_ms": 19526.963,
+          "world_objects": 25623
+        },
+        "journal_replay_object_count": 25623,
+        "known_tiles": 25600,
+        "ready_drop_units": 0,
+        "routine_unit_payload_bytes": 2,
+        "sqlite_bytes": 64987136,
+        "ui_probe_max_gap_ms": 341.058,
+        "unchanged": {
+          "attention_batches_written": 0,
+          "bridge_calls": 110,
+          "journal_events_written": 1,
+          "material_deltas": 0,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 44.978,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 0,
+          "projection_object_rows_written": 0,
+          "projection_rows_written": 1,
+          "reconciled": true,
+          "semantic_events": 0,
+          "wall_ms": 10058.116,
+          "world_objects": 25623
+        }
+      },
+      {
+        "bases": 64,
+        "case": "orbital_drop_dense_25600",
+        "contacts": 128,
+        "initial": {
+          "attention_batches_written": 8,
+          "bridge_calls": 110,
+          "journal_events_written": 126,
+          "material_deltas": 25942,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 19.472,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 125,
+          "projection_object_rows_written": 25942,
+          "projection_rows_written": 25943,
+          "reconciled": true,
+          "semantic_events": 200,
+          "wall_ms": 32449.852,
+          "world_objects": 25942
+        },
+        "journal_replay_object_count": 25942,
+        "known_tiles": 25600,
+        "ready_drop_units": 128,
+        "routine_unit_payload_bytes": 73339,
+        "sqlite_bytes": 67145728,
+        "ui_probe_max_gap_ms": 321.728,
+        "unchanged": {
+          "attention_batches_written": 0,
+          "bridge_calls": 110,
+          "journal_events_written": 1,
+          "material_deltas": 0,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 45.141,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 0,
+          "projection_object_rows_written": 0,
+          "projection_rows_written": 1,
+          "reconciled": true,
+          "semantic_events": 0,
+          "wall_ms": 10860.948,
+          "world_objects": 25942
+        }
+      },
+      {
+        "bases": 24,
+        "case": "action_dense_overflow",
+        "contacts": 80,
+        "initial": {
+          "attention_batches_written": 6,
+          "bridge_calls": 16,
+          "journal_events_written": 12,
+          "material_deltas": 1150,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 3.327,
+          "native_continuity_incomplete": true,
+          "native_events_drained": 768,
+          "native_feed_pages": 3,
+          "observation_rows_written": 11,
+          "projection_object_rows_written": 1150,
+          "projection_rows_written": 1151,
+          "reconciled": true,
+          "semantic_events": 880,
+          "wall_ms": 962.171,
+          "world_objects": 1150
+        },
+        "journal_replay_object_count": 1150,
+        "known_tiles": 1024,
+        "ready_drop_units": 0,
+        "routine_unit_payload_bytes": 20854,
+        "sqlite_bytes": 4423680,
+        "ui_probe_max_gap_ms": 18.094,
+        "unchanged": {
+          "attention_batches_written": 0,
+          "bridge_calls": 14,
+          "journal_events_written": 1,
+          "material_deltas": 0,
+          "native_backlog_after": 0,
+          "native_backlog_before": 0,
+          "native_coalesce_ms": 1.724,
+          "native_continuity_incomplete": false,
+          "native_events_drained": 0,
+          "native_feed_pages": 1,
+          "observation_rows_written": 0,
+          "projection_object_rows_written": 0,
+          "projection_rows_written": 1,
+          "reconciled": true,
+          "semantic_events": 0,
+          "wall_ms": 463.412,
+          "world_objects": 1150
+        }
+      }
+    ],
+    "incremental_projection_writes": true,
+    "independent_ui_responsiveness_probe": true,
+    "production_collector_pipeline": true
+  },
+  "consumer_matrix": {
+    "matrix": [
+      {
+        "kind": "physical_landmass",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "supported; nonempty private footprint",
+        "specialist": "explicit rejection; nominate immutable objects instead",
+        "world_area": "pass"
+      },
+      {
+        "kind": "physical_ocean_mass",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "supported; nonempty private footprint",
+        "specialist": "explicit rejection; nominate immutable objects instead",
+        "world_area": "pass"
+      },
+      {
+        "kind": "mobility_region",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "supported; nonempty private footprint",
+        "specialist": "explicit rejection; nominate immutable objects instead",
+        "world_area": "pass"
+      },
+      {
+        "kind": "theater",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "supported; nonempty private footprint",
+        "specialist": "explicit rejection; nominate immutable objects instead",
+        "world_area": "pass"
+      },
+      {
+        "kind": "route",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "supported; nonempty private footprint",
+        "specialist": "explicit rejection; nominate immutable objects instead",
+        "world_area": "pass"
+      },
+      {
+        "kind": "spatial_scope",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "supported; nonempty private footprint",
+        "specialist": "explicit rejection; nominate immutable objects instead",
+        "world_area": "pass"
+      },
+      {
+        "kind": "base",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "explicit rejection; base radius supported for base",
+        "specialist": "immutable object snapshot supported by specialist contract suite",
+        "world_area": "pass"
+      },
+      {
+        "kind": "own_unit",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "explicit rejection; base radius supported for base",
+        "specialist": "immutable object snapshot supported by specialist contract suite",
+        "world_area": "pass"
+      },
+      {
+        "kind": "foreign_contact",
+        "milestone_dependency": "pass",
+        "operation": "pass",
+        "spatial_consumers": "explicit rejection; base radius supported for base",
+        "specialist": "immutable object snapshot supported by specialist contract suite",
+        "world_area": "pass"
+      },
+      {
+        "kind": "omitted_frontier",
+        "paginated_discovery_watch_scope_area": "pass"
+      },
+      {
+        "kind": "omitted_physical_landmass",
+        "paginated_discovery_watch_scope_area": "pass"
+      }
+    ],
+    "passed": true
+  },
+  "findings": {
+    "R1": "corrected; qualified evidence in companion ledger",
+    "R2": "corrected; qualified evidence in companion ledger",
+    "R3": "corrected; qualified evidence in companion ledger",
+    "R4": "corrected; qualified evidence in companion ledger",
+    "R5": "corrected; qualified evidence in companion ledger",
+    "R6": "corrected; qualified evidence in companion ledger",
+    "R7": "corrected; qualified evidence in companion ledger",
+    "R8": "corrected; qualified evidence in companion ledger"
+  },
+  "isolated_profile_repeat": {
+    "initial_ms": 18792.297,
+    "journal_append_seconds": 11.3978,
+    "journal_replay_seconds": 3.198,
+    "probe_ms": 270.967,
+    "projection_replace_seconds": 3.511
+  },
+  "native_adapter": {
+    "bounded_ring_preserved": true,
+    "event_relationship_is_frozen": true,
+    "evidence": "compiled_production_adapter_with_controlled_native_shaped_inputs",
+    "passed": true,
+    "running_game_comparison": false
+  },
+  "native_cross_build": {
+    "existing_warnings": 22,
+    "passed": true,
+    "running_game_rerun": false
+  },
+  "preserved_failed_collector_run": {
+    "case": "large_custom_quiet",
+    "cause": "not established; did not recur in controlled profile or final full rerun",
+    "gate_ms": 30000,
+    "initial_ms": 55914.065,
+    "known_tiles": 25600,
+    "probe_ms": 278.894,
+    "unchanged_ms": 8231.385
+  },
+  "reviewed_baseline": "0b07e3400a5f74c9570c7975ac437e11009910a2",
+  "schema": "smacx.peer-review-corrections.v1",
+  "schema_budget": {
+    "managed_tool_count": 15,
+    "smac_world_conservative_token_proxy": 619,
+    "smac_world_hard_gate": 900,
+    "smac_world_schema_bytes": 1855,
+    "smac_world_target": 700,
+    "system_prompt_bytes": 5280,
+    "system_prompt_conservative_token_proxy": 1760,
+    "system_prompt_exact_tokens": null,
+    "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+    "tokenizer": "conservative_utf8_proxy",
+    "total_tool_schema_bytes": 20169
+  },
+  "status": "passed_with_recorded_timing_variance",
+  "strategic_fixtures": {
+    "event": "pass",
+    "payload": {
+      "air_carrier_refueling": true,
+      "alien_crossfire_objectives": true,
+      "ally_rendezvous": true,
+      "current_pact_coastal_port_routing": true,
+      "ecology_sea_level_change": true,
+      "expansion_site_reasoning": true,
+      "fog_pursuit": true,
+      "huge_chaotic_world": true,
+      "huge_quiet_world": true,
+      "multi_front_warfare": true,
+      "parity_wrap_flat_boundaries": true,
+      "peninsula_defense": true,
+      "project_global_race": true,
+      "region_split_merge_split_lineage": true,
+      "relation_aware_threat_and_native_zoc": true,
+      "roads_magtubes_fungus_zoc_airdrop_connections": true,
+      "transport_island_logistics": true,
+      "two_threatened_bases_one_reserve": true
+    }
+  },
+  "tests_passed": [
+    "scripts/active_scope_benchmark.py",
+    "scripts/active_scope_collector_benchmark.py",
+    "scripts/attention_communication_contract_test.py",
+    "scripts/counterfactual_choice_contract_test.py",
+    "scripts/counterfactual_contract_test.py",
+    "scripts/event_time_episode_test.py",
+    "scripts/fair_play_world_test.py",
+    "scripts/geographic_semantics_contract_test.py",
+    "scripts/milestone_contract_test.py",
+    "scripts/milestone_threshold_transition_test.py",
+    "scripts/native_event_time_contract_test.py",
+    "scripts/native_observation_contract_test.py",
+    "scripts/observation_batch_recovery_test.py",
+    "scripts/observation_collector_benchmark.py",
+    "scripts/plan_dependency_publication_test.py",
+    "scripts/plan_dependency_transition_test.py",
+    "scripts/plan_health_contract_test.py",
+    "scripts/provider_schema_budget_test.py",
+    "scripts/rollback_world_contract_test.py",
+    "scripts/runtime_context_contract_test.py",
+    "scripts/semantic_consumer_contract_test.py",
+    "scripts/semantic_ref_matrix_test.py",
+    "scripts/semantic_ref_recovery_test.py",
+    "scripts/sovereign_geography_acceptance_test.py",
+    "scripts/sovereign_hardening_contract_test.py",
+    "scripts/spatial_scope_contract_test.py",
+    "scripts/specialist_contract_test.py",
+    "scripts/strategic_world_fixtures_test.py",
+    "scripts/world_context_benchmark.py",
+    "scripts/world_model_contract_test.py"
+  ],
+  "warm_cache": {
+    "fragmented_anchor_tokens": 4165,
+    "geography_queries": {
+      "area": {
+        "cold_ms": 61.397,
+        "result_tokens": 1854,
+        "warm_ms": 46.525
+      },
+      "compare": {
+        "cold_ms": 260.225,
+        "result_tokens": 813,
+        "warm_ms": 82.493
+      },
+      "logistics": {
+        "cold_ms": 98.946,
+        "result_tokens": 635,
+        "warm_ms": 80.188
+      },
+      "relation": {
+        "cold_ms": 261.448,
+        "result_tokens": 644,
+        "warm_ms": 75.027
+      }
+    },
+    "mature_empire_anchor_tokens": 4002,
+    "passed": true
+  },
+  "world_context": {
+    "huge_quiet_growth_percent": 0.2849002849002913,
+    "method": "deterministic semantic token estimator: canonical UTF-8 bytes / 4",
+    "passed": true,
+    "profiles": {
+      "huge_chaotic_256k": {
+        "milliseconds": 846.3517159689218,
+        "regions_omitted": 0,
+        "strategic_objects_truncated": true,
+        "tokens": 15809
+      },
+      "huge_chaotic_64k": {
+        "milliseconds": 901.4629160519689,
+        "regions_omitted": 0,
+        "strategic_objects_truncated": true,
+        "tokens": 5669
+      },
+      "huge_fragmented_64k": {
+        "milliseconds": 387.3827069764957,
+        "regions_omitted": 3176,
+        "tokens": 5449
+      },
+      "huge_quiet_256k": {
+        "milliseconds": 786.2580110086128,
+        "tokens": 1057
+      },
+      "huge_quiet_64k": {
+        "milliseconds": 837.377215968445,
+        "tokens": 1056
+      },
+      "small_quiet_64k": {
+        "milliseconds": 6.625875015743077,
+        "tokens": 1053
+      }
+    },
+    "schema": "smacx.world-benchmark.v1",
+    "tile_count": {
+      "huge": 25600,
+      "small": 256
+    },
+    "underlying_fact_equivalence": true
+  }
+}

@@ -291,6 +291,238 @@ class ControlPlane:
             self._set_setting("embeddings.configuration", {"mode": "local"})
         return self.graphiti_status()
 
+    def specialist_status(self) -> dict[str, Any]:
+        """Return the optional installation-wide helper override.
+
+        A missing override is healthy: each sovereign seat then supplies its
+        own compatible profile as the isolated specialist fallback.
+        """
+        profile = self._setting("specialist.profile")
+        from smacx_specialists import normalize_specialist_policy
+        configured = self._setting("specialist.policy")
+        policy = normalize_specialist_policy(
+            configured if isinstance(configured, Mapping) else None,
+        )
+        legacy_cap = self._setting("specialist.max_concurrency")
+        if legacy_cap is not None and not isinstance(configured, Mapping):
+            policy["installation_concurrency"] = int(legacy_cap)
+        with self.store._connect() as connection:
+            counts = {str(row["status"]): int(row["count"]) for row in connection.execute(
+                "SELECT status,COUNT(*) AS count FROM specialist_missions GROUP BY status"
+            ).fetchall()}
+            usage = dict(connection.execute(
+                "SELECT COUNT(*) AS attempts,COALESCE(SUM(provider_calls),0) AS provider_calls,"
+                "COALESCE(SUM(tool_calls),0) AS tool_calls,"
+                "COALESCE(SUM(provider_tokens),0) AS provider_tokens,"
+                "COALESCE(MAX(peak_context_tokens),0) AS peak_context_tokens,"
+                "COALESCE(SUM(result_bytes),0) AS result_bytes,"
+                "COALESCE(SUM(trace_bytes),0) AS trace_bytes FROM specialist_attempts"
+            ).fetchone())
+        health = self._setting("specialist.supervisor_health")
+        if not isinstance(health, Mapping) or time.time() - float(
+                health.get("heartbeat_unix") or 0) > 15:
+            health = {"status": "unavailable", "active_children": 0}
+        return {
+            "ok": True, "mode": "dedicated" if isinstance(profile, Mapping) else "sovereign_fallback",
+            "profile": dict(profile) if isinstance(profile, Mapping) else None,
+            "max_concurrency": min(max(int(policy["installation_concurrency"]), 1), 16),
+            "policy": policy,
+            "trace_warning": self._setting("specialist.trace_warning"),
+            "mission_counts": counts, "usage": usage, "runtime": dict(health),
+        }
+
+    def list_specialist_missions(self, *, status: str = "", limit: int = 100) -> list[dict[str, Any]]:
+        allowed = {"queued", "active", "retry_wait", "accepted", "stale", "failed", "cancelled"}
+        if status and status not in allowed:
+            raise InvalidRecord("invalid_specialist_status_filter")
+        limit = min(max(int(limit), 1), 500)
+        where = "WHERE m.status=?" if status else ""
+        parameters: tuple[Any, ...] = (status, limit) if status else (limit,)
+        with self.store._connect() as connection:
+            rows = connection.execute(
+                "SELECT m.mission_id,m.match_id,m.agent_id,m.perspective_id,m.timeline_id,"
+                "m.faculty,m.execution_class,m.status,m.attempt_count,m.model_profile_revision,"
+                "m.result_scope,m.result_preview,m.stale_reason,m.cancellation_reason,"
+                "m.created_unix,m.updated_unix,m.deadline_unix,m.source_world_revision,"
+                "m.observation_cursor,m.associated_checkpoint_generation,"
+                "COUNT(a.attempt_id) AS attempts,COALESCE(SUM(a.provider_calls),0) AS provider_calls,"
+                "COALESCE(SUM(a.tool_calls),0) AS tool_calls,"
+                "COALESCE(SUM(a.provider_tokens),0) AS provider_tokens,"
+                "COALESCE(MAX(a.peak_context_tokens),0) AS peak_context_tokens,"
+                "COALESCE(SUM(a.result_bytes),0) AS result_bytes,"
+                "COALESCE(SUM(a.trace_bytes),0) AS trace_bytes,"
+                "MIN(a.started_unix) AS started_unix,MAX(a.completed_unix) AS completed_unix "
+                "FROM specialist_missions m LEFT JOIN specialist_attempts a "
+                "ON a.mission_id=m.mission_id " + where + " GROUP BY m.mission_id "
+                "ORDER BY m.created_unix DESC LIMIT ?", parameters,
+            ).fetchall()
+        values = []
+        for row in rows:
+            item = dict(row)
+            started = item.get("started_unix")
+            completed = item.get("completed_unix")
+            item["latency_ms"] = (round((float(completed) - float(started)) * 1000, 3)
+                                  if started is not None and completed is not None else None)
+            item["sovereign_context_avoided_tokens"] = max(
+                0, int(item["provider_tokens"] or 0) - max(1, int(item["result_bytes"] or 0) // 4),
+            )
+            values.append(item)
+        return values
+
+    def specialist_mission(self, mission_id: str) -> dict[str, Any]:
+        _require_id(mission_id, "mission_id")
+        with self.store._connect() as connection:
+            mission = connection.execute(
+                "SELECT * FROM specialist_missions WHERE mission_id=?", (mission_id,),
+            ).fetchone()
+            if not mission:
+                raise ScopeViolation("unknown_specialist_mission")
+            attempts = [dict(row) for row in connection.execute(
+                "SELECT * FROM specialist_attempts WHERE mission_id=? ORDER BY attempt_number",
+                (mission_id,),
+            ).fetchall()]
+            dependencies = [dict(row) for row in connection.execute(
+                "SELECT dependency_kind,dependency_ref,dependency_hash,source_call_sequence,attempt_id "
+                "FROM specialist_dependencies WHERE mission_id=? ORDER BY attempt_id,source_call_sequence",
+                (mission_id,),
+            ).fetchall()]
+            traces = [dict(row) for row in connection.execute(
+                "SELECT * FROM specialist_trace_manifests WHERE mission_id=? ORDER BY created_unix",
+                (mission_id,),
+            ).fetchall()]
+        value = dict(mission)
+        value.pop("model_profile_json", None)
+        value["attempts"] = attempts
+        value["dependencies"] = dependencies
+        value["traces"] = traces
+        return value
+
+    def specialist_trace(self, attempt_id: str) -> dict[str, Any]:
+        _require_id(attempt_id, "attempt_id")
+        with self.store._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM specialist_trace_manifests WHERE attempt_id=?", (attempt_id,),
+            ).fetchone()
+        if not row:
+            raise ScopeViolation("specialist_trace_unavailable")
+        value = dict(row)
+        root = Path(os.environ.get(
+            "SMACX_SPECIALIST_TRACE_ROOT",
+            str(self.store.path.parent / "specialist-traces"),
+        )).expanduser().resolve()
+        path = Path(str(value["content_path"])).resolve()
+        try:
+            relative = path.relative_to(root)
+        except ValueError as exc:
+            raise ScopeViolation("specialist_trace_path_invalid") from exc
+        if not path.is_file() or path.stat().st_size != int(value["bytes"]):
+            raise ScopeViolation("specialist_trace_content_missing")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != value["content_sha256"]:
+            raise ScopeViolation("specialist_trace_integrity_failure")
+        value["relative_path"] = str(relative)
+        value.pop("content_path", None)
+        return value
+
+    def gc_specialist_traces(self) -> dict[str, Any]:
+        from smacx_specialists import SpecialistTraceStore
+        policy = self.specialist_status()["policy"]
+        root = Path(os.environ.get(
+            "SMACX_SPECIALIST_TRACE_ROOT",
+            str(self.store.path.parent / "specialist-traces"),
+        )).expanduser().resolve()
+        return SpecialistTraceStore(root).gc(
+            self.store,
+            success_generations=int(policy["trace_success_generations"]),
+            failed_generations=int(policy["trace_failed_generations"]),
+            byte_ceiling=int(policy["trace_byte_ceiling"]),
+            high_retention=bool(policy["trace_high_retention"]),
+        )
+
+    def set_specialist_profile(self, profile: Mapping[str, Any] | None, *,
+                               max_concurrency: int = 2,
+                               policy: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        if not 1 <= int(max_concurrency) <= 16:
+            raise InvalidRecord("invalid_specialist_concurrency")
+        if profile is None:
+            with self.store.transaction() as connection:
+                connection.execute(
+                    "DELETE FROM control_settings WHERE setting_key='specialist.profile'"
+                )
+        else:
+            self._set_setting("specialist.profile", self._normalize_graphiti_profile(profile))
+        from smacx_specialists import normalize_specialist_policy
+        current = self.specialist_status()["policy"]
+        requested = dict(current)
+        if isinstance(policy, Mapping):
+            requested.update(dict(policy))
+        requested["installation_concurrency"] = int(max_concurrency)
+        # Normalize here for immediate operator feedback and again at use.
+        for workload in ("synthesis", "investigation"):
+            if workload in requested and not isinstance(requested[workload], Mapping):
+                raise InvalidRecord("invalid_specialist_policy")
+        try:
+            normalized_policy = normalize_specialist_policy(requested)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise InvalidRecord("invalid_specialist_policy") from exc
+        self._set_setting("specialist.policy", normalized_policy)
+        with self.store.transaction() as connection:
+            connection.execute(
+                "DELETE FROM control_settings WHERE setting_key='specialist.max_concurrency'"
+            )
+        return self.specialist_status()
+
+    def sync_specialist_profile(self, profile: Mapping[str, Any]) -> dict[str, Any]:
+        current = self._setting("specialist.profile")
+        requested_id = str(profile.get("profile_id", ""))
+        if not isinstance(current, Mapping) or current.get("profile_id") != requested_id:
+            return {**self.specialist_status(), "synced": False, "changed": False}
+        normalized = self._normalize_graphiti_profile(profile)
+        changed = dict(current) != normalized
+        if changed:
+            self._set_setting("specialist.profile", normalized)
+        return {**self.specialist_status(), "synced": True, "changed": changed}
+
+    def clear_specialist_profile(self, profile_id: str) -> dict[str, Any]:
+        current = self._setting("specialist.profile")
+        if isinstance(current, Mapping) and current.get("profile_id") == profile_id:
+            with self.store.transaction() as connection:
+                connection.execute(
+                    "DELETE FROM control_settings WHERE setting_key='specialist.profile'"
+                )
+        return self.specialist_status()
+
+    def world_observability(self) -> dict[str, Any]:
+        """Content-free aggregates for operator diagnosis."""
+        with self.store._connect() as connection:
+            metrics = [dict(row) for row in connection.execute(
+                "SELECT category,metric,COUNT(*) AS samples,AVG(value_real) AS average," \
+                "MAX(value_real) AS maximum,SUM(value_real) AS total FROM world_telemetry " \
+                "GROUP BY category,metric ORDER BY category,metric"
+            ).fetchall()]
+            specialists = [dict(row) for row in connection.execute(
+                "SELECT m.status,COUNT(*) AS count,AVG((a.completed_unix-a.started_unix)*1000) "
+                "AS average_latency_ms,SUM(COALESCE(a.provider_calls,0)) AS provider_calls,"
+                "SUM(COALESCE(a.tool_calls,0)) AS tool_calls,"
+                "SUM(COALESCE(a.provider_tokens,0)) AS provider_tokens,"
+                "MAX(COALESCE(a.peak_context_tokens,0)) AS peak_context_tokens,"
+                "SUM(COALESCE(a.trace_bytes,0)) AS trace_bytes "
+                "FROM specialist_missions m LEFT JOIN specialist_attempts a "
+                "ON a.mission_id=m.mission_id GROUP BY m.status ORDER BY m.status"
+            ).fetchall()]
+            worlds = dict(connection.execute(
+                "SELECT COUNT(*) AS perspectives,COALESCE(MAX(world_revision),0) AS max_revision," \
+                "COALESCE(MAX(observation_cursor),0) AS max_observation_cursor FROM world_heads"
+            ).fetchone())
+            attention = dict(connection.execute(
+                "SELECT COUNT(*) AS total," \
+                "SUM(CASE WHEN status='queued' THEN 1 ELSE 0 END) AS queued," \
+                "SUM(CASE WHEN critical=1 AND status!='acknowledged' THEN 1 ELSE 0 END) AS critical_pending " \
+                "FROM attention_items"
+            ).fetchone())
+        return {"ok": True, "world": worlds, "attention": attention,
+                "specialists": specialists, "metrics": metrics,
+                "content_retained": False}
+
     def set_graphiti_enabled(self, enabled: bool, *, profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
         if not isinstance(enabled, bool):
             raise InvalidRecord("invalid_graphiti_enabled")

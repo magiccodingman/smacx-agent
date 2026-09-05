@@ -90,8 +90,6 @@ RUN dpkg --add-architecture i386 \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin smacx \
     && install -d -o smacx -g smacx /var/lib/smacx /run/smacx /opt/smacx/prepared
 
-COPY --from=bridge-build /build/thinker.dll /opt/smacx/bridge/thinker.dll
-COPY --from=bridge-build /build/thinker.exe /opt/smacx/bridge/thinker.exe
 COPY --from=directx-runtime /opt/directx/directx_feb2010_redist.exe /opt/smacx/redist/directx_feb2010_redist.exe
 # The compatibility runtime comes from the verified upstream release stage;
 # no game worker mounts a host Proton tree.
@@ -112,6 +110,11 @@ RUN python3 -m venv /opt/selkies-venv \
     && cp /opt/selkies-venv/lib/python*/site-packages/pcmflux-2.0.0.dist-info/licenses/LICENSE \
         /opt/smacx/licenses/pcmflux-MPL-2.0.txt \
     && rm -rf /tmp/selkies
+
+# Native changes must not invalidate the pinned compatibility runtime and
+# installed streaming dependencies above.
+COPY --from=bridge-build /build/thinker.dll /opt/smacx/bridge/thinker.dll
+COPY --from=bridge-build /build/thinker.exe /opt/smacx/bridge/thinker.exe
 
 ENV PATH="/opt/selkies-venv/bin:${PATH}"
 COPY worker/entrypoint.py worker/healthcheck.py worker/inspect_source.py \

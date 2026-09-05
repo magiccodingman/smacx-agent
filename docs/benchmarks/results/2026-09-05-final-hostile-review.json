@@ -1,0 +1,846 @@
+{
+  "native_build": "LLVM-MinGW cmake --build bridge/build/agent -j2; unchanged bridge up to date",
+  "native_running_game_rerun": false,
+  "no_new_managed_tool_strategist_ranking_doctrine_or_hidden_channel": true,
+  "reviewed_baseline": "234bcc2f277e48288e16c0b97a3d1458087d53b2",
+  "status": "passed_with_recorded_prior_tail_failures",
+  "tests": {
+    "scripts/active_scope_benchmark.py": {
+      "active_crossing_watches": 4,
+      "active_scopes": 9,
+      "all_scope_inspection_ms": 756.399,
+      "creation_ms": [
+        163.883,
+        229.036,
+        292.839,
+        231.022,
+        256.493,
+        300.442,
+        497.108,
+        422.149,
+        524.525
+      ],
+      "initial_registry_ms": 580.863,
+      "known_tiles": 6400,
+      "maximum_descriptor_tokens": 113,
+      "native_interaction": false,
+      "passed": true,
+      "registry_ms": 71.95,
+      "watch_evaluation_ms": 149.011,
+      "workload": "four proximities, two geography, one corridor, two unions, observed movement"
+    },
+    "scripts/active_scope_collector_benchmark.py": {
+      "UI_probe_max_gap_ms": 479.441,
+      "active_collection_ms": 11598.976,
+      "active_scopes": 9,
+      "crossing_watches": 4,
+      "evidence": "native_shaped_full_collector_publication",
+      "initial_collection_ms": 8898.348,
+      "known_tiles": 25600,
+      "loss_in_same_publication": true,
+      "observed_crossing_attention_count": 2,
+      "passed": true,
+      "scope_creation_total_ms": 45102.055
+    },
+    "scripts/attention_communication_contract_test.py": {
+      "event": "pass",
+      "payload": {
+        "attention_operation_scope_isolation": true,
+        "batched_acknowledgement": true,
+        "chat_deduplication": true,
+        "communication_serializes_sovereign": true,
+        "failed_invocation_redelivers_same_ids": true,
+        "independent_attention_cursor": true,
+        "mid_provider_capture_isolated": true,
+        "oversized_burst_only_visible_placed": true,
+        "partial_ack_requeues_remainder": true,
+        "responded_without_ack_restart_redelivery": true,
+        "restart_redelivery": true,
+        "specialist_completion_redelivery": true
+      }
+    },
+    "scripts/campaign_journal_test.py": {
+      "event": "pass",
+      "payload": {
+        "canonical_plan_key_projection": true,
+        "dead_history_searchable": true,
+        "hash_chain": true,
+        "live_filter_before_real_budget": true,
+        "notebook_versioned": true,
+        "portable_replay": true,
+        "post_checkpoint_search_memory_excluded": true,
+        "search_and_chat_journal_authoritative": true,
+        "sqlite_projection_rebuilt_from_journal": true,
+        "timeline_parent_prefix_replayed": true,
+        "turn_git_commit": true,
+        "working_state_budget_pressure_visible": true,
+        "working_state_journal_backed": true
+      }
+    },
+    "scripts/collector_tail_benchmark.py": {
+      "collector_gate_ms": 30000,
+      "evidence": "native_shaped_production_collector_independent_probe",
+      "passed": true,
+      "probe_gate_ms": 500,
+      "runs": [
+        {
+          "initial_ms": 8488.954,
+          "known_tiles": 25600,
+          "probe_ms": 241.511,
+          "run": 1,
+          "unchanged_ms": 6635.151
+        },
+        {
+          "initial_ms": 11255.291,
+          "known_tiles": 25600,
+          "probe_ms": 316.151,
+          "run": 2,
+          "unchanged_ms": 7384.802
+        },
+        {
+          "initial_ms": 23244.836,
+          "known_tiles": 25600,
+          "probe_ms": 327.421,
+          "run": 3,
+          "unchanged_ms": 7120.397
+        }
+      ]
+    },
+    "scripts/counterfactual_choice_contract_test.py": {
+      "choice_preview_scope_revision_ttl_consumption": "pass",
+      "first_plan_health_query_reconciles_restored_world": "pass",
+      "ok": true,
+      "preview_does_not_consume_or_modify_choice": "pass"
+    },
+    "scripts/counterfactual_contract_test.py": {
+      "dense_site_query_metrics": {
+        "compact": {
+          "answer_available": false,
+          "elapsed_ms": 34.544,
+          "estimated_tokens": 63
+        },
+        "deep": {
+          "answer_available": true,
+          "elapsed_ms": 22.917,
+          "estimated_tokens": 2213
+        },
+        "standard": {
+          "answer_available": true,
+          "elapsed_ms": 23.253,
+          "estimated_tokens": 2034
+        }
+      },
+      "exhaustive_assignment_cases": 45,
+      "ok": true,
+      "stale_evidence_and_closed_parameters": "pass",
+      "world_query_revision_binding": "pass"
+    },
+    "scripts/derived_lifecycle_test.py": {
+      "automatic_warm_inspection_restart": true,
+      "passed": true,
+      "topology_lifecycle": [
+        {
+          "direct_watch_status": [
+            "active",
+            "active"
+          ],
+          "domain": "land",
+          "kind": "version",
+          "old_refs_withdrawn_before_history_refresh": true
+        },
+        {
+          "direct_watch_status": [
+            "active",
+            "active"
+          ],
+          "domain": "ocean",
+          "kind": "version",
+          "old_refs_withdrawn_before_history_refresh": true
+        },
+        {
+          "direct_watch_status": [
+            "invalid",
+            "invalid"
+          ],
+          "domain": "land",
+          "kind": "split",
+          "old_refs_withdrawn_before_history_refresh": true
+        },
+        {
+          "direct_watch_status": [
+            "invalid",
+            "invalid"
+          ],
+          "domain": "ocean",
+          "kind": "split",
+          "old_refs_withdrawn_before_history_refresh": true
+        },
+        {
+          "direct_watch_status": [
+            "active",
+            "active"
+          ],
+          "domain": "land",
+          "kind": "merge",
+          "old_refs_withdrawn_before_history_refresh": true
+        },
+        {
+          "direct_watch_status": [
+            "active",
+            "active"
+          ],
+          "domain": "ocean",
+          "kind": "merge",
+          "old_refs_withdrawn_before_history_refresh": true
+        }
+      ],
+      "true_dependency_stops_promotion": true
+    },
+    "scripts/event_time_episode_test.py": {
+      "event_time_episode_identity_preserved": true,
+      "passed": true,
+      "visibility_gap_never_bridged": true
+    },
+    "scripts/fair_play_world_test.py": {
+      "event": "pass",
+      "payload": {
+        "attention_payloads_identical": true,
+        "focus_operation_watch_provider_boundary": true,
+        "hidden_honeytoken_differential": true,
+        "hidden_route_region_boundary": true,
+        "pact_infiltration_governor_satellite_scenario": true,
+        "provider_anchor_route_render_identical": true,
+        "specialist_inputs_identical": true,
+        "spectator_admin_isolation": true
+      }
+    },
+    "scripts/geographic_semantics_contract_test.py": {
+      "event": "pass",
+      "payload": {
+        "cross_region_theaters_and_complete_promotion": true,
+        "expansion_mechanical_affordances": true,
+        "frontier_uncertainty_and_lazy_access": true,
+        "huge_fragmented_geographic_lod": true,
+        "physical_identity_and_mobility_separation": true,
+        "potential_connectivity_cases": 14,
+        "repair_and_staging_logistics": true,
+        "territory_resources_landmarks_ocean_geopolitics": true
+      }
+    },
+    "scripts/journal_idempotency_index_test.py": {
+      "external_writer_marker_loss": true,
+      "new_key_event_file_reads": 0,
+      "old_marker_loss": true,
+      "passed": true,
+      "restart": true
+    },
+    "scripts/milestone_contract_test.py": {
+      "all_and_threshold": true,
+      "destroyed_requirement_retained": true,
+      "managed_milestone_create_inspect": true,
+      "ok": true,
+      "repeat_completion_deduplication": true,
+      "restart_attention_delivery": true,
+      "stale_is_unknown": true,
+      "threshold_matrix_cases": 256
+    },
+    "scripts/milestone_threshold_transition_test.py": {
+      "optional_blocker_does_not_block": true,
+      "passed": true,
+      "ready_pending_transitions_deduplicated": true
+    },
+    "scripts/native_event_time_contract_test.py": {
+      "bounded_ring_preserved": true,
+      "event_relationship_is_frozen": true,
+      "evidence": "compiled_production_adapter_with_controlled_native_shaped_inputs",
+      "passed": true,
+      "running_game_comparison": false
+    },
+    "scripts/native_observation_contract_test.py": {
+      "event": "pass",
+      "payload": {
+        "action_revision_ignores_native_row_layout": true,
+        "airdrop_fixture_acceptance_flag_alone_rejected": true,
+        "airdrop_fixture_both_flags_required": true,
+        "airdrop_fixture_test_mode_alone_rejected": true,
+        "bounded_native_ring": true,
+        "capture_recapture_preserved_within_reconciliation": true,
+        "chat_and_deferred_actions_emit_events": true,
+        "collector_bridge_operations_valid": true,
+        "collector_refresh_serialized": true,
+        "confirmed_destruction_full_pipeline": true,
+        "continuity_gap_journaled": true,
+        "continuous_movement_path_collected": true,
+        "durable_stage_retains_more_than_native_ring_capacity": true,
+        "immutable_publication_package_defers_new_native_activity": true,
+        "managed_sidecar_identity_explicit": true,
+        "native_lifecycle_hooks_attached": true,
+        "over_256_pages_drained_and_coalesced": true,
+        "overflow_enters_critical_attention": true,
+        "overflow_explicit": true,
+        "post_semantic_pre_world_head_recovery_exact": true,
+        "projection_marks_reconciliation": true,
+        "routine_airdrop_receipts_absent": true,
+        "same_drain_visibility_gap_breaks_only_affected_contact": true,
+        "semantic_identity_checkpoint_wiring": true,
+        "semantic_native_transition_events_present": true,
+        "two_phase_publication_crash_replay_exactly_once": true,
+        "visible_destruction_not_fog_loss": true
+      }
+    },
+    "scripts/observation_batch_recovery_test.py": {
+      "passed": true,
+      "windows": [
+        {
+          "canonical_events_not_duplicated": true,
+          "crash_window": "before_commit",
+          "journal_and_cache_objects": 279
+        },
+        {
+          "canonical_events_not_duplicated": true,
+          "crash_window": "during_commit",
+          "journal_and_cache_objects": 279
+        },
+        {
+          "canonical_events_not_duplicated": true,
+          "crash_window": "after_commit",
+          "journal_and_cache_objects": 279
+        }
+      ]
+    },
+    "scripts/plan_dependency_publication_test.py": {
+      "current_publication_wakeup": true,
+      "evidence": "native_shaped_collector_and_journal",
+      "passed": true,
+      "post_transition_pre_ack_crash_retry_once": true,
+      "unchanged_available_no_duplicate": true
+    },
+    "scripts/plan_dependency_transition_test.py": {
+      "one_positive_per_current_transition": true,
+      "passed": true,
+      "plan_revision_and_completion_isolated": true,
+      "restart_dedupe": true,
+      "rollback_state_and_attention": true,
+      "unknown_never_available": true
+    },
+    "scripts/plan_health_contract_test.py": {
+      "dependency_change_qualified": true,
+      "explicit_assignment_distinct_from_order": true,
+      "incomplete_intent_not_unassigned": true,
+      "ok": true,
+      "prose_has_no_mechanical_authority": true,
+      "stale_credit_withheld": true,
+      "timed_unit_production_credit_conflicts": true
+    },
+    "scripts/provider_schema_budget_test.py": {
+      "event": "pass",
+      "payload": {
+        "managed_tool_count": 15,
+        "smac_world_conservative_token_proxy": 619,
+        "smac_world_hard_gate": 900,
+        "smac_world_schema_bytes": 1855,
+        "smac_world_target": 700,
+        "system_prompt_bytes": 5280,
+        "system_prompt_conservative_token_proxy": 1760,
+        "system_prompt_exact_tokens": null,
+        "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+        "tokenizer": "conservative_utf8_proxy",
+        "total_tool_schema_bytes": 20169
+      }
+    },
+    "scripts/publication_transaction_test.py": {
+      "candidate_first_evaluation": true,
+      "crash_matrix": [
+        {
+          "boundary": "before_watch",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_watch",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_watch_enqueue",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_watch_enqueue",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_head",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_head",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_available_enqueue",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_available_enqueue",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_available_enqueue",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_available_enqueue",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency_state",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency_state",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_ack",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_ack",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "during_ack",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "during_ack",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_ack",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_ack",
+          "native_reversed": true,
+          "passed": true
+        }
+      ],
+      "current_field": true,
+      "evidence": "native_shaped_production_collector",
+      "garrison_departure_arrival": true,
+      "newborn_no_false_block": true,
+      "passed": true
+    },
+    "scripts/query_history_scaling_test.py": {
+      "measurements": [
+        {
+          "historical_queries": 100,
+          "registry_ms": 56.05,
+          "retained": 65,
+          "runtime_ms": 280.053,
+          "scope_inspection_ms": 20.813,
+          "watch_ms": 17.887
+        },
+        {
+          "historical_queries": 1000,
+          "registry_ms": 70.749,
+          "retained": 65,
+          "runtime_ms": 341.67,
+          "scope_inspection_ms": 18.582,
+          "watch_ms": 19.567
+        },
+        {
+          "historical_queries": 5000,
+          "registry_ms": 364.087,
+          "retained": 65,
+          "runtime_ms": 304.536,
+          "scope_inspection_ms": 18.63,
+          "watch_ms": 17.32
+        }
+      ],
+      "old_pinned_restart_valid": true,
+      "passed": true,
+      "population": "distinct historical cache receipts shaped from a production query; not 5000 live provider executions",
+      "release_gc": true,
+      "true_dependency_invalidates": true
+    },
+    "scripts/query_pin_consumers_test.py": {
+      "independent_pin_consumers": [
+        "watch",
+        "scope",
+        "operation",
+        "plan",
+        "milestone"
+      ],
+      "passed": true
+    },
+    "scripts/rollback_world_contract_test.py": {
+      "event": "pass",
+      "payload": {
+        "future_attention_watch_operation_removed": true,
+        "future_cache_removed_specialist_diagnostics_retained": true,
+        "future_world_removed": true,
+        "new_timeline_activated": true,
+        "repeat_restore_deterministic": true,
+        "snapshot_journal_head_verified": true
+      }
+    },
+    "scripts/runtime_context_contract_test.py": {
+      "event": "pass",
+      "payload": {
+        "64k_and_256k_same_truth": true,
+        "acknowledgement_does_not_remove_focus": true,
+        "attention_32_item_remaining_count_exact": true,
+        "communication_same_sovereign_read_only": true,
+        "compact_standard_deep_continuations_finally_resealed": {
+          "compact": 445,
+          "deep": 8077,
+          "standard": 1972
+        },
+        "critical_attention_pinned": true,
+        "durable_commitment_pinned": true,
+        "huge_chaotic_256k_runtime_bounded": true,
+        "huge_chaotic_anchor_tokens_256k": 15931,
+        "huge_chaotic_attention_tokens_256k": 3500,
+        "huge_chaotic_cognition_tokens_256k": 5766,
+        "huge_chaotic_runtime_tokens_256k": 25562,
+        "large_cognition_live_selection": true,
+        "operation_retained_then_collected": true,
+        "runtime_token_composition_observed": true,
+        "runtime_tokens_256k": 8112,
+        "runtime_tokens_64k": 4742,
+        "stable_ready_unit_focus_and_anchor_promotion": true,
+        "tier_specific_detail_budget": true
+      }
+    },
+    "scripts/semantic_consumer_contract_test.py": {
+      "direct_and_wrapped_mass_watches": true,
+      "event_time_survives_loss_destruction_and_diplomacy": true,
+      "managed_route_cache_scope_area_chain": true,
+      "passed": true,
+      "theater_footprints_do_not_expand": true
+    },
+    "scripts/semantic_ref_matrix_test.py": {
+      "matrix": [
+        {
+          "kind": "physical_landmass",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "supported; nonempty private footprint",
+          "specialist": "explicit rejection; nominate immutable objects instead",
+          "world_area": "pass"
+        },
+        {
+          "kind": "physical_ocean_mass",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "supported; nonempty private footprint",
+          "specialist": "explicit rejection; nominate immutable objects instead",
+          "world_area": "pass"
+        },
+        {
+          "kind": "mobility_region",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "supported; nonempty private footprint",
+          "specialist": "explicit rejection; nominate immutable objects instead",
+          "world_area": "pass"
+        },
+        {
+          "kind": "theater",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "supported; nonempty private footprint",
+          "specialist": "explicit rejection; nominate immutable objects instead",
+          "world_area": "pass"
+        },
+        {
+          "kind": "route",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "supported; nonempty private footprint",
+          "specialist": "explicit rejection; nominate immutable objects instead",
+          "world_area": "pass"
+        },
+        {
+          "kind": "spatial_scope",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "supported; nonempty private footprint",
+          "specialist": "explicit rejection; nominate immutable objects instead",
+          "world_area": "pass"
+        },
+        {
+          "kind": "base",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "explicit rejection; base radius supported for base",
+          "specialist": "immutable object snapshot supported by specialist contract suite",
+          "world_area": "pass"
+        },
+        {
+          "kind": "own_unit",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "explicit rejection; base radius supported for base",
+          "specialist": "immutable object snapshot supported by specialist contract suite",
+          "world_area": "pass"
+        },
+        {
+          "kind": "foreign_contact",
+          "milestone_dependency": "pass",
+          "operation": "pass",
+          "spatial_consumers": "explicit rejection; base radius supported for base",
+          "specialist": "immutable object snapshot supported by specialist contract suite",
+          "world_area": "pass"
+        },
+        {
+          "kind": "omitted_frontier",
+          "paginated_discovery_watch_scope_area": "pass"
+        },
+        {
+          "kind": "omitted_physical_landmass",
+          "paginated_discovery_watch_scope_area": "pass"
+        }
+      ],
+      "passed": true
+    },
+    "scripts/semantic_ref_recovery_test.py": {
+      "checkpoint_restore_invalidates_old_derived_handles": true,
+      "cross_perspective_rejected": true,
+      "fresh_timeline_recomputation": true,
+      "passed": true,
+      "restart_preserves_valid_route_scope_watch": true
+    },
+    "scripts/sovereign_geography_acceptance_test.py": {
+      "fragmented_anchor_tokens": 4165,
+      "geography_queries": {
+        "area": {
+          "cold_ms": 71.936,
+          "result_tokens": 1854,
+          "warm_ms": 46.072
+        },
+        "compare": {
+          "cold_ms": 271.944,
+          "result_tokens": 813,
+          "warm_ms": 83.871
+        },
+        "logistics": {
+          "cold_ms": 109.377,
+          "result_tokens": 635,
+          "warm_ms": 704.991
+        },
+        "relation": {
+          "cold_ms": 705.565,
+          "result_tokens": 644,
+          "warm_ms": 80.633
+        }
+      },
+      "mature_empire_anchor_tokens": 4002,
+      "passed": true
+    },
+    "scripts/sovereign_hardening_contract_test.py": {
+      "map_freshness": true,
+      "typed_watch_fields": true,
+      "zero_turn_arrival": true
+    },
+    "scripts/spatial_scope_contract_test.py": {
+      "dependency_invalidation": true,
+      "native_radius_adapter": true,
+      "observed_hostile_crossings_only": true,
+      "ok": true,
+      "private_composite_geometry": true,
+      "restart_and_dedupe": true,
+      "stale_evidence_withheld": true
+    },
+    "scripts/specialist_contract_test.py": {
+      "event": "pass",
+      "payload": {
+        "bounded_durable_queue": true,
+        "completion_attention": true,
+        "corpus_change_stale": true,
+        "failed_snapshot_retry_horizon_housekeeping": true,
+        "failed_world_snapshot_manual_retry": true,
+        "frozen_reference_corpus": true,
+        "historical_result_hidden": true,
+        "idempotent_commission": true,
+        "immutable_snapshot_pin": true,
+        "journal_publication_recovery": true,
+        "late_result_cas_rejected": true,
+        "mission_attempt_split": true,
+        "operation_completion_cancels_linked": true,
+        "platform_dependencies": true,
+        "prepared_result_rollback_authoritative": true,
+        "relevant_change_stale": true,
+        "specialist_prompt_boundary": true,
+        "timeline_late_publish_rejected": true,
+        "turn_handoff_cancels_unlinked_only": true,
+        "unrelated_change_accepted": true,
+        "world_epoch_late_publish_rejected": true
+      }
+    },
+    "scripts/strategic_world_fixtures_test.py": {
+      "event": "pass",
+      "payload": {
+        "air_carrier_refueling": true,
+        "alien_crossfire_objectives": true,
+        "ally_rendezvous": true,
+        "current_pact_coastal_port_routing": true,
+        "ecology_sea_level_change": true,
+        "expansion_site_reasoning": true,
+        "fog_pursuit": true,
+        "huge_chaotic_world": true,
+        "huge_quiet_world": true,
+        "multi_front_warfare": true,
+        "parity_wrap_flat_boundaries": true,
+        "peninsula_defense": true,
+        "project_global_race": true,
+        "region_split_merge_split_lineage": true,
+        "relation_aware_threat_and_native_zoc": true,
+        "roads_magtubes_fungus_zoc_airdrop_connections": true,
+        "transport_island_logistics": true,
+        "two_threatened_bases_one_reserve": true
+      }
+    },
+    "scripts/transient_episode_publication_test.py": {
+      "cross_perspective_isolation": true,
+      "evidence": "native_shaped_staging_and_collector",
+      "four_distinct_episodes": true,
+      "passed": true,
+      "reset_and_discontinuity": true,
+      "transient_publication_cases": [
+        {
+          "crash": "none",
+          "ending": "visible_unit_lost",
+          "passed": true
+        },
+        {
+          "crash": "stage_page",
+          "ending": "visible_unit_lost",
+          "passed": true
+        },
+        {
+          "crash": "post_head",
+          "ending": "visible_unit_lost",
+          "passed": true
+        },
+        {
+          "crash": "none",
+          "ending": "visible_unit_destroyed",
+          "passed": true
+        },
+        {
+          "crash": "stage_page",
+          "ending": "visible_unit_destroyed",
+          "passed": true
+        },
+        {
+          "crash": "post_head",
+          "ending": "visible_unit_destroyed",
+          "passed": true
+        }
+      ]
+    },
+    "scripts/world_context_benchmark.py": {
+      "huge_quiet_growth_percent": 0.2849002849002913,
+      "method": "deterministic semantic token estimator: canonical UTF-8 bytes / 4",
+      "passed": true,
+      "profiles": {
+        "huge_chaotic_256k": {
+          "milliseconds": 966.6256540222093,
+          "regions_omitted": 0,
+          "strategic_objects_truncated": true,
+          "tokens": 15809
+        },
+        "huge_chaotic_64k": {
+          "milliseconds": 890.4939320636913,
+          "regions_omitted": 0,
+          "strategic_objects_truncated": true,
+          "tokens": 5669
+        },
+        "huge_fragmented_64k": {
+          "milliseconds": 406.70057001989335,
+          "regions_omitted": 3176,
+          "tokens": 5449
+        },
+        "huge_quiet_256k": {
+          "milliseconds": 1109.6251769922674,
+          "tokens": 1057
+        },
+        "huge_quiet_64k": {
+          "milliseconds": 862.5066459644586,
+          "tokens": 1056
+        },
+        "small_quiet_64k": {
+          "milliseconds": 6.863758084364235,
+          "tokens": 1053
+        }
+      },
+      "schema": "smacx.world-benchmark.v1",
+      "tile_count": {
+        "huge": 25600,
+        "small": 256
+      },
+      "underlying_fact_equivalence": true
+    },
+    "scripts/world_model_contract_test.py": {
+      "event": "pass",
+      "payload": {
+        "action_world_revision_separated": true,
+        "advance_retreat_path_preserved": true,
+        "all_semantic_world_modes": true,
+        "attention_redelivery": true,
+        "bounded_unknown_orbital_address_space": true,
+        "correct_square_topology": true,
+        "first_known_preserved_on_reverification": true,
+        "foreign_fog_identity_safe": true,
+        "frontier_temporal_watch": true,
+        "huge_quiet_anchor_bounded": true,
+        "known_world_routing": true,
+        "native_row_compaction_semantically_inert": true,
+        "perspective_provider_sanitized": true,
+        "query_cache": true,
+        "region_builder_persistence_split_merge_split": true,
+        "region_exit_watch": true,
+        "region_watch_migration_split_and_merge": true,
+        "rendezvous_watch": true,
+        "route_disruption_watch": true,
+        "semantic_handle_registry": true,
+        "single_materialized_anchor_per_tier": true,
+        "single_sovereign_writer": true,
+        "transient_region_entry_watch": true,
+        "watch_operation_bounds": true,
+        "watch_trigger_delivery": true,
+        "watch_ttl_and_plan_cleanup": true,
+        "world_invalid_operation_collected": true
+      }
+    }
+  }
+}

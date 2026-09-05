@@ -18,12 +18,31 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 from smacx_generation import normalize_generation_settings, openai_extra_body
+from smacx_context_policy import (
+    HERMES_COMPRESSION_TARGET_RATIO, HERMES_COMPRESSION_THRESHOLD_RATIO,
+)
 
 
 IDENTITY = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
 PROFILE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 REASONING = {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
 MARKER = ".smacx-profile.json"
+
+# Communication episodes are the same sovereign cognition with deliberately
+# narrower authority.  Keep this allowlist beside profile construction so the
+# provider-visible registry is reduced before Hermes snapshots its tools; the
+# MCP server still applies its independent call-time mutation gate.
+COMMUNICATION_MCP_TOOLS = (
+    "smac_world",
+    "smac_attention_ack",
+    "smac_cognition",
+    "smac_chat",
+    "smac_group_chat",
+    "smac_memory",
+    "smac_memory_update",
+    "smac_notebook",
+    "smac_investigate",
+)
 
 
 class HermesAdapterError(RuntimeError):
@@ -75,10 +94,9 @@ participant, not merely optimize isolated turns.
 - Use `smac_decision` as the ordinary loop; execute at most one returned exact
   command, then obtain a fresh frame. Never invent IDs or reuse a revision.
 - Keep match-specific facts, relationships, beliefs, commitments, and goals in
-  `smac_memory`/`smac_knowledge`, not general Hermes memory or files.
-- Use `smac_reference` when a mechanic is unclear: browse the semantic tree or
-  search compactly, fetch only a returned document you need, and never let
-  general rules override fresh native choices or supply hidden match information.
+  typed `smac_memory_update`/`smac_notebook`, not general Hermes memory or files.
+- Use `smac_investigate` for context-heavy reference or world research; its
+  read-only result is evidence, never strategy or hidden match information.
 - Query one compact `smac_capabilities` section when launch mode or platform
   support is uncertain. A listed gap is a hard boundary, never permission to
   use a menu or visual fallback; current native choices remain authoritative.
@@ -179,8 +197,8 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "enabled": True,
             "checkpoint_required": False,
             "progress_notices": False,
-            "threshold": 0.5,
-            "target_ratio": 0.2,
+            "threshold": HERMES_COMPRESSION_THRESHOLD_RATIO,
+            "target_ratio": HERMES_COMPRESSION_TARGET_RATIO,
             "protect_last_n": 20,
             "protect_first_n": 3,
             "min_tail_user_messages": 1,
@@ -189,7 +207,17 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "memory": {"memory_enabled": False, "user_profile_enabled": False},
         "terminal": {"backend": "local", "cwd": str(runtime_workspace)},
         "platform_toolsets": {"cli": ["smacx"]},
-        "mcp_servers": {"smacx": {"url": mcp_url, "enabled": True}},
+        "mcp_servers": {
+            "smacx": {"url": mcp_url, "enabled": True},
+            "smacx-communication": {
+                "url": mcp_url, "enabled": True,
+                "tools": {
+                    "include": list(COMMUNICATION_MCP_TOOLS),
+                    "resources": False,
+                    "prompts": False,
+                },
+            },
+        },
         "display": {"show_reasoning": False, "streaming": True},
     }
     if provider_api_key_env:

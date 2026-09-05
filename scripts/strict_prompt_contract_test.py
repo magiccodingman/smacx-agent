@@ -20,7 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def run_probe(package_root: Path, prompt_path: Path, expected_hash: str) -> subprocess.CompletedProcess[str]:
     environment = dict(os.environ)
     environment.update({
-        "PYTHONPATH": os.pathsep.join((str(ROOT / "harness"), str(package_root))),
+        "PYTHONPATH": os.pathsep.join((
+            str(ROOT / "harness"), str(ROOT / "src"), str(package_root),
+        )),
         "SMACX_STRICT_SYSTEM_PROMPT": "1",
         "SMACX_SYSTEM_PROMPT_FILE": str(prompt_path),
         "SMACX_SYSTEM_PROMPT_SHA256": expected_hash,

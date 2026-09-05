@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression for rejecting session-local engine IDs from durable knowledge."""
+"""Regression for rejecting session-local engine IDs from durable cognition."""
 
 from __future__ import annotations
 
@@ -15,8 +15,12 @@ def main() -> int:
         calls.append(arguments)
         return {"ok": True, "written": True}
 
-    original = smacx_mcp.put_match_knowledge
-    smacx_mcp.put_match_knowledge = fake_put
+    original_scope = smacx_mcp._bound_scope_identity
+    original_notebook = smacx_mcp.controller_campaign_notebook
+    smacx_mcp._bound_scope_identity = lambda *args: (
+        "match-test", "session-test", "agent-test", "perspective-test"
+    )
+    smacx_mcp.controller_campaign_notebook = fake_put
     try:
         rejected_values = [
             "Colony Pod (id 26) is near the frontier.",
@@ -25,25 +29,26 @@ def main() -> int:
             "prototype-id 74 is our defender.",
         ]
         for value in rejected_values:
-            result = smacx_mcp.smac_knowledge(
+            result = smacx_mcp.smac_notebook(
                 action="put", match_id="match-test", session_id="session-test",
-                observed_revision="revision-test", key="fact", value=value,
+                observed_revision="revision-test", key="fact", content=value,
             )
             if result.get("error", {}).get("code") \
-                    != "session_local_knowledge_reference":
+                    != "session_local_notebook_reference":
                 raise AssertionError(f"ephemeral reference was accepted: {value!r}: {result}")
         if calls:
             raise AssertionError(f"rejected values reached storage: {calls}")
 
-        accepted = smacx_mcp.smac_knowledge(
+        accepted = smacx_mcp.smac_notebook(
             action="put", match_id="match-test", session_id="session-test",
-            observed_revision="revision-test", key="faction_behavior",
-            value="The Peacekeepers have honored our Treaty for twelve observed turns.",
+            observed_revision="revision-test", key="faction_behavior", title="Treaty conduct",
+            content="The Peacekeepers have honored our Treaty for twelve observed turns.",
         )
         if not accepted.get("ok") or len(calls) != 1:
             raise AssertionError(f"stable knowledge was not forwarded: {accepted}, {calls}")
     finally:
-        smacx_mcp.put_match_knowledge = original
+        smacx_mcp._bound_scope_identity = original_scope
+        smacx_mcp.controller_campaign_notebook = original_notebook
 
     print(json.dumps({
         "event": "pass",

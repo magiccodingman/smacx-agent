@@ -1,5 +1,6 @@
 
 #include "base.h"
+#include "agent_bridge.h"
 
 static bool delay_base_riot = false;
 static bool base_yield_active = false;
@@ -80,6 +81,74 @@ static void find_relocate_base(int faction_id) {
     }
 }
 
+// Shared by actual founding and the bounded read-only site economy probe.
+// Only initializes this base's population, intel population, and facility bits.
+void initialize_founded_base_facilities(int base_id) {
+    BASE* base = &Bases[base_id];
+    const int faction_id = base->faction_id;
+    Faction* plr = &Factions[faction_id];
+    MFaction* m = &MFactions[faction_id];
+    MAP* sq = mapsq(base->x, base->y);
+    if (plr->base_count == 1) {
+        set_fac(FAC_HEADQUARTERS, base_id, 1);
+        if (*MultiplayerActive) {
+            base->pop_size = 3;
+            if (m->rule_talent || plr->SE_planet_base > 0) {
+                base->pop_size = 4;
+            }
+            if (m->rule_drone || m->rule_population) {
+                base->pop_size--;
+            }
+            set_fac(FAC_RECYCLING_TANKS, base_id, 1);
+            if (*DiffLevel >= 3) {
+                set_fac(FAC_RECREATION_COMMONS, base_id, 1);
+            }
+            if (plr->SE_economy_base > 0) {
+                set_fac(FAC_ENERGY_BANK, base_id, 1);
+            }
+        } else {
+            base->pop_size = clamp((*CurrentTurn + 49) / 50, 1, 5);
+            if (*CurrentTurn >= 75) {
+                set_fac(FAC_RECYCLING_TANKS, base_id, 1);
+            }
+            if (*CurrentTurn >= 100) {
+                set_fac(FAC_RECREATION_COMMONS, base_id, 1);
+            }
+            if (*CurrentTurn >= 150) {
+                set_fac(FAC_ENERGY_BANK, base_id, 1);
+            }
+        }
+    }
+    if (is_ocean(sq)) {
+        set_fac(FAC_PRESSURE_DOME, base_id, 1);
+    }
+    for (int i = 0; i < MaxPlayerNum; i++) {
+        base->factions_pop_size_intel[i] =
+            (i == faction_id || (1 << i) & base->visibility ? base->pop_size : 0);
+    }
+    // Original function accepts IDs including satellites and stockpile energy but these
+    // cannot be built on the base normally and will be ignored by additional set_fac checks.
+    for (int i = 0; i < m->faction_bonus_count; i++) {
+        if (m->faction_bonus_id[i] == RULE_FACILITY) {
+            int item_id = clamp(m->faction_bonus_val1[i], 1, Fac_All_ID_Last);
+            set_fac((FacilityId)item_id, base_id, 1);
+        }
+    }
+    for (int i = 0; i < m->faction_bonus_count; i++) {
+        if (m->faction_bonus_id[i] == RULE_FREEFAC) {
+            int item_id = clamp(m->faction_bonus_val1[i], 1, Fac_All_ID_Last);
+            if (has_tech(Facility[item_id].preq_tech, faction_id)) {
+                set_fac((FacilityId)item_id, base_id, 1);
+            }
+        }
+    }
+    for (int i = 1; i <= Fac_All_ID_Last; i++) {
+        if (has_tech(Facility[i].free_tech, faction_id)) {
+            set_fac((FacilityId)i, base_id, 1);
+        }
+    }
+}
+
 int __cdecl mod_base_init(int faction_id, int x, int y) {
     MAP* sq;
     if (*BaseCount >= MaxBaseNum) {
@@ -91,7 +160,6 @@ int __cdecl mod_base_init(int faction_id, int x, int y) {
         return -1;
     }
     Faction* plr = &Factions[faction_id];
-    MFaction* m = &MFactions[faction_id];
     bit_set(x, y, BIT_BASE_IN_TILE, 1);
     owner_set(x, y, faction_id);
     synch_bit(x, y, faction_id);
@@ -152,64 +220,7 @@ int __cdecl mod_base_init(int faction_id, int x, int y) {
     base->pad_7 = 0;
     base->pad_8 = 0;
 
-    if (plr->base_count == 1) {
-        set_fac(FAC_HEADQUARTERS, base_id, 1);
-        if (*MultiplayerActive) {
-            base->pop_size = 3;
-            if (m->rule_talent || plr->SE_planet_base > 0) {
-                base->pop_size = 4;
-            }
-            if (m->rule_drone || m->rule_population) {
-                base->pop_size--;
-            }
-            set_fac(FAC_RECYCLING_TANKS, base_id, 1);
-            if (*DiffLevel >= 3) {
-                set_fac(FAC_RECREATION_COMMONS, base_id, 1);
-            }
-            if (plr->SE_economy_base > 0) {
-                set_fac(FAC_ENERGY_BANK, base_id, 1);
-            }
-        } else {
-            base->pop_size = clamp((*CurrentTurn + 49) / 50, 1, 5);
-            if (*CurrentTurn >= 75) {
-                set_fac(FAC_RECYCLING_TANKS, base_id, 1);
-            }
-            if (*CurrentTurn >= 100) {
-                set_fac(FAC_RECREATION_COMMONS, base_id, 1);
-            }
-            if (*CurrentTurn >= 150) {
-                set_fac(FAC_ENERGY_BANK, base_id, 1);
-            }
-        }
-    }
-    if (is_ocean(sq)) {
-        set_fac(FAC_PRESSURE_DOME, base_id, 1);
-    }
-    for (int i = 0; i < MaxPlayerNum; i++) {
-        base->factions_pop_size_intel[i] =
-            (i == faction_id || (1 << i) & base->visibility ? base->pop_size : 0);
-    }
-    // Original function accepts IDs including satellites and stockpile energy but these
-    // cannot be built on the base normally and will be ignored by additional set_fac checks.
-    for (int i = 0; i < m->faction_bonus_count; i++) {
-        if (m->faction_bonus_id[i] == RULE_FACILITY) {
-            int item_id = clamp(m->faction_bonus_val1[i], 1, Fac_All_ID_Last);
-            set_fac((FacilityId)item_id, base_id, 1);
-        }
-    }
-    for (int i = 0; i < m->faction_bonus_count; i++) {
-        if (m->faction_bonus_id[i] == RULE_FREEFAC) {
-            int item_id = clamp(m->faction_bonus_val1[i], 1, Fac_All_ID_Last);
-            if (has_tech(Facility[item_id].preq_tech, faction_id)) {
-                set_fac((FacilityId)item_id, base_id, 1);
-            }
-        }
-    }
-    for (int i = 1; i <= Fac_All_ID_Last; i++) {
-        if (has_tech(Facility[i].free_tech, faction_id)) {
-            set_fac((FacilityId)i, base_id, 1);
-        }
-    }
+    initialize_founded_base_facilities(base_id);
     base->production_id_last = base->queue_items[0];
     base->minerals_accumulated_2 = base->minerals_accumulated;
     base->mineral_surplus_final = 0;
@@ -218,6 +229,7 @@ int __cdecl mod_base_init(int faction_id, int x, int y) {
     set_base(base_id);
     base_compute(1); // Always update
     *GameDrawState |= 2u;
+    agent_observe_base_founded(base_id);
     return base_id;
 }
 
@@ -227,6 +239,7 @@ void __cdecl mod_base_kill(int base_id) {
         return;
     }
     BASE* base = &Bases[base_id];
+    agent_observe_base_destroyed(base_id);
     int base_x = base->x;
     int base_y = base->y;
     int faction_id = base->faction_id;
@@ -982,6 +995,7 @@ void __cdecl mod_capture_base(int base_id, int faction_id_atk, int is_probe) {
             }
         }
     }
+    agent_observe_base_captured(base_id, faction_id, faction_id_atk);
 }
 
 void __cdecl mod_base_reset(int base_id, int has_gov) {
@@ -3392,6 +3406,9 @@ int __cdecl mod_base_production() {
             if (veh_id < 0) {
                 return 0;
             }
+            // The unit exists now; retain the occurrence even if founding
+            // this colony consumes its final population and removes the base.
+            agent_observe_production_completed(*CurrentBaseID, item_id, 0, veh_id);
             VEH* veh = &Vehs[veh_id];
             if (Units[item_id].plan == PLAN_COLONY) {
                 if ((base->state_flags & BSTATE_UNK_2000000)
@@ -3463,6 +3480,10 @@ int __cdecl mod_base_production() {
                 mod_base_reset(*CurrentBaseID, 0);
             } else {
                 bool has_queue = base_queue(*CurrentBaseID);
+                agent_observe_production_queue(*CurrentBaseID, has_queue);
+                if (!has_queue && !gov_manage_production()) {
+                    agent_observe_production_selection(*CurrentBaseID, base->queue_items[0] == item_id);
+                }
                 uint32_t warn_flags;
                 parse_says(1, Units[item_id].name, -1, -1);
                 if ((!has_queue && !gov_manage_production())
@@ -3528,6 +3549,7 @@ int __cdecl mod_base_production() {
                 popb(StrBuffer, warn_flags, -1, image, 0);
                 if (!has_queue && gov_manage_production()) {
                     mod_base_reset(*CurrentBaseID, 0);
+                    agent_observe_production_selection(*CurrentBaseID, false);
                 }
             }
             if (is_prototype) {
@@ -3581,6 +3603,7 @@ int __cdecl mod_base_production() {
         }
         if (item_id >= 0) {
             if (SecretProjects[item_id] != SP_Unbuilt) {
+                agent_observe_project_interrupted(*CurrentBaseID, queue_id);
                 if (!is_human(faction_id) || gov_manage_production()) {
                     mod_base_reset(*CurrentBaseID, 0);
                 } else {
@@ -3710,7 +3733,10 @@ int __cdecl mod_base_production() {
         }
     }
     draw_tile(base->x, base->y, 2);
+    agent_observe_production_completed(*CurrentBaseID, -facility_id,
+        facility_id >= SP_ID_First ? 2 : 1);
     int cur_queue = base_queue(*CurrentBaseID);
+    agent_observe_production_queue(*CurrentBaseID, cur_queue != 0);
     bool is_extra = (facility_id >= FAC_SKY_HYDRO_LAB && facility_id <= FAC_STOCKPILE_ENERGY);
     bool is_smacx = (facility_id >= FAC_COVERT_OPS_CENTER && facility_id <= FAC_GEOSYNC_SURVEY_POD);
 
@@ -3995,10 +4021,12 @@ int __cdecl mod_base_production() {
     }
     if (!is_human(faction_id) || (gov_manage_production() && !cur_queue)) {
         mod_base_reset(*CurrentBaseID, 0);
+        agent_observe_production_selection(*CurrentBaseID, false);
     }
     if (is_human(faction_id) && !gov_manage_production()
     && base->queue_items[0] == -facility_id && !base->queue_size) {
         base->queue_items[0] = -FAC_STOCKPILE_ENERGY;
+        agent_observe_production_selection(*CurrentBaseID, false);
         draw_radius(base->x, base->y, 2, 2);
     }
     if (item_id < 0) {
@@ -4972,6 +5000,3 @@ int __cdecl fac_maint(int facility_id, int faction_id) {
     }
     return facility.maint;
 }
-
-
-
