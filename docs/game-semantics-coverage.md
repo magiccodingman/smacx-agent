@@ -348,6 +348,6 @@ Acceptance details: [Lobby startup UX acceptance](benchmarks/2026-09-05-lobby-st
 | Capability | Evidence chain and status | Verification / limits |
 |---|---|---|
 | Supervisor progress classification | Observed failure receipt churn → production fingerprint excludes receipts → unchanged-state timer can retain its baseline | Deterministic fingerprint and continuation contracts pass; live snapshot effect completeness and full incident containment remain open. |
-| Managed rejection recovery | Preserved transcript distinguishes protocol-rejected Skip from eventual native success | Alternating targets, stale IDs, shared outcome receipts and bounded operator containment still require repair and integrated acceptance. Not complete. |
+| Managed rejection recovery | Preserved transcript → four-failure managed submission budget across targets/IDs → explicit consumption/status/next-step receipts → latched dispatch block and incident reporting | Production wrapper/native-shaped tests pass, including success reset and session isolation. Live native causes, complete effect receipts and integrated running-stack quarantine remain open. Not complete. |
 
 See [action-progress repair evidence](benchmarks/2026-09-06-action-progress.md).
