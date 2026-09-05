@@ -60,3 +60,33 @@ revision identity (`semantic_reference_native_revision_changed`). The same
 failure was reproduced using the committed pre-wrapper `smacx_mcp.py` in the
 same container. The fixture/guard contract needs correction and revalidation
 before final acceptance; no weakening of reference guards is intended.
+
+## Incident containment and fixture correction
+
+Capability report ingestion now quarantines the whole managed match using the
+existing worker-manager operation: native workers and MCP collectors are paused,
+harnesses stopped, and active sovereign authority cancelled. A durable match
+quarantine prevents supervision from restarting a paused sidecar or treating it
+as an ordinary lost worker. Partial containment remains eligible for ingestion
+retry, while automatic checkpoint restoration stays blocked. Explicit verified
+recovery retains its existing authority.
+
+The supervisor's sustained-active-stall path now queues a diagnostic report and
+quarantines immediately instead of spending an automatic restart budget on the
+same state. The old `semantic_stall_recovery_limit` cannot enable retries here.
+
+Passing: `capability_incident_contract_test.py` now runs production quarantine
+through a simulated Docker boundary and verifies both worker/collector pauses,
+durable lifecycle/incident state and duplicate ingestion. Existing redaction and
+bundle bounds still pass. `incident_recovery_test.py` and
+`harness_continuation_contract_test.py` pass, including verified-recovery ordering
+and sustained-stall quarantine despite a configured recovery limit of two.
+
+`decision_frame_test.py` now supplies the required summary action revision and
+separate unit/base pages, and checks semantic command arguments independently
+of observation-call ordering. It passes, including a new explicit stale-summary
+rejection assertion. No production revision guard was changed.
+
+Limits: these are contained lifecycle/adapter tests, not a deployed Docker or
+portal acceptance run. Native move rejection causes, interrupted persistent
+orders, focused movement information and provider playthrough remain open.

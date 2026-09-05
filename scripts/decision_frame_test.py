@@ -55,6 +55,10 @@ def main() -> int:
                     "name": "Scout Patrol", "roles": {"combat": True},
                 }])
             if operation == "perspective_world_page":
+                if arguments.get("domain") == "summary":
+                    return {"ok": True, "action_revision": "r1"}
+                if arguments.get("domain") == "bases":
+                    return {"ok": True, "items": [], "next_cursor": None}
                 return {"ok": True, "items": [{
                     "id": 7, "own_unit_ref": "own-unit-19", "owned": True,
                 }],
@@ -74,13 +78,21 @@ def main() -> int:
                 or "snapshot" in frame \
                 or calls[-1] != ("semantic_choices", {
                     "kind": "unit_actions", "unit_id": 7,
-                    "target_tile_id": -1, "target_unit_id": -1,
                 }):
             raise AssertionError(f"bad ready-unit frame: {frame}, calls={calls}")
 
         full_frame = smacx_mcp.smac_decision(detail="full")
         if full_frame.get("snapshot", {}).get("revision") != "r1":
             raise AssertionError(f"full detail omitted snapshot: {full_frame}")
+
+        smacx_mcp._call = lambda operation, **arguments: (
+            {"ok": True, "action_revision": "stale"}
+            if operation == "perspective_world_page" and arguments.get("domain") == "summary"
+            else turn_call(operation, **arguments))
+        stale_frame = smacx_mcp.smac_decision()
+        assert stale_frame.get("error", {}).get("code") == "ready_unit_reference_unresolved", stale_frame
+        assert stale_frame["error"]["detail"] == "semantic_reference_native_revision_changed", stale_frame
+        smacx_mcp._call = turn_call
 
         captured_chat: list[tuple[str, str]] = []
         def capture_chat(match_id: str, session_id: str) -> dict:
@@ -105,7 +117,8 @@ def main() -> int:
         finish_frame = smacx_mcp.smac_decision(finish_ready_units=True)
         if finish_frame.get("focus", {}).get("purpose") != "finish_ready_units" \
                 or finish_frame.get("focus", {}).get("ready_unit_count") != 1 \
-                or calls[-1] != ("semantic_choices", {"kind": "game_management"}):
+                or [call for call in calls if call[0] == "semantic_choices"] != [
+                    ("semantic_choices", {"kind": "game_management"})]:
             raise AssertionError(f"bad finish-ready frame: {finish_frame}, calls={calls}")
         conflict = smacx_mcp.smac_decision(
             own_unit_ref="own-unit-19", finish_ready_units=True,

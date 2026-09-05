@@ -349,5 +349,6 @@ Acceptance details: [Lobby startup UX acceptance](benchmarks/2026-09-05-lobby-st
 |---|---|---|
 | Supervisor progress classification | Observed failure receipt churn → production fingerprint excludes receipts → unchanged-state timer can retain its baseline | Deterministic fingerprint and continuation contracts pass; live snapshot effect completeness and full incident containment remain open. |
 | Managed rejection recovery | Preserved transcript → four-failure managed submission budget across targets/IDs → explicit consumption/status/next-step receipts → latched dispatch block and incident reporting | Production wrapper/native-shaped tests pass, including success reset and session isolation. Live native causes, complete effect receipts and integrated running-stack quarantine remain open. Not complete. |
+| Incident containment | Capability report / sustained active stall → durable operator incident → whole-match quarantine → native/collector pause, harness stop and authority cancellation → explicit verified recovery | Production lifecycle contracts with simulated Docker boundary pass; redacted diagnostics and idempotency retained. Live deployed containment and portal verification remain pending. |
 
 See [action-progress repair evidence](benchmarks/2026-09-06-action-progress.md).
