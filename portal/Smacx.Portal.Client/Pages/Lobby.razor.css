@@ -1,0 +1,5 @@
+.lobby-entry { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px; margin-bottom: 24px; border-color: #31566d; }
+.lobby-entry h2 { font-size: 1.35rem; margin: 6px 0; }
+.lobby-entry p { margin: 0; color: var(--mud-palette-text-secondary); }
+.lobby-entry ::deep a { flex-shrink: 0; }
+@media(max-width:600px) { .lobby-entry { flex-direction: column; align-items: stretch; padding: 18px; gap: 16px; } }

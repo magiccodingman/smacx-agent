@@ -96,6 +96,7 @@ builder.Services.AddScoped<StreamProxyService>();
 builder.Services.AddSingleton<StreamPresenceTracker>();
 builder.Services.AddSingleton<WaitingLobbyPolicy>();
 builder.Services.AddSingleton<WaitingLobbyPresenceTracker>();
+builder.Services.AddSingleton<LobbyStartupTracker>();
 builder.Services.AddSingleton<RequestNetworkClassifier>();
 builder.Services.AddScoped<PortalAccessPolicy>();
 builder.Services.AddScoped<MatchAccessService>();

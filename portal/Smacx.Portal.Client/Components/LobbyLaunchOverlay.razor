@@ -1,0 +1,27 @@
+<MudOverlay Visible="true" DarkBackground="true" ZIndex="1500" Class="launch-overlay">
+ <section class="launch-card" role="dialog" aria-modal="true" aria-labelledby="launch-title">
+  <MudFocusTrap>
+   <img class="launch-art" src="/images/lobby-loading.png" alt="SMACX Agent planetary interface" />
+   <div class="launch-content">
+    <span class="launch-eyebrow">CAMPAIGN STARTUP</span>
+    <h2 id="launch-title">@Title</h2>
+    <p role="status" aria-live="polite">@Phase</p>
+    <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="launch-progress" aria-label="Campaign startup in progress" />
+    <div class="launch-meta"><span>Elapsed @Elapsed</span><span>@Confirmed</span></div>
+    @if(NativeJoin is not null)
+    {
+     <p class="launch-native">Waiting for native players. Connect to <strong>@NativeJoin.HostAddress</strong> · session <strong>@NativeJoin.SessionName</strong>. Full seat instructions are in the lobby.</p>
+    }
+    <div class="launch-footer"><p>When ready, we’ll open your game or an available live view.</p><MudButton Variant="Variant.Outlined" Color="Color.Inherit" OnClick="OnStay">Stay in lobby</MudButton></div>
+   </div>
+  </MudFocusTrap>
+ </section>
+</MudOverlay>
+@code {
+ [Parameter] public string Title { get; set; } = "Preparing your campaign";
+ [Parameter] public string Phase { get; set; } = "Requesting startup…";
+ [Parameter] public string Elapsed { get; set; } = "0:00";
+ [Parameter] public string Confirmed { get; set; } = "Awaiting server confirmation";
+ [Parameter] public NativeJoinDetails? NativeJoin { get; set; }
+ [Parameter] public EventCallback OnStay { get; set; }
+}

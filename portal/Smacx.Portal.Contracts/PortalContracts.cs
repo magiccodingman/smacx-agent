@@ -240,7 +240,8 @@ public sealed record LobbyDetails(
     double RuntimeGeneration = 0,
     MaintenanceProgress? Maintenance = null,
     bool HasVerifiedRecoveryCheckpoint = false,
-    string? RecoveryBlockedReason = null);
+    string? RecoveryBlockedReason = null,
+    DateTimeOffset? StartupRequestedAt = null);
 
 public sealed record CapabilityGapIncident(
     string IncidentId,

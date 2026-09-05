@@ -362,3 +362,17 @@ created only for assigned agent seats.
   live X11 resizes of a running DirectDraw surface.
 - Ranked play and microphone/voice management are not supported.
 - The application does not include or distribute the game.
+
+## Entering a campaign from its lobby
+
+While a campaign starts, lobby viewers see the launch illustration, an
+indeterminate blue progress bar, and the latest startup phase. Browser players
+are sent to their available seat; eligible observers are sent to the observation
+deck. External/native players retain their connection instructions in the lobby.
+**Stay in lobby** cancels automatic entry for that visit without cancelling the
+launch. Errors or connection loss dismiss the overlay and expose an explanation.
+
+Opening an already running lobby never automatically redirects you. Use the
+prominent **Return to game** or **Watch live** action to enter again. Campaign
+management remains available from the lobby. Existing ownership, spectator,
+reclaim and checkpoint requirements still apply.
