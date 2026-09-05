@@ -1,0 +1,36 @@
+{
+  "schema": "smacx.semantic-airdrop-live.v1",
+  "recorded_date": "2026-09-04",
+  "native_map_tiles": 8192,
+  "ready_drop_units": 129,
+  "routine_projection": {
+    "maximum_page_latency_ms": 200.134,
+    "maximum_page_bytes": 127868,
+    "target_lists_materialized": false
+  },
+  "demanded_enumeration": {
+    "legal_target_count": 3785,
+    "returned_target_limit": 128,
+    "truncated": true,
+    "native_elapsed_ms": 0.0,
+    "wall_elapsed_ms": 212.9,
+    "maximum_concurrent_probe_gap_ms": 218.256,
+    "payload_bytes": 8608
+  },
+  "exact_outside_page_receipt": {
+    "allowed": true,
+    "native_elapsed_ms": 0.0,
+    "wall_elapsed_ms": 215.288,
+    "maximum_concurrent_probe_gap_ms": 211.417,
+    "payload_bytes": 288,
+    "semantic_location_resolved_privately": true,
+    "guarded_opaque_choice_executed": true,
+    "model_supplied_native_tile_id": false
+  },
+  "revision_cache_hit": true,
+  "native_pact_port_sequence_passed": true,
+  "native_airdrop_fog_and_hidden_state_matrix_passed": true,
+  "hard_ui_responsiveness_budget_ms": 500,
+  "passed": true,
+  "content_free": true
+}

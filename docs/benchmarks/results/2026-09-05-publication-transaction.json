@@ -1,0 +1,110 @@
+{
+  "passed": true,
+  "candidate_first_evaluation": true,
+  "newborn_no_false_block": true,
+  "garrison_departure_arrival": true,
+  "current_field": true,
+  "crash_matrix": [
+    {
+      "boundary": "before_watch",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "before_watch",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "after_watch_enqueue",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "after_watch_enqueue",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "after_head",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "after_head",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "before_dependency",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "before_dependency",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "before_available_enqueue",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "before_available_enqueue",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "after_available_enqueue",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "after_available_enqueue",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "before_dependency_state",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "before_dependency_state",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "before_ack",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "before_ack",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "during_ack",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "during_ack",
+      "native_reversed": true,
+      "passed": true
+    },
+    {
+      "boundary": "after_ack",
+      "native_reversed": false,
+      "passed": true
+    },
+    {
+      "boundary": "after_ack",
+      "native_reversed": true,
+      "passed": true
+    }
+  ],
+  "evidence": "native_shaped_production_collector"
+}

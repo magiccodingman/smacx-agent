@@ -80,23 +80,23 @@ def main() -> int:
             raise AssertionError("smac_command does not expose governor_permission")
         if "phase" not in signature.parameters:
             raise AssertionError("smac_command does not expose phase")
-        if "target_tile_id" not in signature.parameters \
-                or "target_tile_id" not in choice_signature.parameters:
-            raise AssertionError("coordinate-free target_tile_id is missing")
-        if "target_unit_id" not in signature.parameters \
-                or "target_unit_id" not in choice_signature.parameters:
-            raise AssertionError("object-targeted target_unit_id is missing")
+        if "target_tile_id" not in signature.parameters:
+            raise AssertionError("standalone compatibility target_tile_id is missing")
+        if "target_unit_id" not in signature.parameters:
+            raise AssertionError("standalone compatibility target_unit_id is missing")
+        required_semantic = {
+            "base_ref", "own_unit_ref", "target_location_ref", "target_unit_ref",
+        }
+        if not required_semantic <= set(choice_signature.parameters):
+            raise AssertionError("managed semantic choice selectors are incomplete")
+        if {"base_id", "unit_id", "target_tile_id", "target_unit_id"} \
+                & set(choice_signature.parameters):
+            raise AssertionError("managed choice schema leaked native selectors")
         if "center_tile_id" not in list_signature.parameters:
             raise AssertionError("coordinate-free center_tile_id is missing")
         for public_signature in (signature, choice_signature, list_signature):
             if "x" in public_signature.parameters or "y" in public_signature.parameters:
                 raise AssertionError("public MCP schema must not expose map x/y parameters")
-        smacx_mcp.smac_choices(
-            kind="unit_actions", unit_id=17, target_unit_id=23,
-        )
-        choices_payload = dict(captured.get("payload", {}))
-        if choices_payload.get("target_unit_id") != 23:
-            raise AssertionError(f"choices target_unit_id was not forwarded: {captured}")
         smacx_mcp.smac_command(
             command="respond_to_combat_confirmation",
             match_id="match-test",

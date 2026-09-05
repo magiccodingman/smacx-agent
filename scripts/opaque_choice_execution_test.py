@@ -186,6 +186,20 @@ def main() -> int:
                 or false_gap.get("recorded") is not False:
             raise AssertionError(f"native rule was misreported as a capability gap: {false_gap}")
 
+        # The same accept action on different displayed agreement terms is
+        # meaningful progress; identical terms remain a repeated state.
+        fingerprints = []
+        for amount in (37, 50, 50):
+            frame_id, _ = smacx_mcp._cache_decision_choices(
+                {"match_id": "terms", "session_id": "terms", "revision": "r1"},
+                [{"command": "respond_human_diplomacy", "response": "accept"}],
+                choice_kind="interaction", choice_arguments={},
+                turn=1, year=2101, phase="interaction",
+                catalog_information={"clauses": [{"kind": "energy", "amount": amount}]},
+            )
+            fingerprints.append(smacx_mcp.DECISION_CACHE[frame_id]["state_fingerprint"])
+        assert fingerprints[0] != fingerprints[1] == fingerprints[2], fingerprints
+
         smacx_mcp.ACTION_PROGRESS.clear()
         smacx_mcp._call = lambda operation, **arguments: (
             {"ok": True, "changed": True} if operation == "semantic_command" else

@@ -209,6 +209,23 @@ public sealed partial class ReportsController(
         }
     }
 
+    [HttpGet("world-observability")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<ActionResult<ApiResponse<JsonElement>>> WorldObservability()
+    {
+        try
+        {
+            using var document = await control.GetRawAsync(
+                "api/v1/world-observability", HttpContext.RequestAborted);
+            return ApiResponse<JsonElement>.Success(document.RootElement.Clone());
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<JsonElement>.Failure(exception.Code, exception.Message));
+        }
+    }
+
     [HttpPost("query")]
     [Authorize(Roles = "Administrator")]
     public async Task<ActionResult<ApiResponse<AnalyticsQueryResult>>> Query(AnalyticsQueryRequest request)

@@ -526,6 +526,22 @@ public sealed record StoragePolicyRequest(
     int MilestoneInterval = 25,
     bool RetainFullTurnHistory = false);
 public sealed record GraphitiConfigurationRequest(bool Enabled, string? ProfileId = null);
+public sealed record SpecialistWorkloadPolicyRequest(
+    int ToolBudget, int ProviderCallBudget, int ProviderTokenBudget,
+    int ContextTokenCeiling, int OutputTokenBudget, int WallSeconds);
+public sealed record SpecialistConfigurationRequest(
+    string? ProfileId = null,
+    int InstallationConcurrency = 2,
+    int SeatConcurrency = 2,
+    int AutomaticRetries = 1,
+    int SchemaRepairs = 1,
+    bool TraceCapture = true,
+    int TraceSuccessGenerations = 10,
+    int TraceFailedGenerations = 25,
+    long TraceByteCeiling = 2_147_483_648,
+    bool TraceHighRetention = false,
+    SpecialistWorkloadPolicyRequest? Synthesis = null,
+    SpecialistWorkloadPolicyRequest? Investigation = null);
 public sealed record EmbeddingConfigurationRequest(
     string Mode, string? ProviderId = null, string? ModelId = null,
     int? Dimensions = null, string? SpaceId = null);
@@ -536,6 +552,7 @@ public sealed record AdminSnapshot(
     System.Text.Json.JsonElement HarnessProfiles,
     System.Text.Json.JsonElement HarnessRuns,
     System.Text.Json.JsonElement Graphiti,
+    System.Text.Json.JsonElement Specialists,
     System.Text.Json.JsonElement Knowledge,
     System.Text.Json.JsonElement Workers,
     System.Text.Json.JsonElement Operations,

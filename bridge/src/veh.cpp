@@ -1,5 +1,6 @@
 
 #include "veh.h"
+#include "agent_bridge.h"
 
 
 int __cdecl can_arty(int unit_id, bool allow_sea_arty) {
@@ -684,6 +685,7 @@ void __cdecl veh_kill(int veh_id) {
     if (veh_id < 0) {
         return;
     }
+    agent_observe_unit_destroyed(veh_id);
     VEH* veh = &Vehs[veh_id];
     const int x = veh->x;
     const int y = veh->y;
@@ -3313,5 +3315,4 @@ int set_board_to(int veh_id, int trans_veh_id) {
     debug("set_board_to %2d %2d %s -> %s\n", veh->x, veh->y, veh->name(), v2->name());
     return VEH_SYNC;
 }
-
 

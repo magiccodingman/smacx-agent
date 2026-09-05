@@ -548,6 +548,16 @@ slot. Parked saves are zstd-compressed. Completing a campaign preserves one
 final verified save in the persistent control archive before releasing its
 worker volumes; analytics and semantic history are retained independently.
 
+The same page owns disposable-specialist policy. An administrator selects an
+optional independent helper profile, bounds per-seat and installation
+concurrency, and configures synthesis/investigation tool, provider-call,
+cumulative-token, context, output, wall-time, retry, and schema-repair leashes.
+It shows supervisor health and content-free mission/attempt telemetry, permits
+download of retained secret-redacted Zstandard traces, and runs manual trace
+garbage collection. Trace retention is measured in checkpoint generations;
+protected recent failures are never silently deleted merely to meet a byte
+ceiling. See [Disposable specialists](specialists.md).
+
 AI profile context is automatic by default. The selected model's advertised
 context is used unchanged and recorded by the control plane. A manual value
 must satisfy Hermes' 65,536-token minimum and may not exceed the endpoint's

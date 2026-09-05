@@ -1,0 +1,316 @@
+{
+  "schema": "smacx.checkpoint-acceptance.v1",
+  "checkpoint": 3,
+  "status": "accepted",
+  "baseline_commit": "b6195b30f792153d6ea5bee8816f30dfa6b0bdd1",
+  "contracts": {
+    "spatial_scope_contract_test": {
+      "passed": true,
+      "evidence": {
+        "ok": true,
+        "native_radius_adapter": true,
+        "private_composite_geometry": true,
+        "observed_hostile_crossings_only": true,
+        "stale_evidence_withheld": true,
+        "restart_and_dedupe": true,
+        "dependency_invalidation": true
+      }
+    },
+    "spatial_scope_scale_test": {
+      "passed": true,
+      "evidence": {
+        "ok": true,
+        "scope_service_scale": [
+          {
+            "tiles": 400,
+            "create_ms": 571.754,
+            "inspect_ms": 41.928,
+            "descriptor_tokens": 98,
+            "private_watch_definition_bytes": 315
+          },
+          {
+            "tiles": 40000,
+            "create_ms": 2616.907,
+            "inspect_ms": 1351.115,
+            "descriptor_tokens": 99,
+            "private_watch_definition_bytes": 317
+          },
+          {
+            "tiles": 65536,
+            "create_ms": 2732.232,
+            "inspect_ms": 2267.072,
+            "descriptor_tokens": 99,
+            "private_watch_definition_bytes": 317
+          }
+        ]
+      }
+    },
+    "milestone_contract_test": {
+      "passed": true,
+      "evidence": {
+        "ok": true,
+        "managed_milestone_create_inspect": true,
+        "all_and_threshold": true,
+        "destroyed_requirement_retained": true,
+        "stale_is_unknown": true,
+        "repeat_completion_deduplication": true,
+        "restart_attention_delivery": true
+      }
+    },
+    "plan_health_contract_test": {
+      "passed": true,
+      "evidence": {
+        "ok": true,
+        "explicit_assignment_distinct_from_order": true,
+        "timed_unit_production_credit_conflicts": true,
+        "stale_credit_withheld": true,
+        "dependency_change_qualified": true,
+        "incomplete_intent_not_unassigned": true,
+        "prose_has_no_mechanical_authority": true
+      }
+    },
+    "native_observation_contract_test": {
+      "passed": true,
+      "evidence": {
+        "bounded_native_ring": true,
+        "overflow_explicit": true,
+        "continuity_gap_journaled": true,
+        "projection_marks_reconciliation": true,
+        "overflow_enters_critical_attention": true,
+        "chat_and_deferred_actions_emit_events": true,
+        "semantic_native_transition_events_present": true,
+        "native_lifecycle_hooks_attached": true,
+        "continuous_movement_path_collected": true,
+        "over_256_pages_drained_and_coalesced": true,
+        "visible_destruction_not_fog_loss": true,
+        "capture_recapture_preserved_within_reconciliation": true,
+        "collector_bridge_operations_valid": true,
+        "managed_sidecar_identity_explicit": true,
+        "collector_refresh_serialized": true,
+        "two_phase_publication_crash_replay_exactly_once": true,
+        "immutable_publication_package_defers_new_native_activity": true,
+        "post_semantic_pre_world_head_recovery_exact": true,
+        "durable_stage_retains_more_than_native_ring_capacity": true,
+        "semantic_identity_checkpoint_wiring": true,
+        "action_revision_ignores_native_row_layout": true,
+        "confirmed_destruction_full_pipeline": true,
+        "same_drain_visibility_gap_breaks_only_affected_contact": true,
+        "airdrop_fixture_acceptance_flag_alone_rejected": true,
+        "airdrop_fixture_test_mode_alone_rejected": true,
+        "airdrop_fixture_both_flags_required": true,
+        "routine_airdrop_receipts_absent": true
+      }
+    },
+    "fair_play_world_test": {
+      "passed": true,
+      "evidence": {
+        "hidden_honeytoken_differential": true,
+        "spectator_admin_isolation": true,
+        "pact_infiltration_governor_satellite_scenario": true,
+        "hidden_route_region_boundary": true,
+        "provider_anchor_route_render_identical": true,
+        "specialist_inputs_identical": true,
+        "attention_payloads_identical": true,
+        "focus_operation_watch_provider_boundary": true
+      }
+    },
+    "runtime_context_contract_test": {
+      "passed": true,
+      "evidence": {
+        "64k_and_256k_same_truth": true,
+        "tier_specific_detail_budget": true,
+        "critical_attention_pinned": true,
+        "acknowledgement_does_not_remove_focus": true,
+        "durable_commitment_pinned": true,
+        "communication_same_sovereign_read_only": true,
+        "runtime_token_composition_observed": true,
+        "operation_retained_then_collected": true,
+        "stable_ready_unit_focus_and_anchor_promotion": true,
+        "attention_32_item_remaining_count_exact": true,
+        "large_cognition_live_selection": true,
+        "huge_chaotic_256k_runtime_bounded": true,
+        "compact_standard_deep_continuations_finally_resealed": {
+          "compact": 445,
+          "standard": 1972,
+          "deep": 8077
+        },
+        "runtime_tokens_64k": 4742,
+        "runtime_tokens_256k": 8112,
+        "huge_chaotic_runtime_tokens_256k": 25562,
+        "huge_chaotic_anchor_tokens_256k": 15931,
+        "huge_chaotic_cognition_tokens_256k": 5766,
+        "huge_chaotic_attention_tokens_256k": 3501
+      }
+    },
+    "rollback_world_contract_test": {
+      "passed": true,
+      "evidence": {
+        "new_timeline_activated": true,
+        "snapshot_journal_head_verified": true,
+        "future_world_removed": true,
+        "future_attention_watch_operation_removed": true,
+        "future_cache_removed_specialist_diagnostics_retained": true,
+        "repeat_restore_deterministic": true
+      }
+    },
+    "campaign_journal_test": {
+      "passed": true,
+      "evidence": {
+        "hash_chain": true,
+        "portable_replay": true,
+        "notebook_versioned": true,
+        "turn_git_commit": true,
+        "sqlite_projection_rebuilt_from_journal": true,
+        "working_state_journal_backed": true,
+        "working_state_budget_pressure_visible": true,
+        "timeline_parent_prefix_replayed": true,
+        "search_and_chat_journal_authoritative": true,
+        "post_checkpoint_search_memory_excluded": true,
+        "live_filter_before_real_budget": true,
+        "canonical_plan_key_projection": true,
+        "dead_history_searchable": true
+      }
+    },
+    "world_model_contract_test": {
+      "passed": true,
+      "evidence": {
+        "correct_square_topology": true,
+        "known_world_routing": true,
+        "all_semantic_world_modes": true,
+        "action_world_revision_separated": true,
+        "foreign_fog_identity_safe": true,
+        "perspective_provider_sanitized": true,
+        "query_cache": true,
+        "single_materialized_anchor_per_tier": true,
+        "huge_quiet_anchor_bounded": true,
+        "attention_redelivery": true,
+        "watch_operation_bounds": true,
+        "single_sovereign_writer": true,
+        "watch_trigger_delivery": true,
+        "world_invalid_operation_collected": true,
+        "advance_retreat_path_preserved": true,
+        "transient_region_entry_watch": true,
+        "region_exit_watch": true,
+        "semantic_handle_registry": true,
+        "frontier_temporal_watch": true,
+        "route_disruption_watch": true,
+        "rendezvous_watch": true,
+        "region_watch_migration_split_and_merge": true,
+        "region_builder_persistence_split_merge_split": true,
+        "watch_ttl_and_plan_cleanup": true,
+        "native_row_compaction_semantically_inert": true,
+        "first_known_preserved_on_reverification": true,
+        "bounded_unknown_orbital_address_space": true
+      }
+    },
+    "provider_schema_budget_test": {
+      "passed": true,
+      "evidence": {
+        "managed_tool_count": 15,
+        "smac_world_schema_bytes": 1475,
+        "smac_world_conservative_token_proxy": 492,
+        "smac_world_target": 700,
+        "smac_world_hard_gate": 900,
+        "system_prompt_bytes": 5280,
+        "system_prompt_conservative_token_proxy": 1760,
+        "system_prompt_exact_tokens": null,
+        "tokenizer": "conservative_utf8_proxy",
+        "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+        "total_tool_schema_bytes": 19789
+      }
+    },
+    "semantic_progress_contract_test": {
+      "passed": true,
+      "evidence": {
+        "revision_churn_ignored": true,
+        "turn_change_detected": true,
+        "interaction_change_detected": true,
+        "resource_change_detected": true
+      }
+    },
+    "attention_communication_contract_test": {
+      "passed": true,
+      "evidence": {
+        "mid_provider_capture_isolated": true,
+        "failed_invocation_redelivers_same_ids": true,
+        "restart_redelivery": true,
+        "batched_acknowledgement": true,
+        "independent_attention_cursor": true,
+        "communication_serializes_sovereign": true,
+        "chat_deduplication": true,
+        "attention_operation_scope_isolation": true,
+        "oversized_burst_only_visible_placed": true,
+        "partial_ack_requeues_remainder": true,
+        "specialist_completion_redelivery": true,
+        "responded_without_ack_restart_redelivery": true
+      }
+    },
+    "managed_memory_scale_test": {
+      "passed": true,
+      "evidence": {
+        "records_per_projection": 120,
+        "all_typed_projections_bounded": true,
+        "chat_bounded": true,
+        "events_bounded_and_provider_safe": true,
+        "search_abstract_only": true,
+        "recall_shared_budget": true,
+        "working_set_not_proportional_to_storage": true,
+        "maximum_read_tokens": 1907
+      }
+    }
+  },
+  "controlled_native": {
+    "execution": "managed-action run followed by resumed intent/recovery acceptance on the same isolated installation",
+    "provider_inference": false,
+    "trusted_response_hook_simulated": true,
+    "intent_checkpoint": {
+      "managed_base_radius_scope": true,
+      "private_membership": true,
+      "journaled_plan_and_milestone": true,
+      "native_repeat_completion_two_units": true,
+      "native_occurrence_to_managed_ready": true,
+      "provider_queryable_plan_health": true,
+      "managed_journaled_reservation_conflict": true,
+      "stationary_unit_assignment_visible": true,
+      "native_production_cases": [
+        "production_facility",
+        "production_project",
+        "production_interrupt"
+      ]
+    },
+    "intent_attention_delivery": {
+      "milestone_and_production_runtime_delivery": true,
+      "acknowledged_batches": 9,
+      "native_project_interruption_delivered": true,
+      "provider_inference": false,
+      "trusted_response_hook_simulated": true
+    },
+    "base_site_stress": {
+      "owned_base_count": 512,
+      "candidate_count": 32,
+      "radius_squares": 21,
+      "wall_ms": 240.354,
+      "maximum_probe_gap_ms": 251.149,
+      "hard_limit_ms": 500,
+      "receipt_bytes_below": 256000
+    },
+    "intent_recovery": {
+      "native_completed_units_preserved": true,
+      "journaled_conflict_and_stationary_assignment_preserved": true,
+      "ephemeral_old_timeline_watch_discarded": true
+    }
+  },
+  "open_acceptance": [],
+  "builds": {
+    "dotnet_passed": 63,
+    "dotnet_failed": 0,
+    "native_cross_build_steps_completed": 38,
+    "native_cross_build_steps_total": 38
+  },
+  "boundaries": [
+    "Controlled native production invokes the real game routine with isolated fixture inputs; it is not model gameplay quality evidence.",
+    "Native-shaped fixtures establish geometry and adapter behavior, not unmeasured yield prediction.",
+    "Old-timeline watches are intentionally discarded on recovery; sovereign recreation is explicit.",
+    "Checkpoint 4 counterfactual assistance and checkpoint 5 integrated acceptance remain outstanding."
+  ]
+}

@@ -14,6 +14,7 @@ import copy
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -23,7 +24,7 @@ import tarfile
 import tempfile
 import threading
 import time
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 import uuid
 
 from smacx_store import MemoryScope
@@ -92,6 +93,8 @@ class CampaignJournal:
         self.root = root.expanduser().resolve()
         self._timeline_resolver = timeline_resolver
         self._replay_cache: dict[str, dict[str, Any]] = {}
+        self._idempotency_event_index: dict[str, dict[str, Any]] = {}
+        self._recovered_heads: dict[str, tuple[Any, ...]] = {}
         self._cache_lock = threading.RLock()
 
     def timeline_id(self, scope: MemoryScope, requested: str = "") -> str:
@@ -150,6 +153,80 @@ class CampaignJournal:
             "updated_unix": now,
         }
 
+    def _validate_event(self, event, scope, timeline, sequence, previous, filename):
+        if not isinstance(event, dict):
+            raise JournalError("journal_invalid_event")
+        if (event.get("schema") != "smacx.campaign-event.v1"
+                or any(event.get(key) != value for key, value in (
+                    ("match_id", scope.match_id), ("agent_id", scope.agent_id),
+                    ("perspective_id", scope.perspective_id), ("timeline_id", timeline)))
+                or type(event.get("sequence")) is not int or event["sequence"] != sequence
+                or not re.fullmatch(r"journal-[0-9a-f]{32}", str(event.get("event_id", "")))
+                or filename != f"{sequence:012d}-{event['event_id']}.json"
+                or not isinstance(event.get("payload"), dict)
+                or (event.get("session_id") is not None and not IDENTITY.fullmatch(str(event["session_id"])))
+                or (event.get("idempotency_key") is not None and not KEY.fullmatch(str(event["idempotency_key"])))
+                or any(event.get(field) is not None and type(event[field]) is not int for field in ("turn", "year"))
+                or type(event.get("recorded_unix")) not in (int, float)
+                or not math.isfinite(event["recorded_unix"])
+                or not KEY.fullmatch(str(event.get("event_type", "")))
+                or event.get("previous_hash") != previous):
+            raise JournalError("journal_invalid_event_identity_or_chain")
+        body = {key: value for key, value in event.items() if key != "event_hash"}
+        actual = hashlib.sha256(previous.encode("ascii") + _canonical(body)).hexdigest()
+        if event.get("event_hash") != actual:
+            raise JournalError("journal_invalid_event_hash")
+
+    def _recover_suffix_locked(self, scope, timeline, path):
+        """Reconcile installed canonical events before returning/allocating a head.
+
+        Only a completely verified unique chain may advance the manifest. The
+        directory/head memo is disposable and is updated only after our writes.
+        """
+        raw_manifest = self._load(path / "manifest.json", None)
+        if (path / "manifest.json").exists() and (not isinstance(raw_manifest, dict)
+                or raw_manifest.get("schema") != self.schema
+                or type(raw_manifest.get("sequence")) is not int):
+            raise JournalError("journal_invalid_manifest")
+        manifest = self._manifest(scope, timeline)
+        directory = path / "events"
+        signature = (directory.stat().st_mtime_ns if directory.is_dir() else None,
+                     manifest.get("sequence"), manifest.get("head_hash"))
+        if any(manifest.get(key) != value for key, value in (
+                ("match_id", scope.match_id), ("agent_id", scope.agent_id),
+                ("perspective_id", scope.perspective_id), ("timeline_id", timeline))):
+            raise JournalError("journal_invalid_manifest_identity")
+        if self._recovered_heads.get(str(path)) == signature:
+            return manifest
+        head_sequence = int(manifest.get("sequence") or 0)
+        previous = "0" * 64
+        recovered = dict(manifest)
+        files = sorted(directory.glob("*.json")) if directory.is_dir() else []
+        if head_sequence < 0 or head_sequence > len(files):
+            raise JournalError("journal_manifest_sequence_mismatch")
+        for sequence, event_file in enumerate(files, 1):
+            event = self._load(event_file, None)
+            self._validate_event(event, scope, timeline, sequence, previous, event_file.name)
+            previous = event["event_hash"]
+            if sequence == head_sequence and previous != manifest.get("head_hash"):
+                raise JournalError("journal_manifest_head_mismatch")
+            if sequence > head_sequence:
+                recovered.update(sequence=sequence, head_hash=previous,
+                    last_event_id=event["event_id"], updated_unix=event["recorded_unix"])
+                for field in ("turn", "year"):
+                    if event.get(field) is not None:
+                        recovered["last_" + field] = event[field]
+        if head_sequence == 0 and manifest.get("head_hash") != "0" * 64:
+            raise JournalError("journal_manifest_head_mismatch")
+        if len(files) > head_sequence:
+            _atomic_json(path / "manifest.json", recovered)
+            self._replay_cache.pop(str(path), None)
+            self._update_catalog(scope, timeline, recovered)
+        self._recovered_heads[str(path)] = (signature[0], recovered["sequence"], recovered["head_hash"])
+        while len(self._recovered_heads) > 2:
+            self._recovered_heads.pop(next(iter(self._recovered_heads)))
+        return recovered
+
     def append(
         self,
         scope: MemoryScope,
@@ -161,10 +238,13 @@ class CampaignJournal:
         year: int | None = None,
         timeline_id: str = "",
         commit_reason: str = "",
+        idempotency_key: str = "",
     ) -> dict[str, Any]:
         event_type = _safe_key(event_type, "journal_event_type")
         if session_id:
             _safe_identity(session_id, "session_id")
+        if idempotency_key:
+            _safe_key(idempotency_key, "journal_idempotency_key")
         timeline = self.timeline_id(scope, timeline_id)
         path = self.perspective_root(scope, timeline)
         candidate = dict(payload)
@@ -173,7 +253,52 @@ class CampaignJournal:
         # Backups take the exclusive form of the root lock. An archive can
         # therefore never split an event write from its manifest/head update.
         with self._locked(self.root, shared=True), self._locked(path):
-            manifest = self._manifest(scope, timeline)
+            manifest = self._recover_suffix_locked(scope, timeline, path)
+            events_directory = path / "events"
+            prior_events_signature = events_directory.stat().st_mtime_ns if events_directory.is_dir() else None
+            if idempotency_key:
+                marker_name = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+                marker = self._load(path / "idempotency" / f"{marker_name}.json", {})
+                event_name = str(marker.get("event_file") or "") \
+                    if isinstance(marker, Mapping) else ""
+                existing = self._load(path / "events" / event_name, None) \
+                    if event_name else None
+                if isinstance(existing, dict) \
+                        and existing.get("idempotency_key") == idempotency_key:
+                    self._validate_event(existing, scope, timeline, existing["sequence"],
+                                         existing["previous_hash"], event_name)
+                    if existing["sequence"] > manifest["sequence"]:
+                        raise JournalError("journal_uncommitted_idempotency_event")
+                    return existing
+                # Recover marker loss from canonical events. Cache only the
+                # key-to-filename index, never event authority. A changed event
+                # directory (including a crash-created orphan) rebuilds it.
+                # New keys must not reparse every prior Huge-map batch.
+                directory = path / "events"
+                signature = directory.stat().st_mtime_ns if directory.is_dir() else None
+                with self._cache_lock:
+                    index = self._idempotency_event_index.get(str(path))
+                    if index is None or index["signature"] != signature:
+                        names = {}
+                        for event_file in sorted(directory.glob("*.json")) if directory.is_dir() else ():
+                            item = self._load(event_file, None)
+                            if isinstance(item, dict) and item.get("idempotency_key"):
+                                names[item["idempotency_key"]] = event_file.name
+                        index = {"signature": signature, "names": names}
+                        self._idempotency_event_index[str(path)] = index
+                        while len(self._idempotency_event_index) > 2:
+                            self._idempotency_event_index.pop(next(iter(self._idempotency_event_index)))
+                    event_name = index["names"].get(idempotency_key)
+                existing = self._load(directory / event_name, None) if event_name else None
+                if isinstance(existing, dict) and existing.get("idempotency_key") == idempotency_key:
+                    _atomic_json(path / "idempotency" / f"{marker_name}.json", {
+                        "idempotency_key": idempotency_key, "event_file": event_name,
+                        "event_id": existing.get("event_id"), "sequence": existing.get("sequence")})
+                    self._validate_event(existing, scope, timeline, existing["sequence"],
+                                         existing["previous_hash"], event_name)
+                    if existing["sequence"] > manifest["sequence"]:
+                        raise JournalError("journal_uncommitted_idempotency_event")
+                    return existing
             sequence = int(manifest.get("sequence") or 0) + 1
             previous = str(manifest.get("head_hash") or "0" * 64)
             body = {
@@ -190,6 +315,7 @@ class CampaignJournal:
                 "year": year,
                 "recorded_unix": time.time(),
                 "previous_hash": previous,
+                "idempotency_key": idempotency_key or None,
                 "payload": candidate,
             }
             body["event_hash"] = hashlib.sha256(previous.encode("ascii") + _canonical(body)).hexdigest()
@@ -204,9 +330,25 @@ class CampaignJournal:
                 "updated_unix": body["recorded_unix"],
             })
             _atomic_json(path / "manifest.json", manifest)
+            if idempotency_key:
+                _atomic_json(path / "idempotency" / f"{marker_name}.json", {
+                    "idempotency_key": idempotency_key,
+                    "event_file": event_path.name,
+                    "event_id": body["event_id"],
+                    "sequence": sequence,
+                })
+            self._recovered_heads[str(path)] = ((path / "events").stat().st_mtime_ns,
+                                                sequence, body["event_hash"])
             self._update_catalog(scope, timeline, manifest)
             cache_key = str(path)
             with self._cache_lock:
+                index = self._idempotency_event_index.get(cache_key)
+                if index is not None and index["signature"] != prior_events_signature:
+                    self._idempotency_event_index.pop(cache_key, None)
+                    index = None
+                if index is not None:
+                    if idempotency_key: index["names"][idempotency_key] = event_path.name
+                    index["signature"] = (path / "events").stat().st_mtime_ns
                 cached = self._replay_cache.get(cache_key)
                 if isinstance(cached, dict) \
                         and cached.get("manifest", {}).get("head_hash") == previous:
@@ -254,6 +396,9 @@ class CampaignJournal:
         year: int | None = None,
         session_id: str | None = None,
         timeline_id: str = "",
+        cursor: str = "",
+        limit: int = 24,
+        query: str = "",
     ) -> dict[str, Any]:
         if not COLLECTION.fullmatch(collection):
             raise JournalError("invalid_notebook_collection")
@@ -263,14 +408,61 @@ class CampaignJournal:
         if not isinstance(entries, dict):
             entries = {}
         if action == "list":
-            items = [dict(value) for value in entries.values()
-                     if isinstance(value, dict) and value.get("status") != "deleted"][:500]
-            return {"ok": True, "collection": collection, "items": items}
+            try:
+                offset = int(cursor.removeprefix("offset-")) if cursor else 0
+            except ValueError as exc:
+                raise JournalError("invalid_notebook_cursor") from exc
+            if offset < 0 or offset > 1_000_000:
+                raise JournalError("invalid_notebook_cursor")
+            page_size = min(max(int(limit), 1), 50)
+            terms = [term.casefold() for term in re.findall(
+                r"[\w'-]+", str(query), re.UNICODE,
+            )[:12]]
+            source = [dict(value) for value in entries.values()
+                      if isinstance(value, dict) and value.get("status") != "deleted"]
+            source.sort(key=lambda item: float(item.get("updated_unix") or 0), reverse=True)
+            if terms:
+                source = [item for item in source if all(
+                    term in " ".join((
+                        str(item.get("title") or ""),
+                        " ".join(str(tag) for tag in item.get("tags", ())),
+                        str(item.get("content") or ""),
+                    )).casefold() for term in terms
+                )]
+
+            def metadata(item: Mapping[str, Any]) -> dict[str, Any]:
+                content_value = " ".join(str(item.get("content") or "").split())
+                return {key: item.get(key) for key in (
+                    "schema", "collection", "key", "revision", "title", "tags",
+                    "status", "turn", "year", "updated_unix",
+                ) if item.get(key) is not None} | {
+                    "abstract": content_value[:237] + "..."
+                    if len(content_value) > 240 else content_value,
+                    "content_bytes": len(str(item.get("content") or "").encode("utf-8")),
+                }
+
+            items = [metadata(item) for item in source[offset:offset + page_size]]
+            result = {
+                "ok": True, "collection": collection, "items": items,
+                "total_count": len(source), "cursor": cursor or None,
+                "next_cursor": f"offset-{offset + len(items)}"
+                if offset + len(items) < len(source) else None,
+                "result_token_ceiling": 2048,
+            }
+            while items and max(1, (len(_canonical(result)) + 3) // 4) > 2048:
+                items.pop()
+                result["next_cursor"] = f"offset-{offset + len(items)}"
+                result["truncated_by_token_ceiling"] = True
+            return result
         key = _safe_key(key, "notebook_key")
         path = base / f"{key}.json"
         previous = entries.get(key, {})
         if action == "get":
-            return {"ok": bool(previous), "collection": collection, "item": previous or None}
+            result = {"ok": bool(previous), "collection": collection,
+                      "item": previous or None, "result_token_ceiling": 8192}
+            if max(1, (len(_canonical(result)) + 3) // 4) > 8192:
+                raise JournalError("notebook_result_budget_exhausted")
+            return result
         if action not in {"put", "delete"}:
             raise JournalError("invalid_notebook_action")
         if action == "put":
@@ -408,16 +600,24 @@ class CampaignJournal:
                 result.append(event)
         return result
 
-    def replay(self, scope: MemoryScope, timeline_id: str = "") -> dict[str, Any]:
+    def replay(self, scope: MemoryScope, timeline_id: str = "", *, sections: Iterable[str] | None = None) -> dict[str, Any]:
         """Materialize a portable cache seed using only canonical journal files."""
         path = self.perspective_root(scope, timeline_id)
-        manifest = self._manifest(scope, timeline_id)
+        with self._locked(self.root, shared=True), self._locked(path):
+            return self._replay_locked(scope, timeline_id, sections=sections)
+
+    def _replay_locked(self, scope, timeline_id, *, sections=None):
+        selected = frozenset(sections) if sections is not None else None
+        def detached(state):
+            return copy.deepcopy(state if selected is None else {key: value for key, value in state.items() if key in selected})
+        path = self.perspective_root(scope, timeline_id)
+        manifest = self._recover_suffix_locked(scope, self.timeline_id(scope, timeline_id), path)
         cache_key = str(path)
         with self._cache_lock:
             cached = self._replay_cache.get(cache_key)
             if isinstance(cached, dict) \
                     and cached.get("manifest", {}).get("head_hash") == manifest.get("head_hash"):
-                return copy.deepcopy(cached)
+                return detached(cached)
         verified = self.verify(scope, timeline_id)
         if not verified["ok"]:
             raise JournalError("journal_integrity_failed")
@@ -428,15 +628,18 @@ class CampaignJournal:
         state["manifest"] = manifest
         with self._cache_lock:
             self._replay_cache[cache_key] = state
-        return copy.deepcopy(state)
+        return detached(state)
 
     @staticmethod
     def _empty_state() -> dict[str, Any]:
         return {
             "facts": {}, "claims": {}, "beliefs": {}, "relationships": {},
-            "commitments": {}, "goals": {}, "summaries": {}, "notebook": {},
+            "commitments": {}, "goals": {}, "plans": {}, "summaries": {}, "notebook": {},
             "chat": {}, "chat_groups": {}, "chat_groups_snapshot_seen": False,
-            "recent_actions": [], "lifecycle": [],
+            "recent_actions": [], "lifecycle": [], "world_objects": {},
+            "project_reports": {}, "plan_dependency_health": {},
+            "world_observations": [], "world_continuity": "complete",
+            "world_observation_cursor": 0,
         }
 
     def _materialize_timeline(
@@ -482,20 +685,22 @@ class CampaignJournal:
         if not isinstance(payload, dict):
             return
         kind = str(event.get("event_type") or "")
-        if kind == "memory.fact":
+        if kind == "attention.plan_dependency_state":
+            state["plan_dependency_health"] = dict(payload.get("states") or {})
+        elif kind == "memory.fact":
             state["facts"][str(payload.get("key") or event["event_id"])] = payload
         elif kind.startswith("memory."):
             memory_kind = kind.split(".", 1)[1]
             memory_kind = {
                 "claim": "claims", "belief": "beliefs",
                 "relationship": "relationships", "commitment": "commitments",
-                "goal": "goals", "summary": "summaries",
+                "goal": "goals", "plan": "plans", "summary": "summaries",
             }.get(memory_kind, memory_kind)
             record = payload.get("record")
             supplied = payload.get("record_input")
             if memory_kind in state and isinstance(record, dict):
                 stable = next((str(record.get(name)) for name in (
-                    "goal_key", "commitment_key", "actor_id", "section", "topic",
+                    "goal_key", "plan_key", "commitment_key", "actor_id", "section", "topic",
                 ) if record.get(name) is not None), str(event["event_id"]))
                 state[memory_kind][stable] = {
                     "input": supplied, "record": record,
@@ -537,6 +742,62 @@ class CampaignJournal:
         elif kind == "game.action":
             state["recent_actions"].append(payload)
             state["recent_actions"] = state["recent_actions"][-100:]
+        elif kind in {"observation.world_object", "observation.world_batch"}:
+            changes = payload.get("deltas") if kind.endswith("world_batch") else [payload]
+            for change_payload in changes if isinstance(changes, list) else ():
+                if not isinstance(change_payload, Mapping):
+                    continue
+                object_ref = str(change_payload.get("object_ref") or "")
+                change = str(change_payload.get("change") or "")
+                if object_ref and change == "removed":
+                    state["world_objects"].pop(object_ref, None)
+                elif object_ref and isinstance(change_payload.get("current"), Mapping):
+                    state["world_objects"][object_ref] = dict(change_payload["current"])
+            state["world_observation_cursor"] = max(
+                int(state.get("world_observation_cursor") or 0),
+                int(payload.get("observation_sequence") or 0),
+            )
+        elif kind.startswith("observation."):
+            if kind == "observation.semantic_batch":
+                semantic_events = payload.get("events")
+                for semantic in semantic_events if isinstance(semantic_events, list) else ():
+                    if not isinstance(semantic, Mapping):
+                        continue
+                    event_kind = str(semantic.get("event_kind") or "")
+                    project_ref = str(semantic.get("project_ref") or "")
+                    prior_project_ref = str(semantic.get("prior_project_ref") or "")
+                    if prior_project_ref:
+                        state["project_reports"].pop(prior_project_ref, None)
+                    if not project_ref:
+                        continue
+                    if event_kind == "project_race_halted":
+                        state["project_reports"].pop(project_ref, None)
+                    elif event_kind.startswith("project_race_") \
+                            and semantic.get("builder_ref"):
+                        state["project_reports"][project_ref] = {
+                            "project_ref": project_ref,
+                            "builder_ref": semantic.get("builder_ref"),
+                            "builder_epistemic_status": "reported",
+                            "builder_last_verified_turn": semantic.get(
+                                "turn", event.get("turn")),
+                            "builder_provenance": semantic.get(
+                                "provenance", "native_public_report"),
+                            "journal_event_id": event.get("event_id"),
+                        }
+            state["world_observations"].append({
+                "event_type": kind, "journal_event_id": event.get("event_id"),
+                "turn": event.get("turn"), "year": event.get("year"),
+                "payload": payload,
+            })
+            state["world_observations"] = state["world_observations"][-500:]
+            state["world_observation_cursor"] = max(
+                int(state.get("world_observation_cursor") or 0),
+                int(payload.get("observation_sequence") or 0),
+            )
+            if kind == "observation.continuity_gap":
+                state["world_continuity"] = "incomplete"
+            elif kind == "observation.reconciled":
+                state["world_continuity"] = str(payload.get("continuity") or "complete")
         elif kind.startswith(("agent.", "checkpoint.", "incident.",
                               "lifecycle.", "recovery.")):
             state["lifecycle"].append({
@@ -578,17 +839,46 @@ class CampaignJournal:
         facts.sort(key=lambda item: float(
             item.get("updated_unix") or item.get("created_unix") or 0
         ), reverse=True)
-        goals = sorted(records("goals"), key=lambda item: (
+        # Provider-facing working cognition is a live projection, not a newest-
+        # rows view.  Filter semantic dead history before applying section
+        # budgets; otherwise a burst of recently completed work can evict an
+        # older promise or plan that is still binding.  The journal and search
+        # projection retain every historical revision.
+        goals = [item for item in records("goals")
+                 if str(item.get("status") or "active") in {"active", "paused"}]
+        goals = sorted(goals, key=lambda item: (
             -int(item.get("priority") or 0), -float(item.get("created_unix") or 0),
         ))[:100]
-        commitments = records("commitments")[:100]
+        commitment_status_rank = {
+            "accepted": 0, "binding": 0, "active": 0, "proposed": 1, "offered": 1,
+        }
+        commitments = [item for item in records("commitments")
+                       if str(item.get("status") or "proposed") in commitment_status_rank]
+        commitments.sort(key=lambda item: (
+            commitment_status_rank.get(str(item.get("status") or "proposed"), 2),
+            int(item.get("due_turn") or 2**31 - 1),
+            -float(item.get("created_unix") or 0),
+        ))
+        commitments = commitments[:100]
+        plans = [item for item in records("plans")
+                 if str(item.get("status") or "proposed") in {"proposed", "active", "paused"}]
+        plans.sort(key=lambda item: (
+            {"active": 0, "paused": 1, "proposed": 2}.get(
+                str(item.get("status") or "proposed"), 3,
+            ),
+            -float(item.get("created_unix") or 0),
+        ))
+        plans = plans[:100]
+        beliefs = records("beliefs")[:100]
         relationships = records("relationships")[:100]
         summaries = records("summaries")
         chat = list(reversed(list(replayed.get("chat", {}).values())[-50:]))
         sections: dict[str, Any] = {
             "situation": {"summaries": summaries, "facts": facts[:200]},
+            "beliefs": beliefs,
             "relationships": relationships,
             "goals": goals,
+            "plans": plans,
             "commitments": commitments,
             "recent_events": list(reversed(replayed.get("recent_actions", [])[-50:])),
             "chat": chat,
@@ -665,12 +955,23 @@ class CampaignJournal:
 
     def projection_records(
         self, scope: MemoryScope, kind: str, *, limit: int = 200,
+        statuses: Iterable[str] | None = None, record_ids: Iterable[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Read a structured projection exclusively from the active journal timeline."""
-        allowed = {"claims", "beliefs", "relationships", "commitments", "goals", "summaries"}
+        allowed = {"claims", "beliefs", "relationships", "commitments", "goals", "plans", "summaries"}
         if kind not in allowed:
             raise JournalError("invalid_projection_kind")
-        return self._current_records(self.replay(scope), kind)[:min(max(int(limit), 1), 1000)]
+        records = self._current_records(self.replay(scope, sections=(kind,)), kind)
+        # Filter binding intent before truncation. Recent resolved records must
+        # never hide an older active plan or revoke an explicitly linked watch.
+        if statuses is not None:
+            selected_statuses = set(map(str, statuses))
+            records = [item for item in records if str(item.get("status") or "active") in selected_statuses]
+        if record_ids is not None:
+            selected_ids = set(map(str, record_ids))
+            id_field = kind.removesuffix("s") + "_id"
+            records = [item for item in records if str(item.get(id_field) or "") in selected_ids]
+        return records[:min(max(int(limit), 1), 1000)]
 
     def chat_messages(
         self, scope: MemoryScope, *, unread_only: bool = False,
@@ -721,7 +1022,7 @@ class CampaignJournal:
         singular = {
             "facts": "fact", "claims": "claim", "beliefs": "belief",
             "relationships": "relationship", "commitments": "commitment",
-            "goals": "goal", "summaries": "summary", "chat": "chat",
+            "goals": "goal", "plans": "plan", "summaries": "summary", "chat": "chat",
             "notebook": "notebook", "recent_actions": "event", "lifecycle": "event",
         }
         replayed = self.replay(scope)
@@ -755,7 +1056,7 @@ class CampaignJournal:
             })
 
         for kind in ("facts", "claims", "beliefs", "relationships", "commitments",
-                     "goals", "summaries", "chat"):
+                     "goals", "plans", "summaries", "chat"):
             values = replayed.get(kind, {})
             if isinstance(values, Mapping):
                 for key, value in values.items():
@@ -844,7 +1145,7 @@ class CampaignJournal:
             """)
             count = 0
             for kind in ("facts", "claims", "beliefs", "relationships", "commitments",
-                         "goals", "summaries", "chat"):
+                         "goals", "plans", "summaries", "chat"):
                 values = state.get(kind, {})
                 if not isinstance(values, dict):
                     continue

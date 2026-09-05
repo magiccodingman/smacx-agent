@@ -2364,6 +2364,9 @@ bool allow_airdrop(int x, int y, int faction_id, bool combat, MAP* sq) {
     if (!combat && mod_zoc_move(x, y, faction_id)) {
         return false;
     }
+    // Drops may share only own/Pact stacks. Occupied non-Pact squares are
+    // rejected for both combat and noncombat units; an empty hostile base is
+    // governed separately by the base rule above.
     for (int i = *VehCount - 1; i >= 0; --i) {
         VEH* veh = &Vehs[i];
         if (veh->x == x && veh->y == y
@@ -3652,6 +3655,3 @@ int combat_move(const int id) {
     }
     return mod_veh_skip(id);
 }
-
-
-

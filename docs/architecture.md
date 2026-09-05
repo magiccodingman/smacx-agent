@@ -39,6 +39,10 @@ portal/MCP ----> private .NET knowledge service ----> private acquired corpus
                        |                                + shared embeddings
                        |
 campaign journal -> SQLite cursor -> optional Graphiti projector -> private FalkorDB
+
+native observation ring -> perspective collector -> campaign journal
+       -> derived world projection -> regions/theaters/semantic LOD
+       -> one current anchor + net deltas -> request-only runtime context
 ```
 
 Optional Graphiti/FalkorDB reads committed authoritative events through a cursor
@@ -132,8 +136,9 @@ installation_id
 
 Agent memory scope is exactly `match_id + agent_id + perspective_id`. Another
 agent in the same match, the same model in another match, and a recovered native
-process cannot reuse that scope accidentally. Match-local tile IDs are opaque
-identifiers; coordinates remain inside the bridge.
+process cannot reuse that scope accidentally. Managed providers receive only
+perspective-scoped semantic location/entity refs; native row/tile identifiers
+and coordinates remain inside the bridge and private action cache.
 
 Native state is filtered for the seat's faction. Unit/base ownership, map
 visibility, contacts, council state, diplomacy, chat participants, and legal
@@ -182,6 +187,54 @@ times against the same meaningful state opens a capability circuit before a
 fourth native mutation. End turn is rejected while mandatory work or a pending
 native action remains.
 
+## Strategic world and sovereign cognition
+
+The decision protocol remains the only native mutation authority. Around it,
+the strategic-world pipeline gives the same persistent sovereign a complete
+fair-play mechanical memory outside the provider transcript and a bounded,
+semantically zoomable view inside each request:
+
+```text
+bounded native observation ring and perspective pages
+  -> private durable observation stage and acknowledged drain cursor
+  -> external collector with idempotent semantic publication
+  -> hash-linked campaign journal (temporal authority)
+  -> perspective snapshot and world projection (rebuildable)
+  -> physical land/ocean masses + mobility regions + frontiers + theaters
+  -> geographic composition, attention and query cache
+  -> exactly one current anchor + net deltas
+  -> trusted request-only SMACX_RUNTIME_CONTEXT at the provider tail
+```
+
+Mechanical world revisions advance only for material perspective-known change,
+not harmless engine ticks. Each field retains epistemic status, provenance,
+and last verification where available. Foreign units receive identities only
+for one continuous visible episode; reacquisition through fog cannot assert
+that a similar contact is the same unit.
+
+The native ring is an interrupt-safe transport, not durable authority. The
+collector stages each raw drain in a provider-inaccessible file, publishes its
+semantic events idempotently to the journal, reconciles the projection, and
+only then advances the durable native cursor and removes the stage. A crash
+before either publication boundary replays the stage exactly once. Confirmed
+destruction retires the contact before absence reconciliation, while any
+visibility gap retires only that contact's visible-episode identity—even if it
+reappears on the same square during the same drain.
+
+Provider-facing size follows strategic complexity rather than map tiles. Quiet
+regions demote into hierarchical summaries, while focus, active operations,
+triggered watches, threatened bases, visible contacts, projects, and global
+systems promote relevant detail. `smac_world` provides deliberate read-only
+semantic zoom over separate topology, mechanics, projection, routing, cache,
+and rendering services. It is a compact facade, not an internal god object.
+
+The journal is authoritative temporal evidence. World tables, snapshots,
+anchors, region graphs, query caches, attention projections, Graphiti, and the
+optional semantic SVG are derived and must match an exact journal head,
+timeline, world epoch, revision, observation cursor, and dependency set. See
+[Strategic perception and sovereign cognition](strategic-world.md) and the
+[Game Semantics Coverage Matrix](game-semantics-coverage.md).
+
 ## Hermes integration and prompt layering
 
 Hermes is the supported long-running agent harness, but it is managed as an
@@ -200,12 +253,23 @@ SMACX owns the complete provider-facing system message. A derived image uses an
 audited startup hook over the digest-pinned official Hermes runtime and replaces
 Hermes prompt assembly rather than adding another layer. The hook verifies the
 stored prompt SHA-256 and fails closed when the file is missing or changed.
-Captured-provider tests prove that the request contains exactly one system
-message: the versioned fair-play contract, immutable match/seat/policy identity,
+Captured-provider tests prove that the request contains exactly one stable
+system message: the v6 sovereign contract, immutable match/seat/policy identity,
 mandatory live-settings briefing protocol, and the match's resolved authored
-personality card appended last. Hermes still supplies conversation continuity,
-compression, provider transport, and MCP execution, but contributes no system
-scaffold or workspace instructions.
+personality card appended last. Dynamic world state is never added to that
+message. Hermes still supplies conversation continuity, compression, provider
+transport, and MCP execution, but contributes no system scaffold or workspace
+instructions.
+
+Before every sovereign provider request, SMACX performs typed semantic garbage
+collection, deep-copies the provider message list, and appends exactly one
+trusted `SMACX_RUNTIME_CONTEXT` envelope to the latest eligible user or tool
+result at the request tail. The envelope contains the current world anchor and
+net delta, blocking focus, leased attention, projected durable cognition,
+foreground operation, and watch summary. It is never stored in Hermes SQLite,
+`api_content`, compression input, specialists, or Graphiti. Tail placement keeps
+the stable system and durable transcript prefix cacheable while preserving a
+valid current-episode assistant/tool sequence.
 
 Managed Qwen thinking profiles explicitly disable unlimited historical
 `preserve_thinking`. The derived harness retains all interleaved reasoning after
@@ -222,14 +286,26 @@ repetition fuse turns a large degenerate generation into Hermes's ordinary
 recoverable repetition error.
 
 A successful native turn end asks the model for one bounded `TURN HANDOFF`
-assistant message: outcome, concise rationale, changed conclusions, next-turn
-intent, and uncertainty. The message remains in Hermes history and is eligible
+assistant message: `Outcome`, `Rationale`, `Changed conclusions`, `Next intent`,
+and `Uncertainty`. It is cognitive residue rather than ordinary board narration.
+The message remains in Hermes history and is eligible
 for normal compression; it is not raw scratch reasoning. The supervisor treats
 that clean exit as a campaign yield, preserves the conversation, and does not
 consume the error-restart budget. It compares a volatility-filtered semantic
 fingerprint plus turn/year/phase/outcome markers across invocations. Three clean
 yields without meaningful progress stop the run and raise an operator-required
 incident. Actual nonzero exits retain their separate bounded restart budget.
+
+Context-heavy evidence work uses a separate long-lived specialist supervisor.
+It schedules durable missions fairly, but every attempt is a fresh disposable
+Hermes process with a new home/session/profile/capability and exactly one
+faculty MCP tool. World attempts read an immutable content-addressed perspective
+snapshot; reference attempts read one corpus revision. They never mount the
+game, sovereign Hermes state, or personality and cannot access mutation, chat,
+memory, terminal, files, web, or delegation. Actual tool calls establish the
+dependency set, strict publication is compare-and-swap, and completion enters
+the sovereign only as at-least-once attention. See
+[Disposable specialists](specialists.md).
 
 Capability-gap reports take priority over both continuation and error restart.
 The MCP sidecar appends one match/session-scoped report to the persistent control
@@ -348,6 +424,15 @@ active journal timeline forked from the recorded hash. AI-visible working state,
 structured lists, search, recall, chat acknowledgement, and modern group state
 all read that timeline; older SQLite rows are disposable/admin projections and
 cannot leak an abandoned future. A model must re-observe.
+
+Checkpoint metadata also carries a strictly platform-private native semantic
+identity capsule: the VEH-row handle vector, next monotonic handle, and an
+exact restored-layout validation hash. It is imported only after the verified
+save matches and never crosses MCP/provider serialization. This preserves
+surviving `own-unit-*` and continuous-contact identities across native process
+replacement even after native VEH-row compaction; a mismatch fails closed and
+forces derived-world reconstruction rather than attaching identities to the
+wrong world.
 
 Portal governance rows are durable authorization records. Quorum is frozen from
 the other connected, non-delegated human seats when a proposal opens. Approval

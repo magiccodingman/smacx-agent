@@ -1,0 +1,1649 @@
+{
+  "code_sha256": {
+    "src/smacx_attention.py": "0f04869f0bd133bd84e98fbe415ddbb64e808d810f3dba7548143b11e21c7857",
+    "src/smacx_controller.py": "5be2833e550891e7e1f6117aca69c3303c15bbfc242034b1e6536ba24eaafa82",
+    "src/smacx_graphiti.py": "ed30c7f1055f7170dd33ebbea9ae8759dc1eb1779653338c617673cfca10b60d",
+    "src/smacx_journal.py": "8b6fd4cc0da4a022fdc5eae08535a90e13119f6c0c3ac465bd19cf28c70bf648",
+    "src/smacx_observation.py": "9b8d74e4c0b4a3cd014e8d5cb04d70311de338aafa632dcad3c9b26ff29fc5a3",
+    "src/smacx_runtime_context.py": "17282d07e7e511f1b726ddf494a9b071afb86af8bf3c36d69433e71b69d0cab9",
+    "src/smacx_temporal_episodes.py": "39a89e996425d7c8a3a00e386e345473bdc10ea97332c6a60a17b2ba354f242a",
+    "src/smacx_world.py": "e177a0443cfdde32ae14d19bca939e1ec773aedd1e9fe000625bbeeccfb571ed",
+    "src/smacx_world_model.py": "4d1eaaec9438cfcfb381c48382f2e2e54774d17336f902461cfa89cca6c97bd8",
+    "src/smacx_world_store.py": "cd21ea0ea624067c44611a9d84be274a9f9abc62c9f5755663a9bd50ef1669d9"
+  },
+  "dotnet_rerun": false,
+  "earlier_h_review_active_distribution": [
+    {
+      "exit_code": 0,
+      "run": 1,
+      "stderr": "",
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8591.01, \"scope_creation_total_ms\": 34323.41, \"active_collection_ms\": 10559.609, \"UI_probe_max_gap_ms\": 423.015, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n"
+    },
+    {
+      "exit_code": 0,
+      "run": 2,
+      "stderr": "",
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 9822.372, \"scope_creation_total_ms\": 35526.523, \"active_collection_ms\": 10427.204, \"UI_probe_max_gap_ms\": 426.539, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n"
+    },
+    {
+      "exit_code": 0,
+      "run": 3,
+      "stderr": "",
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8525.639, \"scope_creation_total_ms\": 38830.95, \"active_collection_ms\": 10442.933, \"UI_probe_max_gap_ms\": 432.362, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n"
+    },
+    {
+      "exit_code": 0,
+      "run": 4,
+      "stderr": "",
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8388.272, \"scope_creation_total_ms\": 37515.926, \"active_collection_ms\": 10676.413, \"UI_probe_max_gap_ms\": 398.653, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n"
+    },
+    {
+      "exit_code": 0,
+      "run": 5,
+      "stderr": "",
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 23112.88, \"scope_creation_total_ms\": 36266.571, \"active_collection_ms\": 10420.858, \"UI_probe_max_gap_ms\": 406.964, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n"
+    }
+  ],
+  "evidence_classes": {
+    "compiled_adapter": "native_event_time_contract_test compiles production adapter code with controlled native-shaped inputs.",
+    "deterministic": "Managed query, runtime, journal, rollback, fairness and bounded-context contracts; controlled injected failures.",
+    "historical_acceptance": "Earlier live/.NET/provider results and failed/passing timing distributions remain historical.",
+    "native_shaped_production_collector": "Publication, episode, batch recovery and five active-scope repetitions exercise the real Python collector/projector/storage path with NativeFixture.",
+    "running_game_native": "No new running-game comparison or native UI-thread latency measurement.",
+    "source_derived_reviewer_probe": "Native observation source assertions and direct coalescer/semantic-consumer probes are fixture/source evidence."
+  },
+  "final_journal_followup_results": [
+    {
+      "event": "pass",
+      "payload": {
+        "canonical_plan_key_projection": true,
+        "dead_history_searchable": true,
+        "hash_chain": true,
+        "live_filter_before_real_budget": true,
+        "notebook_versioned": true,
+        "portable_replay": true,
+        "post_checkpoint_search_memory_excluded": true,
+        "search_and_chat_journal_authoritative": true,
+        "sqlite_projection_rebuilt_from_journal": true,
+        "timeline_parent_prefix_replayed": true,
+        "turn_git_commit": true,
+        "working_state_budget_pressure_visible": true,
+        "working_state_journal_backed": true
+      }
+    },
+    {
+      "cases": [
+        {
+          "boundary": "event",
+          "idempotent": true,
+          "passed": true
+        },
+        {
+          "boundary": "event",
+          "idempotent": false,
+          "passed": true
+        },
+        {
+          "boundary": "manifest",
+          "idempotent": true,
+          "passed": true
+        },
+        {
+          "boundary": "marker",
+          "idempotent": true,
+          "passed": true
+        },
+        {
+          "failed_closed": true,
+          "fault": "hash"
+        },
+        {
+          "failed_closed": true,
+          "fault": "scope"
+        },
+        {
+          "failed_closed": true,
+          "fault": "noncontiguous"
+        },
+        {
+          "failed_closed": true,
+          "fault": "conflict"
+        }
+      ],
+      "classification": "deterministic real journal persistence",
+      "passed": true
+    },
+    {
+      "external_writer_marker_loss": true,
+      "new_key_event_file_reads": 0,
+      "old_marker_loss": true,
+      "passed": true,
+      "restart": true
+    },
+    {
+      "candidate_first_evaluation": true,
+      "crash_matrix": [
+        {
+          "boundary": "before_watch",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_watch",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_watch_enqueue",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_watch_enqueue",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_head",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_head",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_available_enqueue",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_available_enqueue",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_available_enqueue",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_available_enqueue",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency_state",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_dependency_state",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "inside_journal",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "inside_journal",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "before_ack",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "before_ack",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "during_ack",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "during_ack",
+          "native_reversed": true,
+          "passed": true
+        },
+        {
+          "boundary": "after_ack",
+          "native_reversed": false,
+          "passed": true
+        },
+        {
+          "boundary": "after_ack",
+          "native_reversed": true,
+          "passed": true
+        }
+      ],
+      "current_field": true,
+      "evidence": "native_shaped_production_collector",
+      "garrison_departure_arrival": true,
+      "newborn_no_false_block": true,
+      "passed": true
+    }
+  ],
+  "live_provider_rerun": false,
+  "native_cross_build": "ninja: no work to do.",
+  "passed": true,
+  "reviewed_baseline": "8a39413553000c702a85a028c9ec68dc276137e5",
+  "running_game_native_rerun": false,
+  "tested_code_commit": "9cb0142",
+  "tests": {
+    "scripts/active_scope_collector_benchmark.py": {
+      "exit_code": 0,
+      "results": [
+        {
+          "UI_probe_max_gap_ms": 402.815,
+          "active_collection_ms": 10421.472,
+          "active_scopes": 9,
+          "crossing_watches": 4,
+          "evidence": "native_shaped_full_collector_publication",
+          "initial_collection_ms": 17633.365,
+          "known_tiles": 25600,
+          "loss_in_same_publication": true,
+          "observed_crossing_attention_count": 2,
+          "passed": true,
+          "run": 1,
+          "scope_creation_total_ms": 40779.599
+        },
+        {
+          "UI_probe_max_gap_ms": 448.484,
+          "active_collection_ms": 11007.317,
+          "active_scopes": 9,
+          "crossing_watches": 4,
+          "evidence": "native_shaped_full_collector_publication",
+          "initial_collection_ms": 8499.795,
+          "known_tiles": 25600,
+          "loss_in_same_publication": true,
+          "observed_crossing_attention_count": 2,
+          "passed": true,
+          "run": 2,
+          "scope_creation_total_ms": 33734.419
+        },
+        {
+          "UI_probe_max_gap_ms": 406.654,
+          "active_collection_ms": 10779.913,
+          "active_scopes": 9,
+          "crossing_watches": 4,
+          "evidence": "native_shaped_full_collector_publication",
+          "initial_collection_ms": 19147.112,
+          "known_tiles": 25600,
+          "loss_in_same_publication": true,
+          "observed_crossing_attention_count": 2,
+          "passed": true,
+          "run": 3,
+          "scope_creation_total_ms": 34769.815
+        },
+        {
+          "UI_probe_max_gap_ms": 411.429,
+          "active_collection_ms": 10792.502,
+          "active_scopes": 9,
+          "crossing_watches": 4,
+          "evidence": "native_shaped_full_collector_publication",
+          "initial_collection_ms": 8458.139,
+          "known_tiles": 25600,
+          "loss_in_same_publication": true,
+          "observed_crossing_attention_count": 2,
+          "passed": true,
+          "run": 4,
+          "scope_creation_total_ms": 34560.98
+        },
+        {
+          "UI_probe_max_gap_ms": 426.97,
+          "active_collection_ms": 11013.907,
+          "active_scopes": 9,
+          "crossing_watches": 4,
+          "evidence": "native_shaped_full_collector_publication",
+          "initial_collection_ms": 8474.952,
+          "known_tiles": 25600,
+          "loss_in_same_publication": true,
+          "observed_crossing_attention_count": 2,
+          "passed": true,
+          "run": 5,
+          "scope_creation_total_ms": 35939.479
+        }
+      ]
+    },
+    "scripts/attention_communication_contract_test.py": {
+      "elapsed_s": 1.044,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "attention_operation_scope_isolation": true,
+            "batched_acknowledgement": true,
+            "chat_deduplication": true,
+            "communication_serializes_sovereign": true,
+            "failed_invocation_redelivers_same_ids": true,
+            "independent_attention_cursor": true,
+            "mid_provider_capture_isolated": true,
+            "oversized_burst_only_visible_placed": true,
+            "partial_ack_requeues_remainder": true,
+            "responded_without_ack_restart_redelivery": true,
+            "restart_redelivery": true,
+            "specialist_completion_redelivery": true
+          }
+        }
+      ]
+    },
+    "scripts/campaign_journal_test.py": {
+      "elapsed_s": 2.05,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "canonical_plan_key_projection": true,
+            "dead_history_searchable": true,
+            "hash_chain": true,
+            "live_filter_before_real_budget": true,
+            "notebook_versioned": true,
+            "portable_replay": true,
+            "post_checkpoint_search_memory_excluded": true,
+            "search_and_chat_journal_authoritative": true,
+            "sqlite_projection_rebuilt_from_journal": true,
+            "timeline_parent_prefix_replayed": true,
+            "turn_git_commit": true,
+            "working_state_budget_pressure_visible": true,
+            "working_state_journal_backed": true
+          }
+        }
+      ]
+    },
+    "scripts/counterfactual_choice_contract_test.py": {
+      "elapsed_s": 0.802,
+      "exit_code": 0,
+      "results": [
+        {
+          "choice_preview_scope_revision_ttl_consumption": "pass",
+          "first_plan_health_query_reconciles_restored_world": "pass",
+          "ok": true,
+          "preview_does_not_consume_or_modify_choice": "pass"
+        }
+      ]
+    },
+    "scripts/counterfactual_contract_test.py": {
+      "elapsed_s": 0.388,
+      "exit_code": 0,
+      "results": [
+        {
+          "dense_site_query_metrics": {
+            "compact": {
+              "answer_available": false,
+              "elapsed_ms": 18.598,
+              "estimated_tokens": 63
+            },
+            "deep": {
+              "answer_available": true,
+              "elapsed_ms": 25.187,
+              "estimated_tokens": 2223
+            },
+            "standard": {
+              "answer_available": true,
+              "elapsed_ms": 24.355,
+              "estimated_tokens": 2021
+            }
+          },
+          "exhaustive_assignment_cases": 45,
+          "ok": true,
+          "stale_evidence_and_closed_parameters": "pass",
+          "world_query_revision_binding": "pass"
+        }
+      ]
+    },
+    "scripts/cross_publication_episode_test.py": {
+      "elapsed_s": 31.681,
+      "exit_code": 0,
+      "results": [
+        {
+          "cases": [
+            {
+              "case": "cross_publication_visible_unit_lost",
+              "passed": true
+            },
+            {
+              "case": "cross_publication_visible_unit_destroyed",
+              "passed": true
+            },
+            {
+              "case": "feed_cut_before_snapshot_reappearance",
+              "passed": true
+            },
+            {
+              "appearance": false,
+              "case": "gap",
+              "endpoint": false,
+              "failure": "none",
+              "passed": true
+            },
+            {
+              "appearance": false,
+              "case": "gap",
+              "endpoint": false,
+              "failure": "stage",
+              "passed": true
+            },
+            {
+              "appearance": false,
+              "case": "gap",
+              "endpoint": false,
+              "failure": "frozen",
+              "passed": true
+            },
+            {
+              "appearance": false,
+              "case": "gap",
+              "endpoint": true,
+              "failure": "none",
+              "passed": true
+            },
+            {
+              "appearance": false,
+              "case": "gap",
+              "endpoint": true,
+              "failure": "stage",
+              "passed": true
+            },
+            {
+              "appearance": false,
+              "case": "gap",
+              "endpoint": true,
+              "failure": "frozen",
+              "passed": true
+            },
+            {
+              "appearance": true,
+              "case": "gap",
+              "endpoint": false,
+              "failure": "none",
+              "passed": true
+            },
+            {
+              "appearance": true,
+              "case": "gap",
+              "endpoint": false,
+              "failure": "stage",
+              "passed": true
+            },
+            {
+              "appearance": true,
+              "case": "gap",
+              "endpoint": false,
+              "failure": "frozen",
+              "passed": true
+            },
+            {
+              "appearance": true,
+              "case": "gap",
+              "endpoint": true,
+              "failure": "none",
+              "passed": true
+            },
+            {
+              "appearance": true,
+              "case": "gap",
+              "endpoint": true,
+              "failure": "stage",
+              "passed": true
+            },
+            {
+              "appearance": true,
+              "case": "gap",
+              "endpoint": true,
+              "failure": "frozen",
+              "passed": true
+            },
+            {
+              "case": "page_boundary_restart_two_gaps_pre_gap_preserved",
+              "passed": true
+            },
+            {
+              "case": "four_episodes_reset_retains_observed_segment",
+              "passed": true
+            }
+          ],
+          "classification": "native-shaped production collector/projector",
+          "passed": true
+        }
+      ]
+    },
+    "scripts/derived_lifecycle_test.py": {
+      "elapsed_s": 4.031,
+      "exit_code": 0,
+      "results": [
+        {
+          "automatic_warm_inspection_restart": true,
+          "passed": true,
+          "topology_lifecycle": [
+            {
+              "direct_watch_status": [
+                "active",
+                "active"
+              ],
+              "domain": "land",
+              "kind": "version",
+              "old_refs_withdrawn_before_history_refresh": true
+            },
+            {
+              "direct_watch_status": [
+                "active",
+                "active"
+              ],
+              "domain": "ocean",
+              "kind": "version",
+              "old_refs_withdrawn_before_history_refresh": true
+            },
+            {
+              "direct_watch_status": [
+                "invalid",
+                "invalid"
+              ],
+              "domain": "land",
+              "kind": "split",
+              "old_refs_withdrawn_before_history_refresh": true
+            },
+            {
+              "direct_watch_status": [
+                "invalid",
+                "invalid"
+              ],
+              "domain": "ocean",
+              "kind": "split",
+              "old_refs_withdrawn_before_history_refresh": true
+            },
+            {
+              "direct_watch_status": [
+                "active",
+                "active"
+              ],
+              "domain": "land",
+              "kind": "merge",
+              "old_refs_withdrawn_before_history_refresh": true
+            },
+            {
+              "direct_watch_status": [
+                "active",
+                "active"
+              ],
+              "domain": "ocean",
+              "kind": "merge",
+              "old_refs_withdrawn_before_history_refresh": true
+            }
+          ],
+          "true_dependency_stops_promotion": true
+        }
+      ]
+    },
+    "scripts/event_time_episode_test.py": {
+      "elapsed_s": 0.908,
+      "exit_code": 0,
+      "results": [
+        {
+          "event_time_episode_identity_preserved": true,
+          "passed": true,
+          "visibility_gap_never_bridged": true
+        }
+      ]
+    },
+    "scripts/fair_play_world_test.py": {
+      "elapsed_s": 0.552,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "attention_payloads_identical": true,
+            "focus_operation_watch_provider_boundary": true,
+            "hidden_honeytoken_differential": true,
+            "hidden_route_region_boundary": true,
+            "pact_infiltration_governor_satellite_scenario": true,
+            "provider_anchor_route_render_identical": true,
+            "specialist_inputs_identical": true,
+            "spectator_admin_isolation": true
+          }
+        }
+      ]
+    },
+    "scripts/geographic_semantics_contract_test.py": {
+      "elapsed_s": 0.625,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "cross_region_theaters_and_complete_promotion": true,
+            "expansion_mechanical_affordances": true,
+            "frontier_uncertainty_and_lazy_access": true,
+            "huge_fragmented_geographic_lod": true,
+            "physical_identity_and_mobility_separation": true,
+            "potential_connectivity_cases": 14,
+            "repair_and_staging_logistics": true,
+            "territory_resources_landmarks_ocean_geopolitics": true
+          }
+        }
+      ]
+    },
+    "scripts/graphiti_projection_test.py": {
+      "elapsed_s": 0.536,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "event_scope_isolated": true,
+            "failure_does_not_advance": true,
+            "group_rebuild_isolated": true,
+            "restored_timeline_rebuilt_before_retired_graph_gc": true,
+            "resume_from_cursor": true,
+            "routine_events_excluded": true,
+            "sqlite_projection_cursor_is_rebuildable": true,
+            "stable_episode_ids": true
+          }
+        }
+      ]
+    },
+    "scripts/graphiti_worker_contract_test.py": {
+      "elapsed_s": 0.293,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "canonical_schema_revision": 1,
+            "cross_scope_rejected": true,
+            "default_disabled": true,
+            "disable_clears_extraction_profile": true,
+            "exact_scope_rebuild": true,
+            "extraction_profile_required": true,
+            "failure_isolated_and_observable": true,
+            "file_secret_supported": true,
+            "graphiti_reasoning_and_kwargs_adapted": true,
+            "profile_deactivation_is_conditional": true,
+            "selected_profile_auto_sync_contract": true,
+            "worker_probe_requires_current_profile": true
+          }
+        }
+      ]
+    },
+    "scripts/inspection_action_lifetime_test.py": {
+      "elapsed_s": 6.246,
+      "exit_code": 0,
+      "results": [
+        {
+          "cases": [
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "route",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": false
+            },
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "route",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": true
+            },
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "area",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": false
+            },
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "area",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": true
+            },
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "geography",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": false
+            },
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "geography",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": true
+            },
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "native_route",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": false
+            },
+            {
+              "action_churn_restart": true,
+              "automatic_validation_does_not_renew_time": true,
+              "dependency_change_invalidates": true,
+              "mode": "native_route",
+              "ruleset_change_invalidates": true,
+              "unrelated_material_churn": true,
+              "warm": true
+            }
+          ],
+          "classification": "deterministic managed query, native-shaped receipt",
+          "passed": true
+        }
+      ]
+    },
+    "scripts/journal_idempotency_index_test.py": {
+      "elapsed_s": 1.093,
+      "exit_code": 0,
+      "results": [
+        {
+          "external_writer_marker_loss": true,
+          "new_key_event_file_reads": 0,
+          "old_marker_loss": true,
+          "passed": true,
+          "restart": true
+        }
+      ]
+    },
+    "scripts/journal_internal_crash_test.py": {
+      "elapsed_s": 0.405,
+      "exit_code": 0,
+      "results": [
+        {
+          "cases": [
+            {
+              "boundary": "event",
+              "idempotent": true,
+              "passed": true
+            },
+            {
+              "boundary": "event",
+              "idempotent": false,
+              "passed": true
+            },
+            {
+              "boundary": "manifest",
+              "idempotent": true,
+              "passed": true
+            },
+            {
+              "boundary": "marker",
+              "idempotent": true,
+              "passed": true
+            },
+            {
+              "failed_closed": true,
+              "fault": "hash"
+            },
+            {
+              "failed_closed": true,
+              "fault": "scope"
+            },
+            {
+              "failed_closed": true,
+              "fault": "noncontiguous"
+            },
+            {
+              "failed_closed": true,
+              "fault": "conflict"
+            },
+            {
+              "failed_closed": true,
+              "fault": "schema"
+            },
+            {
+              "failed_closed": true,
+              "fault": "session"
+            },
+            {
+              "failed_closed": true,
+              "fault": "recorded_time"
+            },
+            {
+              "concurrent_replay_waits_then_recovers": true
+            }
+          ],
+          "classification": "deterministic real journal persistence",
+          "passed": true
+        }
+      ]
+    },
+    "scripts/milestone_contract_test.py": {
+      "elapsed_s": 1.41,
+      "exit_code": 0,
+      "results": [
+        {
+          "all_and_threshold": true,
+          "destroyed_requirement_retained": true,
+          "managed_milestone_create_inspect": true,
+          "ok": true,
+          "repeat_completion_deduplication": true,
+          "restart_attention_delivery": true,
+          "stale_is_unknown": true,
+          "threshold_matrix_cases": 256
+        }
+      ]
+    },
+    "scripts/milestone_threshold_transition_test.py": {
+      "elapsed_s": 1.317,
+      "exit_code": 0,
+      "results": [
+        {
+          "optional_blocker_does_not_block": true,
+          "passed": true,
+          "ready_pending_transitions_deduplicated": true
+        }
+      ]
+    },
+    "scripts/native_event_time_contract_test.py": {
+      "exit_code": 0,
+      "results": [
+        {
+          "bounded_ring_preserved": true,
+          "event_relationship_is_frozen": true,
+          "evidence": "compiled_production_adapter_with_controlled_native_shaped_inputs",
+          "passed": true,
+          "running_game_comparison": false
+        }
+      ]
+    },
+    "scripts/native_observation_contract_test.py": {
+      "elapsed_s": 2.19,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "action_revision_ignores_native_row_layout": true,
+            "airdrop_fixture_acceptance_flag_alone_rejected": true,
+            "airdrop_fixture_both_flags_required": true,
+            "airdrop_fixture_test_mode_alone_rejected": true,
+            "bounded_native_ring": true,
+            "capture_recapture_preserved_within_reconciliation": true,
+            "chat_and_deferred_actions_emit_events": true,
+            "collector_bridge_operations_valid": true,
+            "collector_refresh_serialized": true,
+            "confirmed_destruction_full_pipeline": true,
+            "continuity_gap_journaled": true,
+            "continuous_movement_path_collected": true,
+            "durable_stage_retains_more_than_native_ring_capacity": true,
+            "immutable_publication_package_defers_new_native_activity": true,
+            "managed_sidecar_identity_explicit": true,
+            "native_lifecycle_hooks_attached": true,
+            "over_256_pages_drained_and_coalesced": true,
+            "overflow_enters_critical_attention": true,
+            "overflow_explicit": true,
+            "post_semantic_pre_world_head_recovery_exact": true,
+            "projection_marks_reconciliation": true,
+            "routine_airdrop_receipts_absent": true,
+            "same_drain_visibility_gap_breaks_only_affected_contact": true,
+            "semantic_identity_checkpoint_wiring": true,
+            "semantic_native_transition_events_present": true,
+            "two_phase_publication_crash_replay_exactly_once": true,
+            "visible_destruction_not_fog_loss": true
+          }
+        }
+      ]
+    },
+    "scripts/observation_batch_recovery_test.py": {
+      "elapsed_s": 1.322,
+      "exit_code": 0,
+      "results": [
+        {
+          "passed": true,
+          "windows": [
+            {
+              "canonical_events_not_duplicated": true,
+              "crash_window": "before_commit",
+              "journal_and_cache_objects": 279
+            },
+            {
+              "canonical_events_not_duplicated": true,
+              "crash_window": "during_commit",
+              "journal_and_cache_objects": 279
+            },
+            {
+              "canonical_events_not_duplicated": true,
+              "crash_window": "after_commit",
+              "journal_and_cache_objects": 279
+            }
+          ]
+        }
+      ]
+    },
+    "scripts/plan_dependency_publication_test.py": {
+      "elapsed_s": 1.541,
+      "exit_code": 0,
+      "results": [
+        {
+          "current_publication_wakeup": true,
+          "evidence": "native_shaped_collector_and_journal",
+          "passed": true,
+          "post_transition_pre_ack_crash_retry_once": true,
+          "unchanged_available_no_duplicate": true
+        }
+      ]
+    },
+    "scripts/plan_dependency_transition_test.py": {
+      "elapsed_s": 1.689,
+      "exit_code": 0,
+      "results": [
+        {
+          "one_positive_per_current_transition": true,
+          "passed": true,
+          "plan_revision_and_completion_isolated": true,
+          "restart_dedupe": true,
+          "rollback_state_and_attention": true,
+          "unknown_never_available": true
+        }
+      ]
+    },
+    "scripts/plan_health_contract_test.py": {
+      "elapsed_s": 0.057,
+      "exit_code": 0,
+      "results": [
+        {
+          "dependency_change_qualified": true,
+          "explicit_assignment_distinct_from_order": true,
+          "incomplete_intent_not_unassigned": true,
+          "ok": true,
+          "prose_has_no_mechanical_authority": true,
+          "stale_credit_withheld": true,
+          "timed_unit_production_credit_conflicts": true
+        }
+      ]
+    },
+    "scripts/provider_schema_budget_test.py": {
+      "elapsed_s": 0.845,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "managed_tool_count": 15,
+            "smac_world_conservative_token_proxy": 619,
+            "smac_world_hard_gate": 900,
+            "smac_world_schema_bytes": 1855,
+            "smac_world_target": 700,
+            "system_prompt_bytes": 5280,
+            "system_prompt_conservative_token_proxy": 1760,
+            "system_prompt_exact_tokens": null,
+            "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+            "tokenizer": "conservative_utf8_proxy",
+            "total_tool_schema_bytes": 20169
+          }
+        }
+      ]
+    },
+    "scripts/publication_transaction_test.py": {
+      "elapsed_s": 23.903,
+      "exit_code": 0,
+      "results": [
+        {
+          "candidate_first_evaluation": true,
+          "crash_matrix": [
+            {
+              "boundary": "before_watch",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "before_watch",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "after_watch_enqueue",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "after_watch_enqueue",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "after_head",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "after_head",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "before_dependency",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "before_dependency",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "before_available_enqueue",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "before_available_enqueue",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "after_available_enqueue",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "after_available_enqueue",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "before_dependency_state",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "before_dependency_state",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "inside_journal",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "inside_journal",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "before_ack",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "before_ack",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "during_ack",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "during_ack",
+              "native_reversed": true,
+              "passed": true
+            },
+            {
+              "boundary": "after_ack",
+              "native_reversed": false,
+              "passed": true
+            },
+            {
+              "boundary": "after_ack",
+              "native_reversed": true,
+              "passed": true
+            }
+          ],
+          "current_field": true,
+          "evidence": "native_shaped_production_collector",
+          "garrison_departure_arrival": true,
+          "newborn_no_false_block": true,
+          "passed": true
+        }
+      ]
+    },
+    "scripts/publication_visibility_test.py": {
+      "elapsed_s": 6.968,
+      "exit_code": 0,
+      "results": [
+        {
+          "cases": [
+            {
+              "crash_restart": false,
+              "passed": true,
+              "phase": "pre_head"
+            },
+            {
+              "crash_restart": true,
+              "passed": true,
+              "phase": "pre_head"
+            },
+            {
+              "crash_restart": false,
+              "passed": true,
+              "phase": "post_head"
+            },
+            {
+              "crash_restart": true,
+              "passed": true,
+              "phase": "post_head"
+            }
+          ],
+          "classification": "concurrent native-shaped production collector",
+          "passed": true
+        }
+      ]
+    },
+    "scripts/query_history_scaling_test.py": {
+      "elapsed_s": 3.834,
+      "exit_code": 0,
+      "results": [
+        {
+          "measurements": [
+            {
+              "historical_queries": 100,
+              "registry_ms": 53.577,
+              "retained": 65,
+              "runtime_ms": 173.243,
+              "scope_inspection_ms": 19.817,
+              "watch_ms": 17.156
+            },
+            {
+              "historical_queries": 1000,
+              "registry_ms": 71.855,
+              "retained": 65,
+              "runtime_ms": 188.347,
+              "scope_inspection_ms": 21.807,
+              "watch_ms": 19.639
+            },
+            {
+              "historical_queries": 5000,
+              "registry_ms": 227.856,
+              "retained": 65,
+              "runtime_ms": 182.134,
+              "scope_inspection_ms": 20.238,
+              "watch_ms": 18.521
+            }
+          ],
+          "old_pinned_restart_valid": true,
+          "passed": true,
+          "population": "distinct historical cache receipts shaped from a production query; not 5000 live provider executions",
+          "release_gc": true,
+          "true_dependency_invalidates": true
+        }
+      ]
+    },
+    "scripts/query_pin_consumers_test.py": {
+      "elapsed_s": 1.889,
+      "exit_code": 0,
+      "results": [
+        {
+          "independent_pin_consumers": [
+            "watch",
+            "scope",
+            "operation",
+            "plan",
+            "milestone"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    "scripts/rollback_world_contract_test.py": {
+      "elapsed_s": 0.635,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "future_attention_watch_operation_removed": true,
+            "future_cache_removed_specialist_diagnostics_retained": true,
+            "future_world_removed": true,
+            "new_timeline_activated": true,
+            "repeat_restore_deterministic": true,
+            "snapshot_journal_head_verified": true
+          }
+        }
+      ]
+    },
+    "scripts/runtime_context_contract_test.py": {
+      "elapsed_s": 17.73,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "64k_and_256k_same_truth": true,
+            "acknowledgement_does_not_remove_focus": true,
+            "attention_32_item_remaining_count_exact": true,
+            "communication_same_sovereign_read_only": true,
+            "compact_standard_deep_continuations_finally_resealed": {
+              "compact": 445,
+              "deep": 8077,
+              "standard": 1972
+            },
+            "critical_attention_pinned": true,
+            "durable_commitment_pinned": true,
+            "huge_chaotic_256k_runtime_bounded": true,
+            "huge_chaotic_anchor_tokens_256k": 15931,
+            "huge_chaotic_attention_tokens_256k": 3498,
+            "huge_chaotic_cognition_tokens_256k": 5766,
+            "huge_chaotic_runtime_tokens_256k": 25560,
+            "large_cognition_live_selection": true,
+            "operation_retained_then_collected": true,
+            "runtime_token_composition_observed": true,
+            "runtime_tokens_256k": 8112,
+            "runtime_tokens_64k": 4742,
+            "stable_ready_unit_focus_and_anchor_promotion": true,
+            "tier_specific_detail_budget": true
+          }
+        }
+      ]
+    },
+    "scripts/semantic_consumer_contract_test.py": {
+      "elapsed_s": 5.308,
+      "exit_code": 0,
+      "results": [
+        {
+          "direct_and_wrapped_mass_watches": true,
+          "event_time_survives_loss_destruction_and_diplomacy": true,
+          "managed_route_cache_scope_area_chain": true,
+          "passed": true,
+          "theater_footprints_do_not_expand": true
+        }
+      ]
+    },
+    "scripts/semantic_ref_matrix_test.py": {
+      "elapsed_s": 8.972,
+      "exit_code": 0,
+      "results": [
+        {
+          "matrix": [
+            {
+              "kind": "physical_landmass",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "supported; nonempty private footprint",
+              "specialist": "explicit rejection; nominate immutable objects instead",
+              "world_area": "pass"
+            },
+            {
+              "kind": "physical_ocean_mass",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "supported; nonempty private footprint",
+              "specialist": "explicit rejection; nominate immutable objects instead",
+              "world_area": "pass"
+            },
+            {
+              "kind": "mobility_region",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "supported; nonempty private footprint",
+              "specialist": "explicit rejection; nominate immutable objects instead",
+              "world_area": "pass"
+            },
+            {
+              "kind": "theater",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "supported; nonempty private footprint",
+              "specialist": "explicit rejection; nominate immutable objects instead",
+              "world_area": "pass"
+            },
+            {
+              "kind": "route",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "supported; nonempty private footprint",
+              "specialist": "explicit rejection; nominate immutable objects instead",
+              "world_area": "pass"
+            },
+            {
+              "kind": "spatial_scope",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "supported; nonempty private footprint",
+              "specialist": "explicit rejection; nominate immutable objects instead",
+              "world_area": "pass"
+            },
+            {
+              "kind": "base",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "explicit rejection; base radius supported for base",
+              "specialist": "immutable object snapshot supported by specialist contract suite",
+              "world_area": "pass"
+            },
+            {
+              "kind": "own_unit",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "explicit rejection; base radius supported for base",
+              "specialist": "immutable object snapshot supported by specialist contract suite",
+              "world_area": "pass"
+            },
+            {
+              "kind": "foreign_contact",
+              "milestone_dependency": "pass",
+              "operation": "pass",
+              "spatial_consumers": "explicit rejection; base radius supported for base",
+              "specialist": "immutable object snapshot supported by specialist contract suite",
+              "world_area": "pass"
+            },
+            {
+              "kind": "omitted_frontier",
+              "paginated_discovery_watch_scope_area": "pass"
+            },
+            {
+              "kind": "omitted_physical_landmass",
+              "paginated_discovery_watch_scope_area": "pass"
+            }
+          ],
+          "passed": true
+        }
+      ]
+    },
+    "scripts/semantic_ref_recovery_test.py": {
+      "elapsed_s": 1.427,
+      "exit_code": 0,
+      "results": [
+        {
+          "checkpoint_restore_invalidates_old_derived_handles": true,
+          "cross_perspective_rejected": true,
+          "fresh_timeline_recomputation": true,
+          "passed": true,
+          "restart_preserves_valid_route_scope_watch": true
+        }
+      ]
+    },
+    "scripts/sovereign_geography_acceptance_test.py": {
+      "elapsed_s": 3.69,
+      "exit_code": 0,
+      "results": [
+        {
+          "fragmented_anchor_tokens": 4165,
+          "geography_queries": {
+            "area": {
+              "cold_ms": 78.454,
+              "result_tokens": 1854,
+              "warm_ms": 45.431
+            },
+            "compare": {
+              "cold_ms": 287.004,
+              "result_tokens": 813,
+              "warm_ms": 82.079
+            },
+            "logistics": {
+              "cold_ms": 110.56,
+              "result_tokens": 635,
+              "warm_ms": 94.571
+            },
+            "relation": {
+              "cold_ms": 257.684,
+              "result_tokens": 644,
+              "warm_ms": 78.063
+            }
+          },
+          "mature_empire_anchor_tokens": 4002,
+          "passed": true
+        }
+      ]
+    },
+    "scripts/sovereign_hardening_contract_test.py": {
+      "elapsed_s": 1.376,
+      "exit_code": 0,
+      "results": [
+        {
+          "map_freshness": true,
+          "typed_watch_fields": true,
+          "zero_turn_arrival": true
+        }
+      ]
+    },
+    "scripts/spatial_scope_contract_test.py": {
+      "elapsed_s": 1.968,
+      "exit_code": 0,
+      "results": [
+        {
+          "dependency_invalidation": true,
+          "native_radius_adapter": true,
+          "observed_hostile_crossings_only": true,
+          "ok": true,
+          "private_composite_geometry": true,
+          "restart_and_dedupe": true,
+          "stale_evidence_withheld": true
+        }
+      ]
+    },
+    "scripts/specialist_contract_test.py": {
+      "elapsed_s": 1.658,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "bounded_durable_queue": true,
+            "completion_attention": true,
+            "corpus_change_stale": true,
+            "failed_snapshot_retry_horizon_housekeeping": true,
+            "failed_world_snapshot_manual_retry": true,
+            "frozen_reference_corpus": true,
+            "historical_result_hidden": true,
+            "idempotent_commission": true,
+            "immutable_snapshot_pin": true,
+            "journal_publication_recovery": true,
+            "late_result_cas_rejected": true,
+            "mission_attempt_split": true,
+            "operation_completion_cancels_linked": true,
+            "platform_dependencies": true,
+            "prepared_result_rollback_authoritative": true,
+            "relevant_change_stale": true,
+            "specialist_prompt_boundary": true,
+            "timeline_late_publish_rejected": true,
+            "turn_handoff_cancels_unlinked_only": true,
+            "unrelated_change_accepted": true,
+            "world_epoch_late_publish_rejected": true
+          }
+        }
+      ]
+    },
+    "scripts/strategic_world_fixtures_test.py": {
+      "elapsed_s": 1.971,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "air_carrier_refueling": true,
+            "alien_crossfire_objectives": true,
+            "ally_rendezvous": true,
+            "current_pact_coastal_port_routing": true,
+            "ecology_sea_level_change": true,
+            "expansion_site_reasoning": true,
+            "fog_pursuit": true,
+            "huge_chaotic_world": true,
+            "huge_quiet_world": true,
+            "multi_front_warfare": true,
+            "parity_wrap_flat_boundaries": true,
+            "peninsula_defense": true,
+            "project_global_race": true,
+            "region_split_merge_split_lineage": true,
+            "relation_aware_threat_and_native_zoc": true,
+            "roads_magtubes_fungus_zoc_airdrop_connections": true,
+            "transport_island_logistics": true,
+            "two_threatened_bases_one_reserve": true
+          }
+        }
+      ]
+    },
+    "scripts/transient_episode_publication_test.py": {
+      "elapsed_s": 6.217,
+      "exit_code": 0,
+      "results": [
+        {
+          "cross_perspective_isolation": true,
+          "evidence": "native_shaped_staging_and_collector",
+          "four_distinct_episodes": true,
+          "passed": true,
+          "reset_and_discontinuity": true,
+          "transient_publication_cases": [
+            {
+              "crash": "none",
+              "ending": "visible_unit_lost",
+              "passed": true
+            },
+            {
+              "crash": "stage_page",
+              "ending": "visible_unit_lost",
+              "passed": true
+            },
+            {
+              "crash": "post_head",
+              "ending": "visible_unit_lost",
+              "passed": true
+            },
+            {
+              "crash": "none",
+              "ending": "visible_unit_destroyed",
+              "passed": true
+            },
+            {
+              "crash": "stage_page",
+              "ending": "visible_unit_destroyed",
+              "passed": true
+            },
+            {
+              "crash": "post_head",
+              "ending": "visible_unit_destroyed",
+              "passed": true
+            }
+          ]
+        }
+      ]
+    },
+    "scripts/world_context_benchmark.py": {
+      "elapsed_s": 3.852,
+      "exit_code": 0,
+      "results": [
+        {
+          "huge_quiet_growth_percent": 0.2849002849002913,
+          "method": "deterministic semantic token estimator: canonical UTF-8 bytes / 4",
+          "passed": true,
+          "profiles": {
+            "huge_chaotic_256k": {
+              "milliseconds": 872.0948790432885,
+              "regions_omitted": 0,
+              "strategic_objects_truncated": true,
+              "tokens": 15809
+            },
+            "huge_chaotic_64k": {
+              "milliseconds": 864.3375548999757,
+              "regions_omitted": 0,
+              "strategic_objects_truncated": true,
+              "tokens": 5669
+            },
+            "huge_fragmented_64k": {
+              "milliseconds": 411.81484307162464,
+              "regions_omitted": 3176,
+              "tokens": 5449
+            },
+            "huge_quiet_256k": {
+              "milliseconds": 780.2133189979941,
+              "tokens": 1057
+            },
+            "huge_quiet_64k": {
+              "milliseconds": 771.2638380471617,
+              "tokens": 1056
+            },
+            "small_quiet_64k": {
+              "milliseconds": 7.129844045266509,
+              "tokens": 1053
+            }
+          },
+          "schema": "smacx.world-benchmark.v1",
+          "tile_count": {
+            "huge": 25600,
+            "small": 256
+          },
+          "underlying_fact_equivalence": true
+        }
+      ]
+    },
+    "scripts/world_model_contract_test.py": {
+      "elapsed_s": 2.902,
+      "exit_code": 0,
+      "results": [
+        {
+          "event": "pass",
+          "payload": {
+            "action_world_revision_separated": true,
+            "advance_retreat_path_preserved": true,
+            "all_semantic_world_modes": true,
+            "attention_redelivery": true,
+            "bounded_unknown_orbital_address_space": true,
+            "correct_square_topology": true,
+            "first_known_preserved_on_reverification": true,
+            "foreign_fog_identity_safe": true,
+            "frontier_temporal_watch": true,
+            "huge_quiet_anchor_bounded": true,
+            "known_world_routing": true,
+            "native_row_compaction_semantically_inert": true,
+            "perspective_provider_sanitized": true,
+            "query_cache": true,
+            "region_builder_persistence_split_merge_split": true,
+            "region_exit_watch": true,
+            "region_watch_migration_split_and_merge": true,
+            "rendezvous_watch": true,
+            "route_disruption_watch": true,
+            "semantic_handle_registry": true,
+            "single_materialized_anchor_per_tier": true,
+            "single_sovereign_writer": true,
+            "transient_region_entry_watch": true,
+            "watch_operation_bounds": true,
+            "watch_trigger_delivery": true,
+            "watch_ttl_and_plan_cleanup": true,
+            "world_invalid_operation_collected": true
+          }
+        }
+      ]
+    }
+  },
+  "unique_scripts": 41
+}

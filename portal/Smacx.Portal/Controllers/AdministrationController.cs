@@ -16,6 +16,7 @@ namespace Smacx.Portal.Controllers;
 public sealed class AdministrationController(
     ApplicationDbContext database,
     ControlPlaneClient control,
+    IConfiguration configuration,
     ILogger<AdministrationController> logger) : ControllerBase
 {
     private const int HermesMinimumContextLength = 65_536;
@@ -35,6 +36,7 @@ public sealed class AdministrationController(
             var profiles = await Read("api/v1/harness-profiles", "harness_profiles");
             var runs = await Read("api/v1/harness-runs", "harness_runs");
             var graphiti = await Read("api/v1/graphiti");
+            var specialists = await Read("api/v1/specialists");
             var knowledge = await Read("api/v1/reference/status");
             var workers = await Read("api/v1/workers");
             var operations = await Read("api/v1/operations/status");
@@ -42,7 +44,7 @@ public sealed class AdministrationController(
             var schedules = await Read("api/v1/schedules", "schedules");
             var backups = await Read("api/v1/backups", "backups");
             return ApiResponse<AdminSnapshot>.Success(new(
-                providers, agents, profiles, runs, graphiti, knowledge, workers,
+                providers, agents, profiles, runs, graphiti, specialists, knowledge, workers,
                 operations, storage, schedules, backups));
         }
         catch (ControlPlaneException exception)
@@ -212,6 +214,9 @@ public sealed class AdministrationController(
             using var synced = await control.PostRawAsync(
                 "api/v1/graphiti/sync-profile", new { profile = GraphitiProfile(entity) },
                 HttpContext.RequestAborted);
+            using var specialistSynced = await control.PostRawAsync(
+                "api/v1/specialists/sync-profile", new { profile = GraphitiProfile(entity) },
+                HttpContext.RequestAborted);
         }
         catch (ControlPlaneException exception)
         {
@@ -291,6 +296,9 @@ public sealed class AdministrationController(
             using var cleared = await control.PostRawAsync(
                 "api/v1/graphiti/clear-profile",
                 new { profile_id = item.ProfileId }, HttpContext.RequestAborted);
+            using var specialistCleared = await control.PostRawAsync(
+                "api/v1/specialists/clear-profile",
+                new { profile_id = item.ProfileId }, HttpContext.RequestAborted);
         }
         catch (ControlPlaneException exception)
         {
@@ -369,6 +377,115 @@ public sealed class AdministrationController(
     [HttpPost("graphiti/probe")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> ProbeGraphiti() =>
         Proxy("api/v1/graphiti/probe", new { });
+
+    [HttpPost("specialists")]
+    public async Task<ActionResult<ApiResponse<JsonElement?>>> Specialists(
+        SpecialistConfigurationRequest request)
+    {
+        object? profile = null;
+        if (!string.IsNullOrWhiteSpace(request.ProfileId))
+        {
+            var item = await database.PortalAiProfiles.AsNoTracking().FirstOrDefaultAsync(
+                candidate => candidate.ProfileId == request.ProfileId,
+                HttpContext.RequestAborted);
+            if (item is null || !item.Active)
+                return BadRequest(ApiResponse<JsonElement?>.Failure(
+                    "invalid_specialist_profile", "Choose an active AI profile or use the sovereign fallback."));
+            profile = GraphitiProfile(item);
+        }
+        if (request.InstallationConcurrency is < 1 or > 16 ||
+            request.SeatConcurrency != 1)
+            return BadRequest(ApiResponse<JsonElement?>.Failure(
+                "invalid_specialist_concurrency",
+                "Choose an installation limit from 1 through 16; each sovereign is limited to one child."));
+        static object Workload(SpecialistWorkloadPolicyRequest? value,
+            SpecialistWorkloadPolicyRequest fallback) => new
+        {
+            tool_budget = (value ?? fallback).ToolBudget,
+            provider_call_budget = (value ?? fallback).ProviderCallBudget,
+            provider_token_budget = (value ?? fallback).ProviderTokenBudget,
+            context_token_ceiling = (value ?? fallback).ContextTokenCeiling,
+            output_token_budget = (value ?? fallback).OutputTokenBudget,
+            wall_seconds = (value ?? fallback).WallSeconds,
+        };
+        return await Proxy("api/v1/specialists", new
+        {
+            profile, max_concurrency = request.InstallationConcurrency,
+            policy = new
+            {
+                installation_concurrency = request.InstallationConcurrency,
+                seat_concurrency = 1,
+                automatic_retries = request.AutomaticRetries,
+                schema_repairs = request.SchemaRepairs,
+                trace_capture = request.TraceCapture,
+                trace_success_generations = request.TraceSuccessGenerations,
+                trace_failed_generations = request.TraceFailedGenerations,
+                trace_byte_ceiling = request.TraceByteCeiling,
+                trace_high_retention = request.TraceHighRetention,
+                synthesis = Workload(request.Synthesis,
+                    new(4, 4, 96_000, 65_536, 1_500, 90)),
+                investigation = Workload(request.Investigation,
+                    new(24, 16, 512_000, 262_144, 4_000, 300)),
+            },
+        });
+    }
+
+    [HttpGet("specialists/missions")]
+    public async Task<ActionResult<ApiResponse<JsonElement>>> SpecialistMissions(
+        string status = "", int limit = 100)
+    {
+        using var document = await control.GetRawAsync(
+            $"api/v1/specialists/missions?status={Uri.EscapeDataString(status)}&limit={Math.Clamp(limit, 1, 500)}",
+            HttpContext.RequestAborted);
+        return ApiResponse<JsonElement>.Success(
+            document.RootElement.GetProperty("missions").Clone());
+    }
+
+    [HttpGet("specialists/missions/{missionId}")]
+    public async Task<ActionResult<ApiResponse<JsonElement>>> SpecialistMission(string missionId)
+    {
+        using var document = await control.GetRawAsync(
+            $"api/v1/specialists/missions/{Uri.EscapeDataString(missionId)}",
+            HttpContext.RequestAborted);
+        return ApiResponse<JsonElement>.Success(
+            document.RootElement.GetProperty("mission").Clone());
+    }
+
+    [HttpPost("specialists/traces/gc")]
+    public Task<ActionResult<ApiResponse<JsonElement?>>> SpecialistTraceGc() =>
+        Proxy("api/v1/specialists/traces/gc", new { });
+
+    [HttpGet("specialists/traces/{attemptId}/download")]
+    public async Task<IActionResult> DownloadSpecialistTrace(string attemptId)
+    {
+        using var document = await control.GetRawAsync(
+            $"api/v1/specialists/traces/{Uri.EscapeDataString(attemptId)}",
+            HttpContext.RequestAborted);
+        var trace = document.RootElement.GetProperty("trace");
+        var relative = trace.GetProperty("relative_path").GetString() ?? "";
+        if (Path.IsPathRooted(relative) || relative.Split(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains(".."))
+            return BadRequest();
+        var mountedControlRoot = Path.GetFullPath(configuration[
+            "SMACX_CONTROL_DATA_MOUNT"] ?? "/var/lib/smacx-control");
+        var traceRoot = Path.Combine(mountedControlRoot, "specialist-traces");
+        var path = Path.GetFullPath(Path.Combine(traceRoot, relative));
+        if (!path.StartsWith(traceRoot + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal) || !System.IO.File.Exists(path))
+            return NotFound();
+        var expectedBytes = trace.GetProperty("bytes").GetInt64();
+        if (new FileInfo(path).Length != expectedBytes)
+            return Conflict();
+        await using (var stream = System.IO.File.OpenRead(path))
+        {
+            var digest = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(
+                stream, HttpContext.RequestAborted)).ToLowerInvariant();
+            if (!string.Equals(digest, trace.GetProperty("content_sha256").GetString(),
+                    StringComparison.OrdinalIgnoreCase))
+                return Conflict();
+        }
+        return PhysicalFile(path, "application/zstd", $"{attemptId}.jsonl.zst");
+    }
 
     [HttpPost("embeddings")]
     public Task<ActionResult<ApiResponse<JsonElement?>>> Embeddings(EmbeddingConfigurationRequest request) =>

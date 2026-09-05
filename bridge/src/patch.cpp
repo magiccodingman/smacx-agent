@@ -15,6 +15,12 @@ int __cdecl ProdPicker_calculate_itoa(int UNUSED(value), char* buf, int UNUSED(b
 }
 
 int __thiscall NetWin_random_get(void*, int low, int high) {
+    // Only a new game's selector rows use global faction-catalog indexes.
+    // Loaded games/scenarios use save-owned faction slots (1..7), with row
+    // zero unavailable. Applying a catalog mask such as 0..6 to those rows
+    // makes NetWin::prepare_game's outer uniqueness loop unable to select 7.
+    const int game_type = *reinterpret_cast<int*>(0x90E778);
+    if (game_type != 0) return random_get(low, high);
     uint32_t allowed = 0;
     char managed_mask[32] = {};
     if (GetEnvironmentVariableA(
@@ -25,8 +31,11 @@ int __thiscall NetWin_random_get(void*, int low, int high) {
     int val = 0; // Multiplayer random factions
     for (int i = 0; i < 1000; i++) {
         val = random_get(low, high);
-        if ((!allowed || allowed & (1u << val))
-        && !((1u << val) & conf.skip_random_factions)) {
+        // An explicit seven-faction roster takes precedence over optional
+        // exclusions for an otherwise random roster; intersecting them could
+        // leave fewer than seven distinct choices for the native caller.
+        if (allowed ? (allowed & (1u << val))
+                    : !((1u << val) & conf.skip_random_factions)) {
             break;
         }
     }

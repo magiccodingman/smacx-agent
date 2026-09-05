@@ -96,7 +96,9 @@ Audit writes are fail-open and cannot block rules retrieval or gameplay.
 
 ## Agent retrieval
 
-`smac_reference` exposes a small, bounded surface:
+The sovereign commissions focused rules research through
+`smac_investigate(faculty="reference")`. Its disposable Hermes child receives
+exactly one private `reference_query` instrument with this bounded surface:
 
 - `topics` lists top-level organized collections and descendant counts;
 - `tree` returns the recursive semantic collection map and can include each

@@ -15,6 +15,9 @@ public sealed record CorpusStatus(
     int Unchanged, int Deleted, string? Revision, DateTimeOffset? RefreshedAt,
     string? LastError = null, IReadOnlyList<string>? SourceWarnings = null);
 
+public sealed record CorpusRevisionExport(string Revision, IReadOnlyList<object> Collections,
+    IReadOnlyList<object> Documents);
+
 public sealed class KnowledgeCorpus(
     ISemanticKnowledgeStore store,
     IKnowledgeSynchronizationService synchronization,
@@ -310,6 +313,41 @@ public sealed class KnowledgeCorpus(
             source = document.Values.TryGetValue("source", out var source) ? source.Text : null,
             source_hash = document.SourceHash,
         };
+    }
+
+    public async Task<CorpusRevisionExport> ExportAsync(CancellationToken cancellationToken)
+    {
+        await InitializeAsync(cancellationToken);
+        var revision = status.Revision ?? throw new InvalidOperationException(
+            "The mechanics corpus has no published revision.");
+        var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
+        var documents = await storage.GetDocumentsAsync(knowledgeBaseId, cancellationToken);
+        var collectionRows = collections
+            .OrderBy(item => string.Join('\u001f', CollectionPath(item, collections)),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(item => (object)new
+            {
+                id = item.Id, parent_id = item.ParentCollectionId,
+                item.Title, item.Description, item.Tags,
+                path = CollectionPath(item, collections),
+            }).ToArray();
+        var documentRows = documents.OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(document =>
+            {
+                var collection = collections.FirstOrDefault(item => item.Id == document.CollectionId);
+                return (object)new
+                {
+                    document_id = document.Id,
+                    external_id = document.ExternalId,
+                    collection_id = document.CollectionId,
+                    collection_path = CollectionPath(collection, collections),
+                    document.Title, document.Description, document.Tags,
+                    body = document.Values.TryGetValue(KnowledgeSystemFields.Body, out var body)
+                        ? body.Text : null,
+                    source_hash = document.SourceHash,
+                };
+            }).ToArray();
+        return new CorpusRevisionExport(revision, collectionRows, documentRows);
     }
 
     public async Task<IReadOnlyList<object>> TopicsAsync(CancellationToken cancellationToken)

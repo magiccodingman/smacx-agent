@@ -162,6 +162,17 @@ app.MapGet("/api/documents/{documentId:guid}", async (Guid documentId, Knowledge
     return document is null ? Results.NotFound(new { error = "document_not_found" }) : Results.Ok(document);
 });
 
+// Installation-internal immutable export used to freeze one specialist
+// mission to an exact published corpus revision. It contains only the locally
+// constructed mechanics corpus and is never exposed through the public portal.
+app.MapGet("/api/export/{revision}", async (
+    string revision, KnowledgeCorpus corpus, CancellationToken cancellationToken) =>
+{
+    var export = await corpus.ExportAsync(cancellationToken);
+    return string.Equals(export.Revision, revision, StringComparison.Ordinal)
+        ? Results.Ok(export) : Results.Conflict(new { error = "corpus_revision_changed" });
+});
+
 // Internal OpenAI-compatible facade for Graphiti. Long inputs are embedded as
 // chunks and combined once; SemanticKnowledge keeps the richer chunk array.
 app.MapGet("/v1/models", () => Results.Ok(new

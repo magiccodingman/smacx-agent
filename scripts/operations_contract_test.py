@@ -83,12 +83,17 @@ def main() -> int:
                 (json.dumps(metadata), "match-journal-backup"),
             )
         secret = control.vault.put("test.backup", "test-secret-value")
+        retained_trace = (root / "specialist-traces" / "match-journal-backup"
+                          / "timeline-test" / "mission-test" / "attempt-test.jsonl.zst")
+        retained_trace.parent.mkdir(parents=True)
+        retained_trace.write_bytes(b"retained specialist diagnostic")
         backup_ops = OperationsManager(control, data_root=root)
         backup = backup_ops.create_backup(include_secrets=True, include_workers=False)
         verified = backup_ops.verify_backup(backup["backup_id"])
         if not verified["ok"] or not verified["includes_secrets"] \
                 or not verified.get("campaigns_included") \
-                or not verified.get("recovery_snapshots_included"):
+                or not verified.get("recovery_snapshots_included") \
+                or not verified.get("specialist_traces_included"):
             raise AssertionError("complete backup did not verify")
 
         fake = FakeWorkerManager()
@@ -131,6 +136,8 @@ def main() -> int:
         orphan = control.vault.put("test.orphan", "must-not-survive-restore")
         obsolete_recovery = root / "recovery-snapshots" / "obsolete.bin"
         obsolete_recovery.write_bytes(b"post-backup obsolete generation")
+        obsolete_trace = root / "specialist-traces" / "obsolete.bin"
+        obsolete_trace.write_bytes(b"post-backup obsolete trace")
         restored = restore_backup_offline(
             control, root, backup["backup_id"], confirm_installation_id=installation_id,
         )
@@ -148,6 +155,10 @@ def main() -> int:
                 or obsolete_recovery.exists() \
                 or not restored.get("recovery_snapshots_restored"):
             raise AssertionError("offline restore omitted checkpoint AI-memory snapshots")
+        if retained_trace.read_bytes() != b"retained specialist diagnostic" \
+                or obsolete_trace.exists() \
+                or not restored.get("specialist_traces_restored"):
+            raise AssertionError("offline restore omitted retained specialist traces")
         replayed = CampaignJournal(root / "campaigns").replay(journal_scope)
         if replayed["manifest"]["head_hash"] != before_event["event_hash"] \
                 or "expand" in replayed["goals"]:
@@ -174,6 +185,7 @@ def main() -> int:
                 "pre_restore_rollback_backup": True,
                 "campaign_journal_backup_and_restore": True,
                 "ai_memory_snapshots_backup_and_restore": True,
+                "specialist_traces_backup_and_restore": True,
                 "tamper_detection": True,
                 "worker_archives_fail_closed_without_manager": True,
             },

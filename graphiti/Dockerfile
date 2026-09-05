@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements-graphiti.txt \
     && rm /tmp/requirements-graphiti.txt
 
 COPY src/smacx_store.py src/smacx_generation.py src/smacx_journal.py src/smacx_graphiti.py src/smacx_graphiti_worker.py /opt/smacx/src/
+COPY src/smacx_world_store.py src/smacx_world_types.py src/smacx_regions.py src/smacx_topology.py /opt/smacx/src/
 
 ENV PYTHONPATH=/opt/smacx/src \
     PYTHONDONTWRITEBYTECODE=1 \

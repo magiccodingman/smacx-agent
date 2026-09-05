@@ -53,7 +53,13 @@ COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_harness_manager.py src/smacx_hermes.py src/smacx_controller.py \
     src/smacx_mcp.py src/smacx_reference.py src/smacx_capabilities.py \
     src/smacx_game_settings.py src/smacx_prompt.py src/smacx_generation.py /opt/smacx/src/
-COPY src/smacx_journal.py /opt/smacx/src/
+COPY src/smacx_journal.py src/smacx_context_policy.py src/smacx_choice_preparation.py /opt/smacx/src/
+COPY src/smacx_attention.py src/smacx_spatial_scope.py src/smacx_milestones.py src/smacx_plan_health.py src/smacx_counterfactual.py src/smacx_entitlements.py src/smacx_mechanics.py \
+    src/smacx_observation.py src/smacx_temporal_episodes.py src/smacx_regions.py src/smacx_runtime_context.py \
+    src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \
+    src/smacx_world.py src/smacx_world_model.py src/smacx_world_store.py \
+    src/smacx_world_types.py /opt/smacx/src/
+COPY src/smacx_provider_meter.py src/smacx_specialist_mcp.py src/smacx_specialist_supervisor.py /opt/smacx/src/
 COPY knowledge/ /opt/smacx/knowledge/
 COPY control_center/static/ /opt/smacx/control_center/static/
 COPY --chmod=0755 control_center/smacx-control /usr/local/bin/smacx-control

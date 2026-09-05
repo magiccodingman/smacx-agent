@@ -1,0 +1,1136 @@
+{
+  "amphibious": {
+    "event": "pass",
+    "payload": {
+      "bounded_embark_frontier": 4,
+      "bounded_landing_frontier": 8,
+      "elapsed_ms": 2431.661,
+      "known_squares": 4096,
+      "route_found": true
+    }
+  },
+  "checkpoint": 5,
+  "collector": {
+    "event": "pass",
+    "payload": {
+      "bounded_native_backlog": true,
+      "cases": [
+        {
+          "bases": 1,
+          "case": "small_quiet",
+          "contacts": 0,
+          "initial": {
+            "attention_batches_written": 5,
+            "bridge_calls": 11,
+            "journal_events_written": 4,
+            "material_deltas": 279,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 0.196,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 3,
+            "projection_object_rows_written": 279,
+            "projection_rows_written": 280,
+            "reconciled": true,
+            "semantic_events": 9,
+            "wall_ms": 313.598,
+            "world_objects": 279
+          },
+          "journal_replay_object_count": 279,
+          "known_tiles": 256,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 2,
+          "sqlite_bytes": 1634304,
+          "ui_probe_max_gap_ms": 15.269,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 11,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 0.466,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 134.568,
+            "world_objects": 279
+          }
+        },
+        {
+          "bases": 1,
+          "case": "stock_huge_quiet",
+          "contacts": 0,
+          "initial": {
+            "attention_batches_written": 5,
+            "bridge_calls": 35,
+            "journal_events_written": 33,
+            "material_deltas": 6423,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 4.828,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 32,
+            "projection_object_rows_written": 6423,
+            "projection_rows_written": 6424,
+            "reconciled": true,
+            "semantic_events": 9,
+            "wall_ms": 2917.954,
+            "world_objects": 6423
+          },
+          "journal_replay_object_count": 6423,
+          "known_tiles": 6400,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 2,
+          "sqlite_bytes": 16977920,
+          "ui_probe_max_gap_ms": 76.498,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 35,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 11.257,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 1838.958,
+            "world_objects": 6423
+          }
+        },
+        {
+          "bases": 80,
+          "case": "stock_huge_active",
+          "contacts": 300,
+          "initial": {
+            "attention_batches_written": 12,
+            "bridge_calls": 36,
+            "journal_events_written": 37,
+            "material_deltas": 6802,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 5.199,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 36,
+            "projection_object_rows_written": 6802,
+            "projection_rows_written": 6803,
+            "reconciled": true,
+            "semantic_events": 388,
+            "wall_ms": 3522.841,
+            "world_objects": 6802
+          },
+          "journal_replay_object_count": 6802,
+          "known_tiles": 6400,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 78733,
+          "sqlite_bytes": 19873792,
+          "ui_probe_max_gap_ms": 106.091,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 36,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 11.994,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 2067.029,
+            "world_objects": 6802
+          }
+        },
+        {
+          "bases": 1,
+          "case": "large_custom_quiet",
+          "contacts": 0,
+          "initial": {
+            "attention_batches_written": 5,
+            "bridge_calls": 110,
+            "journal_events_written": 123,
+            "material_deltas": 25623,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 19.985,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 122,
+            "projection_object_rows_written": 25623,
+            "projection_rows_written": 25624,
+            "reconciled": true,
+            "semantic_events": 9,
+            "wall_ms": 17057.537,
+            "world_objects": 25623
+          },
+          "journal_replay_object_count": 25623,
+          "known_tiles": 25600,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 2,
+          "sqlite_bytes": 64987136,
+          "ui_probe_max_gap_ms": 271.816,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 110,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 47.907,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 7748.59,
+            "world_objects": 25623
+          }
+        },
+        {
+          "bases": 64,
+          "case": "orbital_drop_dense_25600",
+          "contacts": 128,
+          "initial": {
+            "attention_batches_written": 8,
+            "bridge_calls": 110,
+            "journal_events_written": 126,
+            "material_deltas": 25942,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 20.062,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 125,
+            "projection_object_rows_written": 25942,
+            "projection_rows_written": 25943,
+            "reconciled": true,
+            "semantic_events": 200,
+            "wall_ms": 20503.319,
+            "world_objects": 25942
+          },
+          "journal_replay_object_count": 25942,
+          "known_tiles": 25600,
+          "ready_drop_units": 128,
+          "routine_unit_payload_bytes": 73339,
+          "sqlite_bytes": 67145728,
+          "ui_probe_max_gap_ms": 286.841,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 110,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 44.988,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 9156.66,
+            "world_objects": 25942
+          }
+        },
+        {
+          "bases": 24,
+          "case": "action_dense_overflow",
+          "contacts": 80,
+          "initial": {
+            "attention_batches_written": 6,
+            "bridge_calls": 16,
+            "journal_events_written": 12,
+            "material_deltas": 1150,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 3.48,
+            "native_continuity_incomplete": true,
+            "native_events_drained": 768,
+            "native_feed_pages": 3,
+            "observation_rows_written": 11,
+            "projection_object_rows_written": 1150,
+            "projection_rows_written": 1151,
+            "reconciled": true,
+            "semantic_events": 880,
+            "wall_ms": 1454.144,
+            "world_objects": 1150
+          },
+          "journal_replay_object_count": 1150,
+          "known_tiles": 1024,
+          "ready_drop_units": 0,
+          "routine_unit_payload_bytes": 20854,
+          "sqlite_bytes": 4423680,
+          "ui_probe_max_gap_ms": 18.026,
+          "unchanged": {
+            "attention_batches_written": 0,
+            "bridge_calls": 14,
+            "journal_events_written": 1,
+            "material_deltas": 0,
+            "native_backlog_after": 0,
+            "native_backlog_before": 0,
+            "native_coalesce_ms": 2.175,
+            "native_continuity_incomplete": false,
+            "native_events_drained": 0,
+            "native_feed_pages": 1,
+            "observation_rows_written": 0,
+            "projection_object_rows_written": 0,
+            "projection_rows_written": 1,
+            "reconciled": true,
+            "semantic_events": 0,
+            "wall_ms": 839.645,
+            "world_objects": 1150
+          }
+        }
+      ],
+      "incremental_projection_writes": true,
+      "independent_ui_responsiveness_probe": true,
+      "production_collector_pipeline": true
+    }
+  },
+  "commands": {
+    "dotnet": "dotnet test Smacx.Agent.slnx --no-restore",
+    "native": "SMACX_TEST_GAME_SOURCE=<licensed game> SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:pr48-integrated-r12 SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:pr48-checkpoint4-r8 SMACX_TEST_MCP_IMAGE=smacx-agent-control:pr48-integrated-r12 PYTHONPATH=src <MCP Python> scripts/<control_worker_mcp_live_test|control_lan_live_test>.py",
+    "prefix": "python3 scripts/provider_prefix_cache_live_test.py --base-url <provider-v1-url> --model Qwen3.8-27B",
+    "python": "docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python -v \"$PWD:/workspace:ro\" -w /workspace -e PYTHONPATH=/workspace/src smacx-agent-control:dev scripts/<test>.py",
+    "supervisor": "PYTHONPATH=src python3 scripts/specialist_supervisor_contract_test.py"
+  },
+  "conditions": {
+    "collector_dedicated_run": true,
+    "isolated_native_installations": true,
+    "native_turn_timer": false,
+    "provider_gameplay_inference": false,
+    "single_player_and_LAN_started_concurrently": true
+  },
+  "contracts": {
+    "attention_communication_contract_test": {
+      "event": "pass",
+      "payload": {
+        "attention_operation_scope_isolation": true,
+        "batched_acknowledgement": true,
+        "chat_deduplication": true,
+        "communication_serializes_sovereign": true,
+        "failed_invocation_redelivers_same_ids": true,
+        "independent_attention_cursor": true,
+        "mid_provider_capture_isolated": true,
+        "oversized_burst_only_visible_placed": true,
+        "partial_ack_requeues_remainder": true,
+        "responded_without_ack_restart_redelivery": true,
+        "restart_redelivery": true,
+        "specialist_completion_redelivery": true
+      }
+    },
+    "campaign_journal_test": {
+      "event": "pass",
+      "payload": {
+        "canonical_plan_key_projection": true,
+        "dead_history_searchable": true,
+        "hash_chain": true,
+        "live_filter_before_real_budget": true,
+        "notebook_versioned": true,
+        "portable_replay": true,
+        "post_checkpoint_search_memory_excluded": true,
+        "search_and_chat_journal_authoritative": true,
+        "sqlite_projection_rebuilt_from_journal": true,
+        "timeline_parent_prefix_replayed": true,
+        "turn_git_commit": true,
+        "working_state_budget_pressure_visible": true,
+        "working_state_journal_backed": true
+      }
+    },
+    "counterfactual_choice_contract_test": {
+      "choice_preview_scope_revision_ttl_consumption": "pass",
+      "first_plan_health_query_reconciles_restored_world": "pass",
+      "ok": true,
+      "preview_does_not_consume_or_modify_choice": "pass"
+    },
+    "counterfactual_contract_test": {
+      "dense_site_query_metrics": {
+        "compact": {
+          "answer_available": false,
+          "elapsed_ms": 18.697,
+          "estimated_tokens": 63
+        },
+        "deep": {
+          "answer_available": true,
+          "elapsed_ms": 24.997,
+          "estimated_tokens": 2213
+        },
+        "standard": {
+          "answer_available": true,
+          "elapsed_ms": 19.195,
+          "estimated_tokens": 2034
+        }
+      },
+      "exhaustive_assignment_cases": 45,
+      "ok": true,
+      "stale_evidence_and_closed_parameters": "pass",
+      "world_query_revision_binding": "pass"
+    },
+    "fair_play_world_test": {
+      "event": "pass",
+      "payload": {
+        "attention_payloads_identical": true,
+        "focus_operation_watch_provider_boundary": true,
+        "hidden_honeytoken_differential": true,
+        "hidden_route_region_boundary": true,
+        "pact_infiltration_governor_satellite_scenario": true,
+        "provider_anchor_route_render_identical": true,
+        "specialist_inputs_identical": true,
+        "spectator_admin_isolation": true
+      }
+    },
+    "managed_mcp_contract_test": {
+      "event": "pass",
+      "payload": {
+        "bridge_endpoint_environment_scoped": true,
+        "bridge_secret_file_scoped": true,
+        "launch_operator_only": true,
+        "load_operator_only": true,
+        "new_game_operator_only": true,
+        "stop_operator_only": true
+      }
+    },
+    "managed_memory_scale_test": {
+      "event": "pass",
+      "payload": {
+        "all_typed_projections_bounded": true,
+        "chat_bounded": true,
+        "events_bounded_and_provider_safe": true,
+        "maximum_read_tokens": 1907,
+        "recall_shared_budget": true,
+        "records_per_projection": 120,
+        "search_abstract_only": true,
+        "working_set_not_proportional_to_storage": true
+      }
+    },
+    "managed_runtime_readiness_test": {
+      "LAN_fixture_requires_both_explicit_test_flags": true,
+      "cold_projection_before_listener": true,
+      "lobby_observer_remains_available": true,
+      "passed": true
+    },
+    "match_briefing_contract_test": {
+      "event": "pass",
+      "payload": {
+        "acknowledgement_is_compact": true,
+        "acknowledgement_unlocks_current_session": true,
+        "configuration_delta_is_precise": true,
+        "decisions_and_mutations_locked": true,
+        "exact_hash_required": true,
+        "live_native_settings_included": true,
+        "resume_acknowledgement_is_carried_forward": true,
+        "resume_notice_is_once_per_session": true,
+        "runtime_state_does_not_invalidate": true,
+        "same_configuration_recovery_stays_unlocked": true,
+        "scenario_restrictions_included": true,
+        "settings_change_invalidates_acknowledgement": true
+      }
+    },
+    "mcp_command_schema_test": {
+      "event": "pass",
+      "payload": {
+        "amount_forwarded": 75,
+        "command": "respond_to_combat_confirmation",
+        "confirm_atrocity_forwarded": 1,
+        "confirm_consume_artifact_forwarded": 1,
+        "confirm_corner_market_forwarded": 1,
+        "confirm_defiance_forwarded": 1,
+        "confirm_destruction_forwarded": 1,
+        "confirm_obliteration_forwarded": 1,
+        "confirm_self_destruct_forwarded": 1,
+        "confirm_transfer_forwarded": 1,
+        "confirm_vote_commitment_forwarded": 1,
+        "forwarded_value": 1,
+        "governor_permission_forwarded": "secret_projects",
+        "payment_forwarded": "energy",
+        "phase_forwarded": "credits",
+        "public_coordinate_parameters_absent": true,
+        "public_parameter": "confirm_attack",
+        "target_faction_id_forwarded": 6,
+        "target_kind_forwarded": "commlink",
+        "target_tile_id_forwarded": 321,
+        "target_unit_id_forwarded": 23
+      }
+    },
+    "milestone_contract_test": {
+      "all_and_threshold": true,
+      "destroyed_requirement_retained": true,
+      "managed_milestone_create_inspect": true,
+      "ok": true,
+      "repeat_completion_deduplication": true,
+      "restart_attention_delivery": true,
+      "stale_is_unknown": true
+    },
+    "native_observation_contract_test": {
+      "event": "pass",
+      "payload": {
+        "action_revision_ignores_native_row_layout": true,
+        "airdrop_fixture_acceptance_flag_alone_rejected": true,
+        "airdrop_fixture_both_flags_required": true,
+        "airdrop_fixture_test_mode_alone_rejected": true,
+        "bounded_native_ring": true,
+        "capture_recapture_preserved_within_reconciliation": true,
+        "chat_and_deferred_actions_emit_events": true,
+        "collector_bridge_operations_valid": true,
+        "collector_refresh_serialized": true,
+        "confirmed_destruction_full_pipeline": true,
+        "continuity_gap_journaled": true,
+        "continuous_movement_path_collected": true,
+        "durable_stage_retains_more_than_native_ring_capacity": true,
+        "immutable_publication_package_defers_new_native_activity": true,
+        "managed_sidecar_identity_explicit": true,
+        "native_lifecycle_hooks_attached": true,
+        "over_256_pages_drained_and_coalesced": true,
+        "overflow_enters_critical_attention": true,
+        "overflow_explicit": true,
+        "post_semantic_pre_world_head_recovery_exact": true,
+        "projection_marks_reconciliation": true,
+        "routine_airdrop_receipts_absent": true,
+        "same_drain_visibility_gap_breaks_only_affected_contact": true,
+        "semantic_identity_checkpoint_wiring": true,
+        "semantic_native_transition_events_present": true,
+        "two_phase_publication_crash_replay_exactly_once": true,
+        "visible_destruction_not_fog_loss": true
+      }
+    },
+    "observation_batch_recovery_test": {
+      "passed": true,
+      "windows": [
+        {
+          "canonical_events_not_duplicated": true,
+          "crash_window": "before_commit",
+          "journal_and_cache_objects": 279
+        },
+        {
+          "canonical_events_not_duplicated": true,
+          "crash_window": "during_commit",
+          "journal_and_cache_objects": 279
+        },
+        {
+          "canonical_events_not_duplicated": true,
+          "crash_window": "after_commit",
+          "journal_and_cache_objects": 279
+        }
+      ]
+    },
+    "operations_contract_test": {
+      "event": "pass",
+      "payload": {
+        "ai_memory_snapshots_backup_and_restore": true,
+        "campaign_journal_backup_and_restore": true,
+        "canonical_schema_only": true,
+        "consistent_sqlite_snapshot": true,
+        "finished_run_immutable": true,
+        "orphan_secret_removed": true,
+        "pre_restore_rollback_backup": true,
+        "scheduled_operations_claimed_once": true,
+        "secret_backup_and_restore": true,
+        "specialist_traces_backup_and_restore": true,
+        "tamper_detection": true,
+        "worker_archives_fail_closed_without_manager": true
+      }
+    },
+    "platform_controller_test": {
+      "event": "pass",
+      "payload": {
+        "chat_exactly_once_attention": true,
+        "chat_player_faction_mapping": true,
+        "geographic_speech_is_untrusted_text_without_map_payload": true,
+        "legacy_history_imported": true,
+        "outbound_chat_persisted": true,
+        "typed_memory_guarded": true,
+        "working_set_and_search": true
+      }
+    },
+    "provider_schema_budget_test": {
+      "event": "pass",
+      "payload": {
+        "managed_tool_count": 15,
+        "smac_world_conservative_token_proxy": 619,
+        "smac_world_hard_gate": 900,
+        "smac_world_schema_bytes": 1855,
+        "smac_world_target": 700,
+        "system_prompt_bytes": 5280,
+        "system_prompt_conservative_token_proxy": 1760,
+        "system_prompt_exact_tokens": null,
+        "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+        "tokenizer": "conservative_utf8_proxy",
+        "total_tool_schema_bytes": 20169
+      }
+    },
+    "reference_bounding_contract_test": {
+      "event": "pass",
+      "payload": {
+        "collection_enumeration_bounded": true,
+        "continuations_advance": true,
+        "giant_document_chunked": true
+      }
+    },
+    "rollback_world_contract_test": {
+      "event": "pass",
+      "payload": {
+        "future_attention_watch_operation_removed": true,
+        "future_cache_removed_specialist_diagnostics_retained": true,
+        "future_world_removed": true,
+        "new_timeline_activated": true,
+        "repeat_restore_deterministic": true,
+        "snapshot_journal_head_verified": true
+      }
+    },
+    "runtime_context_contract_test": {
+      "event": "pass",
+      "payload": {
+        "64k_and_256k_same_truth": true,
+        "acknowledgement_does_not_remove_focus": true,
+        "attention_32_item_remaining_count_exact": true,
+        "communication_same_sovereign_read_only": true,
+        "compact_standard_deep_continuations_finally_resealed": {
+          "compact": 445,
+          "deep": 8077,
+          "standard": 1972
+        },
+        "critical_attention_pinned": true,
+        "durable_commitment_pinned": true,
+        "huge_chaotic_256k_runtime_bounded": true,
+        "huge_chaotic_anchor_tokens_256k": 15931,
+        "huge_chaotic_attention_tokens_256k": 3500,
+        "huge_chaotic_cognition_tokens_256k": 5766,
+        "huge_chaotic_runtime_tokens_256k": 25562,
+        "large_cognition_live_selection": true,
+        "operation_retained_then_collected": true,
+        "runtime_token_composition_observed": true,
+        "runtime_tokens_256k": 8111,
+        "runtime_tokens_64k": 4742,
+        "stable_ready_unit_focus_and_anchor_promotion": true,
+        "tier_specific_detail_budget": true
+      }
+    },
+    "sovereign_geography_acceptance_test": {
+      "fragmented_anchor_tokens": 4156,
+      "geography_queries": {
+        "area": {
+          "cold_ms": 67.592,
+          "result_tokens": 1854,
+          "warm_ms": 43.925
+        },
+        "compare": {
+          "cold_ms": 277.444,
+          "result_tokens": 813,
+          "warm_ms": 82.693
+        },
+        "logistics": {
+          "cold_ms": 99.993,
+          "result_tokens": 635,
+          "warm_ms": 80.509
+        },
+        "relation": {
+          "cold_ms": 267.525,
+          "result_tokens": 636,
+          "warm_ms": 81.09
+        }
+      },
+      "mature_empire_anchor_tokens": 4002,
+      "passed": true
+    },
+    "sovereign_hardening_contract_test": {
+      "map_freshness": true,
+      "typed_watch_fields": true,
+      "zero_turn_arrival": true
+    },
+    "spatial_scope_contract_test": {
+      "dependency_invalidation": true,
+      "native_radius_adapter": true,
+      "observed_hostile_crossings_only": true,
+      "ok": true,
+      "private_composite_geometry": true,
+      "restart_and_dedupe": true,
+      "stale_evidence_withheld": true
+    },
+    "spatial_scope_scale_test": {
+      "ok": true,
+      "scope_service_scale": [
+        {
+          "create_ms": 87.585,
+          "descriptor_tokens": 98,
+          "inspect_ms": 29.438,
+          "private_watch_definition_bytes": 315,
+          "tiles": 400
+        },
+        {
+          "create_ms": 993.492,
+          "descriptor_tokens": 99,
+          "inspect_ms": 1060.387,
+          "private_watch_definition_bytes": 317,
+          "tiles": 40000
+        },
+        {
+          "create_ms": 2118.324,
+          "descriptor_tokens": 99,
+          "inspect_ms": 1841.713,
+          "private_watch_definition_bytes": 317,
+          "tiles": 65536
+        }
+      ]
+    },
+    "specialist_contract_test": {
+      "event": "pass",
+      "payload": {
+        "bounded_durable_queue": true,
+        "completion_attention": true,
+        "corpus_change_stale": true,
+        "failed_snapshot_retry_horizon_housekeeping": true,
+        "failed_world_snapshot_manual_retry": true,
+        "frozen_reference_corpus": true,
+        "historical_result_hidden": true,
+        "idempotent_commission": true,
+        "immutable_snapshot_pin": true,
+        "journal_publication_recovery": true,
+        "late_result_cas_rejected": true,
+        "mission_attempt_split": true,
+        "operation_completion_cancels_linked": true,
+        "platform_dependencies": true,
+        "prepared_result_rollback_authoritative": true,
+        "relevant_change_stale": true,
+        "specialist_prompt_boundary": true,
+        "timeline_late_publish_rejected": true,
+        "turn_handoff_cancels_unlinked_only": true,
+        "unrelated_change_accepted": true,
+        "world_epoch_late_publish_rejected": true
+      }
+    },
+    "specialist_snapshot_gc_scale_test": {
+      "event": "pass",
+      "payload": {
+        "final_snapshot_bytes": 0,
+        "final_snapshot_rows": 0,
+        "huge_known_tiles": 6400,
+        "idempotent_commission_does_not_leak_snapshot": true,
+        "missions": 24,
+        "orphaned_precommit_pin_reconciled": true,
+        "peak_snapshot_bytes": 5615761,
+        "peak_snapshot_rows": 1
+      }
+    },
+    "strategic_world_fixtures_test": {
+      "event": "pass",
+      "payload": {
+        "air_carrier_refueling": true,
+        "alien_crossfire_objectives": true,
+        "ally_rendezvous": true,
+        "current_pact_coastal_port_routing": true,
+        "ecology_sea_level_change": true,
+        "expansion_site_reasoning": true,
+        "fog_pursuit": true,
+        "huge_chaotic_world": true,
+        "huge_quiet_world": true,
+        "multi_front_warfare": true,
+        "parity_wrap_flat_boundaries": true,
+        "peninsula_defense": true,
+        "project_global_race": true,
+        "region_split_merge_split_lineage": true,
+        "relation_aware_threat_and_native_zoc": true,
+        "roads_magtubes_fungus_zoc_airdrop_connections": true,
+        "transport_island_logistics": true,
+        "two_threatened_bases_one_reserve": true
+      }
+    },
+    "strict_prompt_contract_test": {
+      "event": "pass",
+      "payload": {
+        "deterministic_prompt": true,
+        "integrity_failure_closed": true,
+        "personality_seam_only": true,
+        "provider_system_message_exact": true,
+        "upstream_prompt_replaced": true
+      }
+    },
+    "worker_contract_test": {
+      "passed": true
+    },
+    "worker_lifecycle_serialization_test": {
+      "event": "pass",
+      "lan_transition_and_supervision_serialized": true,
+      "maximum_concurrency": 1
+    },
+    "world_context_benchmark": {
+      "huge_quiet_growth_percent": 0.2849002849002913,
+      "method": "deterministic semantic token estimator: canonical UTF-8 bytes / 4",
+      "passed": true,
+      "profiles": {
+        "huge_chaotic_256k": {
+          "milliseconds": 956.484729074873,
+          "regions_omitted": 0,
+          "strategic_objects_truncated": true,
+          "tokens": 15809
+        },
+        "huge_chaotic_64k": {
+          "milliseconds": 962.5864750705659,
+          "regions_omitted": 0,
+          "strategic_objects_truncated": true,
+          "tokens": 5669
+        },
+        "huge_fragmented_64k": {
+          "milliseconds": 449.07706999219954,
+          "regions_omitted": 3176,
+          "tokens": 5449
+        },
+        "huge_quiet_256k": {
+          "milliseconds": 915.9219189314172,
+          "tokens": 1057
+        },
+        "huge_quiet_64k": {
+          "milliseconds": 943.5639419825748,
+          "tokens": 1056
+        },
+        "small_quiet_64k": {
+          "milliseconds": 7.051052991300821,
+          "tokens": 1053
+        }
+      },
+      "schema": "smacx.world-benchmark.v1",
+      "tile_count": {
+        "huge": 25600,
+        "small": 256
+      },
+      "underlying_fact_equivalence": true
+    },
+    "world_model_contract_test": {
+      "event": "pass",
+      "payload": {
+        "action_world_revision_separated": true,
+        "advance_retreat_path_preserved": true,
+        "all_semantic_world_modes": true,
+        "attention_redelivery": true,
+        "bounded_unknown_orbital_address_space": true,
+        "correct_square_topology": true,
+        "first_known_preserved_on_reverification": true,
+        "foreign_fog_identity_safe": true,
+        "frontier_temporal_watch": true,
+        "huge_quiet_anchor_bounded": true,
+        "known_world_routing": true,
+        "native_row_compaction_semantically_inert": true,
+        "perspective_provider_sanitized": true,
+        "query_cache": true,
+        "region_builder_persistence_split_merge_split": true,
+        "region_exit_watch": true,
+        "region_watch_migration_split_and_merge": true,
+        "rendezvous_watch": true,
+        "route_disruption_watch": true,
+        "semantic_handle_registry": true,
+        "single_materialized_anchor_per_tier": true,
+        "single_sovereign_writer": true,
+        "transient_region_entry_watch": true,
+        "watch_operation_bounds": true,
+        "watch_trigger_delivery": true,
+        "watch_ttl_and_plan_cleanup": true,
+        "world_invalid_operation_collected": true
+      }
+    }
+  },
+  "control_image": "smacx-agent-control:pr48-integrated-r12",
+  "diagnostic_history": [
+    {
+      "finding": "cold listener readiness before initial publication",
+      "initial_collection_ms": 47851.667,
+      "repair": "initial active-world reconciliation precedes listeners; 60 s health grace within existing 90 s startup budget"
+    },
+    {
+      "after_ms": 17057.537,
+      "before_ms": 38123.161,
+      "finding": "dedicated collector exceeded existing gate",
+      "max_UI_gap_ms": 271.816,
+      "repair": "batch disposable SQLite observation rows after unchanged canonical journal appends"
+    },
+    {
+      "finding": "conditional fungus earliest arrival treated as guaranteed by test",
+      "repair": "native exact-arrival comparison requires exact_known_state; stochastic calculator qualification preserved"
+    },
+    {
+      "finding": "LAN fixture missing explicit second test flag",
+      "repair": "forward flag only when both explicit test flags are set; native guard retained"
+    }
+  ],
+  "exact_prompt_and_schema": {
+    "event": "pass",
+    "payload": {
+      "managed_tool_count": 15,
+      "smac_world_conservative_token_proxy": 619,
+      "smac_world_hard_gate": 900,
+      "smac_world_schema_bytes": 1855,
+      "smac_world_target": 700,
+      "system_prompt_bytes": 5280,
+      "system_prompt_conservative_token_proxy": 1760,
+      "system_prompt_exact_tokens": 1117,
+      "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+      "tokenizer": "provider_tokenizer",
+      "total_tool_schema_bytes": 20169
+    }
+  },
+  "limits": [
+    "Native-shaped fixtures prove interface and deterministic adapter behavior only.",
+    "Native site variants other than founding and Recycling Tanks remain conditional hypotheses.",
+    "Production timing compares constant-surplus native upkeeps and actual movement, not full campaign simulation.",
+    "Complete psych, commerce, research and climate simulation are not implemented; unknown fuel and stale evidence remain unavailable or conditional.",
+    "Stock Pact map-contact exchange and refresh behavior lack a clean controlled native comparison; geographic speech stays untrusted.",
+    "LAN social evidence establishes replicated pending models, exactly-once charge and selected-policy recovery, not every derived social rating.",
+    "Live provider prefix probe is synthetic; no new sovereign or specialist gameplay inference or strategy-quality claim."
+  ],
+  "native_LAN": {
+    "event": "pass",
+    "payload": {
+      "agreement_effects_preserved_in_current_world_after_recovery": true,
+      "distinct_faction_perspectives": true,
+      "faction_seats_restored": true,
+      "guarded_lobby_config_ready_start": true,
+      "human_actions": {
+        "energy": {
+          "effect_verified": true,
+          "managed_acceptance": true,
+          "managed_offer": true,
+          "recipient_terms": true
+        },
+        "pact": {
+          "effect_verified": true,
+          "managed_acceptance": true,
+          "managed_offer": true,
+          "recipient_terms": true
+        },
+        "social_engineering": {
+          "managed_staged_choice": true,
+          "native_pending_models_replicated": true,
+          "switch_charge_applied_once": true
+        },
+        "technology": {
+          "effect_verified": true,
+          "managed_acceptance": true,
+          "managed_offer": true,
+          "recipient_terms": true
+        }
+      },
+      "journal_and_native_identity_restored": true,
+      "match_wide_park": true,
+      "multiplayer_save_bytes": 242359,
+      "native_host_campaign_save": true,
+      "native_host_discover_join": true,
+      "native_host_role_observable": true,
+      "one_mcp_sidecar_per_seat": true,
+      "pixels_or_ui_input_used": false,
+      "shared_match_distinct_sessions": true,
+      "stock_multiplayer_lobby_reload": true,
+      "two_isolated_workers": true
+    }
+  },
+  "native_single_player": {
+    "base_site_stress": {
+      "candidate_count": 32,
+      "owned_base_count": 512,
+      "probe_gap_ms": 222.187,
+      "radius_squares": 21,
+      "receipt_bytes": 169970,
+      "wall_ms": 231.477
+    },
+    "counterfactual_checkpoint": {
+      "actors_represented_with_mechanical_roles": true,
+      "completed_terraform_matches_standalone_and_owned_base_yields": true,
+      "disband_support_and_explicit_garrison_departure": true,
+      "hurry_charge_and_progress_match_without_claiming_instant_completion": true,
+      "positive_retool_penalty_matches_native_change": true,
+      "production_and_travel_timing": {
+        "actual_native_production_upkeeps": 6,
+        "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true,
+        "one_phase_native_move_matches": true,
+        "production_timing_matches": true
+      },
+      "rehome_support_and_journal_link_match_observed_effect": true,
+      "site_facility_delta_matches_managed_build_and_actual_native_completion": true
+    },
+    "counterfactual_site_stress": {
+      "nominated_sites": 4,
+      "owned_base_input_rows": 511,
+      "probe_gap_ms": 218.37,
+      "receipt_bytes": 52338,
+      "wall_ms": 210.431
+    },
+    "intent_attention_delivery": {
+      "acknowledged_batches": 7,
+      "milestone_and_production_runtime_delivery": true,
+      "native_project_interruption_delivered": true,
+      "provider_inference": false,
+      "trusted_response_hook_simulated": true
+    },
+    "intent_checkpoint": {
+      "journaled_plan_and_milestone": true,
+      "managed_base_radius_scope": true,
+      "managed_journaled_reservation_conflict": true,
+      "native_occurrence_to_managed_ready": true,
+      "native_production_cases": [
+        "production_facility",
+        "production_project",
+        "production_interrupt"
+      ],
+      "native_repeat_completion_two_units": true,
+      "private_membership": true,
+      "provider_queryable_plan_health": true,
+      "stationary_unit_assignment_visible": true
+    },
+    "intent_recovery": {
+      "ephemeral_old_timeline_watch_discarded": true,
+      "journaled_conflict_and_stationary_assignment_preserved": true,
+      "journaled_plan_preserved": true,
+      "native_completed_units_preserved": true,
+      "old_session_counterfactual_choice_rejected": true
+    },
+    "managed_action_paths": {
+      "evidence": {
+        "actors_discovered_through_managed_world": true,
+        "bulk_upgrade_staged_cost_and_observed_effect": true,
+        "colocated_rendezvous_query_and_transport_boarding_effect": true,
+        "colony_founding_effect_verified": true,
+        "council_proposal_ballot_and_public_result": true,
+        "custom_design_create_and_discover": true,
+        "energy_allocation_effect": true,
+        "governor_and_citizen_managed_workflow": true,
+        "native_quoted_loan_terms_and_effect": true,
+        "production_loss_preview_and_deployment_composition": true,
+        "production_set_append_remove_effect": true,
+        "selected_diplomatic_gift_native_effect": true,
+        "single_unit_upgrade_and_observation": true,
+        "site_center_preview_matches_managed_founding": true,
+        "site_tanks_center_delta": {
+          "energy": 1,
+          "minerals": 1,
+          "nutrients": 1
+        },
+        "site_variants_restore_state_and_ignore_hidden_mirrors_and_foreign_workers": true,
+        "social_models_atomic_effect": true,
+        "social_preview_native_ratings_cost_and_read_safety": true,
+        "technology_purchase_terms_and_observed_transfer": true,
+        "terraform_order_effect_verified": true,
+        "upgrade_preview_cost_matches_execution": true
+      },
+      "managed_endpoint": true,
+      "passed": true
+    },
+    "pass": {
+      "authenticated_control_lifecycle": true,
+      "bridge_verified_checkpoint": true,
+      "dedicated_mcp_sidecar": true,
+      "hermes_low_reasoning": false,
+      "hermes_managed_container": false,
+      "hermes_native_revision_advanced": false,
+      "hermes_semantic_turn": false,
+      "hermes_session_backup_verified": false,
+      "hermes_usage": null,
+      "live_worker_volume_backup_verified": true,
+      "managed_lifecycle_blocked": true,
+      "mcp_bound_to_exact_match": true,
+      "mcp_tool_count": 15,
+      "native_airdrop_collection_stress": {
+        "demand_receipt_matches_actions": true,
+        "enumeration_payload_bytes": 8670,
+        "enumeration_probe_gap_ms": 284.62,
+        "enumeration_target_count": 4413,
+        "enumeration_wall_ms": 323.138,
+        "exact_payload_bytes": 288,
+        "exact_probe_gap_ms": 331.148,
+        "exact_wall_ms": 285.423,
+        "map_tiles": 8192,
+        "maximum_page_bytes": 139529,
+        "maximum_page_latency_ms": 328.598,
+        "outside_first_128_semantic_choice_executed": true,
+        "ready_drop_units": 129,
+        "revision_cache_hit": true
+      },
+      "native_airdrop_diplomacy_and_anti_drop_guards": true,
+      "native_base_geography_and_unit_traits": true,
+      "native_crash_recovered_without_ui": true,
+      "native_global_projection_world_runtime_path": true,
+      "native_no_timer": true,
+      "native_orbital_project_global_adapter": true,
+      "native_pact_port_amphibious_sequence": true,
+      "native_unity_governor_entitlements": true,
+      "recovered_checkpoint_turn": 1,
+      "semantic_vehicle_identity_survived_native_restart": true,
+      "sidecar_removed_on_park": true,
+      "specialist": null
+    }
+  },
+  "parent_commit": "8ff46e93cd8381086430785ba8856a701d761e7e",
+  "prefix_cache": {
+    "first_request_cache_hit_tokens": 0,
+    "model": "Qwen3.8-27B",
+    "passed": true,
+    "recorded_unix": 1788589493.9756832,
+    "schema": "smacx.prefix-cache-benchmark.v1",
+    "second_request_cache_hit_tokens": 21424,
+    "second_request_prompt_tokens": 23843
+  },
+  "schema": "smacx.integrated-acceptance.v1",
+  "semantic_GC": {
+    "contract": {
+      "event": "pass",
+      "payload": {
+        "current_tool_chain_reasoning_retained": true,
+        "durable_cognition_receipts": true,
+        "durable_prefix_stable": true,
+        "five_hundred_action_turn_bounded": true,
+        "five_hundred_cognition_notebook_turn_bounded": true,
+        "historical_reasoning_removed": true,
+        "historical_serialized_thinking_removed": true,
+        "historical_tool_protocol_pruned": true,
+        "latest_state_retained": true,
+        "ordinary_response_untouched": true,
+        "provider_wire_growth_bounded": true,
+        "real_hermes_dispatcher_compacted": true,
+        "semantic_gc_precedes_real_half_window_compression": true,
+        "single_request_only_runtime_context": true,
+        "streaming_repetition_fuse_installed": true,
+        "superseded_execution_result_compacted": true,
+        "superseded_state_compacted": true,
+        "turn_handoff_hard_ceiling": true,
+        "unscoped_dispatcher_rejected": true,
+        "untrusted_runtime_tag_isolated": true
+      }
+    },
+    "million_after_tokens": 13185,
+    "million_before_tokens": 1074269,
+    "pressure_after_tokens": 2436,
+    "pressure_before_tokens": 45697
+  },
+  "status": "accepted_with_explicit_limits",
+  "unchanged_components": {
+    "dotnet_passed": 63,
+    "evidence": "checkpoint_4; no checkpoint_5 changes to these implementations",
+    "host_specialist_supervisor_passed": true,
+    "native_cross_build_steps_completed": 38
+  },
+  "worker_image": "smacx-agent-worker:pr48-checkpoint4-r8"
+}

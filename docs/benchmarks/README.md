@@ -5,6 +5,11 @@ runtime regressions. It is not a validation diary and never contains game
 files, screenshots, model conversations, chat, prompts, responses, reasoning,
 tool arguments, provider addresses, credentials, or private host details.
 
+- [2026-09-05 focused PR #48 semantic corrections](2026-09-05-peer-review-corrections.md)
+
+- [2026-09-05 H1–H5 publication, episode, journal and inspection acceptance](2026-09-05-h-review.md)
+- [2026-09-05 final hostile-review gates and collector distribution](2026-09-05-final-hostile-review.md)
+
 ## Required test conditions
 
 - Use a test-owned match and isolated managed workers.
@@ -33,8 +38,21 @@ needed to reproduce it. Do not hand-edit generated JSON.
 
 Published reports:
 
+- [2026-09-05 integrated sovereign acceptance](2026-09-05-integrated-acceptance.md)
+- [2026-09-05 counterfactual mechanics](2026-09-05-counterfactual.md)
+- [2026-09-04 intent and semantic attention](2026-09-04-intent-attention.md)
+- [2026-09-04 managed action paths](2026-09-04-managed-action-paths.md)
+- [2026-09-04 sovereign correctness](2026-09-04-sovereign-correctness.md)
+
+- [2026-09-04 geographic semantics and hierarchical LOD acceptance](2026-09-04-geographic-semantics.md)
+- [2026-09-03 strategic world and provider-context acceptance](2026-09-03-strategic-world-rebuild.md)
 - [2026-09-02 bounded runtime no-timer smoke test](2026-09-02-bounded-runtime.md)
 - [2026-09-02 AI-2 turn-transition regression](2026-09-02-ai2-turn-transition-regression.md)
+
+Content-free machine-readable acceptance artifacts include the
+[live disposable specialist run](results/2026-09-03-specialist-live.json) and
+[live prefix-cache measurement](results/2026-09-03-prefix-cache-live.json), plus
+the [native demanded orbital-receipt run](results/2026-09-04-semantic-airdrop-live.json).
 
 ## Interpreting results
 

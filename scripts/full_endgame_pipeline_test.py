@@ -69,7 +69,12 @@ def main() -> int:
             # without honoring the requested finish path.
             refs = current.get("ready_unit_refs", [])
             if refs and initial_unit_id < 0:
-                initial_unit_id = int(refs[0].get("id", -1))
+                units = bridge_request("list_units", scope="own", limit=256)
+                target_ref = refs[0].get("own_unit_ref")
+                initial_unit_id = next(
+                    int(item["id"]) for item in units.get("items", [])
+                    if item.get("own_unit_ref") == target_ref
+                )
             time.sleep(0.05)
             continue
 
