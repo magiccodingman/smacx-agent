@@ -153,6 +153,43 @@ def exercise_human_actions(workers, host):
             evidence[phase] = {"managed_offer": True, "recipient_terms": True,
                                "managed_acceptance": True, "effect_verified": True}
             print(json.dumps({"event": "managed_human_action_verified", "capability": phase}), flush=True)
+        # The single-player local social_set correction must preserve LAN's
+        # network application and charge exactly once on both replicas.
+        fixtures = [native(seat, "test_social_engineering_fixture", faction_id=donor) for seat in seats]
+        assert fixtures[0]["model_name"] == fixtures[1]["model_name"]
+        frame = call(host, "smac_choices", kind="social_engineering")
+        preparation = frame["preparations"][0]
+        for _ in range(8):
+            option = next((row for row in preparation["options"]
+                           if row["label"] == fixtures[0]["model_name"]), preparation["options"][0])
+            frame = call(host, "smac_choices", kind="social_engineering",
+                         preparation_ref=preparation["preparation_ref"], option_ref=option["option_ref"])
+            if "preparation" not in frame:
+                break
+            preparation = frame["preparation"]
+        else:
+            raise AssertionError("LAN social preparation did not terminate")
+        choice = frame["choices"][0]
+        predicted = call(host, "smac_world", mode="counterfactual", detail="deep",
+            scenario_json=json.dumps({"kind": "social", "decision_id": frame["decision_id"],
+                                      "choice_id": choice["choice_id"]}))["items"][0]["confirmed_mechanics"]
+        before_energy = observe(host)["faction"]["energy_credits"]
+        execute(host, frame, lambda row: row["choice_id"] == choice["choice_id"])
+        desired = [choice[key] for key in ("politics", "economics", "values", "future")]
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            replicas = [next(row for row in native(seat, "test_network_sync_status")["factions"]
+                             if row["id"] == donor) for seat in seats]
+            if all(row["social_pending"] == desired and row["energy"] ==
+                   before_energy - predicted["switch_energy_cost"] for row in replicas):
+                break
+            finish_opening()
+            time.sleep(0.1)
+        else:
+            raise AssertionError({"LAN_social_replication": replicas, "desired": desired})
+        evidence["social_engineering"] = {"managed_staged_choice": True,
+            "native_pending_models_replicated": True, "switch_charge_applied_once": True}
+        print(json.dumps({"event": "managed_human_action_verified", "capability": "social_engineering"}), flush=True)
         return evidence
     finally:
         for seat, episode in episodes:

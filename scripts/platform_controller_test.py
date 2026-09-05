@@ -22,6 +22,8 @@ def main() -> int:
     }
     match_id = "match-platform-controller"
     session_id = "session-platform-controller"
+    geographic_speech = "Near Gaia's Landing, west of the ridge; location-peer-only is my local label."
+    chat_packets = []
     state = {
         "match_id": match_id,
         "session_id": session_id,
@@ -41,6 +43,7 @@ def main() -> int:
         if operation == "semantic_snapshot":
             return {"ok": True, "snapshot": dict(state)}
         if operation == "semantic_chat":
+            chat_packets.append(dict(arguments))
             if arguments.get("action") == "send":
                 return {
                     "ok": True,
@@ -78,7 +81,7 @@ def main() -> int:
                     "sender_faction_id": 2,
                     "recipient_faction_id": None,
                     "turn": 18,
-                    "text": "I will honor our western-border agreement.",
+                    "text": geographic_speech,
                 }],
             }
         raise AssertionError(f"unexpected bridge operation: {operation}")
@@ -114,6 +117,11 @@ def main() -> int:
             remote = next((actor for actor in participants if actor.get("network_player_id") == "202"), None)
             if len(attention) != 1 or not remote or remote.get("faction_name") != "Morganites":
                 raise AssertionError(f"chat identity persistence failed: {chat}")
+            assert chat["durable"]["untrusted_in_game_speech"] is True
+            assert attention[0]["content"] == geographic_speech
+            # Location-like text has no structured map/reference authority.
+            assert set(attention[0].get("metadata", {})) <= {
+                "native_sequence", "client_message_id", "sender_player_name", "sender_faction_name"}
             repeated = controller.semantic_chat("list", match_id=match_id, session_id=session_id)
             if repeated.get("durable", {}).get("attention"):
                 raise AssertionError("acknowledged native chat was delivered twice")
@@ -175,6 +183,8 @@ def main() -> int:
             )
             if not sent.get("ok") or len(stored_chat.get("items", [])) != 2:
                 raise AssertionError(f"outbound chat was not persisted: {sent} / {stored_chat}")
+            assert all(set(packet) == {"action", "match_id", "session_id", "client_message_id",
+                       "text", "recipient_faction_id", "after_sequence"} for packet in chat_packets)
             if any(
                 row.get("direction") == "outbound" and row.get("acknowledged_unix") is None
                 for row in stored_chat["items"]
@@ -226,6 +236,7 @@ def main() -> int:
                 "event": "pass",
                 "payload": {
                     "chat_player_faction_mapping": True,
+                    "geographic_speech_is_untrusted_text_without_map_payload": True,
                     "chat_exactly_once_attention": True,
                     "outbound_chat_persisted": True,
                     "typed_memory_guarded": True,

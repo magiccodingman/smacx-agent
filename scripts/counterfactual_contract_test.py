@@ -96,6 +96,22 @@ def main():
                 "roles": {"former": True}, "triad": "land", "movement_points": 1}}])
     assert future[0]["alternatives"][1]["total_turns"] == 4
     assert future[0]["alternatives"][1]["epistemic_status"] == "conditional"
+    corridor = PerspectiveTopology(MapShape(20, 8, False), [
+        KnownSquare(name, x, 2, "land") for name, x in
+        (("far", 0), ("middle", 2), ("near", 4), ("objective", 6))])
+    choices = [{"decision_id": "production-near", "choice_id": "former"},
+               {"decision_id": "production-far", "choice_id": "former"}]
+    existing = obj("reserve", "own_unit", "far", roles={"former": True},
+                   triad="land", movement_points=1, moves_remaining=1)
+    alternatives = deployment_alternatives(corridor, {"reserve": existing},
+        {"capability": "former", "choice_refs": choices}, "objective", [], [{
+            "proposed_action": "set_production", "base_ref": origin,
+            "origin_location_ref": origin, "estimated_production_turns": preparation,
+            "prototype": {"roles": {"former": True}, "triad": "land", "movement_points": 1}}
+            for origin, preparation in (("near", 3), ("far", 1))])[0]
+    assert alternatives["ranking"] == "none"
+    assert [(row["preparation_turns"], row["travel_turns"], row["total_turns"])
+            for row in alternatives["alternatives"]] == [(0, 3, 3), (3, 1, 4), (1, 3, 4)], alternatives
     air_objects = {**objects, "air-base": obj("air-base", "base", "start", owner_ref="faction-1"),
         "aircraft": obj("aircraft", "own_unit", "start", owner_ref="faction-1",
         roles={"combat": True}, triad="air", movement_points=2, moves_remaining=2,

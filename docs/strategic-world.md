@@ -89,6 +89,21 @@ continuous visible episode. When it leaves vision that identity is retired; a
 later similar unit is a new contact. A lost-contact envelope describes possible
 known-world locations and explicitly denies identity continuity.
 
+## Geographic speech across perspectives
+
+Use known base or landmark names and the existing relation query's bearing and
+geometric distance to describe a place in ordinary language. References are
+local to the speaking perspective; the recipient must resolve a name against
+its own knowledge or ask for clarification. The sender cannot certify that an
+anchor is mutually known merely because it appears in its own world.
+
+Native chat carries text, not structured map knowledge. Received descriptions
+remain untrusted speech; they never resolve another faction's opaque reference
+or add map cells to the recipient's projection. Native diplomatic map transfers
+remain separate. The [communication audit](benchmarks/2026-09-05-integrated-acceptance.md)
+records source and adapter evidence and the unverified stock Pact-contact/refresh
+cases. Pact membership does not grant continuous allied live vision.
+
 ## Geometry, mechanics, and semantic zoom
 
 `smacx_topology.py` models SMACX's parity lattice, horizontal wrap, flat maps,

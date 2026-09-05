@@ -346,6 +346,18 @@ def _start_runtime_context_server() -> ThreadingHTTPServer:
     return server
 
 
+def _start_managed_runtime() -> None:
+    """Seed an active world's projection before advertising MCP readiness.
+
+    A first Huge-map collection can outlast a provider HTTP request. Lobby
+    sessions may have no active world yet; their observer continues retrying,
+    and every later runtime request still requires successful reconciliation.
+    """
+    _refresh_managed_world()
+    _refresh_managed_world(background=True)
+    _start_runtime_context_server()
+
+
 def _turn_number(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
@@ -3799,8 +3811,7 @@ if __name__ == "__main__":
     if MANAGED_ATTACHED:
         # Independent collection continues while the sovereign thinks, waits,
         # or handles communication. Native calls remain bounded and paginated.
-        _refresh_managed_world(background=True)
-        _start_runtime_context_server()
+        _start_managed_runtime()
     mcp.run(
         "streamable-http",
         host=os.environ.get("SMACX_MCP_HOST", "127.0.0.1"),

@@ -422,3 +422,26 @@ after hypotheses and test hidden-mirror/foreign-worker independence. All such
 native inputs and probes are restricted to isolated dual-gated acceptance
 installations. The [checkpoint-4 ledger](benchmarks/2026-09-05-counterfactual.md)
 distinguishes passing comparisons from outstanding acceptance.
+
+## Final sovereign integration
+
+`managed_runtime_readiness_test.py` blocks the first observation and verifies
+that runtime readiness is not advertised until it finishes. The two-seat
+`control_lan_live_test.py` additionally exercises a staged Social Engineering
+choice, native pending-model/charge replication, and selected-policy recovery.
+`platform_controller_test.py` checks that geographic speech stays untrusted
+text with no structured map payload; this does not certify stock Pact map
+exchange or refresh behavior.
+
+Run the single-player and LAN scripts with distinct test-created installations
+to exercise concurrent startup. Run the heavy collector benchmark separately
+when recording its dedicated latency gate, preserving failures under contention
+as separate evidence. Do not raise the 30-second collection or 500 ms probe
+thresholds to hide a failure. Checkpoint evidence records the workload and any
+remaining limitations.
+
+`observation_batch_recovery_test.py` injects failures before, during and after
+batched observation-cache commits. Canonical journal events precede the cache
+transaction; frozen-publication replay reconstructs cache rows and preserves
+exactly-once events. `observation_collector_benchmark.py` prints measured case
+values in latency assertion failures without relaxing its existing gates.

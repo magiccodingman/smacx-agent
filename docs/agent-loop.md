@@ -206,3 +206,10 @@ authenticated Control Center operations. They are deliberately absent from a
 managed player's MCP surface.
 
 The spectator window is output only. Screenshots, coordinates, mouse input, keyboard input, and raw UI text entry are not MCP capabilities.
+
+Managed sidecar startup reconciles an already active native world before opening
+its runtime/MCP listeners, so cold collection does not consume the first provider
+request's HTTP timeout. Background observation starts afterward. A lobby can
+remain available without an active world; every gameplay runtime request still
+requires successful current reconciliation. Startup grace is separate from the
+unchanged native/UI request responsiveness limits.

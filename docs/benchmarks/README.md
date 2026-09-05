@@ -33,6 +33,12 @@ needed to reproduce it. Do not hand-edit generated JSON.
 
 Published reports:
 
+- [2026-09-05 integrated sovereign acceptance](2026-09-05-integrated-acceptance.md)
+- [2026-09-05 counterfactual mechanics](2026-09-05-counterfactual.md)
+- [2026-09-04 intent and semantic attention](2026-09-04-intent-attention.md)
+- [2026-09-04 managed action paths](2026-09-04-managed-action-paths.md)
+- [2026-09-04 sovereign correctness](2026-09-04-sovereign-correctness.md)
+
 - [2026-09-04 geographic semantics and hierarchical LOD acceptance](2026-09-04-geographic-semantics.md)
 - [2026-09-03 strategic world and provider-context acceptance](2026-09-03-strategic-world-rebuild.md)
 - [2026-09-02 bounded runtime no-timer smoke test](2026-09-02-bounded-runtime.md)

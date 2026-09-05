@@ -888,6 +888,7 @@ class ObservationCollector:
                     session_id=self.session_id,
                     dedupe_key=f"continuity:{publication_key}",
                 )
+        world_cache_rows = []
         for batch_index, batch in enumerate(_bounded_batches([
                 {**delta, "observation_sequence": cursor} for delta in deltas])):
             event = self.journal.append(
@@ -897,15 +898,14 @@ class ObservationCollector:
                 }, session_id=self.session_id, turn=turn, year=year,
                 idempotency_key=f"native-publication:{publication_key}:world:{batch_index}",
             )
-            self.world_store.record_observation_projection(
-                self.scope, self.timeline_id,
+            world_cache_rows.append((
                 {"sequence": cursor, "kind": "world_batch", "turn": turn,
-                 "payload": {"deltas": batch}, "continuity": continuity},
-                event["event_id"],
-            )
+                 "payload": {"deltas": batch}, "continuity": continuity}, event["event_id"]))
             journal_events_written += 1
             observation_rows_written += 1
 
+        if world_cache_rows:
+            self.world_store.record_observation_projections(self.scope, self.timeline_id, world_cache_rows)
         prior_by_ref = {str(item["object_ref"]): provider_safe(item) for item in prior_objects}
         production_bases = {str(event.get("base_ref")) for event in temporal_events
                             if str(event.get("event_kind") or "").startswith("production_")}
@@ -932,6 +932,7 @@ class ObservationCollector:
             **semantic, "observation_sequence": cursor,
             "provenance": "direct_observation",
         } for semantic in temporal_events]
+        semantic_cache_rows = []
         for batch_index, batch in enumerate(_bounded_batches(semantic_payloads)):
             event = self.journal.append(
                 self.scope, "observation.semantic_batch", {
@@ -940,14 +941,13 @@ class ObservationCollector:
                 }, session_id=self.session_id, turn=turn, year=year,
                 idempotency_key=f"native-publication:{publication_key}:semantic:{batch_index}",
             )
-            self.world_store.record_observation_projection(
-                self.scope, self.timeline_id,
+            semantic_cache_rows.append((
                 {"sequence": cursor, "kind": "semantic_batch", "turn": turn,
-                 "payload": {"events": batch}, "continuity": continuity},
-                event["event_id"],
-            )
+                 "payload": {"events": batch}, "continuity": continuity}, event["event_id"]))
             journal_events_written += 1
             observation_rows_written += 1
+        if semantic_cache_rows:
+            self.world_store.record_observation_projections(self.scope, self.timeline_id, semantic_cache_rows)
         if self.attention is not None and (deltas or temporal_events):
             self.attention.capture_production_attention(
                 temporal_events, observation_cursor=cursor, turn=turn, session_id=self.session_id)

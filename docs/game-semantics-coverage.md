@@ -129,3 +129,21 @@ The surface remains 15 tools. Whole-result ceilings apply; the world schema is
 619 conservative tokens. The dense site fixture returns 2,034/2,213 estimated
 tokens at standard/deep and an explicit compact size error. These are adapter
 measurements, not native timing claims.
+
+## Integrated acceptance
+
+Checkpoint 5 is accepted within the stated evidence limits. The
+[final ledger and 30-row audit](benchmarks/2026-09-05-integrated-acceptance.md) and
+[sanitized results](benchmarks/2026-09-05-integrated-acceptance.json) supersede
+integrated gates left open by earlier checkpoint reports. The final R12
+single-player and two-seat LAN processes both passed uninterrupted.
+
+| Capability | Observed / represented / calculated / provider-queryable | Sovereign expression / execution / verified effect | Recovery and limits |
+| --- | --- | --- | --- |
+| Cold managed readiness | First active-world reconciliation precedes runtime/MCP listeners; controlled blocking contract | Concurrent native startup reaches the complete managed gameplay sequence | R12 single-player/LAN recovery passes; lobby observer retained; provider HTTP and native/UI limits unchanged |
+| Journal-backed cache publication | Canonical observations are appended before batched disposable SQLite rows; same projected objects and event identities | Full native action/effect sequence and attention delivery pass on the batched image | Before/during/after cache-commit failures replay 279 objects without duplicate events; full frozen-publication and native recovery pass |
+| Geographic communication | Current known names and relation bearing/distance are queryable | Native text-only chat adapter; incoming location-like labels remain untrusted speech | Stock Pact contact/refresh map exchange lacks controlled native comparison; no automatic map authority or continuous allied vision is claimed |
+| Context and semantic GC | 15 tools; 6K/16K anchors pass; 0.285% quiet growth; million-token fixture → 13,185 | Managed world queries and native request/attention sequence pass; live synthetic prefix reuse passes | Full collector passes: 25,600 squares in 17.058 s / 271.816 ms probe; provider gameplay inference not claimed |
+| LAN Social Engineering | Current native staged choice and predicted switch charge | Both replicas receive pending models and exactly-once charge through existing tools | Selected policy and agreements survive R12 checkpoint recovery; all derived social ratings are not independently compared |
+| Counterfactual and intent integration | Native effects match tested site/terraform/social/action predictions; explicit plans and milestones are queryable | Six native production upkeeps and deterministic movement match; production/interrupt attention delivered in seven acknowledged batches | First recovered plan query preserves conflict/assignment; completed identities survive; old watches and preview choices rejected; constant-surplus timing is not full campaign simulation |
+| Native responsiveness | Demanded receipts retain current visibility and guarded legality | R12 32-site receipt: 231.477 ms wall / 222.187 ms probe / 169,970 bytes; four-site economy: 210.431 ms / 218.370 ms / 52,338 bytes | Read-state restoration passes; unchanged 500 ms and payload gates; 129-unit routine Drop paging and exact outside-page execution also pass |

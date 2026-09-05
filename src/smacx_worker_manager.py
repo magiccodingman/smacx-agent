@@ -1479,6 +1479,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_ACCEPTANCE_MANAGED_ACTIONS") == "1":
             values["SMACX_AGENT_TEST_MODE"] = "1"
             values["SMACX_ACCEPTANCE_MANAGED_ACTIONS"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_AGENT_TEST_LAN_HOST") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_AGENT_TEST_LAN_HOST"] = "1"
         faction_roster = autostart.get("faction_roster")
         if isinstance(faction_roster, list) and len(faction_roster) == 7:
             values["SMACX_AGENT_FACTION_ROSTER"] = ",".join(
@@ -4220,7 +4223,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 ],
                 "Interval": 2_000_000_000,
                 "Timeout": 3_000_000_000,
-                "StartPeriod": 5_000_000_000,
+                # MCP opens only after initial active-world reconciliation.
+                # Keep cold-start grace within the existing 90-second sidecar
+                # startup budget; native/UI probe limits are unchanged.
+                "StartPeriod": 60_000_000_000,
                 "Retries": 10,
             },
             "HostConfig": {

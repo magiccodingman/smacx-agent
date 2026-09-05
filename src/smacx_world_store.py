@@ -348,17 +348,29 @@ class WorldStore:
         self, scope: MemoryScope, timeline_id: str, observation: Mapping[str, Any],
         journal_event_id: str,
     ) -> None:
+        self.record_observation_projections(scope, timeline_id, [(observation, journal_event_id)])
+
+    def record_observation_projections(
+        self, scope: MemoryScope, timeline_id: str,
+        observations: Iterable[tuple[Mapping[str, Any], str]],
+    ) -> None:
+        """Publish journal-backed cache rows with one SQLite commit per batch.
+
+        Callers append canonical events before entering this transaction;
+        replaying a frozen publication reconstructs these disposable rows.
+        """
         with self.store.transaction() as connection:
-            connection.execute(
+            connection.executemany(
                 "INSERT OR IGNORE INTO world_observation_projection(" \
                 "match_id,agent_id,perspective_id,timeline_id,observation_sequence," \
                 "journal_event_id,observation_kind,turn,payload_hash,payload_json,continuity) " \
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (*self._scope_tuple(scope, timeline_id), int(observation["sequence"]),
+                ((*self._scope_tuple(scope, timeline_id), int(observation["sequence"]),
                  journal_event_id, str(observation["kind"]), observation.get("turn"),
                  content_hash(observation.get("payload", {})),
                  canonical_json(observation.get("payload", {})),
-                 str(observation.get("continuity", "complete"))),
+                 str(observation.get("continuity", "complete")))
+                 for observation, journal_event_id in observations),
             )
 
     def changes_since(self, scope: MemoryScope, timeline_id: str, since_cursor: int,

@@ -177,7 +177,12 @@ def exercise_native_production_timing(call, native, base_ref):
         route = call("smac_world", {"mode": "counterfactual", "detail": "deep",
             "subject_refs": [actor_ref], "target_ref": target,
             "scenario_json": '{"kind":"deployment","capability":"combat"}'})
-        if not route.get("ok") or route["items"][0]["alternatives"][0].get("total_turns") != 1:
+        if not route.get("ok"):
+            continue
+        alternative = route["items"][0]["alternatives"][0]
+        # Conditional-minimum routes can fail native fungus/overspend rolls.
+        # An exact arrival assertion requires deterministic route evidence.
+        if alternative.get("total_turns") != 1 or alternative.get("route_evidence") != "exact_known_state":
             continue
         executed = call("smac_execute_choice", {"decision_id": frame["decision_id"], "choice_id": choice["choice_id"]})
         assert executed.get("ok"), executed

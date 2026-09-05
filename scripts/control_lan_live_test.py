@@ -79,7 +79,7 @@ def managed_effect_state(worker: dict) -> dict:
         decision = asyncio.run(current_decision(endpoint))
         assert decision.get("ok"), decision
         result = asyncio.run(mcp_tool(endpoint, "smac_world", {
-            "mode": "global", "subject_refs": ["global-economy", "global-owned-technologies"],
+            "mode": "global", "subject_refs": ["global-economy", "global-owned-technologies", "global-social-engineering"],
             "detail": "deep",
         }))
         assert result.get("ok"), result
@@ -89,6 +89,7 @@ def managed_effect_state(worker: dict) -> dict:
         assert economy["epistemic_status"] == technologies["epistemic_status"] == "current"
         factions = bridge_operation(sidecar, "list_factions")["items"]
         return {"energy_credits": economy["value"]["energy_credits"],
+                "social_selected": rows["global-social-engineering"]["fields"]["state"]["value"]["selected"],
                 "technologies": technologies["value"],
                 "pact_counterparts": sorted(row["id"] for row in factions
                                             if row.get("relations", {}).get("pact"))}
@@ -134,6 +135,7 @@ def main() -> int:
             "-e", f"SMACX_DOCKER_NETWORK={network}",
             "-e", f"SMACX_WORKER_IMAGE={worker_image}",
             "-e", "SMACX_AGENT_TEST_MODE=1",
+            "-e", "SMACX_AGENT_TEST_LAN_HOST=1",
             "-e", "SMACX_ACCEPTANCE_MANAGED_ACTIONS=1",
             "-e", f"SMACX_GAME_SOURCE={game}",
             "-e", f"SMACX_MCP_IMAGE={mcp_image}",

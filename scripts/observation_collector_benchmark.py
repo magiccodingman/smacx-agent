@@ -210,9 +210,9 @@ def main() -> int:
                  events=768, continuity_incomplete=True),
     ]
     by_name = {row["case"]: row for row in cases}
-    assert by_name["stock_huge_quiet"]["initial"]["wall_ms"] < 30_000
-    assert by_name["stock_huge_active"]["initial"]["wall_ms"] < 30_000
-    assert by_name["large_custom_quiet"]["initial"]["wall_ms"] < 30_000
+    for name in ("stock_huge_quiet", "stock_huge_active", "large_custom_quiet"):
+        assert by_name[name]["initial"]["wall_ms"] < 30_000, {
+            "collector_latency_gate": name, "measured": by_name[name]}
     # This case extends the existing 25,600-square collector workload with many
     # ready orbital Drop units. Its acceptance invariant is that routine native
     # pages remain responsive and bounded; full first-time projection latency is
@@ -221,7 +221,8 @@ def main() -> int:
     assert by_name["orbital_drop_dense_25600"]["routine_unit_payload_bytes"] < 256_000
     assert by_name["action_dense_overflow"]["initial"]["native_feed_pages"] == 3
     assert by_name["action_dense_overflow"]["initial"]["native_continuity_incomplete"]
-    assert all(row["ui_probe_max_gap_ms"] < 500 for row in cases)
+    assert all(row["ui_probe_max_gap_ms"] < 500 for row in cases), {
+        "ui_probe_gate": {row["case"]: row["ui_probe_max_gap_ms"] for row in cases}}
     print(json.dumps({"event": "pass", "payload": {
         "production_collector_pipeline": True,
         "incremental_projection_writes": True,
