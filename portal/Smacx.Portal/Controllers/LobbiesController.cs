@@ -1554,7 +1554,7 @@ public sealed class LobbiesController(
                     : DateTimeOffset.FromUnixTimeMilliseconds((long)(incident.FirstSeenUnix * 1000));
             var fallbackSummary = incident.IncidentKind switch
             {
-                "worker_lost" => "The managed game worker stopped.",
+                "worker_lost" => "The managed game bridge became unavailable; autonomous play stopped.",
                 "supervisor_error" => "Managed recovery requires operator attention.",
                 _ => "AI play needs operator attention.",
             };
@@ -1566,8 +1566,8 @@ public sealed class LobbiesController(
             var fallbackReason = incident.IncidentKind switch
             {
                 "worker_lost" when !verifiedCheckpointAvailable =>
-                    "The managed worker stopped before the platform had a bridge-verified recovery checkpoint. Resuming would risk restoring mismatched native and AI memory state.",
-                "worker_lost" => "The managed worker stopped and requires operator recovery.",
+                    "The managed bridge became unavailable before a complete native and AI-memory recovery checkpoint was published. Resuming would risk restoring mismatched state.",
+                "worker_lost" => "The managed bridge became unavailable and requires operator recovery.",
                 "supervisor_error" => Text("error", "The runtime supervisor could not complete automatic recovery."),
                 _ => "The platform stopped autonomous play rather than guessing at an unsafe state.",
             };

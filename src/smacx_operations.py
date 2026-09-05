@@ -1166,8 +1166,17 @@ game binaries/assets, credentials, private provider addresses, account data, cha
             if time.time() - float(spec.get("updated_unix") or 0) < 15.0:
                 continue
             try:
+                match = self.control.get_match(str(spec["match_id"]))
+                metadata = match.get("metadata", {})
+                if metadata.get("incident_quarantine", {}).get("native_and_collectors_frozen"):
+                    # A preserved incident is an operator latch, not another
+                    # lost-worker sample or a reason to restart its sidecar.
+                    continue
                 observed = self.worker_manager.worker_status(str(spec["instance_id"]))
-                if observed.get("running") and observed.get("health") == "healthy":
+                containment_pending = match.get("status") == "error" and metadata.get(
+                    "recovery_reason") == "worker_lost_without_managed_checkpoint"
+                if observed.get("running") and observed.get("health") == "healthy" \
+                        and not containment_pending:
                     mcp = observed.get("mcp") if isinstance(observed.get("mcp"), Mapping) else {}
                     if self.worker_manager.control_data_volume and (
                             not mcp.get("running") or mcp.get("health") != "healthy"):
@@ -1176,7 +1185,6 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                                        {"action": "sidecar_restarted"})
                         recovered += 1
                     continue
-                match = self.control.get_match(str(spec["match_id"]))
                 checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
                 # A browser-managed human host is recoverable in exactly the
                 # same way as an agent host: it has an isolated worker and a
@@ -1193,8 +1201,19 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                         metadata={"recovery_required": True,
                                   "recovery_reason": "worker_lost_without_managed_checkpoint"},
                     )
+                    quarantine = self.worker_manager.quarantine_match(str(spec["match_id"]))
+                    self.control.update_match_lifecycle(
+                        str(spec["match_id"]), "error", metadata={"incident_quarantine": quarantine},
+                    )
                     self._incident(str(spec["instance_id"]), "worker_lost", "operator_required",
-                                   {"checkpoint_available": bool(checkpoint)})
+                                   {"checkpoint_available": False,
+                                    "worker_was_running": bool(observed.get("running")),
+                                    "worker_health": observed.get("health"),
+                                    "quarantine": quarantine,
+                                    "summary": "Autonomous play stopped; the game runtime is frozen for diagnosis.",
+                                    "screen_or_state": "Game runtime frozen after bridge loss" if observed.get("running")
+                                        else "Game worker unavailable",
+                                    "why_blocked": "The bridge became unavailable before a complete, verified native and AI-memory checkpoint was published. Native execution and observation collectors are frozen; restoring an incomplete checkpoint would mismatch game state and AI memory."})
                     operator_required += 1
             except Exception as exc:
                 self._incident(str(spec["instance_id"]), "supervisor_error", "operator_required",

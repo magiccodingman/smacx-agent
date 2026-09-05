@@ -2550,7 +2550,9 @@ class ControlPlane:
                         "incident_id": incident_id, "instance_id": instance_id,
                         "incident_kind": incident_kind, "status": status,
                         "details": dict(details),
-                    }, commit_reason=("Pause for operator incident"
+                    }, idempotency_key="incident-state:" + incident_id + ":" +
+                    hashlib.sha256(_json({"status": status, "details": dict(details)}).encode()).hexdigest(),
+                    commit_reason=("Pause for operator incident"
                                       if status == "operator_required" else ""),
                 )
             except JournalError as exc:
