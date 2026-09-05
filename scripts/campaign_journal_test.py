@@ -37,6 +37,10 @@ def main() -> int:
         if not verified["ok"] or verified["events"] != 4:
             raise AssertionError(verified)
         replay = journal.replay(scope)
+        selected = journal.replay(scope, sections=("goals", "manifest"))
+        assert selected == {key: replay[key] for key in ("goals", "manifest")}
+        selected["goals"].clear()
+        assert journal.replay(scope, sections=("goals",))["goals"], "narrow replay leaked mutable authority"
         if replay["goals"]["expand"]["record"]["status"] != "active":
             raise AssertionError("goal did not replay")
         if replay["notebook"]["suspicions"]["gaia-border"]["revision"] != 1:

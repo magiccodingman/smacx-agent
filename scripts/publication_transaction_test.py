@@ -55,7 +55,7 @@ def main():
         with patch.object(f.attention,'evaluate_watches',side_effect=invalidated):collect().collect_once()
     cases=[]
     for boundary in ('before_watch','after_watch_enqueue','after_head','before_dependency','before_available_enqueue',
-                     'after_available_enqueue','before_dependency_state','before_ack','after_ack'):
+                     'after_available_enqueue','before_dependency_state','before_ack','during_ack','after_ack'):
         for reverse in (False,True):
             with tempfile.TemporaryDirectory() as tmp:
                 f,native,collect,plan=setup(Path(tmp))
@@ -76,6 +76,12 @@ def main():
                             boundary=='before_dependency_state' and name=='append' and kind=='attention.plan_dependency_state' or
                             boundary=='before_ack' and name=='acknowledge_native_observation_publication')
                         if before and not fired[0]:fail()
+                        if boundary=='during_ack' and name=='acknowledge_native_observation_publication' and not fired[0]:
+                            atomic=f.worlds._atomic_private_json
+                            def interrupted_atomic(*args,**kwargs):
+                                atomic(*args,**kwargs);fail()
+                            with patch.object(f.worlds,'_atomic_private_json',side_effect=interrupted_atomic):
+                                return originals[name](*a,**kw)
                         result=originals[name](*a,**kw)
                         after=(boundary=='after_watch_enqueue' and name=='enqueue' and kind=='watch_trigger' or
                             boundary=='after_available_enqueue' and name=='enqueue' and kind=='plan_dependency_available' or
@@ -93,6 +99,14 @@ def main():
                     except RuntimeError as e:assert str(e).startswith('injected:')
                     else:raise AssertionError(boundary)
                 if reverse:native.bases[0]['mineral_surplus']=4;native.revision+=1
+                # Recreate service instances, not just the collector loop.
+                from smacx_store import SmacxStore
+                from smacx_world_store import WorldStore
+                from smacx_journal import CampaignJournal
+                from smacx_attention import AttentionService
+                f.store=SmacxStore(f.root/'state.sqlite3')
+                f.journal=CampaignJournal(f.root/'campaigns',timeline_resolver=f.store.active_timeline_id)
+                f.worlds=WorldStore(f.store);f.attention=AttentionService(f.store,f.journal,f.scope)
                 # New collector restores the durable stage before consulting native N+1.
                 collect().collect_once();collect().collect_once()
                 with f.store._connect() as c:

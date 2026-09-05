@@ -32,6 +32,7 @@ class AttentionService:
     def __init__(self, store: SmacxStore, journal: CampaignJournal, scope: MemoryScope) -> None:
         self.store = store
         self.journal = journal
+        self.store._query_journal = journal
         self.scope = scope
         self.world_store = WorldStore(store)
 
@@ -663,6 +664,9 @@ class AttentionService:
 
     def capture_current_plan_dependencies(self):
         plans = self.journal.projection_records(self.scope, "plans", limit=1000, statuses={"active"})
+        if not plans:
+            self.capture_plan_dependency_transitions([], {}, set(), {})
+            return
         projection = self.world_store.load(self.scope, self.timeline_id) or {}
         objects = {str(row["object_ref"]): row for row in projection.get("objects", ())}
         refs = set(objects)
@@ -677,7 +681,7 @@ class AttentionService:
     def _capture_plan_dependency_transitions(self, plans, objects, valid_refs, projection):
         from smacx_plan_health import dependency_states
         current = dependency_states(plans, objects, valid_refs)
-        prior = self.journal.replay(self.scope).get("plan_dependency_health", {})
+        prior = self.journal.replay(self.scope, sections=("plan_dependency_health",)).get("plan_dependency_health", {})
         for key, row in current.items():
             old = prior.get(key, {})
             cursor = int(projection.get("observation_cursor", 0))
@@ -763,10 +767,9 @@ class AttentionService:
         # Region identities are versioned. Migrate an active watch through a
         # deterministic one-to-one supersession; ambiguous split/merge cases
         # remain on the old ref and are invalidated for sovereign review.
-        regions = [
-            *self.world_store.load_regions(self.scope, self.timeline_id, "mobility-land-default"),
-            *self.world_store.load_regions(self.scope, self.timeline_id, "mobility-sea-default"),
-        ]
+        from smacx_world import WorldService
+        regions = WorldService(self.world_store, self.scope)._derived_geography(
+            projection, persist_regions=False)["_region_projection"] if projection else []
         aliases: dict[str, list[str]] = {}
         for region in regions:
             for old in region.supersedes:
@@ -918,6 +921,8 @@ class AttentionService:
                 "perspective_id=? AND timeline_id=? AND status='active' ORDER BY priority DESC",
                 self._key(timeline),
             ).fetchall()
+        if not rows:
+            return []
         changes = [dict(item) for item in deltas if isinstance(item, Mapping)]
         temporal = [dict(item) for item in temporal_events if isinstance(item, Mapping)]
         regions = {

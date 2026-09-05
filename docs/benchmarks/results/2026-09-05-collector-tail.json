@@ -1,0 +1,95 @@
+{
+  "series": [
+    {
+      "stage": "initial_candidate_publication",
+      "passed": false,
+      "runs": [
+        {
+          "run": 1,
+          "initial_ms": 25011.421,
+          "unchanged_ms": 12989.397,
+          "probe_ms": 341.512,
+          "known_tiles": 25600
+        },
+        {
+          "run": 2,
+          "initial_ms": 26907.295,
+          "unchanged_ms": 15923.107,
+          "probe_ms": 438.297,
+          "known_tiles": 25600
+        },
+        {
+          "run": 3,
+          "initial_ms": 34954.538,
+          "unchanged_ms": 10586.469,
+          "probe_ms": 533.455,
+          "known_tiles": 25600
+        }
+      ],
+      "collector_gate_ms": 30000,
+      "probe_gate_ms": 500,
+      "evidence": "native_shaped_production_collector_independent_probe"
+    },
+    {
+      "stage": "narrow_replay_and_empty_watch_shortcut",
+      "passed": false,
+      "runs": [
+        {
+          "run": 1,
+          "initial_ms": 17009.774,
+          "unchanged_ms": 7185.534,
+          "probe_ms": 322.612,
+          "known_tiles": 25600
+        },
+        {
+          "run": 2,
+          "initial_ms": 17332.26,
+          "unchanged_ms": 7162.743,
+          "probe_ms": 299.328,
+          "known_tiles": 25600
+        },
+        {
+          "run": 3,
+          "initial_ms": 36200.945,
+          "unchanged_ms": 9417.416,
+          "probe_ms": 313.355,
+          "known_tiles": 25600
+        }
+      ],
+      "collector_gate_ms": 30000,
+      "probe_gate_ms": 500,
+      "evidence": "native_shaped_production_collector_independent_probe"
+    },
+    {
+      "stage": "canonical_idempotency_filename_index",
+      "passed": true,
+      "runs": [
+        {
+          "run": 1,
+          "initial_ms": 8488.954,
+          "unchanged_ms": 6635.151,
+          "probe_ms": 241.511,
+          "known_tiles": 25600
+        },
+        {
+          "run": 2,
+          "initial_ms": 11255.291,
+          "unchanged_ms": 7384.802,
+          "probe_ms": 316.151,
+          "known_tiles": 25600
+        },
+        {
+          "run": 3,
+          "initial_ms": 23244.836,
+          "unchanged_ms": 7120.397,
+          "probe_ms": 327.421,
+          "known_tiles": 25600
+        }
+      ],
+      "collector_gate_ms": 30000,
+      "probe_gate_ms": 500,
+      "evidence": "native_shaped_production_collector_independent_probe"
+    }
+  ],
+  "historical_55914_ms_outlier_cause": "not established"
+}

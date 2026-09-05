@@ -205,7 +205,7 @@ candidate N. Pre-head work precedes installation; mandatory dependency attention
 completes before acknowledgement and before any N+1 native drain, including
 post-head recovery. The native-shaped production collector verifies new-unit
 completion without false blocking, garrison arrival/departure, field and scope
-changes, and 18 crash/downtime-reversal cases. This is publication/effect/recovery
+changes, and 20 crash/downtime-reversal cases. This is publication/effect/recovery
 evidence, not a running-game mechanics comparison. See the
 [final-review ledger](benchmarks/2026-09-05-final-hostile-review.md).
 
@@ -218,3 +218,30 @@ cases cover loss/destruction, page-boundary restart and publication retry;
 four-episode, reset, discontinuity and perspective-isolation checks pass. Observed
 crossing attention is verified; temporal refs never imply present whereabouts or
 cross-gap opponent identity. See the final-review ledger for qualified evidence.
+
+### Final hostile review: derived lifecycle (Gate C)
+
+F4: current derived geography alone supplies spatial authority. Persisted history
+and issued anchors cannot revive superseded mass, mobility, frontier or theater
+footprints. Six land/ocean version/split/merge cases verify the interval before
+history refresh across direct watches, scopes, operations, plan/milestone
+requirements and area inspection. Existing one-successor watch migration remains;
+ambiguous splits invalidate and frozen intent is not silently retargeted.
+
+F5: successful current inspections receive private validation receipts; warm
+reuse promotes the target in the normal anchor after restart while preserving
+historical creation revision. True dependency changes prevent current promotion.
+
+F6: 64 recent query rows plus explicit pins replace unbounded history as resolver
+input. Independent watch/scope/operation/plan/milestone pins, release GC, restart,
+true invalidation and checkpoint isolation pass. The 100/1,000/5,000-row storage
+fixture retains 65 rows; steady watch/inspection/runtime cost follows retained
+complexity. See the final-review ledger for exact measurements and evidence class.
+
+
+Final acceptance reran the integrated consumer contracts and preserved all nine
+collector measurements from three successive distributions. The final repeated
+large-map runs passed at 8.489/11.255/23.245 seconds and 242/316/327 ms probes.
+Earlier failures and the original unexplained 55.9-second outlier remain in the
+ledger. Canonical journal writes and verification remain intact; only detached
+section copying and a disposable canonical filename index reduce repeated work.

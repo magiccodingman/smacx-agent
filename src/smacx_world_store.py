@@ -543,6 +543,50 @@ class WorldStore:
             ).fetchall()
         return {str(row["object_ref"]): str(row["object_hash"]) for row in rows}
 
+    def prune_query_cache(self, scope: MemoryScope, timeline_id: str, world_epoch: str, *, recent: int = 64) -> dict[str, int]:
+        """Retain recent queries and explicit active intent, not campaign history.
+
+        This disposable cache needs no schema migration. SQL extracts only
+        derived handles for retention; full results/dependencies are parsed
+        only after pruning. The canonical journal owns plan pins.
+        """
+        from smacx_journal import CampaignJournal
+        journal = getattr(self.store, "_query_journal", None)
+        if journal is None:
+            journal = CampaignJournal(self.store.path.parent / "campaigns", timeline_resolver=self.store.active_timeline_id)
+            self.store._query_journal = journal
+        key = self._scope_tuple(scope, timeline_id)
+        pins = set()
+        def references(value):
+            if isinstance(value, str): pins.add(value)
+            elif isinstance(value, Mapping):
+                for child in value.values(): references(child)
+            elif isinstance(value, (list, tuple)):
+                for child in value: references(child)
+        for plan in journal._current_records(journal.replay(scope, sections=("plans",)), "plans"):
+            if plan.get("status", "active") != "active":
+                continue
+            references(plan.get("dependencies", []))
+            references(plan.get("target_refs", []))
+            references(plan.get("participants", []))
+        with self.store.transaction() as connection:
+            for row in connection.execute("SELECT subject_refs_json,typed_predicate_json FROM world_watches "
+                    "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? AND world_epoch=? AND status='active'", (*key,world_epoch)):
+                references(json.loads(row[0])); references(json.loads(row[1]))
+            for row in connection.execute("SELECT referenced_world_objects_json FROM cognitive_operations "
+                    "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? AND source_world_epoch=? "
+                    "AND status IN ('active','stale')", (*key,world_epoch)):
+                references(json.loads(row[0]))
+            rows = connection.execute("SELECT query_fingerprint,json_extract(result_json,'$.route.route_ref') AS route_ref, "
+                "(SELECT json_group_array(json_extract(value,'$.rendezvous_ref')) FROM json_each(result_json,'$.items') "
+                "WHERE type='object' AND json_extract(value,'$.rendezvous_ref') IS NOT NULL) AS rendezvous_refs "
+                "FROM world_query_cache WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? AND world_epoch=? "
+                "ORDER BY COALESCE(last_hit_unix,created_unix) DESC,query_fingerprint", (*key,world_epoch)).fetchall()
+            removed = [row['query_fingerprint'] for index,row in enumerate(rows) if index >= recent
+                       and row['route_ref'] not in pins and not pins.intersection(json.loads(row['rendezvous_refs'] or '[]'))]
+            connection.executemany("DELETE FROM world_query_cache WHERE query_fingerprint=?",[(ref,) for ref in removed])
+        return {"rows_before":len(rows), "removed":len(removed), "retained":len(rows)-len(removed)}
+
     def cached_query(self, fingerprint: str, dependency_hash: str) -> dict[str, Any] | None:
         with self.store.transaction() as connection:
             row = connection.execute(
@@ -556,14 +600,20 @@ class WorldStore:
                 "WHERE query_fingerprint=?", (time.time(), fingerprint),
             )
         result = json.loads(row["result_json"])
+        result.pop("_inspection", None)
         result["cache"] = {"hit": True, "query_fingerprint": fingerprint}
         return result
+
+    def record_inspection(self, fingerprint: str, world_revision: int, action_revision: str | None) -> None:
+        with self.store.transaction() as connection:
+            connection.execute("UPDATE world_query_cache SET result_json=json_set(result_json,'$._inspection',json(?)) WHERE query_fingerprint=?",
+                (canonical_json({"world_revision":world_revision,"action_revision":action_revision,"validated_unix":time.time()}),fingerprint))
 
     def put_cached_query(
         self, scope: MemoryScope, identity: WorldIdentity, *, world_revision: int,
         observation_cursor: int, ruleset_hash: str, calculator_version: str,
         dependency_hash: str, request: Mapping[str, Any], result: Mapping[str, Any],
-        token_estimate: int,
+        token_estimate: int, action_revision: str | None = None,
     ) -> str:
         fingerprint = content_hash({
             "scope": identity.as_dict(),
@@ -579,8 +629,10 @@ class WorldStore:
                 (fingerprint, scope.match_id, scope.agent_id, scope.perspective_id,
                  identity.timeline_id, identity.world_epoch, world_revision, observation_cursor,
                  ruleset_hash, calculator_version, dependency_hash, canonical_json(request),
-                 canonical_json(result), token_estimate, time.time()),
+                 canonical_json({**result,"_inspection":{"world_revision":world_revision,
+                    "action_revision":action_revision,"validated_unix":time.time()}}), token_estimate, time.time()),
             )
+        self.prune_query_cache(scope, identity.timeline_id, identity.world_epoch)
         return fingerprint
 
     def recent_inspection_refs(
@@ -589,9 +641,12 @@ class WorldStore:
         """Return bounded refs from recent explicit semantic-world inspections."""
         with self.store._connect() as connection:
             rows = connection.execute(
-                "SELECT request_json FROM world_query_cache WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND world_revision=? "
-                "ORDER BY COALESCE(last_hit_unix,created_unix) DESC LIMIT ?",
+                "SELECT q.request_json FROM world_query_cache q JOIN world_heads h ON q.match_id=h.match_id "
+                "AND q.agent_id=h.agent_id AND q.perspective_id=h.perspective_id AND q.timeline_id=h.timeline_id "
+                "AND q.world_epoch=h.world_epoch WHERE q.match_id=? AND q.agent_id=? "
+                "AND q.perspective_id=? AND q.timeline_id=? AND json_extract(q.result_json,'$._inspection.world_revision')=? "
+                "AND json_extract(q.result_json,'$._inspection.action_revision') IS h.action_revision "
+                "ORDER BY json_extract(q.result_json,'$._inspection.validated_unix') DESC LIMIT ?",
                 (*self._scope_tuple(scope, timeline_id), int(world_revision), max(1, min(limit, 32))),
             ).fetchall()
         refs: list[str] = []

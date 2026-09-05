@@ -505,7 +505,7 @@ class ObservationCollector:
             return
         prior_field: Mapping[str, Any] = {}
         prior_by_project: dict[int, Mapping[str, Any]] = {}
-        replayed = self.journal.replay(self.scope, self.timeline_id)
+        replayed = self.journal.replay(self.scope, self.timeline_id, sections=("project_reports",))
         project_reports = replayed.get("project_reports") \
             if isinstance(replayed.get("project_reports"), Mapping) else {}
         for project_ref, report in project_reports.items():
@@ -1018,7 +1018,7 @@ class ObservationCollector:
             }, session_id=self.session_id, turn=turn, year=year,
             idempotency_key=f"native-publication:{publication_key}:reconciled",
         )
-        manifest = self.journal.replay(self.scope)["manifest"]
+        manifest = self.journal.replay(self.scope, sections=("manifest",))["manifest"]
         stored = self.world_store.replace_projection(
             self.scope, identity, projection_objects,
             observation_cursor=cursor, action_revision=action_revision,

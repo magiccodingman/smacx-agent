@@ -182,6 +182,7 @@ class WorldService:
         complete dependency set too, so newly appeared relevant objects count.
         """
         identity = WorldIdentity(**projection["identity"])
+        self.store.prune_query_cache(self.scope, identity.timeline_id, identity.world_epoch)
         base_objects = self._objects(projection)
         with self.store.store._connect() as connection:
             rows = connection.execute(
@@ -191,6 +192,7 @@ class WorldService:
                 (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id,
                  identity.timeline_id, identity.world_epoch, self.ruleset_hash, CALCULATOR_VERSION)).fetchall()
         results = []
+        digests = {}
         for row in rows:
             request = json.loads(row["request_json"])
             result = json.loads(row["result_json"])
@@ -217,7 +219,12 @@ class WorldService:
             origin = request.get("origin_ref", "")
             refs = self._dependency_refs(mode, objects, subjects=subjects, origin_ref=origin,
                 target_ref=request.get("target_ref", ""), radius=request.get("radius", 0), projection=projection)
-            if self._dependency_hash(mode, objects, subjects, origin, refs) == row["dependency_hash"]:
+            digest_key = (mode, refs) if mode not in {"base", "area"} and not receipt else None
+            digest = digests.get(digest_key) if digest_key is not None else None
+            if digest is None:
+                digest = self._dependency_hash(mode, objects, subjects, origin, refs)
+                if digest_key is not None: digests[digest_key] = digest
+            if digest == row["dependency_hash"]:
                 results.append(result)
         return results
 
@@ -783,6 +790,8 @@ class WorldService:
                 cached["valid_while"]["action_revision"] = projection.get("action_revision")
                 cached["valid_while"]["condition"] += "; native action_revision remains unchanged"
             cached = self._trim(provider_safe(cached), budget)
+            if cached.get("ok") is not False:
+                self.store.record_inspection(fingerprint, int(projection["world_revision"]), projection.get("action_revision"))
             self.store.telemetry("world_query", "cache_hit", 1, scope=self.scope,
                                  timeline_id=identity.timeline_id, dimensions={"mode": mode})
             return provider_safe(cached)
@@ -1245,7 +1254,7 @@ class WorldService:
                 observation_cursor=int(projection["observation_cursor"]),
                 ruleset_hash=self.ruleset_hash, calculator_version=CALCULATOR_VERSION,
                 dependency_hash=dependency_hash, request=request, result=result,
-                token_estimate=token_estimate,
+                token_estimate=token_estimate, action_revision=projection.get("action_revision"),
             )
         self.store.telemetry("world_query", "result_tokens", token_estimate,
                              scope=self.scope, timeline_id=identity.timeline_id,

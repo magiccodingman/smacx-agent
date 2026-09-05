@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+from contextlib import contextmanager
+from unittest.mock import patch
 
 from smacx_attention import AttentionError, AttentionService
 from smacx_journal import CampaignJournal
@@ -62,6 +64,25 @@ def bundle(width: int = 16, height: int = 8, *, contact: bool = True) -> dict:
                      {"id": 2, "faction_ref": "faction-2", "owned": False,
                       "faction_name": "University", "relations": {"vendetta": True}}],
     }
+
+
+@contextmanager
+def current_geography_fixture(store, *, regions=None, frontiers=None):
+    """Isolated consumer adapter fixtures explicitly supply current calculation.
+
+    Persisted rows/issued anchors alone are deliberately no longer authority.
+    Production topology lifecycle is covered by derived_lifecycle_test.py.
+    """
+    original = WorldService._derived_geography
+    def current(service, *a, **kw):
+        result = dict(original(service, *a, **kw))
+        if regions is not None: result["_region_projection"] = regions
+        if frontiers is not None: result["frontiers"] = frontiers
+        return result
+    store._spatial_registry_cache.clear()
+    with patch.object(WorldService, "_derived_geography", current):
+        yield
+    store._spatial_registry_cache.clear()
 
 
 def main() -> int:
@@ -391,9 +412,9 @@ def main() -> int:
         frontiers = first_anchor["payload"]["frontiers"]
         if not frontiers:
             # This fixture starts with a completely remembered map. Publish a
-            # deterministic provider-visible frontier registry entry so the
-            # watch validation contract is exercised independently from map
-            # exploration coverage.
+            # deterministic frontier consumer adapter input. The fixture below
+            # supplies it as current calculation; an issued anchor alone is
+            # deliberately insufficient authority.
             anchor_payload = dict(first_anchor["payload"])
             frontier_ref = "frontier-" + content_hash({
                 "region_ref": "region-issued", "boundary_refs": ["location-18"],
@@ -410,20 +431,21 @@ def main() -> int:
             )
             frontiers = anchor_payload["frontiers"]
         frontier = frontiers[0]
-        frontier_watch = AttentionService(store, journal, scope).create_watch(
-            "frontier_contact", [frontier["frontier_ref"]], {}, current_turn=12,
-        )
-        frontier_trigger = AttentionService(store, journal, scope).evaluate_watches(
-            [], temporal_events=[{
-                "event_kind": "contact_moved", "contact_ref": "contact-visible",
-                "path": [{"from_location_ref": "unknown-outside",
-                          "to_location_ref": frontier["boundary_refs"][0],
-                          "evidence_kind": "observed_native_movement", "continuous_visibility": True,
-                          "occurrence_sequence": 1}],
-            }], observation_cursor=35, turn=12,
-        )
-        assert [item["watch_id"] for item in frontier_trigger] == [
-            frontier_watch["watch_id"]]
+        with current_geography_fixture(store, frontiers=frontiers):
+            frontier_watch = AttentionService(store, journal, scope).create_watch(
+                "frontier_contact", [frontier["frontier_ref"]], {}, current_turn=12,
+            )
+            frontier_trigger = AttentionService(store, journal, scope).evaluate_watches(
+                [], temporal_events=[{
+                    "event_kind": "contact_moved", "contact_ref": "contact-visible",
+                    "path": [{"from_location_ref": "unknown-outside",
+                              "to_location_ref": frontier["boundary_refs"][0],
+                              "evidence_kind": "observed_native_movement", "continuous_visibility": True,
+                              "occurrence_sequence": 1}],
+                }], observation_cursor=35, turn=12,
+            )
+            assert [item["watch_id"] for item in frontier_trigger] == [
+                frontier_watch["watch_id"]]
         promoted_anchor = service.anchor(context_length=65536, focus_ref="own-unit-7")
         assert promoted_anchor["world_anchor_id"] != first_anchor["world_anchor_id"]
         with store._connect() as connection:
@@ -485,16 +507,17 @@ def main() -> int:
             "location-18", frozenset({"location-18"}), (),
         )
         world_store.save_regions(scope, identity.timeline_id, [watched_region], 1)
-        entry_watch = attention.create_watch(
-            "region_entry", [watched_region.region_ref], {}, current_turn=12,
-        )
-        exit_watch = attention.create_watch(
-            "region_exit", [watched_region.region_ref], {}, current_turn=12,
-        )
-        transient = attention.evaluate_watches([], temporal_events=[loop_event],
-                                               observation_cursor=4, turn=12)
-        assert [item["watch_id"] for item in transient].count(entry_watch["watch_id"]) == 1
-        assert [item["watch_id"] for item in transient].count(exit_watch["watch_id"]) == 1
+        with current_geography_fixture(store, regions=[watched_region]):
+            entry_watch = attention.create_watch(
+                "region_entry", [watched_region.region_ref], {}, current_turn=12,
+            )
+            exit_watch = attention.create_watch(
+                "region_exit", [watched_region.region_ref], {}, current_turn=12,
+            )
+            transient = attention.evaluate_watches([], temporal_events=[loop_event],
+                                                   observation_cursor=4, turn=12)
+            assert [item["watch_id"] for item in transient].count(entry_watch["watch_id"]) == 1
+            assert [item["watch_id"] for item in transient].count(exit_watch["watch_id"]) == 1
 
         # Derived refs must have actually been issued to this perspective.
         try:
@@ -624,13 +647,16 @@ def main() -> int:
 
         # One-to-one region supersession migrates; a split is ambiguous and
         # invalidates instead of silently choosing a new region.
+        with current_geography_fixture(store, regions=[watched_region]):
+            entry_watch = attention.create_watch("region_entry", [watched_region.region_ref], {}, current_turn=12)
         migrated_region = Region(
             "region-test-v2", "region-test", 2, "mobility-land-default",
             "location-18", frozenset({"location-18", "location-34"}),
             (watched_region.region_ref,),
         )
         world_store.save_regions(scope, identity.timeline_id, [migrated_region], 2)
-        attention.gc_watches(13)
+        with current_geography_fixture(store, regions=[migrated_region]):
+            attention.gc_watches(13)
         with store._connect() as connection:
             migrated_subjects = json.loads(connection.execute(
                 "SELECT subject_refs_json FROM world_watches WHERE watch_id=?",
@@ -646,7 +672,8 @@ def main() -> int:
             "location-34", frozenset({"location-34"}), (migrated_region.region_ref,),
         )
         world_store.save_regions(scope, identity.timeline_id, [split_a, split_b], 3)
-        attention.gc_watches(14)
+        with current_geography_fixture(store, regions=[split_a, split_b]):
+            attention.gc_watches(14)
         with store._connect() as connection:
             assert connection.execute(
                 "SELECT status FROM world_watches WHERE watch_id=?",
@@ -662,16 +689,18 @@ def main() -> int:
             "location-34", frozenset({"location-34"}), (),
         )
         world_store.save_regions(scope, identity.timeline_id, [merge_a, merge_b], 4)
-        merge_watch = attention.create_watch(
-            "region_entry", [merge_a.region_ref, merge_b.region_ref], {}, current_turn=14,
-        )
+        with current_geography_fixture(store, regions=[merge_a, merge_b]):
+            merge_watch = attention.create_watch(
+                "region_entry", [merge_a.region_ref, merge_b.region_ref], {}, current_turn=14,
+            )
         merged = Region(
             "region-merge-a-v2", "region-merge-a", 2, "mobility-land-default",
             "location-18", frozenset({"location-18", "location-34"}),
             (merge_a.region_ref, merge_b.region_ref),
         )
         world_store.save_regions(scope, identity.timeline_id, [merged], 5)
-        attention.gc_watches(15)
+        with current_geography_fixture(store, regions=[merged]):
+            attention.gc_watches(15)
         with store._connect() as connection:
             merge_row = connection.execute(
                 "SELECT status,subject_refs_json FROM world_watches WHERE watch_id=?",

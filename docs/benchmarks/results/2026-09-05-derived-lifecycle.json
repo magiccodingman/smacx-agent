@@ -1,0 +1,106 @@
+{
+  "topology_and_inspection": {
+    "passed": true,
+    "topology_lifecycle": [
+      {
+        "kind": "version",
+        "domain": "land",
+        "direct_watch_status": [
+          "active",
+          "active"
+        ],
+        "old_refs_withdrawn_before_history_refresh": true
+      },
+      {
+        "kind": "version",
+        "domain": "ocean",
+        "direct_watch_status": [
+          "active",
+          "active"
+        ],
+        "old_refs_withdrawn_before_history_refresh": true
+      },
+      {
+        "kind": "split",
+        "domain": "land",
+        "direct_watch_status": [
+          "invalid",
+          "invalid"
+        ],
+        "old_refs_withdrawn_before_history_refresh": true
+      },
+      {
+        "kind": "split",
+        "domain": "ocean",
+        "direct_watch_status": [
+          "invalid",
+          "invalid"
+        ],
+        "old_refs_withdrawn_before_history_refresh": true
+      },
+      {
+        "kind": "merge",
+        "domain": "land",
+        "direct_watch_status": [
+          "active",
+          "active"
+        ],
+        "old_refs_withdrawn_before_history_refresh": true
+      },
+      {
+        "kind": "merge",
+        "domain": "ocean",
+        "direct_watch_status": [
+          "active",
+          "active"
+        ],
+        "old_refs_withdrawn_before_history_refresh": true
+      }
+    ],
+    "automatic_warm_inspection_restart": true,
+    "true_dependency_stops_promotion": true
+  },
+  "independent_pins": {
+    "passed": true,
+    "independent_pin_consumers": [
+      "watch",
+      "scope",
+      "operation",
+      "plan",
+      "milestone"
+    ]
+  },
+  "history_scaling": {
+    "passed": true,
+    "measurements": [
+      {
+        "historical_queries": 100,
+        "retained": 65,
+        "registry_ms": 56.05,
+        "watch_ms": 17.887,
+        "scope_inspection_ms": 20.813,
+        "runtime_ms": 280.053
+      },
+      {
+        "historical_queries": 1000,
+        "retained": 65,
+        "registry_ms": 70.749,
+        "watch_ms": 19.567,
+        "scope_inspection_ms": 18.582,
+        "runtime_ms": 341.67
+      },
+      {
+        "historical_queries": 5000,
+        "retained": 65,
+        "registry_ms": 364.087,
+        "watch_ms": 17.32,
+        "scope_inspection_ms": 18.63,
+        "runtime_ms": 304.536
+      }
+    ],
+    "old_pinned_restart_valid": true,
+    "true_dependency_invalidates": true,
+    "release_gc": true,
+    "population": "distinct historical cache receipts shaped from a production query; not 5000 live provider executions"
+  }
+}

@@ -513,3 +513,22 @@ states distinguish impossible thresholds from optional blocked requirements.
 
 See the [focused acceptance ledger](benchmarks/2026-09-05-peer-review-corrections.md)
 for supported consumers, evidence classes, recovery and simultaneous-scope costs.
+
+### Publication completion and derived-reference retention
+
+Watch and milestone effects attributed to publication N consume its immutable
+candidate, before head installation. The frozen package remains pending until
+post-head explicit-dependency attention is durable. Recovery with head N already
+installed finishes N before draining native N+1; head installation alone never
+acknowledges pending publication. Ordered native staging may contain complete
+visible episodes absent from both snapshots. Scoped temporal refs preserve those
+observations without inventing a current contact or continuity across a gap.
+
+Persisted region rows are lineage inputs, not additional current authority.
+Current calculated geography supplies membership; deterministic watch migration
+and ambiguous-split invalidation retain their existing policy. Warm inspection
+receipts record successful current validation separately from cache creation
+revision. Query storage retains 64 recent results plus explicit active pins from
+watches, scopes, operations and canonical plans/milestones; dependency and native
+receipt lifetimes remain independently validated. Released old receipts are
+collectable, and forked timelines do not inherit future handles.

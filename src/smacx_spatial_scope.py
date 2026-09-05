@@ -125,10 +125,6 @@ def _build_spatial_registry(world_store, scope, projection):
     registry: dict[str, dict[str, Any]] = {}
     from smacx_world import WorldService
     service = WorldService(world_store, scope)
-    from smacx_regions import PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE
-    for profile in ("mobility-land-default", "mobility-sea-default", PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE):
-        for region in world_store.load_regions(scope, timeline, profile):
-            registry[region.region_ref] = {"kind": "region", "location_refs": sorted(region.location_refs)}
     geography = service._derived_geography(projection, persist_regions=False)
     for region in geography.get("_region_projection", ()):
         registry[region.region_ref] = {"kind": "region", "location_refs": sorted(region.location_refs)}
@@ -139,15 +135,6 @@ def _build_spatial_registry(world_store, scope, projection):
         registry[str(theater["theater_ref"])] = {
             "kind": "theater", "location_refs": list(theater.get("_location_refs") or ()),
             "subject_refs": list(theater.get("subject_refs") or ())}
-    # Current issued anchors also declare footprints; complete geography above
-    # ensures omitted discoveries are not lost to the compact-anchor boundary.
-    for tier in ("64k", "256k"):
-        anchor = world_store.current_anchor(scope, timeline, tier)
-        if not anchor or anchor.get("payload", {}).get("identity", {}).get("world_epoch") != projection["identity"]["world_epoch"]:
-            continue
-        for frontier in anchor.get("payload", {}).get("frontiers", ()):
-            registry.setdefault(str(frontier["frontier_ref"]), {
-                "kind": "frontier", "location_refs": list(frontier.get("boundary_refs") or ())})
     for result in service.valid_derived_results(projection):
         route = result.get("route")
         if isinstance(route, Mapping) and route.get("route_ref"):
@@ -196,6 +183,7 @@ def _build_spatial_registry(world_store, scope, projection):
 def semantic_spatial_registry(world_store, scope, projection):
     """Reuse a complete registry only while every declared input stays equal."""
     identity = projection["identity"]
+    world_store.prune_query_cache(scope, identity["timeline_id"], identity["world_epoch"])
     key = (scope.match_id, scope.agent_id, scope.perspective_id, identity["timeline_id"], identity["world_epoch"])
     with world_store.store._connect() as connection:
         watches = connection.execute(

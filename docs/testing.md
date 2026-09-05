@@ -464,3 +464,27 @@ production-pipeline responsiveness check, not a measurement of a running game
 UI. `native_event_time_contract_test.py` compiles the production event adapter on
 the host with controlled native-shaped inputs; also cross-build the bridge.
 The unchanged full collector gates and failed timing evidence remain explicit.
+
+## Final hostile-review transaction and lifecycle gates
+
+`publication_transaction_test.py` exercises candidate-N birth/garrison/field/
+scope effects and ten crash boundaries with both unchanged and reversed native
+state. It reconstructs service instances, including the journal and SQLite store,
+and interrupts acknowledgement after the durable stage write. The frozen N
+transaction must finish before native N+1 is drained.
+
+`transient_episode_publication_test.py` covers entirely between-snapshot episodes,
+256-event page boundaries, stage restart and post-head retry. `derived_lifecycle_test.py`
+checks actual land/ocean version/split/merge changes before history refresh and
+normal cold/warm route and area inspection promotion. `query_pin_consumers_test.py`
+checks each pin type separately. `query_history_scaling_test.py` seeds 100/1,000/
+5,000 distinct historical receipt rows and measures cleanup, watch, inspection
+and runtime work; this is storage/resolution evidence, not thousands of live
+provider executions.
+
+`collector_tail_benchmark.py` prints all three repeated 25,600-square runs before
+asserting unchanged 30-second/500-ms gates. Preserve the whole distribution,
+including failures. `journal_idempotency_index_test.py` verifies canonical marker
+loss/restart/external-writer recovery and that new keys do not reparse all prior
+events. Selected journal sections remain detached copies and hash-chain checks
+are unchanged. See the final hostile-review ledger for exact executions.

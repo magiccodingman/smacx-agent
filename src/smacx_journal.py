@@ -92,6 +92,7 @@ class CampaignJournal:
         self.root = root.expanduser().resolve()
         self._timeline_resolver = timeline_resolver
         self._replay_cache: dict[str, dict[str, Any]] = {}
+        self._idempotency_event_index: dict[str, dict[str, Any]] = {}
         self._cache_lock = threading.RLock()
 
     def timeline_id(self, scope: MemoryScope, requested: str = "") -> str:
@@ -176,6 +177,8 @@ class CampaignJournal:
         # Backups take the exclusive form of the root lock. An archive can
         # therefore never split an event write from its manifest/head update.
         with self._locked(self.root, shared=True), self._locked(path):
+            events_directory = path / "events"
+            prior_events_signature = events_directory.stat().st_mtime_ns if events_directory.is_dir() else None
             if idempotency_key:
                 marker_name = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
                 marker = self._load(path / "idempotency" / f"{marker_name}.json", {})
@@ -186,20 +189,31 @@ class CampaignJournal:
                 if isinstance(existing, dict) \
                         and existing.get("idempotency_key") == idempotency_key:
                     return existing
-                # Recover the narrow event/manifest -> marker crash window.
-                event_files = sorted((path / "events").glob("*.json"), reverse=True) \
-                    if (path / "events").is_dir() else []
-                for existing_path in event_files:
-                    existing = self._load(existing_path, None)
-                    if isinstance(existing, dict) \
-                            and existing.get("idempotency_key") == idempotency_key:
-                        _atomic_json(path / "idempotency" / f"{marker_name}.json", {
-                            "idempotency_key": idempotency_key,
-                            "event_file": existing_path.name,
-                            "event_id": existing.get("event_id"),
-                            "sequence": existing.get("sequence"),
-                        })
-                        return existing
+                # Recover marker loss from canonical events. Cache only the
+                # key-to-filename index, never event authority. A changed event
+                # directory (including a crash-created orphan) rebuilds it.
+                # New keys must not reparse every prior Huge-map batch.
+                directory = path / "events"
+                signature = directory.stat().st_mtime_ns if directory.is_dir() else None
+                with self._cache_lock:
+                    index = self._idempotency_event_index.get(str(path))
+                    if index is None or index["signature"] != signature:
+                        names = {}
+                        for event_file in sorted(directory.glob("*.json")) if directory.is_dir() else ():
+                            item = self._load(event_file, None)
+                            if isinstance(item, dict) and item.get("idempotency_key"):
+                                names[item["idempotency_key"]] = event_file.name
+                        index = {"signature": signature, "names": names}
+                        self._idempotency_event_index[str(path)] = index
+                        while len(self._idempotency_event_index) > 2:
+                            self._idempotency_event_index.pop(next(iter(self._idempotency_event_index)))
+                    event_name = index["names"].get(idempotency_key)
+                existing = self._load(directory / event_name, None) if event_name else None
+                if isinstance(existing, dict) and existing.get("idempotency_key") == idempotency_key:
+                    _atomic_json(path / "idempotency" / f"{marker_name}.json", {
+                        "idempotency_key": idempotency_key, "event_file": event_name,
+                        "event_id": existing.get("event_id"), "sequence": existing.get("sequence")})
+                    return existing
             manifest = self._manifest(scope, timeline)
             sequence = int(manifest.get("sequence") or 0) + 1
             previous = str(manifest.get("head_hash") or "0" * 64)
@@ -242,6 +256,13 @@ class CampaignJournal:
             self._update_catalog(scope, timeline, manifest)
             cache_key = str(path)
             with self._cache_lock:
+                index = self._idempotency_event_index.get(cache_key)
+                if index is not None and index["signature"] != prior_events_signature:
+                    self._idempotency_event_index.pop(cache_key, None)
+                    index = None
+                if index is not None:
+                    if idempotency_key: index["names"][idempotency_key] = event_path.name
+                    index["signature"] = (path / "events").stat().st_mtime_ns
                 cached = self._replay_cache.get(cache_key)
                 if isinstance(cached, dict) \
                         and cached.get("manifest", {}).get("head_hash") == previous:
@@ -493,8 +514,11 @@ class CampaignJournal:
                 result.append(event)
         return result
 
-    def replay(self, scope: MemoryScope, timeline_id: str = "") -> dict[str, Any]:
+    def replay(self, scope: MemoryScope, timeline_id: str = "", *, sections: Iterable[str] | None = None) -> dict[str, Any]:
         """Materialize a portable cache seed using only canonical journal files."""
+        selected = frozenset(sections) if sections is not None else None
+        def detached(state):
+            return copy.deepcopy(state if selected is None else {key: value for key, value in state.items() if key in selected})
         path = self.perspective_root(scope, timeline_id)
         manifest = self._manifest(scope, timeline_id)
         cache_key = str(path)
@@ -502,7 +526,7 @@ class CampaignJournal:
             cached = self._replay_cache.get(cache_key)
             if isinstance(cached, dict) \
                     and cached.get("manifest", {}).get("head_hash") == manifest.get("head_hash"):
-                return copy.deepcopy(cached)
+                return detached(cached)
         verified = self.verify(scope, timeline_id)
         if not verified["ok"]:
             raise JournalError("journal_integrity_failed")
@@ -513,7 +537,7 @@ class CampaignJournal:
         state["manifest"] = manifest
         with self._cache_lock:
             self._replay_cache[cache_key] = state
-        return copy.deepcopy(state)
+        return detached(state)
 
     @staticmethod
     def _empty_state() -> dict[str, Any]:
@@ -846,7 +870,7 @@ class CampaignJournal:
         allowed = {"claims", "beliefs", "relationships", "commitments", "goals", "plans", "summaries"}
         if kind not in allowed:
             raise JournalError("invalid_projection_kind")
-        records = self._current_records(self.replay(scope), kind)
+        records = self._current_records(self.replay(scope, sections=(kind,)), kind)
         # Filter binding intent before truncation. Recent resolved records must
         # never hide an older active plan or revoke an explicitly linked watch.
         if statuses is not None:

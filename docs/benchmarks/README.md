@@ -7,6 +7,8 @@ tool arguments, provider addresses, credentials, or private host details.
 
 - [2026-09-05 focused PR #48 semantic corrections](2026-09-05-peer-review-corrections.md)
 
+- [2026-09-05 final hostile-review gates and collector distribution](2026-09-05-final-hostile-review.md)
+
 ## Required test conditions
 
 - Use a test-owned match and isolated managed workers.
