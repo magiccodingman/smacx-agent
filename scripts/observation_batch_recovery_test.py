@@ -54,7 +54,10 @@ def main():
             assert batches and journal.verify(scope)["ok"]
             timeline = journal.timeline_id(scope)
             cached = worlds.changes_since(scope, timeline, 0, limit=512)
-            assert bool(cached) == (window == "after_commit")
+            assert not cached, "uninstalled publication became provider-visible"
+            with store._connect() as connection:
+                raw_count = connection.execute("SELECT COUNT(*) FROM world_observation_projection").fetchone()[0]
+            assert bool(raw_count) == (window == "after_commit")
             worlds.record_observation_projections = original
             recovered = collector().collect_once()
             count = recovered["collector_metrics"]["world_objects"]

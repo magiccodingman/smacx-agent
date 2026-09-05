@@ -571,6 +571,8 @@ class ObservationCollector:
         continuity_gap = None
         if feed.get("continuity") == "incomplete":
             continuity_gap = {
+                "before_native_sequence": min((int(item["sequence"]) for item in feed.get("events", ())
+                    if isinstance(item, Mapping)), default=int(feed.get("next_sequence") or self.native_after_sequence)+1),
                 "native_after_sequence": self.native_after_sequence,
                 "native_next_sequence": int(feed.get("next_sequence") or 0),
                 "lost_after_observation_sequence": feed.get("lost_after_observation_sequence"),
@@ -637,6 +639,8 @@ class ObservationCollector:
         self, *, current_objects: list[dict[str, Any]],
         prior_objects: list[Mapping[str, Any]], turn: int | None,
         world_epoch: str | None = None,
+        episode_assignments: Mapping[str, str] | None = None,
+        episode_terminal: Mapping[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         """Translate private POD transitions into authoritative semantic events."""
         prior_handle_to_ref: dict[str, str] = {}
@@ -713,6 +717,9 @@ class ObservationCollector:
                         ref_kinds[episode_refs[handle_key]] = "foreign_contact"
             unit_ref = episode_refs.get(handle_key) or (
                 current_handle_to_ref.get(handle_key) if handle_key not in broken_handles else None)
+            if episode_assignments is not None and str(raw.get("native_sequence")) in episode_assignments:
+                unit_ref = episode_assignments[str(raw["native_sequence"])]
+                ref_kinds[unit_ref] = "foreign_contact"
             at = raw.get("to_tile_id") if isinstance(raw.get("to_tile_id"), int) \
                 and raw.get("to_tile_id", -1) >= 0 else raw.get("from_tile_id")
             location = f"location-{at}" if isinstance(at, int) and at >= 0 else None
@@ -854,6 +861,7 @@ class ObservationCollector:
                         and raw["value_before"] >= 0:
                     event["prior_project_ref"] = f"project-{raw['value_before']}"
                 events.append(event)
+        terminal.update(episode_terminal or {})
         for row in move_by_contact.values():
             ref = row.get("contact_ref")
             if ref in terminal:
@@ -1183,8 +1191,42 @@ class ObservationCollector:
         world_epoch = self._world_epoch(bundle, current)
         identity = WorldIdentity(self.scope.match_id, self.scope.perspective_id,
                                  self.timeline_id, world_epoch)
+        from smacx_temporal_episodes import advance_episodes
+        prior_objects = current.get("objects", ()) if current else ()
+        gaps = list(stage.get("continuity_gaps") or [])
+        if not gaps and stage.get("continuity_gap"):
+            gaps = [{**stage["continuity_gap"], "before_native_sequence": min(
+                (int(row["native_sequence"]) for row in stage["events"]), default=0)}]
+        episode_state, episode_assignments, episode_terminal = advance_episodes(
+            identity=identity, prior_objects=prior_objects, state=stage.get("episode_state", {}),
+            events=stage["events"], gaps=gaps,
+            owned_keys={str(row.get("native_observation_key") or "vehicle-handle-"+str(row.get("own_unit_ref") or "").removeprefix("own-unit-"))
+                        for row in bundle.get("units", ()) if row.get("owned")})
+        # This read does not consume or acknowledge later events. An empty,
+        # complete feed proves the cut stayed stable through snapshot collection.
+        probe = self._bridge("observation_feed", after_sequence=self.native_after_sequence, limit=1)
+        stable_cut = (probe.get("ok") is True and not probe.get("events") and not probe.get("has_more")
+                      and probe.get("continuity") == "complete"
+                      and int(probe.get("next_sequence", -1)) == self.native_after_sequence
+                      and str(probe.get("action_revision") or "") == str(bundle.get("action_revision") or ""))
+        bundle["_native_temporal_authority"] = True
+        bundle["_temporal_contact_refs"] = {}
+        if not stable_cut:
+            bundle["_contact_identity_reset"] = True
+            bundle["_continuous_visible_contact_moves"] = {}
+        else:
+            for unit in bundle.get("units", ()):
+                key = str(unit.get("native_observation_key") or unit.get("id"))
+                episode = episode_state["open"].get(key)
+                if not unit.get("owned") and episode and episode.get("location") == f"location-{unit.get('tile_id')}":
+                    bundle["_temporal_contact_refs"][key] = episode["ref"]
         projector = PerspectiveProjector(identity, prior_projection=current)
         projection = projector.project(bundle, observation_sequence=self.observation_cursor)
+        if stable_cut:
+            for item in projection["objects"]:
+                key = item.metadata.get("native_observation_key")
+                if item.kind == "foreign_contact" and item.status == "active" and key not in episode_state["open"]:
+                    episode_state["open"][key] = {"ref":item.object_ref, "location":item.location_ref}
         self._continuous_contact_moves.clear()
         self._contact_identity_reset = False
         prior_objects = current.get("objects", ()) if current else ()
@@ -1206,6 +1248,7 @@ class ObservationCollector:
         native_events = self._coalesce_native_events(
             current_objects=current_objects, prior_objects=list(prior_objects),
             turn=bundle.get("turn"), world_epoch=world_epoch,
+            episode_assignments=episode_assignments, episode_terminal=episode_terminal,
         )
         self._collection_metrics["native_coalesce_ms"] = round(
             (time.perf_counter() - coalesce_started) * 1000, 3,
@@ -1236,6 +1279,7 @@ class ObservationCollector:
             "world_delta_hash": _sequence_content_hash(deltas),
             "world_delta_count": len(deltas),
             "temporal_events": temporal_events,
+            "episode_state": episode_state,
         }
         frozen = self.world_store.begin_native_observation_publication(
             self.scope, self.timeline_id, self.observation_cursor, publication,

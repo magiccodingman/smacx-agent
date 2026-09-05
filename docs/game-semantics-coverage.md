@@ -253,3 +253,7 @@ Observed real event-file/manifest crash → verified canonical chain → recover
 ### H1 provider visibility checkpoint (2026-09-05)
 
 Persisted N evidence → installed-head visibility cap → normal history/snapshot/runtime queries → contiguous leased delivery → acknowledgment/restart verification. Four concurrent publication/recovery cases pass. Internal pre-head durability remains permitted; provider reads cannot advance beyond their captured world. See [H review acceptance](benchmarks/2026-09-05-h-review.md).
+
+### H2/H3 temporal continuity checkpoint (2026-09-05)
+
+Observed native segment → private perspective/epoch episode assignment → single semantic occurrence → normal temporal history/watch access → frozen publish/ack checkpoint → next-publication extension/closure and restart verification. Seventeen adversaries plus existing transient/native contracts pass. Gaps qualify new identity without discarding observed movement; unstable feed cuts cannot equate an earlier episode with a later snapshot contact. See [H review acceptance](benchmarks/2026-09-05-h-review.md).

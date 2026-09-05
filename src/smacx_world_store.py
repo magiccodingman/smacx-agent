@@ -119,6 +119,8 @@ class WorldStore:
                 if isinstance(publication_manifest, Mapping) else None,
             "events": [dict(item) for item in value.get("events", [])
                        if isinstance(item, Mapping)],
+            "episode_state": dict(value.get("episode_state") or {}),
+            "continuity_gaps": list(value.get("continuity_gaps") or []),
             "continuity_gap": dict(value["continuity_gap"])
                 if isinstance(value.get("continuity_gap"), Mapping) else None,
         }
@@ -155,6 +157,8 @@ class WorldStore:
         )
         if continuity_gap is not None:
             stage["continuity_gap"] = dict(continuity_gap)
+            if dict(continuity_gap) not in stage["continuity_gaps"]:
+                stage["continuity_gaps"].append(dict(continuity_gap))
         self._atomic_private_json(self._native_stage_path(scope, timeline_id), stage)
         return stage
 
@@ -185,6 +189,7 @@ class WorldStore:
             "publication_hash": package["publication_hash"],
             "source_through_sequence": int(package.get("source_through_sequence") or 0),
             "observation_cursor": int(observation_cursor),
+            "episode_state": package.get("episode_state", stage.get("episode_state", {})),
         }
         self._atomic_private_json(self._native_stage_path(scope, timeline_id), stage)
         stage["publication_package"] = package
@@ -212,6 +217,8 @@ class WorldStore:
             item for item in stage["events"]
             if int(item.get("native_sequence") or 0) > through_sequence
         ]
+        stage["episode_state"] = dict(publication.get("episode_state") or stage.get("episode_state") or {})
+        stage["continuity_gaps"] = []
         stage["continuity_gap"] = None
         stage["publication_observation_cursor"] = None
         stage["publication_package"] = None

@@ -408,6 +408,10 @@ class PerspectiveProjector:
                     continuous_path=path if isinstance(path, Iterable)
                     and not isinstance(path, (str, bytes, Mapping)) else (),
                 )
+                forced_ref = (bundle.get("_temporal_contact_refs") or {}).get(native_key)
+                if forced_ref:
+                    ref = forced_ref
+                    self.contacts.states[native_key].contact_ref = ref
                 kind = "foreign_contact"
                 metadata = {"native_observation_key": native_key}
                 safe_path = [
@@ -427,7 +431,7 @@ class PerspectiveProjector:
                         "event_kind": "contact_appeared", "contact_ref": ref,
                         "location_ref": at, "turn": turn,
                     })
-                if safe_path:
+                if safe_path and not bundle.get("_native_temporal_authority"):
                     temporal_events.append({
                         "event_kind": "contact_moved", "contact_ref": ref,
                         "path": safe_path,
