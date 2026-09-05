@@ -30,9 +30,14 @@ def main():
                 for service in (f.service,WorldService(WorldStore(SmacxStore(f.root/'state.sqlite3')),f.scope)):
                     refs=service.anchor(context_length=65536)['payload']['lod']['promotion_refs']
                     assert (target in refs)==(mode!='native_route'),(mode,warm,refs)
+                # Unrelated material churn must not shorten query authority either.
+                f.actor('unrelated-economy','economy_state',0,0,credits=10);f.save()
+                for service in (f.service,WorldService(WorldStore(SmacxStore(f.root/'state.sqlite3')),f.scope)):
+                    refs=service.anchor(context_length=65536)['payload']['lod']['promotion_refs']
+                    assert (target in refs)==(mode!='native_route'),(mode,refs)
                 # A true movement/geography dependency change withdraws the inspection.
                 next(row for row in f.objects if row['object_ref']==target)['fields']['terrain']=field('ocean');f.save()
                 assert target not in f.service.anchor(context_length=65536)['payload']['lod']['promotion_refs']
-                cases.append({'mode':mode,'warm':warm,'action_churn_restart':True,'dependency_change_invalidates':True})
+                cases.append({'mode':mode,'warm':warm,'action_churn_restart':True,'unrelated_material_churn':True,'dependency_change_invalidates':True})
     print(json.dumps({'passed':True,'classification':'deterministic managed query, native-shaped receipt','cases':cases}))
 if __name__=='__main__':main()

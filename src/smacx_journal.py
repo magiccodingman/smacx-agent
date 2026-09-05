@@ -14,6 +14,7 @@ import copy
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -163,6 +164,11 @@ class CampaignJournal:
                 or not re.fullmatch(r"journal-[0-9a-f]{32}", str(event.get("event_id", "")))
                 or filename != f"{sequence:012d}-{event['event_id']}.json"
                 or not isinstance(event.get("payload"), dict)
+                or (event.get("session_id") is not None and not IDENTITY.fullmatch(str(event["session_id"])))
+                or (event.get("idempotency_key") is not None and not KEY.fullmatch(str(event["idempotency_key"])))
+                or any(event.get(field) is not None and type(event[field]) is not int for field in ("turn", "year"))
+                or type(event.get("recorded_unix")) not in (int, float)
+                or not math.isfinite(event["recorded_unix"])
                 or not KEY.fullmatch(str(event.get("event_type", "")))
                 or event.get("previous_hash") != previous):
             raise JournalError("journal_invalid_event_identity_or_chain")
@@ -177,16 +183,21 @@ class CampaignJournal:
         Only a completely verified unique chain may advance the manifest. The
         directory/head memo is disposable and is updated only after our writes.
         """
+        raw_manifest = self._load(path / "manifest.json", None)
+        if (path / "manifest.json").exists() and (not isinstance(raw_manifest, dict)
+                or raw_manifest.get("schema") != self.schema
+                or type(raw_manifest.get("sequence")) is not int):
+            raise JournalError("journal_invalid_manifest")
         manifest = self._manifest(scope, timeline)
         directory = path / "events"
         signature = (directory.stat().st_mtime_ns if directory.is_dir() else None,
                      manifest.get("sequence"), manifest.get("head_hash"))
-        if self._recovered_heads.get(str(path)) == signature:
-            return manifest
         if any(manifest.get(key) != value for key, value in (
                 ("match_id", scope.match_id), ("agent_id", scope.agent_id),
                 ("perspective_id", scope.perspective_id), ("timeline_id", timeline))):
             raise JournalError("journal_invalid_manifest_identity")
+        if self._recovered_heads.get(str(path)) == signature:
+            return manifest
         head_sequence = int(manifest.get("sequence") or 0)
         previous = "0" * 64
         recovered = dict(manifest)
@@ -591,12 +602,16 @@ class CampaignJournal:
 
     def replay(self, scope: MemoryScope, timeline_id: str = "", *, sections: Iterable[str] | None = None) -> dict[str, Any]:
         """Materialize a portable cache seed using only canonical journal files."""
+        path = self.perspective_root(scope, timeline_id)
+        with self._locked(self.root, shared=True), self._locked(path):
+            return self._replay_locked(scope, timeline_id, sections=sections)
+
+    def _replay_locked(self, scope, timeline_id, *, sections=None):
         selected = frozenset(sections) if sections is not None else None
         def detached(state):
             return copy.deepcopy(state if selected is None else {key: value for key, value in state.items() if key in selected})
         path = self.perspective_root(scope, timeline_id)
-        with self._locked(self.root, shared=True), self._locked(path):
-            manifest = self._recover_suffix_locked(scope, self.timeline_id(scope, timeline_id), path)
+        manifest = self._recover_suffix_locked(scope, self.timeline_id(scope, timeline_id), path)
         cache_key = str(path)
         with self._cache_lock:
             cached = self._replay_cache.get(cache_key)

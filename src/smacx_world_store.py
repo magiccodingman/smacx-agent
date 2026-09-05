@@ -667,28 +667,12 @@ class WorldStore:
     def recent_inspection_refs(
         self, scope: MemoryScope, timeline_id: str, world_revision: int, *, limit: int = 8,
     ) -> list[str]:
-        """Return bounded refs from recent explicit semantic-world inspections."""
-        with self.store._connect() as connection:
-            rows = connection.execute(
-                "SELECT q.request_json FROM world_query_cache q JOIN world_heads h ON q.match_id=h.match_id "
-                "AND q.agent_id=h.agent_id AND q.perspective_id=h.perspective_id AND q.timeline_id=h.timeline_id "
-                "AND q.world_epoch=h.world_epoch WHERE q.match_id=? AND q.agent_id=? "
-                "AND q.perspective_id=? AND q.timeline_id=? AND json_extract(q.result_json,'$._inspection.world_revision')=? "
-                "AND (json_extract(q.result_json,'$.valid_while.action_revision') IS NULL "
-                "OR json_extract(q.result_json,'$._inspection.action_revision') IS h.action_revision) "
-                "ORDER BY json_extract(q.result_json,'$._inspection.validated_unix') DESC LIMIT ?",
-                (*self._scope_tuple(scope, timeline_id), int(world_revision), max(1, min(limit, 32))),
-            ).fetchall()
-        refs: list[str] = []
-        for row in rows:
-            request = json.loads(row["request_json"])
-            for value in (
-                request.get("origin_ref"), request.get("target_ref"),
-                *(request.get("subject_refs") or ()),
-            ):
-                if value and str(value) not in refs:
-                    refs.append(str(value))
-        return refs[:32]
+        """Compatibility adapter; the query service owns dependency validity."""
+        from smacx_world import WorldService
+        projection = self.load(scope, timeline_id)
+        if not projection or int(projection["world_revision"]) != int(world_revision):
+            return []
+        return WorldService(self, scope).recent_inspection_refs(projection, limit=limit)
 
     def recent_material_refs(
         self, scope: MemoryScope, timeline_id: str, observation_cursor: int,

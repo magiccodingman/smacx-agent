@@ -261,3 +261,14 @@ Observed native segment → private perspective/epoch episode assignment → sin
 ### H5 inspection lifetime checkpoint (2026-09-05)
 
 Successful semantic query → cache authority → recent inspection → normal anchor promotion → action-only churn and restart → dependency invalidation. Eight cold/warm route/area/geography/native-receipt cases pass. Native action-bound authority still expires on revision change. See [H review acceptance](benchmarks/2026-09-05-h-review.md).
+
+### H review capability matrix
+
+| Finding | Observed → represented → calculated | Provider/sovereign surface and verified effect | Recovery and evidence |
+| --- | --- | --- | --- |
+| H1 | Durable N evidence remains behind installed-head cursor | History, snapshot, runtime and contiguous attention expose only committed world evidence; no native action added | Four concurrent phase/restart cases and acknowledgement verification |
+| H2/H3 | Feed segments map to private perspective/epoch episode checkpoints, with ordered gap/reset boundaries | One semantic occurrence per observed move; normal history/watch access; no unproved snapshot identity join | Seventeen collector/projector adversaries plus prior transient/native contracts |
+| H4 | Installed event suffix is schema/scope/sequence/hash validated before manifest advancement | Journal replay and collector retry recover authority before further append; S+2 links correctly | Internal event/manifest/marker matrix, invalid suffixes, concurrent replay and 22 publication crashes |
+| H5 | Explicit inspection is retained only while complete query dependencies/rules/calculator/native receipt remain valid | Normal anchor promotion survives unrelated action and material churn; native action-bound authority expires | Eight cold/warm action/material/restart cases; actual dependency change withdraws promotion |
+
+This matrix covers the requested provider/effect/recovery chain. It does not claim new running-game execution for an internal publication, identity, journal or inspection capability. All applicable native actions continue through the existing guarded managed surface.

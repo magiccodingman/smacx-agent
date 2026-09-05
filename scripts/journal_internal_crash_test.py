@@ -39,7 +39,7 @@ def main():
             assert next_event['previous_hash']==json.loads(files[1].read_text())['event_hash']
             assert restarted.verify(scope)['ok']
             results.append({'boundary':boundary,'idempotent':keyed,'passed':True})
-    for fault in ('hash','scope','noncontiguous','conflict'):
+    for fault in ('hash','scope','noncontiguous','conflict','schema','session','recorded_time'):
         with tempfile.TemporaryDirectory() as tmp:
             scope=MemoryScope('match-internal','agent-internal','perspective-internal');j=CampaignJournal(Path(tmp))
             j.append(scope,'test.start',{});path=j.perspective_root(scope);manifest=(path/'manifest.json').read_text()
@@ -48,6 +48,9 @@ def main():
             file=sorted((path/'events').glob('*.json'))[-1];event=json.loads(file.read_text())
             if fault=='hash':event['event_hash']='f'*64
             if fault=='scope':event['perspective_id']='perspective-wrong'
+            if fault=='schema':event['schema']='invalid'
+            if fault=='session':event['session_id']='../escape'
+            if fault=='recorded_time':event['recorded_unix']='invalid'
             if fault=='noncontiguous':event['sequence']=3
             if fault=='conflict':event['event_id']='journal-'+'a'*32
             if fault!='hash':
@@ -63,5 +66,30 @@ def main():
                 else:raise AssertionError(fault)
             assert (path/'manifest.json').read_text()==manifest
             results.append({'fault':fault,'failed_closed':True})
+    # A replay reader must not race the event/manifest split of another writer.
+    import threading
+    with tempfile.TemporaryDirectory() as tmp:
+        scope=MemoryScope('match-internal','agent-internal','perspective-internal')
+        j=CampaignJournal(Path(tmp));j.append(scope,'test.start',{})
+        installed=threading.Event();release=threading.Event();entered=threading.Event();done=threading.Event();values=[]
+        atomic=module._atomic_json
+        def pause(path,value):
+            atomic(path,value)
+            if path.parent.name=='events':
+                installed.set();assert release.wait(5);raise RuntimeError('crash')
+        def writer():
+            try:j.append(scope,'test.orphan',{})
+            except RuntimeError:pass
+        def reader():
+            entered.set()
+            try:values.append(CampaignJournal(Path(tmp)).replay(scope)['manifest']['sequence'])
+            finally:done.set()
+        with patch.object(module,'_atomic_json',side_effect=pause):
+            w=threading.Thread(target=writer);w.start();assert installed.wait(5)
+            r=threading.Thread(target=reader);r.start();assert entered.wait(5)
+            assert not done.wait(.05)
+            release.set();w.join(5);r.join(5)
+        assert values==[2] and j.verify(scope)['ok'],values
+        results.append({'concurrent_replay_waits_then_recovers':True})
     print(json.dumps({'passed':True,'classification':'deterministic real journal persistence','cases':results}))
 if __name__=='__main__':main()

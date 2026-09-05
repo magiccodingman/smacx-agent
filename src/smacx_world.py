@@ -175,7 +175,7 @@ class WorldService:
             return digest
         return content_hash({ref: dependency_digest(ref) for ref in dependency_refs})
 
-    def valid_derived_results(self, projection):
+    def valid_derived_results(self, projection, *, inspections: bool = False):
         """Validate issued route/rendezvous handles using the query's own contract.
 
         Creation revision is diagnostic, not lifetime authority. Recompute the
@@ -183,22 +183,47 @@ class WorldService:
         """
         identity = WorldIdentity(**projection["identity"])
         self.store.prune_query_cache(self.scope, identity.timeline_id, identity.world_epoch)
-        base_objects = self._objects(projection)
         with self.store.store._connect() as connection:
             rows = connection.execute(
                 "SELECT request_json,result_json,dependency_hash FROM world_query_cache "
                 "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
-                "AND world_epoch=? AND ruleset_hash=? AND calculator_version=?",
+                "AND world_epoch=? AND ruleset_hash=? AND calculator_version=?" + (
+                    " AND json_extract(result_json,'$._inspection') IS NOT NULL "
+                    "ORDER BY json_extract(result_json,'$._inspection.validated_unix') DESC LIMIT 32"
+                    if inspections else ""),
                 (self.scope.match_id, self.scope.agent_id, self.scope.perspective_id,
                  identity.timeline_id, identity.world_epoch, self.ruleset_hash, CALCULATOR_VERSION)).fetchall()
+        if not rows:
+            return []
+        base_objects = self._objects(projection)
         results = []
         digests = {}
         for row in rows:
             request = json.loads(row["request_json"])
             result = json.loads(row["result_json"])
-            if not result.get("route", {}).get("route_ref") and not any(
+            if not inspections and not result.get("route", {}).get("route_ref") and not any(
                     isinstance(item, Mapping) and item.get("rendezvous_ref") for item in result.get("items", ())):
                 continue
+            if inspections:
+                if result.get("ok") is False:
+                    continue
+                authority_revision = result.get("valid_while", {}).get("action_revision") or request.get("action_revision")
+                if authority_revision is not None and authority_revision != projection.get("action_revision"):
+                    continue
+                if request.get("committed_observation_cursor", projection["observation_cursor"]) != projection["observation_cursor"]:
+                    continue
+                if request.get("spatial_scope_dependency"):
+                    from smacx_spatial_scope import semantic_spatial_registry
+                    resolved = semantic_spatial_registry(self.store, self.scope, projection).get(request.get("origin_ref") or (request.get("subject_refs") or [""])[0])
+                    if not resolved:
+                        continue
+                    if "descriptor" not in resolved:
+                        resolved = {**resolved, "descriptor": {"kind": resolved["kind"],
+                            "source_ref": request.get("origin_ref") or (request.get("subject_refs") or [""])[0],
+                            "known_coverage_count": len(resolved["location_refs"]),
+                            "coverage_kind": "perspective_known_geometry"}}
+                    if content_hash(resolved) != request["spatial_scope_dependency"]:
+                        continue
             objects = base_objects
             receipt = request.get("_airdrop_evidence")
             if receipt:
@@ -225,8 +250,18 @@ class WorldService:
                 digest = self._dependency_hash(mode, objects, subjects, origin, refs)
                 if digest_key is not None: digests[digest_key] = digest
             if digest == row["dependency_hash"]:
+                if inspections:
+                    result = {**result, "_inspection_refs": [value for value in (
+                        request.get("origin_ref"), request.get("target_ref"),
+                        *(request.get("subject_refs") or ())) if value]}
                 results.append(result)
         return results
+
+    def recent_inspection_refs(self, projection, *, limit: int = 8):
+        # Automatic validation does not renew the time of explicit inspection.
+        results = self.valid_derived_results(projection, inspections=True)
+        return list(dict.fromkeys(str(ref) for result in results[:max(1, min(limit, 32))]
+                                 for ref in result["_inspection_refs"]))[:32]
 
     def _dependency_refs(self, mode: str, objects: Mapping[str, Mapping[str, Any]], *,
                          subjects: tuple[str, ...], origin_ref: str, target_ref: str,
@@ -315,9 +350,7 @@ class WorldService:
         active_plan_refs = tuple(active_plan_refs)
         recent_material_refs = tuple(recent_material_refs)
         explicit_inspections = tuple(inspection_refs)
-        inspection_refs = explicit_inspections or tuple(self.store.recent_inspection_refs(
-            self.scope, identity.timeline_id, int(projection["world_revision"]),
-        ))
+        inspection_refs = explicit_inspections or tuple(self.recent_inspection_refs(projection))
         tier = "64k" if int(context_length) < 131072 else "256k"
         current = self.store.current_anchor(self.scope, identity.timeline_id, tier)
         # A sovereign may pin an issued theater itself. Preserve its known
