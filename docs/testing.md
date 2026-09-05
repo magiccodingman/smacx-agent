@@ -488,3 +488,11 @@ including failures. `journal_idempotency_index_test.py` verifies canonical marke
 loss/restart/external-writer recovery and that new keys do not reparse all prior
 events. Selected journal sections remain detached copies and hash-chain checks
 are unchanged. See the final hostile-review ledger for exact executions.
+
+## H1–H5 hostile-review acceptance
+
+Run `publication_visibility_test.py`, `cross_publication_episode_test.py`, `journal_internal_crash_test.py` and `inspection_action_lifetime_test.py` alongside the existing integrated contracts. The publication transaction matrix now has eleven boundaries × native unchanged/reversed (22 cases), including an exception injected inside canonical event-to-manifest persistence. The internal journal test also covers malformed suffixes and concurrent replay under the journal lock. Existing synthetic attention fixtures must assign evidence to an installed publication; raw cache assertions remain separate from provider-visible history assertions.
+
+Use the container MCP Python environment for the integrated scripts. Run `native_event_time_contract_test.py` on the host for the compiled adapter. The native bridge cross-build remains a separate check. No fixture success is a running-game comparison.
+
+For exact active-scope tail acceptance, run `active_scope_collector_benchmark.py` five times sequentially with `SMACX_SCOPE_BENCH_WIDTH=320` and `SMACX_SCOPE_BENCH_HEIGHT=160` in the same container environment. Each run uses 25,600 squares, nine scopes, four watches and an observed crossing followed by loss. It prints the complete result before asserting the unchanged 30-second/500-ms gates, including failures. Keep initial collection and scope creation timings, and do not run other heavy tests concurrently. The probe is an independent Python thread, not the native game UI thread. Preserve prior distributions; see the [H-review ledger](benchmarks/2026-09-05-h-review.md) and JSON evidence for exact results.

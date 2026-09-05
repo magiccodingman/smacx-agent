@@ -7,6 +7,7 @@ tool arguments, provider addresses, credentials, or private host details.
 
 - [2026-09-05 focused PR #48 semantic corrections](2026-09-05-peer-review-corrections.md)
 
+- [2026-09-05 H1–H5 publication, episode, journal and inspection acceptance](2026-09-05-h-review.md)
 - [2026-09-05 final hostile-review gates and collector distribution](2026-09-05-final-hostile-review.md)
 
 ## Required test conditions

@@ -1,0 +1,146 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "run": 1,
+      "passed": true,
+      "evidence": "native_shaped_full_collector_publication",
+      "known_tiles": 25600,
+      "active_scopes": 9,
+      "crossing_watches": 4,
+      "initial_collection_ms": 17633.365,
+      "scope_creation_total_ms": 40779.599,
+      "active_collection_ms": 10421.472,
+      "UI_probe_max_gap_ms": 402.815,
+      "observed_crossing_attention_count": 2,
+      "loss_in_same_publication": true
+    },
+    {
+      "run": 2,
+      "passed": true,
+      "evidence": "native_shaped_full_collector_publication",
+      "known_tiles": 25600,
+      "active_scopes": 9,
+      "crossing_watches": 4,
+      "initial_collection_ms": 8499.795,
+      "scope_creation_total_ms": 33734.419,
+      "active_collection_ms": 11007.317,
+      "UI_probe_max_gap_ms": 448.484,
+      "observed_crossing_attention_count": 2,
+      "loss_in_same_publication": true
+    },
+    {
+      "run": 3,
+      "passed": true,
+      "evidence": "native_shaped_full_collector_publication",
+      "known_tiles": 25600,
+      "active_scopes": 9,
+      "crossing_watches": 4,
+      "initial_collection_ms": 19147.112,
+      "scope_creation_total_ms": 34769.815,
+      "active_collection_ms": 10779.913,
+      "UI_probe_max_gap_ms": 406.654,
+      "observed_crossing_attention_count": 2,
+      "loss_in_same_publication": true
+    },
+    {
+      "run": 4,
+      "passed": true,
+      "evidence": "native_shaped_full_collector_publication",
+      "known_tiles": 25600,
+      "active_scopes": 9,
+      "crossing_watches": 4,
+      "initial_collection_ms": 8458.139,
+      "scope_creation_total_ms": 34560.98,
+      "active_collection_ms": 10792.502,
+      "UI_probe_max_gap_ms": 411.429,
+      "observed_crossing_attention_count": 2,
+      "loss_in_same_publication": true
+    },
+    {
+      "run": 5,
+      "passed": true,
+      "evidence": "native_shaped_full_collector_publication",
+      "known_tiles": 25600,
+      "active_scopes": 9,
+      "crossing_watches": 4,
+      "initial_collection_ms": 8474.952,
+      "scope_creation_total_ms": 35939.479,
+      "active_collection_ms": 11013.907,
+      "UI_probe_max_gap_ms": 426.97,
+      "observed_crossing_attention_count": 2,
+      "loss_in_same_publication": true
+    }
+  ],
+  "raw_runs": [
+    {
+      "run": 1,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 17633.365, \"scope_creation_total_ms\": 40779.599, \"active_collection_ms\": 10421.472, \"UI_probe_max_gap_ms\": 402.815, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 2,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8499.795, \"scope_creation_total_ms\": 33734.419, \"active_collection_ms\": 11007.317, \"UI_probe_max_gap_ms\": 448.484, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 3,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 19147.112, \"scope_creation_total_ms\": 34769.815, \"active_collection_ms\": 10779.913, \"UI_probe_max_gap_ms\": 406.654, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 4,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8458.139, \"scope_creation_total_ms\": 34560.98, \"active_collection_ms\": 10792.502, \"UI_probe_max_gap_ms\": 411.429, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 5,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8474.952, \"scope_creation_total_ms\": 35939.479, \"active_collection_ms\": 11013.907, \"UI_probe_max_gap_ms\": 426.97, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    }
+  ],
+  "earlier_h_review_runs": [
+    {
+      "run": 1,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8591.01, \"scope_creation_total_ms\": 34323.41, \"active_collection_ms\": 10559.609, \"UI_probe_max_gap_ms\": 423.015, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 2,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 9822.372, \"scope_creation_total_ms\": 35526.523, \"active_collection_ms\": 10427.204, \"UI_probe_max_gap_ms\": 426.539, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 3,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8525.639, \"scope_creation_total_ms\": 38830.95, \"active_collection_ms\": 10442.933, \"UI_probe_max_gap_ms\": 432.362, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 4,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 8388.272, \"scope_creation_total_ms\": 37515.926, \"active_collection_ms\": 10676.413, \"UI_probe_max_gap_ms\": 398.653, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    },
+    {
+      "run": 5,
+      "exit_code": 0,
+      "stdout": "{\"passed\": true, \"evidence\": \"native_shaped_full_collector_publication\", \"known_tiles\": 25600, \"active_scopes\": 9, \"crossing_watches\": 4, \"initial_collection_ms\": 23112.88, \"scope_creation_total_ms\": 36266.571, \"active_collection_ms\": 10420.858, \"UI_probe_max_gap_ms\": 406.964, \"observed_crossing_attention_count\": 2, \"loss_in_same_publication\": true}\n",
+      "stderr": ""
+    }
+  ],
+  "collector_gate_ms": 30000,
+  "probe_gate_ms": 500,
+  "probe_kind": "independent Python thread, not running native game UI",
+  "historical_timing_evidence": [
+    "2026-09-05-collector-tail.json",
+    "2026-09-05-final-hostile-review.json"
+  ]
+}

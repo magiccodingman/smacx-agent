@@ -532,3 +532,13 @@ revision. Query storage retains 64 recent results plus explicit active pins from
 watches, scopes, operations and canonical plans/milestones; dependency and native
 receipt lifetimes remain independently validated. Released old receipts are
 collectable, and forked timelines do not inherit future handles.
+
+## Committed publication visibility and private episode checkpoints
+
+Canonical observations can be durable before the corresponding projection is installed. Provider-facing history, attention and history-driven LOD promotion are capped at the installed world-head observation cursor. Head and object reads share one SQLite read snapshot; runtime assembly uses one captured projection for its anchor and attention cap. Attention cannot lease past the first unpublished item, including later cursor-zero chat, and its existing contiguous acknowledgment rules remain. Journal event presentation and optional history projection also enforce the boundary. Post-head dependency capture still completes before the collector acknowledges N or drains N+1.
+
+Private visible-episode state is frozen with each publication and installed atomically with native-feed acknowledgment. It survives service restart and publication cuts, without becoming an opponent identity database. Ordered gaps, identity resets and visibility loss terminate continuity. Retained observed movement is qualified under a new episode when continuity is unavailable. A bounded one-row feed probe after collection joins an episode to the endpoint snapshot only if the feed cut stayed stable; otherwise later feed evidence stays for the next publication and the snapshot has independent identity. The collector/projector share occurrence assignment, preventing duplicate movement under conflicting identities.
+
+Canonical journal append and replay recover a unique verified installed suffix under the existing journal locks before returning an idempotent event or allocating a new sequence. Schema, scope, sequence, previous hash and event hash must agree. Corrupt, gapped or competing suffixes fail explicitly; disposable indexes never override canonical events. Replay remains locked through materialization to avoid racing another writer's event/manifest interval.
+
+Recent inspection promotion uses the query service's complete dependency-set/hash validator, current ruleset/calculator and any stronger native action-revision authority. Automatic validation does not renew the explicit inspection time. At most 32 recent candidates are considered after the existing recent-plus-pinned cache GC. See the [H1–H5 acceptance ledger](benchmarks/2026-09-05-h-review.md) for the production-path and recovery evidence and its native-shaped/live-game distinction.

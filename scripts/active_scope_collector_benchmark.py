@@ -52,12 +52,13 @@ def main():
         finally:
             stop.set();thread.join(1)
         gap=max(((b-a)*1000 for a,b in zip(ticks,ticks[1:])),default=0)
-        assert gap<500 and published["collector_metrics"]["wall_ms"]<30000,(gap,published["collector_metrics"])
-        print(json.dumps({"passed":True,"evidence":"native_shaped_full_collector_publication",
+        passed = gap<500 and published["collector_metrics"]["wall_ms"]<30000
+        print(json.dumps({"passed":passed,"evidence":"native_shaped_full_collector_publication",
             "known_tiles":width*height//2,"active_scopes":len(scopes),"crossing_watches":4,
             "initial_collection_ms":initial["collector_metrics"]["wall_ms"],"scope_creation_total_ms":round(creation_ms,3),
             "active_collection_ms":published["collector_metrics"]["wall_ms"],"UI_probe_max_gap_ms":round(gap,3),
-            "observed_crossing_attention_count":triggers,"loss_in_same_publication":True}))
+            "observed_crossing_attention_count":triggers,"loss_in_same_publication":True}), flush=True)
+        assert passed,(gap,published["collector_metrics"])
 
 
 if __name__=="__main__":main()

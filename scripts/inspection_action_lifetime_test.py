@@ -24,6 +24,8 @@ def main():
                 result=f.service.query(**args);assert result['ok'],result
                 if warm:assert f.service.query(**args)['cache']['hit']
                 assert target in f.service.anchor(context_length=65536)['payload']['lod']['promotion_refs']
+                with f.store._connect() as db:
+                    inspected_at=db.execute("SELECT json_extract(result_json,'$._inspection.validated_unix') FROM world_query_cache").fetchone()[0]
                 before=f.worlds.load(f.scope,f.identity.timeline_id)
                 f.save();after=f.worlds.load(f.scope,f.identity.timeline_id)
                 assert before['world_revision']==after['world_revision'] and before['action_revision']!=after['action_revision']
@@ -35,9 +37,13 @@ def main():
                 for service in (f.service,WorldService(WorldStore(SmacxStore(f.root/'state.sqlite3')),f.scope)):
                     refs=service.anchor(context_length=65536)['payload']['lod']['promotion_refs']
                     assert (target in refs)==(mode!='native_route'),(mode,refs)
+                changed_rules=WorldService(f.worlds,f.scope,ruleset_hash='different-rules')
+                assert target not in changed_rules.anchor(context_length=65536)['payload']['lod']['promotion_refs']
+                with f.store._connect() as db:
+                    assert db.execute("SELECT json_extract(result_json,'$._inspection.validated_unix') FROM world_query_cache").fetchone()[0]==inspected_at
                 # A true movement/geography dependency change withdraws the inspection.
                 next(row for row in f.objects if row['object_ref']==target)['fields']['terrain']=field('ocean');f.save()
                 assert target not in f.service.anchor(context_length=65536)['payload']['lod']['promotion_refs']
-                cases.append({'mode':mode,'warm':warm,'action_churn_restart':True,'unrelated_material_churn':True,'dependency_change_invalidates':True})
+                cases.append({'mode':mode,'warm':warm,'action_churn_restart':True,'unrelated_material_churn':True,'ruleset_change_invalidates':True,'automatic_validation_does_not_renew_time':True,'dependency_change_invalidates':True})
     print(json.dumps({'passed':True,'classification':'deterministic managed query, native-shaped receipt','cases':cases}))
 if __name__=='__main__':main()
