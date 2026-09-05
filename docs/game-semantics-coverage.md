@@ -197,3 +197,14 @@ Multiple-scope and full collector acceptance passed unchanged gates. The ledger
 also retains a prior 55.9-second quiet collector failure whose cause was not
 established. Native Pact contact/reopening map refresh remains unverified by a
 clean controlled comparison; no continuous allied live vision is implied.
+
+### Final hostile review: publication consistency (Gate A)
+
+F1/F3: publication N watches, milestones and scope validity now consume immutable
+candidate N. Pre-head work precedes installation; mandatory dependency attention
+completes before acknowledgement and before any N+1 native drain, including
+post-head recovery. The native-shaped production collector verifies new-unit
+completion without false blocking, garrison arrival/departure, field and scope
+changes, and 18 crash/downtime-reversal cases. This is publication/effect/recovery
+evidence, not a running-game mechanics comparison. See the
+[final-review ledger](benchmarks/2026-09-05-final-hostile-review.md).

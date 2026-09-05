@@ -882,6 +882,10 @@ class ObservationCollector:
         if _sequence_content_hash(deltas) != str(package.get("world_delta_hash") or "") \
                 or len(deltas) != int(package.get("world_delta_count") or 0):
             raise ObservationCollectorError("frozen_publication_delta_mismatch")
+        candidate = {**(prior or {}), "identity": identity.as_dict(), "objects": current_objects,
+                     "world_revision": int((prior or {}).get("world_revision", 0)) + int(bool(deltas)),
+                     "observation_cursor": cursor, "action_revision": action_revision,
+                     "continuity": continuity}
         journal_events_written = 0
         observation_rows_written = 0
         continuity_gap = package.get("continuity_gap")
@@ -975,6 +979,7 @@ class ObservationCollector:
                               if str(delta["object_ref"]) in prior_by_ref else {})}
                  for delta in deltas], temporal_events=temporal_events,
                 observation_cursor=cursor, turn=turn, session_id=self.session_id,
+                publication_projection=candidate,
             )
         reconciled = self.journal.append(
             self.scope, "observation.reconciled", {
@@ -1077,14 +1082,22 @@ class ObservationCollector:
         publication_cursor = stage.get("publication_observation_cursor")
         if publication_cursor is not None and current is not None \
                 and int(current.get("observation_cursor") or 0) >= int(publication_cursor):
-            # Projection replacement is the final durable publication step.
-            # A crash after it but before private-stage acknowledgement leaves
-            # an unambiguous, safely acknowledgable remnant.
+            # Head installation proves pre-head effects completed, not that
+            # post-head dependency attention completed. Finish N before any N+1
+            # native drain, including when native state reversed during downtime.
+            package = stage.get("publication_package")
+            if not isinstance(package, Mapping) or int(current["observation_cursor"]) != int(publication_cursor):
+                raise ObservationCollectorError("pending_publication_head_mismatch")
+            if current.get("identity") != package.get("identity") or current.get("action_revision") != package.get("action_revision"):
+                raise ObservationCollectorError("pending_publication_head_identity_mismatch")
+            if self.attention is not None:
+                self.attention.capture_current_plan_dependencies()
             self.world_store.acknowledge_native_observation_publication(
-                self.scope, self.timeline_id, int(publication_cursor),
-            )
-            stage = self._restore_native_stage()
-            publication_cursor = None
+                self.scope, self.timeline_id, int(publication_cursor))
+            self._restore_native_stage()
+            self._last_action_revision = str(package.get("action_revision") or "")
+            return {"ok": True, "publication_recovered": True, "observation_cursor": int(publication_cursor),
+                    "world_revision": current["world_revision"], "changed": False}
         elif publication_cursor is not None:
             package = stage.get("publication_package")
             if not isinstance(package, Mapping):

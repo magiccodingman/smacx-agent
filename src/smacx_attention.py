@@ -908,7 +908,8 @@ class AttentionService:
     def evaluate_watches(self, deltas: Iterable[Mapping[str, Any]], *,
                          temporal_events: Iterable[Mapping[str, Any]] = (),
                          observation_cursor: int, turn: int | None,
-                         session_id: str | None = None) -> list[dict[str, Any]]:
+                         session_id: str | None = None,
+                         publication_projection: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
         """Elevate matching perspective-safe changes; never performs automation."""
         timeline = self.timeline_id
         with self.store._connect() as connection:
@@ -925,7 +926,7 @@ class AttentionService:
                 *self.world_store.load_regions(self.scope, timeline, "mobility-sea-default"),
             )
         }
-        projection = self.world_store.load(self.scope, timeline) or {}
+        projection = publication_projection if publication_projection is not None else self.world_store.load(self.scope, timeline) or {}
         current_objects = {str(item["object_ref"]): item for item in projection.get("objects", ())}
         registry = self._semantic_registry(projection, regions.values()) if projection else {}
         triggered: list[dict[str, Any]] = []
