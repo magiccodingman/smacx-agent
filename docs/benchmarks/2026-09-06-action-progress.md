@@ -90,3 +90,46 @@ rejection assertion. No production revision guard was changed.
 Limits: these are contained lifecycle/adapter tests, not a deployed Docker or
 portal acceptance run. Native move rejection causes, interrupted persistent
 orders, focused movement information and provider playthrough remain open.
+
+## Saved native replay and movement feedback
+
+An isolated worker loaded a read-only copy of the retained AI - 2 turn-4 autosave
+using the rebuilt native bridge. It reproduced all four rejected moves (2835,
+2756, 2715, 2794) from tile 2755. Each receipt now proves the native movement
+function was actually attempted, with native result zero and unchanged position.
+No claim is made that ZOC, a particular enemy, or a bridge precondition caused
+these rejections. The exposed cause remains explicitly unknown.
+
+The Scout's observed budget was 3 native movement units with scale 3, capacity 3,
+HP 8/10. A return-to-base order was assigned successfully, but subsequent native
+processing cleared the order and again presented the unit as ready. A valid
+Skip immediately removed it from the turn-4 ready list. This is live native
+evidence of the reported state, not a synthetic substitute and not a resumed
+sovereign campaign. The original retained save volume was mounted read-only;
+the disposable worker and its private data/secret volumes were removed.
+
+The first probe failed before gameplay because the test's copy helper created
+root-owned state. The helper now assigns the disposable files to the worker's
+actual account. This was a probe setup defect, not a reproduced campaign crash.
+
+Ready-unit frames now include current HP, native movement budget/scale, and order.
+Return-to-base reports order assignment and explicitly unverified arrival, with
+readiness read from current native state. Deferred moves distinguish dispatch
+precondition failure from an attempted native rejection. Managed receipts preserve
+that distinction without inventing causes for older receipts lacking the field.
+
+Operational prompting explicitly requires a new frame after rejection. Doctrine
+explains scaled movement, repair-phase refresh, Skip and interruptible persistent
+orders. Its paragraph inventory and 21 deterministic golden cases were updated;
+all content cases pass. Strict prompt, doctrine integration, opaque choice,
+failed-choice budget and decision-frame contracts pass. The native cross-build
+and separately tagged worker/control Docker builds succeed. The final tool
+description edit still requires the deployment image rebuild.
+
+Reproduction: `action_progress_saved_native_test.py` requires the legal source,
+retained save volume and optional archived save path via `SMACX_TEST_GAME_SOURCE`,
+`SMACX_TEST_SAVE_VOLUME`, and `SMACX_TEST_SAVE_PATH`. Its output is an investigative
+trace; it does not certify every action family or provider behavior. Native saves,
+binaries and private runtime logs remain excluded from Git. Full managed live
+acceptance, final image deployment, portal validation and the sovereign game
+remain pending.

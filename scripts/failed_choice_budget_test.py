@@ -72,6 +72,29 @@ def main() -> None:
     fail_id, fail_choices = frame(2756)
     after_success = m.smac_execute_choice(fail_id, fail_choices[0]["choice_id"])
     assert after_success["failure_budget"]["consecutive_failures"] == 1, after_success
+    for attempted in (False, True, None):
+        m.ACTION_PROGRESS.clear()
+        m.FAILED_CHOICE_ATTEMPTS.clear()
+        receipt = {"status": "rejected", "native_result": 0}
+        if attempted is not None:
+            receipt["native_call_attempted"] = attempted
+        def deferred(operation, **arguments):
+            if operation == "semantic_command":
+                return {"ok": True, "queued": True, "action_id": 1}
+            if operation == "action_status":
+                return {"ok": True, "action": receipt}
+            return bridge(operation, **arguments)
+        m._call = deferred
+        receipt_id, receipt_choices = frame(2835)
+        rejected = m.smac_execute_choice(receipt_id, receipt_choices[0]["choice_id"])
+        assert rejected["decision_consumed"] is True, rejected
+        if attempted is False:
+            assert rejected["execution_status"] == "not_dispatched", rejected
+            assert rejected["native_action_executed"] is False, rejected
+        else:
+            assert rejected["execution_status"] == "rejected", rejected
+        if attempted is None:
+            assert "native_call_attempted" not in rejected, rejected
     print("failed choice budget tests passed: alternating targets, consumed/unknown IDs, dispatch containment, session isolation")
 
 

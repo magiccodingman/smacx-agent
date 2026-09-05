@@ -598,6 +598,20 @@
     "limits": "No new live-game equivalence claim; detailed numerical/custom rules require the loaded compatibility gate."
   },
   {
+    "id": "D144",
+    "section": "# Units, Movement, and Logistics",
+    "text_sha256": "97d7afce5d18b01acd7005aa362a1a258f24040b8d3a0a4fd0079e5009150c24",
+    "text": "A unit has a per-turn movement budget. Read `moves_remaining`, `movement_points`, and `movement_scale` together: native movement units are not a count of tiles. Terrain and other rules determine each move's cost. The faction's next turn refreshes movement through its repair phase; this does not guarantee that every persistent order wakes or that a blocked route becomes passable. Skip ends that unit's activity for the current turn. Persistent orders can continue or be interrupted by native conditions. If the next decision presents the unit as ready again, use that current observation rather than assuming the prior order will resolve it later.",
+    "classification": "native_source_review_and_managed_operational_contract",
+    "sources": [
+      "bridge/src/gameturn.cpp repair_phase (moves_spent reset)",
+      "bridge/src/agent_bridge.cpp owned movement fields and semantic_unit_requires_decision",
+      "AI - 2 retained transcript: valid Skip followed by turn 5",
+      "bridge/src/veh.cpp veh_skip (moves_spent set to current movement capacity)"
+    ],
+    "limits": "No guarantee of successful routing or persistent-order activation; current native observations remain authoritative."
+  },
+  {
     "id": "D055",
     "section": "# Units, Movement, and Logistics",
     "text_sha256": "4d0e4d9ffb11a0f6ec44a350ee1e341f87e18baa0627771a86056ae690a08c9b",

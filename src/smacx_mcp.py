@@ -1243,7 +1243,7 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "ok": False,
             "error": {
                 "code": "native_action_rejected",
-                "message": "SMACX rejected the queued native action without changing game state. Re-observe and choose another legal action.",
+                "message": "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt.",
             },
             "command": result.get("command"),
             "execution": action,
@@ -2338,9 +2338,9 @@ def smac_cognition(
 @mcp.tool(
     description=(
         "Get one stable, action-ordered decision frame. It bundles the current fair-play "
-        "state headline with the exact active interaction choices, one selected ready unit's legal "
+        "state headline with the exact active interaction choices, one selected ready unit's offered "
         "actions selected by stable own_unit_ref, a wait/gap directive, or game-management choices "
-        "when no unit decision remains. "
+        "when no unit decision remains. Native execution can still reject an offered action; read its receipt. "
         "After deliberately deciding that every remaining unit is finished, set finish_ready_units=true "
         "to receive the guarded skip-all-ready choice instead of another individual unit frame. "
         "Use this as the primary agent loop to reduce calls and prevent invalid action order. "
@@ -3084,6 +3084,12 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         response["execution_status"] = "completed"
     else:
         response["execution_status"] = "accepted"
+    execution = response.get("execution")
+    if isinstance(execution, dict) and isinstance(execution.get("native_call_attempted"), bool):
+        response["native_call_attempted"] = execution["native_call_attempted"]
+        if execution["native_call_attempted"] is False and not response.get("ok"):
+            response["execution_status"] = "not_dispatched"
+            response["native_action_executed"] = False
     if consumed and not response.get("required_next"):
         response["required_next"] = {"tool": "smac_decision",
             "reason": "This decision is consumed, including after rejection. Obtain a fresh frame."}
