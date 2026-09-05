@@ -57,6 +57,10 @@ def main() -> int:
         seat_index=2, match_policy={"ranking_mode": "unranked"},
     ):
         raise AssertionError("system prompt composition is not deterministic")
+    from doctrine_integration_contract_test import SEAT
+    from doctrine_content_contract_test import fixtures
+    from smacx_doctrine import compose_managed_prompt
+    prompt, _ = compose_managed_prompt(fixtures()["stock-blind"], **SEAT)
     with tempfile.TemporaryDirectory(prefix="smacx-strict-prompt-") as temporary:
         root = Path(temporary)
         package = root / "agent"

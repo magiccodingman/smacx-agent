@@ -52,7 +52,7 @@ Bases eventually reach population limits that require habitation facilities befo
 
 # World, Terrain, and Fog of War
 
-- World dimensions: 48 × 24 in native map coordinates. Nominal faction density is very high; actual space, contact and competition depend on geography and starting placement.
+- World dimensions: 48 × 48 in native map coordinates. Nominal faction density is very high; actual space, contact and competition depend on geography and starting placement.
 - Medium ocean target makes maritime access potentially significant.
 - Average erosion gives no strong ruggedness prior.
 - Average cloud cover gives no strong rainfall prior.

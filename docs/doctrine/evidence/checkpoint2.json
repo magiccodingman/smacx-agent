@@ -1,0 +1,379 @@
+{
+  "content": {
+    "passed": true,
+    "classification": "deterministic native-shaped content fixtures",
+    "cases": [
+      {
+        "case": "stock-blind",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "morgan",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "university",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "directed",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "progenitor",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "human-progenitor-opponent",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "cooperative",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "conquest-only",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "tiny-crowded",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "huge-sparse",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "custom-map",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "time-warp",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "look-first",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "iron-man",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "resolved-random-morgan",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "imported-midgame",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "custom-faction-compatible",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "optional-unknown",
+        "passed": true,
+        "expected_error": null
+      },
+      {
+        "case": "missing-required",
+        "passed": true,
+        "expected_error": "doctrine_required_input:victory"
+      },
+      {
+        "case": "unknown-ruleset",
+        "passed": true,
+        "expected_error": "doctrine_incompatible_loaded_ruleset"
+      },
+      {
+        "case": "material-mod-conflict",
+        "passed": true,
+        "expected_error": "doctrine_incompatible_loaded_ruleset"
+      }
+    ]
+  },
+  "adapter_and_restart": {
+    "passed": true,
+    "adapter_scope_rules_and_exclusions": true,
+    "explicit_recompile": true,
+    "restart_exact_bytes": true,
+    "runtime_and_session_invariant": true,
+    "personality_order": true,
+    "prompt_bytes": 41592,
+    "classification": "deterministic native-shaped adapter + persisted-profile seam"
+  },
+  "packaged_adapter": {
+    "passed": true,
+    "adapter_scope_rules_and_exclusions": true,
+    "explicit_recompile": true,
+    "restart_exact_bytes": true,
+    "runtime_and_session_invariant": true,
+    "personality_order": true,
+    "prompt_bytes": 41592,
+    "classification": "deterministic native-shaped adapter + persisted-profile seam"
+  },
+  "sqlite_control_plane": {
+    "event": "pass",
+    "payload": {
+      "first_run_bootstrap": true,
+      "scrypt_passwords": true,
+      "hashed_sessions_and_csrf": true,
+      "file_secrets_redacted": true,
+      "provider_discovery": true,
+      "model_selection_contract": true,
+      "runtime_inventory": true,
+      "solo_match_orphan_guard": true,
+      "unstarted_match_rollback": true,
+      "isolated_harness_profile": true,
+      "automatic_context_and_minimum": true,
+      "storage_policy": true,
+      "exact_hermes_descriptor": true,
+      "managed_lan_identity_contract": true,
+      "native_progress_mirror": true,
+      "immutable_audit": true
+    }
+  },
+  "strict_prompt": {
+    "event": "pass",
+    "payload": {
+      "deterministic_prompt": true,
+      "upstream_prompt_replaced": true,
+      "provider_system_message_exact": true,
+      "integrity_failure_closed": true,
+      "personality_seam_only": true
+    }
+  },
+  "provider_capture_review_image": {
+    "event": "pass",
+    "payload": {
+      "real_derived_image": true,
+      "provider_request_captured": true,
+      "exact_single_system_message": true,
+      "request_only_runtime_tail": true,
+      "upstream_scaffold_absent": true,
+      "generation_settings_reached_provider": true,
+      "low_medium_high_reasoning_reached_provider": true,
+      "managed_gameplay_prompt_and_tool_boundary": true,
+      "captured_gameplay_and_communication_tool_lists": true,
+      "communication_provider_has_no_gameplay_mutation_schema": true
+    }
+  },
+  "context_policy_review_image": {
+    "event": "pass",
+    "payload": {
+      "historical_reasoning_removed": true,
+      "historical_serialized_thinking_removed": true,
+      "historical_tool_protocol_pruned": true,
+      "current_tool_chain_reasoning_retained": true,
+      "superseded_state_compacted": true,
+      "superseded_execution_result_compacted": true,
+      "latest_state_retained": true,
+      "real_hermes_dispatcher_compacted": true,
+      "provider_wire_growth_bounded": true,
+      "five_hundred_action_turn_bounded": true,
+      "semantic_gc_precedes_real_half_window_compression": true,
+      "five_hundred_cognition_notebook_turn_bounded": true,
+      "durable_cognition_receipts": true,
+      "unscoped_dispatcher_rejected": true,
+      "turn_handoff_hard_ceiling": true,
+      "ordinary_response_untouched": true,
+      "streaming_repetition_fuse_installed": true,
+      "single_request_only_runtime_context": true,
+      "untrusted_runtime_tag_isolated": true,
+      "durable_prefix_stable": true
+    }
+  },
+  "schema_budget": {
+    "event": "pass",
+    "payload": {
+      "managed_tool_count": 15,
+      "smac_world_schema_bytes": 1855,
+      "smac_world_conservative_token_proxy": 619,
+      "smac_world_target": 700,
+      "smac_world_hard_gate": 900,
+      "system_prompt_bytes": 5280,
+      "system_prompt_conservative_token_proxy": 1760,
+      "system_prompt_exact_tokens": null,
+      "tokenizer": "conservative_utf8_proxy",
+      "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+      "total_tool_schema_bytes": 20169
+    }
+  },
+  "capability_incident_regression": {
+    "event": "pass",
+    "payload": {
+      "durable_operator_incident": true,
+      "idempotent_ingestion": true,
+      "autonomous_restart_stopped": true,
+      "redacted_bundle": true,
+      "bounded_zip": true,
+      "game_binaries_excluded": true,
+      "private_conversations_excluded": true,
+      "supervisor_incident_enriched": true
+    }
+  },
+  "control_http_regression": {
+    "event": "pass",
+    "payload": {
+      "bootstrap_over_http": true,
+      "no_default_password": true,
+      "secure_headers": true,
+      "http_only_session": true,
+      "csrf_enforced": true,
+      "provider_secret_redacted": true,
+      "docker_manager_disable_guard": true,
+      "static_traversal_rejected": true,
+      "logout_revokes_session": true,
+      "portal_service_auth": true
+    }
+  },
+  "native_live": {
+    "passed": true,
+    "classification": "isolated running-game UI-thread public receipt and adapter",
+    "context": {
+      "schema": "smacx.confirmed-gameplay-context.v1",
+      "self_faction": {
+        "name": "The Cybernetic Consciousness",
+        "progenitor": false,
+        "mechanics": [
+          {
+            "kind": "technology_on_capture"
+          },
+          {
+            "kind": "starting_technology",
+            "name": "Applied Physics"
+          },
+          {
+            "kind": "starting_technology",
+            "name": "Information Networks"
+          },
+          {
+            "kind": "model_impunity",
+            "name": "Cybernetic"
+          },
+          {
+            "kind": "social",
+            "amount": 2,
+            "name": "RESEARCH"
+          },
+          {
+            "kind": "social",
+            "amount": 2,
+            "name": "EFFICIENCY"
+          },
+          {
+            "kind": "social",
+            "amount": -1,
+            "name": "GROWTH"
+          },
+          {
+            "kind": "prohibited_model",
+            "name": "Fundamentalist"
+          }
+        ],
+        "leader": "Aki Zeta-5"
+      },
+      "rules": {
+        "victory_conquest": true,
+        "victory_economic": true,
+        "victory_diplomatic": true,
+        "victory_transcendence": true,
+        "victory_cooperative": true,
+        "do_or_die": false,
+        "look_first": false,
+        "time_warp": false,
+        "ironman": false,
+        "blind_research": true,
+        "tech_stagnation": false,
+        "spoils_of_war": false,
+        "unity_survey": true,
+        "unity_scattering": true,
+        "random_events": true
+      },
+      "research_mode": "blind",
+      "difficulty": {
+        "name": "librarian",
+        "natural_content": 3,
+        "ecology": "standard",
+        "se_cost": "paid",
+        "research": "loaded",
+        "event_first_turn": 45
+      },
+      "victory": {
+        "eligible": [
+          "conquest",
+          "economic",
+          "diplomatic",
+          "transcendence"
+        ],
+        "ending_year": 2500,
+        "supreme_fraction": 75,
+        "progenitor": {
+          "generators": 6,
+          "population": 10,
+          "cooperative": true
+        }
+      },
+      "opening": {
+        "kind": "planetfall",
+        "initial_pod_placement": false
+      },
+      "world": {
+        "width": 48,
+        "height": 48,
+        "ocean_coverage": 0,
+        "erosive_forces": 1,
+        "cloud_cover": 1,
+        "native_life": 1
+      },
+      "compatibility": {
+        "profile": "thinker-smacx-doctrine.v1",
+        "invariant_overrides": [],
+        "loaded_fingerprint": "1a0966c8f30539cf675c7f4c12e6d2936fb64f91ed6c80cf894d7f6c50abea10"
+      }
+    },
+    "metadata": {
+      "doctrine_version": "smacx.sovereign-doctrine.v1",
+      "compiler_version": "smacx.doctrine-compiler.v1",
+      "doctrine_sha256": "65f02d994e18186b9fed181b9282638ea42eb228dbc489ea3604ed04bf86c7d9",
+      "compatibility": {
+        "profile": "thinker-smacx-doctrine.v1",
+        "invariant_overrides": [],
+        "loaded_fingerprint": "1a0966c8f30539cf675c7f4c12e6d2936fb64f91ed6c80cf894d7f6c50abea10"
+      },
+      "fixed_configuration_sha256": "03bfe5d03b8fc31861bfd5019ac2701d5574e6058a206bb49b081178f3c758bd",
+      "gameplay_sha256": "14213136cb6bc3fa04ef3c0e62fb58a21442641e6115659e34b306ed9a934c59"
+    },
+    "repeat_identical": true
+  },
+  "native_build": {
+    "passed": true,
+    "classification": "native cross-compile/link in worker Docker build, 39 build steps; not 39 game-mechanics tests",
+    "engine_source_sha256": "203d9842a1afa2993d668ac83c612330f1984bdd831558452be67f4aa62b0fe6"
+  },
+  "notes": [
+    "Actual native case uses disposable fresh solo game and cleans owned resources; active user stack unchanged.",
+    "Provider capture exercises real Hermes against a local capture provider, not live strategic play.",
+    "Schema budget operational-only count is a baseline, not the expanded doctrine measurement; exact expanded costs are checkpoint 3.",
+    "Byte-persistence assertion reopens the SQLite ControlPlane and re-prepares its managed profile.",
+    "Initial normal objective=9999 compatibility failure was corrected and the final attested native case rerun."
+  ]
+}

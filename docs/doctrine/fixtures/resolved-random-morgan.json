@@ -85,7 +85,7 @@
     },
     "world": {
       "width": 80,
-      "height": 40,
+      "height": 80,
       "ocean_coverage": 1,
       "erosive_forces": 1,
       "cloud_cover": 1,
@@ -103,14 +103,14 @@
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
-      "fixed_configuration_sha256": "dd646ebc1af668f941aada8658a8acd9aba90cb8f1f959be99d75f7794266d72",
-      "gameplay_sha256": "7193dd4daeabd0a39ded659b4d4fbd04b1a048f46f3c44b9a91d587587efcbfa"
+      "fixed_configuration_sha256": "963b4690fe39daa1118cce688ae356f5516c4f03fd89ce11b95a6ab386db8e8e",
+      "gameplay_sha256": "751312996f33a3bec81360ab6b6395dd75fa4e75ce5956fe0439ca497ff8e880"
     },
     "blocks": {
       "SELF_FACTION_CONTEXT": "You govern **Morgan Industries**: +1 ECONOMY; -1 SUPPORT; population limit: -3; commerce: +1; starting energy: +100; Cannot adopt Planned. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
-      "WORLD_CONTEXT": "- World dimensions: 80 × 40 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
+      "WORLD_CONTEXT": "- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
       "EXPLORATION_RULE_CONTEXT": "Unity Survey is unavailable: unexplored geography must be discovered or legitimately learned. Unity Pods are scattered broadly across Planet. Random Events are enabled; ordinary qualifying events become eligible from turn 45. Eligibility does not guarantee an event.",
       "OPENING_RULE_CONTEXT": "",
       "PERSISTENCE_RULE_CONTEXT": "",

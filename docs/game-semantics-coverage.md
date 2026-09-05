@@ -298,3 +298,13 @@ See [I1 acceptance and deployment evidence](benchmarks/2026-09-05-i1-review.md).
 | Static literacy and 16 match blocks | Authored doctrine → paragraph inventory/source review → typed deterministic compiler → 18 rendered prompts and 3 deliberate errors | Content fixtures pass; managed/provider integration and behavior evaluation remain pending |
 
 See [doctrine acceptance](doctrine/acceptance.md). Source evidence is distinguished from running-game comparisons; stock defaults are not inferred for unknown rulesets.
+
+### Gameplay doctrine checkpoint 2
+
+| Capability | Evidence chain | Status |
+| --- | --- | --- |
+| Confirmed public match literacy | Native rule-loader/seat receipt → typed public adapter → 16 blocks → SQLite profile and hashes → real Hermes provider capture | Implemented; actual isolated native receipt plus integration/adversarial and provider-wire evidence |
+| Restart and fair-play boundaries | Session-scoped receipt → frozen opening/roster → exact persisted bytes after SQLite reopen; controller/runtime sentinels excluded | Integration checks pass; no hidden faction roster or live world state in doctrine |
+| Longer prefix capacity | Conservative system/tool reserve → minimum remaining history guard → unchanged 15 tools and semantic-GC policy | Capacity checks pass; exact costs and behavioral ablation remain checkpoint 3 |
+
+See [checkpoint acceptance and limitations](doctrine/acceptance.md) and [assembly architecture](doctrine/implementation.md). These receipts do not certify new native actions or full-game strategic performance.

@@ -70,7 +70,7 @@
     },
     "world": {
       "width": 80,
-      "height": 40,
+      "height": 80,
       "ocean_coverage": 1,
       "erosive_forces": 1,
       "cloud_cover": 1,
@@ -88,14 +88,14 @@
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
-      "fixed_configuration_sha256": "7c4a7ff8ce15e96e6d21ffc393c272f8a55f857cfbda33511928584a20e0b231",
-      "gameplay_sha256": "cc578b3effdd295b06232adfacc4eab9ed32f27650c8f86fddc5b44a038eda3f"
+      "fixed_configuration_sha256": "c6ec5ef8340e2801b492a3dcb1ee970cfdcfef9dfcbb2ef284a306b34bdbd8fe",
+      "gameplay_sha256": "9dd4da4e0da6854a079b5aa584bab309e12a99bb5850e60c6a2914f09eabc98e"
     },
     "blocks": {
-      "SELF_FACTION_CONTEXT": "You govern **Manifold Caretakers**: +1 PLANET; Conventional defense modifier: 125%; Free facility: Recycling Tanks. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda. The globally enabled Economic route is not available to your faction; treat it as an opponent threat. The globally enabled Diplomatic route is not available to your faction; treat it as an opponent threat. The globally enabled Transcendence route is not available to your faction; treat it as an opponent threat.",
+      "SELF_FACTION_CONTEXT": "You govern **Manifold Caretakers**: +1 PLANET; Conventional defense modifier: 125%; Free facility: Recycling Tanks. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda. The loaded build rules can close the Voice/Ascent route after the Subspace Generator prerequisite is discovered; inspect current native eligibility before relying on Transcendence. The globally enabled Economic route is not available to your faction; treat it as an opponent threat. The globally enabled Diplomatic route is not available to your faction; treat it as an opponent threat. The globally enabled Transcendence route is not available to your faction; treat it as an opponent threat.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
-      "WORLD_CONTEXT": "- World dimensions: 80 × 40 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
+      "WORLD_CONTEXT": "- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
       "EXPLORATION_RULE_CONTEXT": "Unity Survey is unavailable: unexplored geography must be discovered or legitimately learned. Unity Pods are scattered broadly across Planet. Random Events are enabled; ordinary qualifying events become eligible from turn 45. Eligibility does not guarantee an event.",
       "OPENING_RULE_CONTEXT": "",
       "PERSISTENCE_RULE_CONTEXT": "",

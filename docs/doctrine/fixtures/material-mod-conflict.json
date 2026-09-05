@@ -93,7 +93,7 @@
     },
     "world": {
       "width": 80,
-      "height": 40,
+      "height": 80,
       "ocean_coverage": 1,
       "erosive_forces": 1,
       "cloud_cover": 1,

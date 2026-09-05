@@ -727,9 +727,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     raise WorkerManagerError("game_worker_not_healthy")
                 if not mcp.get("running") or mcp.get("health") != "healthy":
                     raise WorkerManagerError("managed_mcp_not_healthy")
+                manager.confirm_gameplay_context(worker["instance_id"])
                 descriptor = self.server.control.prepare_hermes_profile(
                     match_id, str(body.get("provider_id", "")),
                     agent_id=agent_id,
+                    recompile_doctrine=body.get("recompile_doctrine") is True,
                     reasoning_effort=str(body.get("reasoning_effort", "low")),
                     model_id=(str(body["model_id"]) if body.get("model_id") else None),
                     context_length=body.get("context_length"),
@@ -766,8 +768,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     restart_limit = int(body.get("restart_limit", 1000))
                 except (TypeError, ValueError) as exc:
                     raise InvalidRecord("invalid_harness_run_limits") from exc
+                manager.confirm_gameplay_context(worker["instance_id"])
                 descriptor = self.server.control.prepare_hermes_profile(
                     match_id, str(body.get("provider_id", "")), agent_id=agent_id,
+                    recompile_doctrine=body.get("recompile_doctrine") is True,
                     reasoning_effort=str(body.get("reasoning_effort", "low")),
                     model_id=(str(body["model_id"]) if body.get("model_id") else None),
                     context_length=body.get("context_length"),
@@ -1285,6 +1289,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _handle_exception(self, exc: Exception) -> None:
+        from smacx_doctrine import DoctrineError
+        if isinstance(exc, DoctrineError):
+            self._error(409, str(exc), "Gameplay doctrine could not be safely assembled. Verify the loaded public rules; changed fixed contracts require explicit recompile_doctrine approval.")
+            return
         if isinstance(exc, AuthenticationError):
             status = 429 if str(exc) == "too_many_attempts" else 401
             self._error(status, str(exc))

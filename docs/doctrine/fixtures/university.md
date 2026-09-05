@@ -10,7 +10,7 @@ This doctrine teaches gameplay concepts within its reviewed ruleset compatibilit
 
 A **faction** is a civilization controlling bases, population, units, research, economy, and diplomacy.
 
-You govern **University of Planet**: +2 RESEARCH; -2 PROBE; Free facility: Network Node; drone: +4. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.
+You govern **University of Planet**: +2 RESEARCH; -2 PROBE; Free facility: Network Node; One extra Drone per 4 citizens (rounded down). These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.
 
 The other participating factions are:
 
@@ -47,7 +47,7 @@ Bases eventually reach population limits that require habitation facilities befo
 
 # World, Terrain, and Fog of War
 
-- World dimensions: 80 × 40 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.
+- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.
 - Medium ocean target makes maritime access potentially significant.
 - Average erosion gives no strong ruggedness prior.
 - Average cloud cover gives no strong rainfall prior.

@@ -91,7 +91,7 @@
     },
     "world": {
       "width": 80,
-      "height": 40,
+      "height": 80,
       "ocean_coverage": 1,
       "erosive_forces": 1,
       "cloud_cover": 1,
@@ -109,14 +109,14 @@
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
-      "fixed_configuration_sha256": "94d088fd3869e47c059ceac177852a1c4eb8564e122089fda394a9d83952fe49",
-      "gameplay_sha256": "f1b372148a6097707fdea1ab75761d672e2a4bea5f33304e3ef8a41e4b6f2160"
+      "fixed_configuration_sha256": "26bbbcf40f0b945574e6e78de6eed68e7089d32a7da6843c0f9e2729e203e2b8",
+      "gameplay_sha256": "4493917a74c4137490b7bbd85ccd1e6795c2f5aab582d57ed4b12e08ba5c7224"
     },
     "blocks": {
       "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
       "OPPONENT_FACTION_CONTEXT": "No additional participant mechanics are confirmed in this seat’s public setup context.",
       "DIFFICULTY_BASE_CONTEXT": "At Librarian, the baseline naturally content population is 3 per base before other modifiers. Faction rules, bureaucracy, conquest, facilities, Projects and Social Engineering can change actual unrest.",
-      "WORLD_CONTEXT": "- World dimensions: 80 × 40 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
+      "WORLD_CONTEXT": "- World dimensions: 80 × 80 in native map coordinates. Nominal faction density is very low; actual space, contact and competition depend on geography and starting placement.\n- Medium ocean target makes maritime access potentially significant.\n- Average erosion gives no strong ruggedness prior.\n- Average cloud cover gives no strong rainfall prior.\n- Average native life gives no extreme frequency prior.",
       "EXPLORATION_RULE_CONTEXT": "Unity Survey is unavailable: unexplored geography must be discovered or legitimately learned. Unity Pods are scattered broadly across Planet. Random Events are enabled; ordinary qualifying events become eligible from turn 45. Eligibility does not guarantee an event.",
       "OPENING_RULE_CONTEXT": "",
       "PERSISTENCE_RULE_CONTEXT": "",

@@ -20,7 +20,7 @@ def fixtures():
       'victory':{'eligible':['conquest','economic','diplomatic','transcendence'],'ending_year':2500,'supreme_fraction':75,
           'progenitor':{'generators':6,'population':10,'cooperative':True}},
       'opening':{'kind':'planetfall','initial_pod_placement':True},
-      'world':{'width':80,'height':40,'ocean_coverage':1,'erosive_forces':1,'cloud_cover':1,'native_life':1},'participants':[]}
+      'world':{'width':80,'height':80,'ocean_coverage':1,'erosive_forces':1,'cloud_cover':1,'native_life':1},'participants':[]}
     morgan={'name':'Morgan Industries','progenitor':False,'mechanics':[{'kind':'social','name':'ECONOMY','amount':1},
       {'kind':'social','name':'SUPPORT','amount':-1},{'kind':'population_limit','amount':-3},
       {'kind':'commerce','amount':1},{'kind':'starting_energy','amount':100},{'kind':'prohibited_model','name':'Planned'}]}
@@ -38,8 +38,8 @@ def fixtures():
     variant('human-progenitor-opponent',lambda c:c.update(participants=[alien]))
     variant('cooperative',lambda c:c['rules'].update(victory_cooperative=True))
     variant('conquest-only',lambda c:(c['rules'].update(victory_economic=False,victory_diplomatic=False,victory_transcendence=False),c['victory'].update(eligible=['conquest'])))
-    variant('tiny-crowded',lambda c:(c['world'].update(width=48,height=24),c.update(participants=[{**morgan,'name':f'Public faction {i}'} for i in range(6)])))
-    variant('huge-sparse',lambda c:c['world'].update(width=128,height=64))
+    variant('tiny-crowded',lambda c:(c['world'].update(width=48,height=48),c.update(participants=[{**morgan,'name':f'Public faction {i}'} for i in range(6)])))
+    variant('huge-sparse',lambda c:c['world'].update(width=128,height=128))
     variant('custom-map',lambda c:c['world'].update(width=192,height=32))
     variant('time-warp',lambda c:(c['rules'].update(time_warp=True),c['opening'].update(kind='time_warp',initial_pod_placement=False)))
     variant('look-first',lambda c:c['rules'].update(look_first=True))

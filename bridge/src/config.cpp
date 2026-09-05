@@ -1,5 +1,6 @@
 
 #include "config.h"
+#include "agent_bridge.h"
 
 const char* AlphaFile = "ALPHAX";
 const char* ScriptFile = "SCRIPT";
@@ -1076,6 +1077,8 @@ Parse all the game rules from alpha(x).txt. If tgl_all_rules is set to true, par
 Return Value: Was there an error? true/false
 */
 int __cdecl read_rules(int tgl_all_rules) {
+    std::string doctrine_alpha_path = std::string(alpha_file()) + ".txt";
+    agent_doctrine_rules_loading(doctrine_alpha_path.c_str(), false);
     Strings_init(TextTable, 49952);
     if (labels_init()) {
         return true;
@@ -1451,6 +1454,7 @@ int __cdecl read_rules(int tgl_all_rules) {
     BaseButton_set_bubble_text(&FlatButtons[34], Natural[3].name_short); // LM_URANIUM
     BaseButton_set_bubble_text(&FlatButtons[35], Natural[10].name_short); // LM_GEOTHERMAL
     text_close(); // Make sure file handle is closed
+    agent_doctrine_rules_loading(doctrine_alpha_path.c_str(), true);
     return false;
 }
 
@@ -1659,5 +1663,4 @@ void __cdecl prefs_use() {
     *GameMorePreferences = AlphaIniPrefs->more_preferences;
     *GameWarnings = AlphaIniPrefs->announce;
 }
-
 

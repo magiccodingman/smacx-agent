@@ -59,6 +59,8 @@ COPY src/smacx_attention.py src/smacx_spatial_scope.py src/smacx_milestones.py s
     src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \
     src/smacx_world.py src/smacx_world_model.py src/smacx_world_store.py \
     src/smacx_world_types.py /opt/smacx/src/
+COPY src/smacx_doctrine.py src/smacx_doctrine_native.py /opt/smacx/src/
+COPY src/doctrine/ /opt/smacx/src/doctrine/
 COPY src/smacx_provider_meter.py src/smacx_specialist_mcp.py src/smacx_specialist_supervisor.py /opt/smacx/src/
 COPY knowledge/ /opt/smacx/knowledge/
 COPY control_center/static/ /opt/smacx/control_center/static/

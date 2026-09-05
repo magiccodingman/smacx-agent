@@ -1,5 +1,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <wincrypt.h>
+#include <fstream>
 
 #include "agent_bridge.h"
 #include "base.h"
@@ -10179,6 +10181,8 @@ std::string perspective_world_page_response(const std::string& request) {
     return out.str();
 }
 
+#include "agent_doctrine.h"
+
 std::string semantic_snapshot_response() {
     if (!game_active()) return status_response();
     refresh_deferred_end_turn_state();
@@ -18742,6 +18746,7 @@ std::string execute_request(const std::string& request) {
     if (op == "test_base_site_receipts_stress") return test_base_site_receipts_stress_response(request);
     if (op == "test_counterfactual_read_safety") return test_counterfactual_read_safety_response(request);
     if (op == "test_managed_action_fixture") return test_managed_action_fixture_response(request);
+    if (op == "doctrine_context") return doctrine_context_response();
     if (op == "semantic_snapshot") return semantic_snapshot_response();
     if (op == "semantic_chat") return semantic_chat_response(request);
     if (op == "semantic_lan") {
@@ -18908,6 +18913,21 @@ DWORD WINAPI server_worker(void*) {
 }
 
 } // namespace
+
+void agent_doctrine_rules_loading(const char* alpha_path, bool complete) {
+    if (!complete) {
+        doctrine_loaded_supported = false;
+        doctrine_loaded_alpha.clear();
+        doctrine_loading_alpha = doctrine_file_sha256(alpha_path);
+        return;
+    }
+    std::string after = doctrine_file_sha256(alpha_path);
+    if (!after.empty() && after == doctrine_loading_alpha) {
+        doctrine_loaded_alpha = after;
+        doctrine_loaded_rules = *Rules;
+        doctrine_loaded_supported = doctrine_config_supported();
+    }
+}
 
 void agent_observe_unit_destroyed(int veh_id) {
     if (!lock_initialized || !game_active() || veh_id < 0

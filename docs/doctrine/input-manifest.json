@@ -83,6 +83,25 @@
     ]
   },
   "authority": "authenticated native UI-thread receipt projected to an allowlisted public seat configuration; never request settings or model-authored text",
-  "stock_fallback": "none in v1; missing required loaded facts fail; custom mechanics need supported mappings and compatible base rules",
-  "optional_policy": "omit unavailable generation priors and public roster; never infer their values from defaults"
+  "stock_fallback": "No missing-required-field fallback. Explicit reviewed version-bound constants (e.g. Council fraction, FANATIC modifier, cooperative implementation) require positive source/build compatibility. Unknown/custom base rules fail.",
+  "optional_policy": "omit unavailable generation priors and public roster; never infer their values from defaults",
+  "native_provenance": {
+    "compatibility": "read_rules bookended source-file SHA256 captured at successful load; reviewed build source digest; supported thinker.ini; loaded CRules unchanged; scenario gate",
+    "self_faction": "MFactions[CurrentPlayerFaction] public rule fields and resolved public labels; never requested faction choice",
+    "rules": "loaded GameRules/GameState allowlist (15 flags)",
+    "research_mode": "loaded Blind Research rule bit used by native research_choices; no alien-name inference",
+    "difficulty.name": "Factions[self].diff_level via public difficulty label",
+    "difficulty.natural_content": "conf.content_pop_player[seat difficulty]",
+    "difficulty.ecology": "reviewed base.cpp difficulty classification using loaded seat difficulty",
+    "difficulty.research": "loaded current costs remain authoritative; no generic difficulty multiplier",
+    "difficulty.se_cost": "reviewed faction.cpp social_upheaval free/paid distinction using seat difficulty",
+    "difficulty.event_first_turn": "reviewed gameturn.cpp formula 75 - loaded global DiffLevel*10",
+    "victory.eligible": "enabled loaded rules plus resolved public Progenitor identity; potential routes, not current unlocks",
+    "victory.ending_year": "EndingMissionYear",
+    "victory.supreme_fraction": "reviewed version-bound 75% public Council requirement; current native candidate/defiance evidence still controls",
+    "victory.progenitor": "Rules.subspace_gen_req and base_size_subspace_gen; reviewed game.cpp cooperative outcome",
+    "opening": "initial CurrentTurn/base_count and loaded Look First/Time Warp; freeze at first assembly, imported positions omit irrelevant clauses",
+    "participants": "alive factions with self commlink, only if complete public roster at initial assembly; freeze roster thereafter; no hidden selected factions",
+    "world": "MapAreaX/MapAreaY and generation priors MapOceanCoverage/MapErosiveForces/MapCloudCover/MapNativeLifeForms; no tile reading"
+  }
 }

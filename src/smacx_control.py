@@ -2124,7 +2124,8 @@ class ControlPlane:
                                reasoning_effort: str = "low",
                                model_id: str | None = None,
                                context_length: int | None = None,
-                               generation_settings: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                               generation_settings: Mapping[str, Any] | None = None,
+                               recompile_doctrine: bool = False) -> dict[str, Any]:
         """Resolve one match seat to its exact provider, worker, and MCP endpoint.
 
         The returned descriptor is intentionally secret-free.  A host adapter
@@ -2248,22 +2249,18 @@ class ControlPlane:
                 raise ScopeViolation("ai_memory_graph_restore_in_progress")
             if pending_memory:
                 raise ScopeViolation("ai_memory_graph_restore_in_progress")
-        policy_keys = (
-            "host_controller_kind", "graphiti_enabled", "lan_profile",
-            "scenario_id", "ranking_mode", "managed_clients_only",
-        )
-        match_policy = {
-            key: match_metadata[key] for key in policy_keys if key in match_metadata
-        }
-        match_policy.update({
-            "public_leader_identity": seat_metadata.get("player_name"),
-            "requested_faction_key": seat_metadata.get("requested_faction_key"),
-            "requested_faction_name": seat_metadata.get("requested_faction_name"),
-            "requested_faction_choice_id": seat_metadata.get("requested_faction_choice_id"),
-            "personality_name": seat_metadata.get("personality_name"),
-        })
+        # Only gameplay-relevant operational policy belongs in the provider prefix.
+        # Controller, requested faction and launch bookkeeping are private provenance.
+        match_policy = {key:match_metadata[key] for key in ("ranking_mode","managed_clients_only") if key in match_metadata}
+        from smacx_doctrine import compose_managed_prompt, DoctrineError
+        context = seat_metadata.get("gameplay_context")
+        with self.store.transaction() as connection:
+            existing = connection.execute("SELECT system_prompt,metadata_json FROM harness_profiles WHERE agent_id=? AND provider_id=? AND external_profile_id=?",
+                (seat["agent_id"],provider_id,external_profile_id)).fetchone()
+        previous = {"system_prompt":existing["system_prompt"],"metadata":json.loads(existing["metadata_json"])} if existing else None
         public_agent_name = str(seat_metadata.get("player_name") or seat["agent_name"])
-        system_prompt = compose_player_system_prompt(
+        system_prompt, doctrine_metadata = compose_managed_prompt(
+            context, previous=previous, recompile=recompile_doctrine,
             agent_name=public_agent_name, agent_id=str(seat["agent_id"]),
             match_id=match_id, match_name=str(seat["match_name"]),
             perspective_id=str(seat["perspective_id"]),
@@ -2273,6 +2270,11 @@ class ControlPlane:
                                 if isinstance(personality_prompt, str) else None),
         )
         system_hash = prompt_sha256(system_prompt)
+        from smacx_context_policy import validate_managed_context
+        try:
+            system_tool_reserve = validate_managed_context(system_prompt, int(context_length))
+        except ValueError as exc:
+            raise InvalidRecord(str(exc)) from exc
         profile = self.configure_harness_profile(
             str(seat["agent_id"]), provider_id,
             display_name=f"{seat['agent_name']} · Hermes",
@@ -2286,7 +2288,9 @@ class ControlPlane:
                 "perspective_id": seat["perspective_id"],
                 "instance_id": seat["instance_id"],
                 "mcp_url": mcp_url,
-                "system_prompt_schema": SYSTEM_PROMPT_SCHEMA,
+                "gameplay_doctrine": doctrine_metadata,
+                "system_tool_token_reserve": system_tool_reserve,
+                "system_prompt_schema": "smacx.player-gameplay.v1",
                 "system_prompt_sha256": system_hash,
                 "personality_id": personality_id,
                 "generation_settings": generation,
@@ -2310,7 +2314,7 @@ class ControlPlane:
             "context_length": context_length,
             "reasoning_effort": reasoning_effort,
             "generation_settings": generation,
-            "system_prompt_schema": SYSTEM_PROMPT_SCHEMA,
+            "system_prompt_schema": "smacx.player-gameplay.v1",
             "system_prompt_sha256": system_hash,
             "personality_id": personality_id,
         }

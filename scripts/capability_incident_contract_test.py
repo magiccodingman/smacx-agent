@@ -68,6 +68,12 @@ def main() -> int:
                 "VALUES (?, 'diagnostic-model', 'Diagnostic model', 65536, '{}', '{}', 1)",
                 (provider["provider_id"],),
             )
+        from doctrine_content_contract_test import fixtures as doctrine_fixtures
+        with store.transaction() as connection:
+            row = connection.execute("SELECT metadata_json FROM seat_assignments WHERE match_id=? AND agent_id=?", (scope.match_id,scope.agent_id)).fetchone()
+            seat_meta = json.loads(row["metadata_json"])
+            seat_meta["gameplay_context"] = doctrine_fixtures()["stock-blind"]
+            connection.execute("UPDATE seat_assignments SET metadata_json=? WHERE match_id=? AND agent_id=?", (json.dumps(seat_meta),scope.match_id,scope.agent_id))
         descriptor = control.prepare_hermes_profile(
             scope.match_id, provider["provider_id"], reasoning_effort="low",
         )

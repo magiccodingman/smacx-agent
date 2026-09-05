@@ -24,7 +24,7 @@ BLOCKS = (
 RULES = ('victory_conquest','victory_economic','victory_diplomatic','victory_transcendence',
     'victory_cooperative','do_or_die','look_first','time_warp','ironman','blind_research',
     'tech_stagnation','spoils_of_war','unity_survey','unity_scattering','random_events')
-RATINGS = ('ECONOMY','EFFICIENCY','SUPPORT','MORALE','POLICE','GROWTH','PLANET','PROBE','INDUSTRY','RESEARCH')
+RATINGS = ('ECONOMY','EFFICIENCY','SUPPORT','TALENT','MORALE','POLICE','GROWTH','PLANET','PROBE','INDUSTRY','RESEARCH')
 # Native/public inputs only. Optional means no stock inference when absent.
 INPUT_MANIFEST = {
     'schema': 'required', 'compatibility': 'required', 'self_faction': 'required',
@@ -63,6 +63,7 @@ def fingerprint(value: Any) -> str:
 
 
 def require(value: Mapping, key: str, kind: type):
+    if not isinstance(value,Mapping):raise DoctrineError('doctrine_required_object:'+key)
     result=value.get(key)
     if type(result) is not kind:
         raise DoctrineError('doctrine_required_input:'+key)
@@ -79,16 +80,41 @@ def label(value: Any) -> str:
 def faction_text(f: dict) -> str:
     name=label(require(f,'name',str));require(f,'progenitor',bool)
     facts=require(f,'mechanics',list)
+    if len(facts)>64:raise DoctrineError('doctrine_faction_fact_limit')
     if not facts:raise DoctrineError('doctrine_required_input:self_faction.mechanics')
     rendered=[]
     for fact in facts:
         kind=require(fact,'kind',str)
         amount=fact.get('amount')
         if amount is not None and (type(amount) is not int or abs(amount)>10000):raise DoctrineError('doctrine_invalid_modifier')
+        if kind in {'social','drone','talent','morale_bonus','selected_technologies','infiltration_share','technology_share','fewer_drones','revolt','probe_cost','attack','defense','psi','research_cost','hurry_cost','votes','fungus_nutrients','fungus_minerals','fungus_energy','population_limit','commerce','starting_energy'} and type(amount) is not int:
+            raise DoctrineError('doctrine_required_modifier:'+kind)
         if kind=='social':
             rating=require(fact,'name',str)
             if rating not in RATINGS:raise DoctrineError('doctrine_unknown_social_rating')
             rendered.append(f'{amount:+d} {rating}')
+        elif kind in ('drone','talent'):
+            if type(amount) is not int or amount<=0:raise DoctrineError('doctrine_invalid_citizen_rule')
+            rendered.append(f'One extra Drone per {amount} citizens (rounded down)' if kind=='drone' else f'One extra Talent per {amount} citizens (rounded up)')
+        elif kind in ('rating_immunity','rating_robust'):
+            if fact.get('name') not in RATINGS:raise DoctrineError('doctrine_unknown_social_rating')
+            rendered.append(('Immune to negative ' if kind=='rating_immunity' else 'Reduced penalties from negative ')+fact['name']+' effects')
+        elif kind in ('model_impunity','model_penalty','free_facility_after_technology','free_ability_after_technology'):
+            rendered.append({'model_impunity':'No negative social effects from ', 'model_penalty':'Increased negative social effects from ',
+                'free_facility_after_technology':'Free facility after its prerequisite: ', 'free_ability_after_technology':'Free ability for eligible designs after its prerequisite: '}[kind]+label(fact.get('name')))
+        elif kind in ('morale_bonus','selected_technologies','infiltration_share','technology_share','fewer_drones','revolt','probe_cost'):
+            rendered.append({'morale_bonus':f'Intrinsic conventional morale adjustment: {amount:+d}',
+                'selected_technologies':f'{amount} additional starting technology selection(s)',
+                'infiltration_share':f'Acquire a technology known by {amount} factions for which qualifying datalinks intelligence is available',
+                'technology_share':f'Acquire a technology known by {amount} other factions',
+                'fewer_drones':f'{amount} fewer Drones per base',
+                'revolt':f'Riot-related allegiance rule: {amount}% factor; inspect the native conditions before relying on a defection',
+                'probe_cost':f'Probe operation cost factor: {amount}%'}[kind])
+        elif kind in ('starting_commlink','cheaper_elevation','morale_immunity','progenitor_grid','no_special_modifiers'):
+            rendered.append({'starting_commlink':'Additional starting commlink', 'cheaper_elevation':'Reduced Energy cost for elevation terraforming',
+                'morale_immunity':'Exemption from negative conventional morale modifiers',
+                'progenitor_grid':'Progenitor energy grid replaces ordinary human commerce; faction facilities and Projects contribute to it',
+                'no_special_modifiers':'No additional loaded faction modifiers'}[kind])
         elif kind in ('starting_technology','starting_unit','free_facility','prohibited_model'):
             rendered.append({'starting_technology':'Starting technology: ','starting_unit':'Starting unit: ',
                 'free_facility':'Free facility: ','prohibited_model':'Cannot adopt '}[kind]+label(fact.get('name')))
@@ -103,7 +129,8 @@ def faction_text(f: dict) -> str:
              'efficiency_immunity':'Immune to negative EFFICIENCY effects','infiltration_technology':'Technology sharing depends on infiltration',
              'no_mind_control':'Immune to ordinary mind control'}[kind])
         else:raise DoctrineError('doctrine_unmapped_faction_mechanic:'+kind)
-    return f'**{name}**: '+ '; '.join(rendered)+'.'
+    leader=(' Public leader: '+label(f['leader'])+'.') if f.get('leader') else ''
+    return f'**{name}**: '+ '; '.join(rendered)+'.'+leader
 
 
 def compile_doctrine(context: Mapping[str, Any]) -> dict:
@@ -131,6 +158,7 @@ def compile_doctrine(context: Mapping[str, Any]) -> dict:
     b['SELF_FACTION_CONTEXT']='You govern '+faction_text(f)+' These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.'
     others=c.get('participants')
     if others is not None and type(others) is not list:raise DoctrineError('doctrine_invalid_participants')
+    if others is not None and len(others)>7:raise DoctrineError('doctrine_participant_limit')
     b['OPPONENT_FACTION_CONTEXT']='\n'.join('- '+faction_text(other) for other in others) if others else 'No additional participant mechanics are confirmed in this seat’s public setup context.'
     aliens=f['progenitor'] or any(other['progenitor'] for other in (others or []))
     if aliens:
@@ -138,6 +166,7 @@ def compile_doctrine(context: Mapping[str, Any]) -> dict:
         count=require(pv,'generators',int);size=require(pv,'population',int);require(pv,'cooperative',bool)
         if count<1 or size<1:raise DoctrineError('doctrine_invalid_progenitor_requirements')
         b['SPECIAL_DIPLOMACY_CONTEXT']='Progenitor communication has cross-species technology restrictions. The two Progenitor factions cannot make peace with one another. Use current legal diplomacy choices for human–Progenitor agreements.'
+        if f['progenitor']:b['SELF_FACTION_CONTEXT']+=' The loaded build rules can close the Voice/Ascent route after the Subspace Generator prerequisite is discovered; inspect current native eligibility before relying on Transcendence.'
         b['PROGENITOR_VICTORY_CONTEXT']=f'**Progenitor Victory:** complete {count} Subspace Generators in bases of at least size {size}. '+('This is your faction’s special route.' if f['progenitor'] else 'This is an opponent victory threat.')+' '+('The loaded rules permit a cooperative Pact outcome when Cooperative Victory applies.' if pv['cooperative'] else 'The loaded rules do not permit sharing this special victory.')
     if f['progenitor'] and 'progenitor' not in eligible:raise DoctrineError('doctrine_missing_progenitor_eligibility')
     if not f['progenitor'] and 'progenitor' in eligible:raise DoctrineError('doctrine_conflicting_victory_eligibility')
@@ -189,13 +218,14 @@ def compile_doctrine(context: Mapping[str, Any]) -> dict:
     b['COOPERATIVE_VICTORY_CONTEXT']=('Cooperative Victory is enabled: qualifying Pact partners can share applicable victories under the loaded eligibility rules.' if r['victory_cooperative'] else 'Cooperative Victory is disabled: friendship, Treaty, Pact or private promises do not make factions joint mechanical winners.')
     b['ELIMINATION_RULE_CONTEXT']=('Do or Die is enabled: eliminated factions do not receive the ordinary early-game escape and restart opportunity.' if r['do_or_die'] else 'Do or Die is disabled: an eliminated faction may escape and restart when native eligibility conditions permit; do not assume its first defeat is permanent.')
     world=c.get('world')
+    if world is not None and type(world) is not dict:raise DoctrineError('doctrine_invalid_world')
     if world:
         lines=[];width=world.get('width');height=world.get('height')
         if type(width) is int and type(height) is int and width>0 and height>0:
             line=f'World dimensions: {width} × {height} in native map coordinates.'
             if others is not None:
                 # Raw rectangular coordinate area; parity factor cancels against baseline.
-                ratio=(width*height/(len(others)+1))/(80*40/7)
+                ratio=(width*height/(len(others)+1))/(80*80/7)
                 density='very high' if ratio<.60 else 'high' if ratio<.85 else 'moderate' if ratio<1.25 else 'low' if ratio<1.75 else 'very low'
                 line+=f' Nominal faction density is {density}; actual space, contact and competition depend on geography and starting placement.'
             lines.append(line)
@@ -221,3 +251,26 @@ def compile_doctrine(context: Mapping[str, Any]) -> dict:
         'compatibility':compatibility,'fixed_configuration_sha256':fingerprint(c),
         'gameplay_sha256':hashlib.sha256(text.encode()).hexdigest(),
     }}
+
+
+def compose_managed_prompt(context, *, previous=None, recompile=False, **seat):
+    """Persisted-profile seam: unchanged inputs reuse exact bytes, changes require opt-in."""
+    from smacx_prompt import compose_player_system_prompt, prompt_sha256, SYSTEM_PROMPT_SCHEMA
+    gameplay=compile_doctrine(context)
+    operational=compose_player_system_prompt(**{**seat,'personality_id':'none','personality_prompt':None})
+    signature=fingerprint({'context':context,'seat':seat,'compiler':COMPILER_VERSION,
+        'doctrine':gameplay['metadata']['doctrine_sha256'],'operational_version':SYSTEM_PROMPT_SCHEMA,
+        'operational_sha256':prompt_sha256(operational)})
+    if previous and previous.get('metadata',{}).get('gameplay_doctrine'):
+        old=previous['metadata']['gameplay_doctrine']
+        if old.get('assembly_sha256')==signature:
+            text=previous['system_prompt']
+            if prompt_sha256(text)!=old.get('final_prompt_sha256'):raise DoctrineError('doctrine_persisted_prompt_hash_mismatch')
+            return text,old
+        if not recompile:raise DoctrineError('doctrine_explicit_recompile_required')
+    elif previous and previous.get('system_prompt') and not recompile:
+        raise DoctrineError('doctrine_explicit_recompile_required')
+    final=compose_player_system_prompt(**seat,gameplay_doctrine=gameplay['text'])
+    return final,{**gameplay['metadata'],'assembly_sha256':signature,
+        'operational_prompt_version':SYSTEM_PROMPT_SCHEMA,'operational_prompt_sha256':prompt_sha256(operational),
+        'final_prompt_sha256':prompt_sha256(final),'confirmed_context':context}
