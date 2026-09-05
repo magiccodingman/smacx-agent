@@ -690,6 +690,99 @@ print(json.dumps(result,separators=(',',':')))
         self._cancel_sovereign_after_process_stop(run, "provider_episode_stopped")
         return self.control.update_harness_run(run_id, status="stopped", exit_code=0)
 
+    def _observe_bridge_unavailable(self, run: dict, metadata: dict,
+                                    progress: dict, now: float) -> bool:
+        unavailable_since = float(
+            metadata.get("semantic_unavailable_since_unix") or now
+        )
+        unavailable_samples = int(
+            metadata.get("semantic_unavailable_samples") or 0
+        ) + 1
+        unavailable_update = {
+            "semantic_sample_unix": now,
+            "semantic_progress": progress,
+            "semantic_unavailable_since_unix": unavailable_since,
+            "semantic_unavailable_samples": unavailable_samples,
+            "semantic_unavailable_reason": str(
+                progress.get("reason") or "semantic_progress_unavailable"
+            )[:240],
+        }
+        # A single failed probe is expected during brief native
+        # transitions. Three consecutive samples spanning at least
+        # one minute means the agent is alive but has lost its
+        # semantic game connection. Stop it before it can loop and
+        # expose a recoverable operator incident in the portal.
+        if unavailable_samples >= 3 and now - unavailable_since >= 60:
+            gap_id = "gap-" + uuid.uuid4().hex
+            reason = unavailable_update["semantic_unavailable_reason"]
+            detail = {
+                "schema": "smacx.capability-gap-incident.v1",
+                "gap_id": gap_id,
+                "summary": "The AI stopped because its native game bridge became unavailable.",
+                "screen_or_state": "Managed game worker stopped answering semantic observations.",
+                "intended_decision": "Continue the current autonomous turn safely.",
+                "required_observation": "A healthy semantic snapshot from the managed game worker.",
+                "required_action": "Restore the worker from its latest verified checkpoint.",
+                "why_blocked": reason,
+                "turn": (metadata.get("semantic_progress") or {}).get("turn")
+                    if isinstance(metadata.get("semantic_progress"), dict) else None,
+                "reported_at_unix": now,
+                "native_worker_preserved": True,
+                "run_id": run["run_id"],
+                "unavailable_seconds": now - unavailable_since,
+                "unavailable_samples": unavailable_samples,
+            }
+            prior_progress = metadata.get("semantic_progress") \
+                if isinstance(metadata.get("semantic_progress"), dict) else {}
+            self._append_capability_gap_report({
+                "schema": "smacx.capability-gap.v1",
+                "gap_id": gap_id,
+                "match_id": run["match_id"],
+                "session_id": prior_progress.get("session_id") or "",
+                "revision": prior_progress.get("revision") or "",
+                "turn": detail["turn"],
+                "screen_or_state": detail["screen_or_state"],
+                "intended_decision": detail["intended_decision"],
+                "required_observation": detail["required_observation"],
+                "required_action": detail["required_action"],
+                "why_blocked": detail["why_blocked"],
+                "reported_at_unix": now,
+                "supervisor_generated": True,
+            })
+            incident = self.control.record_supervision_incident(
+                str(run["instance_id"]), f"capability_gap:{gap_id}",
+                "operator_required", detail,
+            )
+            container_name = str(run.get("container_name") or "")
+            if container_name:
+                try:
+                    self.docker.stop_container(container_name, timeout=10)
+                except DockerNotFound:
+                    pass
+            self._journal_run_event(
+                run, "agent.episode_ended", {
+                    "run_id": run["run_id"],
+                    "outcome": "semantic_bridge_unavailable",
+                    "progress": progress,
+                    "unavailable_seconds": now - unavailable_since,
+                }, commit_reason="Pause autonomous episode",
+            )
+            self.control.update_harness_run(
+                str(run["run_id"]), status="error", desired_status="stopped",
+                last_error=f"capability_gap:{gap_id}",
+                metadata_update={
+                    **unavailable_update,
+                    "operator_attention_required": True,
+                    "supervision_incident": incident,
+                },
+            )
+            return True
+        self.control.update_harness_run(
+            str(run["run_id"]), heartbeat=True,
+            metadata_update=unavailable_update,
+        )
+        return False
+
     def reconcile_once(self) -> dict[str, Any]:
         checked = restarted = continued = stopped = errors = operator_required = 0
         for run in self.control.list_harness_runs():
@@ -725,97 +818,9 @@ print(json.dumps(result,separators=(',',':')))
                     continue
                 progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
                 if not progress.get("available"):
-                    unavailable_since = float(
-                        metadata.get("semantic_unavailable_since_unix") or now
-                    )
-                    unavailable_samples = int(
-                        metadata.get("semantic_unavailable_samples") or 0
-                    ) + 1
-                    unavailable_update = {
-                        "semantic_sample_unix": now,
-                        "semantic_progress": progress,
-                        "semantic_unavailable_since_unix": unavailable_since,
-                        "semantic_unavailable_samples": unavailable_samples,
-                        "semantic_unavailable_reason": str(
-                            progress.get("reason") or "semantic_progress_unavailable"
-                        )[:240],
-                    }
-                    # A single failed probe is expected during brief native
-                    # transitions. Three consecutive samples spanning at least
-                    # one minute means the agent is alive but has lost its
-                    # semantic game connection. Stop it before it can loop and
-                    # expose a recoverable operator incident in the portal.
-                    if unavailable_samples >= 3 and now - unavailable_since >= 60:
-                        gap_id = "gap-" + uuid.uuid4().hex
-                        reason = unavailable_update["semantic_unavailable_reason"]
-                        detail = {
-                            "schema": "smacx.capability-gap-incident.v1",
-                            "gap_id": gap_id,
-                            "summary": "The AI stopped because its native game bridge became unavailable.",
-                            "screen_or_state": "Managed game worker stopped answering semantic observations.",
-                            "intended_decision": "Continue the current autonomous turn safely.",
-                            "required_observation": "A healthy semantic snapshot from the managed game worker.",
-                            "required_action": "Restore the worker from its latest verified checkpoint.",
-                            "why_blocked": reason,
-                            "turn": (metadata.get("semantic_progress") or {}).get("turn")
-                                if isinstance(metadata.get("semantic_progress"), dict) else None,
-                            "reported_at_unix": now,
-                            "native_worker_preserved": True,
-                            "run_id": run["run_id"],
-                            "unavailable_seconds": now - unavailable_since,
-                            "unavailable_samples": unavailable_samples,
-                        }
-                        prior_progress = metadata.get("semantic_progress") \
-                            if isinstance(metadata.get("semantic_progress"), dict) else {}
-                        self._append_capability_gap_report({
-                            "schema": "smacx.capability-gap.v1",
-                            "gap_id": gap_id,
-                            "match_id": run["match_id"],
-                            "session_id": prior_progress.get("session_id") or "",
-                            "revision": prior_progress.get("revision") or "",
-                            "turn": detail["turn"],
-                            "screen_or_state": detail["screen_or_state"],
-                            "intended_decision": detail["intended_decision"],
-                            "required_observation": detail["required_observation"],
-                            "required_action": detail["required_action"],
-                            "why_blocked": detail["why_blocked"],
-                            "reported_at_unix": now,
-                            "supervisor_generated": True,
-                        })
-                        incident = self.control.record_supervision_incident(
-                            str(run["instance_id"]), f"capability_gap:{gap_id}",
-                            "operator_required", detail,
-                        )
-                        container_name = str(run.get("container_name") or "")
-                        if container_name:
-                            try:
-                                self.docker.stop_container(container_name, timeout=10)
-                            except DockerNotFound:
-                                pass
-                        self._journal_run_event(
-                            run, "agent.episode_ended", {
-                                "run_id": run["run_id"],
-                                "outcome": "semantic_bridge_unavailable",
-                                "progress": progress,
-                                "unavailable_seconds": now - unavailable_since,
-                            }, commit_reason="Pause autonomous episode",
-                        )
-                        self.control.update_harness_run(
-                            str(run["run_id"]), status="error", desired_status="stopped",
-                            last_error=f"capability_gap:{gap_id}",
-                            metadata_update={
-                                **unavailable_update,
-                                "operator_attention_required": True,
-                                "supervision_incident": incident,
-                            },
-                        )
+                    if self._observe_bridge_unavailable(run, metadata, progress, now):
                         errors += 1
                         operator_required += 1
-                        continue
-                    self.control.update_harness_run(
-                        str(run["run_id"]), heartbeat=True,
-                        metadata_update=unavailable_update,
-                    )
                     continue
                 fingerprint = progress.get("meaningful_fingerprint")
                 previous_fingerprint = metadata.get("semantic_fingerprint")
@@ -937,6 +942,15 @@ print(json.dumps(result,separators=(',',':')))
                 progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
                 metadata = run.get("metadata") \
                     if isinstance(run.get("metadata"), dict) else {}
+                # An exited CLI may report zero after a runtime-context error.
+                # It is not a playable yield until a fresh native observation
+                # succeeds. Reuse the live-outage deadline without spawning
+                # another provider episode or resetting the outage counters.
+                if not progress.get("available"):
+                    if self._observe_bridge_unavailable(run, metadata, progress, time.time()):
+                        errors += 1
+                        operator_required += 1
+                    continue
                 started = metadata.get("attempt_started_progress") \
                     if isinstance(metadata.get("attempt_started_progress"), dict) else {}
                 comparable = bool(started.get("available") and progress.get("available"))
@@ -957,6 +971,8 @@ print(json.dumps(result,separators=(',',':')))
                     "last_clean_yield_progress": progress,
                     "last_clean_yield_advanced": advanced,
                     "last_clean_yield_unix": time.time(),
+                    "semantic_unavailable_since_unix": None,
+                    "semantic_unavailable_samples": 0,
                 }
                 if progress.get("final_score_completed") is True:
                     self._journal_run_event(

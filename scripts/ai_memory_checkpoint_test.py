@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 
 from smacx_control import ControlPlane
 from smacx_journal import CampaignJournal
@@ -17,6 +18,7 @@ from smacx_store import MemoryScope, SmacxStore
 from smacx_worker_manager import (
     HERMES_CHECKPOINT_SCRIPT, HERMES_CLEAR_SCRIPT, HERMES_RESTORE_SCRIPT,
     SAVE_DIGEST_SCRIPT,
+    WorkerManager,
 )
 
 
@@ -64,6 +66,42 @@ def main() -> int:
         })
         if snapshot.get("database_present") is not True or not archive.is_file():
             raise AssertionError("Hermes checkpoint was not captured")
+
+        # Exercise the manager's archive creation, not only the helper script:
+        # production runs the control API and helper as different uids sharing
+        # one group, under a restrictive umask.
+        manager = object.__new__(WorkerManager)
+        manager.control_data_volume = "fixture-control"
+        manager.mcp_image = "fixture"
+        manager.store = SimpleNamespace(path=control_root / "state.sqlite3",
+                                        installation_id=lambda: "fixture")
+        manager.control = SimpleNamespace(
+            list_harness_runs=lambda: [{"match_id": "match-checkpoint-test",
+                                       "harness_profile_id": "harness-test"}],
+            get_harness_runtime_spec=lambda _: {"data_volume": "fixture-harness"},
+            get_harness_profile=lambda _: {"external_profile_id": profile_id},
+        )
+        manager.docker = SimpleNamespace(inspect_volume=lambda _: {},
+                                        require_owned=lambda *args, **kwargs: None)
+
+        def checkpoint_helper(*args, **kwargs):
+            environment = dict(item.split("=", 1) for item in kwargs["environment"])
+            target = control_root / environment["SMACX_CHECKPOINT_RELATIVE"]
+            assert target.stat().st_mode & 0o777 == 0o660, "helper cannot write archive"
+            return run_script(kwargs["script"], {
+                **environment, "SMACX_SOURCE_ROOT": str(harness),
+                "SMACX_CONTROL_ROOT": str(control_root),
+            })
+
+        manager._run_checkpoint_helper = checkpoint_helper
+        previous_umask = os.umask(0o027)
+        try:
+            managed = manager._snapshot_hermes_state("match-checkpoint-test", "checkpoint-umask")
+        finally:
+            os.umask(previous_umask)
+        managed_archive = control_root / managed[0]["archive"]
+        assert managed[0]["archive_bytes"] > 0 and managed[0]["database_present"]
+        assert managed_archive.stat().st_mode & 0o777 == 0o600
         with sqlite3.connect(database) as connection:
             connection.execute(
                 "INSERT INTO messages(session_id,value) VALUES "

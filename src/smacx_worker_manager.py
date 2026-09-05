@@ -18,6 +18,7 @@ from typing import Any, Mapping
 import uuid
 
 from smacx_control import ControlPlane
+from smacx_attention import AttentionService
 from smacx_controller import BridgeUnavailable, bridge_request_to
 from smacx_docker import DockerClient, DockerError, DockerNotFound
 from smacx_game_settings import (
@@ -483,22 +484,28 @@ class WorkerManager:
             os.chmod(target.parent, 0o770)
             target.unlink(missing_ok=True)
             target.touch(mode=0o660)
-            snapshot = self._run_checkpoint_helper(
-                "hermes-checkpoint", f"{harness_profile_id}-{checkpoint_id}",
-                image=self.mcp_image, script=HERMES_CHECKPOINT_SCRIPT,
-                environment=[
-                    f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
-                    f"SMACX_MATCH_ID={match_id}",
-                    f"SMACX_CHECKPOINT_RELATIVE={relative}",
-                ], user="10000:10001",
-                mounts=[
-                    {"Type": "volume", "Source": volume, "Target": "/source",
-                     "ReadOnly": True},
-                    {"Type": "volume", "Source": self.control_data_volume,
-                     "Target": "/control"},
-                ],
-            )
-            os.chmod(target, 0o600)
+            # touch's mode is filtered by the control process umask (0027 in
+            # production). The helper has a different uid and shares only our
+            # group, so explicitly grant its write permission after creation.
+            os.chmod(target, 0o660)
+            try:
+                snapshot = self._run_checkpoint_helper(
+                    "hermes-checkpoint", f"{harness_profile_id}-{checkpoint_id}",
+                    image=self.mcp_image, script=HERMES_CHECKPOINT_SCRIPT,
+                    environment=[
+                        f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
+                        f"SMACX_MATCH_ID={match_id}",
+                        f"SMACX_CHECKPOINT_RELATIVE={relative}",
+                    ], user="10000:10001",
+                    mounts=[
+                        {"Type": "volume", "Source": volume, "Target": "/source",
+                         "ReadOnly": True},
+                        {"Type": "volume", "Source": self.control_data_volume,
+                         "Target": "/control"},
+                    ],
+                )
+            finally:
+                os.chmod(target, 0o600)
             result.append({
                 "harness_profile_id": harness_profile_id,
                 "external_profile_id": external_profile_id,
@@ -714,6 +721,8 @@ class WorkerManager:
         self.docker.require_owned(container, self.installation_id, purpose="game-worker")
         if not container.get("State", {}).get("Running"):
             raise WorkerManagerError("game_worker_not_running")
+        if container.get("State", {}).get("Paused"):
+            raise WorkerManagerError("game_worker_paused")
         networks = container.get("NetworkSettings", {}).get("Networks", {})
         network = networks.get(self.network_name) if self.network_name and isinstance(networks, Mapping) else None
         if not isinstance(network, Mapping):
@@ -3744,7 +3753,44 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         finally:
             self._unpause_harnesses(paused_harnesses)
 
-    def _stop_match_harnesses_for_restore(self, match_id: str) -> list[str]:
+    def quarantine_match(self, match_id: str) -> dict[str, Any]:
+        """Freeze native execution and collectors while retaining incident RAM.
+
+        This is deliberately not a recovery checkpoint or a resume operation.
+        Only an explicit recovery/end operation may release these resources.
+        """
+        with self._lifecycle_lock:
+            paused: list[str] = []
+            for spec in self.control.list_worker_specs():
+                if str(spec["match_id"]) != match_id:
+                    continue
+                for name, purpose in (
+                    (spec["container_name"], "game-worker"),
+                    (spec.get("network", {}).get("mcp_container_name"), "mcp-sidecar"),
+                ):
+                    if not name:
+                        continue
+                    try:
+                        container = self.docker.inspect_container(str(name))
+                        self.docker.require_owned(container, self.installation_id, purpose=purpose)
+                    except DockerNotFound:
+                        continue
+                    state = container.get("State", {})
+                    if state.get("Running"):
+                        if not state.get("Paused"):
+                            self.docker.pause_container(str(name))
+                        paused.append(str(name))
+            stopped = self._stop_match_harnesses_for_restore(match_id, reason="incident")
+            for scope in self.store.scopes_for_match(match_id):
+                AttentionService(self.store, self.journal, scope).cancel_active_sovereign(
+                    "native_worker_incident",
+                )
+            return {"native_and_collectors_frozen": True,
+                    "paused_container_count": len(paused), "stopped_harness_count": len(stopped)}
+
+    def _stop_match_harnesses_for_restore(
+        self, match_id: str, *, reason: str = "checkpoint_restore",
+    ) -> list[str]:
         stopped: list[str] = []
         for run in self.control.list_harness_runs():
             if str(run.get("match_id")) != match_id or run.get("status") not in {
@@ -3765,8 +3811,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             self.control.update_harness_run(
                 str(run["run_id"]), desired_status="stopped", status="stopped",
                 exit_code=0, metadata_update={
-                    "stopped_for_checkpoint_restore": True,
-                    "stopped_for_checkpoint_restore_unix": time.time(),
+                    f"stopped_for_{reason}": True,
+                    f"stopped_for_{reason}_unix": time.time(),
                 },
             )
             stopped.append(str(run["run_id"]))
@@ -4083,6 +4129,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             })
         self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_required": False,
+                                           "incident_quarantine": {},
                                            "last_recovered_unix": time.time(),
                                            "last_recovered_slot": slot},
         )
@@ -4349,6 +4396,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         result = {
             "ok": True, "instance_id": instance_id, "container_present": True,
             "running": bool(state.get("Running")),
+            "paused": bool(state.get("Paused")),
             "health": state.get("Health", {}).get("Status"),
             "exit_code": state.get("ExitCode"),
             "session_id": container.get("Config", {}).get("Labels", {}).get("io.smacx.session"),
@@ -4381,7 +4429,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
     def semantic_progress(self, instance_id: str) -> dict[str, Any]:
         """Return a compact supervisor-only marker for autonomous progress."""
         worker = self.worker_status(instance_id)
-        if not worker.get("running") or worker.get("health") != "healthy":
+        if not worker.get("running") or worker.get("paused") or worker.get("health") != "healthy":
             return {
                 "available": False,
                 "reason": "worker_not_healthy",

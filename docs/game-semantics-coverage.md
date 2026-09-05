@@ -319,3 +319,15 @@ See [checkpoint acceptance and limitations](doctrine/acceptance.md) and [assembl
 | Recovery and failure behavior | Required-input/compatibility rejection → explicit recompile → corrupted/oversized prompt fail-closed checks, including swallowed-startup-error simulation | Contract checks pass; uses existing persistence, no database rebuild or new schema |
 
 See [final acceptance](doctrine/acceptance.md), [behavior review](doctrine/evidence/behavior-review.json), and [reproduction commands](doctrine/validation.md). Doctrine has no new executable action; native legality and effect verification remain the existing managed action path's authority.
+
+### Worker incident reliability checkpoint (2026-09-05)
+
+| Layer | Coverage chain and status | Acceptance |
+| --- | --- | --- |
+| Native + AI memory checkpoint archive | Observed empty 0640 archive → production uid/gid/umask represented → actual manager/helper writes archive → final private permissions → memory/timeline restore contracts. Permission defect repaired; full live campaign recovery is not claimed. | Distinct-uid Docker helper test and AI memory checkpoint regression. |
+| Worker loss containment | Unhealthy bridge → lifecycle error → owned workers/collectors frozen → harnesses stopped and sovereign leases cancelled → durable operator latch. Original incomplete checkpoint remains non-resumable. | Idempotent quarantine and supervision regression; reported live worker/collector confirmed paused. |
+| Provider continuation | Exit code zero + unavailable native progress → no new provider invocation → shared bounded outage incident; fresh valid observation permits continuation. | Clean-exit/live-outage continuation contracts. |
+| Incident authority and presentation | Identical repeated incident state → one journal event; bridge loss distinguished from native process exit and confirmed freeze. | Incident regression and 56 portal tests. |
+| Native initiating stall | Last Explore action observed; bridge request guard latched. Exact native trigger remains **open**. | Fresh and saved-state isolated runs passed turn 5, including repeated saves plus background collector; no claim of native root-cause repair. |
+
+See [incident acceptance and explicit limitations](benchmarks/2026-09-05-worker-incident.md).

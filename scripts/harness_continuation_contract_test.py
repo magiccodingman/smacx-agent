@@ -191,6 +191,32 @@ def main() -> int:
             or manager.capability_report.get("match_id") != "match-continuation":
         raise AssertionError("bridge outage did not queue a diagnostic report")
 
+    # Hermes can exit zero after a runtime-context exception. Preserve the
+    # same outage deadline across exited episodes; never spend another model
+    # invocation while the native state is unavailable.
+    control = FakeControl()
+    worker = FakeWorkerManager()
+    worker.progress = {"available": False, "reason": "game_worker_bridge_unavailable"}
+    manager = ContractHarnessManager(control, worker)
+    pending = manager.reconcile_once()
+    assert manager.start_count == 0 and pending["continued"] == 0
+    since = control.run["metadata"]["semantic_unavailable_since_unix"]
+    manager.reconcile_once()
+    assert control.run["metadata"]["semantic_unavailable_since_unix"] == since
+    assert manager.start_count == 0
+    control.run["metadata"]["semantic_unavailable_since_unix"] = time.time() - 61
+    failed = manager.reconcile_once()
+    assert failed["operator_required"] == 1 and manager.start_count == 0
+    assert control.run["desired_status"] == "stopped"
+
+    control = FakeControl()
+    manager = ContractHarnessManager(control, worker)
+    manager.reconcile_once()
+    worker.progress = marker("recovered", 2)
+    recovered = manager.reconcile_once()
+    assert recovered["continued"] == 1 and manager.start_count == 1
+    assert control.run["metadata"]["semantic_unavailable_samples"] == 0
+
     print(json.dumps({
         "event": "pass",
         "payload": {

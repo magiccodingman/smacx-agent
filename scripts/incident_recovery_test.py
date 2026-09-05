@@ -7,9 +7,11 @@ import json
 from pathlib import Path
 import tempfile
 import threading
+from types import SimpleNamespace
 
 from smacx_control import ControlPlane
 from smacx_journal import CampaignJournal
+from smacx_operations import OperationsManager
 from smacx_store import MemoryScope, SmacxStore
 from smacx_worker_manager import WorkerManager, WorkerManagerError
 
@@ -68,11 +70,45 @@ def main() -> int:
         after_head = journal.verify(scope)["head_hash"]
         if before_list != after_list or before_head != after_head:
             raise AssertionError("listing incidents unexpectedly mutated the campaign journal")
+        control.record_supervision_incident(
+            instance["instance_id"], "worker_lost", "open", {"reason": "fixture"},
+        )
+        if journal.verify(scope)["head_hash"] != before_head:
+            raise AssertionError("unchanged supervision sample appended another journal event")
 
         manager = object.__new__(WorkerManager)
         manager.control = control
+        manager.store = store
+        manager.journal = journal
         manager._lifecycle_lock = threading.RLock()
         manager._incident_recovery_lock = manager._lifecycle_lock
+        control.update_worker_network(instance["instance_id"], {
+            **control.get_worker_spec(instance["instance_id"])["network"],
+            "mcp_container_name": "mcp-recovery",
+        })
+        containers = {
+            name: {"State": {"Running": True, "Paused": False}, "purpose": purpose}
+            for name, purpose in (("worker-recovery", "game-worker"),
+                                  ("mcp-recovery", "mcp-sidecar"))
+        }
+        paused = []
+
+        def pause(name):
+            assert not containers[name]["State"]["Paused"]
+            containers[name]["State"]["Paused"] = True
+            paused.append(name)
+
+        def require_owned(container, installation_id, *, purpose):
+            assert installation_id == store.installation_id()
+            assert container["purpose"] == purpose
+
+        manager.docker = SimpleNamespace(inspect_container=lambda name: containers[name],
+                                        require_owned=require_owned, pause_container=pause)
+        frozen = manager.quarantine_match(scope.match_id)
+        assert frozen["native_and_collectors_frozen"]
+        assert paused == ["worker-recovery", "mcp-recovery"]
+        manager.quarantine_match(scope.match_id)
+        assert len(paused) == 2, "quarantine is not idempotent"
         manager.ensure_prepared_worker_image = lambda game_source_id: (
             "smacx-agent-prepared:current"
         )
@@ -137,6 +173,23 @@ def main() -> int:
         if failed["incident_id"] not in still_active:
             raise AssertionError("failed recovery cleared the capability latch")
 
+        # A bridge outage with a live container must freeze once and remain
+        # latched on the next supervision pass, including sidecar restarts.
+        manager.control_data_volume = None
+        manager.worker_status = lambda _: {"running": True, "health": "unhealthy"}
+        with store.transaction() as connection:
+            connection.execute("UPDATE worker_specs SET desired_status='running',updated_unix=0")
+        operations = OperationsManager(control, data_root=root, worker_manager=manager)
+        stopped = operations.reconcile_once()
+        assert stopped["operator_required"] == 1
+        match = control.get_match(scope.match_id)
+        assert match["status"] == "error"
+        assert match["metadata"]["incident_quarantine"]["native_and_collectors_frozen"]
+        stopped_head = journal.verify(scope)["head_hash"]
+        repeated_stop = operations.reconcile_once()
+        assert repeated_stop["operator_required"] == 0 and repeated_stop["recovered"] == 0
+        assert journal.verify(scope)["head_hash"] == stopped_head
+
         print(json.dumps({
             "event": "pass",
             "payload": {
@@ -147,6 +200,8 @@ def main() -> int:
                 "interrupted_response_retry_is_idempotent": True,
                 "failed_recovery_stays_latched": True,
                 "incident_listing_is_read_only": True,
+                "unchanged_incident_journal_deduplicated": True,
+                "live_worker_and_collector_quarantined_once": True,
             },
         }, separators=(",", ":")))
     return 0
