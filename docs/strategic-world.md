@@ -190,7 +190,7 @@ large, the service creates a new anchor and the delta resets.
 
 `smac_world` is the single provider-facing semantic-zoom facade. Its modes are
 `overview`, `area`, `relation`, `route`, `reachability`, `compare`, `base`,
-`forces`, `logistics`, `intel`, `changes`, `global`, and `render`. Compact,
+`forces`, `logistics`, `intel`, `changes`, `global`, `counterfactual`, and `render`. Compact,
 standard, and deep results have fixed ceilings and explicit truncation. Cached
 results bind scope, timeline, world epoch/revision, ruleset hash, calculator
 version, request fingerprint, and dependency hash. Unrelated changes may retain
@@ -219,6 +219,50 @@ features, relevant owned projects/facilities, and mechanically accessible own or
 Pact bases. It exposes arrival/transport qualifications and refuel or recovery
 locations without selecting a best destination. Unknown foreign access remains
 unknown.
+
+### Query-scoped mechanical alternatives
+
+`counterfactual` accepts a bounded `scenario_json` object through the existing
+world tool. Checkpoint-4 evidence separates conditional calculations, adapter contracts
+and native effect comparisons; see the counterfactual acceptance ledger.
+
+- `{"kind":"site_economy","populations":[1,2,3]}` uses up to four explicitly
+  nominated location `subject_refs`. Native guarded founding receipts supply
+  conditional center and workable-square yields. Distinct worker assignments
+  produce attainable joint nutrient/mineral/energy alternatives, without
+  strategic weights. Owned worker reservations, known radius sharing, fog,
+  extraction limits and material facility/improvement dependencies remain
+  explicit. Technology dependencies do not imply directed research control.
+- `{"kind":"social","decision_id":"…","choice_id":"…"}` previews an
+  issued final Social Engineering choice. `terraform` and `action` use the
+  same reference form for their supported current choices. Previews preserve
+  the executable choice and never execute it. Staged, expired, consumed,
+  cross-seat or revision-mismatched references are rejected.
+- `{"kind":"deployment","capability":"former","choice_refs":[...]}`
+  combines an explicit `target_ref` with up to eight matching owned actors and
+  four nominated production, hurry or upgrade choices. Each choice reference
+  contains `decision_id` and `choice_id`. Capabilities are combat, colony,
+  former, transport, probe and supply. Optional `subject_refs` narrow existing
+  actors. Preparation and travel remain separate, conditional quantities;
+  current transport availability does not schedule future transport movement.
+  Boarded passengers use the explicit carrier schedule, preserving the transport
+  dependency. Stale boarding links, stale carrier capacity and fully reserved
+  refuelling capacity cannot supply an available ETA/refuelling stop.
+
+Native current costs and Social Engineering ratings are distinguished from
+conditional derived consequences. Production timing holds current net mineral
+surplus fixed and includes the next upkeep; spending hurry energy does not
+claim immediate completion. Terraforming previews qualify affected base yields
+and work already performed; climate simulation and secondary forest-harvest
+effects are not modeled. Local police capacity is separate from actual drone
+or riot changes. Explicit plan links come from the journal and do not rewrite
+the sovereign's plans. Stale inputs cannot become an exact prediction.
+
+Counterfactual cache bindings include the current native action revision in
+addition to ordinary perspective, timeline, epoch and dependency bindings.
+Result ceilings and truncation apply to the entire response, including tile
+details, alternative lists and assumptions. No routine anchor enumerates these
+scenarios; the sovereign requests them when needed.
 
 ## Focus, operations, plans, and watches
 

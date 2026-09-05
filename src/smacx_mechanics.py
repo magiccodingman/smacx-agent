@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 from math import ceil
+from math import isfinite
 from typing import Any, Iterable, Mapping
 
 from smacx_topology import MobilityProfile, PerspectiveTopology
@@ -146,11 +147,13 @@ def mobility_profile(objects: Mapping[str, Mapping[str, Any]], profile_ref: str,
         cargo = field_value(item, "cargo", {})
         if item.get("kind") in {"own_unit", "foreign_contact"} \
                 and item.get("status", "active") == "active" \
+                and all(field_is_current(item, key) for key in ("owner_ref", "roles", "cargo")) \
                 and subject_can_use_owner(field_value(item, "owner_ref")) \
                 and isinstance(item_roles, Mapping) \
                 and item_roles.get("carrier") \
                 and isinstance(cargo, Mapping) \
-                and int(cargo.get("loaded", 0)) < int(cargo.get("capacity", 0)):
+                and (int(cargo.get("loaded", 0)) + int(cargo.get("inbound_reserved", 0))
+                     + int(cargo.get("unboarded_co_located", 0))) < int(cargo.get("capacity", 0)):
             mobile_refuel.add(object_location(item))
     own_bases = [item for item in objects.values() if item.get("kind") == "base"
                  and field_value(item, "owner_ref") == field_value(subject, "owner_ref")]
@@ -398,8 +401,10 @@ def base_mechanics(topology: PerspectiveTopology,
         cost = field_value(base, "production_cost", None)
         surplus = field_value(base, "mineral_surplus", 0)
         completion = None
-        if isinstance(cost, (int, float)) and isinstance(progress, (int, float)) \
-                and isinstance(surplus, (int, float)) and surplus > 0:
+        production_current = all(field_is_current(base, name) for name in
+                                 ("production_cost", "minerals_accumulated", "mineral_surplus"))
+        if production_current and all(type(value) in (int, float) and isfinite(value)
+                                      for value in (cost, progress, surplus)) and surplus > 0:
             completion = max(0, ceil((cost - progress) / surplus))
         supported_refs = [str(unit["object_ref"]) for unit in own_units
                           if field_value(unit, "home_base_ref") == ref
@@ -408,7 +413,10 @@ def base_mechanics(topology: PerspectiveTopology,
             "base_ref": ref, "location_ref": location,
             "garrison_refs": garrison, "observed_defender_count": len(garrison),
             "production": {"name": field_value(base, "production_name"),
-                           "turns_remaining": completion},
+                           "turns_remaining": completion,
+                           "estimate_kind": "constant_current_surplus" if completion is not None else "unknown",
+                           "inputs_current": production_current,
+                           "assumptions": ["production and net mineral surplus remain unchanged"]},
             "friendly_response": sorted(reinforcements,
                                          key=lambda row: (row["eta_turns"] is None,
                                                           (row["eta_turns"] if row["eta_turns"] is not None else 10**9)))[:12],

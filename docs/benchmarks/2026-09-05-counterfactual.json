@@ -1,0 +1,165 @@
+{
+  "checkpoint": 4,
+  "status": "accepted_with_explicit_prediction_limits",
+  "parent_commit": "8f732139409aa5807d4bc2066b9fee6fc0d37825",
+  "native_evidence_scope": "R8 managed sequence passed mechanics, intent delivery and stress; recovery continuation used the corrected request-context lifecycle on the same preserved installation. Original full process ended at that test lifecycle error, not a full-process pass. Final integrated run remains checkpoint 5.",
+  "images": {
+    "native_worker": "smacx-agent-worker:pr48-checkpoint4-r8",
+    "native_control": "smacx-agent-control:pr48-checkpoint4-r8",
+    "next_integrated_control": "smacx-agent-control:pr48-checkpoint4-r9"
+  },
+  "post_image_change": "Python boarded deployment now uses explicit transport scheduling and qualified route evidence; deterministic regressions passed; rebuilt R9 image will be used for integrated acceptance.",
+  "controlled_native": {
+    "counterfactual_checkpoint": {
+      "actors_represented_with_mechanical_roles": true,
+      "completed_terraform_matches_standalone_and_owned_base_yields": true,
+      "positive_retool_penalty_matches_native_change": true,
+      "hurry_charge_and_progress_match_without_claiming_instant_completion": true,
+      "rehome_support_and_journal_link_match_observed_effect": true,
+      "disband_support_and_explicit_garrison_departure": true,
+      "site_facility_delta_matches_managed_build_and_actual_native_completion": true,
+      "production_and_travel_timing": {
+        "actual_native_production_upkeeps": 4,
+        "production_timing_matches": true,
+        "one_phase_native_move_matches": true,
+        "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true
+      }
+    },
+    "intent_attention_delivery": {
+      "milestone_and_production_runtime_delivery": true,
+      "acknowledged_batches": 7,
+      "native_project_interruption_delivered": true,
+      "provider_inference": false,
+      "trusted_response_hook_simulated": true
+    },
+    "base_site_stress": {
+      "owned_base_count": 512,
+      "candidate_count": 32,
+      "radius_squares": 21,
+      "wall_ms": 243.838,
+      "probe_gap_ms": 249.663,
+      "receipt_bytes": 170523,
+      "native_elapsed_ms": 0
+    },
+    "counterfactual_site_stress": {
+      "owned_base_input_rows": 511,
+      "nominated_sites": 4,
+      "wall_ms": 247.638,
+      "probe_gap_ms": 233.875,
+      "receipt_bytes": 52322,
+      "native_elapsed_ms": 0
+    },
+    "intent_recovery": {
+      "native_completed_units_preserved": true,
+      "journaled_plan_preserved": true,
+      "journaled_conflict_and_stationary_assignment_preserved": true,
+      "ephemeral_old_timeline_watch_discarded": true,
+      "old_session_counterfactual_choice_rejected": true
+    },
+    "managed_capabilities_verified": [
+      "actors_discovered_through_managed_world",
+      "custom_design_create_and_discover",
+      "single_unit_upgrade_and_observation",
+      "upgrade_preview_cost_matches_execution",
+      "energy_allocation_effect",
+      "social_preview_native_ratings_cost_and_read_safety",
+      "social_models_atomic_effect",
+      "production_loss_preview_and_deployment_composition",
+      "production_set_append_remove_effect",
+      "governor_and_citizen_managed_workflow",
+      "colocated_rendezvous_query_and_transport_boarding_effect",
+      "terraform_order_effect_verified",
+      "site_variants_restore_state_and_ignore_hidden_mirrors_and_foreign_workers",
+      "site_center_preview_matches_managed_founding",
+      "colony_founding_effect_verified",
+      "bulk_upgrade_staged_cost_and_observed_effect",
+      "selected_diplomatic_gift_native_effect",
+      "technology_purchase_terms_and_observed_transfer",
+      "native_quoted_loan_terms_and_effect",
+      "council_proposal_ballot_and_public_result"
+    ]
+  },
+  "counterfactual_fixture": {
+    "ok": true,
+    "exhaustive_assignment_cases": 45,
+    "stale_evidence_and_closed_parameters": "pass",
+    "world_query_revision_binding": "pass",
+    "dense_site_query_metrics": {
+      "compact": {
+        "estimated_tokens": 63,
+        "elapsed_ms": 17.824,
+        "answer_available": false
+      },
+      "standard": {
+        "estimated_tokens": 2034,
+        "elapsed_ms": 18.015,
+        "answer_available": true
+      },
+      "deep": {
+        "estimated_tokens": 2213,
+        "elapsed_ms": 18.405,
+        "answer_available": true
+      }
+    }
+  },
+  "fair_play": {
+    "hidden_honeytoken_differential": true,
+    "spectator_admin_isolation": true,
+    "pact_infiltration_governor_satellite_scenario": true,
+    "hidden_route_region_boundary": true,
+    "provider_anchor_route_render_identical": true,
+    "specialist_inputs_identical": true,
+    "attention_payloads_identical": true,
+    "focus_operation_watch_provider_boundary": true
+  },
+  "provider_schema": {
+    "event": "pass",
+    "payload": {
+      "managed_tool_count": 15,
+      "smac_world_schema_bytes": 1855,
+      "smac_world_conservative_token_proxy": 619,
+      "smac_world_target": 700,
+      "smac_world_hard_gate": 900,
+      "system_prompt_bytes": 5280,
+      "system_prompt_conservative_token_proxy": 1760,
+      "system_prompt_exact_tokens": 1117,
+      "tokenizer": "provider_tokenizer",
+      "system_prompt_sha256": "d185f0f91fb92ff88fec7b8c16cd1ede072c3baddaa6dada7a4335edb88708d7",
+      "total_tool_schema_bytes": 20169
+    }
+  },
+  "regression_scripts": [
+    "scripts/counterfactual_contract_test.py",
+    "scripts/counterfactual_choice_contract_test.py",
+    "scripts/world_model_contract_test.py",
+    "scripts/geographic_semantics_contract_test.py",
+    "scripts/movement_mechanics_contract_test.py",
+    "scripts/provider_schema_budget_test.py",
+    "scripts/opaque_choice_execution_test.py",
+    "scripts/managed_action_path_contract_test.py",
+    "scripts/rollback_world_contract_test.py",
+    "scripts/plan_health_contract_test.py",
+    "scripts/semantic_progress_contract_test.py"
+  ],
+  "dotnet": {
+    "passed": 63,
+    "failed": 0
+  },
+  "native_cross_build": {
+    "steps_completed": 38
+  },
+  "host_specialist_supervisor": "pass",
+  "commands": {
+    "python": "docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python -v \"$PWD:/workspace:ro\" -w /workspace -e PYTHONPATH=/workspace/src smacx-agent-control:dev scripts/<test>.py",
+    "dotnet": "dotnet test Smacx.Agent.slnx --no-restore",
+    "supervisor": "PYTHONPATH=src python3 scripts/specialist_supervisor_contract_test.py",
+    "native": "SMACX_TEST_GAME_SOURCE=<local licensed game> SMACX_TEST_CONTROL_IMAGE=<control image> SMACX_TEST_WORKER_IMAGE=<worker image> SMACX_TEST_MCP_IMAGE=<control image> PYTHONPATH=src <MCP Python> scripts/control_worker_mcp_live_test.py"
+  },
+  "limits": [
+    "Controlled production upkeeps hold observed surplus fixed; not a multi-turn campaign simulation.",
+    "Facility and technology variants are conditional native-helper hypotheses; founding, Recycling Tanks and cooperative Farm have executed comparisons.",
+    "Full psych, riot, commerce, research and climate simulation are not claimed.",
+    "Unknown aircraft fuel and stale inputs cannot produce an exact ETA.",
+    "No new provider inference or prefix-cache result is claimed."
+  ]
+}

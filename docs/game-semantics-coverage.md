@@ -108,3 +108,24 @@ Checkpoint 3 is **accepted** through the following bounded chains. See the
 
 Counterfactual mechanical assistance and the final integrated acceptance remain
 checkpoints 4 and 5; this acceptance does not imply they are complete.
+
+## Counterfactual checkpoint
+
+Checkpoint 4 is accepted within the documented calculation limits. The
+[counterfactual acceptance ledger](benchmarks/2026-09-05-counterfactual.md) and
+[sanitized evidence](benchmarks/2026-09-05-counterfactual.json) distinguish the
+native sequence, corrected recovery continuation and deterministic fixtures.
+The final uninterrupted integrated run belongs to checkpoint 5.
+
+| Capability | Observed / represented → calculated / queryable | Sovereign expression → execution → effect verification | Recovery / bounds / limits |
+| --- | --- | --- | --- |
+| Site economy | Current guarded founding receipts; conditional center/worker yields, material variants and feasible joint outputs through bounded world query | Nominated semantic locations; actual managed founding center and Recycling Tanks completion delta match | Variant state restoration and hidden-mirror/foreign-worker independence; four sites with 511 base input rows: 248 ms wall; other variants remain conditional |
+| Social Engineering | Current final choice → native ratings/cost, conditional support and stock rescaling → world result | Guarded application; actual ratings, charge, support and mineral-stock rescaling match | Revision/session-bound preview; recovery rejects old reference; full psych/commerce/research excluded; LAN regression at checkpoint 5 |
+| Terraforming | Current Former choice → local tile hypothesis/work estimate → world result | Managed cooperative Farm completion matches standalone and owned-base yields | Opaque guards and recovery scope retained; continued workers conditional; climate/secondary harvest excluded |
+| Deployment | Explicit target/capability → current actors or nominated build/hurry/upgrade → qualified preparation/travel | Guarded production and move; four native fixed-surplus upkeeps and one movement phase match | Current boarding link and carrier reservation inputs; boarded/stale/air/transport fixtures; complete aircraft arrival behavior not claimed |
+| Action collateral | Current choice → production/upgrade/support consequences and journal-authoritative links → world result | Positive retool, hurry, upgrade charge and rehome/disband support effects match; explicit plan links verified | First restored query retains assignments/conflicts; old preview rejected; local police capacity does not claim actual drone/riot changes |
+
+The surface remains 15 tools. Whole-result ceilings apply; the world schema is
+619 conservative tokens. The dense site fixture returns 2,034/2,213 estimated
+tokens at standard/deep and an explicit compact size error. These are adapter
+measurements, not native timing claims.

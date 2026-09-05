@@ -50,6 +50,7 @@ from smacx_controller import (
 )
 from smacx_attention import AttentionError, WATCH_KINDS
 from smacx_world import WORLD_MODES, WorldQueryError
+from smacx_counterfactual import action_relationships, parse_scenario
 from smacx_runtime_context import RuntimeContextAssembler
 from smacx_world_types import content_hash
 from smacx_specialists import (
@@ -1852,6 +1853,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
                 DECISION_CACHE[key].get("created_monotonic", 0)))
             DECISION_CACHE.pop(oldest, None)
         DECISION_CACHE[decision_id] = {
+            "managed_scope": _managed_scope_identity(),
             "created_monotonic": now,
             "identity": dict(identity),
             "choice_kind": choice_kind,
@@ -1874,6 +1876,31 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             "consumed": False,
         }
     return decision_id, public
+
+
+def _counterfactual_choice(scenario: Mapping[str, Any], action_revision: str) -> dict:
+    """Resolve a current, scoped opaque choice without consuming or executing it."""
+    with DECISION_LOCK:
+        decision = DECISION_CACHE.get(str(scenario.get("decision_id")))
+        if not decision or decision.get("consumed") or time.monotonic() - float(
+                decision.get("created_monotonic", 0)) > DECISION_TTL_SECONDS:
+            raise WorldQueryError("counterfactual_requires_live_unconsumed_decision")
+        scope = _managed_scope_identity()
+        identity = decision.get("identity", {})
+        if tuple(decision.get("managed_scope", ())) != scope \
+                or identity.get("match_id") != scope[0] or identity.get("session_id") != scope[1] \
+                or not action_revision or identity.get("revision") != action_revision:
+            raise WorldQueryError("counterfactual_choice_scope_or_revision_changed")
+        choice = decision.get("choices", {}).get(str(scenario.get("choice_id")))
+        if not isinstance(choice, dict):
+            raise WorldQueryError("unknown_counterfactual_choice")
+        commands = {"social": {"set_social_engineering"}, "terraform": {"terraform"},
+                    "deployment": {"set_production", "hurry_production", "upgrade_unit"},
+                    "action": {"set_production", "hurry_production", "upgrade_unit", "move_unit",
+                               "rehome_unit", "disband_unit"}}
+        if choice.get("command") not in commands.get(scenario["kind"], set()):
+            raise WorldQueryError("counterfactual_requires_matching_final_choice")
+        return dict(choice)
 
 
 def _attach_chat_attention(frame: dict, identity: dict) -> dict:
@@ -1918,17 +1945,20 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
 
 @mcp.tool(
     description=(
-        "Inspect the current fair-play strategic world through one bounded semantic-zoom "
-        "facade. Modes cover overview, areas, relations, known-world routes/reachability, "
-        "comparisons, bases, forces, logistics, intelligence, changes, global systems, and "
-        "a non-authoritative semantic render. Use only returned opaque world references. "
-        "compact, standard, and deep have fixed ceilings; unknown terrain is never routed through."
+        "Inspect the fair-play world using returned opaque references. Modes cover geography, "
+        "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
+        "Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
+        "site_economy with populations:[1,2,3] and up to four subject locations; "
+        "social|terraform|action with decision_id and choice_id from a current final choice; "
+        "deployment with capability (combat|colony|former|transport|probe|supply), target_ref, "
+        "and optional choice_refs:[{decision_id,choice_id}] for up to four build, hurry or upgrade options. "
+        "Put kind in scenario_json; target_ref is a tool argument. Previews are conditional and never execute."
     )
 )
 def smac_world(
     mode: Literal[
         "overview", "area", "relation", "route", "reachability", "compare",
-        "base", "forces", "logistics", "intel", "changes", "global", "render",
+        "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual",
     ],
     subject_refs: list[str] | None = None,
     origin_ref: str = "",
@@ -1938,6 +1968,7 @@ def smac_world(
     since_cursor: int = 0,
     detail: Literal["compact", "standard", "deep"] = "standard",
     continuation: str = "",
+    scenario_json: str = "",
 ) -> dict:
     """Provider-facing facade; internal calculators remain independently bounded."""
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
@@ -1947,12 +1978,67 @@ def smac_world(
     if not refresh.get("ok"):
         return refresh
     try:
-        _, world, _ = controller_world_service(
+        scenario = parse_scenario(scenario_json) if mode == "counterfactual" else None
+        if scenario and scenario["kind"] == "site_economy" and not 1 <= len(subject_refs or []) <= 4:
+            raise WorldQueryError("site_economy_requires_one_to_four_nominated_sites")
+        _, world, attention = controller_world_service(
             match_id, session_id=session_id, agent_id=agent_id,
             perspective_id=perspective_id,
         )
         runtime_airdrop_receipt = None
         runtime_base_site_receipts = None
+        runtime_counterfactual_receipt = None
+        if scenario and scenario["kind"] in {"social", "terraform"}:
+            _, projection = world._projection()
+            action_revision = str(projection.get("action_revision") or "")
+            choice = _counterfactual_choice(scenario, action_revision)
+            keys = ("politics", "economics", "values", "future") if scenario["kind"] == "social" \
+                else ("unit_id", "former_id")
+            if any(type(choice.get(key)) is not int for key in keys):
+                raise WorldQueryError("counterfactual_requires_complete_final_choice")
+            runtime_counterfactual_receipt = _call(
+                "semantic_counterfactual", kind=scenario["kind"], expected_revision=action_revision,
+                **{key: choice[key] for key in keys})
+            if runtime_counterfactual_receipt.get("ok") is not True:
+                return runtime_counterfactual_receipt
+            runtime_counterfactual_receipt = _semanticize_choice(
+                runtime_counterfactual_receipt, _semantic_selector_context(action_revision))
+        if scenario and scenario["kind"] in {"action", "deployment"}:
+            _, projection = world._projection()
+            action_revision = str(projection.get("action_revision") or "")
+            context = _semantic_selector_context(action_revision)
+            requested = scenario.get("choice_refs", []) if scenario["kind"] == "deployment" else [scenario]
+            receipts = []
+            for reference in requested:
+                choice = _counterfactual_choice({**reference, "kind": scenario["kind"]}, action_revision)
+                command = choice["command"]
+                keys = {"set_production": ("base_id", "item_id"), "hurry_production": ("base_id",),
+                        "upgrade_unit": ("unit_id", "target_prototype_id"),
+                        "rehome_unit": ("unit_id", "base_id"), "disband_unit": ("unit_id",),
+                        "move_unit": ("unit_id",)}.get(command)
+                if keys:
+                    if any(type(choice.get(key)) is not int for key in keys):
+                        raise WorldQueryError("counterfactual_requires_complete_final_choice")
+                    arguments = {key: choice[key] for key in keys}
+                    if command == "move_unit" and type(choice.get("target_tile_id")) is int:
+                        arguments["target_tile_id"] = choice["target_tile_id"]
+                    receipt = _call("semantic_counterfactual", kind=scenario["kind"], command=command,
+                                    expected_revision=action_revision, **arguments)
+                    if receipt.get("ok") is not True:
+                        return receipt
+                    receipt = _semanticize_choice(receipt, context)
+                else:
+                    receipt = {"ok": True, "kind": "action", "action_revision": action_revision,
+                               "proposed_action": command, "epistemic_status": "conditional",
+                               "executes_action": False}
+                if scenario["kind"] == "action":
+                    plans = attention.journal.projection_records(attention.scope, "plans", limit=129,
+                                                                 statuses={"active"})
+                    receipt["relationships"] = action_relationships(
+                        world._objects(projection), _semanticize_choice(choice, context), plans)
+                receipts.append(receipt)
+            runtime_counterfactual_receipt = receipts[0] if scenario["kind"] == "action" else {
+                "ok": True, "kind": "deployment", "action_revision": action_revision, "alternatives": receipts}
         target_tile_id = -1
         if mode in {"relation", "route", "reachability"} and origin_ref and \
                 world._objects(world._projection()[1]).get(origin_ref, {}).get("kind") == "own_unit":
@@ -1992,7 +2078,8 @@ def smac_world(
                             AIRDROP_RECEIPT_CACHE[cache_key] = candidate
                             while len(AIRDROP_RECEIPT_CACHE) > 64:
                                 AIRDROP_RECEIPT_CACHE.pop(next(iter(AIRDROP_RECEIPT_CACHE)))
-        if mode == "compare" and not origin_ref and not target_ref and subject_refs:
+        site_economy = bool(scenario and scenario["kind"] == "site_economy")
+        if (mode == "compare" and not origin_ref and not target_ref or site_economy) and subject_refs:
             identity, projection = world._projection()
             action_revision = str(projection.get("action_revision") or "")
             context = _semantic_selector_context(action_revision)
@@ -2007,6 +2094,7 @@ def smac_world(
                 cache_key = (
                     match_id, session_id, agent_id, perspective_id,
                     identity.timeline_id, identity.world_epoch, action_revision,
+                    "economy" if site_economy else "legality",
                     *(str(value) for value in sorted(set(target_ids))),
                 )
                 with BASE_SITE_RECEIPT_LOCK:
@@ -2015,6 +2103,7 @@ def smac_world(
                     received = _call(
                         "semantic_base_site_receipts",
                         target_tile_ids=sorted(set(target_ids)),
+                        include_economy=site_economy,
                     )
                     if received.get("ok") is True \
                             and str(received.get("action_revision") or "") == action_revision:
@@ -2028,7 +2117,7 @@ def smac_world(
                 if isinstance(candidate, Mapping) and candidate.get("ok") is True \
                         and str(candidate.get("action_revision") or "") == action_revision:
                     runtime_base_site_receipts = {
-                        ref: {**item, "location_ref": ref}
+                        ref: {**item, "location_ref": ref, "action_revision": action_revision}
                         for item in candidate.get("items", ()) if isinstance(item, Mapping)
                         for ref in [context["reverse_locations"].get(item.get("tile_id"))]
                         if isinstance(item, Mapping) and ref
@@ -2041,6 +2130,8 @@ def smac_world(
             continuation=continuation, context_length=context_length,
             runtime_airdrop_receipt=runtime_airdrop_receipt,
             runtime_base_site_receipts=runtime_base_site_receipts,
+            scenario_json=scenario_json,
+            runtime_counterfactual_receipt=runtime_counterfactual_receipt,
         )
         if result.get("ok") is True:
             identity, projection = world._projection()
@@ -2144,6 +2235,13 @@ def smac_cognition(
     foreground: bool = True,
 ) -> dict:
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
+    if action == "plan_health":
+        # Recovery can publish the journal before the lazy world collector
+        # finishes restoring owned-unit observations. Do not evaluate current
+        # assignments against that earlier materialized projection.
+        refresh = _refresh_managed_world()
+        if not refresh.get("ok"):
+            return refresh
     try:
         scope, world, attention = controller_world_service(
             match_id, session_id=session_id, agent_id=agent_id,

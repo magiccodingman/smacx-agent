@@ -1165,6 +1165,12 @@ def main() -> int:
             lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
             lambda operation, **arguments: bridge_operation(recovered_sidecar, operation, **arguments),
             managed_fixture)
+        from counterfactual_checkpoint_live_test import exercise_counterfactual_checkpoint
+        counterfactual_evidence = exercise_counterfactual_checkpoint(
+            lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
+            lambda operation, **arguments: bridge_operation(recovered_sidecar, operation, **arguments),
+            managed_evidence["evidence"]["site_tanks_center_delta"])
+        print(json.dumps({"event": "counterfactual_checkpoint", "payload": counterfactual_evidence}), flush=True)
         from intent_checkpoint_live_test import exercise_intent_checkpoint
         intent_evidence = exercise_intent_checkpoint(
             lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
@@ -1195,12 +1201,41 @@ def main() -> int:
             "owned_base_count": 512, "candidate_count": 32, "radius_squares": 21,
             "wall_ms": round(site_wall_ms, 3), "probe_gap_ms": round(site_probe_gap_ms, 3),
             "receipt_bytes": site_bytes, "native_elapsed_ms": site_stress.get("native_elapsed_ms")}}), flush=True)
+        counter_stress, counter_wall_ms, counter_gap_ms = measured_bridge_operation(
+            recovered_sidecar, "test_base_site_receipts_stress", include_economy=True)
+        counter_bytes = len(json.dumps(counter_stress, separators=(",", ":")).encode())
+        if counter_stress.get("ok") is not True or len(counter_stress.get("items", [])) != 4 \
+                or not all(row.get("site_economy", {}).get("center") for row in counter_stress.get("items", [])):
+            raise AssertionError({"counterfactual_site_stress": counter_stress})
+        if max(counter_wall_ms, counter_gap_ms) >= 500 or counter_bytes > 256_000:
+            raise AssertionError({"counterfactual_responsiveness": {"wall_ms": counter_wall_ms,
+                                  "probe_gap_ms": counter_gap_ms, "bytes": counter_bytes}})
+        print(json.dumps({"event": "counterfactual_site_stress", "payload": {
+            "owned_base_input_rows": 511, "nominated_sites": 4,
+            "wall_ms": round(counter_wall_ms, 3), "probe_gap_ms": round(counter_gap_ms, 3),
+            "receipt_bytes": counter_bytes, "native_elapsed_ms": counter_stress.get("native_elapsed_ms")}}), flush=True)
         intent_before_restore = bridge_operation(recovered_sidecar, "perspective_world_page",
                                                  domain="units", cursor=0, limit=256)
         if intent_before_restore.get("next_cursor") is not None:
             raise AssertionError("intent recovery fixture exceeded bounded owned-unit page")
         intent_unit_refs = sorted(row["own_unit_ref"] for row in intent_before_restore.get("items", [])
                                   if row.get("owned") and row.get("own_unit_ref"))
+        preview_episode = "episode-counterfactual-recovery-" + suffix
+        preview_lease = runtime_context(recovered_sidecar, preview_episode)
+        if not preview_lease.get("ok"):
+            raise AssertionError({"preview_recovery_lease": preview_lease})
+        preview_frame = asyncio.run(mcp_tool(recovered_endpoint, "smac_choices", {
+            "kind": "production", "base_ref": managed_fixture["base_ref"]}))
+        if not preview_frame.get("ok"):
+            raise AssertionError({"preview_recovery_choices": preview_frame})
+        preview_choice = next(row for row in preview_frame["choices"] if row.get("name") == "Scout Patrol")
+        old_preview_arguments = {"mode": "counterfactual", "detail": "deep",
+            "scenario_json": json.dumps({"kind": "action", "decision_id": preview_frame["decision_id"],
+                                         "choice_id": preview_choice["choice_id"]})}
+        valid_preview = asyncio.run(mcp_tool(recovered_endpoint, "smac_world", old_preview_arguments))
+        if not valid_preview.get("ok"):
+            raise AssertionError({"preview_before_recovery": valid_preview})
+        runtime_context(recovered_sidecar, preview_episode, end=True)
         api(opener, base_url, "POST", f"/api/v1/matches/{created['match']['match_id']}/checkpoint",
             {"slot": "intent_acceptance"}, csrf, 60)
         api(opener, base_url, "POST", f"/api/v1/matches/{created['match']['match_id']}/park", {}, csrf, 180)
@@ -1227,10 +1262,14 @@ def main() -> int:
             "action": "watch_inspect", "subject_refs": [intent_evidence["milestone_watch_id"]]}))
         if discarded_watch.get("ok"):
             raise AssertionError("old-timeline milestone was resurrected after recovery")
+        expired_preview = asyncio.run(mcp_tool(current_endpoint, "smac_world", old_preview_arguments))
+        if expired_preview.get("ok"):
+            raise AssertionError("old-session counterfactual choice was accepted after recovery")
         print(json.dumps({"event": "intent_recovery", "payload": {
             "native_completed_units_preserved": True, "journaled_plan_preserved": True,
             "journaled_conflict_and_stationary_assignment_preserved": True,
-            "ephemeral_old_timeline_watch_discarded": True}}), flush=True)
+            "ephemeral_old_timeline_watch_discarded": True,
+            "old_session_counterfactual_choice_rejected": True}}), flush=True)
         api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park",
             {}, csrf, 120,

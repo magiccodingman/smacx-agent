@@ -20,7 +20,7 @@ from smacx_world_types import (
 
 
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
-CALCULATOR_VERSION = "smacx.calculators.v3-sovereign"
+CALCULATOR_VERSION = "smacx.calculators.v4-counterfactual"
 
 ENTITLEMENT_EVIDENCE_SOURCES = {
     "unity_survey": EvidenceSource.SURVEY,

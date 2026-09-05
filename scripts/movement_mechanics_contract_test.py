@@ -212,6 +212,20 @@ def main() -> int:
     assert treaty_air.refuel_location_refs == frozenset({"a2"})
     assert hostile_air.refuel_location_refs == frozenset({"a3", "a5"})
     assert pact_air.special_connections == ()
+    carrier_cargo = access_objects["our-carrier"]["fields"]["cargo"]
+    carrier_cargo["epistemic_status"] = "stale"
+    assert "a4" not in mobility_profile(
+        access_objects, "stale-carrier", subject_ref="aircraft-1",
+        topology=air_topology).refuel_location_refs
+    carrier_cargo["epistemic_status"] = "current"
+    for reservations in ({"inbound_reserved": 4}, {"unboarded_co_located": 4},
+                         {"loaded": 2, "inbound_reserved": 1, "unboarded_co_located": 1}):
+        carrier_cargo["value"] = {"capacity": 4, "loaded": 0, **reservations}
+        assert "a4" not in mobility_profile(
+            access_objects, "reserved-carrier", subject_ref="aircraft-1",
+            topology=air_topology).refuel_location_refs
+    carrier_cargo["value"] = {"capacity": 4, "loaded": 0}
+    results["carrier_freshness_and_reserved_capacity"] = True
     foreign_route = air_topology.route("a3", "a6", hostile_air)
     assert foreign_route.reachable and foreign_route.eta_kind == "conditional_minimum"
     assert foreign_route.latest_turns is None

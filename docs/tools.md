@@ -16,10 +16,19 @@ operator/control operations and are not advertised to the model.
 - `smac_execute_choice(decision_id, choice_id)` — consume exactly one opaque choice. The server restores its private native command, parameters, confirmations, match/session identity, and revision guard; permits one semantic stale-state rebase; journals the outcome; and rejects replay. A completed native turn returns `turn_handoff_required`; `smac_decision` can return the same no-choice boundary if native automation completed the turn between observations.
 - `smac_world(...)` — inspect the current perspective through one bounded
   semantic-zoom facade: overview, area, relation, route, reachability, compare,
-  base, forces, logistics, intel, changes, global, or non-authoritative semantic
+  base, forces, logistics, intel, changes, global, counterfactual, or non-authoritative semantic
   render. Results carry world/timeline identity, epistemics, dependencies,
   truncation, and retention metadata. Compact, standard, and deep have fixed
   ceilings. Reuse a valid result rather than polling it repeatedly.
+  `counterfactual` uses bounded `scenario_json`: nominate up to four sites and
+  small populations for `site_economy`; reference an issued final choice for
+  `social`, `terraform` or `action`; or request a `deployment` capability at an
+  explicit target with up to four build/hurry/upgrade choice references.
+  Previews retain qualifications and leave choices unconsumed. Explicitly
+  nominated choices take precedence over routine candidate detail during
+  truncation. A scenario that cannot fit compact detail returns a bounded
+  error; request standard or deep detail. See the
+  [scenario forms and limits](strategic-world.md#query-scoped-mechanical-alternatives).
 - `smac_attention_ack(...)` — batch-acknowledge genuinely processed items from
   the current at-least-once attention lease. An aborted provider request leaves
   the same IDs eligible for redelivery; acknowledgement never resolves a modal

@@ -397,3 +397,28 @@ The test then verifies runtime attention delivery, checkpoint recovery and
 discarding old-timeline watches. Its response hook simulates the trusted
 provider-response boundary; it does not claim model inference. Consult the
 checkpoint acceptance ledger for which runs have passed.
+
+Checkpoint 4 adds `counterfactual_contract_test.py` and
+`counterfactual_choice_contract_test.py`. Run both with the MCP container Python:
+
+```sh
+docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  smacx-agent-control:dev scripts/counterfactual_contract_test.py
+docker run --rm --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  smacx-agent-control:dev scripts/counterfactual_choice_contract_test.py
+```
+
+These prove attainable distinct-worker outputs against exhaustive enumeration,
+stale-input qualification, routing composition, total response budgets and
+opaque preview scope/revision/consumption rules. They do not prove agreement
+with native economic outcomes. The isolated native MCP campaign additionally
+calls `counterfactual_checkpoint_live_test.py` to compare predictions with
+managed actions and observed effects. Controlled production timing invokes
+real native production upkeep without adding minerals; it is not a full
+campaign-turn simulation. Native read-safety probes compare state before and
+after hypotheses and test hidden-mirror/foreign-worker independence. All such
+native inputs and probes are restricted to isolated dual-gated acceptance
+installations. The [checkpoint-4 ledger](benchmarks/2026-09-05-counterfactual.md)
+distinguishes passing comparisons from outstanding acceptance.

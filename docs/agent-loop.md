@@ -12,6 +12,15 @@ decision-relevant area, route, relationship, base, force, logistical problem,
 change, or global system, then reuse that evidence while its dependency and
 world metadata remain valid.
 
+For a specific mechanical question, `smac_world(mode="counterfactual")` can
+preview nominated sites or current production, upgrade, Social Engineering and
+Former choices, or compose preparation and travel for a requested capability.
+These calculations stay outside routine context. They do not consume the
+choice, create an operation, select strategy or revise a plan. The sovereign
+reviews the assumptions and unknowns, then executes through the same guarded
+opaque choice and verifies the effect. Stale or unavailable evidence requires
+a fresh observation; it cannot be repaired by treating a projection as fact.
+
 Before this loop is available in a new match, the player calls
 `smac_match_briefing(action="read")`. The versioned configuration contract
 combines the exact faction, difficulty, generated map, victory toggles,

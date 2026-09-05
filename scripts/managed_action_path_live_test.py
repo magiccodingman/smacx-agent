@@ -24,6 +24,13 @@ def exercise_managed_actions(call, native, fixture):
         assert result.get("ok"), result
         return result
 
+    def preview(frame, selected, kind="action"):
+        result = call("smac_world", {"mode": "counterfactual", "detail": "deep",
+            "scenario_json": json.dumps({"kind": kind, "decision_id": frame["decision_id"],
+                                         "choice_id": selected["choice_id"]})})
+        assert result.get("ok") and result.get("items"), result
+        return result["items"][0]
+
     def select(frame, predicate):
         row = next((row for row in frame.get("choices", ()) if predicate(row)), None)
         assert row is not None, {"missing_managed_choice": frame}
@@ -80,10 +87,14 @@ def exercise_managed_actions(call, native, fixture):
     record("custom_design_create_and_discover")
 
     upgrade = choices("unit_actions", own_unit_ref=fixture["scout_ref"])
-    execute(upgrade, select(upgrade, lambda row: row.get("target_name") == design_name))
+    upgrade_choice = select(upgrade, lambda row: row.get("target_name") == design_name)
+    upgrade_preview = preview(upgrade, upgrade_choice)
+    upgraded = execute(upgrade, upgrade_choice)
+    assert upgraded["energy_spent"] == upgrade_preview["energy_cost"]
     unit = fields("forces", fixture["scout_ref"])
     assert design_name in str(unit), unit
     record("single_unit_upgrade_and_observation")
+    record("upgrade_preview_cost_matches_execution")
 
     allocation = prepare("energy_allocation", lambda step: next(
         option for option in step["options"]
@@ -95,8 +106,26 @@ def exercise_managed_actions(call, native, fixture):
 
     social = prepare("social_engineering", lambda step: step["options"][min(1, len(step["options"]) - 1)])
     social_choice = social["choices"][0]
+    social_preview = call("smac_world", {"mode": "counterfactual", "detail": "deep",
+        "scenario_json": json.dumps({"kind": "social", "decision_id": social["decision_id"],
+                                     "choice_id": social_choice["choice_id"]})})
+    assert social_preview.get("ok"), social_preview
+    predicted_social = social_preview["items"][0]["confirmed_mechanics"]
+    predicted_support = social_preview["items"][0]["derived"]["support_by_base"]
+    prior_social = native("semantic_choices", kind="social_engineering")
+    safe = native("test_counterfactual_read_safety", kind="social", expected_revision=prior_social["revision"],
+                  **{key: social_choice[key] for key in ("politics", "economics", "values", "future")})
+    assert safe.get("ok") and safe["receipt"].get("ok"), safe
     execute(social, social_choice)
-    observed_social = native("semantic_choices", kind="social_engineering")["selected"]
+    after_social = native("semantic_choices", kind="social_engineering")
+    observed_social = after_social["selected"]
+    assert predicted_social["resulting_ratings"] == after_social["effective_ratings"], social_preview
+    assert prior_social["energy_credits"] - after_social["energy_credits"] == predicted_social["switch_energy_cost"]
+    for row in predicted_support:
+        observed_base = fields("base", row["base_ref"])
+        assert observed_base["minerals"]["unit_support_cost"] == row["resulting_support_minerals"], (row, observed_base["minerals"])
+        assert observed_base["minerals_accumulated"] == row["resulting_minerals_accumulated"], (row, observed_base["minerals"])
+    record("social_preview_native_ratings_cost_and_read_safety")
     assert fields("global", "global-social-engineering")["state"]["selected"] == observed_social
     for key in ("politics", "economics", "values", "future"):
         observed = observed_social[key]
@@ -105,9 +134,19 @@ def exercise_managed_actions(call, native, fixture):
 
     base_ref = fixture["base_ref"]
     production = choices("production", base_ref=base_ref)
-    execute(production, select(production, lambda row: row.get("name") == design_name))
+    production_choice = select(production, lambda row: row.get("name") == design_name)
+    production_preview = preview(production, production_choice)
+    deployment = call("smac_world", {"mode": "counterfactual", "target_ref": base_ref, "detail": "deep",
+        "scenario_json": json.dumps({"kind": "deployment", "capability": "combat", "choice_refs": [
+            {"decision_id": production["decision_id"], "choice_id": production_choice["choice_id"]}]})})
+    assert deployment.get("ok"), deployment
+    build = next(row for row in deployment["items"][0]["alternatives"] if row.get("alternative") == "set_production")
+    assert build["travel_turns"] == 0 and build["preparation_turns"] == production_preview["estimated_production_turns"]
+    execute(production, production_choice)
     base = fields("base", base_ref)
     assert base["production_queue"][0]["name"] == design_name, base
+    assert base["minerals_accumulated"] == production_preview["resulting_progress"]
+    record("production_loss_preview_and_deployment_composition")
     management = choices("base_management", base_ref=base_ref)
     execute(management, select(management, lambda row: row.get("label") == "Queue production" and row.get("name") == design_name))
     base = fields("base", base_ref)
@@ -147,9 +186,16 @@ def exercise_managed_actions(call, native, fixture):
     execute(boarding, select(boarding, lambda row: row.get("label") == "Board transport"
                             and row.get("transport_unit_ref") == fixture["transport_ref"]))
     assert fields("forces", fixture["transport_ref"])["cargo"]["loaded"] == loaded_before + 1
+    passenger = fields("forces", fixture["passenger_ref"])
+    assert passenger["roles"]["boarded"] and passenger["transport_unit_ref"] == fixture["transport_ref"], passenger
     record("colocated_rendezvous_query_and_transport_boarding_effect")
 
     former = choices("unit_actions", own_unit_ref=fixture["former_ref"])
+    former_choice = select(former, lambda row: row.get("label") == "Terraform")
+    terra_preview = call("smac_world", {"mode": "counterfactual", "detail": "deep",
+        "scenario_json": json.dumps({"kind": "terraform", "decision_id": former["decision_id"],
+                                     "choice_id": former_choice["choice_id"]})})
+    assert terra_preview.get("ok") and terra_preview["items"][0]["current_legality"], terra_preview
     terraformed = execute(former, select(former, lambda row: row.get("label") == "Terraform"))
     former_state = fields("forces", fixture["former_ref"])
     assert terraformed.get("accepted") and former_state.get("order_name") == "terraform", former_state
@@ -158,10 +204,28 @@ def exercise_managed_actions(call, native, fixture):
     colony = choices("unit_actions", own_unit_ref=fixture["colony_ref"])
     before_units = call("smac_world", {"mode": "forces", "subject_refs": [fixture["colony_ref"]]})
     at = next(row["location_ref"] for row in before_units["items"] if row["object_ref"] == fixture["colony_ref"])
+    site_preview = call("smac_world", {"mode": "counterfactual", "subject_refs": [at], "detail": "deep",
+        "scenario_json": json.dumps({"kind": "site_economy", "populations": [1]})})
+    assert site_preview.get("ok"), site_preview
+    predicted_center = site_preview["items"][0]["counterfactual"]["center"]["yields"]
+    tanks = next(row for row in site_preview["items"][0]["counterfactual"]["material_facility_unlocks"]
+                 if row["facility"] == "Recycling Tanks")
+    tank_delta = next(row for row in tanks["sample_deltas"] if row["location_ref"] == at)
+    evidence["site_tanks_center_delta"] = {key: tank_delta["after"][key] - tank_delta["before"][key]
+                                          for key in ("nutrients", "minerals", "energy")}
+    safe_site = native("test_counterfactual_read_safety", kind="site_economy", include_economy=True,
+                      target_tile_ids=[int(at.removeprefix("location-"))], check_hidden_independence=True)
+    assert safe_site.get("ok") and safe_site["receipt"].get("ok"), safe_site
+    assert safe_site["changed_hidden_tile_count"] > 0, safe_site
+    record("site_variants_restore_state_and_ignore_hidden_mirrors_and_foreign_workers")
     execute(colony, select(colony, lambda row: row.get("label") == "Found base"))
     area = call("smac_world", {"mode": "area", "origin_ref": at, "radius": 0, "detail": "deep"})
     assert area.get("ok") and any(row.get("kind") == "base" and row.get("location_ref") == at
                                   for row in area.get("items", ())), area
+    founded = next(row for row in area["items"] if row.get("kind") == "base" and row.get("location_ref") == at)
+    observed_radius = fields("base", founded["object_ref"])["base_radius"]
+    assert next(row["yields"] for row in observed_radius if row["location_ref"] == at) == predicted_center
+    record("site_center_preview_matches_managed_founding")
     record("colony_founding_effect_verified")
     bulk = prepare("unit_design", lambda step: next(
         row for row in step["options"] if row["label"] == (

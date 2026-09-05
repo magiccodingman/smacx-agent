@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping
 
+from smacx_counterfactual import deployment_alternatives, feasible_outputs, parse_scenario
+
 from smacx_mechanics import (
     base_mechanics, connector_analysis, logistics as logistics_projection,
     location_affordances, lost_contact_envelopes, mobility_profile, rendezvous_matrix,
@@ -24,7 +26,7 @@ from smacx_world_types import (
 
 WORLD_MODES = frozenset({
     "overview", "area", "relation", "route", "reachability", "compare",
-    "base", "forces", "logistics", "intel", "changes", "global", "render",
+    "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual",
 })
 DETAIL_LIMITS = {"compact": 512, "standard": 2048}
 
@@ -435,6 +437,46 @@ class WorldService:
         while len(body) > 1 and estimate_tokens(result) > budget:
             body.pop()
             result["truncated"] = True
+        if result.get("mode") == "counterfactual" and body:
+            row = body[0]
+            economy = row.get("counterfactual", {})
+            # Keep achievable outputs and their qualifications ahead of the
+            # underlying tile list; deep detail can recover the full receipt.
+            radius = row.get("known_base_radius", {})
+            for values in (radius.get("locations"), economy.get("squares")):
+                if isinstance(values, list) and values and estimate_tokens(result) > budget:
+                    values.clear()
+                    economy["tile_details_truncated"] = True
+                    result["truncated"] = True
+            for population in economy.get("population_alternatives", ()):
+                alternatives = population.get("alternatives", [])
+                while len(alternatives) > 1 and estimate_tokens(result) > budget:
+                    alternatives.pop()
+                    population["alternatives_truncated"] = True
+                    result["truncated"] = True
+            for field in ("material_facility_unlocks", "material_improvement_changes"):
+                for unlock in economy.get(field, ()):
+                    samples = unlock.get("sample_deltas", [])
+                    while len(samples) > 1 and estimate_tokens(result) > budget:
+                        samples.pop()
+                        unlock["samples_truncated"] = True
+                        result["truncated"] = True
+            alternatives = row.get("alternatives", [])
+            if alternatives:
+                row["alternative_count"] = len(alternatives)
+                while len(alternatives) > 1 and estimate_tokens(result) > budget:
+                    # Keep explicitly nominated choices ahead of the routine
+                    # existing-unit enumeration when one page cannot fit all.
+                    index = next((index for index in range(len(alternatives) - 1, -1, -1)
+                                  if not alternatives[index].get("choice_ref")), len(alternatives) - 1)
+                    alternatives.pop(index)
+                    row["alternatives_truncated"] = True
+                    result["truncated"] = True
+            support = row.get("derived", {}).get("support_by_base", [])
+            while support and estimate_tokens(result) > budget:
+                support.pop()
+                row["derived"]["base_details_truncated"] = True
+                result["truncated"] = True
         if result.get("mode") == "base" and body and isinstance(result.get("objects"), list):
             retained = {item.get("base_ref") for item in body if isinstance(item, Mapping)}
             result["objects"] = [item for item in result["objects"] if item.get("object_ref") in retained]
@@ -548,6 +590,8 @@ class WorldService:
         continuation: str = "", context_length: int = 65536,
         runtime_airdrop_receipt: Mapping[str, Any] | None = None,
         runtime_base_site_receipts: Mapping[str, Mapping[str, Any]] | None = None,
+        scenario_json: str = "",
+        runtime_counterfactual_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if mode not in WORLD_MODES:
             raise WorldQueryError("invalid_world_mode")
@@ -556,6 +600,11 @@ class WorldService:
         budget = self._budget(detail, context_length)
         radius = min(max(int(radius), 0), 32)
         subjects = tuple(dict.fromkeys(str(item) for item in subject_refs))[:32]
+        scenario = parse_scenario(scenario_json) if mode == "counterfactual" else None
+        if scenario_json and scenario is None:
+            raise WorldQueryError("scenario_requires_counterfactual_mode")
+        if scenario and scenario["kind"] == "site_economy" and not 1 <= len(subjects) <= 4:
+            raise WorldQueryError("site_economy_requires_one_to_four_nominated_sites")
         identity, projection = self._projection()
         objects = self._objects(projection)
         if runtime_airdrop_receipt and origin_ref in objects:
@@ -592,6 +641,11 @@ class WorldService:
             "radius": radius, "since_cursor": int(since_cursor), "detail": detail,
             "continuation": continuation,
         }
+        if scenario:
+            request["scenario"] = scenario
+            request["action_revision"] = projection.get("action_revision")
+        if runtime_counterfactual_receipt:
+            request["native_counterfactual_receipt_hash"] = content_hash(provider_safe(runtime_counterfactual_receipt))
         if runtime_base_site_receipts:
             # Guarded native founding legality may change without changing a
             # provider-visible square. It is therefore part of the private
@@ -641,6 +695,9 @@ class WorldService:
                 "world_revision": projection["world_revision"],
                 "condition": "listed dependency_refs retain dependency_hash",
             }
+            if scenario:
+                cached["valid_while"]["action_revision"] = projection.get("action_revision")
+                cached["valid_while"]["condition"] += "; native action_revision remains unchanged"
             cached = self._trim(provider_safe(cached), budget)
             self.store.telemetry("world_query", "cache_hit", 1, scope=self.scope,
                                  timeline_id=identity.timeline_id, dimensions={"mode": mode})
@@ -648,7 +705,7 @@ class WorldService:
         known_refs = set(objects) | ({"world-geography", "world-map"} if mode == "area" else set())
         geography: dict[str, Any] | None = None
         derived_registry: dict[str, dict[str, Any]] = {}
-        if mode == "relation" or mode == "compare" and not origin_ref and not target_ref or (
+        if mode == "counterfactual" or mode == "relation" or mode == "compare" and not origin_ref and not target_ref or (
             mode == "area" and (origin_ref or (subjects[0] if subjects else "")) not in objects
         ):
             geography = self._derived_geography(projection)
@@ -665,7 +722,7 @@ class WorldService:
                     if isinstance(row, Mapping) and row.get(key):
                         derived_registry[str(row[key])] = dict(row)
         supplied_refs = [*subjects]
-        if mode in {"area", "relation", "route", "reachability", "compare"}:
+        if mode in {"area", "relation", "route", "reachability", "compare", "counterfactual"}:
             supplied_refs.extend(value for value in (origin_ref, target_ref) if value)
         invalid_refs = sorted({ref for ref in supplied_refs
                                if ref not in known_refs and ref not in derived_registry})
@@ -695,7 +752,55 @@ class WorldService:
             "truncated": False,
         }
         topology: PerspectiveTopology | None = None
-        if mode == "overview":
+        if mode == "counterfactual":
+            result["scenario"] = scenario
+            if scenario["kind"] in {"social", "terraform", "action", "deployment"}:
+                receipt = runtime_counterfactual_receipt or {}
+                if receipt.get("ok") is not True or not receipt.get("action_revision") \
+                        or receipt.get("action_revision") != projection.get("action_revision") \
+                        or receipt.get("kind") != scenario["kind"]:
+                    raise WorldQueryError("current_counterfactual_receipt_unavailable")
+                result["items"] = deployment_alternatives(self._topology(projection), objects,
+                    scenario, target_ref, subjects, receipt.get("alternatives", [])) \
+                    if scenario["kind"] == "deployment" else [{key: value for key, value in receipt.items()
+                                    if key not in {"ok", "action_revision"}}]
+            elif scenario["kind"] == "site_economy":
+                topology = self._topology(projection)
+                if any(objects.get(ref, {}).get("kind") != "location" for ref in subjects):
+                    raise WorldQueryError("site_economy_requires_location_references")
+                receipts = {ref: receipt for ref, receipt in (runtime_base_site_receipts or {}).items()
+                            if receipt.get("action_revision") == projection.get("action_revision")
+                            and receipt.get("action_revision")}
+                result["scenario"] = scenario
+                regions = geography.get("_region_projection", ()) if geography else ()
+                masses = {ref: region.region_ref for region in regions
+                          if region.mobility_profile_ref in {PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE}
+                          for ref in region.location_refs}
+                mobility: dict[str, list[str]] = {}
+                for region in regions:
+                    if region.mobility_profile_ref in {"mobility-land-default", "mobility-sea-default"}:
+                        for ref in region.location_refs:
+                            mobility.setdefault(ref, []).append(region.region_ref)
+                result["items"] = location_affordances(topology, objects, subjects, native_receipts=receipts,
+                    physical_mass_by_location=masses, mobility_region_by_location=mobility)
+                for row in result["items"]:
+                    ref = row.get("location_ref")
+                    receipt = receipts.get(ref, {})
+                    economy = receipt.get("site_economy") or {}
+                    row["counterfactual"] = dict(economy) if economy else {"coverage": "current_native_receipt_unavailable"}
+                    center = economy.get("center") or {}
+                    if center:
+                        row["counterfactual"]["population_alternatives"] = [
+                            feasible_outputs(economy.get("squares", []),
+                                             {**center.get("yields", {}),
+                                              "location_ref": center.get("location_ref"),
+                                              "epistemic_status": center.get("epistemic_status")}, population)
+                            for population in scenario["populations"]]
+            else:
+                raise WorldQueryError("counterfactual_kind_not_yet_supported")
+            result["valid_while"]["action_revision"] = projection.get("action_revision")
+            result["valid_while"]["condition"] += "; native action_revision remains unchanged"
+        elif mode == "overview":
             result["anchor"] = self.anchor(context_length=context_length)
         elif mode in {"base", "forces", "intel", "global", "logistics"}:
             kinds = {
