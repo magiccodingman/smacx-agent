@@ -636,6 +636,7 @@ class ObservationCollector:
     def _coalesce_native_events(
         self, *, current_objects: list[dict[str, Any]],
         prior_objects: list[Mapping[str, Any]], turn: int | None,
+        world_epoch: str | None = None,
     ) -> list[dict[str, Any]]:
         """Translate private POD transitions into authoritative semantic events."""
         prior_handle_to_ref: dict[str, str] = {}
@@ -651,7 +652,7 @@ class ObservationCollector:
                 metadata = item.get("metadata") \
                     if isinstance(item.get("metadata"), Mapping) else {}
                 key = metadata.get("native_observation_key")
-                if key:
+                if key and (destination is prior_handle_to_ref or item.get("status", "active") == "active"):
                     destination[str(key)] = str(item.get("object_ref"))
                     ref_kinds[str(item.get("object_ref"))] = str(
                         item.get("kind") or ""
@@ -667,13 +668,24 @@ class ObservationCollector:
         base_capture_history: dict[str, dict[str, Any]] = {}
         broken_handles: set[str] = set()
         episode_refs = dict(prior_handle_to_ref)
-        destroyed_handles = {
-            f"vehicle-handle-{item['subject_a']}"
-            for item in self._pending_native_events
-            if item.get("native_kind") == "visible_unit_destroyed"
-            and isinstance(item.get("subject_a"), int)
-        }
-        for raw in self._pending_native_events:
+        terminal = {}
+        last_close = {}
+        reset_index = -1
+        following_boundary = {}
+        confirmed_loss = set()
+        for index in range(len(self._pending_native_events)-1, -1, -1):
+            raw = self._pending_native_events[index]
+            kind, handle = raw.get("native_kind"), raw.get("subject_a")
+            if kind == "contact_identity_reset":
+                reset_index = max(reset_index, index)
+                following_boundary.clear()
+            if kind in {"visible_unit_lost", "visible_unit_destroyed"}:
+                last_close[handle] = max(last_close.get(handle, -1), index)
+            if kind == "visible_unit_lost" and following_boundary.get(handle) == "visible_unit_destroyed":
+                confirmed_loss.add(index)
+            if kind in {"visible_unit_appeared", "visible_unit_destroyed"}:
+                following_boundary[handle] = kind
+        for index, raw in enumerate(self._pending_native_events):
             kind = str(raw.get("native_kind") or "")
             handle = raw.get("subject_a")
             handle_key = f"vehicle-handle-{handle}"
@@ -681,13 +693,24 @@ class ObservationCollector:
                 for key, ref in list(episode_refs.items()):
                     if ref_kinds.get(ref) == "foreign_contact":
                         episode_refs.pop(key, None)
+                        terminal[ref] = "unknown"
                         broken_handles.add(key)
                 continue
             if kind == "visible_unit_appeared":
                 candidate = current_handle_to_ref.get(handle_key)
-                if handle_key not in broken_handles or candidate != prior_handle_to_ref.get(handle_key):
-                    if candidate:
+                survives = index > max(last_close.get(handle, -1), reset_index)
+                if handle_key not in episode_refs or handle_key in broken_handles:
+                    if candidate and survives and (handle_key not in broken_handles or candidate != prior_handle_to_ref.get(handle_key)):
                         episode_refs[handle_key] = candidate
+                    elif type(raw.get("native_sequence")) is int:
+                        # A temporal episode need not survive either snapshot.
+                        # The private native handle is salted into a scoped hash,
+                        # never exposed and never reused as cross-gap identity.
+                        episode_refs[handle_key] = "contact-episode-" + content_hash({
+                            "match": self.scope.match_id, "perspective": self.scope.perspective_id,
+                            "timeline": self.timeline_id, "epoch": world_epoch,
+                            "handle": handle, "start": raw["native_sequence"]})[:32]
+                        ref_kinds[episode_refs[handle_key]] = "foreign_contact"
             unit_ref = episode_refs.get(handle_key) or (
                 current_handle_to_ref.get(handle_key) if handle_key not in broken_handles else None)
             at = raw.get("to_tile_id") if isinstance(raw.get("to_tile_id"), int) \
@@ -721,10 +744,12 @@ class ObservationCollector:
                           "visible_unit_destroyed", "visible_unit_damaged"} and unit_ref:
                 if kind == "visible_unit_lost":
                     broken_handles.add(handle_key)
-                    if handle_key in destroyed_handles:
+                    terminal[unit_ref] = "unknown"
+                    if index in confirmed_loss:
                         continue
                     episode_refs.pop(handle_key, None)
                 elif kind == "visible_unit_destroyed":
+                    terminal[unit_ref] = "confirmed_destroyed"
                     episode_refs.pop(handle_key, None)
                     broken_handles.add(handle_key)
                 own = ref_kinds.get(unit_ref) == "own_unit"
@@ -829,6 +854,10 @@ class ObservationCollector:
                         and raw["value_before"] >= 0:
                     event["prior_project_ref"] = f"project-{raw['value_before']}"
                 events.append(event)
+        for row in move_by_contact.values():
+            ref = row.get("contact_ref")
+            if ref in terminal:
+                row["current_whereabouts"] = terminal[ref]
         events.extend(move_by_contact.values())
         # Exact native duplicates can occur alongside reconciliation deltas.
         unique = {content_hash(item): item for item in events}
@@ -1176,7 +1205,7 @@ class ObservationCollector:
         coalesce_started = time.perf_counter()
         native_events = self._coalesce_native_events(
             current_objects=current_objects, prior_objects=list(prior_objects),
-            turn=bundle.get("turn"),
+            turn=bundle.get("turn"), world_epoch=world_epoch,
         )
         self._collection_metrics["native_coalesce_ms"] = round(
             (time.perf_counter() - coalesce_started) * 1000, 3,

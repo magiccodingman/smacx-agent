@@ -25,7 +25,21 @@ introduced. Full performance distribution remains pending until final acceptance
 
 ## Gate B — F2 visible episodes
 
-Pending.
+Accepted: `transient_episode_publication_test.py`, `event_time_episode_test.py`,
+`native_observation_contract_test.py`, `semantic_consumer_contract_test.py`.
+[Six staging/publication cases](results/2026-09-05-transient-episodes.json) retain
+transient appear→cross→loss/destruction with neither snapshot containing the
+contact, including a 256-event page boundary, stage-page restart and post-head
+publication retry. Four episodes of one private handle remain distinct; reset,
+discontinuity and cross-perspective cases pass.
+
+Ordered appearances issue scoped hashed temporal episode refs when no legitimate
+surviving snapshot contact exists. Only the final continuously visible episode
+may associate with the final snapshot contact. Loss/reset closes continuity;
+current whereabouts become unknown, or destruction is explicitly confirmed.
+These records are temporal evidence, not invented current world contacts. Native
+handles remain private. All evidence is deterministic/native-shaped; the native
+bridge is unchanged.
 
 ## Gate C — F4/F5/F6 reference lifecycle
 

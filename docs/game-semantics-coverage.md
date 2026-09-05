@@ -208,3 +208,13 @@ completion without false blocking, garrison arrival/departure, field and scope
 changes, and 18 crash/downtime-reversal cases. This is publication/effect/recovery
 evidence, not a running-game mechanics comparison. See the
 [final-review ledger](benchmarks/2026-09-05-final-hostile-review.md).
+
+### Final hostile review: between-snapshot episodes (Gate B)
+
+F2: ordered native staging now supplies scoped temporal contact episodes even
+when both reconciled snapshots omit the contact. A surviving current contact is
+associated only with the final uninterrupted episode. Six real staging/collector
+cases cover loss/destruction, page-boundary restart and publication retry;
+four-episode, reset, discontinuity and perspective-isolation checks pass. Observed
+crossing attention is verified; temporal refs never imply present whereabouts or
+cross-gap opponent identity. See the final-review ledger for qualified evidence.
