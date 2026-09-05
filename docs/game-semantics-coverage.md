@@ -282,3 +282,11 @@ All 41 distinct scripts pass, including the 22-case publication crash matrix, fo
 The control image now includes `smacx_temporal_episodes`; the Graphiti image includes the world-store publication-barrier dependencies. The built control image passes all 17 cross-publication episode cases with only test scripts mounted (production source comes from the image). The built Graphiti image imports its publication dependencies and reads an empty committed cursor using a temporary initialized store. The full Graphiti fixture cannot run unchanged in that image because its timeline-fork setup requires Git, which the projector runtime does not install; no full packaged Graphiti fixture pass is claimed.
 
 Deployment against the existing local database fails closed with `unsupported_prerelease_schema_recreate_database`. Existing volumes are preserved; this checkpoint does not claim a successful current-version live deployment or game acceptance. A fresh compatible database is required by the locked prerelease schema contract.
+
+### I1 owned transient lifecycle checkpoint (2026-09-05)
+
+| Native evidence | Representation and calculation | Provider/sovereign access and effect | Recovery evidence |
+| --- | --- | --- | --- |
+| Owned production, then movement/damage/destruction absent from both snapshots | Lifecycle-scoped owned proof in the existing private episode checkpoint; shared semantic occurrence assignment | Normal temporal history retains production and owned destruction on `own-unit-777`; no fabricated contact destruction | 20 targeted cases, canonical journal assertions, packaged-image pass, existing gap/crash suites green |
+
+See [I1 acceptance and deployment evidence](benchmarks/2026-09-05-i1-review.md). No new executable action or live-game mechanics claim. Future schema changes require forward migrations; this deployment alone uses the explicitly authorized fresh prerelease database.

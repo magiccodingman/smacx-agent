@@ -719,7 +719,7 @@ class ObservationCollector:
                 current_handle_to_ref.get(handle_key) if handle_key not in broken_handles else None)
             if episode_assignments is not None and str(raw.get("native_sequence")) in episode_assignments:
                 unit_ref = episode_assignments[str(raw["native_sequence"])]
-                ref_kinds[unit_ref] = "foreign_contact"
+                ref_kinds[unit_ref] = "own_unit" if unit_ref.startswith("own-unit-") else "foreign_contact"
             at = raw.get("to_tile_id") if isinstance(raw.get("to_tile_id"), int) \
                 and raw.get("to_tile_id", -1) >= 0 else raw.get("from_tile_id")
             location = f"location-{at}" if isinstance(at, int) and at >= 0 else None
@@ -800,7 +800,7 @@ class ObservationCollector:
                         # The owned-only birth hook already issued this stable
                         # identity. Preserve it even when the unit was destroyed
                         # before reconciliation; never substitute a compacted row.
-                        completed_unit = completed_unit or f"own-unit-{handle}"
+                        completed_unit = (episode_assignments or {}).get(str(raw.get("native_sequence"))) or f"own-unit-{handle}"
                     if completed_unit:
                         event["unit_ref"] = completed_unit
                 elif kind == "owned_project_interrupted":

@@ -1,0 +1,192 @@
+{
+  "tests": [
+    {
+      "test": "owned_transient_lifecycle_test",
+      "exit_code": 0
+    },
+    {
+      "test": "cross_publication_episode_test",
+      "exit_code": 0
+    },
+    {
+      "test": "transient_episode_publication_test",
+      "exit_code": 0
+    },
+    {
+      "test": "event_time_episode_test",
+      "exit_code": 0
+    },
+    {
+      "test": "native_observation_contract_test",
+      "exit_code": 0
+    },
+    {
+      "test": "publication_transaction_test",
+      "exit_code": 0
+    },
+    {
+      "test": "publication_visibility_test",
+      "exit_code": 0
+    },
+    {
+      "test": "observation_batch_recovery_test",
+      "exit_code": 0
+    },
+    {
+      "test": "journal_internal_crash_test",
+      "exit_code": 0
+    },
+    {
+      "test": "campaign_journal_test",
+      "exit_code": 0
+    },
+    {
+      "test": "journal_idempotency_index_test",
+      "exit_code": 0
+    }
+  ],
+  "packaged_lifecycle": {
+    "passed": true,
+    "cases": [
+      {
+        "middle": null,
+        "split": false,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": null,
+        "split": false,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "middle": null,
+        "split": true,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": null,
+        "split": true,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "middle": "moved",
+        "split": false,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": "moved",
+        "split": false,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "middle": "moved",
+        "split": true,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": "moved",
+        "split": true,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "middle": "damaged",
+        "split": false,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": "damaged",
+        "split": false,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "middle": "damaged",
+        "split": true,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": "damaged",
+        "split": true,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "middle": "lost",
+        "split": false,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": "lost",
+        "split": false,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "middle": "lost",
+        "split": true,
+        "retry": false,
+        "passed": true
+      },
+      {
+        "middle": "lost",
+        "split": true,
+        "retry": true,
+        "passed": true
+      },
+      {
+        "boundary": "timeline",
+        "passed": true
+      },
+      {
+        "boundary": "epoch",
+        "passed": true
+      },
+      {
+        "boundary": "gap",
+        "passed": true
+      },
+      {
+        "boundary": "transition",
+        "passed": true
+      }
+    ]
+  },
+  "deployed_source": [
+    {
+      "container": "smacx-agent-control-api-1",
+      "file": "smacx_temporal_episodes.py",
+      "sha256": "930156fce22ea916d10db3cb6628c11780bd9b2177390fff307f81e40eb365ff",
+      "matched": true
+    },
+    {
+      "container": "smacx-agent-control-api-1",
+      "file": "smacx_observation.py",
+      "sha256": "62f0c6dfb09bce362bed78eb1794b6d66d437083314d1695c28baa7e4de31840",
+      "matched": true
+    },
+    {
+      "container": "smacx-agent-specialist-supervisor-1",
+      "file": "smacx_temporal_episodes.py",
+      "sha256": "930156fce22ea916d10db3cb6628c11780bd9b2177390fff307f81e40eb365ff",
+      "matched": true
+    },
+    {
+      "container": "smacx-agent-specialist-supervisor-1",
+      "file": "smacx_observation.py",
+      "sha256": "62f0c6dfb09bce362bed78eb1794b6d66d437083314d1695c28baa7e4de31840",
+      "matched": true
+    }
+  ],
+  "classification": "deterministic collector/journal/recovery and packaged-image tests; deployment health, not live gameplay acceptance"
+}

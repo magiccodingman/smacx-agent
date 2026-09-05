@@ -21,11 +21,12 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
     own = set(owned_keys) | {str(row.get('metadata', {}).get('native_observation_key') or
                'vehicle-handle-' + str(row.get('metadata', {}).get('native_handle')))
            for row in prior_objects if row.get('kind') == 'own_unit'}
-    assignments, terminal, just_lost = {}, {}, {}
+    owned_lifecycles = deepcopy(state.get('owned_lifecycles', {})) if valid else {}
+    assignments, terminal, just_lost, owned_lost = {}, {}, {}, {}
     boundaries = sorted({int(gap['before_native_sequence']) for gap in gaps})
     def close_all():
         terminal.update({value['ref']: 'unknown' for value in opened.values()})
-        opened.clear(); just_lost.clear()
+        opened.clear(); just_lost.clear(); owned_lifecycles.clear(); owned_lost.clear()
     def create(key, raw):
         return {'ref': 'contact-episode-' + content_hash({
             **namespace, 'handle': key, 'start': raw['native_sequence']})[:32], 'location': None}
@@ -36,9 +37,39 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
         kind = raw.get('native_kind')
         if kind == 'contact_identity_reset':
             close_all(); continue
+        if kind == 'owned_production_completed' and raw.get('value_before') == 0:
+            handle = raw.get('value_after')
+            if type(handle) is int and handle >= 0:
+                key = 'vehicle-handle-' + str(handle)
+                ref = 'own-unit-' + str(handle)
+                previous = opened.pop(key, None)
+                if previous: terminal[previous['ref']] = 'unknown'
+                just_lost.pop(key, None)
+                owned_lost.pop(key, None)
+                owned_lifecycles[key] = {'ref': ref, 'birth_sequence': sequence}
+                assignments[str(sequence)] = ref
+            continue
         if not str(kind).startswith('visible_unit_'):
             continue
         key = 'vehicle-handle-' + str(raw.get('subject_a'))
+        lifecycle = owned_lifecycles.get(key)
+        if kind == 'visible_unit_destroyed' and lifecycle is None:
+            lifecycle = owned_lost.pop(key, None)
+        elif kind == 'visible_unit_appeared':
+            owned_lost.pop(key, None)
+        # Explicit contrary ownership ends proof; a gap/reset also clears it.
+        if lifecycle and raw.get('relationship_at_occurrence') in ('hostile', 'allied', 'neutral'):
+            owned_lifecycles.pop(key, None)
+            own.discard(key)
+            lifecycle = None
+        if lifecycle:
+            assignments[str(sequence)] = lifecycle['ref']
+            if kind == 'visible_unit_lost':
+                owned_lost[key] = lifecycle
+            if kind in ('visible_unit_lost', 'visible_unit_destroyed'):
+                owned_lifecycles.pop(key, None)
+                own.discard(key)
+            continue
         if key in own:
             continue
         current = opened.get(key)
@@ -74,4 +105,4 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
             current['last_sequence'] = sequence
     if boundaries:
         close_all()
-    return {'identity': namespace, 'open': opened}, assignments, terminal
+    return {'identity': namespace, 'open': opened, 'owned_lifecycles': owned_lifecycles}, assignments, terminal
