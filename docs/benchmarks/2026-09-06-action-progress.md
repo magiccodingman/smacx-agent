@@ -161,3 +161,18 @@ are in `2026-09-06-action-progress-live.json`.
 Production deployment, browser incident presentation, and sustained sovereign
 playthrough remain the next checkpoint. The actual cause of the four native
 move rejections remains unknown; this repair does not assert a movement-engine fix.
+
+## Production deployment and staging
+
+Control API was recreated from the accepted control image above and Docker
+reported it healthy. The managed worker and MCP image settings resolve to the
+newly tagged worker/control builds. Other unchanged services remained running.
+Authenticated browser validation confirmed AI - 2 parked before ending it via
+the normal campaign UI; its archive now reports completed (operator-ended, not
+a successful autonomous game).
+
+AI - 3 is staged with Peacekeepers/None, the four requested named native
+opponents, Standard planet size, Librarian difficulty and spectators enabled.
+Launch is pending a roster decision: this version always fills seven factions,
+so two otherwise-open slots become random bots. This is not yet a running or
+completed full-game acceptance. No original saves or campaign history were deleted.
