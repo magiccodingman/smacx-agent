@@ -1270,6 +1270,36 @@ def main() -> int:
             "journaled_conflict_and_stationary_assignment_preserved": True,
             "ephemeral_old_timeline_watch_discarded": True,
             "old_session_counterfactual_choice_rejected": True}}), flush=True)
+        action_containment = False
+        if os.environ.get("SMACX_TEST_ACTION_CONTAINMENT") == "1":
+            context = runtime_context(current_sidecar, "action-containment-acceptance")
+            if not context.get("ok"):
+                raise AssertionError({"containment_episode": context})
+            failures = []
+            for attempt in range(4):
+                failures.append(asyncio.run(mcp_tool(current_endpoint, "smac_execute_choice", {
+                    "decision_id": f"invalid-acceptance-{attempt}",
+                    "choice_id": f"invalid-choice-{attempt}",
+                })))
+            if failures[-1].get("error", {}).get("code") != "failure_circuit_open":
+                raise AssertionError({"failure_budget_did_not_stop": failures})
+            if any(row.get("native_action_executed") is not False for row in failures):
+                raise AssertionError({"invalid_submission_dispatched": failures})
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                native_paused = docker("inspect", "-f", "{{.State.Paused}}", current_worker["container_name"])
+                collector_paused = docker("inspect", "-f", "{{.State.Paused}}", current_sidecar)
+                if native_paused == collector_paused == "true":
+                    break
+                time.sleep(.5)
+            else:
+                raise AssertionError("failure incident did not freeze native and collector containers")
+            action_containment = True
+            print(json.dumps({"event": "action_containment", "payload": {
+                "four_real_mcp_protocol_failures": True,
+                "native_action_not_dispatched": True,
+                "native_and_collector_docker_paused": True,
+            }}), flush=True)
         api(
             opener, base_url, "POST", f"/api/v1/workers/{worker['instance_id']}/park",
             {}, csrf, 120,
@@ -1278,6 +1308,7 @@ def main() -> int:
             "event": "pass",
             "payload": {
                 "authenticated_control_lifecycle": True,
+                "managed_action_failure_containment": action_containment,
                 "dedicated_mcp_sidecar": True,
                 "mcp_tool_count": mcp_result["tool_count"],
                 "mcp_bound_to_exact_match": True,

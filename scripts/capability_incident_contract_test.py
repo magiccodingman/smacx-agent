@@ -6,11 +6,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+import threading
+from types import SimpleNamespace
 import zipfile
 
 from smacx_control import ControlPlane
 from smacx_operations import OperationsManager
 from smacx_store import MemoryScope, SmacxStore
+from smacx_worker_manager import WorkerManager
+from smacx_journal import CampaignJournal
 
 
 def main() -> int:
@@ -104,13 +108,38 @@ def main() -> int:
         (root / "capability-gaps.jsonl").write_text(
             json.dumps(gap, separators=(",", ":")) + "\n", encoding="utf-8",
         )
-        operations = OperationsManager(control, data_root=root)
+        # Use production quarantine with a contained Docker boundary. This
+        # connects diagnostic ingestion to real match/lease lifecycle writes.
+        manager = object.__new__(WorkerManager)
+        manager.control, manager.store = control, store
+        manager.journal = CampaignJournal(root / "campaigns")
+        manager._lifecycle_lock = threading.RLock()
+        manager.control_data_volume = None
+        containers = {
+            name: {"State": {"Running": True, "Paused": False}, "purpose": purpose}
+            for name, purpose in (("worker-diagnostic", "game-worker"),
+                                  ("mcp-diagnostic", "mcp-sidecar"))
+        }
+        paused = []
+        def pause(name):
+            assert not containers[name]["State"]["Paused"]
+            containers[name]["State"]["Paused"] = True
+            paused.append(name)
+        def owned(container, installation_id, *, purpose):
+            assert installation_id == store.installation_id()
+            assert container["purpose"] == purpose
+        manager.docker = SimpleNamespace(inspect_container=lambda name: containers[name],
+            require_owned=owned, pause_container=pause)
+        operations = OperationsManager(control, data_root=root, worker_manager=manager)
         result = operations.ingest_capability_gaps_once()
         if result["ingested"] != 1 or result["errors"]:
             raise AssertionError(f"gap was not ingested: {result}")
         incidents = control.list_supervision_incidents(match_id=scope.match_id, active_only=True)
         if len(incidents) != 1 or incidents[0]["status"] != "operator_required":
             raise AssertionError(f"durable operator incident missing: {incidents}")
+        assert paused == ["worker-diagnostic", "mcp-diagnostic"], paused
+        assert control.get_match(scope.match_id)["metadata"]["incident_quarantine"]["native_and_collectors_frozen"]
+        assert incidents[0]["details"]["quarantine"]["native_and_collectors_frozen"]
         stopped_run = control.get_harness_run(run["run_id"])
         if stopped_run["desired_status"] != "stopped" or \
                 stopped_run.get("metadata", {}).get("capability_gap_id") != gap["gap_id"]:
@@ -142,6 +171,8 @@ def main() -> int:
         repeated = operations.ingest_capability_gaps_once()
         if repeated["ingested"] != 0 or repeated["ignored"] != 1:
             raise AssertionError(f"gap ingestion was not idempotent: {repeated}")
+
+        assert len(paused) == 2, "duplicate ingestion re-paused containers"
 
         # Harness supervision publishes the incident immediately, then the
         # operations pass must enrich that same incident with a diagnostic ZIP
@@ -186,6 +217,7 @@ def main() -> int:
                 "redacted_bundle": True, "bounded_zip": True,
                 "game_binaries_excluded": True, "private_conversations_excluded": True,
                 "supervisor_incident_enriched": True,
+                "native_and_collector_quarantine": True,
             },
         }, separators=(",", ":")))
     return 0

@@ -41,6 +41,10 @@ class FakeControl:
     def get_match(self, _match_id: str) -> dict:
         return {"status": "running"}
 
+    def update_match_lifecycle(self, _match_id: str, status: str, *, metadata: dict) -> dict:
+        self.match_state = {"status": status, "metadata": metadata}
+        return self.match_state
+
     def update_harness_run(self, _run_id: str, **values) -> dict:
         metadata = values.pop("metadata_update", None)
         if metadata:
@@ -62,6 +66,11 @@ class FakeControl:
 class FakeWorkerManager:
     def __init__(self) -> None:
         self.progress = marker("r2", 2)
+        self.quarantines = []
+
+    def quarantine_match(self, match_id: str) -> dict:
+        self.quarantines.append(match_id)
+        return {"native_and_collectors_frozen": True}
 
     def semantic_progress(self, _instance_id: str) -> dict:
         return dict(self.progress)
@@ -139,7 +148,7 @@ def main() -> int:
         raise AssertionError(f"error restart budget was not independent: {errored}")
 
     # A process that stays alive while spending calls/tokens against an
-    # unchanged native state is restarted from a fresh managed episode.
+    # unchanged native state is quarantined, never given a fresh retry episode.
     manager.observed_running = True
     manager.exit_code = 0
     control.run.update({
@@ -159,9 +168,12 @@ def main() -> int:
         },
     })
     live_stall = manager.reconcile_once()
-    if live_stall.get("restarted") != 1 \
-            or control.run["metadata"].get("semantic_stall_recoveries") != 1:
-        raise AssertionError(f"live semantic stall was not recovered: {live_stall}")
+    if live_stall.get("restarted") != 0 or live_stall.get("operator_required") != 1 \
+            or control.run["desired_status"] != "stopped" \
+            or worker.quarantines != ["match-continuation"]:
+        raise AssertionError(f"live semantic stall was not quarantined: {live_stall}")
+    assert manager.capability_report["supervisor_generated"] is True
+    assert control.match_state["metadata"]["incident_quarantine"]["native_and_collectors_frozen"]
 
     # A live Hermes process whose native bridge remains unavailable must stop
     # with a visible capability incident. AI-2 previously remained alive and
@@ -225,7 +237,7 @@ def main() -> int:
             "no_progress_circuit_breaker": True,
             "operator_incident_recorded": True,
             "error_restart_budget_independent": True,
-            "live_token_spending_stall_recovered": True,
+            "live_token_spending_stall_quarantined": True,
             "persistent_bridge_outage_requires_operator": True,
         },
     }, separators=(",", ":")))

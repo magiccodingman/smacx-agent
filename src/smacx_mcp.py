@@ -101,6 +101,8 @@ DECISION_CACHE_LIMIT = 128
 ACTION_PROGRESS: dict[tuple[str, str], dict] = {}
 ACTION_PROGRESS_LOCK = threading.RLock()
 ACTION_REPEAT_LIMIT = 3
+FAILED_CHOICE_LIMIT = 4
+FAILED_CHOICE_ATTEMPTS: dict[tuple[str, str], list[str]] = {}
 RUNTIME_CIRCUITS: dict[tuple[str, str], dict] = {}
 TURN_HANDOFF_LOCK = threading.RLock()
 TURN_HANDOFF_STATE: dict[tuple[str, str], dict[str, int]] = {}
@@ -1241,7 +1243,7 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "ok": False,
             "error": {
                 "code": "native_action_rejected",
-                "message": "SMACX rejected the queued native action without changing game state. Re-observe and choose another legal action.",
+                "message": "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt.",
             },
             "command": result.get("command"),
             "execution": action,
@@ -2336,9 +2338,9 @@ def smac_cognition(
 @mcp.tool(
     description=(
         "Get one stable, action-ordered decision frame. It bundles the current fair-play "
-        "state headline with the exact active interaction choices, one selected ready unit's legal "
+        "state headline with the exact active interaction choices, one selected ready unit's offered "
         "actions selected by stable own_unit_ref, a wait/gap directive, or game-management choices "
-        "when no unit decision remains. "
+        "when no unit decision remains. Native execution can still reject an offered action; read its receipt. "
         "After deliberately deciding that every remaining unit is finished, set finish_ready_units=true "
         "to receive the guarded skip-all-ready choice instead of another individual unit frame. "
         "Use this as the primary agent loop to reduce calls and prevent invalid action order. "
@@ -3039,6 +3041,102 @@ def _latch_journal_failure(
     )
 )
 def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dict:
+    """Expose decision lifecycle and bound consecutive failed submissions."""
+    authority = _sovereign_gameplay_gate("Choice execution")
+    if authority:
+        return authority
+    with DECISION_LOCK:
+        cached = DECISION_CACHE.get(decision_id)
+        identity = dict(cached.get("identity") or {}) if cached else {}
+    if MANAGED_ATTACHED:
+        match_id, session_id, _, _ = _managed_scope_identity()
+    else:
+        match_id, session_id = identity.get("match_id", ""), identity.get("session_id", "")
+    key = (str(match_id), str(session_id))
+    with ACTION_PROGRESS_LOCK:
+        circuit = RUNTIME_CIRCUITS.get(key)
+    if circuit:
+        return {"ok": False, "error": {"code": "repetition_circuit_open",
+                "message": circuit["message"]}, "incident": circuit,
+                "native_action_executed": False, "execution_status": "not_dispatched",
+                "required_next": {"stop_after": True, "reason": "Operator recovery is required."}}
+
+    response = _execute_choice_once(decision_id, choice_id, text)
+    error = response.get("error")
+    code = error.get("code") if isinstance(error, dict) else error
+    boundary_errors = {"unknown_decision", "expired_decision", "consumed_decision",
+                       "invalid_choice", "invalid_choice_text", "unexpected_choice_text"}
+    with DECISION_LOCK:
+        current = DECISION_CACHE.get(decision_id)
+        consumed = bool(current.get("consumed")) if current else None
+    response["decision_consumed"] = consumed
+    if code in boundary_errors:
+        response["execution_status"] = "not_dispatched"
+        response["native_action_executed"] = False
+    elif not response.get("ok"):
+        response.setdefault("execution_status", "rejected" if code == "native_action_rejected"
+                            else "unverified")
+    elif response.get("queued"):
+        response["execution_status"] = "pending"
+    elif response.get("order") or response.get("persistent"):
+        response["execution_status"] = "order_assigned"
+    elif response.get("completed"):
+        response["execution_status"] = "completed"
+    else:
+        response["execution_status"] = "accepted"
+    execution = response.get("execution")
+    if isinstance(execution, dict) and isinstance(execution.get("native_call_attempted"), bool):
+        response["native_call_attempted"] = execution["native_call_attempted"]
+        if execution["native_call_attempted"] is False and not response.get("ok"):
+            response["execution_status"] = "not_dispatched"
+            response["native_action_executed"] = False
+    if consumed and not response.get("required_next"):
+        response["required_next"] = {"tool": "smac_decision",
+            "reason": "This decision is consumed, including after rejection. Obtain a fresh frame."}
+
+    # A failure budget is deliberately independent of target and decision IDs.
+    # Success resets this submission budget; unchanged-state success loops are
+    # separately handled by the action and supervisor progress circuits.
+    countable = code in boundary_errors | {"native_action_rejected", "decision_conflict"}
+    if not all(key):
+        return response
+    with ACTION_PROGRESS_LOCK:
+        if response.get("ok"):
+            FAILED_CHOICE_ATTEMPTS.pop(key, None)
+            return response
+        if not countable:
+            return response
+        failures = FAILED_CHOICE_ATTEMPTS.setdefault(key, [])
+        failures.append(str(code))
+        del failures[:-FAILED_CHOICE_LIMIT]
+        history = list(failures)
+        if len(history) < FAILED_CHOICE_LIMIT:
+            response["failure_budget"] = {"consecutive_failures": len(history),
+                "stop_at": FAILED_CHOICE_LIMIT}
+            return response
+        incident = {"code": "repeated_failed_choice_submissions",
+            "failure_codes": history, "attempt_count": len(history),
+            "message": "Repeated choice submissions failed despite recovery opportunities. Autonomous play is stopped for operator review."}
+        RUNTIME_CIRCUITS[key] = incident
+    journal = controller_record_campaign_action(key[0], key[1], {
+        "decision_id": decision_id, "choice_id": choice_id,
+        "outcome": "failure_circuit_open", "incident": incident,
+    }, turn=cached.get("turn") if cached else None, year=cached.get("year") if cached else None)
+    gap = smac_report_capability_gap(
+        screen_or_state="repeated failed managed choice submissions",
+        intended_decision="Resolve the current gameplay decision",
+        required_observation="Verified action effects and current decision lifecycle",
+        required_action="Repair repeated rejection or decision protocol failures",
+        why_blocked=incident["message"],
+    )
+    response.update({"ok": False, "error": {"code": "failure_circuit_open",
+        "message": incident["message"]}, "incident": incident, "journal": journal,
+        "capability_gap": gap.get("gap") if isinstance(gap, dict) else None,
+        "required_next": {"stop_after": True, "reason": "The incident was automatically reported."}})
+    return response
+
+
+def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> dict:
     authority = _sovereign_gameplay_gate("Choice execution")
     if authority:
         return authority

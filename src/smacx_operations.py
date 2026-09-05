@@ -1085,7 +1085,9 @@ game binaries/assets, credentials, private provider addresses, account data, cha
             gap_id = str(report["gap_id"])
             existing = self._existing_gap_incident(gap_id)
             if existing is not None and isinstance(existing.get("details"), Mapping) \
-                    and isinstance(existing["details"].get("diagnostic_bundle"), Mapping):
+                    and isinstance(existing["details"].get("diagnostic_bundle"), Mapping) \
+                    and (self.worker_manager is None or existing.get("status") == "recovered"
+                         or existing["details"].get("quarantine", {}).get("native_and_collectors_frozen")):
                 ignored += 1
                 continue
             instance_id = self._instance_for_gap(report)
@@ -1094,6 +1096,19 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                 continue
             try:
                 stopped_runs = self._stop_gap_harness(instance_id, gap_id)
+                quarantine = None
+                if self.worker_manager is not None:
+                    # A provider stop alone leaves native orders and observation
+                    # collection running. Preserve the whole match for diagnosis;
+                    # only verified explicit recovery may release this latch.
+                    match_id = str(self.control.get_worker_spec(instance_id)["match_id"])
+                    self.control.update_match_lifecycle(match_id, "error", metadata={
+                        "recovery_required": True, "recovery_reason": f"capability_gap:{gap_id}",
+                    })
+                    quarantine = self.worker_manager.quarantine_match(match_id)
+                    self.control.update_match_lifecycle(match_id, "error", metadata={
+                        "incident_quarantine": quarantine,
+                    })
                 detail = {
                     "schema": "smacx.capability-gap-incident.v1", "gap_id": gap_id,
                     "summary": "AI play stopped at a semantic capability gap.",
@@ -1107,6 +1122,8 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                     "harness_runs_stopped": stopped_runs,
                     "native_worker_preserved": True,
                 }
+                if quarantine is not None:
+                    detail["quarantine"] = quarantine
                 if existing is not None and isinstance(existing.get("details"), Mapping):
                     # A harness-detected bridge outage is published immediately
                     # so the UI cannot stay silent. Enrich that same incident
@@ -1171,6 +1188,12 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                 if metadata.get("incident_quarantine", {}).get("native_and_collectors_frozen"):
                     # A preserved incident is an operator latch, not another
                     # lost-worker sample or a reason to restart its sidecar.
+                    continue
+                if metadata.get("recovery_required") is True and str(
+                        metadata.get("recovery_reason") or "").startswith("capability_gap:"):
+                    # A partial quarantine is retried by incident ingestion.
+                    # Never treat a paused peer as worker loss and auto-restore
+                    # a checkpoint while an operator incident is still active.
                     continue
                 observed = self.worker_manager.worker_status(str(spec["instance_id"]))
                 containment_pending = match.get("status") == "error" and metadata.get(

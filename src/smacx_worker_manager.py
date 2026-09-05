@@ -252,10 +252,13 @@ class WorkerManagerError(StoreError):
 
 
 def _semantic_progress_fingerprint(snapshot: Mapping[str, Any]) -> str:
-    """Hash meaningful fair-play state while ignoring packet-pump churn."""
+    """Hash observed game state, never command receipts or packet-pump churn."""
     volatile = {
         "revision", "timestamp", "observed_unix", "created_unix", "updated_unix",
         "elapsed", "tick", "tick_count", "packet_count", "heartbeat",
+        # Attempt IDs, targets and even a reported completion are not evidence
+        # of a gameplay effect. Effects must appear in the observed state.
+        "last_deferred_action",
     }
 
     def stable(value: Any) -> Any:

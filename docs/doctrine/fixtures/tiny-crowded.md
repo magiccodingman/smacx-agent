@@ -161,6 +161,8 @@ Different missions call for different designs: cheap garrison, police, scout, fa
 
 Land, sea, and air units follow different movement rules. Terrain, fungus, rivers, roads, advanced transportation, chassis, damage, abilities, and diplomatic status affect travel. Transports carry units across domains they cannot cross alone. Aircraft have range, basing, mission, and recovery limits.
 
+A unit has a per-turn movement budget. Read `moves_remaining`, `movement_points`, and `movement_scale` together: native movement units are not a count of tiles. Terrain and other rules determine each move's cost. The faction's next turn refreshes movement through its repair phase; this does not guarantee that every persistent order wakes or that a blocked route becomes passable. Skip ends that unit's activity for the current turn. Persistent orders can continue or be interrupted by native conditions. If the next decision presents the unit as ready again, use that current observation rather than assuming the prior order will resolve it later.
+
 Hostile land units can exert a **zone of control**, restricting ordinary movement between nearby tiles. Some domains, abilities, and diplomatic relationships bypass it.
 
 Strategic distance is travel and response time, not visual distance. Consider routes, movement costs, chokepoints, transports, air reach, retreat paths, reinforcement time, and whether reserves can move between theaters before the threat arrives.

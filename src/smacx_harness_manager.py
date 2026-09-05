@@ -875,56 +875,51 @@ print(json.dumps(result,separators=(',',':')))
                     and (generated >= 4096 or calls >= 2)
                 )
                 if stalled:
-                    recovery_count = int(metadata.get("semantic_stall_recoveries") or 0) + 1
-                    recovery_limit = min(max(int(
-                        run["restart_policy"].get("semantic_stall_recovery_limit", 2)
-                    ), 0), 10)
+                    gap_id = "gap-" + uuid.uuid4().hex
+                    detail = {
+                        "schema": "smacx.capability-gap-incident.v1", "gap_id": gap_id,
+                        "run_id": run["run_id"], "turn": progress.get("turn"),
+                        "summary": "The AI stopped after sustained activity without gameplay progress.",
+                        "screen_or_state": "Unchanged observed native gameplay state",
+                        "intended_decision": "Continue autonomous gameplay",
+                        "required_observation": "Verified gameplay effects from the stalled decision sequence",
+                        "required_action": "Diagnose and repair the stalled action path before resuming",
+                        "why_blocked": "Provider activity exceeded the bounded no-progress window.",
+                        "stall_seconds": now - progress_since,
+                        "generated_tokens_without_progress": generated,
+                        "api_calls_without_progress": calls, "progress": progress,
+                        "reported_at_unix": now, "native_worker_preserved": True,
+                    }
+                    # Queue diagnostics before attempting containment, so a
+                    # partial Docker failure is retried by incident ingestion.
+                    self._append_capability_gap_report({
+                        **detail, "schema": "smacx.capability-gap.v1",
+                        "match_id": run["match_id"], "session_id": progress.get("session_id"),
+                        "revision": progress.get("revision"), "supervisor_generated": True,
+                    })
                     incident = self.control.record_supervision_incident(
-                        str(run["instance_id"]), "harness_semantic_stall",
-                        "open" if recovery_count <= recovery_limit else "operator_required",
-                        {
-                            "run_id": run["run_id"], "stall_seconds": now - progress_since,
-                            "generated_tokens_without_progress": generated,
-                            "api_calls_without_progress": calls, "progress": progress,
-                            "recovery_count": recovery_count,
-                        },
+                        str(run["instance_id"]), f"capability_gap:{gap_id}",
+                        "operator_required", detail,
                     )
-                    if recovery_count > recovery_limit:
-                        container_name = str(run.get("container_name") or "")
-                        if container_name:
-                            try:
-                                self.docker.stop_container(container_name, timeout=10)
-                                self.docker.remove_container(container_name)
-                            except DockerNotFound:
-                                pass
-                        self.control.update_harness_run(
-                            str(run["run_id"]), status="error", desired_status="stopped",
-                            last_error="harness_semantic_stall",
-                            metadata_update={**metadata_update,
-                                             "semantic_stall_recoveries": recovery_count,
-                                             "supervision_incident": incident},
-                        )
-                        errors += 1
-                        operator_required += 1
-                        continue
-                    container_name = str(run.get("container_name") or "")
-                    if container_name:
-                        try:
-                            self.docker.stop_container(container_name, timeout=10)
-                            self.docker.remove_container(container_name)
-                        except DockerNotFound:
-                            pass
                     self.control.update_harness_run(
-                        str(run["run_id"]), status="restarting", increment_restart=True,
-                        last_error="harness_semantic_stall_auto_recovery",
-                        metadata_update={**metadata_update,
-                                         "semantic_stall_recoveries": recovery_count,
-                                         "supervision_incident": incident,
-                                         "semantic_progress_unix": now,
-                                         "semantic_baseline_telemetry": dict(telemetry)},
+                        str(run["run_id"]), desired_status="stopped",
+                        last_error=f"capability_gap:{gap_id}",
+                        metadata_update={**metadata_update, "operator_attention_required": True,
+                                         "supervision_incident": incident},
                     )
-                    self.start_run(str(run["run_id"]))
-                    restarted += 1
+                    self.control.update_match_lifecycle(str(run["match_id"]), "error", metadata={
+                        "recovery_required": True, "recovery_reason": f"capability_gap:{gap_id}",
+                    })
+                    quarantine = self.worker_manager.quarantine_match(str(run["match_id"]))
+                    self.control.update_match_lifecycle(str(run["match_id"]), "error", metadata={
+                        "incident_quarantine": quarantine,
+                    })
+                    self.control.update_harness_run(
+                        str(run["run_id"]), status="error", desired_status="stopped",
+                        last_error=f"capability_gap:{gap_id}",
+                    )
+                    errors += 1
+                    operator_required += 1
                     continue
                 self.control.update_harness_run(
                     str(run["run_id"]), heartbeat=True,

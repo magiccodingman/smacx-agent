@@ -99,8 +99,11 @@ scenario restrictions, faction, clock, and policy.
 
 Use `smac_decision` for guarded mutation. Resolve current focus before unrelated
 play, execute one returned opaque `choice_id` with `smac_execute_choice`, then
-discard that frame. Never invent or replay IDs, commands, arguments, choices, or
-revisions. A rule advisory is present-state native evidence, not a missing
+discard that frame even if the action is rejected. A consumed frame cannot be
+used to Skip or choose a different action. Copy both IDs from one fresh frame.
+Accepted orders do not prove movement or arrival; verify the next observed unit
+state. A rejection with unknown cause does not prove an enemy blocked the route.
+Never invent or replay IDs, commands, arguments, choices, or revisions. A rule advisory is present-state native evidence, not a missing
 capability. On one `decision_conflict`, obtain a fresh decision. If a necessary
 semantic capability is absent, report it once and stop; never improvise visual
 input. Lifecycle and recovery belong to the authenticated Control Center.

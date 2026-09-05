@@ -654,6 +654,7 @@ struct DeferredActionState {
     std::string command;
     std::string status;
     int native_result;
+    int native_call_attempted; // -1 means this command does not report it.
     int unit_id;
     int origin_x;
     int origin_y;
@@ -1096,6 +1097,7 @@ int origin_x = -1, int origin_y = -1, int target_x = -1, int target_y = -1) {
     deferred_action.command = command;
     deferred_action.status = "pending";
     deferred_action.native_result = 0;
+    deferred_action.native_call_attempted = -1;
     deferred_action.unit_id = unit_id;
     deferred_action.origin_x = origin_x;
     deferred_action.origin_y = origin_y;
@@ -1121,6 +1123,10 @@ std::string deferred_action_response(uint32_t requested_id = 0) {
         << ",\"command\":" << json_string(deferred_action.command.c_str())
         << ",\"status\":" << json_string(deferred_action.status.c_str())
         << ",\"native_result\":" << deferred_action.native_result;
+    if (deferred_action.native_call_attempted >= 0) {
+        out << ",\"native_call_attempted\":"
+            << (deferred_action.native_call_attempted ? "true" : "false");
+    }
     if (!deferred_action.resolution.empty()) {
         out << ",\"resolution\":" << json_string(deferred_action.resolution.c_str());
     }
@@ -10382,6 +10388,14 @@ std::string semantic_snapshot_response() {
             << ",\"location_ref\":\"location-"
             << semantic_tile_id(veh.x, veh.y) << "\""
             << ",\"name\":" << json_string(veh.name())
+            << ",\"hp\":" << veh.cur_hitpoints()
+            << ",\"max_hp\":" << veh.max_hitpoints()
+            << ",\"movement_points\":" << veh_speed(veh_id, 0)
+            << ",\"movement_scale\":" << Rules->move_rate_roads
+            << ",\"moves_remaining\":"
+            << std::max(0, veh_speed(veh_id, 0) - static_cast<int>(veh.moves_spent))
+            << ",\"order_name\":" << json_string(semantic_unit_order_name(veh))
+            << ",\"ready\":true"
             << ",\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
             << ",\"former\":" << (veh.is_former() ? "true" : "false")
             << ",\"combat\":" << (veh.is_combat_unit() ? "true" : "false")
@@ -10432,6 +10446,10 @@ std::string semantic_snapshot_response() {
             << ",\"command\":" << json_string(deferred_action.command.c_str())
             << ",\"status\":" << json_string(deferred_action.status.c_str())
             << ",\"native_result\":" << deferred_action.native_result;
+        if (deferred_action.native_call_attempted >= 0) {
+            out << ",\"native_call_attempted\":"
+                << (deferred_action.native_call_attempted ? "true" : "false");
+        }
         if (!deferred_action.resolution.empty()) {
             out << ",\"resolution\":" << json_string(deferred_action.resolution.c_str());
         }
@@ -17175,7 +17193,9 @@ std::string semantic_command_response(const std::string& request) {
             + std::to_string(veh_id) + ",\"destination_base_id\":"
             + std::to_string(candidate_base_id) + ",\"destination_base_name\":"
             + json_string(Bases[candidate_base_id].name)
-            + ",\"order\":\"go_to\",\"persistent\":true,\"ready\":false}";
+            + ",\"order\":\"go_to\",\"persistent\":true,\"ready\":"
+            + (semantic_unit_requires_decision(veh_id) ? "true" : "false")
+            + ",\"order_assigned\":true,\"arrival_verified\":false}";
     }
     if (command == "set_unit_on_alert") {
         if (*MultiplayerActive) {
@@ -20004,6 +20024,7 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             resolved_artifact_unit_id = -1;
             resolved_artifact_consumed = false;
             deferred_action.native_result = native_result;
+            deferred_action.native_call_attempted = attempted ? 1 : 0;
             bool same_unit = veh_id >= 0 && veh_id < *VehCount
                 && Vehs[veh_id].faction_id == faction_id
                 && Vehs[veh_id].unit_id == original_unit_id;
@@ -20029,7 +20050,9 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
                 ? "native_artifact_consumed"
                 : combat_resolved
                 ? "native_combat_resolved"
-                : (changed_position || native_result ? "native_move_resolved" : "");
+                : (changed_position || native_result ? "native_move_resolved"
+                    : attempted ? "native_move_rejected_reason_unknown"
+                    : "move_preconditions_changed_before_dispatch");
             return true;
         }
         if (deferred_council_faction_id >= 0) {
