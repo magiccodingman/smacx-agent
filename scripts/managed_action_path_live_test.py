@@ -254,6 +254,9 @@ def exercise_managed_actions(call, native, fixture):
             snapshot = native("semantic_snapshot")["snapshot"]
             if snapshot.get("interaction", {}).get("kind") == "turn":
                 return snapshot
+            if snapshot.get("protocol", {}).get("phase") == "wait":
+                time.sleep(0.1)
+                continue
             frame = choices("interaction")
             options = frame["choices"]
             closing = next((row for row in options if row.get("option") == "finish"

@@ -226,3 +226,22 @@ enables compression and compact process summaries, with a regression that invoke
 the actual environment-driven entry point and checks both outputs. The running
 isolated native test predates this logging-only correction; deployment must use
 the corrected image. Full native integration is still in progress.
+
+## Real Hermes wire and native action checkpoint (partial native run)
+
+The actual derived Hermes process, across low/medium/high gameplay and communication
+profiles, produces diagnostic request bodies equal to the controlled HTTP provider's
+received JSON. Captured responses share request/context correlation. This verifies
+the installed hook, rather than calling its HTTPX adapter directly.
+
+Native integration verifies production loss/deployment previews, queue edits, citizen
+and unit effects, founding, diplomatic energy and technology terms before stopping
+at council settling. Sanitized individual verified capabilities are preserved in
+`benchmarks/gameplay-diagnostics-native-partial.json`; it is explicitly incomplete.
+The last snapshot reports native `wait` while the ballot is pending. The fixture
+now waits instead of enumerating an interaction during that phase. Separately,
+read-only choice enumeration retries one coherent refresh on revision races; staged
+preparations never replay. Persistent races retain their error and explicit fresh-frame
+guidance. Adapter regression proves bounded retry, no preparation replay and unchanged
+invalid-reference rejection. Opaque execution and 15-tool schema contracts pass.
+Automatic-turn reconciliation and post-intent native recovery remain pending.

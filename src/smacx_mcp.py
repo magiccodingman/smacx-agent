@@ -2643,6 +2643,34 @@ def smac_choices(
     option_ref: str = "",
     amount: int | None = None,
 ) -> dict:
+    arguments = dict(kind=kind, base_ref=base_ref, own_unit_ref=own_unit_ref,
+        target_location_ref=target_location_ref, target_unit_ref=target_unit_ref,
+        preparation_ref=preparation_ref, option_ref=option_ref, amount=amount)
+    for attempt in range(2):
+        result = _smac_choices_once(**arguments)
+        error = result.get("error", {})
+        changing = (error.get("code") == "choice_frame_revision_changed" or
+            error.get("code") == "invalid_semantic_selector" and error.get("detail") in {
+                "semantic_reference_stale_revision", "semantic_reference_native_revision_changed"})
+        if not changing:
+            return result
+        # Enumeration is read-only. Refresh the complete join once when the
+        # native UI advanced between collection and snapshot. Never replay a
+        # staged preparation, whose continuation may already have advanced.
+        if attempt == 0 and not preparation_ref:
+            continue
+        return {**result, "native_action_executed": False,
+            "state_changed_during_enumeration": True,
+            "required_next": {"tool": "smac_choices", "kind": kind,
+                "reason": "Native state changed during enumeration; obtain a fresh frame and preparation."}}
+    raise AssertionError("unreachable choice enumeration")
+
+
+def _smac_choices_once(
+    kind: str, base_ref: str = "", own_unit_ref: str = "",
+    target_location_ref: str = "", target_unit_ref: str = "",
+    preparation_ref: str = "", option_ref: str = "", amount: int | None = None,
+) -> dict:
     authority = _sovereign_gameplay_gate("Native choice enumeration")
     if authority:
         return authority

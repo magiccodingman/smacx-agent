@@ -425,3 +425,9 @@ Live MCP causal capture verified at the adapter boundary (11 calls/results and
 21 native receipts). Production `record` compression/human-output wiring corrected
 after live inspection; its environment-driven regression passes. Full-game and
 deployed corrected-image evidence remain pending.
+
+Actual Hermes-process diagnostic request/response correlation passes against a
+controlled receiving provider in four profiles. Native managed effects have partial
+recorded evidence; council wait exposed a read-only enumeration race. Bounded refresh
+and no-preparation-replay regressions pass; native rerun is required. See the partial
+native benchmark; automatic-turn/recovery acceptance is not yet complete.

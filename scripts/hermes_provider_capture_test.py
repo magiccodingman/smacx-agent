@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import gzip
 from pathlib import Path
 import os
 import re
@@ -225,6 +226,8 @@ def main() -> int:
                     "-v", f"{root}:/opt/data",
                     "-e", "HOME=/opt/data", "-e", "HERMES_HOME=/opt/data",
                     "-e", "SMACX_STRICT_SYSTEM_PROMPT=1",
+                    "-e", "SMACX_DIAGNOSTICS_ENABLED=1",
+                    "-e", "SMACX_DIAGNOSTICS_ROOT=/opt/data/diagnostics",
                     "-e", f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
                     "-e", f"SMACX_SYSTEM_PROMPT_SHA256={prompt_sha256(prompt)}",
                     "-e", f"SMACX_RUNTIME_CONTEXT_URL=http://127.0.0.1:{server.server_port}/runtime-context",
@@ -258,6 +261,17 @@ def main() -> int:
                 if len(requests) != 1:
                     raise AssertionError(f"expected one provider request, captured={captured[before:]}")
                 request = requests[0]
+                diagnostic_events=[]
+                for path in (root/"diagnostics"/match_id).glob("*.jsonl.gz"):
+                    with gzip.open(path,"rt") as stream:
+                        diagnostic_events.extend(json.loads(line) for line in stream)
+                submitted=[row for row in diagnostic_events if row["kind"]=="provider_request_submitted"]
+                assert len(submitted)==1, [row["kind"] for row in diagnostic_events]
+                assert submitted[0]["payload"]["body"]==request
+                assert submitted[0]["correlation"].get("runtime_context_sha256")
+                responses=[row for row in diagnostic_events if row["kind"] in
+                           {"provider_response_body","provider_response_stream"}]
+                assert responses and responses[0]["correlation"]==submitted[0]["correlation"]
                 messages = request.get("messages")
                 systems = [item.get("content") for item in messages or []
                            if item.get("role") == "system"]
@@ -344,6 +358,8 @@ def main() -> int:
         "payload": {
             "real_derived_image": True,
             "provider_request_captured": True,
+            "production_diagnostic_matches_received_request": True,
+            "production_response_capture_correlated": True,
             "exact_single_system_message": True,
             "request_only_runtime_tail": True,
             "upstream_scaffold_absent": True,

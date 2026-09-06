@@ -9,6 +9,22 @@ from smacx_choice_preparation import ChoicePreparations, PreparationError
 
 
 def main():
+    transient={"ok":False,"error":{"code":"invalid_semantic_selector",
+        "detail":"semantic_reference_stale_revision"}}
+    with patch.object(mcp,"_smac_choices_once",side_effect=[transient,{"ok":True,"choices":[]}]) as enumerate_once:
+        assert mcp.smac_choices("interaction")["ok"]
+        assert enumerate_once.call_count==2
+    with patch.object(mcp,"_smac_choices_once",return_value=transient) as enumerate_once:
+        result=mcp.smac_choices("interaction")
+        assert enumerate_once.call_count==2 and result["state_changed_during_enumeration"]
+        assert result["native_action_executed"] is False
+    with patch.object(mcp,"_smac_choices_once",return_value=transient) as enumerate_once:
+        assert not mcp.smac_choices("interaction",preparation_ref="preparation-existing")["ok"]
+        assert enumerate_once.call_count==1
+    invalid={"ok":False,"error":{"code":"invalid_semantic_selector","detail":"unknown_reference"}}
+    with patch.object(mcp,"_smac_choices_once",return_value=invalid) as enumerate_once:
+        assert mcp.smac_choices("unit_actions",own_unit_ref="unknown")==invalid
+        assert enumerate_once.call_count==1
     identity = {"match_id": "match-actions", "session_id": "session-actions", "revision": "r1"}
     context = {"identity": {"timeline_id": "timeline-main", "world_epoch": "epoch-one"},
                "action_revision": "r1", "objects": {}, "by_ref": {}}
