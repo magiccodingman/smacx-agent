@@ -89,7 +89,7 @@
     "cross_publication_episodes": "pass",
     "feed_alignment": "pass",
     "runtime_context": "pass",
-    "live_deployment": "pending",
+    "live_deployment": "pass",
     "next_actual_provider_delivery": "pending",
     "sovereign_correction": "pending",
     "captured_historical_movement_projection": {
@@ -106,5 +106,19 @@
     "No claim about the unobserved ultimate fate of the Colony Pod",
     "Native row reuse remains an unproven hypothesis for separate outages",
     "Full game acceptance remains open"
-  ]
+  ],
+  "deployment": {
+    "control_mcp_image_sha256": "b4ca16d350998b954f31577eae813bb176461a8807a001f3ce0e3cca30355927",
+    "harness_specialist_image_sha256": "a3425e10044cff5d84af5660a323b100dc03326e16ab78dee8448a6b7f33a36e",
+    "worker_base_image_sha256": "1384b5ee2f8d8b9e90a1da22f74d6eb89042b9c48ef64557364f3c0cf073c4b7",
+    "observed_engine_source_sha256": "a19d7b9a0ceb287d6e746480269dc2d769d2c5c391cf12d438d24c1a0ad6930a",
+    "restored_checkpoint_id": "checkpoint-4309b9c72c8c42688c6984ed97bdaaf2",
+    "restored_turn": 72,
+    "timeline_id": "timeline-restore-211520a508194c9f8f100542",
+    "session_id": "session-47965e5abd0f4d15a6433afc6f12a8db",
+    "run_id": "run-0cf2e4aa010d488c9e708d7cc90af892",
+    "initial_native_interaction": "turn",
+    "initial_pending_receipt": false,
+    "operator_attention_cleared": true
+  }
 }

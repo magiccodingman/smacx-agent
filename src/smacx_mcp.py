@@ -4084,6 +4084,28 @@ def smac_notebook(
     )
 
 
+def _wait_response(observation: dict, *, changed: bool) -> dict:
+    semantic = _call("semantic_snapshot")
+    if not semantic.get("ok"):
+        return {**semantic, "wait_stage": "semantic_observation",
+                "instruction": "STOP issuing gameplay actions. The native game bridge is unavailable; wait for platform recovery or operator attention."}
+    snapshot = semantic.get("snapshot", {})
+    protocol = snapshot.get("protocol", {})
+    interaction = snapshot.get("interaction", {})
+    phase = protocol.get("phase")
+    result = {
+        "ok": True, "changed": changed, "observation": observation,
+        "gameplay": {"turn": snapshot.get("turn"), "phase": phase,
+                     "interaction_kind": interaction.get("kind"),
+                     "popup_label": interaction.get("popup_label"),
+                     "required_action": protocol.get("required_action")},
+        "required_next": {"tool": "smac_wait" if phase == "wait" else "smac_decision",
+                          "reason": "Native processing is still pending." if phase == "wait" else
+                          "Obtain a fresh decision now. A blocking interaction or actionable turn requires a decision, not further waiting."},
+    }
+    return _attach_chat_attention(result, snapshot)
+
+
 @mcp.tool(description="Wait briefly for the game state to change, then return a fresh observation. Maximum 30 seconds.")
 def smac_wait(seconds: int = 2) -> dict:
     seconds = min(max(seconds, 0), 30)
@@ -4097,6 +4119,10 @@ def smac_wait(seconds: int = 2) -> dict:
                 "wait for platform recovery or operator attention."
             ),
         }
+    if before.get("observation", {}).get("ui", {}).get("modal") is True:
+        result = _wait_response(before, changed=False)
+        if not result.get("ok") or result.get("gameplay", {}).get("phase") != "wait":
+            return result
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         time.sleep(0.25)
@@ -4111,10 +4137,7 @@ def smac_wait(seconds: int = 2) -> dict:
                 ),
             }
         if after != before:
-            result = {"ok": True, "changed": True, "observation": after}
-            status = _call("status")
-            identity = status.get("identity", {}) if isinstance(status, dict) else {}
-            return _attach_chat_attention(result, identity if isinstance(identity, dict) else {})
+            return _wait_response(after, changed=True)
     final = _call("observe")
     if not final.get("ok"):
         return {
@@ -4125,10 +4148,7 @@ def smac_wait(seconds: int = 2) -> dict:
                 "wait for platform recovery or operator attention."
             ),
         }
-    result = {"ok": True, "changed": False, "observation": final}
-    status = _call("status")
-    identity = status.get("identity", {}) if isinstance(status, dict) else {}
-    return _attach_chat_attention(result, identity if isinstance(identity, dict) else {})
+    return _wait_response(final, changed=False)
 
 
 @mcp.tool(description="Report one missing semantic capability to the bridge developer and stop play. Do not attempt a UI workaround after calling this.")

@@ -1,0 +1,56 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "wait-response affordance weakness; sovereign self-corrected before operator stop",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "session_id": "session-47965e5abd0f4d15a6433afc6f12a8db",
+  "observed_turn": 72,
+  "observed_popup": "BEGINPROJECT",
+  "wait_requests": [
+    {
+      "request_id": "db326b074a614646a0e2ebc228c8294a",
+      "seconds": 3
+    },
+    {
+      "request_id": "3d22beed064c41b7aa55a0e634b48631",
+      "seconds": 5
+    },
+    {
+      "request_id": "e11aa5c5bd8148cfbb5f2dcda623b810",
+      "seconds": 10,
+      "call_id": "chatcmpl-tool-a7cbbc116d259565"
+    }
+  ],
+  "returned_before": {
+    "changed": false,
+    "can_act": false,
+    "modal": true,
+    "semantic_popup_label_present": false,
+    "required_next_present": false
+  },
+  "subsequent_self_correction": {
+    "decision_request_id": "f08cb97df31b4977ae72906039ca2ae2",
+    "ack_request_id": "cf5b7425c574468997a0590e56081a28",
+    "turn73_handoff_request_id": "559e57df452147db9f21fba46bbcb2ea"
+  },
+  "repair": "Return qualified semantic phase and required next tool; actionable blocking modals return immediately instead of waiting the entire interval. Compact human trace retains gameplay state.",
+  "native_comparison": {
+    "classification": "read-only proposed adapter executed against preserved running native window",
+    "requested_wait_seconds": 30,
+    "observed_turn": 73,
+    "observed_interaction": "technology_presentation",
+    "elapsed_ms": 201.723,
+    "required_next": "smac_decision",
+    "native_mutation": false
+  },
+  "validation": {
+    "wait_adapter_contract": "pass",
+    "decision_frame_contract": "pass",
+    "compact_trace_preserves_phase_and_popup": "pass",
+    "deployed_provider_delivery": "pending"
+  },
+  "limits": [
+    "Not a new native deadlock",
+    "Do not equate modal=true with engine processing or with an automatically dismissible dialog",
+    "SOCIETY native replay remains pending"
+  ]
+}
