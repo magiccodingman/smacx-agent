@@ -12,5 +12,11 @@
     "turn": 22,
     "verified": true
   },
-  "live_retry_acceptance": "pending deployment; checkpoint proves native order progressed, not repaired retry behavior"
+  "live_retry_acceptance": "pending deployment; checkpoint proves native order progressed, not repaired retry behavior",
+  "deployment": {
+    "restored_timeline": "timeline-restore-21dddfdc676747d789a229c9",
+    "control_image": "sha256:65e4900b31948bcd98b37ea4f23b0d222a92b37e150dbb3f15ffb7bb4c9c716d",
+    "autonomous_resume_turn": 22,
+    "actual_repeated_race": "not yet observed; controlled handler retry proven"
+  }
 }

@@ -71,7 +71,7 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
     manifest = {"schema": "smacx.campaign-diagnostics.v1", "match_id": match_id,
                 "created_unix": time.time(), "authority": "diagnostic_only",
                 "consistency": "database_transaction_plus_per_file_byte_watermarks",
-                "files": [], "gaps": [], "complete": False}
+                "files": [], "gaps": [], "state_windows": {}, "complete": False}
     total = 0
     human = []
     human_bytes = 0
@@ -93,10 +93,17 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
             for table in TABLES:
                 if table not in available: continue
                 columns = {r[1] for r in connection.execute(f"PRAGMA table_info({table})")}
+                # An unordered LIMIT can select whole index categories before
+                # any recent runtime telemetry. Export an explicit recent
+                # window, with rowid breaking equal-timestamp ties.
+                time_column = next((name for name in (
+                    "updated_unix", "recorded_unix", "observed_unix", "created_unix",
+                ) if name in columns), None)
+                order = f"{time_column} DESC, rowid DESC" if time_column else "rowid DESC"
                 if "match_id" in columns:
-                    query=f"SELECT * FROM {table} WHERE match_id=? LIMIT 10001"
+                    query=f"SELECT * FROM {table} WHERE match_id=? ORDER BY {order} LIMIT 10001"
                 elif "mission_id" in columns:
-                    query=f"SELECT * FROM {table} WHERE mission_id IN (SELECT mission_id FROM specialist_missions WHERE match_id=?) LIMIT 10001"
+                    query=f"SELECT * FROM {table} WHERE mission_id IN (SELECT mission_id FROM specialist_missions WHERE match_id=?) ORDER BY {order} LIMIT 10001"
                 else: continue
                 rows = []
                 for row in connection.execute(query, (match_id,)):
@@ -110,6 +117,12 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
                     rows.append(redact(value))
                 if len(rows)>10000:
                     manifest["gaps"].append({"table": table, "reason": "row_limit"});rows=rows[:10000]
+                manifest["state_windows"][table] = {
+                    "selection": "most_recent", "order": order,
+                    "row_limit": 10000, "retained_rows": len(rows),
+                    "newest_timestamp": rows[0].get(time_column) if rows and time_column else None,
+                    "oldest_timestamp": rows[-1].get(time_column) if rows and time_column else None,
+                }
                 write(archive, f"state/{table}.json", json.dumps(rows, ensure_ascii=False).encode())
         stream_count = 0
         for index, root in enumerate(roots):
