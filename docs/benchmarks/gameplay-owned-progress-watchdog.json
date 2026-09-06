@@ -49,6 +49,8 @@
     "incident_status": "recovered",
     "active_sovereign_runs": 1,
     "native_owned_progress_digest": "8:8691160464923283438:13042737038119500592",
-    "first_supervisor_fingerprint": "5298720a053f4625ae2b4e40e1bf05d8118fc4d695af127f7defa2ea4577d2a0"
+    "first_supervisor_fingerprint": "5298720a053f4625ae2b4e40e1bf05d8118fc4d695af127f7defa2ea4577d2a0",
+    "autonomous_post_recovery_turn": 49,
+    "same_turn_supervisor_reset_sample": "not retained separately before turn48; controlled final native comparison proves the observed input and live supervisor records subsequent progression"
   }
 }

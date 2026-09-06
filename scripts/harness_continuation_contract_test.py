@@ -116,7 +116,35 @@ class ContractHarnessManager(HarnessManager):
         )
 
 
+def reasoning_detail_is_not_extra_output() -> None:
+    for total, should_stop in ((2500, False), (4096, True)):
+        control = FakeControl()
+        worker = FakeWorkerManager()
+        manager = ContractHarnessManager(control, worker)
+        manager.observed_running = True
+        control.run["metadata"] = {
+            "semantic_sample_unix": time.time() - 61,
+            "semantic_telemetry_unix": time.time() - 61,
+            "semantic_fingerprint": "turn-2",
+            "semantic_progress_unix": time.time() - 400,
+            "semantic_baseline_telemetry": {
+                "api_calls": 10, "output_tokens": 10000, "reasoning_tokens": 8000,
+            },
+        }
+        manager.telemetry = lambda _: {"ok": True, "telemetry": {
+            "api_calls": 11, "output_tokens": 10000 + total,
+            "reasoning_tokens": 10000,
+        }}
+        result = manager.reconcile_once()
+        assert bool(result["operator_required"]) is should_stop, result
+        if should_stop:
+            assert manager.capability_report["generated_tokens_without_progress"] == total
+        else:
+            assert not control.incidents and not worker.quarantines
+
+
 def main() -> int:
+    reasoning_detail_is_not_extra_output()
     control = FakeControl()
     worker = FakeWorkerManager()
     manager = ContractHarnessManager(control, worker)

@@ -1,0 +1,27 @@
+{
+  "classification": "confirmed reasoning detail double counted as additional output",
+  "installed_authority": "Hermes agent/usage_pricing.py CanonicalUsage.total_tokens and normalize_usage; conversation_loop persists canonical output and reasoning separately",
+  "incident_id": "incident-ae8a009faa9e445a92cc289a8fa0dc93",
+  "baseline": {
+    "output_tokens": 346299,
+    "reasoning_tokens": 283067,
+    "api_calls": 358
+  },
+  "latest": {
+    "output_tokens": 361155,
+    "reasoning_tokens": 296825,
+    "api_calls": 364
+  },
+  "historical_reported_generated": 28614,
+  "correct_output_delta": 14856,
+  "reasoning_detail_delta": 13758,
+  "explains_missing_native_production_observation": false,
+  "thresholds_changed": false,
+  "tests": {
+    "2500_output_with_2000_reasoning_and_one_call": "does not trigger token threshold",
+    "4096_output_with_reasoning_and_one_call": "stops and reports4096",
+    "previous_calculation": "new boundary regression fails as expected",
+    "existing_continuation_outage_and_stall_contracts": "pass"
+  },
+  "deployment": "pending"
+}
