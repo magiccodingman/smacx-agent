@@ -253,3 +253,9 @@ execution status and decision consumption, so queued execution remains distingui
 from verified completion. The summary regression passes. A separate isolated cold
 start failed before bridge readiness; an identical fresh launch succeeded. Its root
 cause remains unresolved and must not be presented as fixed by the enumeration repair.
+
+Provider audit completeness follow-up: metrics now identify requests without any
+captured response or transport-failure terminal event. Header receipt alone does
+not close the request. The bounded ID list explicitly permits in-flight, interrupted
+or missing capture interpretations; it does not infer provider failure. Summary
+and campaign-export regressions pass. This does not certify full stream capture.

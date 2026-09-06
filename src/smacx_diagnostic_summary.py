@@ -69,9 +69,15 @@ class Metrics:
     def __init__(self):
         self.events=Counter();self.tools=Counter();self.failures=Counter();self.actors=Counter()
         self.streams_finished=0;self.streams_incomplete=0;self.latencies={}
+        self.requests=set();self.terminal_requests=set()
     def add(self,event):
         kind=event.get('kind','unknown');payload=event.get('payload') or {}
         self.events[kind]+=1;self.actors[event.get('actor','unknown')]+=1
+        request_id=(event.get('correlation') or {}).get('request_id')
+        if request_id:
+            if kind=='provider_request_submitted':self.requests.add(request_id)
+            if kind in {'provider_response_body','provider_response_stream','provider_transport_failed'}:
+                self.terminal_requests.add(request_id)
         if kind=='tool_requested':self.tools[payload.get('managed_name','unknown')]+=1
         if kind in {'tool_returned','managed_tool_returned'}:
             result=result_object(payload.get('result',payload.get('content')))
@@ -92,7 +98,11 @@ class Metrics:
             row=self.latencies.setdefault(key,{'count':0,'total_ms':0,'max_ms':0})
             row['count']+=1;row['total_ms']+=duration;row['max_ms']=max(row['max_ms'],duration)
     def as_dict(self):
+        pending=sorted(self.requests-self.terminal_requests)
         return {'event_counts':dict(self.events),'actor_counts':dict(self.actors),
+            'provider_requests_without_terminal_capture':{'count':len(pending),
+                'request_ids':pending[:64],'more':max(0,len(pending)-64),
+                'meaning':'May be in flight, interrupted, or missing capture; not automatically a provider failure.'},
             'sovereign_requested_tool_counts':dict(self.tools),'failure_observations_by_layer':dict(self.failures),
             'failure_counts_are_not_deduplicated_incidents':True,
             'provider_streams_with_done_marker':self.streams_finished,

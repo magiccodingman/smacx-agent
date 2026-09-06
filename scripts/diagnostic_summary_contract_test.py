@@ -13,4 +13,9 @@ assert 'queued' in rendered and 'completed' not in rendered and 'effect verified
 queued['payload']['result']={'ok':True,'execution_status':'queued','decision_consumed':True}
 rendered=summary(queued)
 assert '"execution_status":"queued"' in rendered and '"decision_consumed":true' in rendered
+metrics.add({'kind':'provider_request_submitted','correlation':{'request_id':'request-open'}})
+metrics.add({'kind':'provider_response_headers','correlation':{'request_id':'request-open'}})
+assert metrics.as_dict()['provider_requests_without_terminal_capture']['count']==1
+metrics.add({'kind':'provider_transport_failed','correlation':{'request_id':'request-open'}})
+assert metrics.as_dict()['provider_requests_without_terminal_capture']['count']==0
 print(json.dumps({'passed':True,'hermes_envelope_decoded':True,'pre_mcp_failure_named':True,'queued_not_completed':True}))

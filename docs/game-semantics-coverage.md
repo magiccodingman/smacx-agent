@@ -436,3 +436,9 @@ Corrected image capture observed live: compressed actor streams and named stderr
 summaries verified; execution-status/decision-consumption receipt regression passes.
 Native cold-start reliability has one unresolved intermittent failure, with a
 subsequent identical launch successful. Full native rerun is ongoing.
+
+Provider audit completeness follow-up: metrics now identify requests without any
+captured response or transport-failure terminal event. Header receipt alone does
+not close the request. The bounded ID list explicitly permits in-flight, interrupted
+or missing capture interpretations; it does not infer provider failure. Summary
+and campaign-export regressions pass. This does not certify full stream capture.
