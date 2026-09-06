@@ -51,7 +51,7 @@ RUN python3 -m venv /opt/smacx/mcp-venv \
 COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_docker.py src/smacx_worker_manager.py src/smacx_operations.py \
     src/smacx_harness_manager.py src/smacx_hermes.py src/smacx_controller.py \
-    src/smacx_mcp.py src/smacx_reference.py src/smacx_capabilities.py \
+    src/smacx_mcp.py src/smacx_mcp_validation.py src/smacx_reference.py src/smacx_capabilities.py \
     src/smacx_game_settings.py src/smacx_prompt.py src/smacx_generation.py /opt/smacx/src/
 COPY src/smacx_journal.py src/smacx_context_policy.py src/smacx_choice_preparation.py /opt/smacx/src/
 COPY src/smacx_diagnostics.py src/smacx_diagnostic_summary.py \

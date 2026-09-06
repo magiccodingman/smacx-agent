@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import parse_qs, urlsplit
 import uuid
 
-from mcp.server import MCPServer
+from smacx_mcp_validation import StrictMCPServer
 
 from smacx_capabilities import capability_manifest
 from smacx_choice_preparation import ChoicePreparations, PreparationError, bind_numeric_choices, bind_ballot_choices
@@ -60,7 +60,7 @@ from smacx_specialists import (
 )
 
 
-class TracedMCPServer(MCPServer):
+class TracedMCPServer(StrictMCPServer):
     def tool(self, *args, **kwargs):
         register = super().tool(*args, **kwargs)
         return lambda function: register(trace_managed_tool(function))

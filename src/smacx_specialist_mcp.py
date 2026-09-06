@@ -15,7 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from mcp.server import MCPServer
+from smacx_mcp_validation import StrictMCPServer
 
 from smacx_specialists import SpecialistError, SpecialistService
 from smacx_store import MemoryScope, SmacxStore
@@ -297,8 +297,13 @@ def _frozen_world() -> tuple[WorldService, tempfile.TemporaryDirectory[str]]:
     return WorldService(world_store, SCOPE), temporary
 
 
+class SpecialistMCPServer(StrictMCPServer):
+    def record_argument_rejection(self, payload):
+        _trace("managed_tool_validation_rejected", payload)
+
+
 if MISSION["faculty"] == "reference":
-    mcp = MCPServer(
+    mcp = SpecialistMCPServer(
         "reference-specialist", title="SMACX reference researcher",
         description="Bounded mechanics retrieval for one immutable specialist mission.",
         version="2.0.0",
@@ -335,7 +340,7 @@ if MISSION["faculty"] == "reference":
                 "remaining_evidence_calls": _remaining_calls(sequence)}
 
 else:
-    mcp = MCPServer(
+    mcp = SpecialistMCPServer(
         "world-specialist", title="SMACX frozen world analyst",
         description="Deterministic read-only analysis of one pinned perspective revision.",
         version="2.0.0",

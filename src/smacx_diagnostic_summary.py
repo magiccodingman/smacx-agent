@@ -43,7 +43,7 @@ def summary(event):
         arguments=payload.get('arguments') or {}
         if isinstance(arguments,dict) and isinstance(arguments.get('arguments'),dict):arguments=arguments['arguments']
         return f"{tool} request {json.dumps(arguments,ensure_ascii=False,separators=(',',':'))}"
-    if kind in {'tool_returned','managed_tool_returned'}:
+    if kind in {'tool_returned','managed_tool_returned','managed_tool_validation_rejected'}:
         result=result_object(payload.get('result',payload.get('content')))
         chosen={k:result[k] for k in ('ok','kind','error','phase','focus','executed_choice',
             'native_action_executed','execution','execution_status','decision_consumed',
@@ -83,7 +83,7 @@ class Metrics:
         if kind in {'tool_requested','tool_validation_rejected'}:self.tools[payload.get('managed_name','unknown')]+=1
         if kind=='tool_validation_rejected':self.failures[kind+':unknown_tool_name']+=1
         if kind=='control_operation_failed':self.failures[kind+':'+str(payload.get('error_code','unknown'))]+=1
-        if kind in {'tool_returned','managed_tool_returned'}:
+        if kind in {'tool_returned','managed_tool_returned','managed_tool_validation_rejected'}:
             result=result_object(payload.get('result',payload.get('content')))
             error=result.get('error')
             if error:
