@@ -21,7 +21,27 @@
   "limitations": [
     "Schema token figure measures serialized MCP schemas, not the providers chat template overhead",
     "No additional gameplay authority or tools",
-    "Live deployed schema/error-rate/cognition-use checks pending",
+    "Live schema delivery verified; sustained error-rate and autonomous cognition-use checks remain open",
     "Historical wrappers remain supported for GC only; new requests expose direct names"
-  ]
+  ],
+  "deployed": {
+    "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+    "run_id": "run-b7129c212ee3449587e045edc99a7eff",
+    "restored_checkpoint": "checkpoint-c9ac309d4b1a4d15acf113fbc103476b",
+    "turn": 16,
+    "provider_request_id": "cc34561a7c664219add35dbe69f3cce4",
+    "tool_count": 15,
+    "namespaces": [
+      "mcp__smacx__"
+    ],
+    "resource_prompt_discovery_helpers": 0,
+    "approved_and_wire_system_sha256": "78456966b3c07d5aec25e18f30f8d15f2d7afa6dabe74f8ad452a3f79310d4f4",
+    "runtime_session_id": "session-c6d879ca28a74e3086eb6cecdef624ea",
+    "observed_calls": [
+      "smac_decision",
+      "smac_attention_ack",
+      "smac_choices(kind=production)"
+    ],
+    "control_image": "sha256:151e0e4111587df69a7d6f666160c9ad500be29512f0092f5dde825f3d730f9c"
+  }
 }

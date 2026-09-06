@@ -9,6 +9,14 @@
   "limitations": [
     "Conservative possibility, not an exact prediction",
     "No prose-to-intent inference or new turn blocker",
-    "Deployment and provider receipt pending"
-  ]
+    "Live End turn notice delivered; next last-ready-unit automatic-closure frame and sustained behavior remain to inspect"
+  ],
+  "deployed": {
+    "turn": 16,
+    "decision_id": "decision-dbf1f033c9a142ab8c91de86c9f5a0ea",
+    "marked_choice": "End turn",
+    "provider_request_id": "0268e3a3e00f4cfeac3964cbcb65ee56",
+    "notice_present_in_actual_request": true,
+    "next_observed_management_query": "smac_choices(kind=production, base_ref=base-location-1134)"
+  }
 }
