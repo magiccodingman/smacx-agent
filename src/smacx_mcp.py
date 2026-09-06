@@ -1034,6 +1034,53 @@ def _citizen_choice_evidence(raw: Mapping[str, Any], catalog: Mapping[str, Any],
     return evidence
 
 
+def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
+    """Keep player-issued movement observations without exposing native slots.
+
+    These three addresses come from the guarded owned-unit action receipt,
+    not from a foreign entity lookup. New arrivals can lie outside the previous
+    projection, so a pre-action registry alone cannot translate the observation.
+    Entity slots remain excluded, especially after destruction/compaction.
+    """
+    locations: dict[int, str] = {}
+    def collect(value):
+        if isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, Mapping):
+            if value.get("command") == "move_unit":
+                for key in ("origin_tile_id", "target_tile_id", "observed_tile_id"):
+                    tile = value.get(key)
+                    if isinstance(tile, int) and not isinstance(tile, bool) and tile >= 0:
+                        locations[tile] = f"location-{tile}"
+            for item in value.values():
+                collect(item)
+    collect(receipt)
+    public = _semanticize_choice(receipt, {"reverse_locations": locations})
+    def explain(value):
+        if isinstance(value, list):
+            for item in value:
+                explain(item)
+        elif isinstance(value, dict):
+            for item in list(value.values()):
+                explain(item)
+            if value.get("command") != "move_unit" or value.get("status") not in {"completed", "rejected"}:
+                return
+            if not str(value.get("resolution", "")).startswith("native_move_"):
+                return  # Combat/consumption is not an arrival or survival claim.
+            origin, target, observed = (value.get(key) for key in
+                ("origin_location_ref", "target_location_ref", "observed_location_ref"))
+            observation = {"scope": "Native resolution receipt, not a guarantee of current unit state.",
+                           "meaning": "Completed means the native attempt resolved, not necessarily arrival. Refresh the decision; an unreported movement failure reason remains unknown."}
+            if isinstance(origin, str) and isinstance(observed, str):
+                observation["reported_position_changed"] = observed != origin
+            if isinstance(target, str) and isinstance(observed, str):
+                observation["requested_target_reported"] = observed == target
+            value["movement_observation"] = observation
+    explain(public)
+    return public
+
+
 def _choice_contains_private_selector(value: Any) -> bool:
     if isinstance(value, list):
         return any(_choice_contains_private_selector(item) for item in value)
@@ -3296,9 +3343,9 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
                 "native_action_executed": False, "execution_status": "not_dispatched",
                 "required_next": {"stop_after": True, "reason": "Operator recovery is required."}}
 
-    # The journal has already recorded the native receipt. The provider uses
+    # Execution has already recorded its journal outcome. The provider uses
     # the selected opaque choice; native entity slots are not public identity.
-    response = _semanticize_choice(_execute_choice_once(decision_id, choice_id, text), None)
+    response = _public_execution_receipt(_execute_choice_once(decision_id, choice_id, text))
     error = response.get("error")
     code = error.get("code") if isinstance(error, dict) else error
     boundary_errors = {"unknown_decision", "expired_decision", "consumed_decision",

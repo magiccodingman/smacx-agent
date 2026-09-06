@@ -1,0 +1,32 @@
+{
+  "checkpoint": "movement_receipt_delivery",
+  "native_evidence": {
+    "turn": 35,
+    "nondisplacement_invocation": "6b5b9a95ac604152a6c7d75ad753fe21",
+    "origin_location_ref": "location-1254",
+    "target_location_ref": "location-1295",
+    "observed_location_ref": "location-1254",
+    "later_arrival_invocation": "4ee9d73404ce4e068d7d2b6d74a252e9",
+    "later_observed_location_ref": "location-1334",
+    "failure_reason": "unknown"
+  },
+  "repair": "Translate guarded movement receipt addresses into public locations; distinguish resolved attempt from reported arrival; retain epistemic scope and native entity privacy.",
+  "passed": [
+    "movement_receipt_delivery_test",
+    "opaque_choice_execution_test",
+    "production_context_delivery_test",
+    "fair_play_world_test"
+  ],
+  "verified_checkpoint": {
+    "id": "checkpoint-2b6518c31ebc4906978fe21cce498159",
+    "turn": 38
+  },
+  "pending": [
+    "packaged deployment",
+    "actual provider receipt delivery",
+    "continued autonomous gameplay",
+    "full game completion"
+  ],
+  "native_mechanics_changed": false,
+  "provider_inference_from_fixture": false
+}
