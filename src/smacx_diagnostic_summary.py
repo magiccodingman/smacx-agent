@@ -21,6 +21,14 @@ def result_object(value):
                 value=found
         elif isinstance(value,dict) and 'ok' not in value and isinstance(value.get('result'),(str,dict)):
             value=value['result']
+        elif isinstance(value,dict) and isinstance(value.get('error'),str):
+            # Hermes serializes MCP isError text inside an outer error string.
+            # Only unwrap a declared failure; an inner success cannot erase it.
+            try:nested=json.loads(value['error'])
+            except ValueError:break
+            if not isinstance(nested,dict) or nested.get('ok') is not False or not nested.get('error'):
+                break
+            value=nested
         elif isinstance(value, dict) and isinstance(value.get('content'),list):
             texts=[r.get('text') for r in value['content'] if isinstance(r,dict) and r.get('type')=='text']
             if len(texts)!=1:return value

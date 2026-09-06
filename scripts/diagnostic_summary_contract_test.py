@@ -7,6 +7,15 @@ event={'kind':'tool_returned','actor':'sovereign','payload':{'managed_name':'sma
 assert 'schema_missing_required' in summary(event)
 metrics=Metrics();metrics.add(event)
 assert metrics.as_dict()['failure_observations_by_layer']=={'tool_returned:schema_missing_required':1}
+sdk_error={'error':json.dumps({'ok':False,'error':{'code':'unknown_tool_arguments',
+    'unknown_arguments':['detail']},'execution_status':'not_executed','native_action_executed':False})}
+sdk_event={'kind':'tool_returned','payload':{'managed_name':'smac_choices','content':json.dumps(sdk_error)}}
+assert result_object(sdk_error)['error']['code']=='unknown_tool_arguments'
+assert '"native_action_executed":false' in summary(sdk_event)
+metrics.add(sdk_event)
+assert metrics.as_dict()['failure_observations_by_layer']['tool_returned:unknown_tool_arguments']==1
+assert result_object({'error':json.dumps({'ok':True})}).get('error')
+assert result_object({'error':'plain failure'})=={'error':'plain failure'}
 rejected={'kind':'tool_validation_rejected','actor':'sovereign','payload':{
     'managed_name':'unknown_diagnostic_tool','arguments':{'purpose':'fixture'},
     'error':{'code':'unknown_tool_name'},'native_action_executed':False}}
