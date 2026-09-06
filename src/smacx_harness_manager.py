@@ -438,6 +438,8 @@ class HarnessManager:
                 "HOME=/opt/data", "HERMES_HOME=/opt/data",
                 "PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1",
                 "SMACX_STRICT_SYSTEM_PROMPT=1",
+                "SMACX_DIAGNOSTICS_ENABLED=1",
+                "SMACX_DIAGNOSTICS_ROOT=/opt/data/diagnostics",
                 f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
                 f"SMACX_SYSTEM_PROMPT_SHA256={prompt_hash}",
                 f"SMACX_AGENT_MATCH_ID={run['match_id']}",

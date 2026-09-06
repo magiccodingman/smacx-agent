@@ -99,6 +99,28 @@ def _compact_cognition_record(item: Mapping[str, Any], *, text_limit: int = 1200
     return result
 
 
+def cognition_selection_audit(working: Mapping[str, Any], selected: Mapping[str, Any]) -> dict[str, Any]:
+    """Explain runtime selection without claiming unobserved journal inventory."""
+    sections = working.get("sections", {})
+    audit = {}
+    for kind in ("goals", "plans", "commitments", "relationships", "beliefs"):
+        source = [row for row in sections.get(kind, ()) if isinstance(row, Mapping)]
+        included = list(selected.get(kind, ()))
+        def identity(row):
+            return next((str(row[key]) for key in ("goal_id", "plan_id", "commitment_id",
+                "belief_id", "relationship_id", "goal_key", "plan_key", "commitment_key")
+                if row.get(key)), hashlib.sha256(canonical_json(_compact_cognition_record(row)).encode()).hexdigest())
+        selected_ids = {identity(row) for row in included}
+        allowed = {"goals": {"active", "paused"}, "plans": {"proposed", "active", "paused"},
+                   "commitments": {"proposed", "accepted"}}.get(kind)
+        audit[kind] = {"source_count": len(source), "included_ids": sorted(selected_ids),
+            "omitted": [{"id": identity(row), "reason":
+                "status_filter" if allowed and str(row.get("status") or ("proposed" if kind == "commitments" else "active")) not in allowed
+                else "section_count_or_token_budget"} for row in source if identity(row) not in selected_ids]}
+    return {"inventory_scope": "journal_working_set_before_runtime_selection",
+            "upstream_working_set_limits_not_reconstructed": True, "sections": audit}
+
+
 def _cognition(working: Mapping[str, Any], *, token_budget: int,
                current_turn: int | None = None,
                current_year: int | None = None) -> dict[str, Any]:
@@ -322,8 +344,9 @@ class RuntimeContextAssembler:
             focus_ref = str(focus_unit["own_unit_ref"])
         tier = "64k" if context_length < 131072 else "256k"
         budgets = RUNTIME_BUDGETS[tier]
+        working = self.working_state()
         cognition = _cognition(
-            self.working_state(), token_budget=budgets["cognition"],
+            working, token_budget=budgets["cognition"],
             current_turn=int(turn) if turn is not None else None,
             current_year=int(snapshot["year"]) if snapshot.get("year") is not None else None,
         )
@@ -478,6 +501,18 @@ class RuntimeContextAssembler:
         payload["token_estimate"] = actual_tokens
         if actual_tokens > runtime_cap:
             raise RuntimeError("context_budget_exhausted:runtime_metadata")
+        from smacx_diagnostics import record
+        record("runtime_selection", {
+            "identity": payload["identity"],
+            "cognition": cognition_selection_audit(working, cognition),
+            "operation_source_count": len(active["operations"]),
+            "operation_selected_count": len(payload["operations"]),
+            "attention_source_count": original_lease_count,
+            "attention_selected_ids": [item["attention_id"] for item in payload["attention"].get("items", ())],
+            "attention_requeued_ids": placement["requeued_ids"],
+            "budget": payload["budget"], "token_composition": payload["token_composition"],
+        }, actor="runtime-context-builder", correlation={"episode_id": episode_id,
+            "attention_lease_id": str(payload["attention"]["attention_lease_id"])})
         for component, value in payload["token_composition"].items():
             self.world.store.telemetry(
                 "runtime_context", f"tokens_{component}", value, scope=self.scope,

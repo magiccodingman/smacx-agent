@@ -271,6 +271,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, {"ok": True, "matches": self.server.control.list_matches()})
                 return
+            diagnostic_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/diagnostics", path)
+            if diagnostic_match:
+                self._authentication()
+                self._json(200, {"ok": True, "bundle": self._operations().campaign_diagnostics(diagnostic_match[1])})
+                return
             match_status = MATCH_STATUS_PATH.fullmatch(path)
             if match_status:
                 self._authentication()

@@ -52,13 +52,20 @@ from smacx_attention import AttentionError, WATCH_KINDS
 from smacx_world import WORLD_MODES, WorldQueryError
 from smacx_counterfactual import action_relationships, parse_scenario
 from smacx_runtime_context import RuntimeContextAssembler
+from smacx_diagnostics import record as diagnostic_record, trace_managed_tool, INVOCATION
 from smacx_world_types import content_hash
 from smacx_specialists import (
     SpecialistError, SpecialistService,
 )
 
 
-mcp = MCPServer(
+class TracedMCPServer(MCPServer):
+    def tool(self, *args, **kwargs):
+        register = super().tool(*args, **kwargs)
+        return lambda function: register(trace_managed_tool(function))
+
+
+mcp = TracedMCPServer(
     "smacx",
     title="SMACX Agent",
     description="Nonvisual fair-play state and semantic control for Sid Meier's Alpha Centauri: Alien Crossfire.",
@@ -301,8 +308,11 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
             if lease.get("status", "leased") == "leased":
                 attention.placed(str(lease["attention_lease_id"]))
                 lease["status"] = "placed"
+            diagnostic_record("runtime_context_built", {"runtime_context": payload},
+                              actor="runtime-context-builder", correlation={"episode_id": episode_id})
             self._json(200, {"ok": True, "runtime_context": payload})
         except Exception as exc:
+            diagnostic_record("runtime_context_failed", {"error": str(exc)}, actor="runtime-context-builder")
             self._json(409, {"ok": False, "error": str(exc)})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -588,14 +598,21 @@ def _capability_gap_blocked(operation: str) -> dict | None:
 
 
 def _call(operation: str, **arguments: object) -> dict:
+    invocation = INVOCATION.get()
+    started = time.monotonic_ns()
     try:
-        return bridge_request(operation, **arguments)
+        result = bridge_request(operation, **arguments)
     except BridgeUnavailable as exc:
         next_step = (
             "Ask the operator to start or recover this match's managed game worker."
             if MANAGED_ATTACHED else "Call smac_launch."
         )
-        return {"ok": False, "error": "game_not_connected", "message": str(exc), "next": next_step}
+        result = {"ok": False, "error": "game_not_connected", "message": str(exc), "next": next_step}
+    if invocation:
+        diagnostic_record("native_call_returned", {"operation": operation, "arguments": arguments,
+            "result": result, "elapsed_ms": (time.monotonic_ns() - started) / 1e6},
+            actor="native-bridge", correlation={"invocation_id": invocation})
+    return result
 
 
 def _resolve_native_unit_id(own_unit_ref: str) -> int | None:
@@ -1662,7 +1679,8 @@ def _compact_decision_state(snapshot: dict) -> dict:
         "economy_allocation": economy.get("allocation", {}),
         "research": {
             key: research.get(key)
-            for key in ("enabled", "blind", "tech_name", "priority", "progress_percent")
+            for key in ("enabled", "blind", "tech_name", "priority", "selected_priorities",
+                        "target_visibility", "priority_meaning", "progress_percent")
             if key in research
         },
         "protocol": {

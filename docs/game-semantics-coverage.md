@@ -371,3 +371,11 @@ Provider request capture: opt-in synchronous chat-completions HTTPX boundary tes
 inside the Hermes image with MockTransport. Actual serialized message/tool payload
 matches capture; transport errors remain errors. Live provider and omission audits
 remain open; no full request-delivery chain is certified yet.
+
+Diagnostics checkpoint update: managed/native invocation adapters, runtime selection
+and emitted-response capture, and administrator campaign export are implemented but
+remain **partial** until deployed end-to-end evidence is captured. Export contracts
+verify match isolation, bounded output and explicit gaps; portal tests pass 72/72.
+Specialist attempts/dependencies/manifests are scoped via mission joins. No claim of
+historical provider delivery, full trace completeness or gameplay acceptance follows
+from these fixtures. See `gameplay-diagnostics-mission.md` for outstanding gates.

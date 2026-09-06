@@ -102,6 +102,26 @@ public sealed class LobbiesController(
         return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
     }
 
+    [HttpGet("{matchId}/diagnostics")]
+    [Authorize(Roles = PortalRoles.Administrator)]
+    public async Task<IActionResult> DownloadCampaignDiagnostics(string matchId)
+    {
+        if (!await database.PortalMatches.AsNoTracking().AnyAsync(
+                item => item.MatchId == matchId, HttpContext.RequestAborted)) return NotFound();
+        using var response = await control.GetRawAsync(
+            $"api/v1/matches/{Uri.EscapeDataString(matchId)}/diagnostics", HttpContext.RequestAborted);
+        var bundle = response.RootElement.GetProperty("bundle");
+        var name = Path.GetFileName(bundle.GetProperty("file_name").GetString());
+        if (string.IsNullOrEmpty(name) || !name.StartsWith("campaign-", StringComparison.Ordinal))
+            return StatusCode(502);
+        var root = Path.GetFullPath(Environment.GetEnvironmentVariable("SMACX_CONTROL_DATA_MOUNT")
+            ?? "/var/lib/smacx-control");
+        var path = Path.Combine(root, "diagnostics", name);
+        if (!System.IO.File.Exists(path)) return NotFound();
+        return File(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read),
+            "application/zip", name, enableRangeProcessing: false);
+    }
+
     [HttpGet("{matchId}/incidents/{incidentId}/diagnostic")]
     [Authorize]
     public async Task<IActionResult> DownloadDiagnostic(string matchId, string incidentId)

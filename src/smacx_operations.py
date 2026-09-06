@@ -142,6 +142,43 @@ def _validate_specialist_trace_archive(path: Path) -> list[tarfile.TarInfo]:
 class OperationsManager:
     """One-process coordinator backed by cross-process-safe SQLite claims."""
 
+    def campaign_diagnostics(self, match_id: str) -> dict[str, Any]:
+        from smacx_campaign_diagnostics import build_bundle
+        self.control.get_match(match_id)
+        with self._operation_lock:
+            staging = Path(tempfile.mkdtemp(prefix=".campaign-", dir=self.diagnostic_root))
+            roots = [self.data_root / "gameplay-diagnostics" / match_id,
+                     self.data_root / "specialist-traces" / match_id]
+            try:
+                profiles = {run["harness_profile_id"] for run in self.control.list_harness_runs()
+                            if run["match_id"] == match_id}
+                for profile in profiles:
+                    destination=staging/profile
+                    roots.append(destination)
+                    if self.worker_manager is None:continue
+                    runtime=self.control.get_harness_runtime_spec(profile)
+                    external=runtime.get("metadata",{}).get("profile_id")
+                    if not external:continue
+                    manager=self.worker_manager
+                    relative=str(destination.relative_to(self.data_root))
+                    script=("from pathlib import Path; from smacx_campaign_diagnostics import snapshot_hermes; "
+                            f"snapshot_hermes(Path('/source'),Path('/control')/{relative!r},{match_id!r},{external!r})")
+                    identifier=manager.docker.create_container(manager._name("diagnostic",uuid.uuid4().hex),{
+                        "Image":manager.mcp_image,"Entrypoint":["python3"],"Cmd":["-c",script],"User":"0:0",
+                        "Labels":manager._labels("diagnostic-helper"),
+                        "HostConfig":{"NetworkMode":"none","ReadonlyRootfs":True,"CapDrop":["ALL"],"CapAdd":["DAC_OVERRIDE"],
+                          "SecurityOpt":["no-new-privileges"],"Mounts":[
+                            {"Type":"volume","Source":runtime["data_volume"],"Target":"/source","ReadOnly":True},
+                            {"Type":"volume","Source":manager.control_data_volume,"Target":"/control"}]}})
+                    try:
+                        manager.docker.start_container(identifier)
+                        state = manager.docker.wait_container(identifier,timeout=120)
+                        if int(state.get("State", {}).get("ExitCode", -1)) != 0:
+                            raise WorkerManagerError("campaign_diagnostic_helper_failed")
+                    finally:manager._cleanup_container(identifier,"diagnostic-helper")
+                return build_bundle(self.store,match_id,self.diagnostic_root,roots)
+            finally:shutil.rmtree(staging,ignore_errors=True)
+
     def __init__(self, control, *, data_root: Path | str,
                  worker_manager: WorkerManager | None = None,
                  harness_manager: "HarnessManager | None" = None) -> None:

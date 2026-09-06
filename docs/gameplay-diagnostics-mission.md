@@ -71,3 +71,27 @@ provider. Async transports, other provider protocols, response-stream completion
 per-item omission manifests and cross-stream correlation remain open. The general
 control image lacks HTTPX; this adapter's test runs in the Hermes image where the
 integration actually lives. No live provider request was made for this contract.
+
+## Integrated adapters and export acceptance (still partial)
+
+Managed tool registration now preserves signatures while recording invocation,
+arguments, return and exception events. Native calls inside those invocations share
+an invocation identifier. The request-only context assembly records its result and
+cognition selection inventory; this inventory explicitly starts after journal
+working-set selection and does not claim to reconstruct earlier omissions.
+Hermes records its emitted assistant message before handoff truncation and records
+history compaction metrics. Deployment flags enable these adapters for new workers.
+They have not yet been verified against the live parked campaign.
+
+Campaign exports include match-scoped relational state, specialist child tables
+joined through their mission, compressed specialist traces, retained Hermes history,
+and new diagnostic streams. The manifest records file hashes, byte watermarks,
+partial tails, missing sources and export limits. Retained history is bounded and
+is labeled retained history, never retroactive provider-wire capture. Helper failure
+fails the download explicitly. The administrator-only lobby route is implemented.
+The completeness flag remains false pending integrated acceptance and retention work.
+
+Validation: campaign export contract passes scope isolation, partial-tail reporting,
+manifest honesty and readable summaries; diagnostic writer contract passes; strict
+prompt contract passes in the control image. Portal suite: 72/72. Browser validation,
+live helper execution, aggregate retention and end-to-end capture remain required.

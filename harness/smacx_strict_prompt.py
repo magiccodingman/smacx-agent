@@ -688,6 +688,12 @@ def _install() -> None:
             "before": predicted_tokens, "after": after_tokens,
             "removed_rows": removed_row_count,
         }
+        from smacx_diagnostics import record
+        record("history_compaction", {**_RUNTIME_STATE.gc_metrics,
+            "reasoning_fields": compacted_reasoning, "think_blocks": compacted_think_blocks,
+            "state_frames": compacted_frames, "episode_boundaries": compacted_boundaries,
+            "historical_tool_calls": pruned_tool_calls, "historical_tool_results": pruned_tool_results,
+        }, actor="runtime-context-builder", correlation={"episode_id": _episode_id(filtered)})
         return _append_runtime_context(filtered)
 
     run_agent.AIAgent._sanitize_api_messages = staticmethod(compact_managed_context)
@@ -704,6 +710,10 @@ def _install() -> None:
 
     def bounded_build_assistant_message(self, assistant_message, finish_reason):  # noqa: ANN001
         message = original_build_assistant_message(self, assistant_message, finish_reason)
+        from smacx_diagnostics import record
+        record("sovereign_response", {"message": message, "finish_reason": finish_reason},
+               actor="sovereign", correlation={"episode_id": getattr(_RUNTIME_STATE, "episode_id", ""),
+                 "attention_lease_id": getattr(_RUNTIME_STATE, "attention_lease_id", "")})
         if isinstance(message, dict) and isinstance(message.get("content"), str):
             message["content"] = _compact_turn_handoff(message["content"])
         _mark_runtime_responded()

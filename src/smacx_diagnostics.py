@@ -6,6 +6,8 @@ process writes its own stream; correlation IDs join streams during export.
 from __future__ import annotations
 
 import hashlib
+import functools
+import inspect
 import json
 import logging
 import os
@@ -14,11 +16,64 @@ import re
 import threading
 import time
 import uuid
+from contextvars import ContextVar
 from typing import Any, Mapping
 
 SCHEMA = "smacx.diagnostic-event.v1"
 _PRIVATE = re.compile(r"^(authorization|cookie|set-cookie|password|api_key|access_token|refresh_token|secret)$", re.I)
 _SAFE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
+_WRITERS = {}
+_WRITER_LOCK = threading.Lock()
+INVOCATION = ContextVar("smacx_diagnostic_invocation", default="")
+
+
+def record(kind: str, payload: Mapping[str, Any], *, actor: str = "managed-mcp",
+           correlation: Mapping[str, str] | None = None) -> None:
+    """Best-effort diagnostics with an explicit stderr failure signal."""
+    if os.environ.get("SMACX_DIAGNOSTICS_ENABLED") != "1":
+        return
+    try:
+        match = os.environ["SMACX_AGENT_MATCH_ID"]
+        root = os.environ.get("SMACX_DIAGNOSTICS_ROOT", "/var/lib/smacx/gameplay-diagnostics")
+        key = (root, match, actor)
+        with _WRITER_LOCK:
+            if key not in _WRITERS:
+                _WRITERS[key] = DiagnosticWriter(Path(root), match, actor)
+            writer = _WRITERS[key]
+        receipt = writer.emit(kind, payload, correlation=correlation)
+        if not receipt["ok"]:
+            logging.getLogger("smacx.diagnostics").error("Capture incomplete: %s", receipt)
+    except Exception as exc:
+        logging.getLogger("smacx.diagnostics").error("Capture failed: %s", type(exc).__name__)
+
+
+def trace_managed_tool(function):
+    signature = inspect.signature(function)
+    @functools.wraps(function)
+    def traced(*args, **kwargs):
+        invocation = uuid.uuid4().hex
+        correlation = {"invocation_id": invocation}
+        bound = signature.bind(*args, **kwargs)
+        arguments = dict(bound.arguments)
+        for key in ("decision_id", "choice_id", "session_id", "observed_revision"):
+            if arguments.get(key): correlation[key] = str(arguments[key])
+        record("managed_tool_started", {"tool": function.__name__, "arguments": arguments},
+               correlation=correlation)
+        started = time.monotonic_ns()
+        token = INVOCATION.set(invocation)
+        try:
+            result = function(*args, **kwargs)
+        except BaseException as exc:
+            record("managed_tool_exception", {"tool": function.__name__,
+                   "exception_type": type(exc).__name__,
+                   "elapsed_ms": (time.monotonic_ns() - started) / 1e6}, correlation=correlation)
+            raise
+        finally:
+            INVOCATION.reset(token)
+        record("managed_tool_returned", {"tool": function.__name__, "result": result,
+               "elapsed_ms": (time.monotonic_ns() - started) / 1e6}, correlation=correlation)
+        return result
+    return traced
 
 
 def redact(value: Any) -> Any:

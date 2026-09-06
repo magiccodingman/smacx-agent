@@ -4262,6 +4262,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "Env": [
                 "HOME=/tmp",
                 "SMACX_MANAGED_ATTACHED=1",
+                "SMACX_DIAGNOSTICS_ENABLED=1",
+                "SMACX_DIAGNOSTICS_ROOT=/var/lib/smacx/gameplay-diagnostics",
                 f"SMACX_BRIDGE_HOST={bridge_host}",
                 "SMACX_BRIDGE_PORT=47814",
                 "SMACX_AGENT_TOKEN_FILE=/run/secrets/bridge-token",
