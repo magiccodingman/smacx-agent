@@ -54,6 +54,24 @@ def provider_safe(value: Any) -> Any:
                     or lower in _PRIVATE_EXACT_KEYS:
                 continue
             result[key] = provider_safe(item)
+        if result.get("event_kind") in {"contact_moved", "unit_moved"}:
+            endpoints = [result.get("from_location_ref"), result.get("to_location_ref")]
+            for segment in result.get("path") or ():
+                if isinstance(segment, Mapping):
+                    endpoints.extend((segment.get("from_location_ref"), segment.get("to_location_ref")))
+            if any(isinstance(ref, str) and re.fullmatch(r"location--[0-9]+", ref) for ref in endpoints):
+                # Old journal/cache records remain immutable diagnostic evidence.
+                # Their provider projection must not revive a sentinel endpoint
+                # as an exact route, including after checkpoint restoration.
+                result["reported_event_kind"] = result["event_kind"]
+                result["event_kind"] = "movement_observation_incomplete"
+                result.pop("path", None)
+                for key in ("from_location_ref", "to_location_ref"):
+                    ref = result.get(key)
+                    if isinstance(ref, str) and re.fullmatch(r"location--[0-9]+", ref):
+                        result[key] = None
+                result.update(reason="invalid_recorded_movement_endpoint", outcome="not_established",
+                              continuous_visibility=False, current_whereabouts="unknown")
         return result
     if isinstance(value, (list, tuple, set, frozenset)):
         return [provider_safe(item) for item in value]

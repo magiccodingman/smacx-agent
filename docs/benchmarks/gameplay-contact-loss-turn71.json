@@ -1,0 +1,109 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "confirmed invalid movement projection and ambiguous removal/combat receipts; enemy destruction not established",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "timeline_id": "timeline-restore-72e1f36e693a42e3bf8fbf94",
+  "turn_range": [
+    70,
+    72
+  ],
+  "contact_ref": "contact-episode-726299a40f155b9727f0ae47cd43ee9b",
+  "owned_unit_ref": "own-unit-12",
+  "observations": [
+    {
+      "cursor": 357,
+      "event": "contact_appeared",
+      "location_ref": "location-1856",
+      "turn": 70
+    },
+    {
+      "cursor": 360,
+      "event": "contact_damaged",
+      "hp_before": 10,
+      "hp_after": 7
+    },
+    {
+      "cursor": 361,
+      "event": "contact_damaged",
+      "hp_before": 7,
+      "hp_after": 5
+    },
+    {
+      "cursor": 362,
+      "event": "unit_damaged",
+      "hp_before": 1,
+      "hp_after": 0
+    },
+    {
+      "cursor": 363,
+      "event": "unit_destroyed"
+    },
+    {
+      "cursor": 364,
+      "event": "contact_lost"
+    },
+    {
+      "cursor": 364,
+      "event": "contact_moved",
+      "invalid_destination": "location--1",
+      "occurrence_sequence": 47,
+      "current_whereabouts": "unknown"
+    }
+  ],
+  "combat_receipt": {
+    "request_id": "fdb547956f364c2bb870d85ce4ed3198",
+    "call_id": "chatcmpl-tool-a3b15d5e3e6884b3",
+    "action_id": 3,
+    "status": "completed",
+    "resolution": "native_combat_resolved",
+    "native_result": 0,
+    "origin_location_ref": "location-1815",
+    "target_location_ref": "location-1856",
+    "observed_location_ref": "location-1815",
+    "next_actual_provider_request_id": "d38241d2ddd24a1194f88ed42a96c5af",
+    "exact_receipt_in_next_request": true
+  },
+  "typed_claim": {
+    "request_id": "9563337be14d40f197be88045d5b9bb6",
+    "call_id": "chatcmpl-tool-92306fe8bee24af0",
+    "claim": "Spartan colony pod at1856 was destroyed; enemy expansion denied",
+    "supported_by_observed_destruction_event": false
+  },
+  "actual_attention": {
+    "request_id": "bbb4984775ab4059bf86bef578d18cc1",
+    "attention_id": "attention-dbda7acf2b2b400097049b333962d476",
+    "observation_cursor": 363,
+    "delivered_unqualified_projection_removals": true
+  },
+  "repair": [
+    "Unavailable native movement endpoints become explicit incomplete observations, never negative location refs",
+    "Invalid endpoints close continuous foreign identity proof across collector restart",
+    "Provider projection qualifies historical malformed movement without rewriting the journal",
+    "Single, batched, and truncated removal attention explains that removal alone is not destruction",
+    "Combat completion receipt distinguishes execution completion from casualties or objective success"
+  ],
+  "validation": {
+    "negative_endpoint_and_restart_regression": "pass",
+    "historical_projection_immutable_and_idempotent": "pass",
+    "zero_location_valid_movement": "pass",
+    "cross_publication_episodes": "pass",
+    "feed_alignment": "pass",
+    "runtime_context": "pass",
+    "live_deployment": "pending",
+    "next_actual_provider_delivery": "pending",
+    "sovereign_correction": "pending",
+    "captured_historical_movement_projection": {
+      "invalid_records": 2,
+      "qualified_as_incomplete": 2,
+      "original_records_unchanged": true
+    },
+    "world_model_contract": "pass",
+    "strategic_world_fixtures": "pass",
+    "managed_action_path_contract": "pass"
+  },
+  "limits": [
+    "No claim about the unobserved ultimate fate of the Colony Pod",
+    "Native row reuse remains an unproven hypothesis for separate outages",
+    "Full game acceptance remains open"
+  ]
+}

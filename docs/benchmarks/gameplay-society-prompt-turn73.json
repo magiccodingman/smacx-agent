@@ -47,7 +47,17 @@
     "actual_provider_receipt": "pending",
     "effect_verified": "pending",
     "coherent_recovery": "pending",
-    "full_native_integration": "running"
+    "full_native_integration": "pass",
+    "base_site_stress": {
+      "wall_ms": 257.813,
+      "probe_gap_ms": 241.04
+    },
+    "counterfactual_site_stress": {
+      "wall_ms": 253.084,
+      "probe_gap_ms": 238.859
+    },
+    "repeated_isolated_checkpoint_recovery": "pass",
+    "live_provider_used_in_native_suite": false
   },
   "unresolved": [
     "Full game acceptance",

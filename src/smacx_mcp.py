@@ -1441,7 +1441,14 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "command": result.get("command"),
             "execution": action,
         }
-    return {**result, "queued": False, "completed": True, "execution": action}
+    completion = {**result, "queued": False, "completed": True, "execution": action}
+    if action.get("resolution") == "native_combat_resolved":
+        completion["completion_semantics"] = (
+            "The native combat call resolved. Completion alone does not establish attacker survival, "
+            "enemy destruction, or arrival at the target. Inspect fresh owned-unit state and temporal "
+            "events before recording casualties or a successful objective."
+        )
+    return completion
 
 
 @mcp.tool(description="Report whether SMACX and its fair-play in-game bridge are connected, plus current menu/game state.")

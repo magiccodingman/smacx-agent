@@ -260,14 +260,17 @@ class ObservationCollector:
             handle = payload.get("subject_a")
             key = f"vehicle-handle-{handle}" if isinstance(handle, int) else ""
             if kind == "visible_unit_moved" and payload.get("continuous_visibility") \
-                    and isinstance(payload.get("from_tile_id"), int) \
-                    and isinstance(payload.get("to_tile_id"), int):
+                    and type(payload.get("from_tile_id")) is int and payload["from_tile_id"] >= 0 \
+                    and type(payload.get("to_tile_id")) is int and payload["to_tile_id"] >= 0:
                 self._continuous_contact_moves.setdefault(key, []).append({
                     "from": f"location-{payload['from_tile_id']}",
                     "to": f"location-{payload['to_tile_id']}",
                     "native_sequence": payload["native_sequence"],
                     "relationship_at_occurrence": payload.get("relationship_at_occurrence", "unknown"),
                 })
+            elif kind == "visible_unit_moved" and key:
+                # An unavailable native endpoint is not a continuous route proof.
+                self._continuous_contact_moves.pop(key, None)
             elif kind in {"visible_unit_lost", "visible_unit_destroyed"} and key:
                 self._continuous_contact_moves.pop(key, None)
             elif kind == "contact_identity_reset":
@@ -777,6 +780,23 @@ class ObservationCollector:
                 if handle_key in broken_handles and unit_ref == prior_handle_to_ref.get(handle_key):
                     continue
                 own = ref_kinds.get(unit_ref) == "own_unit"
+                before, after = raw.get("from_tile_id"), raw.get("to_tile_id")
+                if not (type(before) is int and before >= 0
+                        and type(after) is int and after >= 0):
+                    # Native transient coordinates can be sentinel -1 even
+                    # while its visibility bit remains set. Preserve the gap,
+                    # never publish a fabricated location or continuous path.
+                    events.append({
+                        "event_kind": "movement_observation_incomplete",
+                        ("unit_ref" if own else "contact_ref"): unit_ref,
+                        "turn": raw.get("turn", turn),
+                        "from_location_ref": f"location-{before}" if type(before) is int and before >= 0 else None,
+                        "to_location_ref": f"location-{after}" if type(after) is int and after >= 0 else None,
+                        "reason": "native_endpoint_unavailable",
+                        "continuous_visibility": False,
+                        "outcome": "not_established",
+                    })
+                    continue
                 row = move_by_contact.setdefault(unit_ref, {
                     "event_kind": "unit_moved" if own else "contact_moved",
                     ("unit_ref" if own else "contact_ref"): unit_ref,

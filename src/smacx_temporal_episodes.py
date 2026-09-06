@@ -82,6 +82,16 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
             current = create(key, raw); opened[key] = current
             just_lost.pop(key, None)
         elif kind == 'visible_unit_moved':
+            if before_ref is None or after_ref is None:
+                # Native sentinel coordinates cannot extend a visible episode
+                # across this boundary, even if the raw visibility bit is set.
+                if current is None or before_ref is None or current.get('location') != before_ref:
+                    if current: terminal[current['ref']] = 'unknown'
+                    current = create(key, raw)
+                assignments[str(sequence)] = current['ref']
+                terminal[current['ref']] = 'unknown'
+                opened.pop(key, None); just_lost.pop(key, None)
+                continue
             if raw.get('continuous_visibility') is not True:
                 if current: terminal[current['ref']] = 'unknown'
                 opened.pop(key, None); continue

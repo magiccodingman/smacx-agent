@@ -259,6 +259,12 @@ def _operation_context(operations: list[dict[str, Any]], *, token_budget: int) -
 
 def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+    removal_note = {}
+    if item.get("attention_kind") in {"world_change", "world_changes"}:
+        changes = [payload.get("delta", {})] if "delta" in payload else payload.get("deltas", ())
+        if any(isinstance(delta, Mapping) and delta.get("change") == "removed" for delta in changes):
+            removal_note = {"removal_semantics": "Removed from the current projection; this alone does not prove destruction. Query temporal events for confirmed destruction or loss of observation."}
+            payload = {**payload, **removal_note}
     if item.get("attention_kind") == "world_change":
         delta = payload.get("delta") if isinstance(payload.get("delta"), Mapping) else {}
         current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
@@ -268,7 +274,7 @@ def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
             if name in {"name", "owner_ref", "threatened", "relations", "state",
                         "population", "production_name", "hp", "max_hp"}
         }
-        return {"delta": {
+        return {**removal_note, "delta": {
             "object_ref": delta.get("object_ref"), "change": delta.get("change"),
             "kind": current.get("kind"), "location_ref": current.get("location_ref"),
             "fields": compact_fields,
@@ -300,7 +306,7 @@ def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
                                                                           "selection_details_truncated")}
                            for event in list(payload.get("events") or ())[:4]
                            if isinstance(event, Mapping)]}
-    return {"payload_hash": content_hash(payload), "keys": sorted(payload)[:24],
+    return {**removal_note, "payload_hash": content_hash(payload), "keys": sorted(payload)[:24],
             "detail": "Use smac_world/semantic chat recall for bounded detail."}
 
 
