@@ -45,7 +45,7 @@
     "packaged_real_hermes_provider_capture_pass": true,
     "legacy_tool_context_policy_pass": true
   },
-  "limits": "Actual provider delivery and sovereign-selected guarded hurry effect are verified after an explicit operational recheck notice. Spontaneous requery, autonomous typed writes, native completion of the pod, recovery of this new effect and full game remain separate gates.",
+  "limits": "Actual provider delivery, sovereign-selected guarded hurry and native Pod completion are verified after an operational recheck notice. A verified native+AI checkpoint contains the effect; restoring that new checkpoint and autonomous typed writing remain separate gates.",
   "recovery_checkpoint": {
     "id": "checkpoint-7659fa18b9764d0e8336e2c8ead4a85a",
     "turn": 30,
@@ -82,6 +82,18 @@
     "minerals_before": 22,
     "minerals_after": 30,
     "independent_native_read_verifies_effect": true,
-    "completion": "awaiting native turn resolution"
+    "completion": {
+      "turn": 33,
+      "own_unit_ref": "own-unit-11",
+      "name": "Colony Pod",
+      "native_unit_read_and_sovereign_frame_verified": true
+    },
+    "post_effect_checkpoint": {
+      "id": "checkpoint-ed196a377617411f857396090e4bb86d",
+      "turn": 33,
+      "verified": true,
+      "frozen_ai_controllers": 1,
+      "restored_again": false
+    }
   }
 }

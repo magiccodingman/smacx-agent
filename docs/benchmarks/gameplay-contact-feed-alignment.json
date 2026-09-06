@@ -57,7 +57,17 @@
     "repair": "Every coherent bundle, including final attempt, receives one durable catch-up and cut probe. Maximum three bundle attempts, three catch-ups and six cut probes. Truly unmatched final cut remains conservative.",
     "telemetry": "bounded snapshot_bundle_failures now records retry codes",
     "new_regression": "old code fails after two pagination races; repaired collector preserves identity and restart, genuine loss/reappearance remains separate",
-    "live_acceptance": "pending",
+    "live_acceptance": {
+      "timeline": "timeline-restore-10f8ef1b078b40dab6347fab",
+      "native_turn": 33,
+      "contact_changes": 0,
+      "catch_up_observed": true,
+      "alignment_retries": 1,
+      "native_events_drained": 10,
+      "bridge_calls": 14,
+      "wall_ms": 388.946,
+      "limitation": "Actual native catch-up retains contact identity; the final-attempt-after-two-bundle-failures case remains controlled regression evidence."
+    },
     "publication_transaction_22_crash_cases_pass": true
   }
 }
