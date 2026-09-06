@@ -223,3 +223,5 @@ Matched checkpoint55 replay of Scout automation followed by the same guarded Gar
 ### Spectator visibility after automatic recovery
 
 Both an existing and fresh spectator tab showed no managed seat while native control was running. Portal status was parked: it had mirrored temporary recovery parking and then excluded the campaign from ongoing synchronization. Dormant reconciliation also enforced that stale status at restart. A bounded parked-campaign poll now recognizes a strictly newer verified control recovery, mirrors running state and notifies clients. Completed campaigns and later/active owner parking remain protected, including a persisted compare-and-update race test. All80 portal tests pass. See `benchmarks/gameplay-recovery-visibility.json`; deployment/browser acceptance follows.
+
+Deployed portal c8a190053917 passes the live browser gate: the already open spectator tab changes from no managed seat to Commissioner Pravin Lal with the Selkies frame, without reload. Exactly one sovereign resumes (`run-30bfe72af8b34c0386c0711c83a44fc7`). The earlier resumed sovereign reached56; full-game and original native-stall diagnosis remain open.

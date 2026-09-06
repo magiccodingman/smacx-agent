@@ -18,10 +18,17 @@
     "new_recovery_cases": 8,
     "database_persistence_and_deduplication": true,
     "concurrent_owner_park": true,
-    "browser_after_deployment": "pending"
+    "browser_after_deployment": {
+      "existing_tab": 87220305,
+      "reload_required": false,
+      "seat": "Commissioner Pravin Lal",
+      "embedded_stream": "Selkies",
+      "portal_digest": "sha256:c8a190053917e5f39abc8019d673f0bd01ce44d5ec82e841e14613978675c455",
+      "active_run": "run-30bfe72af8b34c0386c0711c83a44fc7",
+      "active_sovereigns": 1
+    }
   },
   "pending": [
-    "Deployed spectator recovery",
     "Original native stall cause",
     "Full autonomous game"
   ]
