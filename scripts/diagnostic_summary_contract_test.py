@@ -53,4 +53,13 @@ assert taxonomy.as_dict()['failure_observations_by_layer']=={
     'runtime_context_failed:native_observation_feed_failed':1,
     'runtime_context_failed:unclassified_error_text':1,
 }
+diplomacy={'kind':'managed_tool_returned','payload':{'tool':'smac_decision','result':{
+    'ok':True,'choices':[{'choice_id':'decline','label':'Respond to diplomatic offer','response':'reject'},
+                        {'choice_id':'agree','label':'Respond to diplomatic offer','response':'accept','energy_credits':15}],
+    'information':[{'offer_type':'introduced_commlink','target_faction_name':'Spartan Federation','energy_credits':15}]}}}
+text=summary(diplomacy)
+assert '"response":"accept"' in text and '"response":"reject"' in text
+assert 'Spartan Federation' in text and '"energy_credits":15' in text
+diplomacy['payload']['result']['information'][0]['meaning']='x'*10000
+assert len(summary(diplomacy))<1500
 print(json.dumps({'passed':True,'hermes_envelope_decoded':True,'pre_mcp_failure_named':True,'queued_not_completed':True}))

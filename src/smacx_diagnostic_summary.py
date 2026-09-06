@@ -76,9 +76,18 @@ def summary(event):
             'turn_handoff_required','turn_boundary_notice','choice_scope','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
         if isinstance(result.get('choices'),list):
-            chosen['choices']=[{k:r[k] for k in ('choice_id','label','name','may_close_turn','energy_cost','mineral_cost','production_name') if k in r}
+            chosen['choices']=[{k:(r[k][:240] if isinstance(r[k],str) else r[k])
+                for k in ('choice_id','label','name','response','meaning','target_location_ref',
+                          'may_close_turn','energy_cost','energy_credits','affordable','mineral_cost','production_name') if k in r}
                 for r in result['choices'][:12] if isinstance(r,dict)]
             chosen['more_choices']=max(0,len(result['choices'])-12)
+        if isinstance(result.get('information'),list) and result['information']:
+            # Native terms are already semanticized by the managed surface.
+            # Retain a bounded scalar view; full nested terms stay in the trace.
+            chosen['information']=[{k:(v[:240] if isinstance(v,str) else v)
+                for k,v in list(r.items())[:16] if isinstance(v,(str,int,float,bool)) or v is None}
+                for r in result['information'][:4] if isinstance(r,dict)]
+            chosen['more_information']=max(0,len(result['information'])-4)
         if not chosen:chosen={'text':result.get('text',result)}
         return f"{tool} -> {json.dumps(chosen,ensure_ascii=False,separators=(',',':'))}"
     if kind=='choice_selected':
