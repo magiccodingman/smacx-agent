@@ -165,3 +165,59 @@ def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
 
     agent_class._execute_tool_calls = captured
     agent_class._smacx_diagnostic_capture = True
+
+
+def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
+    """Audit serialized chat-completions requests at the synchronous HTTP boundary.
+
+    No headers, URL credentials, query strings or response bodies are collected.
+    Returning HTTP headers is not proof that a streaming completion finished.
+    Other provider protocols remain explicitly outside this adapter's coverage.
+    """
+    if getattr(client_class, "_smacx_wire_capture", False):
+        return
+    original = client_class.send
+
+    def emit(kind, payload, request_id):
+        try:
+            receipt = writer.emit(kind, payload, correlation={"request_id": request_id})
+            if not receipt["ok"]:
+                logging.getLogger("smacx.diagnostics").error("Provider audit incomplete: %s", receipt)
+        except Exception as exc:
+            logging.getLogger("smacx.diagnostics").error("Provider audit failed: %s", type(exc).__name__)
+
+    def send(self, request, *args, **kwargs):
+        if request.method != "POST" or not request.url.path.rstrip("/").endswith("/chat/completions"):
+            return original(self, request, *args, **kwargs)
+        request_id = uuid.uuid4().hex
+        started = time.monotonic_ns()
+        try:
+            raw = request.content
+            payload = json.loads(raw)
+            # Capture the serialized body, not an earlier mutable message list.
+            emit("provider_request_submitted", {
+                "protocol": "chat_completions", "body": payload,
+                "serialized_body_bytes": len(raw),
+                "serialized_body_sha256": hashlib.sha256(raw).hexdigest(),
+                "capture_boundary": "httpx_send",
+                "body_redaction": "credential_fields",
+            }, request_id)
+        except Exception as exc:
+            emit("capture_gap", {"reason": "provider_request_unreadable",
+                                 "exception_type": type(exc).__name__}, request_id)
+        try:
+            response = original(self, request, *args, **kwargs)
+        except BaseException as exc:
+            emit("provider_transport_failed", {
+                "exception_type": type(exc).__name__,
+                "elapsed_ms": (time.monotonic_ns() - started) / 1_000_000}, request_id)
+            raise
+        emit("provider_response_headers", {
+            "http_status": response.status_code,
+            "elapsed_ms": (time.monotonic_ns() - started) / 1_000_000,
+            "completion_verified": False,
+        }, request_id)
+        return response
+
+    client_class.send = send
+    client_class._smacx_wire_capture = True

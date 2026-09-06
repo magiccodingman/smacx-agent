@@ -56,3 +56,18 @@ not falsely attributed to each tool. The hook is not enabled in deployment yet.
 A contained regression verifies an unavailable-tool failure is captured exactly
 once without changing its result. Live upstream integration, per-tool timing,
 MCP/native correlation and capture retention across restarts remain open.
+
+## Serialized provider request adapter (partial checkpoint 2)
+
+The opt-in Hermes diagnostics hook now intercepts synchronous HTTPX chat-completion
+POSTs after JSON serialization. It records the actual body, byte count/hash, and
+request ID; response headers and transport failures retain the same ID. Headers,
+URL credentials, queries and exception messages are excluded. HTTP response headers
+are explicitly not a completed model response. An HTTPX MockTransport test in the
+actual Hermes image verifies body equality and unchanged success/failure behavior.
+
+This covers the synchronous chat-completions transport used by the current local
+provider. Async transports, other provider protocols, response-stream completion,
+per-item omission manifests and cross-stream correlation remain open. The general
+control image lacks HTTPX; this adapter's test runs in the Hermes image where the
+integration actually lives. No live provider request was made for this contract.

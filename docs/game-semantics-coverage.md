@@ -366,3 +366,8 @@ Checkpoint plan and limitations: [Gameplay diagnostics mission](gameplay-diagnos
 Hermes dispatch capture is now opt-in and tested against a contained dispatcher:
 pre-MCP failure rows are retained exactly once. No live provider or native effect
 coverage is claimed from this fixture. Checkpoint 1 remains in progress.
+
+Provider request capture: opt-in synchronous chat-completions HTTPX boundary tested
+inside the Hermes image with MockTransport. Actual serialized message/tool payload
+matches capture; transport errors remain errors. Live provider and omission audits
+remain open; no full request-delivery chain is certified yet.
