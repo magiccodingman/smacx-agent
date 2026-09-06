@@ -30,14 +30,22 @@
     "last_started_popup_label": "STARVE"
   },
   "classification": "semantic representation weakness; not proof that the sovereign ignored a displayed food warning",
-  "repair": "Include the existing nutrient_surplus epistemic field alongside mineral_surplus in strategic base summaries. No automatic action or inferred current value.",
+  "repair": "Include the existing nutrient_surplus epistemic field alongside mineral_surplus in strategic base summaries. No automatic action or inferred current value. Persisted anchor format and overview/changes cache fingerprints are versioned so deployment invalidates old representations without a native mutation.",
   "validation": {
     "strategic_world_fixtures_test": "pass including exact stale field retention and Huge fixtures",
-    "runtime_context_contract_test": "pass: 64K/256K and Huge budgets"
+    "runtime_context_contract_test": "pass: 64K/256K and Huge budgets",
+    "world_anchor_format_test": "pass: old format replaced at same observation cursor; overview cache invalidated; current format reused"
   },
   "acceptance": {
     "deployed": false,
     "actual_repaired_provider_delivery": "pending",
     "behavior_under_new_food_deficit": "pending"
+  },
+  "first_deployment": {
+    "control_mcp_sha256": "f70ee1c8f5d1af1b3e14d68b247b3befc1bc673b4f6c802428ef6c4f50079665",
+    "harness_sha256": "072a212d40a8534842efed2ce8406fa8536fdbd466d585b5f6889f3f6d336cb6",
+    "request_id": "21c9c41ecc9845c6a23d9aed6a01c95e",
+    "field_delivered": false,
+    "reason": "Persisted anchor representation reused because material world dependencies did not change"
   }
 }

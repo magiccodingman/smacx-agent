@@ -611,6 +611,9 @@ class PerspectiveProjector:
 class SemanticLodProjector:
     """Create a bounded strategic anchor whose size follows active complexity."""
 
+    # Bump when persisted summaries change independently of world material.
+    FORMAT_VERSION = 2
+
     def __init__(self, *, context_tier: str, token_cap: int | None = None) -> None:
         if context_tier not in {"64k", "256k"}:
             raise WorldContractError("invalid_context_tier")
@@ -1126,6 +1129,7 @@ class SemanticLodProjector:
                     "_region_projection": [*regions, *physical_masses]}
         anchor = {
             "schema": "smacx.world-anchor.v1",
+            "projector_version": self.FORMAT_VERSION,
             "identity": dict(projection["identity"]),
             "world_revision": int(projection.get("world_revision", 0)),
             "observation_cursor": int(projection.get("observation_cursor", 0)),

@@ -401,6 +401,7 @@ class WorldService:
             (6000 if tier == "64k" else 16000),
         )
         regenerate = current is None or current["world_epoch"] != identity.world_epoch \
+            or current["payload"].get("projector_version") != SemanticLodProjector.FORMAT_VERSION \
             or current["payload"].get("turn") != turn \
             or int(current.get("token_estimate") or estimate_tokens(current["payload"])) \
                 > effective_token_cap \
@@ -777,6 +778,8 @@ class WorldService:
             "radius": radius, "since_cursor": int(since_cursor), "detail": detail,
             "continuation": continuation,
         }
+        if mode in {"overview", "changes"}:
+            request["anchor_projector_version"] = SemanticLodProjector.FORMAT_VERSION
         if mode == "changes":
             request["committed_observation_cursor"] = int(projection["observation_cursor"])
             request["history_pagination_version"] = 2

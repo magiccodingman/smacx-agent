@@ -46,6 +46,7 @@ PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
 PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
 python3 scripts/owned_progress_digest_contract_test.py
 PYTHONPATH=src python3 scripts/world_model_contract_test.py
+PYTHONPATH=src python3 scripts/world_anchor_format_test.py
 PYTHONPATH=src python3 scripts/native_observation_contract_test.py
 PYTHONPATH=src python3 scripts/fair_play_world_test.py
 PYTHONPATH=src python3 scripts/strategic_world_fixtures_test.py
