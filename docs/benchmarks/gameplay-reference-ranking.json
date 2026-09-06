@@ -1,0 +1,26 @@
+{
+  "query": "Alien Artifacts",
+  "before": {
+    "include_content": true,
+    "titles": [
+      "Research configuration",
+      "Social engineering categories",
+      "High Energy Chemistry",
+      "Probe social effect",
+      "Probe social effect configuration",
+      "Planetary Networks",
+      "Frictionless Surfaces",
+      "Superstring Theory"
+    ],
+    "artifact_mechanic_evidence_returned": false
+  },
+  "metadata_query_observed_titles": [
+    "Alien Artifact",
+    "Alien Crossfire faction definitions",
+    "Artifacts",
+    "Unit strategic roles",
+    "Network Node"
+  ],
+  "classification": "confirmed content-search ranking bypass; historical sovereign did not invoke lookup",
+  "after_live_acceptance_pending": true
+}

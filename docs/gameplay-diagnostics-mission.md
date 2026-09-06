@@ -302,3 +302,17 @@ Artifacts query returns relevant articles in metadata mode and unrelated results
 in content mode, despite the installed help containing the mechanic. This confirmed
 retrieval-path gap is being repaired; it is not retroactive proof that the old
 sovereign attempted research (the retained run contains no such invocation).
+
+## Reference retrieval correctness checkpoint
+
+The installed corpus contains the Artifact mechanic. Live metadata search returns
+Alien Artifact/Artifacts/Network Node, whereas content-enabled search for the same
+short query returns unrelated research/configuration entries and no artifact
+mechanic evidence. Code confirms that IncludeContent returned early through a
+different search path before hybrid/title ranking. The repair uses one ranked
+document list for both modes, preserves matched body chunks with document fallback,
+reserves bounded evidence shares across results and applies requested topic scope
+to title fallback as well. Knowledge service tests pass 8/8, including ranking
+parity, scope isolation and token-budget/truncation regression. Sanitized before
+evidence is retained; installed-image/live retrieval verification remains pending.
+This does not prove the old sovereign tried a lookup: its retained calls show none.
