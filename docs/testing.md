@@ -601,3 +601,5 @@ Live LAN acceptance now passes after the SetupWin correction: two isolated nativ
 `diagnostic_summary_contract_test.py` also checks that a43-choice menu preserves late Hurry/Skip/End action families below the CLI preview limit while leaving the complete source response unchanged. Grouped samples are human diagnostics, not provider menus.
 
 `hermes_readonly_wal_checkpoint_test.py` runs in the MCP container as root to launch the real helper as uid10000 against an unwritable source. It covers closed/retained WAL, committed versus uncommitted data, source byte preservation, scoped filtering, integrity and fail-closed malformed schema. Run with `ai_memory_checkpoint_test.py` and host `checkpoint_helper_permissions_live_test.py`. Native deployment acceptance remains separate.
+
+`base_selector_feedback_test.py` verifies all three base-specific families reject missing public actors without a native call, retain valid selector binding, translate ownership-race errors into public recovery wording and permit bound preparation continuations. Run alongside staged managed-action, production/citizen and provider-schema budget tests.

@@ -1,0 +1,28 @@
+{
+  "classification": "confirmed conditional-argument discoverability and native-error wording gap",
+  "live_calls": [
+    "chatcmpl-tool-a35c0e5ae7142791",
+    "chatcmpl-tool-a4293430357b5763"
+  ],
+  "live_error": "invalid_base with native base_id instruction",
+  "sovereign_later_recovered_with_base_ref": true,
+  "tests_passed": [
+    "base_selector_feedback_test",
+    "managed_action_path_contract_test",
+    "production_context_delivery_test",
+    "citizen_context_delivery_test",
+    "provider_schema_budget_test"
+  ],
+  "budget": {
+    "managed_tools": 15,
+    "exact_qwen_schema_tokens": 4569,
+    "schema_conservative_tokens": 7166,
+    "operating_contract_exact_tokens": 1338
+  },
+  "verified_checkpoint": {
+    "checkpoint_id": "checkpoint-046820b146644b60bbfd047cd111f1ef",
+    "turn": 46
+  },
+  "deployment_pending": true,
+  "autonomous_rejection_path_after_repair_not_claimed": true
+}

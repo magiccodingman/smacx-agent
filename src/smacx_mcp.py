@@ -2756,6 +2756,7 @@ def smac_decision(
                 "all_management_actions_enumerated": False,
                 "other_management_queries": {
                     "tool": "smac_choices", "kinds": ["production", "base_citizens", "research"],
+                    "base_ref_required_for": ["production", "base_citizens"],
                 },
                 "meaning": "These are this frame's choices only. Query other families before concluding a management action is unavailable; their native legality is checked separately.",
             }
@@ -2812,7 +2813,7 @@ def smac_list(
     return _call("list_tiles", **arguments)
 
 
-@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. Select owned actors with own_unit_ref/base_ref and exact world targets with target_location_ref/target_unit_ref from the current perspective. Use returned preparation_ref and option_ref for staged selections; amount is accepted only by an advertised energy prompt. Native IDs and coordinates never cross this managed boundary.")
+@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. production, base_management and base_citizens require an owned base_ref unless continuing a preparation. Select owned actors with own_unit_ref/base_ref and exact world targets with target_location_ref/target_unit_ref from the current perspective. Use returned preparation_ref and option_ref for staged selections; amount is accepted only by an advertised energy prompt. Native IDs and coordinates never cross this managed boundary.")
 def smac_choices(
     kind: Literal["interaction", "research", "energy_allocation", "social_engineering", "diplomacy", "council", "unit_design", "production", "base_management", "base_citizens", "unit_actions", "game_management"],
     base_ref: str = "",
@@ -2854,6 +2855,17 @@ def _smac_choices_once(
     authority = _sovereign_gameplay_gate("Native choice enumeration")
     if authority:
         return authority
+    base_kinds = {"production", "base_management", "base_citizens"}
+    if kind in base_kinds and not base_ref and not preparation_ref \
+            and not option_ref and amount is None:
+        return {"ok": False, "error": {
+            "code": "base_ref_required",
+            "message": "Choose a current owned base_ref, then repeat this query for that base.",
+        }, "native_action_executed": False,
+            "required_next": {"tool": "smac_choices", "kind": kind,
+                "required_arguments": ["base_ref"],
+                "reference_source": {"tool": "smac_world", "arguments": {
+                    "mode": "overview", "detail": "standard"}}}}
     if MANAGED_ATTACHED:
         refresh = _refresh_managed_world()
         if not refresh.get("ok"):
@@ -2890,6 +2902,12 @@ def _smac_choices_once(
         }}
     result = _call("semantic_choices", kind=kind, **choice_arguments)
     if not result.get("ok"):
+        if kind in base_kinds and (result.get("error") or {}).get("code") == "invalid_base":
+            # Ownership can change after selector resolution. Keep the native
+            # failure code but recover through the public semantic surface.
+            return {**result, "error": {**result["error"],
+                "message": "The selected base_ref is no longer an available owned base. Refresh the world and choose a current owned base_ref."},
+                "required_next": {"tool": "smac_world", "mode": "overview"}}
         return result
     identity = {
         "match_id": result.get("match_id", ""),
