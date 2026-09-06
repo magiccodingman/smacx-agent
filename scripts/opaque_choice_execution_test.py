@@ -233,6 +233,8 @@ def main() -> int:
         handoff = ended.get("turn_handoff_required", {})
         if handoff.get("required") is not True or handoff.get("maximum_words") != 120:
             raise AssertionError(f"native turn end omitted bounded handoff: {ended}")
+        if ended.get("required_next") != {"stop_after": True, "ordinary_message": "TURN HANDOFF"}:
+            raise AssertionError(f"consumed turn boundary requested another tool call: {ended}")
 
         # Native automation can return control directly on the following turn
         # without exposing a wait phase or an end_turn response. The next
@@ -271,6 +273,15 @@ def main() -> int:
                 {"turn": 3, "year": 2103, "protocol": {"phase": "turn"}},
                 explicit_identity) is not None:
             raise AssertionError("explicit native turn handoff was duplicated on reacquisition")
+        automatic_response = {"required_next": {"tool": "smac_decision"}}
+        smacx_mcp._attach_turn_handoff(
+            automatic_response, {"command": "auto_explore_unit"},
+            {"identity": explicit_identity, "turn": 3},
+            {"turn": 4, "year": 2104, "protocol": {"phase": "turn"}},
+        )
+        if automatic_response.get("required_next") != {
+                "stop_after": True, "ordinary_message": "TURN HANDOFF"}:
+            raise AssertionError("automatic turn boundary retained a contradictory next tool")
 
         smacx_mcp.ACTION_PROGRESS.clear()
         smacx_mcp._call = lambda operation, **arguments: (

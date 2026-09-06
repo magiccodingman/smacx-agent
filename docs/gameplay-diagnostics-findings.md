@@ -47,3 +47,7 @@ The captured short resume also exposed an unknown-name rejection before the exec
 These findings are harness and delivery defects or explicit evidence gaps, not a diagnosis of poor model intelligence. The acceptance game has resumed from a verified turn-12 native+AI checkpoint on the repaired runtime.
 
 The production audit subsequently verified a narrower semantic problem: AI - 4 read a false governor hurry flag as a direct player restriction. The governor object was delivered, so this was not omitted data; its scope was inferred incorrectly. The native turn-14 catalog offered hurry and Colony Pod production despite that flag and population 1. Explicit governor-automation scope metadata addresses the ambiguity without changing legality or dictating production strategy. Turn-12 costs and universal legality are not inferred from the later catalog.
+
+### Turn 16→17 handoff contradiction
+
+Classification: **confirmed harness response bug**, behavioral contribution not isolated. Actual provider request `fd51506abb8249fe81d28f1dec40a541` contained both a required no-more-tools handoff and `required_next.tool=smac_decision`; sovereign followed the latter. The immediate receipt was present, so later state-result compaction does not prove omission at the decision point. `_attach_turn_handoff` now makes the stop/message next step authoritative for explicit and automatic transitions. Regression and live acceptance evidence: `benchmarks/gameplay-handoff-next-step.json`.

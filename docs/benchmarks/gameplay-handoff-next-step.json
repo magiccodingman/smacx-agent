@@ -1,0 +1,26 @@
+{
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "trigger": {
+    "turn_transition": "16->17",
+    "provider_request_id": "fd51506abb8249fe81d28f1dec40a541",
+    "handoff_receipt_delivered": true,
+    "contradictory_required_next_tool": "smac_decision",
+    "observed_next_call": "smac_decision"
+  },
+  "classification": "confirmed harness response contradiction; contribution to model behavior plausible, not isolated",
+  "change": "Native explicit and automatic handoff sets stop_after/ordinary TURN HANDOFF before generic consumed-decision guidance",
+  "tests": {
+    "opaque_choice_execution": "pass: public explicit result and automatic transition overwrite stale next-tool instruction",
+    "intent_managed_guard": "pass: current-turn reconciliation and management access unchanged"
+  },
+  "checkpoint": {
+    "id": "checkpoint-872a5bd66df943528209b817c771a1a7",
+    "turn": 17,
+    "verified": true
+  },
+  "limitations": [
+    "Receipt was present in the immediate actual request; later supersession is not evidence it was absent initially",
+    "No new handoff enforcement or inferred cognition added",
+    "Live corrected receipt and sovereign compliance pending"
+  ]
+}

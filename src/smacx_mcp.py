@@ -530,6 +530,9 @@ def _attach_turn_handoff(response: dict, choice: dict, decision: dict,
     response["turn_handoff_required"] = _turn_handoff_payload(
         before_turn, through, current_turn if turn_advanced else None,
     )
+    # A consumed decision normally requires a fresh frame. At a native turn
+    # boundary that frame belongs to the next episode, after the handoff.
+    response["required_next"] = {"stop_after": True, "ordinary_message": "TURN HANDOFF"}
     _semantic_turn_handoff_gc(identity, current_turn or before_turn + 1)
 
 STALE_REBASE_UNIT_COMMANDS = {
