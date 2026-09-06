@@ -48,6 +48,7 @@ PVOID request_exception_observer = NULL;
 DWORD request_ui_thread_id = 0;
 volatile LONG request_execution_stage = 0;
 volatile LONG request_exception_code = 0;
+volatile LONG request_exception_address = 0;
 volatile LONG request_exception_stage = 0;
 CRITICAL_SECTION request_lock;
 bool lock_initialized = false;
@@ -84,6 +85,8 @@ LONG CALLBACK observe_request_exception(EXCEPTION_POINTERS* exception) {
             InterlockedCompareExchange(&request_execution_stage, 0, 0));
         InterlockedExchange(&request_exception_code,
             static_cast<LONG>(exception->ExceptionRecord->ExceptionCode));
+        InterlockedExchange(&request_exception_address, static_cast<LONG>(
+            reinterpret_cast<uintptr_t>(exception->ExceptionRecord->ExceptionAddress)));
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -567,7 +570,7 @@ void begin_popup_transition(BasePop* popup) {
 
 bool popup_transition_is_pending() {
     if (!pending_popup_transition) return false;
-    if (!pending_popup_object
+    if (!agent_popup_object_is_active(pending_popup_object)
     || !Win_is_visible(reinterpret_cast<Win*>(pending_popup_object))
     || agent_popup_generation() != pending_popup_generation) {
         pending_popup_transition = false;
@@ -4986,14 +4989,15 @@ std::string validate_semantic_guard(const std::string& request) {
 }
 
 BasePop* active_default_popup() {
+    if (!*WinModalState && !*PopupDialogState && *BasePopExecDepth <= 0) return NULL;
     BasePop* started_popup = agent_popup_object();
     if (reinterpret_cast<uintptr_t>(started_popup) >= 0x10000
     && Win_is_visible(reinterpret_cast<Win*>(started_popup))) return started_popup;
     BasePop* popup_a = *DefaultPopupA;
     BasePop* popup_b = *DefaultPopupB;
-    if (reinterpret_cast<uintptr_t>(popup_b) >= 0x10000
+    if (agent_popup_object_is_active(popup_b)
     && Win_is_visible(reinterpret_cast<Win*>(popup_b))) return popup_b;
-    if (reinterpret_cast<uintptr_t>(popup_a) >= 0x10000
+    if (agent_popup_object_is_active(popup_a)
     && Win_is_visible(reinterpret_cast<Win*>(popup_a))) return popup_a;
     // Win_get_key_window returns an engine window identifier for some
     // transient NetMsg notifications (commonly the small integer 2), but
@@ -18970,6 +18974,8 @@ DWORD WINAPI server_worker(void*) {
                         + std::to_string(InterlockedCompareExchange(&request_execution_stage, 0, 0))
                         + ", first_chance_exception="
                         + std::to_string(static_cast<unsigned long>(InterlockedCompareExchange(&request_exception_code, 0, 0)))
+                        + ", exception_instruction="
+                        + std::to_string(static_cast<unsigned long>(InterlockedCompareExchange(&request_exception_address, 0, 0)))
                         + ", exception_stage="
                         + std::to_string(InterlockedCompareExchange(&request_exception_stage, 0, 0))
                         + ", acceptance_fixture_stage="
@@ -20184,6 +20190,7 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
     if (request.empty()) return true;
     InterlockedExchange(&request_execution_stage, 1);
     InterlockedExchange(&request_exception_code, 0);
+    InterlockedExchange(&request_exception_address, 0);
     InterlockedExchange(&request_exception_stage, 0);
     std::string response = execute_request(request);
     InterlockedExchange(&request_execution_stage, 0);

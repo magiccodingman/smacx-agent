@@ -1,0 +1,33 @@
+{
+  "checkpoint": "native-popup-lifetime-repair",
+  "matched_reproduction": {
+    "turn": 25,
+    "technology": "Social Psych",
+    "native_revision": "6843548069520344689",
+    "acknowledgement_returned": true,
+    "following_snapshot": "game_timeout",
+    "execution_stage": 13,
+    "first_chance_exception": "0xC0000005",
+    "fault_function": "Win_is_visible(Win*)",
+    "caller": "semantic_revision inside semantic_snapshot_response",
+    "faulting_operation": "read through recursive parent-window pointer",
+    "active_native_modal_depth": 0,
+    "active_native_basepop_exec_depth": 0,
+    "source": "controlled guarded replay plus attached native debugger; no provider inference"
+  },
+  "repair": "require current native modal/exec ownership before historical/default popup dereference; preserve copied notice metadata",
+  "controlled_validation": {
+    "protected_expired_memory": "passed",
+    "unrelated_modal_cannot_reactivate_history": true,
+    "current_modal_and_exec_membership": "passed",
+    "exception_instruction_capture": "passed real Windows dispatch",
+    "native_cross_build": "passed",
+    "doctrine_compatibility_adapter": "passed"
+  },
+  "pending": [
+    "matched native post-fix replay",
+    "active popup interaction regression",
+    "invalid_tile_id origin",
+    "sustained full-game acceptance"
+  ]
+}

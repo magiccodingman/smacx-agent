@@ -575,3 +575,5 @@ Collector fault-origin regression: `PYTHONPATH=src python3 scripts/observation_f
 `python3 scripts/native_request_exception_observer_test.py` compiles the actual bridge observer and exercises real Windows exception dispatch in an isolated worker Wine process. Set `SMACX_TEST_BRIDGE_BUILD_IMAGE` and `SMACX_TEST_WORKER_IMAGE` to locally built images. This verifies diagnostic behavior and pass-through, not gameplay recovery.
 
 `PYTHONPATH=src python3 scripts/recovery_observation_order_test.py` verifies solo and LAN recovery import every native identity capsule before starting any collector or advertising readiness, including import failure. Live acceptance must inspect the first post-restore publications for transient identity events.
+
+`python3 scripts/native_popup_lifetime_test.py` exercises production popup-lifetime helpers with test-owned native globals and a Windows PAGE_NOACCESS historical object. It covers inactive history, unrelated modal, current modal, exec ownership and closed exec. This complements, rather than substitutes for, the matched turn-25 native replay.

@@ -20,6 +20,7 @@ DWORD request_ui_thread_id;
 bool request_in_progress = true;
 volatile LONG request_execution_stage = 13;
 volatile LONG request_exception_code = 0;
+volatile LONG request_exception_address = 0;
 volatile LONG request_exception_stage = 0;
 """ + "LONG CALLBACK observe_request_exception(" + observer + r"""
 LONG CALLBACK handle_test_exception(EXCEPTION_POINTERS* p) {
@@ -37,7 +38,7 @@ int main() {
     if (!observer || !handler) return 10;
     RaiseException(0xE1350048u, 0, 0, NULL);
     if (static_cast<DWORD>(request_exception_code) != 0xE1350048u
-        || request_exception_stage != 13 || !request_in_progress) return 11;
+        || request_exception_stage != 13 || !request_exception_address || !request_in_progress) return 11;
     request_exception_code = 0;
     HANDLE other = CreateThread(NULL, 0, other_thread, NULL, 0, NULL);
     if (!other || WaitForSingleObject(other, 5000) != WAIT_OBJECT_0) return 12;
