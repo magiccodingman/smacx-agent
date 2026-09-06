@@ -45,3 +45,5 @@ The captured short resume also exposed an unknown-name rejection before the exec
 - **Temporal identity contract preserved:** apparent contact-reference churn can occur around an unproven feed/snapshot cut. Added committed publication receipts permit causal comparison; private-handle identity stitching and unsupported attention suppression were not introduced.
 
 These findings are harness and delivery defects or explicit evidence gaps, not a diagnosis of poor model intelligence. The acceptance game has resumed from a verified turn-12 native+AI checkpoint on the repaired runtime.
+
+The production audit subsequently verified a narrower semantic problem: AI - 4 read a false governor hurry flag as a direct player restriction. The governor object was delivered, so this was not omitted data; its scope was inferred incorrectly. The native turn-14 catalog offered hurry and Colony Pod production despite that flag and population 1. Explicit governor-automation scope metadata addresses the ambiguity without changing legality or dictating production strategy. Turn-12 costs and universal legality are not inferred from the later catalog.

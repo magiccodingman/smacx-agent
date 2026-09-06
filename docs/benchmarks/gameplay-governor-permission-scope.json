@@ -1,0 +1,43 @@
+{
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "evidence": {
+    "turn12_provider_request": "758b832939f347b18be2c3fc59ccbfcb",
+    "delivered_governor": {
+      "active": false,
+      "permissions": {
+        "hurry_production": false
+      }
+    },
+    "sovereign_claim": "Cannot hurry production because permission is false",
+    "turn14_read_only_native_comparison": {
+      "population": 1,
+      "governor_hurry_permission": false,
+      "production_choices_include": [
+        "Colony Pod",
+        "Formers",
+        "Scout Patrol",
+        "hurry_production"
+      ],
+      "current_item": "Scout Patrol",
+      "hurry": {
+        "legal": true,
+        "affordable": true,
+        "minerals_added": 8,
+        "energy_cost": 19,
+        "available_energy": 63
+      }
+    }
+  },
+  "classification": "Governor automation flag misinterpreted as direct player legality; semantic scope clarification",
+  "change": "Add permission_scope and player_action_legality to native governor records; booleans and guarded action rules unchanged",
+  "validation": {
+    "native_cross_build": "pass",
+    "deployed_annotation": "pending"
+  },
+  "limits": [
+    "Turn14 costs are not asserted as turn12 costs",
+    "No manual gameplay mutation performed in this comparison",
+    "No claim that all production or hurry actions are universally legal",
+    "Autonomous interpretation after annotation pending"
+  ]
+}

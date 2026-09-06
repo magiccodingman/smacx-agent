@@ -7555,6 +7555,8 @@ std::string bases_response() {
         }
         out << "],\"governor\":{\"active\":"
             << ((base.governor_flags & GOV_ACTIVE) ? "true" : "false")
+            << ",\"permission_scope\":\"native_governor_automation_only\""
+            << ",\"player_action_legality\":\"Enumerate the relevant choice family; governor permission flags do not restrict direct player actions.\""
             << ",\"manage_citizens\":"
             << ((base.governor_flags & GOV_MANAGE_CITIZENS) ? "true" : "false")
             << ",\"manage_production\":"
@@ -10860,6 +10862,8 @@ std::string base_management_choices_response(int faction_id, int base_id) {
         << ",\"base_name\":" << json_string(base.name)
         << ",\"current\":{\"governor\":{\"active\":"
         << ((base.governor_flags & GOV_ACTIVE) ? "true" : "false")
+        << ",\"permission_scope\":\"native_governor_automation_only\""
+        << ",\"player_action_legality\":\"Enumerate the relevant choice family; governor permission flags do not restrict direct player actions.\""
         << ",\"manage_citizens\":"
         << ((base.governor_flags & GOV_MANAGE_CITIZENS) ? "true" : "false")
         << ",\"manage_production\":"
