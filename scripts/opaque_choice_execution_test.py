@@ -34,6 +34,20 @@ def main() -> int:
             raise AssertionError(f"unexpected operation {operation}")
 
         smacx_mcp._call = bridge
+        for ready_count in (1, 2):
+            _, offered = smacx_mcp._cache_decision_choices(
+                {"match_id": "match-test", "session_id": "session-test", "revision": "r1"},
+                [{"command": "auto_explore_unit", "unit_id": 7},
+                 {"command": "set_production", "base_id": 1, "item_id": 0}],
+                choice_kind="unit_actions", choice_arguments={},
+                snapshot={"ready_unit_refs": [{}] * ready_count},
+            )
+            assert bool(offered[0].get("may_close_turn")) == (ready_count == 1)
+            assert "may_close_turn" not in offered[1]
+            assert "unit_id" not in offered[0] and "command" not in offered[0]
+            frame = smacx_mcp._attach_turn_boundary_notice({"choices": offered})
+            assert ("turn_boundary_notice" in frame) == (ready_count == 1)
+        assert not calls, "boundary annotation must not issue a native action"
         decision_id, choices = smacx_mcp._cache_decision_choices(
             {"match_id": "match-test", "session_id": "session-test", "revision": "r1"},
             [{

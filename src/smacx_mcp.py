@@ -1795,6 +1795,15 @@ def _settlement_rule_explains_request(required_action: str,
                  and "base" in str(item.get("meaning", "")).casefold()), None)
 
 
+def _attach_turn_boundary_notice(frame: dict) -> dict:
+    if any(choice.get("may_close_turn") for choice in frame.get("choices", [])):
+        frame["turn_boundary_notice"] = (
+            "Marked choices may start native turn processing immediately. "
+            "If you intend management this turn, do it before these choices."
+        )
+    return frame
+
+
 def _cache_decision_choices(identity: dict, choices: object, *,
                             choice_kind: str, choice_arguments: dict,
                             semantic_context: Mapping[str, Any] | None = None,
@@ -1802,7 +1811,8 @@ def _cache_decision_choices(identity: dict, choices: object, *,
                             focus: dict | None = None,
                             turn: int | None = None,
                             year: int | None = None,
-                            phase: str = "") -> tuple[str, list[dict]]:
+                            phase: str = "",
+                            snapshot: Mapping[str, Any] | None = None) -> tuple[str, list[dict]]:
     """Bind model-visible opaque choices to exact native command payloads."""
     now = time.monotonic()
     decision_id = "decision-" + uuid.uuid4().hex
@@ -1871,6 +1881,10 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             if key.startswith("confirm_"):
                 item.pop(key, None)
         item["choice_id"] = choice_id
+        if snapshot is not None:
+            from smacx_intent import may_close_turn
+            if may_close_turn(action, snapshot, bound):
+                item["may_close_turn"] = True
         if action == "set_first_base_name" or isinstance(name_contract, dict):
             design_name = action == "create_unit_design"
             item["text_input"] = {
@@ -2572,6 +2586,7 @@ def smac_decision(
             identity, choices_result.get("choices", []), choice_kind=choice_kind,
             choice_arguments=choice_arguments, semantic_context=semantic_context, focus=focus,
             turn=snapshot.get("turn"), year=snapshot.get("year"), phase=phase,
+            snapshot=snapshot,
         )
         frame = {
             "ok": True, "kind": "decision_frame", "identity": identity,
@@ -2605,7 +2620,7 @@ def smac_decision(
         if detail == "full":
             frame["snapshot"] = snapshot
         return _attach_working_state(_attach_chat_attention(
-            _attach_briefing_status(frame, briefing), identity,
+            _attach_briefing_status(_attach_turn_boundary_notice(frame), briefing), identity,
         ), identity)
     return {
         "ok": False,
@@ -2740,6 +2755,7 @@ def _smac_choices_once(
         identity, raw_choices, choice_kind=kind,
         choice_arguments=choice_arguments, semantic_context=semantic_context,
         catalog_information=_decision_information(result.get("choices", []), semantic_context),
+        snapshot=snapshot,
     )
     frame = {
         "ok": True, "kind": "choice_frame", "decision_id": decision_id,
@@ -2764,7 +2780,7 @@ def _smac_choices_once(
     )
     if advisories:
         frame["rule_advisories"] = advisories
-    return frame
+    return _attach_turn_boundary_notice(frame)
 
 
 def _turn_reconciliation_gate(command_arguments: dict) -> dict | None:
