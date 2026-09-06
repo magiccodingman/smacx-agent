@@ -32,8 +32,23 @@
     "ai_memory_checkpoint_contract": "passed"
   },
   "pending": [
-    "deployed recovery with no transient identity publications",
+    "live LAN identity-order acceptance",
     "turn25 diagnostic replay and root-cause repair",
     "full-game acceptance"
-  ]
+  ],
+  "live_acceptance": {
+    "session_id": "session-57943c3baafd4fc39e8d8d0138372a3b",
+    "timeline_id": "timeline-restore-e6a48dffed4d4a919f5bbf4c",
+    "turn": 22,
+    "publication_hash": "293fa53c3b4e605e5f0e4afefdf6d40ae8e764d04be6c9fbec9adbf8a44dd2ba",
+    "journal_event_id": "journal-eb516b1f6e45456cade2192a0de2a698",
+    "observation_cursor": 110,
+    "native_feed_continuity": "complete",
+    "material_delta_count": 0,
+    "semantic_event_count": 0,
+    "critical_attention_groups": 0,
+    "pending_attention_items": 0,
+    "native_owned_unit_count": 3,
+    "classification": "deployed solo checkpoint restore, before autonomous restart"
+  }
 }
