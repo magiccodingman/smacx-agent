@@ -31,8 +31,13 @@
     "tool_delta_with_sse_like_content": true
   },
   "pending": [
-    "Deployment verification",
     "Original native deferred-movement outage",
     "Full autonomous game"
-  ]
+  ],
+  "deployment": {
+    "harness_digest": "sha256:ebc9db6e55198c12d6cc072a63ec964c8102ed4dc844ba5ad6011d44b5859c78",
+    "run_id": "run-7982eb15919e497bb28cb9a9fa171c46",
+    "native_worker_replaced": false,
+    "live_image_identity_verified": true
+  }
 }
