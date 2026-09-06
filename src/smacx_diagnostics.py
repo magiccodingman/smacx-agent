@@ -46,7 +46,8 @@ def record(kind: str, payload: Mapping[str, Any], *, actor: str = "managed-mcp",
         key = (root, match, actor)
         with _WRITER_LOCK:
             if key not in _WRITERS:
-                _WRITERS[key] = DiagnosticWriter(Path(root), match, actor)
+                _WRITERS[key] = DiagnosticWriter(Path(root), match, actor,
+                                                 compress=True, human_log=True)
             writer = _WRITERS[key]
         receipt = writer.emit(kind, payload, correlation={**(PROVIDER_CORRELATION.get() or {}), **(correlation or {})})
         if not receipt["ok"]:

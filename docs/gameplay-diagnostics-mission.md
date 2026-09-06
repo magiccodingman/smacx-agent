@@ -217,3 +217,12 @@ the build imports the actual packaged MCP, campaign-export and intent modules.
 The repaired image builds successfully; the export contract also passes against
 installed image modules with only the test scripts mounted. Full native rerun
 remains required. No game deployment or full-game acceptance is claimed.
+
+Live MCP inspection after packaging repair confirms 11 managed calls and 11
+results, 21 correlated native receipts, two selected choices and runtime/journal
+selection records. It also exposed a production entry-point wiring gap: `record`
+used the writer's uncompressed/nonhuman defaults. The entry point now explicitly
+enables compression and compact process summaries, with a regression that invokes
+the actual environment-driven entry point and checks both outputs. The running
+isolated native test predates this logging-only correction; deployment must use
+the corrected image. Full native integration is still in progress.

@@ -3,16 +3,28 @@
 import concurrent.futures
 import json
 import gzip
+import io
+from contextlib import redirect_stderr
+from unittest.mock import patch
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 
-from smacx_diagnostics import DiagnosticWriter, install_hermes_capture
+from smacx_diagnostics import DiagnosticWriter, install_hermes_capture, record
 
 
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
+        output=io.StringIO()
+        with patch.dict("os.environ", {"SMACX_DIAGNOSTICS_ENABLED":"1",
+                "SMACX_AGENT_MATCH_ID":"match-production-entry",
+                "SMACX_DIAGNOSTICS_ROOT":str(root)}), redirect_stderr(output):
+            record("managed_tool_started", {"tool":"smac_decision","arguments":{}})
+        files=list((root/"match-production-entry").glob("*.jsonl.gz"))
+        assert len(files)==1
+        assert json.loads(gzip.decompress(files[0].read_bytes()))["kind"]=="managed_tool_started"
+        assert "SMACX_TRACE [managed-mcp] smac_decision" in output.getvalue()
         writer = DiagnosticWriter(root, "match-test", "sovereign")
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(lambda n: writer.emit("tool_result", {
@@ -70,7 +82,8 @@ def main():
     print(json.dumps({"event": "pass", "payload": {
         "concurrent_records_intact": True, "actor_streams_isolated": True,
         "credential_fields_redacted": True, "explicit_capture_gaps": True,
-        "live_capture_not_yet_integrated": True}}))
+        "production_entry_compressed_and_human_readable": True,
+        "full_game_acceptance_not_certified_by_contract": True}}))
 
 
 if __name__ == "__main__":

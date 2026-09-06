@@ -420,3 +420,8 @@ Packaged-service gate found and repaired: the control image omitted newly import
 diagnostics/intent modules. Build-time imports now validate the installed MCP
 module graph. Installed-image export contract passes; native startup rerun pending.
 Source-mounted test passes alone do not certify image completeness.
+
+Live MCP causal capture verified at the adapter boundary (11 calls/results and
+21 native receipts). Production `record` compression/human-output wiring corrected
+after live inspection; its environment-driven regression passes. Full-game and
+deployed corrected-image evidence remain pending.
