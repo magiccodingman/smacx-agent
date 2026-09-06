@@ -37,7 +37,7 @@
     "turn": 34,
     "verified": true
   },
-  "live_after": "Installed code and restored native state verified. Sovereign advanced through35\u219236 with valid movement and production; citizen requery/use remains unobserved. Expanded isolated native reassignment test running.",
+  "live_after": "Packaged deployment verified. Expanded isolated native two-step reassignment and full control/worker/MCP suite pass. Primary sovereign citizen requery/use remains unobserved.",
   "deployment": {
     "run_id": "run-22993042848845a1a649bd50cb238272",
     "timeline": "timeline-restore-781ce24ffc064e138d9c5c41",
@@ -50,5 +50,17 @@
       "Colony Pod"
     ],
     "control_and_harness_image": "diagnostics-citizen-context"
+  },
+  "isolated_native_acceptance": {
+    "full_control_worker_mcp_suite_pass": true,
+    "two_separately_issued_managed_choices_executed": true,
+    "different_tile_assigned": true,
+    "native_worked_flags_match_managed_projection": true,
+    "native_tile_yields_match_delivered_context": true,
+    "specialist_count_restored": true,
+    "repeated_checkpoint_and_identity_suite_pass": true,
+    "provider_inference": false,
+    "runtime_attention_hook": "controlled simulated response hook",
+    "airdrop_stress_max_probe_gap_ms": 300.074
   }
 }
