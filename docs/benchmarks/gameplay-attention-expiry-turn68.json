@@ -52,7 +52,10 @@
     "attention_communication_contract_test": "pass",
     "runtime_context_contract_test": "pass",
     "managed_refresh_guidance": "pass",
-    "diagnostic_summary_contract_test": "pass"
+    "diagnostic_summary_contract_test": "pass",
+    "real_hermes_provider_capture_test": "pass: actual built image, provider capture/resume/lease release/15-9 tool boundary",
+    "intent_managed_guard_test": "pass",
+    "intent_reconciliation_contract_test": "pass"
   },
   "acceptance": {
     "deployed": false,
