@@ -3,7 +3,10 @@ import json
 import time
 
 
-def exercise_diagnostics_checkpoint(call,native,get_context,responded):
+def exercise_diagnostics_checkpoint(call,native,get_context,responded,next_episode):
+    # The full driver holds turn 1 while applying controlled production upkeeps.
+    # Later arbitrary console states need not automatically end on final Skip.
+    assert native('semantic_snapshot')['snapshot']['turn']==1, 'requires controlled first-turn fixture state'
     fixture=native('test_managed_action_fixture',phase='diagnostics_turn_boundary')
     assert fixture.get('ok'),fixture
     for _ in range(32):
@@ -45,9 +48,15 @@ def exercise_diagnostics_checkpoint(call,native,get_context,responded):
     released=call('smac_execute_choice',{'decision_id':frame['decision_id'],'choice_id':skip['choice_id']})
     assert released.get('ok'),released
     deadline=time.monotonic()+45
+    handed_off=False
     while time.monotonic()<deadline:
         after=native('semantic_snapshot')['snapshot']
-        if after['turn']!=before['turn']:break
+        if after['turn']!=before['turn'] and not handed_off:
+            boundary=call('smac_decision',{})
+            assert boundary.get('turn_handoff_required') or released.get('turn_handoff_required'),boundary
+            next_episode()
+            handed_off=True
+        if after['turn']!=before['turn'] and after.get('protocol',{}).get('phase')=='turn':break
         if after.get('protocol',{}).get('phase')=='interaction':
             frame=call('smac_choices',{'kind':'interaction'})
             advances=[row for row in frame.get('choices',[]) if any(word in str(row.get('label','')).casefold()
@@ -57,8 +66,11 @@ def exercise_diagnostics_checkpoint(call,native,get_context,responded):
                 assert result.get('ok'),result
         time.sleep(.25)
     assert after['turn']!=before['turn'],{'automatic_native_transition_not_observed':after.get('protocol')}
+    assert after.get('protocol',{}).get('phase')=='turn',{'next_turn_not_actionable':after.get('protocol')}
     return {'current_turn_intent_in_next_runtime':True,'last_ready_native_unit_blocked_without_effect':True,
             'explicit_deferral_releases_native_skip':True,'automatic_turn_preference_enabled':True,
             'turn_before':before['turn'],'turn_after_receipt':after['turn'],
             'auto_transition_observed':after['turn']!=before['turn'],
+            'next_turn_actionable':True,
+            'turn_handoff_before_next_turn_interactions':handed_off,
             'native_execution_status':released.get('execution_status')}

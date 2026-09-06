@@ -277,3 +277,11 @@ fixtures complete in 233/250 ms, with maximum observed probe gaps about 227 ms.
 Sanitized evidence is in `benchmarks/gameplay-diagnostics-native-checkpoints.json`.
 Post-intent native recovery and the full test's terminal acceptance remain pending,
 as do deployment, browser export and autonomous full-game acceptance.
+
+Native driver follow-up: automatic turn advancement succeeded, but its next fixture
+ran before the next turn's passive project popup settled. The boundary driver now
+requires the controlled first-turn state, observes the required handoff, ends that
+episode, acquires the next episode, then finishes passive presentation before
+returning an actionable turn. A repeat on already-advanced arbitrary console state
+did not auto-end and is not acceptance evidence. The complete fresh native driver
+must pass; its prior partial result is retained rather than relabeled successful.

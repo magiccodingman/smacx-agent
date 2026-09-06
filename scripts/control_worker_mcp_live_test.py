@@ -1188,13 +1188,21 @@ def main() -> int:
         print(json.dumps({"event": "intent_attention_delivery", "payload": intent_delivery}), flush=True)
         from diagnostics_checkpoint_live_test import exercise_diagnostics_checkpoint
         diagnostics_episode = "episode-diagnostic-boundary-" + suffix
+        def diagnostics_next_episode():
+            ended = runtime_context(recovered_sidecar, diagnostics_episode, end=True)
+            assert ended.get("ok"), ended
+            # Keep the two explicit episode identities stable for cleanup.
+            resumed = runtime_context(recovered_sidecar, diagnostics_episode + "-next")
+            assert resumed.get("ok"), resumed
         diagnostics_evidence = exercise_diagnostics_checkpoint(
             lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
             lambda operation, **arguments: bridge_operation(recovered_sidecar, operation, **arguments),
             lambda: runtime_context(recovered_sidecar, diagnostics_episode),
-            lambda lease_id: runtime_attention_responded(recovered_sidecar, lease_id))
+            lambda lease_id: runtime_attention_responded(recovered_sidecar, lease_id),
+            diagnostics_next_episode)
         print(json.dumps({"event": "diagnostics_checkpoint", "payload": diagnostics_evidence}), flush=True)
         runtime_context(recovered_sidecar, diagnostics_episode, end=True)
+        runtime_context(recovered_sidecar, diagnostics_episode + "-next", end=True)
         print(json.dumps({"event": "managed_action_paths", "payload": managed_evidence}), flush=True)
         # Stress runs after gameplay assertions; its native restore check covers
         # the temporary rows, visibility and yield-calculation scratch state.
