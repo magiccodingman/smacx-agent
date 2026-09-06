@@ -21,5 +21,22 @@
     "schema_conservative_tokens": 7131,
     "qwen_prompt_tokens": 1338
   },
-  "autonomous_write_acceptance": "schema mapping verified on deployed actual wire; spontaneous guarded write remains unobserved"
+  "autonomous_write_acceptance": "schema mapping verified on deployed actual wire; spontaneous guarded write remains unobserved",
+  "live_sovereign_plan_write": {
+    "turn": 42,
+    "call_id": "chatcmpl-tool-9c1a99ec15553912",
+    "journal_event_id": "journal-17b924e2405746e9a7301648e382f5b4",
+    "canonical_event_type": "memory.plan",
+    "plan_id": "plan-d30b73ac14174e9b91590210b8f0531c",
+    "plan_key": "t42-uranium-terraforming-posture",
+    "observed_revision": "15676463927220498252",
+    "first_next_request": "98f28fb742c84dbc8682e90c792343fd",
+    "next_episode_first_request": "549acf099cf848798e2d86a3082452c4",
+    "next_episode_id": "episode-a94e7cb9ffee6c83844845b685afd3e2",
+    "actual_context_path": "working_cognition/plans/0",
+    "intent_horizon": "persistent_goal",
+    "status": "active",
+    "canonical_journal_independently_read": true,
+    "recovery_pending": true
+  }
 }
