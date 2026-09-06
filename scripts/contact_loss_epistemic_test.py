@@ -10,6 +10,8 @@ from smacx_world_types import provider_safe
 import smacx_mcp as mcp
 from unittest.mock import patch
 
+assert provider_safe({'event_kind':{},'path':7})=={'event_kind':{},'path':7}
+assert provider_safe({'event_kind':'contact_moved','path':7})=={'event_kind':'contact_moved','path':7}
 historical={'event_kind':'contact_moved','contact_ref':'contact-test','from_location_ref':'location-1856',
             'to_location_ref':'location--1','path':[{'from_location_ref':'location-1856','to_location_ref':'location--1','continuous_visibility':True}]}
 original=json.dumps(historical,sort_keys=True)

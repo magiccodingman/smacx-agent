@@ -54,9 +54,10 @@ def provider_safe(value: Any) -> Any:
                     or lower in _PRIVATE_EXACT_KEYS:
                 continue
             result[key] = provider_safe(item)
-        if result.get("event_kind") in {"contact_moved", "unit_moved"}:
+        if result.get("event_kind") in ("contact_moved", "unit_moved"):
             endpoints = [result.get("from_location_ref"), result.get("to_location_ref")]
-            for segment in result.get("path") or ():
+            path = result.get("path")
+            for segment in path if isinstance(path, (list, tuple)) else ():
                 if isinstance(segment, Mapping):
                     endpoints.extend((segment.get("from_location_ref"), segment.get("to_location_ref")))
             if any(isinstance(ref, str) and re.fullmatch(r"location--[0-9]+", ref) for ref in endpoints):

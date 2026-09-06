@@ -99,7 +99,8 @@
     },
     "world_model_contract": "pass",
     "strategic_world_fixtures": "pass",
-    "managed_action_path_contract": "pass"
+    "managed_action_path_contract": "pass",
+    "unrelated_malformed_metadata_remains_serializable": "pass"
   },
   "limits": [
     "No claim about the unobserved ultimate fate of the Colony Pod",
