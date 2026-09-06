@@ -54,6 +54,19 @@ def result_object(value):
     return value if isinstance(value,dict) else {"value":value}
 
 
+def brief_information(row):
+    result={k:(v[:237]+'...' if isinstance(v,str) and len(v)>240 else v)
+        for k,v in list(row.items())[:16] if isinstance(v,(str,int,float,bool)) or v is None}
+    terms=row.get('terms')
+    if isinstance(terms,dict):
+        result['terms']={party:{k:(v[:157]+'...' if isinstance(v,str) and len(v)>160 else v)
+            for k,v in detail.items() if k in {'kind','name','energy_credits'}
+            and isinstance(v,(str,int,float,bool))}
+            for party,detail in terms.items()
+            if party in {'player_gives','player_receives'} and isinstance(detail,dict)}
+    return result
+
+
 def summary(event):
     kind=event.get('kind','unknown');payload=event.get('payload') or {}
     tool=payload.get('managed_name') or payload.get('tool') or ''
@@ -84,8 +97,7 @@ def summary(event):
         if isinstance(result.get('information'),list) and result['information']:
             # Native terms are already semanticized by the managed surface.
             # Retain a bounded scalar view; full nested terms stay in the trace.
-            chosen['information']=[{k:(v[:240] if isinstance(v,str) else v)
-                for k,v in list(r.items())[:16] if isinstance(v,(str,int,float,bool)) or v is None}
+            chosen['information']=[brief_information(r)
                 for r in result['information'][:4] if isinstance(r,dict)]
             chosen['more_information']=max(0,len(result['information'])-4)
         if not chosen:chosen={'text':result.get('text',result)}

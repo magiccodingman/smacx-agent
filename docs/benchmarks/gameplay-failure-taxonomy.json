@@ -24,5 +24,13 @@
     "Counts are per-layer observations, not deduplicated incidents",
     "Earlier quiescence misclassification remains historical evidence",
     "Updated deployed metrics verification pending; no gameplay restart required just for this diagnostic change"
-  ]
+  ],
+  "retained_archive_replay": {
+    "runtime_context_failed:invalid_tile_id": 2,
+    "runtime_context_failed:sovereign_invocation_already_active": 3,
+    "runtime_context_failed:native_observation_feed_failed": 1,
+    "tool_returned:schema_missing_required": 10,
+    "tool_returned:bridge_tool_not_invocable": 4
+  },
+  "deployed_control_image": "sha256:9c0c930710fe2fb8db2f4223da184bd154d579f14adeac1bb942ab09f5f1677e"
 }

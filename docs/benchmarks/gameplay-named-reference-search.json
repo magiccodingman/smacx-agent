@@ -19,6 +19,17 @@
   "limitations": [
     "Document retrieval does not prove all technology effects/prerequisites are covered by its prose",
     "No hidden match data or strategic policy added",
-    "Deployed exact original-query comparison pending"
-  ]
+    "Deployed original-query comparison passes; subsequent autonomous lookup/use not yet observed"
+  ],
+  "deployed_original_query_replay": {
+    "knowledge_image": "sha256:945cfd197784c3c4376983cb43260a872474cb5c0f9625e73269b54628243d47",
+    "titles": [
+      "Centauri Ecology",
+      "Planetary Networks",
+      "Ecology (Advanced)",
+      "The Network Backbone"
+    ],
+    "both_named_bodies_returned": true,
+    "approximate_content_tokens": 623
+  }
 }

@@ -8,6 +8,14 @@
   "limitations": [
     "Query route availability is not a claim an action is currently legal",
     "No strategic action or cognition selected for the sovereign",
-    "Live new-frame receipt and interpretation pending"
-  ]
+    "Live frame receipt verified; sustained sovereign interpretation remains under review"
+  ],
+  "deployed": {
+    "checkpoint_id": "checkpoint-06c280a29cb24b58b5f52a3429d625a0",
+    "turn": 20,
+    "control_and_MCP_image": "sha256:9c0c930710fe2fb8db2f4223da184bd154d579f14adeac1bb942ab09f5f1677e",
+    "provider_request_id": "e349321c447a4fa699ea89d7d1548107",
+    "scope_notice_in_actual_request": true,
+    "tool_count": 15
+  }
 }

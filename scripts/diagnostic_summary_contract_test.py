@@ -62,4 +62,11 @@ assert '"response":"accept"' in text and '"response":"reject"' in text
 assert 'Spartan Federation' in text and '"energy_credits":15' in text
 diplomacy['payload']['result']['information'][0]['meaning']='x'*10000
 assert len(summary(diplomacy))<1500
+diplomacy['payload']['result']['information']=[{'offer_type':'technology_or_map_exchange','terms':{
+    'player_gives':{'kind':'technology','name':'Centauri Ecology'},
+    'player_receives':{'kind':'technology','name':'Planetary Networks'},
+    'unrelated_details':{'body':'x'*10000}}}]
+text=summary(diplomacy)
+assert 'Centauri Ecology' in text and 'Planetary Networks' in text
+assert len(text)<1500 and 'unrelated_details' not in text
 print(json.dumps({'passed':True,'hermes_envelope_decoded':True,'pre_mcp_failure_named':True,'queued_not_completed':True}))
