@@ -5,5 +5,17 @@
   "observed_wire_before_repair_sha256": "56e2b89d45d16dbd9127dddd74b1d11010689725e3b7eaa9ca1ec30fa36e91b3",
   "controlled_real_hermes_resume_replacement_verified": true,
   "controlled_resume_history_preserved": true,
-  "deployed_corrected_wire_pending": true
+  "deployed_corrected_wire_pending": false,
+  "live_resumed_acceptance": {
+    "run_id": "run-26667796a6114be9b126d6e0ed78037a",
+    "request_ids": [
+      "d6d9671f40294d5da9dd8f2ff31cd7ef",
+      "9291cf04f64249ef8650984020844364"
+    ],
+    "current_profile_and_exact_system_row_sha256": "78456966b3c07d5aec25e18f30f8d15f2d7afa6dabe74f8ad452a3f79310d4f4",
+    "matches_configured_hash": true,
+    "system_row_count": 1,
+    "exact_profile_equality": true,
+    "earlier_profile_hashes_are_historical": true
+  }
 }

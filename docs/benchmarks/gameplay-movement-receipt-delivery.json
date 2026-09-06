@@ -22,11 +22,20 @@
     "turn": 38
   },
   "pending": [
-    "packaged deployment",
     "actual provider receipt delivery",
     "continued autonomous gameplay",
     "full game completion"
   ],
   "native_mechanics_changed": false,
-  "provider_inference_from_fixture": false
+  "provider_inference_from_fixture": false,
+  "deployment": {
+    "control_image_sha256": "04edafd31e883a1bb924af38dd67531615b43e284542e4443942778539919c79",
+    "harness_image_sha256": "2a06e0d3e40171d1d5cb16e5dab133b98d5fccc6e78019d28dc4ed1ca59485bf",
+    "packaged_regression_passed": true,
+    "restored_checkpoint": "checkpoint-2b6518c31ebc4906978fe21cce498159",
+    "timeline_id": "timeline-restore-fcf1c8d62aab418ea8ed2620",
+    "run_id": "run-26667796a6114be9b126d6e0ed78037a",
+    "native_turn_after_resume": 39,
+    "operational_repair_notice": true
+  }
 }
