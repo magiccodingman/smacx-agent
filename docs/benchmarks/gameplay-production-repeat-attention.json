@@ -31,10 +31,16 @@
     "bounded_runtime_selection_delivery": "fixture pass"
   },
   "acceptance": {
-    "deployed": false,
+    "deployed": true,
     "actual_repaired_provider_delivery": "pending",
     "autonomous_behavior": "pending",
     "native_mechanics_changed": false,
     "full_game": "pending"
+  },
+  "deployment": {
+    "run_id": "run-0ce501fa246a440e99e4f090c06991c2",
+    "harness_image_sha256": "247f04caa929722208fa71a9f8fd21c23e67e8f950e2b98b5af19821e75fbc64",
+    "mcp_control_image_sha256": "19af0966db03ba4ff15cc62ae7ef092255114e44685df6ddc07ecfe64e67579e",
+    "native_worker_replaced": false
   }
 }
