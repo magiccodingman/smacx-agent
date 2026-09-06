@@ -62,5 +62,31 @@
     "provider_inference": false,
     "runtime_attention_hook": "controlled simulated response hook",
     "airdrop_stress_max_probe_gap_ms": 300.074
+  },
+  "live_sovereign_acceptance": {
+    "turn": 40,
+    "run_id": "run-26667796a6114be9b126d6e0ed78037a",
+    "initial_context_request_id": "f4090b380fe94223ac8ae0ccd71b2ae1",
+    "conversion_receipt_request_id": "53c7db66f6c443479a5d8b5fd159132c",
+    "fresh_catalog_request_id": "39505a6c75f54bbb84840b7d9f1afc4b",
+    "assignment_receipt_request_id": "815bf8aac8c940179c9421b9efac26f5",
+    "conversion_call_id": "chatcmpl-tool-b7c08a520a0d3158",
+    "assignment_call_id": "chatcmpl-tool-83837c6464092edf",
+    "source_location_ref": "location-1053",
+    "target_location_ref": "location-1253",
+    "native_comparison": {
+      "worked_target_yields": {
+        "nutrients": 1,
+        "minerals": 1,
+        "energy": 2
+      },
+      "specialists": 0,
+      "base_nutrient_intake": 3,
+      "base_nutrient_surplus": 1,
+      "base_mineral_intake": 2
+    },
+    "sovereign_selected_workflow_and_target": true,
+    "earlier_operational_repair_notices_present": true,
+    "recovery_of_this_effect_pending": true
   }
 }
