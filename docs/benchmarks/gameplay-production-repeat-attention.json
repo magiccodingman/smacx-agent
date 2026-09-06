@@ -1,0 +1,40 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "capability": "Production queue exhaustion retains same-base same-turn native selection occurrences",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "native_evidence": {
+    "session_id": "session-af7d5ab46722463cb2f7bd30ee1c1e7d",
+    "turn": 65,
+    "base_ref": "base-location-1134",
+    "sequence_76": "owned_production_completed: Synthmetal Garrison",
+    "sequence_77": "owned_queue_exhausted",
+    "sequence_78": "owned_production_repeat: Synthmetal Garrison"
+  },
+  "actual_provider_gap": {
+    "request_ids": [
+      "9baef66d74794b68be245bd05b9618cc",
+      "a5a995fc068140daae8744b0a98580a4"
+    ],
+    "attention_id": "attention-d2f6aa62e06f4b1f9169c6fdacbf69c3",
+    "observation_cursor": 319,
+    "delivered": [
+      "production_queue_exhausted"
+    ],
+    "omitted": [
+      "production_repeat_selected"
+    ]
+  },
+  "repair": "Queue exhaustion is explicitly distinct from idle production; up to two same-base same-turn repeat/fallback occurrences survive the bounded notice. Historical selection never becomes a current-state assertion.",
+  "validation": {
+    "runtime_context_contract_test": "pass",
+    "cross_base_and_cross_turn_exclusion": "pass",
+    "bounded_runtime_selection_delivery": "fixture pass"
+  },
+  "acceptance": {
+    "deployed": false,
+    "actual_repaired_provider_delivery": "pending",
+    "autonomous_behavior": "pending",
+    "native_mechanics_changed": false,
+    "full_game": "pending"
+  }
+}

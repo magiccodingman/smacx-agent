@@ -758,7 +758,23 @@ class AttentionService:
         for event in production:
             plan_refs = linked.get(str(event.get("base_ref") or ""), [])
             if event.get("event_kind") in {"production_queue_exhausted", "production_interrupted"} or plan_refs:
-                meaningful.append({**event, "linked_plan_refs": plan_refs[:8]})
+                notice = {**event, "linked_plan_refs": plan_refs[:8]}
+                if event.get("event_kind") == "production_queue_exhausted":
+                    notice["meaning"] = "Queued orders exhausted; this does not establish idle production."
+                    # Preserve the paired occurrence, not an assertion about the
+                    # current selection. Never join different bases or turns.
+                    selections = [candidate for candidate in production
+                                  if event.get("base_ref") and event.get("turn") is not None
+                                  and candidate.get("base_ref") == event.get("base_ref")
+                                  and candidate.get("turn") == event.get("turn")
+                                  and candidate.get("event_kind") in {
+                                      "production_repeat_selected", "production_fallback_selected"}]
+                    notice["selection_occurrences"] = [
+                        {key: candidate[key] for key in
+                         ("event_kind", "item_name", "turn", "occurrence_ref", "evidence_kind")
+                         if key in candidate} for candidate in selections[:2]]
+                    notice["selection_details_truncated"] = len(selections) > 2
+                meaningful.append(notice)
         if meaningful:
             self.enqueue("production_progress", {"events": meaningful[:8],
                          "event_count": len(meaningful), "details_truncated": len(meaningful) > 8},

@@ -67,6 +67,26 @@ def main() -> int:
                                   action_revision="action-9", continuity="complete",
                                   journal_head_hash="0" * 64)
         attention = AttentionService(store, journal, scope)
+        captured = []
+        real_enqueue = attention.enqueue
+        attention.enqueue = lambda kind, payload, **kwargs: captured.append(payload)
+        attention.capture_production_attention([
+            {"event_kind": "production_queue_exhausted", "base_ref": "base-home", "turn": 9},
+            {"event_kind": "production_repeat_selected", "base_ref": "base-home", "turn": 9,
+             "item_name": "Garrison", "occurrence_ref": "production-native-78",
+             "evidence_kind": "owned_native_occurrence"},
+            {"event_kind": "production_repeat_selected", "base_ref": "base-away", "turn": 9,
+             "item_name": "Other base"},
+            {"event_kind": "production_fallback_selected", "base_ref": "base-home", "turn": 8,
+             "item_name": "Old selection"},
+        ], observation_cursor=9, turn=9)
+        attention.enqueue = real_enqueue
+        event = captured[0]["events"][0]
+        assert len(event["selection_occurrences"]) == 1
+        assert event["selection_occurrences"][0]["item_name"] == "Garrison"
+        bounded = _attention_payload({"attention_kind": "production_progress", "payload": captured[0]})
+        assert bounded["events"][0]["selection_occurrences"] == event["selection_occurrences"]
+        assert "does not establish idle" in bounded["events"][0]["meaning"]
         dependencies = attention.semantic_dependency_hashes()
         operation_refs = ["base-home", "own-unit-7"]
         operation = attention.upsert_operation(

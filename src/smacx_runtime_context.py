@@ -295,7 +295,9 @@ def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
                 "detail": "Inspect the watch and its referenced world objects for qualified detail."}
     if item.get("attention_kind") == "production_progress":
         return {"event_count": payload.get("event_count"), "details_truncated": True,
-                "events": [{key: event.get(key) for key in ("event_kind", "base_ref", "item_name", "turn")}
+                "events": [{key: event.get(key) for key in ("event_kind", "base_ref", "item_name", "turn",
+                                                                          "meaning", "selection_occurrences",
+                                                                          "selection_details_truncated")}
                            for event in list(payload.get("events") or ())[:4]
                            if isinstance(event, Mapping)]}
     return {"payload_hash": content_hash(payload), "keys": sorted(payload)[:24],
