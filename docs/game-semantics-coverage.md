@@ -353,3 +353,12 @@ Acceptance details: [Lobby startup UX acceptance](benchmarks/2026-09-05-lobby-st
 | Movement and order feedback | Retained turn-4 save → rebuilt native replay → current focused HP/movement/scale/order → dispatch-stage receipt and qualified order assignment → Skip removes ready unit | All four movement rejections and interrupted return order reproduced; valid native Skip verified. Specific move rejection cause remains unknown. Production images deployed; new campaign launched, spectator handoff and sovereign briefing observed. Provider reached turn 6 with no incidents/error restarts and a verified turn-4 native/journal/AI-memory checkpoint; full playthrough remains in progress. |
 
 See [action-progress repair evidence](benchmarks/2026-09-06-action-progress.md).
+
+### Diagnostics-first gameplay acceptance (in progress)
+
+| Capability | Evidence chain | Current acceptance |
+|---|---|---|
+| Causal diagnostic storage | structured event → actor-isolated stream → bounded capture/gap record | Concurrent storage/redaction/bounds contracts pass. Live Hermes/MCP/native interception and export remain unimplemented; not complete. |
+| Provider/cognition/intent audit | intended write → journal → selected runtime state → final provider request → action/effect/recovery | New mission explicitly requires this full chain. Existing component contracts do not establish complete campaign observability. |
+
+Checkpoint plan and limitations: [Gameplay diagnostics mission](gameplay-diagnostics-mission.md).
