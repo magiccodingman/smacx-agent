@@ -17,9 +17,26 @@
     "python_fingerprint_contract": "passed",
     "supervisor_continuation_contract": "passed",
     "native_build": "passed final build",
-    "controlled_native_effect_comparison": "initial candidate passed production/citizen and repeated read checks; final build full suite running",
+    "controlled_native_effect_comparison": "passed on final worker: actual managed production and citizen changes; stable repeated native snapshot reads",
     "deployed_recovery_and_live_acceptance": "pending",
-    "production_cpp_foreign_and_slot_order_contract": "passed"
+    "production_cpp_foreign_and_slot_order_contract": "passed",
+    "full_control_worker_mcp_suite": "passed on final images, including two coherent native/AI restores; optional provider inference and action-containment mode disabled",
+    "fair_play_world_contract": "passed",
+    "native_observation_contract": "passed",
+    "doctrine_integration_contract": "passed final image"
   },
-  "engine_source_sha256": "74e9c3957a324dce821f7825b1b8aae954924b13e1f5711125ae000d2b16c86a"
+  "engine_source_sha256": "74e9c3957a324dce821f7825b1b8aae954924b13e1f5711125ae000d2b16c86a",
+  "tested_images": {
+    "worker": "sha256:c2ef8f9ba394d25980e96d53f1ad7574e10157f75f4db4db24a88fee41e519f7",
+    "control": "sha256:9b7f809d833564824e20cdc62d7ee41df614e1456d0d78e82355ed2ca8c85a85",
+    "harness": "sha256:c30c5d567d89579b045d5059ba7661029d92fbade09404740f6707489917dbb6"
+  },
+  "native_stress": {
+    "airdrop_units": 129,
+    "map_tiles": 8192,
+    "airdrop_probe_gap_ms": 265.6,
+    "owned_base_rows": 511,
+    "nominated_sites": 4,
+    "site_probe_gap_ms": 241.982
+  }
 }
