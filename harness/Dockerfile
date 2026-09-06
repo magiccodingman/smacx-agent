@@ -15,9 +15,11 @@ COPY src/smacx_context_policy.py /opt/smacx-strict-prompt/smacx_context_policy.p
 COPY src/ /opt/smacx/src/
 COPY harness/patch_hermes_repetition.py /tmp/patch_hermes_repetition.py
 COPY harness/patch_hermes_diagnostics.py /tmp/patch_hermes_diagnostics.py
+COPY harness/patch_hermes_mcp_watcher.py /tmp/patch_hermes_mcp_watcher.py
 RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_repetition.py \
     && /opt/hermes/.venv/bin/python /tmp/patch_hermes_diagnostics.py \
-    && rm /tmp/patch_hermes_repetition.py /tmp/patch_hermes_diagnostics.py \
+    && /opt/hermes/.venv/bin/python /tmp/patch_hermes_mcp_watcher.py \
+    && rm /tmp/patch_hermes_repetition.py /tmp/patch_hermes_diagnostics.py /tmp/patch_hermes_mcp_watcher.py \
     && /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/agent/chat_completion_helpers.py /opt/hermes/agent/conversation_loop.py
 RUN site_packages="$(/opt/hermes/.venv/bin/python -c 'import site; print(site.getsitepackages()[0])')" \
     && printf '%s\n%s\n%s\n%s\n' '/opt/hermes' '/opt/smacx/src' '/opt/smacx-strict-prompt' 'import smacx_strict_prompt' \
