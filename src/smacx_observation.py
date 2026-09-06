@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
+import traceback
+from pathlib import Path
 import threading
 import time
 from typing import Any, Callable, Mapping
@@ -1122,6 +1125,14 @@ class ObservationCollector:
             except Exception as exc:
                 self._collection_metrics["failed"] = True
                 self._collection_metrics["failure_kind"] = type(exc).__name__
+                self._collection_metrics["failure_code"] = (
+                    str(exc) if re.fullmatch(r"[a-z][a-z0-9_]{0,159}", str(exc))
+                    else type(exc).__name__)
+                self._collection_metrics["failure_stack"] = [
+                    {"file": Path(frame.filename).name, "line": frame.lineno,
+                     "function": frame.name}
+                    for frame in traceback.extract_tb(exc.__traceback__)[-8:]
+                ]
                 # Rebuild all transient correlation state from the durable
                 # private stage before an in-process retry.
                 self._restore_native_stage()

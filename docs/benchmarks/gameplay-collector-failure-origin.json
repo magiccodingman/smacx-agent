@@ -1,0 +1,28 @@
+{
+  "checkpoint": "collector-failure-origin",
+  "controlled_validation": {
+    "original_exception_rethrown": true,
+    "stage_restore_preserved": true,
+    "last_eight_source_frames_only": true,
+    "raw_exception_text_and_locals_excluded": true,
+    "batch_recovery_windows": [
+      "before_commit",
+      "during_commit",
+      "after_commit"
+    ]
+  },
+  "live_incident": {
+    "incident_id": "incident-0def74e153274f11a66ea9b7884fe006",
+    "turn": 25,
+    "gap_id": "gap-bce845b017e0421aabd07125b8ec1c78",
+    "preserved_bundle_sha256": "0b4ea06c8533fc07b6ccc74e47c6a29fb8eb0f38b9ec485859b4ce8d763ec20f",
+    "worker_and_collector_paused": true,
+    "latest_verified_checkpoint": "checkpoint-0d35c5d505a34342b5a31dd1fede56ba"
+  },
+  "pending": [
+    "deployment of origin telemetry",
+    "original invalid_tile_id cause",
+    "native technology-presentation hang cause and repair",
+    "controlled recovery and sustained full-game acceptance"
+  ]
+}
