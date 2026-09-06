@@ -53,6 +53,19 @@ def main():
             assert rows[-1]['kind']=='control_operation_deferred'
             metrics.add(rows[-1])
             assert metrics.as_dict()['failure_observations_by_layer']=={'control_operation_failed:checkpoint_test_failure':1}
+            server.operations = SimpleNamespace(campaign_diagnostics=fail)
+            before = len(rows)
+            for authenticated in (False, True):
+                export_headers = {'X-SMACX-Service-Token': 'fixture-service'} if authenticated else {}
+                export = Request(f'http://127.0.0.1:{server.server_port}/api/v1/matches/match-control-diagnostic/diagnostics', headers=export_headers)
+                try: urlopen(export)
+                except HTTPError as exc: assert exc.code == (409 if authenticated else 401)
+                else: raise AssertionError('expected export failure')
+                rows=[json.loads(line) for path in paths for line in gzip.open(path,'rt')]
+                assert len(rows) == before + int(authenticated)
+            assert rows[-1]['payload']['operation'] == 'diagnostics'
+            assert rows[-1]['payload']['error_code'] == 'checkpoint_test_failure'
+            assert 'private-' not in json.dumps(rows) and 'fixture-service' not in json.dumps(rows)
             refresh_requests=[]
             def recover(match_id, *, refresh_runtime=False):
                 refresh_requests.append((match_id,refresh_runtime))

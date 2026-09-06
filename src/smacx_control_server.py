@@ -157,7 +157,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         # exception messages, and never let anonymous probes create archives.
         if getattr(self, "_diagnostic_authorized", False):
             path = urlsplit(self.path).path
-            scoped = RECOVERY_PATH.fullmatch(path) or MATCH_PATH.fullmatch(path)
+            scoped = (RECOVERY_PATH.fullmatch(path) or MATCH_PATH.fullmatch(path)
+                      or re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/(diagnostics)", path))
             match_id = scoped.group(1) if scoped else getattr(self, "_diagnostic_match_id", None)
             operation = scoped.group(2) if scoped else {
                 "/api/v1/harness-runs": "harness_start",
@@ -308,6 +309,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             diagnostic_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/diagnostics", path)
             if diagnostic_match:
                 self._authentication()
+                # This authenticated read creates a diagnostic artifact; retain
+                # a safe error code if creation fails, just as for lifecycle.
+                self._diagnostic_authorized = True
                 self._json(200, {"ok": True, "bundle": self._operations().campaign_diagnostics(diagnostic_match[1])})
                 return
             match_status = MATCH_STATUS_PATH.fullmatch(path)

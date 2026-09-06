@@ -1,0 +1,7 @@
+{
+  "finding": "Live startup diagnostics GET returned409; endpoint did not mark authenticated diagnostic scope for existing error capture",
+  "repair": "Authenticated diagnostics exports join safe control_operation_failed capture; anonymous failures cannot create streams",
+  "acceptance": "Actual HTTP server: anonymous401 adds no record, authenticated409 records operation diagnostics and stable error code; private exception details and service token absent",
+  "past_failure_cause": "unknown; subsequent live export succeeded",
+  "deployment": "pending control-API refresh; game worker/MCP need no restart"
+}
