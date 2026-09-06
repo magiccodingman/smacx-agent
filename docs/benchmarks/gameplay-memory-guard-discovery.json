@@ -21,7 +21,7 @@
     "schema_conservative_tokens": 7131,
     "qwen_prompt_tokens": 1338
   },
-  "autonomous_write_acceptance": "schema mapping verified on deployed actual wire; spontaneous guarded write remains unobserved",
+  "autonomous_write_acceptance": "Sovereign plan42 is canonically committed, present in the immediate next request and next episode, and preserved by verified43 native/AI recovery into the actual resumed provider context.",
   "live_sovereign_plan_write": {
     "turn": 42,
     "call_id": "chatcmpl-tool-9c1a99ec15553912",
@@ -37,6 +37,16 @@
     "intent_horizon": "persistent_goal",
     "status": "active",
     "canonical_journal_independently_read": true,
-    "recovery_pending": true
+    "recovery_pending": false,
+    "recovery": {
+      "checkpoint_id": "checkpoint-cfff9b481bee42c49a102af09f883c7c",
+      "turn": 43,
+      "timeline_id": "timeline-restore-32f5554d7797433d8d7ba0e1",
+      "canonical_working_state_verified": true,
+      "first_resumed_provider_request": "8c5798d4139e4c61aaf28cd77966c9c0",
+      "resumed_episode_id": "episode-dba14de6838643cabf114024d24f69f3",
+      "actual_context_path": "working_cognition/plans/0",
+      "same_active_plan_id": true
+    }
   }
 }
