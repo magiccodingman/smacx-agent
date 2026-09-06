@@ -13,10 +13,14 @@
     "checkpoint_helper_permissions_live_test"
   ],
   "source_reference": "https://www.sqlite.org/wal.html#read_only_databases",
-  "pending": [
-    "deployed checkpoint",
-    "restore latest native and AI state",
-    "citizen allocation recovery"
-  ],
-  "no_gameplay_rollback_performed": true
+  "pending": [],
+  "no_gameplay_rollback_performed": true,
+  "live_acceptance": {
+    "checkpoint_id": "checkpoint-102098706254449c9682b658d3fdf29d",
+    "turn": 41,
+    "verified": true,
+    "recovered_timeline_id": "timeline-restore-a4ef4e1a7eb44e3ab1812001",
+    "native_allocation_and_two_formers_preserved": true,
+    "control_image_sha256": "9420dcca161f2cc584ed33b6ca618ae7edeed83c97d3c4f800248c83b77b3db2"
+  }
 }

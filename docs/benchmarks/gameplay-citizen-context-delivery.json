@@ -87,6 +87,19 @@
     },
     "sovereign_selected_workflow_and_target": true,
     "earlier_operational_repair_notices_present": true,
-    "recovery_of_this_effect_pending": true
+    "recovery_of_this_effect_pending": false,
+    "verified_recovery": {
+      "checkpoint_id": "checkpoint-102098706254449c9682b658d3fdf29d",
+      "turn": 41,
+      "timeline_id": "timeline-restore-a4ef4e1a7eb44e3ab1812001",
+      "worked_location_ref": "location-1253",
+      "native_yields": {
+        "nutrients": 1,
+        "minerals": 1,
+        "energy": 2
+      },
+      "nutrient_surplus": 1,
+      "specialists": 0
+    }
   }
 }

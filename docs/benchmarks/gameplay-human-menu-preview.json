@@ -12,5 +12,8 @@
     "citizen_context_delivery_test",
     "movement_receipt_delivery_test"
   ],
-  "deployment_pending": true
+  "deployment_pending": false,
+  "packaged_regression_passed": true,
+  "live_rendering_pending": true,
+  "harness_image_sha256": "26410feb11b243799fc084c2751e95a9c2dab4c4fccfeddc706810eaeee4cbf5"
 }
