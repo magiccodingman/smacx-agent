@@ -52,6 +52,7 @@ from smacx_controller import (
 )
 from smacx_attention import AttentionError, WATCH_KINDS
 from smacx_world import WORLD_MODES, WorldQueryError
+from smacx_mechanics import production_flow_state
 from smacx_counterfactual import action_relationships, parse_scenario
 from smacx_runtime_context import RuntimeContextAssembler
 from smacx_diagnostics import record as diagnostic_record, trace_managed_tool, INVOCATION
@@ -967,10 +968,22 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
         "hurry": ("legal", "affordable", "minerals_added", "energy_cost", "available_energy"),
         "queue": ("entries", "capacity"),
     }
-    return {section: {key: (value[:160] if isinstance(value, str) else value)
+    result = {section: {key: (value[:160] if isinstance(value, str) else value)
                       for key in keys
                       if isinstance((value := catalog[section].get(key)), (str, int, float, bool))}
             for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}
+    current = result.get("current")
+    if current:
+        current["progress_state"] = production_flow_state(
+            current.get("mineral_cost"), current.get("minerals_accumulated"),
+            current.get("mineral_surplus"), inputs_current=True)
+        if current["progress_state"] == "no_passive_progress_at_current_surplus":
+            current["condition"] = (
+                "Remaining minerals will not accumulate while this net surplus stays nonpositive. "
+                "Allocation, support, terraforming or a legal hurry may change this; "
+                "queued units are not fielded defenders.")
+    return result
+
 
 
 def _citizen_catalog_context(catalog: Mapping[str, Any], context: Mapping[str, Any] | None,

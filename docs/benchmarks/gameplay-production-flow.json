@@ -1,0 +1,36 @@
+{
+  "classification": "confirmed conditional-production representation and education gap; sovereign also overlooks delivered zero surplus",
+  "native_observations": {
+    "turns": [
+      47,
+      49,
+      51
+    ],
+    "base": "U.N. Headquarters",
+    "production": "Synthmetal Garrison",
+    "accumulated": 1,
+    "mineral_intake": 2,
+    "support": 2,
+    "net_surplus": 0
+  },
+  "prior_delivered_context": {
+    "net_surplus": 0,
+    "cost": 30,
+    "accumulated": 1
+  },
+  "sovereign_behavior": "selected defense production at47 and continued turns; does not establish a future completion time",
+  "repair": "explicit conditional flow state in managed production context and base mechanics, plus doctrine explanation that queued units are not fielded and nonpositive surplus cannot accumulate missing minerals while unchanged",
+  "epistemic_boundaries": [
+    "stale or missing inputs remain unknown",
+    "already accumulated cost is pending native processing, not called stalled or completed",
+    "no chosen remedy or fabricated ETA"
+  ],
+  "tests": {
+    "managed_production_flow": "passed mounted source and packaged image",
+    "production_context_delivery": "passed",
+    "counterfactual_contract": "passed",
+    "doctrine_integration": "passed; rendered fixture44381bytes",
+    "provider_schema_budget": "passed conservative;15tools7166proxy"
+  },
+  "deployment": "pending"
+}
