@@ -1,0 +1,32 @@
+{
+  "finding": "Sovereign repeatedly queried hurry after switching to Colony Pod; native top-level current/hurry metadata was dropped by managed choice_frame",
+  "native_read_at_turn22": {
+    "revision": "14324094332429876137",
+    "name": "Colony Pod",
+    "mineral_cost": 30,
+    "minerals_accumulated": 2,
+    "mineral_surplus": 2,
+    "hurry": {
+      "legal": true,
+      "affordable": false,
+      "minerals_added": 28,
+      "energy_cost": 95,
+      "available_energy": 58
+    }
+  },
+  "repair": "Bounded allowlisted production_context on managed production frames; preserve missing as unknown; same issued actions and native legality",
+  "receipt_boundary": "Translate/remove native entity selectors after authoritative execution/journaling; selected opaque choice and effect fields retained",
+  "validation": [
+    "native-shaped full managed choice entry point, no added actions/private metadata/default facts",
+    "opaque execution",
+    "staged action path",
+    "failed choice budget",
+    "semantic selector binding"
+  ],
+  "checkpoint": {
+    "checkpoint_id": "checkpoint-0d35c5d505a34342b5a31dd1fede56ba",
+    "turn": 22,
+    "verified": true
+  },
+  "deployed_provider_acceptance": "pending"
+}

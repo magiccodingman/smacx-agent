@@ -86,7 +86,7 @@ def summary(event):
         chosen={k:result[k] for k in ('ok','kind','error','phase','focus','executed_choice',
             'native_action_executed','execution','execution_status','decision_consumed',
             'completed','queued','action_id','effect_disposition','state_changed_during_enumeration',
-            'turn_handoff_required','turn_boundary_notice','choice_scope','required_next','persistence','journal_event_id',
+            'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
         if isinstance(result.get('choices'),list):
             chosen['choices']=[{k:(r[k][:240] if isinstance(r[k],str) else r[k])

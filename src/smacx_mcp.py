@@ -960,6 +960,19 @@ def _semanticize_choice(value: Any, context: Mapping[str, Any] | None) -> Any:
     return result
 
 
+def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
+    """Keep native production facts even when no hurry action is affordable."""
+    fields = {
+        "current": ("name", "mineral_cost", "minerals_accumulated", "mineral_surplus"),
+        "hurry": ("legal", "affordable", "minerals_added", "energy_cost", "available_energy"),
+        "queue": ("entries", "capacity"),
+    }
+    return {section: {key: (value[:160] if isinstance(value, str) else value)
+                      for key in keys
+                      if isinstance((value := catalog[section].get(key)), (str, int, float, bool))}
+            for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}
+
+
 def _choice_contains_private_selector(value: Any) -> bool:
     if isinstance(value, list):
         return any(_choice_contains_private_selector(item) for item in value)
@@ -2798,6 +2811,8 @@ def _smac_choices_once(
             "execute_at_most": 1,
         },
     }
+    if kind == "production":
+        frame["production_context"] = _production_catalog_context(result)
     if not prepared:
         preparations = CHOICE_PREPARATIONS.begin(
             result, identity=identity, context=semantic_context, kind=kind,
@@ -3212,7 +3227,9 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
                 "native_action_executed": False, "execution_status": "not_dispatched",
                 "required_next": {"stop_after": True, "reason": "Operator recovery is required."}}
 
-    response = _execute_choice_once(decision_id, choice_id, text)
+    # The journal has already recorded the native receipt. The provider uses
+    # the selected opaque choice; native entity slots are not public identity.
+    response = _semanticize_choice(_execute_choice_once(decision_id, choice_id, text), None)
     error = response.get("error")
     code = error.get("code") if isinstance(error, dict) else error
     boundary_errors = {"unknown_decision", "expired_decision", "consumed_decision",
