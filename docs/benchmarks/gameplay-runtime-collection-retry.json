@@ -1,0 +1,16 @@
+{
+  "cause": "Live Auto Explore succeeded; next runtime refresh rejected a changing native revision cut with world_changed_during_collection, terminating Hermes",
+  "event_id": "ac98b9f1bf804b8499884edea446edca",
+  "repair": "At most three complete refresh attempts with 100/200ms backoff, only for that explicit error, before runtime services or attention acquisition",
+  "contracts": {
+    "real_private_HTTP_handler": "two revision races then success: one build and one lease; persistent race:409, no lease; unrelated native feed failure:one attempt,409,no lease",
+    "observation_crash_recovery": "before/during/after commit, no duplicate canonical events",
+    "readiness": "cold projection precedes listener; lobby background observation remains available"
+  },
+  "live_checkpoint": {
+    "checkpoint_id": "checkpoint-4108d3755f6744e892a792fbdcb4c672",
+    "turn": 22,
+    "verified": true
+  },
+  "live_retry_acceptance": "pending deployment; checkpoint proves native order progressed, not repaired retry behavior"
+}

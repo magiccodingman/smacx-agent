@@ -235,6 +235,26 @@ def _sovereign_gameplay_gate(operation: str) -> dict | None:
     return None
 
 
+def _refresh_request_world(episode_id: str) -> dict:
+    """Retry a rejected collection cut, never publish a mixed native snapshot.
+
+    The collector restores its private staging state on failure. Retry only its
+    explicit revision-race receipt, before acquiring any request attention.
+    """
+    for attempt in range(1, 4):
+        result = _refresh_managed_world()
+        if result.get("ok") or result.get("error") != "world_changed_during_collection":
+            return result
+        if attempt == 3:
+            return result
+        diagnostic_record("runtime_context_deferred", {
+            "reason": "world_changed_during_collection", "attempt": attempt,
+            "retry_limit": 3, "context_issued": False,
+        }, actor="runtime-context-builder", correlation={"episode_id": episode_id})
+        time.sleep(0.1 * attempt)
+    raise AssertionError("unreachable")
+
+
 class _RuntimeContextHandler(BaseHTTPRequestHandler):
     """Private, token-authenticated request-time bridge for the Hermes hook."""
 
@@ -276,7 +296,7 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                 raise ValueError("invalid_episode_id")
             if not 65536 <= context_length <= 16_777_216:
                 raise ValueError("invalid_context_length")
-            refresh = _refresh_managed_world()
+            refresh = _refresh_request_world(episode_id)
             if not refresh.get("ok"):
                 raise RuntimeError(str(refresh.get("error")))
             match_id, session_id, agent_id, perspective_id = _managed_scope_identity()

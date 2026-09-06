@@ -108,7 +108,7 @@ def summary(event):
         event_type=payload.get('event_type','')
         if event_type.startswith(('memory.','attention.','specialist.','game.action','checkpoint','recovery')):
             return f"journal {event_type} turn={payload.get('turn')} {json.dumps(payload.get('payload',{}),ensure_ascii=False)}"
-    if kind in {'capture_gap','provider_transport_failed','managed_tool_exception','runtime_context_failed','tool_batch_finished','history_compaction','control_operation_failed','control_operation_deferred','worker_liveness_lost'}:
+    if kind in {'capture_gap','provider_transport_failed','managed_tool_exception','runtime_context_failed','runtime_context_deferred','semantic_preflight','tool_batch_finished','history_compaction','control_operation_failed','control_operation_deferred','worker_liveness_lost'}:
         return kind+' '+json.dumps(payload,ensure_ascii=False)
     return ''
 
