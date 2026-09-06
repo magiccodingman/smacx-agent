@@ -10228,6 +10228,44 @@ std::string perspective_world_page_response(const std::string& request) {
 
 #include "agent_doctrine.h"
 
+// Observed owned effects omitted from the compact decision snapshot. This is
+// deliberately independent of semantic_revision: attempted commands, receipts,
+// popup generations and packet-pump activity are not gameplay progress.
+std::string semantic_owned_progress_digest() {
+    uint64_t hash = 1469598103934665603ULL;
+    uint64_t sum = 0, parity = 0, count = 0;
+    auto finish = [&]() {
+        sum += hash; parity ^= hash; ++count; hash = 1469598103934665603ULL;
+    };
+    auto mix = [&](uint64_t value) { hash ^= value; hash *= 1099511628211ULL; };
+    const int faction_id = *CurrentPlayerFaction;
+    for (int i = 0; i < *BaseCount; ++i) {
+        const BASE& base = Bases[i];
+        if (base.faction_id != faction_id) continue;
+        mix(1); mix(base.x); mix(base.y); mix(base.pop_size);
+        mix(base.queue_size);
+        for (int q = 0; q <= base.queue_size && q < 10; ++q) mix(base.queue_items[q]);
+        mix(base.minerals_accumulated); mix(base.worked_tiles);
+        mix(base.specialist_total);
+        mix(base.specialist_types[0]); mix(base.specialist_types[1]);
+        mix(base.governor_flags);
+        for (size_t f = 0; f < sizeof(base.facilities_built); ++f) mix(base.facilities_built[f]);
+        finish();
+    }
+    for (int i = 0; i < *VehCount; ++i) {
+        VEH& veh = Vehs[i];
+        if (veh.faction_id != faction_id) continue;
+        mix(2); mix(semantic_vehicle_handle(i)); mix(veh.unit_id);
+        mix(veh.x); mix(veh.y); mix(veh.cur_hitpoints()); mix(veh.moves_spent);
+        mix(veh.order); mix(veh.order_auto_type);
+        mix(veh.waypoint_count); mix(veh.waypoint_x[0]); mix(veh.waypoint_y[0]);
+        finish();
+    }
+    // Native array compaction must not count as an owned effect. Combine
+    // stable per-object records without exposing or depending on slot order.
+    return std::to_string(count) + ":" + std::to_string(sum) + ":" + std::to_string(parity);
+}
+
 std::string semantic_snapshot_response() {
     InterlockedExchange(&request_execution_stage, 10);
     if (!game_active()) return status_response();
@@ -10286,6 +10324,7 @@ std::string semantic_snapshot_response() {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"turn\":" << *CurrentTurn
         << ",\"year\":" << *CurrentMissionYear
+        << ",\"owned_progress_digest\":" << json_string(semantic_owned_progress_digest().c_str())
         << ",\"faction\":{\"id\":" << faction_id
         << ",\"name\":" << json_string(MFactions[faction_id].formal_name_faction)
         << ",\"energy_credits\":" << faction.energy_credits

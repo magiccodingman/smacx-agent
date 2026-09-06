@@ -37,6 +37,10 @@
     ],
     "actual_tool_count": 15,
     "conditional_requirement_in_actual_schema": true,
-    "turn_frame_metadata_pending": "Resumed requests are currently in a Spartan diplomatic interaction, where management choice_scope is intentionally absent."
+    "turn_frame_metadata_pending": false,
+    "turn_frame_metadata_actual_request_ids": [
+      "a19405dac5e448f2a8a1d9aa9a66a031",
+      "5329617d2ebb4fffa47da90a22f5d47f"
+    ]
   }
 }

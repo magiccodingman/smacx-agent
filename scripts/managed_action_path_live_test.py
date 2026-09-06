@@ -142,7 +142,12 @@ def exercise_managed_actions(call, native, fixture):
     assert deployment.get("ok"), deployment
     build = next(row for row in deployment["items"][0]["alternatives"] if row.get("alternative") == "set_production")
     assert build["travel_turns"] == 0 and build["preparation_turns"] == production_preview["estimated_production_turns"]
+    production_digest_before = native("semantic_snapshot")["snapshot"]["owned_progress_digest"]
     execute(production, production_choice)
+    production_digest_after = native("semantic_snapshot")["snapshot"]["owned_progress_digest"]
+    assert production_digest_after != production_digest_before
+    assert native("semantic_snapshot")["snapshot"]["owned_progress_digest"] == production_digest_after
+    record("production_effect_changes_stable_supervisor_digest")
     base = fields("base", base_ref)
     assert base["production_queue"][0]["name"] == design_name, base
     assert base["minerals_accumulated"] == production_preview["resulting_progress"]
@@ -171,7 +176,10 @@ def exercise_managed_actions(call, native, fixture):
     freed = select(citizens, lambda row: row.get("label") == "Convert worker to specialist")
     assert citizens["citizen_context"]["tile_reassignment"]["next_query"]["arguments"]["base_ref"] == base_ref
     assert freed.get("allocation_location_ref") and isinstance(freed.get("allocation_yields"), dict)
+    citizen_digest_before = native("semantic_snapshot")["snapshot"]["owned_progress_digest"]
     execute(citizens, freed)
+    assert native("semantic_snapshot")["snapshot"]["owned_progress_digest"] != citizen_digest_before
+    record("citizen_effect_changes_supervisor_digest")
     assert len(fields("base", base_ref)["citizens"]["specialists"]) == specialists_before + 1
     after_citizens = choices("base_citizens", base_ref=base_ref)
     reassigned = select(after_citizens, lambda row: row.get("label") == "Assign specialist to tile"

@@ -30,6 +30,9 @@ def main() -> int:
     }
     if _semantic_progress_fingerprint(baseline) != _semantic_progress_fingerprint(pump_churn):
         raise AssertionError("revision/timestamp churn was mistaken for gameplay progress")
+    owned = {**baseline, "owned_progress_digest": "production-formers"}
+    changed_owned = {**baseline, "owned_progress_digest": "production-garrison"}
+    assert _semantic_progress_fingerprint(owned) != _semantic_progress_fingerprint(changed_owned)
     advanced = {**baseline, "turn": 5, "year": 2130}
     resolved = {
         **baseline,

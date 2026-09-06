@@ -1,0 +1,25 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "incident_id": "incident-ae8a009faa9e445a92cc289a8fa0dc93",
+  "turn": 47,
+  "classification": "observed production effect omitted from supervisor snapshot",
+  "production_call_id": "chatcmpl-tool-b7fa17a45f47b06a",
+  "production_result_unix": 1788715010.02262,
+  "incident_unix": 1788715102.2860672,
+  "production_before": "Formers",
+  "production_after": "Synthmetal Garrison",
+  "base_ref": "base-location-1334",
+  "next_provider_request_id": "dc27343b67f54523969e3181f843ae69",
+  "source_finding": "semantic_snapshot included faction totals and ready units but no base production; revision carrying that change is intentionally excluded from progress fingerprints",
+  "repair": "bounded owned-state digest over native production queues, allocation, facilities and all owned units; no receipt or mutation-generation inputs",
+  "threshold_changed": false,
+  "validation": {
+    "python_fingerprint_contract": "passed",
+    "supervisor_continuation_contract": "passed",
+    "native_build": "passed final build",
+    "controlled_native_effect_comparison": "initial candidate passed production/citizen and repeated read checks; final build full suite running",
+    "deployed_recovery_and_live_acceptance": "pending",
+    "production_cpp_foreign_and_slot_order_contract": "passed"
+  },
+  "engine_source_sha256": "74e9c3957a324dce821f7825b1b8aae954924b13e1f5711125ae000d2b16c86a"
+}
