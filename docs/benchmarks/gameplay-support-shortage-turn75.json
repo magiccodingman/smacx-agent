@@ -432,5 +432,31 @@
       "specialist": null
     },
     "provider_inference_supplied": false
+  },
+  "deployment": {
+    "commit": "d89b928",
+    "session_id": "session-b9e3bd44786c476c868c5c2dc6312ef3",
+    "restored_turn": 75,
+    "owned_unit_count": 7,
+    "own_unit_27_retained": true,
+    "run_id": "run-08f4c0123f8a40c69ac8bfacb6732810",
+    "active_sovereigns": 1,
+    "native_failure_watcher_worker_id": "b473d9f22a42",
+    "native_engine_source_hash_verified": true,
+    "operator_production_query": {
+      "headquarters": {
+        "support": 2,
+        "gross_output": 2,
+        "after_one_completion": 3,
+        "exceeds_output": true
+      },
+      "commerce_committee": {
+        "support": 1,
+        "gross_output": 4,
+        "after_one_completion": 2,
+        "exceeds_output": false
+      }
+    },
+    "actual_sovereign_new_support_query": "pending; first decision and end-turn request observed"
   }
 }
