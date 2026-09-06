@@ -1246,7 +1246,9 @@ class ObservationCollector:
                 bundle = self._bundle()
                 self._preserve_project_report_history(bundle, current)
                 stable_cut = self._snapshot_matches_feed_cut(bundle)
-                if not stable_cut and attempt < 2:
+                if not stable_cut:
+                    # Even the final coherent bundle gets one catch-up:
+                    # earlier pagination races may have consumed both retries.
                     # Events may arrive after the initial drain but before the
                     # coherent snapshot. Catch up through the durable stage,
                     # then recollect against that cut. Otherwise even an
@@ -1271,10 +1273,14 @@ class ObservationCollector:
                     if stable_cut:
                         bundle.update(self._native_contact_evidence())
                         break
-                    continue
+                    if attempt < 2:
+                        continue
                 break
             except ObservationCollectorError as exc:
                 last_error = exc
+                self._collection_metrics.setdefault("snapshot_bundle_failures", []).append(
+                    str(exc) if re.fullmatch(r"[a-z][a-z0-9_]{0,159}", str(exc))
+                    else type(exc).__name__)
                 time.sleep(0.05)
         else:
             raise last_error or ObservationCollectorError("world_reconciliation_failed")

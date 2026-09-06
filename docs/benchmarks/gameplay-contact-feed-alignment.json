@@ -40,5 +40,24 @@
     "collector_failures": 0,
     "alignment_retry_observed": false,
     "classification": "quiet live continuity verified; actual late-cut recurrence still pending"
+  },
+  "turn32_recurrence": {
+    "timeline": "timeline-restore-4969c8445c434c4f88704164",
+    "cursors": [
+      145,
+      146
+    ],
+    "unmatched_then_matched_cut": true,
+    "registry_reset_then_restored": true,
+    "first_publication_bridge_calls": 24,
+    "first_publication_alignment_retries": 0,
+    "checkpoint_id": "checkpoint-b0d0834c127c46b1a45af80466361563",
+    "checkpoint_turn": 32,
+    "root_cause_scope": "Native receipt proves unmatched final cut without catch-up. Two earlier bundle failures reproduce the sequencing defect; exact live retry error codes were not retained.",
+    "repair": "Every coherent bundle, including final attempt, receives one durable catch-up and cut probe. Maximum three bundle attempts, three catch-ups and six cut probes. Truly unmatched final cut remains conservative.",
+    "telemetry": "bounded snapshot_bundle_failures now records retry codes",
+    "new_regression": "old code fails after two pagination races; repaired collector preserves identity and restart, genuine loss/reappearance remains separate",
+    "live_acceptance": "pending",
+    "publication_transaction_22_crash_cases_pass": true
   }
 }
