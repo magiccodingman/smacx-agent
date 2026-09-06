@@ -44,7 +44,8 @@ def summary(event):
     if kind in {'tool_returned','managed_tool_returned'}:
         result=result_object(payload.get('result',payload.get('content')))
         chosen={k:result[k] for k in ('ok','kind','error','phase','focus','executed_choice',
-            'native_action_executed','execution','completed','queued','action_id','effect_disposition',
+            'native_action_executed','execution','execution_status','decision_consumed',
+            'completed','queued','action_id','effect_disposition','state_changed_during_enumeration',
             'turn_handoff_required','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
         if isinstance(result.get('choices'),list):

@@ -431,3 +431,8 @@ controlled receiving provider in four profiles. Native managed effects have part
 recorded evidence; council wait exposed a read-only enumeration race. Bounded refresh
 and no-preparation-replay regressions pass; native rerun is required. See the partial
 native benchmark; automatic-turn/recovery acceptance is not yet complete.
+
+Corrected image capture observed live: compressed actor streams and named stderr
+summaries verified; execution-status/decision-consumption receipt regression passes.
+Native cold-start reliability has one unresolved intermittent failure, with a
+subsequent identical launch successful. Full native rerun is ongoing.

@@ -245,3 +245,11 @@ preparations never replay. Persistent races retain their error and explicit fres
 guidance. Adapter regression proves bounded retry, no preparation replay and unchanged
 invalid-reference rejection. Opaque execution and 15-tool schema contracts pass.
 Automatic-turn reconciliation and post-intent native recovery remain pending.
+
+Corrected production MCP capture is now observed live: six compressed actor streams
+contain 16 managed calls/results, 45 native receipts and three runtime-context
+publications; named summaries reach container stderr. Human receipts retain explicit
+execution status and decision consumption, so queued execution remains distinguishable
+from verified completion. The summary regression passes. A separate isolated cold
+start failed before bridge readiness; an identical fresh launch succeeded. Its root
+cause remains unresolved and must not be presented as fixed by the enumeration repair.

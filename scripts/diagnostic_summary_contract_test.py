@@ -10,4 +10,7 @@ assert metrics.as_dict()['failure_observations_by_layer']=={'tool_returned:schem
 queued={'kind':'managed_tool_returned','payload':{'tool':'smac_execute_choice','result':{'ok':True,'queued':True,'action_id':'action-test'}}}
 rendered=summary(queued)
 assert 'queued' in rendered and 'completed' not in rendered and 'effect verified' not in rendered
+queued['payload']['result']={'ok':True,'execution_status':'queued','decision_consumed':True}
+rendered=summary(queued)
+assert '"execution_status":"queued"' in rendered and '"decision_consumed":true' in rendered
 print(json.dumps({'passed':True,'hermes_envelope_decoded':True,'pre_mcp_failure_named':True,'queued_not_completed':True}))
