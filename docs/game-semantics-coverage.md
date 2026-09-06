@@ -405,3 +405,7 @@ remaining native/provider acceptance is still explicitly open.
 Operational tracing follow-up: exact constrained helper execution passes on the parked
 Hermes volume; compact named request/result lines are enabled in process logs. Live
 container dispatch and browser download remain acceptance gates.
+
+Native auto-turn acceptance is being extended with a double-gated private fixture and
+real managed goal/write/skip path. The test requires observed turn advancement after
+explicit deferral; merely accepting Skip is insufficient. Result remains pending.

@@ -71,6 +71,9 @@ def exercise_counterfactual_checkpoint(call, native, site_tanks_center_delta):
     hurry = choose(production, "Hurry production")
     predicted = preview(production, hurry)
     executed = execute(production, hurry)
+    assert executed["production_name"] == fixture["facility_name"], executed
+    assert executed["production_switched"] is False and executed["completion_verified"] is False
+    assert executed["minerals_accumulated"] == predicted["resulting_progress"]
     assert executed["energy_cost"] == predicted["energy_cost"]
     assert fields("base", fixture["base_ref"])["minerals_accumulated"] == predicted["resulting_progress"]
     assert predicted["estimated_production_turns"] == 1
@@ -135,6 +138,15 @@ def exercise_counterfactual_checkpoint(call, native, site_tanks_center_delta):
     after_center = next(row["yields"] for row in radius if row["location_ref"] == center_ref)
     assert {key: after_center[key] - before_center[key] for key in before_center} == site_tanks_center_delta
     record("site_facility_delta_matches_managed_build_and_actual_native_completion")
+    research = native("semantic_snapshot")["snapshot"].get("research", {})
+    if research.get("blind"):
+        frame = choices("research")
+        explore = next(row for row in frame["choices"] if row.get("name") == "Explore")
+        execute(frame, explore)
+        research = native("semantic_snapshot")["snapshot"]["research"]
+        assert research["selected_priorities"] == ["Explore"] and research["priority"] == 0, research
+        assert research["target_visibility"] == "hidden_by_blind_research"
+        record("blind_research_explore_native_flags_and_named_snapshot")
     evidence["production_and_travel_timing"] = exercise_native_production_timing(
         call, native, fixture["destination_base_ref"])
     return evidence

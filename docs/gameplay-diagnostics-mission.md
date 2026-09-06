@@ -183,3 +183,11 @@ ownership capabilities are required to publish files readable by the control/por
 UID. Compact `SMACX_TRACE` request/result lines now reach normal process stderr; giant
 records stay in the compressed streams. Terminal control characters are removed and
 human lines are capped at 1,400 characters with an explicit details marker.
+
+Native acceptance extension prepared: the existing double-gated managed-action fixture
+can leave one owned ready unit and disable native pause-at-end-turn in an isolated
+single-player test. The acceptance driver will prove that a current-turn goal blocks
+that unit's Skip without changing native readiness, then explicitly defer and verify
+an actual automatic native turn transition. It also checks named hurry receipts and
+blind research labels against native state. This extension is not yet a passing
+native acceptance result; it must run before deployment acceptance is claimed.

@@ -9483,6 +9483,20 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
+    if (phase == "diagnostics_turn_boundary") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player turn-boundary fixture only.");
+        int selected = -1;
+        for (int id = 0; id < *VehCount; ++id)
+            if (Vehs[id].faction_id == faction && semantic_unit_requires_decision(id)) { selected = id; break; }
+        if (selected < 0) return error_response("fixture_unavailable", "Requires one currently ready owned unit.");
+        for (int id = 0; id < *VehCount; ++id)
+            if (id != selected && Vehs[id].faction_id == faction)
+                Vehs[id].moves_spent = static_cast<uint8_t>(std::min(255, veh_speed(id, 0)));
+        *GamePreferences &= ~PREF_BSC_PAUSE_END_TURN;
+        ++semantic_mutation_generation;
+        return std::string("{\"ok\":true,\"automatic_turn_preference_enabled\":true,\"own_unit_ref\":")
+            + json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(selected))).c_str()) + '}';
+    }
     if (phase == "counterfactual_inputs") {
         if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player counterfactual fixture only.");
         BASE& base = Bases[base_id];
