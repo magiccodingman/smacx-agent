@@ -1425,11 +1425,18 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "next": "Wait, observe last_deferred_action, and do not queue another command meanwhile.",
         }
     if action.get("status") == "rejected":
+        message = (
+            "The native end-turn command returned without accepting a turn transition. "
+            "The turn has not advanced and movement has not been renewed. "
+            "Obtain a fresh decision; do not keep waiting on this rejected receipt."
+            if action.get("resolution") == "native_turn_transition_not_accepted"
+            else "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt."
+        )
         return {
             "ok": False,
             "error": {
                 "code": "native_action_rejected",
-                "message": "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt.",
+                "message": message,
             },
             "command": result.get("command"),
             "execution": action,

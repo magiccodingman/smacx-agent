@@ -274,6 +274,9 @@ def _semantic_progress_fingerprint(snapshot: Mapping[str, Any]) -> str:
         # Attempt IDs, targets and even a reported completion are not evidence
         # of a gameplay effect. Effects must appear in the observed state.
         "last_deferred_action",
+        # End-turn instrumentation records dispatch/latch state, not effects.
+        "base_window_visible", "native_turn_complete_flag", "native_human_turn_input_active", "end_turn_timer_queued",
+        "end_turn_native_returned", "end_turn_receipt_pending",
     }
 
     def stable(value: Any) -> Any:

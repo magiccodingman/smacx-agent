@@ -508,6 +508,7 @@ int deferred_council_faction_id = -1;
 int deferred_end_turn_faction_id = -1;
 int deferred_end_turn_source_turn = -1;
 UINT_PTR deferred_end_turn_timer_id = 0;
+bool deferred_end_turn_native_returned = false;
 int deferred_nerve_staple_base_id = -1;
 int deferred_obliterate_base_id = -1;
 int deferred_obliterate_unit_id = -1;
@@ -1214,8 +1215,28 @@ void CALLBACK deferred_end_turn_timer_proc(HWND, UINT, UINT_PTR timer_id, DWORD)
     // Console::on_key_click may remain synchronous through bot turns and modal
     // technology/research screens; with no bridge request frame underneath it,
     // those interactions remain independently observable and resolvable.
+    deferred_action.native_call_attempted = 1;
     Console_on_key_click(MapWin, 0, NativeEndTurnCommand);
+    deferred_end_turn_native_returned = true;
     refresh_deferred_end_turn_state();
+    // Returning from the native command is not evidence that it accepted the
+    // transition. Console::turn_complete (0x5169F0) clears field_23BE8
+    // when it commits the request; refusal leaves human input active. The
+    // STATE_UNK_2 flag can already be set before an explicit end-turn request.
+    // Only classify a refusal after the native call has unwound, on the same
+    // actionable human turn. Never clear a latch from a nested modal poll or
+    // while the native turn processor is running.
+    if (deferred_end_turn_faction_id == faction_id
+    && deferred_end_turn_source_turn == source_turn
+    && *CurrentTurn == source_turn && human_turn_actionable(faction_id)
+    && MapWin->field_23BE8) {
+        deferred_end_turn_faction_id = -1;
+        deferred_end_turn_source_turn = -1;
+        pending_end_turn_completion = false;
+        pending_end_turn_source_turn = -1;
+        deferred_action.status = "rejected";
+        deferred_action.resolution = "native_turn_transition_not_accepted";
+    }
 }
 
 bool end_turn_completion_pending() {
@@ -9508,7 +9529,15 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
-    if (phase == "diagnostics_turn_boundary") {
+    if (phase == "diagnostics_end_turn_refusal" || phase == "diagnostics_end_turn_release") {
+        if (*MultiplayerActive || deferred_end_turn_faction_id >= 0)
+            return error_response("fixture_unavailable", "Requires an idle single-player turn.");
+        // Controlled native Console::turn_complete refusal gate. This is only
+        // available in the isolated acceptance process, never managed gameplay.
+        *ControlTurnC = phase == "diagnostics_end_turn_refusal" ? 1 : 0;
+        return "{\"ok\":true}";
+    }
+    if (phase == "diagnostics_turn_boundary" || phase == "diagnostics_explicit_turn_boundary") {
         if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player turn-boundary fixture only.");
         int selected = -1;
         for (int id = 0; id < *VehCount; ++id)
@@ -9517,9 +9546,11 @@ std::string test_managed_action_fixture_response(const std::string& request) {
         for (int id = 0; id < *VehCount; ++id)
             if (id != selected && Vehs[id].faction_id == faction)
                 Vehs[id].moves_spent = static_cast<uint8_t>(std::min(255, veh_speed(id, 0)));
-        *GamePreferences &= ~PREF_BSC_PAUSE_END_TURN;
+        if (phase == "diagnostics_explicit_turn_boundary") *GamePreferences |= PREF_BSC_PAUSE_END_TURN;
+        else *GamePreferences &= ~PREF_BSC_PAUSE_END_TURN;
         ++semantic_mutation_generation;
-        return std::string("{\"ok\":true,\"automatic_turn_preference_enabled\":true,\"own_unit_ref\":")
+        return std::string("{\"ok\":true,\"automatic_turn_preference_enabled\":")
+            + (phase == "diagnostics_turn_boundary" ? "true" : "false") + ",\"own_unit_ref\":"
             + json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(selected))).c_str()) + '}';
     }
     if (phase == "counterfactual_inputs") {
@@ -10607,6 +10638,12 @@ std::string semantic_snapshot_response() {
         << ",\"engine_state\":{\"win_modal\":" << (*WinModalState ? "true" : "false")
         << ",\"popup_dialog\":" << (*PopupDialogState ? "true" : "false")
         << ",\"game_halted\":" << (*GameHalted ? "true" : "false")
+        << ",\"base_window_visible\":" << (Win_is_visible(BaseWin) ? "true" : "false")
+        << ",\"native_turn_complete_flag\":" << ((*GameState & STATE_UNK_2) ? "true" : "false")
+        << ",\"native_human_turn_input_active\":" << (MapWin->field_23BE8 ? "true" : "false")
+        << ",\"end_turn_timer_queued\":" << (deferred_end_turn_timer_id ? "true" : "false")
+        << ",\"end_turn_native_returned\":" << (deferred_end_turn_native_returned ? "true" : "false")
+        << ",\"end_turn_receipt_pending\":" << (deferred_end_turn_faction_id >= 0 ? "true" : "false")
         << ",\"human_diplomacy_settling\":"
         << (human_diplomacy_settling() ? "true" : "false")
         << ",\"popup_transition_pending\":"
@@ -16402,6 +16439,7 @@ std::string semantic_command_response(const std::string& request) {
         }
         deferred_end_turn_faction_id = faction_id;
         deferred_end_turn_source_turn = *CurrentTurn;
+        deferred_end_turn_native_returned = false;
         begin_deferred_action("end_turn");
         deferred_end_turn_timer_id = SetTimer(
             NULL, 0, 1, deferred_end_turn_timer_proc);

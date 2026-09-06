@@ -30,6 +30,13 @@ def main() -> int:
     }
     if _semantic_progress_fingerprint(baseline) != _semantic_progress_fingerprint(pump_churn):
         raise AssertionError("revision/timestamp churn was mistaken for gameplay progress")
+    engine_baseline = {**baseline, "interaction": {**baseline["interaction"], "engine_state": {}}}
+    for value in (False, True):
+        diagnostics_only = {**baseline, "interaction": {**baseline["interaction"], "engine_state": {
+            key: value for key in ("base_window_visible", "native_turn_complete_flag", "native_human_turn_input_active",
+                                  "end_turn_timer_queued", "end_turn_native_returned",
+                                  "end_turn_receipt_pending")}}}
+        assert _semantic_progress_fingerprint(diagnostics_only) == _semantic_progress_fingerprint(engine_baseline)
     owned = {**baseline, "owned_progress_digest": "production-formers"}
     changed_owned = {**baseline, "owned_progress_digest": "production-garrison"}
     assert _semantic_progress_fingerprint(owned) != _semantic_progress_fingerprint(changed_owned)

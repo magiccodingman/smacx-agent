@@ -1,0 +1,105 @@
+{
+  "classification": "captured campaign stall plus controlled native refusal/retry; autonomous acceptance pending",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "session_id": "session-d70b7913eb8945f28866ed4153d0dc4d",
+  "turn": 69,
+  "action_id": 1,
+  "observed": {
+    "action": "end_turn",
+    "status": "pending",
+    "native_turn": 69,
+    "native_current_faction": 1,
+    "deferred_source_turn": 69,
+    "deferred_faction": 1,
+    "timer_id": 0,
+    "pending_confirmation": false,
+    "game_state_hex": "0x00100000",
+    "ui_thread": "sampled native human-turn message loop; callback not visible in sample",
+    "base_window_visible": true,
+    "worker_healthy": true,
+    "native_human_turn_input_active": true
+  },
+  "causal_limits": [
+    "Original reason native command did not request transition is not established.",
+    "Visible base window is an observation, not established cause.",
+    "This responsive stall is distinct from the unresolved turn55/59 worker outages.",
+    "A sampled stack without the callback does not prove normal return or exclude nonlocal unwinding."
+  ],
+  "repair": {
+    "returned_unaccepted_transition": "explicit rejection native_turn_transition_not_accepted",
+    "native_state_forced": false,
+    "nested_poll_cannot_reject_inflight_call": true,
+    "instrumentation": "active-game snapshot reports turn-complete flag, human-input gate and callback/timer/latch markers; excluded from progress fingerprint"
+  },
+  "validation": {
+    "production_callback_contract": "passed",
+    "cross_build": "passed, current input-gate implementation",
+    "controlled_native_comparison": {
+      "passed": true,
+      "classification": "isolated guarded native end-turn acceptance",
+      "source_turn": 1,
+      "observed_turn": 2,
+      "receipt": {
+        "action_id": 2,
+        "command": "end_turn",
+        "status": "completed",
+        "native_result": 1,
+        "native_call_attempted": true,
+        "resolution": "native_turn_advanced"
+      },
+      "engine_state": {
+        "end_turn_timer_queued": false,
+        "end_turn_native_returned": true,
+        "end_turn_receipt_pending": false
+      },
+      "controlled_native_refusal_verified": true,
+      "original_turn69_refusal_reproduced": false
+    },
+    "deployed": "no",
+    "baseline_callback_contract": "fails because refusal remains pending",
+    "managed_rejection_receipt": "passed; one poll and explicit no movement renewal guidance",
+    "native_attempts": [
+      {
+        "package": "initial refusal callback, before additional diagnostic markers",
+        "result": "full managed native suite passed",
+        "checks": [
+          "15-tool paths",
+          "native action and counterfactual effects",
+          "current-turn intent guard",
+          "automatic handoff",
+          "repeated checkpoint recovery",
+          "bounded native probes"
+        ]
+      },
+      {
+        "package": "subsequent packaged build",
+        "result": "fixture-isolation recovery failed bridge_start_timeout; stopped after error was captured",
+        "stage": "reload fixture_restore before pact-port tests",
+        "cause": "undetermined",
+        "evidence": "retained private startup thread sample and worker error; not a pass"
+      },
+      {
+        "package": "repeat packaged native suite",
+        "result": "managed, counterfactual, intent and automatic-turn checks passed; responsiveness gate failed",
+        "base_site_wall_ms": 366.641,
+        "maximum_probe_gap_ms": 523.047,
+        "required_maximum_ms": 500,
+        "qualification": "Concurrent builds/tests were running; cause not established. Threshold unchanged; serial rerun required."
+      }
+    ],
+    "runtime_context_contract": "passed: 64K4994,256K8363,Huge25840 tokens",
+    "diagnostic_churn_progress_contract": "passed; toggling every new marker does not count as owned progress",
+    "controlled_native_discovery": "Native turn-complete bit may already be set before explicit end turn. Acceptance clears MapWin field_23BE8; corrected predicate uses remaining human input, not the pre-existing bit.",
+    "controlled_native_log_sha256": "27e648c36dbb936f387f25ad402bd8fb62aa3e6ba9fe3ab2b7a53d6231c768ef",
+    "refused_native_receipt": {
+      "action_id": 1,
+      "command": "end_turn",
+      "status": "rejected",
+      "native_result": 0,
+      "native_call_attempted": true,
+      "resolution": "native_turn_transition_not_accepted"
+    }
+  },
+  "acceptance": "open",
+  "reviewed_engine_source_sha256": "6ac10a95793a8161de016651db5ac49f282ab1fb5476a6bf0116075705626c8a"
+}

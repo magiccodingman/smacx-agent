@@ -9,6 +9,15 @@ from smacx_choice_preparation import ChoicePreparations, PreparationError
 
 
 def main():
+    refused = {"action_id": 1, "status": "rejected", "native_call_attempted": True,
+               "resolution": "native_turn_transition_not_accepted"}
+    with patch.object(mcp, "_call", return_value={"ok": True, "action": refused}) as poll:
+        result = mcp._await_deferred_action({"ok": True, "queued": True,
+                                           "command": "end_turn", "action_id": 1})
+        assert not result["ok"] and result["error"]["code"] == "native_action_rejected"
+        assert result["execution"] == refused and poll.call_count == 1
+        assert "movement has not been renewed" in result["error"]["message"]
+        assert "do not keep waiting" in result["error"]["message"]
     transient={"ok":False,"error":{"code":"invalid_semantic_selector",
         "detail":"semantic_reference_stale_revision"}}
     with patch.object(mcp,"_smac_choices_once",side_effect=[transient,{"ok":True,"choices":[]}]) as enumerate_once:
