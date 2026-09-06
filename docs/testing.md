@@ -573,3 +573,5 @@ Live research acceptance: delivered owned technology count is 2 at turn24 (reque
 Collector fault-origin regression: `PYTHONPATH=src python3 scripts/observation_failure_origin_test.py` verifies bounded original stack telemetry, unchanged exception/stage recovery, and exclusion of raw exception detail/locals. Pair with `scripts/observation_batch_recovery_test.py`; this is diagnostic coverage, not proof that the turn-25 native failure is repaired.
 
 `python3 scripts/native_request_exception_observer_test.py` compiles the actual bridge observer and exercises real Windows exception dispatch in an isolated worker Wine process. Set `SMACX_TEST_BRIDGE_BUILD_IMAGE` and `SMACX_TEST_WORKER_IMAGE` to locally built images. This verifies diagnostic behavior and pass-through, not gameplay recovery.
+
+`PYTHONPATH=src python3 scripts/recovery_observation_order_test.py` verifies solo and LAN recovery import every native identity capsule before starting any collector or advertising readiness, including import failure. Live acceptance must inspect the first post-restore publications for transient identity events.

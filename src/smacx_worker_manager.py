@@ -1617,11 +1617,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return {"ok": True, "match": updated, "seat_index": int(seat_index),
                 "instance_id": seat["instance_id"]}
 
-    def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+    def start_worker(self, instance_id: str, *, timeout: float = 240.0,
+                     _defer_ready: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
-            return self._start_worker_locked(instance_id, timeout=timeout)
+            return self._start_worker_locked(
+                instance_id, timeout=timeout, _defer_ready=_defer_ready)
 
-    def _start_worker_locked(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+    def _start_worker_locked(self, instance_id: str, *, timeout: float = 240.0,
+                             _defer_ready: bool = False) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         source = self.control.get_game_source(spec["game_source_id"])
         runtime = self.control.get_runtime(spec["runtime_id"])
@@ -1763,7 +1766,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
             mcp_endpoint = (
                 self.start_mcp_sidecar(instance_id)
-                if self.control_data_volume
+                if not _defer_ready and self.control_data_volume
                 and spec["network"].get("controller_kind", "agent") == "agent"
                 else None
             )
@@ -2412,20 +2415,20 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,
-                        timeout: float = 420.0) -> dict[str, Any]:
+                        timeout: float = 420.0, _defer_ready: bool = False) -> dict[str, Any]:
         # The whole paired transition is atomic with recovery and parking,
         # including the interval between starting the host and joining peers.
         with self._lifecycle_lock:
             return self._start_lan_match_locked(
                 match_id, session_name=session_name, profile=profile,
                 resume_slot=resume_slot, scenario_id=scenario_id,
-                game_settings=game_settings, timeout=timeout)
+                game_settings=game_settings, timeout=timeout, _defer_ready=_defer_ready)
 
     def _start_lan_match_locked(self, match_id: str, *, session_name: str | None = None,
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,
-                        timeout: float = 420.0) -> dict[str, Any]:
+                        timeout: float = 420.0, _defer_ready: bool = False) -> dict[str, Any]:
         match = self.control.get_match(match_id)
         if session_name is None:
             session_name = str(
@@ -2530,7 +2533,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         autostart["lan_scenario_id"] = scenario_context_id
                     self.control.update_worker_autostart(instance_id, autostart)
                 remaining = max(30.0, deadline - time.monotonic())
-                self.start_worker(instance_id, timeout=min(remaining, 300.0))
+                self.start_worker(instance_id, timeout=min(remaining, 300.0),
+                                  **({"_defer_ready": True} if _defer_ready else {}))
             host_player_name = str(
                 host.get("metadata", {}).get("external_player_name")
                 or self._managed_lan_player_name(int(host["seat_index"]), host)
@@ -3073,7 +3077,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "lifecycle": game["lifecycle"],
                 })
             match = self.control.update_match_lifecycle(
-                match_id, "running", host_instance_id=host_instance,
+                match_id, "starting" if _defer_ready else "running",
+                host_instance_id=host_instance,
                 metadata={"network_session_id": network_session_id,
                           "participant_count": len(managed_seats) + len(external_human_seats),
                           "delegated_native_ai_seats": [
@@ -4086,7 +4091,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "lan_session_name", "SMACX Managed LAN"
                 )),
                 profile=recovery_profile,
-                resume_slot=slot,
+                resume_slot=slot, _defer_ready=True,
             )
         elif match["mode"] == "singleplayer":
             instance_id = str(host_seat.get("instance_id") or "")
@@ -4097,7 +4102,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             autostart["enabled"] = False
             autostart["startup_save"] = slot
             self.control.update_worker_autostart(instance_id, autostart)
-            started = self.start_worker(instance_id)
+            started = self.start_worker(instance_id, _defer_ready=True)
             loaded = self._wait_native(
                 instance_id, "semantic_snapshot",
                 lambda value: value.get("ok") is True
@@ -4106,8 +4111,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 timeout=120.0, context="solo_recovery",
             )
             running = self.control.update_match_lifecycle(
-                match_id, "running", host_instance_id=instance_id,
-                metadata={"recovery_required": False, "last_recovered_unix": time.time(),
+                match_id, "starting", host_instance_id=instance_id,
+                metadata={"recovery_required": True, "last_recovered_unix": time.time(),
                           "last_recovered_slot": slot},
             )
             result = {"ok": True, "match": running, "worker": started,
@@ -4142,7 +4147,24 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "instance_id": instance_id,
                 "handle_count": response.get("handle_count"),
             })
-        self.control.update_match_lifecycle(
+        # A collector publishes durable observations immediately on startup.
+        # Keep every sidecar absent until ALL native identity capsules have
+        # been restored; otherwise temporary handles become false deaths/births.
+        restored_mcp = []
+        for seat in seats:
+            instance_id = seat.get("instance_id")
+            if not isinstance(instance_id, str) or not instance_id:
+                continue
+            if seat.get("metadata", {}).get("delegation_status") == "active":
+                continue
+            spec = self.control.get_worker_spec(instance_id)
+            if self.control_data_volume and spec["network"].get("controller_kind", "agent") == "agent":
+                endpoint = self.start_mcp_sidecar(instance_id)
+                restored_mcp.append(endpoint)
+                if result.get("worker", {}).get("instance_id") == instance_id:
+                    result["worker"]["mcp"] = endpoint
+        result["restored_mcp_endpoints"] = restored_mcp
+        result["match"] = self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_required": False,
                                            "incident_quarantine": {},
                                            "last_recovered_unix": time.time(),

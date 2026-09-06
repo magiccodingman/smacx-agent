@@ -1,0 +1,39 @@
+{
+  "checkpoint": "recovery-observation-order",
+  "observed": {
+    "native_session": "session-fe4d90de7cd949bbb3a244bd439213c5",
+    "turn": 22,
+    "critical_attention_cursors": [
+      110,
+      111
+    ],
+    "temporary_removals": [
+      [
+        "own-unit-10",
+        "own-unit-6",
+        "own-unit-8"
+      ],
+      [
+        "own-unit-3",
+        "own-unit-4",
+        "own-unit-5"
+      ]
+    ],
+    "native_owned_unit_count": 3,
+    "autonomous_sovereign_running": false
+  },
+  "repair": "defer all collectors and match readiness until all native identity capsules restore",
+  "controlled_validation": {
+    "singleplayer_success": true,
+    "singleplayer_identity_failure_no_collector": true,
+    "lan_all_capsules_before_any_collector": true,
+    "lan_identity_failure_no_collector": true,
+    "incident_recovery_contract": "passed",
+    "ai_memory_checkpoint_contract": "passed"
+  },
+  "pending": [
+    "deployed recovery with no transient identity publications",
+    "turn25 diagnostic replay and root-cause repair",
+    "full-game acceptance"
+  ]
+}
