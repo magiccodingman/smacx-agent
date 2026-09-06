@@ -37,8 +37,8 @@
     "world_anchor_format_test": "pass: old format replaced at same observation cursor; overview cache invalidated; current format reused"
   },
   "acceptance": {
-    "deployed": false,
-    "actual_repaired_provider_delivery": "pending",
+    "deployed": true,
+    "actual_repaired_provider_delivery": "pass: format2, owned-state food balance and epistemic fields in actual request",
     "behavior_under_new_food_deficit": "pending"
   },
   "first_deployment": {
@@ -47,5 +47,22 @@
     "request_id": "21c9c41ecc9845c6a23d9aed6a01c95e",
     "field_delivered": false,
     "reason": "Persisted anchor representation reused because material world dependencies did not change"
+  },
+  "final_deployment": {
+    "run_id": "run-8ca1c024fd734eac83cffa0b300cf78c",
+    "control_mcp_sha256": "70135d0bb376538b2b7de49555e7e053b401825db775d8bd2a8312959429694b",
+    "harness_sha256": "3a0731e11dde6c6bb2c55eaf941ebded46f076315b806773a586d7cea6a9c76b",
+    "request_id": "fdfad8ffc8d84caca2dd95c3a74d37a8",
+    "projector_version": 2,
+    "headquarters_nutrient_surplus": {
+      "value": 2,
+      "epistemic_status": "current",
+      "source": "owned_state",
+      "provenance_ref": "observation-350",
+      "last_verified_turn": 69
+    },
+    "other_owned_base_surplus": 1,
+    "foreign_base_food_not_inferred": true,
+    "native_worker_retained": true
   }
 }
