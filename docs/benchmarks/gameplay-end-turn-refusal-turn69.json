@@ -98,8 +98,100 @@
       "native_result": 0,
       "native_call_attempted": true,
       "resolution": "native_turn_transition_not_accepted"
-    }
+    },
+    "serial_native_suite": {
+      "diagnostics_checkpoint": {
+        "current_turn_intent_in_next_runtime": true,
+        "last_ready_native_unit_blocked_without_effect": true,
+        "explicit_deferral_releases_native_skip": true,
+        "automatic_turn_preference_enabled": true,
+        "turn_before": 1,
+        "turn_after_receipt": 2,
+        "auto_transition_observed": true,
+        "next_turn_actionable": true,
+        "turn_handoff_before_next_turn_interactions": true,
+        "native_execution_status": "accepted"
+      },
+      "base_site_stress": {
+        "owned_base_count": 512,
+        "candidate_count": 32,
+        "radius_squares": 21,
+        "wall_ms": 253.401,
+        "probe_gap_ms": 227.261,
+        "receipt_bytes": 170205,
+        "native_elapsed_ms": 3
+      },
+      "counterfactual_site_stress": {
+        "owned_base_input_rows": 511,
+        "nominated_sites": 4,
+        "wall_ms": 245.194,
+        "probe_gap_ms": 224.625,
+        "receipt_bytes": 52378,
+        "native_elapsed_ms": 2
+      },
+      "intent_recovery": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "same_checkpoint_recovered_twice_after_timeline_gc": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      },
+      "pass": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 229.435,
+          "maximum_page_bytes": 139522,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 3696,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 220.387,
+          "enumeration_probe_gap_ms": 252.939,
+          "enumeration_payload_bytes": 8671,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 237.905,
+          "exact_probe_gap_ms": 228.414,
+          "exact_payload_bytes": 289,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      }
+    },
+    "serial_native_log_sha256": "45d8594a945bb6b85495fb1624aa2fcbbccae735a58f12f36e3629a276ad05b1"
   },
   "acceptance": "open",
-  "reviewed_engine_source_sha256": "6ac10a95793a8161de016651db5ac49f282ab1fb5476a6bf0116075705626c8a"
+  "reviewed_engine_source_sha256": "6ac10a95793a8161de016651db5ac49f282ab1fb5476a6bf0116075705626c8a",
+  "validated_images": {
+    "worker": "sha256:3911843bff304ff983f236cbab1d8761288f3d86dce0a775515d73ed786faaf9",
+    "control": "sha256:eb93e3ac52fe379e6cec1c8f9bed4916ecc6546b0b22349f50a2c9fa1432746d",
+    "harness": "sha256:aa6515c593a68344f350b71fbc8531a101188c355c019f898d8fd6a801df9597"
+  }
 }
