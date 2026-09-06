@@ -12,5 +12,18 @@
     "thresholds": "installed ContextCompressor absolute caps tested at 65536 and 262144",
     "existing_wire_contracts": "15 gameplay and 9 communication schemas, request-only runtime, direct guard receipt, prompt replacement and length continuation pass"
   },
-  "live_status": "pending deployment and restoration of verified pre-compaction turn-21 checkpoint"
+  "live_status": "Verified on deployed turn-21 resume",
+  "live": {
+    "run_id": "run-548df7b0ff4248d09b0d0ebebca27001",
+    "checkpoint_id": "checkpoint-a66ee4c3b5e64ec09dedddef9d9cb5a8",
+    "timeline_id": "timeline-restore-07b030faf15046d19cbd2ec3",
+    "source_rows": 412,
+    "projected_rows": 62,
+    "estimated_request_tokens_including_runtime_reserve": 55150,
+    "runtime_reserve": 32768,
+    "compression_cap": 131072,
+    "request_id": "4d21ba0908a84f2885a0968ff95f21db",
+    "runtime_context_fetched_in_preflight": false,
+    "full_game_complete": false
+  }
 }
