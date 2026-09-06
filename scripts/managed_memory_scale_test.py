@@ -68,7 +68,8 @@ def main() -> int:
             "choice_parameters": {"command": "auto_explore_unit", "id": "private-selector-honeytoken",
                 "unit_id": 987654, "target_tile_id": 456789, "source_prototype_id": 777777,
                 "native_option_id": 8, "own_unit_ref": "own-unit-safe", "target_location_ref": "location-safe"},
-            "native_result": {"private_marker": "private-result-honeytoken"},
+            "native_result": {"command": "auto_explore_unit", "queued": False,
+                              "private_marker": "private-result-honeytoken"},
         }, turn=122)
 
         smacx_controller.PLATFORM_DB_PATH = store.path
@@ -139,6 +140,8 @@ def main() -> int:
             assert "choice-public" in rendered
         assert "own-unit-safe" in json.dumps(working)
         assert "location-safe" in json.dumps(working)
+        assert working["memory"]["sections"]["recent_events"][0]["execution_receipt"] == {
+            "command": "auto_explore_unit", "queued": False}
         # Filtering occurs before search matching, not just after rendering.
         assert journal.search(scope, "private-selector-honeytoken")
         hidden_search = smacx_controller.read_platform_memory("search", scope.match_id,

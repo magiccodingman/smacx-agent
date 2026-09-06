@@ -1144,6 +1144,14 @@ def read_platform_memory(
                 result = {}
                 for key, item in value.items():
                     key = str(key)
+                    if key == "native_result" and isinstance(item, Mapping):
+                        # Preserve the historical action's bounded public
+                        # outcome without publishing its internal diagnostics.
+                        result["execution_receipt"] = {name: item[name] for name in (
+                            "command", "completed", "queued", "action_id", "turn", "year",
+                            "status", "resolution",
+                        ) if name in item and isinstance(item[name], (str, int, float, bool))}
+                        continue
                     if key.startswith("native_") or key in {
                         "engine_id", "hidden_id", "subject_a", "subject_b", "direction_id",
                         "chassis_id", "weapon_id", "armor_id", "reactor_id", "ability_id_1", "ability_id_2",

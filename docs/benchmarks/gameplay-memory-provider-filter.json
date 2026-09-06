@@ -11,9 +11,9 @@
     "scope": "own historical action journal, not evidence of hidden enemy state disclosure"
   },
   "classification": "confirmed provider projection bypass and private-selector exposure",
-  "change": "Filter working_set as other managed memory reads; strip private entity selectors and native choice identifiers; apply filtering before managed journal search scoring",
+  "change": "Filter working_set as other managed memory reads; strip private entity selectors and native choice identifiers; apply filtering before managed journal search scoring; retain bounded public historical outcome fields as execution_receipt",
   "validation": {
-    "managed_memory_scale": "pass: 120 records per projection, working_set/events/search/recall private-selector honeytokens excluded, safe refs retained, hidden-only searches return no match, raw historical record unchanged",
+    "managed_memory_scale": "pass: 120 records per projection, working_set/events/search/recall private-selector honeytokens excluded, safe refs retained, hidden-only searches return no match, raw historical record unchanged; historical command and queued=false receipt retained",
     "campaign_journal": "pass: canonical hash/replay/search and checkpoint timeline contracts",
     "fair_play_world": "pass: hidden-state differential and actor separation",
     "ai_memory_checkpoint": "pass"
