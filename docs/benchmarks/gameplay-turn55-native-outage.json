@@ -47,7 +47,14 @@
       "container_file_evidence_test.py",
       "docker_client_test.py"
     ],
-    "deployment": "pending"
+    "deployment": {
+      "control_digest": "sha256:f4cff0f342e05f133af6b828ae804d937e9036a53f71a8b48b2297a59c985d90",
+      "packaged_recovery_test": "passed",
+      "run_id": "run-42cc68cd729f454596e2a97cc0f7e814",
+      "timeline_id": "timeline-restore-4eb83c085a054c8793c11654",
+      "native_checkpoint_restored": 55,
+      "active_sovereigns": 1
+    }
   },
   "pending": [
     "Original native stall cause",
