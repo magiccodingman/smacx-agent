@@ -396,3 +396,8 @@ prefix exports pass contracts; parked Hermes extraction is verified (405 message
 SSE completion/rationale capture and envelope-hash correlation pass controlled transport
 checks. Specialist lifecycle/trace host tests pass. Live provider/full-game evidence,
 browser download checks and complete campaign attribution remain open.
+
+Reconciliation follow-up acceptance: repeated pre-dispatch reviews do not consume
+choices or count as repeated native attempts (eight-review adapter regression).
+The full parked baseline attribution audit is in `gameplay-diagnostics-findings.md`;
+remaining native/provider acceptance is still explicitly open.

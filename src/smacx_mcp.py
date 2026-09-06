@@ -3273,6 +3273,13 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                 "required_next": {"tool": "smac_execute_choice", "decision_id": decision_id,
                                   "choice_id": choice_id},
             }
+        # Reconciliation is a pre-dispatch review, not a failed native attempt.
+        # Keep the choice available and exclude it from unchanged-action counts.
+        reconciliation_block = _turn_reconciliation_gate(
+            _command_payload(choice, dict(decision.get("identity") or {})))
+        if reconciliation_block:
+            return {**reconciliation_block, "decision_id": decision_id, "choice_id": choice_id,
+                    "execution_status": "review_required"}
         # A decision is single-use even when the native operation rejects it.
         # Recovery always starts from a fresh authoritative frame.
         decision["consumed"] = True

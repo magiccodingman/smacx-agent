@@ -168,3 +168,10 @@ cancellation, timeout, bounded retries, trace hashes/redaction and retention. Sp
 trace rows now carry faculty actor, mission, attempt, parent episode and timeline IDs.
 The existing specialist proxy already captures offered tools/provider exchanges and
 MCP queries; campaign exports now retain those compressed traces and related tables.
+
+Reconciliation follow-up: review frames now return before consuming an opaque choice
+or incrementing unchanged-action attempts. Eight consecutive reviews in the controlled
+managed boundary test leave the decision available and do not open an execution
+failure circuit. Genuine failed submissions keep the existing circuit contract.
+Historical case classifications and verified message IDs are consolidated in
+`gameplay-diagnostics-findings.md`; the sanitized parked-session audit is committed.

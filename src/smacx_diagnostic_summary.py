@@ -48,7 +48,7 @@ def summary(event):
             'turn_handoff_required','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
         if isinstance(result.get('choices'),list):
-            chosen['choices']=[{k:r[k] for k in ('choice_id','label','energy_cost','production_name') if k in r}
+            chosen['choices']=[{k:r[k] for k in ('choice_id','label','name','energy_cost','mineral_cost','production_name') if k in r}
                 for r in result['choices'][:12] if isinstance(r,dict)]
             chosen['more_choices']=max(0,len(result['choices'])-12)
         if not chosen:chosen={'text':result.get('text',result)}
