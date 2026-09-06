@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory() as temporary:
                                    'epistemic_status': 'stale', 'last_verified_turn': 11}}}}}
             for index in range(2)]
     frozen = copy.deepcopy(rows)
-    with patch.object(world, 'changes_since', return_value=rows), \
+    with patch.object(world, 'changes_since', side_effect=lambda *a, **kw: rows[kw.get('offset', 0):]), \
          patch.object(world, 'temporal_events_since', return_value=[]):
         for detail in ('compact', 'standard'):
             failed = service.query(mode='changes', since_cursor=8, continuation='cursor-1',
