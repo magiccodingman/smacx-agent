@@ -18,7 +18,7 @@
     "supervisor_continuation_contract": "passed",
     "native_build": "passed final build",
     "controlled_native_effect_comparison": "passed on final worker: actual managed production and citizen changes; stable repeated native snapshot reads",
-    "deployed_recovery_and_live_acceptance": "pending",
+    "deployed_recovery_and_live_acceptance": "gated retry succeeded, incident recovered, native digest observed and exactly one sovereign running; autonomous same-turn effect reset still under observation",
     "production_cpp_foreign_and_slot_order_contract": "passed",
     "full_control_worker_mcp_suite": "passed on final images, including two coherent native/AI restores; optional provider inference and action-containment mode disabled",
     "fair_play_world_contract": "passed",
@@ -38,5 +38,17 @@
     "owned_base_rows": 511,
     "nominated_sites": 4,
     "site_probe_gap_ms": 241.982
+  },
+  "deployment": {
+    "checkpoint_id": "checkpoint-b9671b4b35f8488c9c21a861c65df036",
+    "checkpoint_turn": 47,
+    "checkpoint_selection": "newer automatically created verified checkpoint, not previously noted46",
+    "timeline_id": "timeline-restore-60d862202ff24cd69016ed87",
+    "session_id": "session-657a47941ec14830966f3d95619e8377",
+    "run_id": "run-f08943446ad04e72b6bc150854bd05ca",
+    "incident_status": "recovered",
+    "active_sovereign_runs": 1,
+    "native_owned_progress_digest": "8:8691160464923283438:13042737038119500592",
+    "first_supervisor_fingerprint": "5298720a053f4625ae2b4e40e1bf05d8118fc4d695af127f7defa2ea4577d2a0"
   }
 }
