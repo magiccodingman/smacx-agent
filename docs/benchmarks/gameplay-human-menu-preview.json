@@ -1,0 +1,16 @@
+{
+  "classification": "human diagnostic preview truncation; not provider omission",
+  "observed": "Turn39/40 production preview cut inside Hurry at2000 characters",
+  "regression": {
+    "choices": 43,
+    "rendered_characters": 887,
+    "late_action_families_retained": true,
+    "source_response_unchanged": true
+  },
+  "passed": [
+    "diagnostic_summary_contract_test",
+    "citizen_context_delivery_test",
+    "movement_receipt_delivery_test"
+  ],
+  "deployment_pending": true
+}

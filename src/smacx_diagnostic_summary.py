@@ -67,6 +67,31 @@ def brief_information(row):
     return result
 
 
+
+def choice_catalog_summary(rows):
+    """Group human menu previews so repeated moves cannot hide other actions.
+
+    This is diagnostic rendering only. The full issued choices, including every
+    opaque ID and constraint, remain in the structured event/provider response.
+    """
+    groups = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get('label') or 'unlabeled')[:120]
+        group = groups.setdefault(label, {'label': label, 'count': 0, 'samples': []})
+        group['count'] += 1
+        sample = {k: (row[k][:120] if isinstance(row[k], str) else row[k])
+                  for k in ('name', 'response', 'target_location_ref', 'energy_cost',
+                            'energy_credits', 'affordable', 'mineral_cost', 'may_close_turn')
+                  if k in row and isinstance(row[k], (str, int, float, bool))}
+        if sample and sample not in group['samples'] and len(group['samples']) < 2:
+            group['samples'].append(sample)
+    return {'total': len(rows), 'groups': list(groups.values())[:12],
+            'more_groups': max(0, len(groups) - 12),
+            'full_choices': 'structured diagnostic record'}
+
+
 def summary(event):
     kind=event.get('kind','unknown');payload=event.get('payload') or {}
     tool=payload.get('managed_name') or payload.get('tool') or ''
@@ -100,11 +125,26 @@ def summary(event):
                 chosen['citizen_context']['reassignment']='Convert worker, then requery and assign temporary specialist to a fresh legal tile.'
                 chosen['citizen_context']['next_query']=workflow.get('next_query')
         if isinstance(result.get('choices'),list):
-            chosen['choices']=[{k:(r[k][:240] if isinstance(r[k],str) else r[k])
-                for k in ('choice_id','label','name','response','meaning','target_location_ref',
-                          'may_close_turn','energy_cost','energy_credits','affordable','mineral_cost','production_name') if k in r}
-                for r in result['choices'][:12] if isinstance(r,dict)]
-            chosen['more_choices']=max(0,len(result['choices'])-12)
+            chosen['choice_catalog'] = choice_catalog_summary(result['choices'])
+            if result.get('decision_id'):
+                chosen['decision_id'] = result['decision_id']
+            # Long instructional paragraphs otherwise consume the CLI limit
+            # before the menu. Their full text stays in the structured record.
+            focus = chosen.get('focus')
+            if isinstance(focus, dict):
+                chosen['focus'] = {k: focus[k] for k in ('kind', 'base_ref') if k in focus}
+                unit = focus.get('unit')
+                if isinstance(unit, dict):
+                    chosen['focus']['unit'] = {k: unit[k] for k in
+                        ('own_unit_ref', 'location_ref', 'name', 'hp', 'max_hp',
+                         'moves_remaining', 'movement_scale', 'order_name', 'ready') if k in unit}
+            scope = chosen.get('choice_scope')
+            if isinstance(scope, dict):
+                chosen['choice_scope'] = {k: scope[k] for k in
+                    ('family', 'all_management_actions_enumerated', 'other_management_queries') if k in scope}
+            next_step = chosen.get('required_next')
+            if isinstance(next_step, dict):
+                chosen['required_next'] = {k: v for k, v in next_step.items() if k != 'then'}
         if isinstance(result.get('information'),list) and result['information']:
             # Native terms are already semanticized by the managed surface.
             # Retain a bounded scalar view; full nested terms stay in the trace.

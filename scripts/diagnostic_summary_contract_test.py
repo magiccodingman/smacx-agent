@@ -70,3 +70,26 @@ text=summary(diplomacy)
 assert 'Centauri Ecology' in text and 'Planetary Networks' in text
 assert len(text)<1500 and 'unrelated_details' not in text
 print(json.dumps({'passed':True,'hermes_envelope_decoded':True,'pre_mcp_failure_named':True,'queued_not_completed':True}))
+# Repeated choices must not hide later action families past the CLI's 2000-char cut.
+import copy
+menu = {'ok': True, 'kind': 'decision_frame', 'decision_id': 'decision-controlled',
+        'focus': {'kind': 'unit_actions', 'unit': {'own_unit_ref': 'own-unit-1',
+            'name': 'Scout Patrol', 'hp': 8, 'max_hp': 10, 'moves_remaining': 3,
+            'movement_scale': 3, 'roles': {'combat': True}}},
+        'choice_scope': {'family': 'unit_actions', 'all_management_actions_enumerated': False,
+            'meaning': 'instruction ' * 100,
+            'other_management_queries': {'tool': 'smac_choices', 'kinds': ['production', 'base_citizens', 'research']}},
+        'choices': [{'choice_id': f'choice-{i:032}', 'label': 'Move unit',
+                     'target_location_ref': f'location-{i}', 'may_close_turn': True}
+                    for i in range(40)] + [
+            {'choice_id': 'hurry-issued', 'label': 'Hurry production', 'energy_cost': 13, 'affordable': True},
+            {'choice_id': 'skip-issued', 'label': 'Skip unit'},
+            {'choice_id': 'end-issued', 'label': 'End turn', 'may_close_turn': True}]}
+original = copy.deepcopy(menu)
+text = summary({'kind': 'tool_returned', 'payload': {'managed_name': 'smac_decision', 'result': menu}})
+assert len(text) < 2000 and 'Hurry production' in text and 'Skip unit' in text and 'End turn' in text
+assert '"count":40' in text and 'decision-controlled' in text and '"energy_cost":13' in text
+assert 'base_citizens' in text and 'structured diagnostic record' in text
+assert menu == original  # Rendering cannot change the actual issued menu.
+print(json.dumps({'compact_menu_passed': True, 'rendered_characters': len(text),
+                  'late_action_families_retained': True, 'provider_response_unchanged': True}))

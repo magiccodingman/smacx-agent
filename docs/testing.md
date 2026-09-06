@@ -597,3 +597,5 @@ Live LAN acceptance now passes after the SetupWin correction: two isolated nativ
 `citizen_context_delivery_test.py` verifies native-shaped citizen catalog→managed evidence→two separately guarded opaque executions→journal calls, single-use rejection, conditional future targets, private selector exclusion and bounded human summary. It does not by itself prove live native allocation or autonomous choice.
 
 `movement_receipt_delivery_test.py` exercises the actual managed execution wrapper with native-shaped movement receipts: nondisplacement, reported target arrival, a different reported destination, missing evidence and pending/combat/consumption boundaries. It preserves source data and private entity slots, and verifies human trace visibility. Run with opaque choice, production-context and fair-play-world contracts. Actual provider delivery is a separate live gate.
+
+`diagnostic_summary_contract_test.py` also checks that a43-choice menu preserves late Hurry/Skip/End action families below the CLI preview limit while leaving the complete source response unchanged. Grouped samples are human diagnostics, not provider menus.
