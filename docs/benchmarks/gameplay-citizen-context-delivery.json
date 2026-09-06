@@ -1,0 +1,40 @@
+{
+  "classification": "confirmed managed representation omission and tool-affordance weakness; native two-step capability already exists",
+  "live_before": {
+    "provider_request_id": "2756d2be1a45472bbdb40f47603dba69",
+    "citizen_call_id": "chatcmpl-tool-b95c9c90d7d0b473",
+    "citizen_context_present": false,
+    "choices": 1,
+    "sovereign_conclusion": "only Doctor conversion is available; citizen allocation cannot fix growth",
+    "native_read": {
+      "population": 1,
+      "governor_manages_citizens": false,
+      "worked_nonbase_yields": {
+        "nutrients": 0,
+        "minerals": 3,
+        "energy": 0
+      },
+      "unworked_assignable_tiles": 19,
+      "higher_nutrient_tiles_present": true
+    }
+  },
+  "repair": "Bounded citizen context preserves native tile yields/allocation, specialist effects and the existing convert-worker\u2192fresh-query\u2192assign-specialist workflow. Choices identify their semantic allocation location/yields; native tile/citizen/specialist selectors stay private. Future availability is conditional; each step is an immediate guarded mutation.",
+  "tests": {
+    "actual_managed_choice_and_opaque_execution_with_native_shaped_adapter": true,
+    "both_steps_journaled": true,
+    "single_use_choices": true,
+    "no_added_native_commands": true,
+    "private_selectors_absent": true,
+    "missing_evidence_not_fabricated": true,
+    "human_trace_retains_workflow": true,
+    "opaque_execution_regression_pass": true,
+    "managed_staged_actions_contract_pass": true,
+    "diagnostic_summary_contract_pass": true
+  },
+  "checkpoint": {
+    "id": "checkpoint-775f757c99c14b68b923fc7c22019436",
+    "turn": 34,
+    "verified": true
+  },
+  "live_after": "pending deployment and provider/native effect verification"
+}

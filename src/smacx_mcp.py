@@ -973,6 +973,67 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
             for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}
 
 
+def _citizen_catalog_context(catalog: Mapping[str, Any], context: Mapping[str, Any] | None,
+                             base_ref: str) -> dict:
+    """Expose the bounded native allocation evidence and its existing two-step workflow."""
+    result = {key: catalog[key] for key in ("population", "governor_manages_citizens")
+              if isinstance(catalog.get(key), (int, bool))}
+    reverse = context.get("reverse_locations", {}) if isinstance(context, Mapping) else {}
+    tiles = catalog.get("tiles")
+    if isinstance(tiles, list):
+        result["tiles"] = []
+        unresolved = 0
+        for row in tiles[:21]:
+            if not isinstance(row, Mapping):
+                continue
+            ref = reverse.get(row.get("tile_id"))
+            if not isinstance(ref, str):
+                unresolved += 1
+                continue
+            item = {"location_ref": ref, **{key: row[key] for key in ("worked", "assignable")
+                                           if isinstance(row.get(key), bool)}}
+            if isinstance(row.get("yields"), Mapping):
+                item["yields"] = {key: row["yields"][key] for key in ("nutrients", "minerals", "energy")
+                                  if isinstance(row["yields"].get(key), (int, float))}
+            result["tiles"].append(item)
+        result["unresolved_location_count"] = unresolved
+        result["tiles_omitted_for_bound"] = max(0, len(tiles) - 21)
+    for section, fields in (("specialists", ("name",)),
+                            ("available_specialist_types", ("name", "economy", "psych", "labs"))):
+        rows = catalog.get(section)
+        if isinstance(rows, list):
+            result[section] = [{key: (row[key][:160] if isinstance(row[key], str) else row[key])
+                                for key in fields if isinstance(row.get(key), (str, int, float))}
+                               for row in rows[:16] if isinstance(row, Mapping)]
+            result[section + "_omitted_for_bound"] = max(0, len(rows) - 16)
+    commands = {row.get("command") for row in catalog.get("choices", []) if isinstance(row, Mapping)}
+    if base_ref and commands & {"convert_worker_to_specialist", "assign_specialist_to_tile"}:
+        result["tile_reassignment"] = {
+            "method": "Free a worked tile by converting its worker to a temporary specialist, then assign that specialist to a tile.",
+            "next_query": {"tool": "smac_choices", "arguments": {"kind": "base_citizens", "base_ref": base_ref}},
+            "selection": "After conversion, requery and select an issued Assign specialist to tile choice. A Doctor can be the temporary intermediate; choosing it need not mean keeping a Doctor.",
+            "guard": "Each step changes allocation immediately. Future target availability is conditional until the fresh catalog issues it; recheck before ending the turn.",
+        }
+    return result
+
+
+def _citizen_choice_evidence(raw: Mapping[str, Any], catalog: Mapping[str, Any],
+                             context: Mapping[str, Any] | None) -> dict:
+    tile = next((row for row in catalog.get("tiles", []) if isinstance(row, Mapping)
+                 and row.get("tile_index") == raw.get("tile_index")), None)
+    if tile is None:
+        return {}
+    reverse = context.get("reverse_locations", {}) if isinstance(context, Mapping) else {}
+    ref = reverse.get(tile.get("tile_id"))
+    evidence = {"allocation_location_ref": ref} if isinstance(ref, str) else {}
+    if isinstance(tile.get("yields"), Mapping):
+        evidence["allocation_yields"] = {key: tile["yields"][key] for key in ("nutrients", "minerals", "energy")
+                                         if isinstance(tile["yields"].get(key), (int, float))}
+    if raw.get("command") == "convert_worker_to_specialist":
+        evidence["meaning"] = "Free this worked tile as a specialist; for tile reassignment, requery base_citizens afterward and assign the temporary specialist to a fresh legal tile."
+    return evidence
+
+
 def _choice_contains_private_selector(value: Any) -> bool:
     if isinstance(value, list):
         return any(_choice_contains_private_selector(item) for item in value)
@@ -1844,6 +1905,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
                             choice_kind: str, choice_arguments: dict,
                             semantic_context: Mapping[str, Any] | None = None,
                             catalog_information: list[dict] | None = None,
+                            citizen_catalog: Mapping[str, Any] | None = None,
                             focus: dict | None = None,
                             turn: int | None = None,
                             year: int | None = None,
@@ -1931,6 +1993,10 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             }
             if action == "set_first_base_name" and raw.get("suggested_name"):
                 item["text_input"]["default"] = raw["suggested_name"]
+        if citizen_catalog is not None:
+            item.update(_citizen_choice_evidence(raw, citizen_catalog, semantic_context))
+            for key in ("tile_index", "citizen_id", "specialist_index"):
+                item.pop(key, None)
         label = _short_text(item.get("label") or action.replace("_", " ").capitalize(), 160)
         item["label"] = label
         public.append(item)
@@ -2800,6 +2866,7 @@ def _smac_choices_once(
         identity, raw_choices, choice_kind=kind,
         choice_arguments=choice_arguments, semantic_context=semantic_context,
         catalog_information=_decision_information(result.get("choices", []), semantic_context),
+        citizen_catalog=result if kind == "base_citizens" else None,
         snapshot=snapshot,
     )
     frame = {
@@ -2813,6 +2880,8 @@ def _smac_choices_once(
     }
     if kind == "production":
         frame["production_context"] = _production_catalog_context(result)
+    if kind == "base_citizens":
+        frame["citizen_context"] = _citizen_catalog_context(result, semantic_context, base_ref)
     if not prepared:
         preparations = CHOICE_PREPARATIONS.begin(
             result, identity=identity, context=semantic_context, kind=kind,

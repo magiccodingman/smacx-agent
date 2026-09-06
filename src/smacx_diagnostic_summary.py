@@ -86,8 +86,19 @@ def summary(event):
         chosen={k:result[k] for k in ('ok','kind','error','phase','focus','executed_choice',
             'native_action_executed','execution','execution_status','decision_consumed',
             'completed','queued','action_id','effect_disposition','state_changed_during_enumeration',
-            'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','required_next','persistence','journal_event_id',
+            'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','citizen_context','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
+        citizen=result.get('citizen_context')
+        if isinstance(citizen,dict):
+            tiles=citizen.get('tiles',[])
+            chosen['citizen_context']={k:citizen[k] for k in ('population','governor_manages_citizens') if k in citizen}
+            if isinstance(tiles,list):
+                chosen['citizen_context']['worked_tiles']=[r for r in tiles if isinstance(r,dict) and r.get('worked')][:3]
+                chosen['citizen_context']['currently_assignable_tiles']=sum(isinstance(r,dict) and r.get('assignable') is True for r in tiles)
+            workflow=citizen.get('tile_reassignment')
+            if isinstance(workflow,dict):
+                chosen['citizen_context']['reassignment']='Convert worker, then requery and assign temporary specialist to a fresh legal tile.'
+                chosen['citizen_context']['next_query']=workflow.get('next_query')
         if isinstance(result.get('choices'),list):
             chosen['choices']=[{k:(r[k][:240] if isinstance(r[k],str) else r[k])
                 for k in ('choice_id','label','name','response','meaning','target_location_ref',
