@@ -476,6 +476,13 @@ def _install() -> None:
     # durable Hermes transcript.
     import run_agent  # type: ignore
 
+    if os.environ.get("SMACX_DIAGNOSTICS_ENABLED") == "1":
+        from smacx_diagnostics import DiagnosticWriter, install_hermes_capture
+        install_hermes_capture(run_agent.AIAgent, DiagnosticWriter(
+            Path(os.environ.get("SMACX_DIAGNOSTICS_ROOT", "/opt/data/diagnostics")),
+            os.environ["SMACX_AGENT_MATCH_ID"], "sovereign",
+        ))
+
     original_sanitize = run_agent.AIAgent._sanitize_api_messages
     logger = logging.getLogger("smacx.context")
 

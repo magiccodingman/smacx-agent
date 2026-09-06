@@ -362,3 +362,7 @@ See [action-progress repair evidence](benchmarks/2026-09-06-action-progress.md).
 | Provider/cognition/intent audit | intended write → journal → selected runtime state → final provider request → action/effect/recovery | New mission explicitly requires this full chain. Existing component contracts do not establish complete campaign observability. |
 
 Checkpoint plan and limitations: [Gameplay diagnostics mission](gameplay-diagnostics-mission.md).
+
+Hermes dispatch capture is now opt-in and tested against a contained dispatcher:
+pre-MCP failure rows are retained exactly once. No live provider or native effect
+coverage is claimed from this fixture. Checkpoint 1 remains in progress.

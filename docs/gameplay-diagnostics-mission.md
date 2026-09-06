@@ -45,3 +45,14 @@ This is only the storage substrate. No live interception, provider-wire audit,
 export authorization, aggregate retention or gameplay correctness is claimed yet.
 Generic field redaction is not sufficient for arbitrary raw provider/network data;
 capture adapters must supply allowlisted metadata and separately sanitized content.
+
+## Hermes dispatch interception (partial checkpoint 1)
+
+An opt-in hook now captures emitted calls and returned tool rows outside Hermes's
+execution dispatcher, including errors rejected before MCP invocation. It retains
+original arguments/results and return behavior, correlates IDs, and records missing
+results and batch exceptions. Parallel-batch timing is explicitly batch timing,
+not falsely attributed to each tool. The hook is not enabled in deployment yet.
+A contained regression verifies an unavailable-tool failure is captured exactly
+once without changing its result. Live upstream integration, per-tool timing,
+MCP/native correlation and capture retention across restarts remain open.

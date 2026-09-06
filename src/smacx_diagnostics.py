@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -92,3 +93,75 @@ class DiagnosticWriter:
             return {"ok": not self._exhausted, "event_id": event["event_id"],
                     "stream_id": self.stream_id, "sequence": self._sequence,
                     "capture_status": "incomplete" if self._exhausted else "recorded"}
+
+
+def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
+    """Capture emitted calls and all returned rows, including dispatch rejection.
+
+    This outer boundary deliberately does not claim per-tool execution latency:
+    parallel batches share an elapsed wall time. Native effects are a separate
+    stream. Original arguments, results and exceptions pass through unchanged.
+    """
+    if getattr(agent_class, "_smacx_diagnostic_capture", False):
+        return
+    original = agent_class._execute_tool_calls
+
+    def emit(kind, payload, correlation):
+        try:
+            receipt = writer.emit(kind, payload, correlation=correlation)
+            if not receipt["ok"]:
+                logging.getLogger("smacx.diagnostics").error("Diagnostic capture incomplete: %s", receipt)
+        except Exception as exc:
+            # Diagnostic failure must be visible but cannot reinterpret a game action.
+            logging.getLogger("smacx.diagnostics").error("Diagnostic capture failed: %s", type(exc).__name__)
+
+    def captured(self, assistant_message, messages, effective_task_id, api_call_count=0):
+        batch_id = uuid.uuid4().hex
+        started = time.monotonic_ns()
+        correlations = {"batch_id": batch_id, "task_id": str(effective_task_id),
+                        "provider_call_index": str(api_call_count)}
+        names = {}
+        for call in assistant_message.tool_calls:
+            call_id = str(getattr(call, "id", ""))
+            function = call.function
+            raw = function.arguments
+            try:
+                arguments = json.loads(raw) if isinstance(raw, str) else raw
+            except (ValueError, TypeError):
+                arguments = {"unparsed_arguments": raw}
+            managed_name = function.name
+            if managed_name == "tool_call" and isinstance(arguments, dict):
+                managed_name = str(arguments.get("name") or managed_name)
+            names[call_id] = managed_name
+            emit("tool_requested", {"dispatch_name": function.name,
+                 "managed_name": managed_name, "arguments": arguments},
+                 {**correlations, "call_id": call_id})
+        error = None
+        try:
+            return original(self, assistant_message, messages, effective_task_id, api_call_count)
+        except BaseException as exc:
+            error = type(exc).__name__
+            raise
+        finally:
+            seen = set()
+            for row in messages:
+                if not isinstance(row, dict) or row.get("role") != "tool":
+                    continue
+                call_id = str(row.get("tool_call_id") or "")
+                if call_id not in names or call_id in seen:
+                    continue
+                seen.add(call_id)
+                emit("tool_returned", {"managed_name": names[call_id],
+                     "content": row.get("content"),
+                     "effect_disposition": row.get("effect_disposition"),
+                     "native_execution": "not_inferred_from_hermes_result"},
+                     {**correlations, "call_id": call_id})
+            emit("tool_batch_finished", {
+                "batch_elapsed_ms": (time.monotonic_ns() - started) / 1_000_000,
+                "latency_scope": "batch_including_dispatch",
+                "requested": len(names), "returned": len(seen),
+                "missing_result_call_ids": sorted(set(names) - seen),
+                "exception_type": error}, correlations)
+
+    agent_class._execute_tool_calls = captured
+    agent_class._smacx_diagnostic_capture = True

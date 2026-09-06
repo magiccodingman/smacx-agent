@@ -4,8 +4,9 @@ import concurrent.futures
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 
-from smacx_diagnostics import DiagnosticWriter
+from smacx_diagnostics import DiagnosticWriter, install_hermes_capture
 
 
 def main():
@@ -38,6 +39,25 @@ def main():
             try: DiagnosticWriter(root, bad, "sovereign")
             except ValueError: pass
             else: raise AssertionError("unsafe diagnostic scope accepted")
+        # The caller boundary must retain failures that never reach MCP.
+        class Agent:
+            def _execute_tool_calls(self, assistant, messages, task, index=0):
+                messages.append({"role": "tool", "tool_call_id": "call-test",
+                                 "content": "Tool does not exist; not invoked"})
+                return "unchanged"
+        traced = DiagnosticWriter(root, "match-test", "dispatch")
+        install_hermes_capture(Agent, traced)
+        install_hermes_capture(Agent, traced)  # no double wrapping
+        message = SimpleNamespace(tool_calls=[SimpleNamespace(id="call-test",
+            function=SimpleNamespace(name="tool_call", arguments=json.dumps({
+                "name": "smac_memory", "arguments": {"wrong_parameter": True}})))])
+        history = []
+        assert Agent()._execute_tool_calls(message, history, "task-test", 4) == "unchanged"
+        capture = [json.loads(s) for s in traced.path.read_text().splitlines()]
+        assert [r["kind"] for r in capture] == ["tool_requested", "tool_returned", "tool_batch_finished"]
+        assert capture[0]["payload"]["managed_name"] == "smac_memory"
+        assert capture[1]["payload"]["content"] == history[0]["content"]
+        assert capture[2]["payload"]["missing_result_call_ids"] == []
     print(json.dumps({"event": "pass", "payload": {
         "concurrent_records_intact": True, "actor_streams_isolated": True,
         "credential_fields_redacted": True, "explicit_capture_gaps": True,
