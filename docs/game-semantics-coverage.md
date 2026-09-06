@@ -415,3 +415,8 @@ evidence with an explicit gap; scope/readability regression passes. Live Qwen
 prompt-cost/prefix test passes (1,324 operational tokens; 6,592/8,548 reused on
 the second controlled request). These checks do not certify game completion or
 native recovery. Native integration and deployed download acceptance remain open.
+
+Packaged-service gate found and repaired: the control image omitted newly imported
+diagnostics/intent modules. Build-time imports now validate the installed MCP
+module graph. Installed-image export contract passes; native startup rerun pending.
+Source-mounted test passes alone do not certify image completeness.

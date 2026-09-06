@@ -206,3 +206,14 @@ whole download: a regression injects an invalid deflate block, verifies the raw
 file remains in the ZIP and checks the explicit compressed-stream gap. Scope and
 readability contracts still pass. Native integration is running separately; its
 result and deployed browser acceptance remain pending.
+
+## Packaged-service acceptance correction
+
+The first isolated native run failed before gameplay: the MCP sidecar could not
+import `smacx_diagnostics`. The control Dockerfile used an explicit copy list
+that omitted the four new diagnostics/intent modules. Source-mounted contracts
+did not cover this packaging boundary. The list now includes those modules and
+the build imports the actual packaged MCP, campaign-export and intent modules.
+The repaired image builds successfully; the export contract also passes against
+installed image modules with only the test scripts mounted. Full native rerun
+remains required. No game deployment or full-game acceptance is claimed.
