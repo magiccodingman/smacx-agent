@@ -152,6 +152,32 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _error(self, status: int, code: str, message: str | None = None) -> None:
+        # Capture authenticated match lifecycle failures before a native/MCP
+        # actor exists. Do not log bodies, credentials, query strings, or raw
+        # exception messages, and never let anonymous probes create archives.
+        if getattr(self, "_diagnostic_authorized", False):
+            path = urlsplit(self.path).path
+            scoped = RECOVERY_PATH.fullmatch(path) or MATCH_PATH.fullmatch(path)
+            match_id = scoped.group(1) if scoped else getattr(self, "_diagnostic_match_id", None)
+            operation = scoped.group(2) if scoped else {
+                "/api/v1/harness-runs": "harness_start",
+                "/api/v1/harness-profiles/hermes": "harness_prepare",
+            }.get(path)
+            if match_id and operation:
+                try:
+                    self.server.control.get_match(match_id)
+                    from smacx_diagnostics import record
+                    category = str(code).split(":", 1)[0]
+                    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", category):
+                        category = "unclassified_control_error"
+                    record("control_operation_failed", {"operation": operation,
+                        "http_status": int(status), "error_code": category,
+                        "detail_omitted": "raw exception text may contain operational secrets",
+                        "native_effect": "not_inferred_from_http_failure"},
+                        actor="control-api", match_id=match_id)
+                except Exception:
+                    # Diagnostics must not alter the original HTTP outcome.
+                    print("control_error_diagnostic_capture_failed", file=sys.stderr, flush=True)
         self._json(status, {
             "ok": False,
             "error": {"code": code, "message": message or code.replace("_", " ")},
@@ -174,6 +200,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             raise InvalidRecord("invalid_json_body") from exc
         if not isinstance(value, dict):
             raise InvalidRecord("json_object_required")
+        if isinstance(value.get("match_id"), str):
+            self._diagnostic_match_id = value["match_id"]
         return value
 
     def _cookies(self) -> SimpleCookie[str]:
@@ -213,6 +241,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if not cookie or not csrf or cookie.value != csrf:
                 raise AuthenticationError("invalid_csrf_token")
             self.server.control.require_csrf(auth["auth_session_id"], csrf)
+        self._diagnostic_authorized = True
         return auth
 
     def _session_cookies(self, token: str, csrf_token: str, expires_unix: float) -> list[str]:
@@ -232,6 +261,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         ]
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+        self._diagnostic_authorized = False
+        self._diagnostic_match_id = None
         parts = urlsplit(self.path)
         path = parts.path
         try:
@@ -458,6 +489,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._handle_exception(exc)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+        self._diagnostic_authorized = False
+        self._diagnostic_match_id = None
         path = urlsplit(self.path).path
         try:
             if path == "/api/v1/setup/bootstrap":

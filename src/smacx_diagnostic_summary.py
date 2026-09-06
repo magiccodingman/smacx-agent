@@ -37,6 +37,8 @@ def summary(event):
     if kind=='sovereign_response':
         message=payload.get('message') or {}
         return str(message.get('content') or '') if isinstance(message,dict) else str(message)
+    if kind=='tool_validation_rejected':
+        return f"{tool} rejected before execution {json.dumps(payload,ensure_ascii=False,separators=(',',':'))}"
     if kind in {'tool_requested','managed_tool_started'}:
         arguments=payload.get('arguments') or {}
         if isinstance(arguments,dict) and isinstance(arguments.get('arguments'),dict):arguments=arguments['arguments']
@@ -60,7 +62,7 @@ def summary(event):
         event_type=payload.get('event_type','')
         if event_type.startswith(('memory.','attention.','specialist.','game.action','checkpoint','recovery')):
             return f"journal {event_type} turn={payload.get('turn')} {json.dumps(payload.get('payload',{}),ensure_ascii=False)}"
-    if kind in {'capture_gap','provider_transport_failed','managed_tool_exception','runtime_context_failed','tool_batch_finished','history_compaction'}:
+    if kind in {'capture_gap','provider_transport_failed','managed_tool_exception','runtime_context_failed','tool_batch_finished','history_compaction','control_operation_failed'}:
         return kind+' '+json.dumps(payload,ensure_ascii=False)
     return ''
 
@@ -78,7 +80,9 @@ class Metrics:
             if kind=='provider_request_submitted':self.requests.add(request_id)
             if kind in {'provider_response_body','provider_response_stream','provider_transport_failed'}:
                 self.terminal_requests.add(request_id)
-        if kind=='tool_requested':self.tools[payload.get('managed_name','unknown')]+=1
+        if kind in {'tool_requested','tool_validation_rejected'}:self.tools[payload.get('managed_name','unknown')]+=1
+        if kind=='tool_validation_rejected':self.failures[kind+':unknown_tool_name']+=1
+        if kind=='control_operation_failed':self.failures[kind+':'+str(payload.get('error_code','unknown'))]+=1
         if kind in {'tool_returned','managed_tool_returned'}:
             result=result_object(payload.get('result',payload.get('content')))
             error=result.get('error')

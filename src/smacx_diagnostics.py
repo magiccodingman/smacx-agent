@@ -19,6 +19,7 @@ import re
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from contextvars import ContextVar
 from typing import Any, Mapping
 
@@ -30,18 +31,50 @@ _WRITER_LOCK = threading.Lock()
 INVOCATION = ContextVar("smacx_diagnostic_invocation", default="")
 PROVIDER_CORRELATION = ContextVar("smacx_provider_correlation", default=None)
 
+# Hermes may receive HTTP responses in a worker thread and validate/dispatch
+# calls on its conversation thread. ContextVars do not cross that boundary.
+_PROVIDER_CALLS = OrderedDict()
+_PROVIDER_CALLS_LOCK = threading.Lock()
+
+
+def _remember_provider_calls(value, correlation):
+    if not isinstance(value, dict):
+        return
+    for choice in value.get("choices", []):
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message", choice.get("delta", {}))
+        if not isinstance(message, dict):
+            continue
+        for call in message.get("tool_calls") or []:
+            call_id = call.get("id") if isinstance(call, dict) else None
+            if not isinstance(call_id, str) or not call_id:
+                continue
+            with _PROVIDER_CALLS_LOCK:
+                _PROVIDER_CALLS[call_id] = dict(correlation)
+                _PROVIDER_CALLS.move_to_end(call_id)
+                while len(_PROVIDER_CALLS) > 512:
+                    _PROVIDER_CALLS.popitem(last=False)
+
+
+def _provider_call_correlation(call_id):
+    with _PROVIDER_CALLS_LOCK:
+        return dict(_PROVIDER_CALLS.get(str(call_id), {}))
+
+
 def payload_sha256(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
                                      ensure_ascii=False).encode()).hexdigest()
 
 
 def record(kind: str, payload: Mapping[str, Any], *, actor: str = "managed-mcp",
-           correlation: Mapping[str, str] | None = None) -> None:
-    """Best-effort diagnostics with an explicit stderr failure signal."""
-    if os.environ.get("SMACX_DIAGNOSTICS_ENABLED") != "1":
+           correlation: Mapping[str, str] | None = None,
+           match_id: str | None = None) -> None:
+    """Best-effort diagnostics; explicit match scope opts control-plane events in."""
+    if os.environ.get("SMACX_DIAGNOSTICS_ENABLED") != "1" and match_id is None:
         return
     try:
-        match = os.environ["SMACX_AGENT_MATCH_ID"]
+        match = match_id or os.environ["SMACX_AGENT_MATCH_ID"]
         root = os.environ.get("SMACX_DIAGNOSTICS_ROOT", "/var/lib/smacx/gameplay-diagnostics")
         key = (root, match, actor)
         with _WRITER_LOCK:
@@ -167,7 +200,8 @@ class DiagnosticWriter:
                 raise
             self._bytes += len(packed)
             if self.human_log and event["kind"] in {"tool_requested", "tool_returned",
-                    "managed_tool_started", "managed_tool_returned", "choice_selected", "capture_gap"}:
+                    "managed_tool_started", "managed_tool_returned", "choice_selected", "capture_gap",
+                    "tool_validation_rejected"}:
                 from smacx_diagnostic_summary import summary
                 rendered = summary(event)
                 rendered = re.sub(r"[\x00-\x1f\x7f]", " ", rendered)
@@ -176,6 +210,31 @@ class DiagnosticWriter:
             return {"ok": not self._exhausted, "event_id": event["event_id"],
                     "stream_id": self.stream_id, "sequence": self._sequence,
                     "capture_status": "incomplete" if self._exhausted else "recorded"}
+
+
+def record_unknown_tool_calls(calls, valid_names) -> None:
+    """Capture Hermes name validation, which precedes its tool executor."""
+    for call in calls:
+        name = call.function.name
+        if name in valid_names:
+            continue
+        raw = call.function.arguments
+        try:
+            arguments = json.loads(raw) if isinstance(raw, str) else raw
+        except (ValueError, TypeError):
+            arguments = {"unparsed_arguments": raw}
+        record("tool_validation_rejected", {
+            "dispatch_name": name, "managed_name": name, "arguments": arguments,
+            "error": {"code": "unknown_tool_name"},
+            "native_action_executed": False,
+            "rejection_stage": "before_hermes_tool_executor",
+            "available_tools": sorted(valid_names),
+        }, actor=("specialist" if os.environ.get("SMACX_SPECIALIST_STRICT_PROMPT") == "1" else "sovereign"),
+           correlation={**_provider_call_correlation(getattr(call, "id", "")),
+                        "call_id": str(getattr(call, "id", "")), **{
+               key: os.environ[env] for key, env in (
+                   ("mission_id", "SMACX_SPECIALIST_MISSION_ID"),
+                   ("attempt_id", "SMACX_SPECIALIST_ATTEMPT_ID")) if os.environ.get(env)}})
 
 
 def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
@@ -201,7 +260,9 @@ def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
     def captured(self, assistant_message, messages, effective_task_id, api_call_count=0):
         batch_id = uuid.uuid4().hex
         started = time.monotonic_ns()
-        correlations = {**(PROVIDER_CORRELATION.get() or {}), "batch_id": batch_id, "task_id": str(effective_task_id),
+        first_call = next(iter(assistant_message.tool_calls), None)
+        correlations = {**(PROVIDER_CORRELATION.get() or {}),
+                        **_provider_call_correlation(getattr(first_call, "id", "")), "batch_id": batch_id, "task_id": str(effective_task_id),
                         "provider_call_index": str(api_call_count)}
         names = {}
         for call in assistant_message.tool_calls:
@@ -262,20 +323,22 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
         return
     original = client_class.send
 
-    def emit(kind, payload, request_id):
-        try:
-            receipt = writer.emit(kind, payload, correlation={**(PROVIDER_CORRELATION.get() or {}), "request_id": request_id})
-            if not receipt["ok"]:
-                logging.getLogger("smacx.diagnostics").error("Provider audit incomplete: %s", receipt)
-        except Exception as exc:
-            logging.getLogger("smacx.diagnostics").error("Provider audit failed: %s", type(exc).__name__)
-
     def send(self, request, *args, **kwargs):
         if request.method != "POST" or not request.url.path.rstrip("/").endswith("/chat/completions"):
             return original(self, request, *args, **kwargs)
         request_id = uuid.uuid4().hex
         PROVIDER_CORRELATION.set({"request_id": request_id})
         started = time.monotonic_ns()
+        correlation = {"request_id": request_id}
+
+        def emit(kind, payload, _request_id):
+            try:
+                receipt = writer.emit(kind, payload, correlation=correlation)
+                if not receipt["ok"]:
+                    logging.getLogger("smacx.diagnostics").error("Provider audit incomplete: %s", receipt)
+            except Exception as exc:
+                logging.getLogger("smacx.diagnostics").error("Provider audit failed: %s", type(exc).__name__)
+
         try:
             raw = request.content
             payload = json.loads(raw)
@@ -286,13 +349,14 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
                     continue
                 try:
                     context = json.loads(content.rsplit(marker, 1)[1].rsplit('</SMACX_RUNTIME_CONTEXT>', 1)[0])
-                    PROVIDER_CORRELATION.set({"request_id": request_id,
+                    correlation.update({"request_id": request_id,
                         "runtime_context_sha256": payload_sha256(context),
                         "episode_id": str(context.get("episode", {}).get("episode_id", "")),
                         "attention_lease_id": str(context.get("attention", {}).get("attention_lease_id", ""))})
                 except (ValueError, TypeError, AttributeError):
                     pass
                 break
+            PROVIDER_CORRELATION.set(dict(correlation))
             # Capture the serialized body, not an earlier mutable message list.
             emit("provider_request_submitted", {
                 "protocol": "chat_completions", "body": payload,
@@ -318,7 +382,9 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
         }, request_id)
         if response.is_stream_consumed:
             try:
-                emit("provider_response_body", {"body": response.json(),
+                response_body = response.json()
+                _remember_provider_calls(response_body, correlation)
+                emit("provider_response_body", {"body": response_body,
                     "transport_body_complete": True,
                     "elapsed_ms": (time.monotonic_ns()-started)/1e6}, request_id)
             except Exception:
@@ -343,6 +409,7 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
                     if data == b"[DONE]": self.done = True; return
                     try: value = json.loads(data)
                     except ValueError: self.omitted = True; return
+                    _remember_provider_calls(value, correlation)
                     if self.size + len(data) <= writer.max_event_bytes // 2:
                         self.chunks.append(value); self.size += len(data)
                     else: self.omitted = True

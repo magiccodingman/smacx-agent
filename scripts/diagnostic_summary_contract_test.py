@@ -7,6 +7,13 @@ event={'kind':'tool_returned','actor':'sovereign','payload':{'managed_name':'sma
 assert 'schema_missing_required' in summary(event)
 metrics=Metrics();metrics.add(event)
 assert metrics.as_dict()['failure_observations_by_layer']=={'tool_returned:schema_missing_required':1}
+rejected={'kind':'tool_validation_rejected','actor':'sovereign','payload':{
+    'managed_name':'unknown_diagnostic_tool','arguments':{'purpose':'fixture'},
+    'error':{'code':'unknown_tool_name'},'native_action_executed':False}}
+metrics.add(rejected)
+assert 'rejected before execution' in summary(rejected)
+assert metrics.as_dict()['failure_observations_by_layer']['tool_validation_rejected:unknown_tool_name']==1
+assert metrics.as_dict()['sovereign_requested_tool_counts']['unknown_diagnostic_tool']==1
 queued={'kind':'managed_tool_returned','payload':{'tool':'smac_execute_choice','result':{'ok':True,'queued':True,'action_id':'action-test'}}}
 rendered=summary(queued)
 assert 'queued' in rendered and 'completed' not in rendered and 'effect verified' not in rendered

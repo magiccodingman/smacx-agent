@@ -26,3 +26,9 @@ Current implementation and acceptance gates are tracked in
 not establish poor sovereign strategy after adequate context delivery. The complete
 rerun must establish observations, delivered context, chosen actions, effects and
 recovery continuity before making that attribution.
+
+## Deployment acceptance findings after the retained run
+
+The first instrumented turn-26 resume proved three harness defects before meaningful new strategy could be assessed: a sealed Hermes archive was unreadable to its restore uid; resumed Hermes reused the saved old system prompt despite explicit profile recompilation; and repeated recovery lost an unpinned derived checkpoint snapshot during timeline GC. Each is now covered by a targeted or controlled native regression, including two actual recoveries from one checkpoint. The old campaign remains parked because its missing accelerator cannot be claimed intact.
+
+The captured short resume also exposed an unknown-name rejection before the executor and a cross-thread correlation gap. These are repaired and verified with an actual provider-driven Hermes session. A subsequent final-unit attempt was rejected for unacknowledged critical attention without consuming the decision or executing native action; this is guard behavior, not proof that the new prompt confused the model, because the old prompt was still on that wire. A fresh AI - 4 lobby is staged for autonomous acceptance with the corrected package.
