@@ -600,6 +600,7 @@ class WorkerManager:
         return restored
 
     def _cleanup_recovery_snapshots(self, match_id: str, keep_checkpoint_id: str) -> int:
+        WorldStore(self.store).release_obsolete_checkpoint_pins(match_id, keep_checkpoint_id)
         root = self.store.path.parent / "recovery-snapshots" / match_id
         if not root.is_dir():
             return 0
@@ -3726,6 +3727,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         journal_head_hash=str(event["event_hash"]),
                         journal_sequence=int(event["sequence"]),
                         calculator_versions={"world": CALCULATOR_VERSION},
+                        pin_owner=("checkpoint", checkpoint_id),
                     ))
             checkpoint["campaign_journal"] = journal_checkpoints
             checkpoint["world_snapshots"] = world_snapshots
@@ -3900,6 +3902,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         )
                 except (ValueError, WorldStoreError) as exc:
                     raise WorkerManagerError("world_snapshot_checkpoint_mismatch") from exc
+                # Adopt still-present pre-pin checkpoints before timeline GC.
+                # Missing or mismatched content remains a hard failure above.
+                WorldStore(self.store).pin_snapshot(snapshot_id, "checkpoint", checkpoint_id)
             fork = self.journal.fork_timeline(
                 scope, timeline_id, native_save_sha256=native_digest,
                 from_event_hash=head_hash, parent_timeline_id=parent_timeline,

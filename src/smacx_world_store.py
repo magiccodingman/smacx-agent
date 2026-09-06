@@ -838,6 +838,25 @@ class WorldStore:
             )
         self.gc_snapshot_if_unpinned(snapshot_id)
 
+    def release_obsolete_checkpoint_pins(self, match_id: str, keep_checkpoint_id: str) -> int:
+        """Release old checkpoint ownership only after its replacement is published."""
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT p.snapshot_id,p.owner_id FROM world_snapshot_pins p "
+                "JOIN world_snapshots s ON s.snapshot_id=p.snapshot_id "
+                "WHERE s.match_id=? AND p.owner_kind='checkpoint' AND p.owner_id<>?",
+                (match_id, keep_checkpoint_id),
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    "DELETE FROM world_snapshot_pins WHERE snapshot_id=? "
+                    "AND owner_kind='checkpoint' AND owner_id=?",
+                    (row["snapshot_id"], row["owner_id"]),
+                )
+        for snapshot_id in {str(row["snapshot_id"]) for row in rows}:
+            self.gc_snapshot_if_unpinned(snapshot_id)
+        return len(rows)
+
     def gc_snapshot_if_unpinned(self, snapshot_id: str) -> bool:
         """Delete a derived snapshot only after its final owner releases it."""
         path: Path | None = None

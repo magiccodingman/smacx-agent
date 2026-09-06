@@ -1260,6 +1260,13 @@ def main() -> int:
                               {}, csrf, 900)
         if not intent_restored.get("ok") or not intent_restored.get("memory_restore", {}).get("journal_forks"):
             raise AssertionError({"intent_managed_recovery": intent_restored})
+        first_restored_timeline = intent_restored["memory_restore"]["timeline_id"]
+        # No intervening checkpoint: old-timeline GC must retain the exact
+        # advertised checkpoint accelerator for a second recovery.
+        intent_restored = api(opener, base_url, "POST", f"/api/v1/matches/{created['match']['match_id']}/recover",
+                              {}, csrf, 900)
+        if not intent_restored.get("ok") or intent_restored["memory_restore"]["timeline_id"] == first_restored_timeline:
+            raise AssertionError({"repeated_checkpoint_recovery": intent_restored})
         current_worker = next(item for item in api(opener, base_url, "GET", "/api/v1/workers")["workers"]
                               if item["instance_id"] == worker["instance_id"])
         current_sidecar = current_worker["network"]["mcp_container_name"]
@@ -1284,6 +1291,7 @@ def main() -> int:
             raise AssertionError("old-session counterfactual choice was accepted after recovery")
         print(json.dumps({"event": "intent_recovery", "payload": {
             "native_completed_units_preserved": True, "journaled_plan_preserved": True,
+            "same_checkpoint_recovered_twice_after_timeline_gc": True,
             "journaled_conflict_and_stationary_assignment_preserved": True,
             "ephemeral_old_timeline_watch_discarded": True,
             "old_session_counterfactual_choice_rejected": True}}), flush=True)
