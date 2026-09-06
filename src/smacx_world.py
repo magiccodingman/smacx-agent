@@ -1271,6 +1271,21 @@ class WorldService:
             "cursor-1000000000000" if isinstance(result.get("items"), list) else None
         )
         result = self._trim(provider_safe(result), budget)
+        if mode == "changes" and result.get("ok") is False \
+                and isinstance(result.get("error"), Mapping) \
+                and result.get("error", {}).get("code") == "single_world_item_exceeds_budget" \
+                and detail != "deep":
+            # A complete historical object may exceed the standard page even
+            # though deep detail can return it. Preserve the exact position;
+            # advancing since_cursor here could skip sibling deltas from the
+            # same observation. Do not suggest subject filtering, which this
+            # historical stream does not implement.
+            result["query_hint"] = "Retry the same position with deep detail; no changes were returned or skipped."
+            result["required_next"] = {
+                "tool": "smac_world",
+                "arguments": {"mode": "changes", "since_cursor": int(since_cursor),
+                              "detail": "deep", "continuation": continuation},
+            }
         returned = len(result.get("items", [])) if isinstance(result.get("items"), list) else 0
         if result.get("ok") is False:
             result["continuation"] = None
