@@ -1,0 +1,38 @@
+{
+  "checkpoint": "hermes-stream-terminal-metadata",
+  "actual_request": "e51f72517a65448cb137adf1c420efbe",
+  "observed_provider": {
+    "done_marker": true,
+    "finish_reason": "stop",
+    "completion_tokens": 773,
+    "reasoning_detail_tokens": 420
+  },
+  "observed_hermes": {
+    "finish_reason": "length",
+    "warning": "Response truncated \u2014 stream ended before completion",
+    "extra_continuation": true
+  },
+  "causal_replay": {
+    "old_display_branch_skips_chunk": 187,
+    "skipped_finish_reason": "stop",
+    "final_content_delta": ".",
+    "buffered_prefix": ":** Spartan units at Fort Liberty; ",
+    "method": "Actual captured chunks replayed through installed Hermes SSE-like text predicate and old display control flow."
+  },
+  "repair": {
+    "metadata": "Read completion/usage before display buffering.",
+    "control_flow": "Buffering text no longer continues the chunk loop before tool deltas and metadata.",
+    "preserved": "True length truncation, repetition fuse, real missing-finish handling, native guards and request-only context."
+  },
+  "validation": {
+    "old_image": "Reproduces false truncation and fails resumed capture regression.",
+    "new_image": "Real Hermes provider capture passes gameplay/communication surfaces, unknown-tool rejection, direct MCP guarded call, true length release, oversized durable history and real resume.",
+    "split_colon_terminal_text": true,
+    "tool_delta_with_sse_like_content": true
+  },
+  "pending": [
+    "Deployment verification",
+    "Original native deferred-movement outage",
+    "Full autonomous game"
+  ]
+}

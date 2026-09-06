@@ -140,6 +140,7 @@ def main() -> int:
             if request.get("stream"):
                 delta = dict(payload["choices"][0]["message"])
                 if delta.get("tool_calls"):
+                    delta["content"] = ":"
                     delta["tool_calls"] = [{"index": index, **call} for index, call in enumerate(delta["tool_calls"])]
                 events = [{
                     "id": "capture-response", "object": "chat.completion.chunk",
@@ -155,6 +156,17 @@ def main() -> int:
                     "choices": [{"index": 0, "delta": {}, "finish_reason": payload["choices"][0]["finish_reason"]}],
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
                 }]
+                if payload["choices"][0]["finish_reason"] == "stop" and not delta.get("tool_calls"):
+                    # A colon emitted alone looks like an SSE comment to
+                    # Hermes's text-display buffer. Completion/usage metadata
+                    # on the final text delta must still be consumed.
+                    events = [events[0], {
+                        **events[0], "choices": [{"index": 0,
+                            "delta": {"content": ":"}, "finish_reason": None}],
+                    }, {
+                        **events[1], "choices": [{"index": 0,
+                            "delta": {"content": " bounded."}, "finish_reason": "stop"}],
+                    }]
                 data = ("".join(f"data: {json.dumps(event)}\n\n" for event in events)
                         + "data: [DONE]\n\n").encode()
                 content_type = "text/event-stream"
@@ -322,7 +334,7 @@ def main() -> int:
                     assert len(resumed_requests) == 1
                     resumed_messages = resumed_requests[0]["messages"]
                     assert [m["content"] for m in resumed_messages if m["role"] == "system"] == [revised_prompt]
-                    assert any(m.get("content") == "capture complete" for m in resumed_messages), "resume discarded prior conversation"
+                    assert any(m.get("content") == "capture complete: bounded." for m in resumed_messages), "resume discarded prior conversation"
                     assert "DISPOSABLE_PREFLIGHT_MARKER" not in json.dumps(resumed_messages)
                     assert "Compacting context" not in resumed.stdout + resumed.stderr
                     with sqlite3.connect(database) as db:
@@ -451,6 +463,8 @@ def main() -> int:
             "provider_request_captured": True,
             "production_diagnostic_matches_received_request": True,
             "production_response_capture_correlated": True,
+            "terminal_metadata_survives_sse_like_prose": True,
+            "tool_deltas_survive_sse_like_prose": True,
             "exact_single_system_message": True,
             "recompiled_prompt_replaces_saved_prompt_on_real_resume": True,
             "resume_preserves_conversation": True,
