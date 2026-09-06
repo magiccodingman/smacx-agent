@@ -62,5 +62,21 @@
     "control_image": "sha256:c9c8d40fcfe41067f9855544fc0743dbb31536d5f81230e82a5c6c1717838f9c",
     "worker_image": "sha256:a5d9e9c62b92d95b87dcbdc61f2911c39d9ba4f2bedc7dbc18834616c5c6d05f",
     "classification": "matched saved game and actions, native replay; revised lifetime predicates change semantic revision"
+  },
+  "isolated_live_regression": {
+    "script": "scripts/control_worker_mcp_live_test.py",
+    "passed": true,
+    "active_popup_paths": [
+      "diplomatic gift",
+      "technology purchase",
+      "loan",
+      "Council ballot"
+    ],
+    "managed_tools": 15,
+    "repeated_checkpoint_recovery": true,
+    "native_identity_restart": true,
+    "provider_inference": false,
+    "trusted_response_hook_simulated": true,
+    "autonomous_acceptance": "pending"
   }
 }
