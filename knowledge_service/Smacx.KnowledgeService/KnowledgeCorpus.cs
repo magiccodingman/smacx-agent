@@ -204,17 +204,20 @@ public sealed class KnowledgeCorpus(
             .Select(document =>
             {
                 var normalizedTitle = NormalizeTitle(document.Title);
-                var words = normalizedTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var words = LexicalTokens(document.Title).ToArray();
                 return new
                 {
                     Document = document,
                     Exact = normalizedTitle == normalized,
+                    NamedPhrase = normalizedTitle.Length > 0 &&
+                        (" " + normalized + " ").Contains(" " + normalizedTitle + " ", StringComparison.Ordinal),
                     TitleTerms = lexicalTokens.Count(token => words.Contains(token, StringComparer.Ordinal)),
                     Fused = fused.GetValueOrDefault(document.Id),
                 };
             })
-            .Where(item => item.Exact || item.TitleTerms > 0 || item.Fused.Hit is not null)
+            .Where(item => item.Exact || item.NamedPhrase || item.TitleTerms > 0 || item.Fused.Hit is not null)
             .OrderByDescending(item => item.Exact)
+            .ThenByDescending(item => item.NamedPhrase)
             .ThenByDescending(item => item.TitleTerms)
             .ThenByDescending(item => item.Fused.Score)
             .Take(Math.Clamp(request.Top, 1, 30))

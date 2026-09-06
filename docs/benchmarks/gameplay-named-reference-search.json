@@ -1,0 +1,24 @@
+{
+  "trigger": {
+    "turn": 19,
+    "objective": "Compare Centauri Ecology and Planetary Networks for a technology trade",
+    "delivered_titles": [
+      "Centauri Ecology",
+      "Ecology (Advanced)",
+      "The Network Backbone",
+      "Centauri Preserve"
+    ],
+    "missing_named_document": "Planetary Networks",
+    "exact_name_control_lookup": "found Planetary Networks as first result, with body and Discover-oriented category"
+  },
+  "classification": "confirmed named-reference retrieval ranking weakness; corpus document exists",
+  "change": "Apply consistent lexical stemming to titles and queries; rank complete normalized document names mentioned in a bounded query before partial-term and hybrid candidates",
+  "validation": {
+    "knowledge_service": "9/9 pass including named two-technology long queries, poor semantic ordering, topic exclusion and 256-token evidence bound"
+  },
+  "limitations": [
+    "Document retrieval does not prove all technology effects/prerequisites are covered by its prose",
+    "No hidden match data or strategic policy added",
+    "Deployed exact original-query comparison pending"
+  ]
+}

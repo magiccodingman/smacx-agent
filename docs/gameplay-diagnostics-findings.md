@@ -51,3 +51,7 @@ The production audit subsequently verified a narrower semantic problem: AI - 4 r
 ### Turn 16→17 handoff contradiction
 
 Classification: **confirmed harness response bug**, behavioral contribution not isolated. Actual provider request `fd51506abb8249fe81d28f1dec40a541` contained both a required no-more-tools handoff and `required_next.tool=smac_decision`; sovereign followed the latter. The immediate receipt was present, so later state-result compaction does not prove omission at the decision point. `_attach_turn_handoff` now makes the stop/message next step authoritative for explicit and automatic transitions. Regression and live acceptance evidence: `benchmarks/gameplay-handoff-next-step.json`.
+
+### Named technology lookup at turn 19
+
+Classification: **confirmed retrieval ranking weakness**. The sovereign requested both Centauri Ecology and Planetary Networks; only the former reached its evidence and it explicitly cited the missing latter when rejecting a trade. Exact-name control lookup finds the missing document. Query/title stemming differed, and full names inside the question lacked precedence. The scoped rank repair has 9/9 knowledge-service regression coverage. This does not establish that Datalinks prose exhaustively describes all unlocks; nor does it validate the sovereign's separate assumption that sharing a technology means losing it. See `benchmarks/gameplay-named-reference-search.json`.
