@@ -60,5 +60,32 @@
     "Original native stall cause",
     "Live native failure capture if recurrence",
     "Full autonomous game"
-  ]
+  ],
+  "turn59_recurrence": {
+    "incident_id": "incident-9e79a0f5a72f44688b2e3bf28e650174",
+    "invocation_id": "c619a91e17fe4fccb4ebe226606adbf9",
+    "action_id": 3,
+    "unit": "own-unit-12",
+    "origin": 1815,
+    "target": 1735,
+    "last_status": "pending",
+    "checkpoint": "checkpoint-121a593f3143406fa63b726a10dbd64d",
+    "capture_event": "6b728d5c08804279866804b08001ea91",
+    "native_exception_reports": [
+      {
+        "location": "prepared",
+        "status": "absent"
+      },
+      {
+        "location": "imported",
+        "status": "absent"
+      }
+    ],
+    "worker_running": true,
+    "oom_killed": false,
+    "automatic_recovery": "verified59 restored",
+    "matched_replay": "same guarded move after59 restore completed with native_combat_resolved; original outage not reproduced",
+    "manual_replay_discarded": "coherent59 recovery",
+    "next_diagnostic": "Operator watcher pauses recovery on first failed health probe to capture live native thread stacks; a failed probe alone is not a confirmed hang."
+  }
 }
