@@ -457,3 +457,31 @@ episode, acquires the next episode, then finishes passive presentation before
 returning an actionable turn. A repeat on already-advanced arbitrary console state
 did not auto-end and is not acceptance evidence. The complete fresh native driver
 must pass; its prior partial result is retained rather than relabeled successful.
+
+## Diagnostics-first review coverage matrix
+
+Current status is evidence-specific. Controlled native fixtures establish the
+managed executable chain for those scenarios; they do not establish autonomous
+use or a completed campaign. Historical gaps cannot be reconstructed retroactively.
+
+| Review | Capability / finding | Acceptance evidence | Remaining gate |
+| --- | --- | --- | --- |
+| 1 | Named causal sovereign/MCP/native calls, choices, receipts and latency | Real MCP actor streams and native invocation receipts; installed entry-point compression/CLI regression | Deployed autonomous request-to-effect review |
+| 2 | Specialist/reference lifecycle, queries, publication and attention | Real child-process supervisor contracts; actor/mission/attempt trace metadata; compressed exports | Observe commissioning and result delivery/use in the acceptance campaign; do not infer use from acknowledgement |
+| 3 | Typed cognition persistence and immediate visibility | Production writer + canonical journal + actual runtime/Hermes assembly; handoff/resume/GC/restart and injected post-journal failure | Deployed continuity (post-intent native recovery now passes) |
+| 4 | Final provider request, runtime envelope and omission audit | Actual Hermes process capture equals controlled receiving provider in four profiles; journal selection inventory and GC metrics | Deployed requests and live/archive bundle inspection |
+| 5 | Bounded current-turn reconciliation, including automatic closure | Actual native 1→2 transition only after explicit same-record deferral; rejected Skip changes neither readiness nor decision consumption | Fresh driver with handoff/settling and recovery passes; deployed autonomous review remains |
+| 6 | Handoff prose distinguished from typed persistence | Retained run has no successful typed-intent writes; explicit operational prompt education; independent typed runtime state | Autonomous use after prompt recompilation |
+| 7 | Artifact uncertainty attribution | No retained investigation/reference invocation; no evidence of failed specialist publication | Observe bounded lookup when a material mechanic is uncertain |
+| 8 | Colony/Scout production and citizen workflow | Historical catalog/receipts classified; native retool/hurry/queue/citizen and completion checks | Earlier unlogged states remain unproven; autonomous production reasoning review |
+| 9 | Ready-unit focus preserves management access | Nonmandatory focus metadata; native management effects with units present; typed review | Watch for focus tunnel or repeated guard friction |
+| 10 | Bounded force/order/production summaries | Runtime/Huge-map contracts with current-only counts, omissions and overlapping-role labels | Inspect the deployed provider envelope and production decisions |
+| 11 | Named blind-research semantics | Native selected Explore flags, legacy zero and hidden-target status verified | Confirm interpretation in autonomous play |
+| 12 | Discovery versus physical change | Discovery aggregation/native observation contracts; explicit knowledge-refresh/change-basis qualifiers | Inspect autonomous interpretation; no unsupported claims of zero physical growth |
+| 13 | Spatial fact provenance | Historical estimates lack route calls; future exact tool arguments/results retained | Compare any suspect estimate with its actual query/evidence |
+| 14 | Tool/runtime failure audit | Pre-MCP rejection capture, typed error metrics, runtime failure events, unmatched provider-request metric | Deployed failures and operational incident export; one intermittent cold-start cause unresolved |
+| 15 | Emitted text/reasoning with actor separation | Actual Hermes response capture; controlled SSE reasoning/completion and transport tests | Inspect live sovereign/specialist streams; hidden/unemitted reasoning is unavailable |
+| 16 | Campaign diagnostics download | Scope, compressed/corrupt-tail, immutable-prefix, retention and constrained helper contracts; portal 72/72 including authorization | Deployed administrator download, responsive browser check, live/archive consistency and overhead |
+| 17 | Minimal prompt/tool education | Doctrine/schema contracts; exact operational prompt 1,324 Qwen tokens; live prefix reuse evidence | Explicit recompile on resume and actual provider hash verification |
+| 18 | Evidence-based attribution | `gameplay-diagnostics-findings.md` and sanitized retained baseline; model weakness not inferred from missing evidence | Full-game behavioral diagnosis after delivery/execution is proven |
+| 19 | Full accepted mission and rerun package | Reviewable commits and checkpoint evidence on PR #55 | Integrated acceptance, deployment, monitoring/repair loop and diagnostically trustworthy completed game |

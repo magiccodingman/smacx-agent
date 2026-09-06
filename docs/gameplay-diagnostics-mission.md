@@ -285,3 +285,20 @@ episode, acquires the next episode, then finishes passive presentation before
 returning an actionable turn. A repeat on already-advanced arbitrary console state
 did not auto-end and is not acceptance evidence. The complete fresh native driver
 must pass; its prior partial result is retained rather than relabeled successful.
+
+## Integrated native driver passed
+
+The fresh complete driver passes, including actual automatic turn advancement,
+explicit episode handoff before next-turn presentation, actionable next turn,
+post-intent checkpoint/park/recovery, native unit identity continuity, journaled
+plans/conflicts/assignments, and rejection of old-timeline watches and old-session
+choices. Sanitized checkpoint evidence now records the full terminal pass. Optional
+autonomous Hermes/specialist stages were not enabled; separate actual-Hermes wire
+capture is proved against a controlled provider, not autonomous gameplay.
+
+Before deployment, a fresh read-only reference audit found that content-enabled
+search bypasses the hybrid/title ranking used by metadata search. The same Alien
+Artifacts query returns relevant articles in metadata mode and unrelated results
+in content mode, despite the installed help containing the mechanic. This confirmed
+retrieval-path gap is being repaired; it is not retroactive proof that the old
+sovereign attempted research (the retained run contains no such invocation).

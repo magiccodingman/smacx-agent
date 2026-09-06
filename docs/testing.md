@@ -309,6 +309,31 @@ SMACX_TEST_HERMES_IMAGE=smacx-agent-harness:test \
   PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
 ```
 
+If host Python lacks `mcp`, run the driver from the control image. Unlike the
+ordinary Python contracts, this driver also needs the Docker CLI/socket and host
+network access to its ephemeral loopback endpoints:
+
+```bash
+docker run --rm --no-healthcheck --user 0 --network host \
+  --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v /usr/bin/docker:/usr/bin/docker:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  -e SMACX_TEST_GAME_SOURCE=/absolute/host/path/to/your/game \
+  -e SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+  -e SMACX_TEST_MCP_IMAGE=smacx-agent-control:test \
+  -e SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+  -e SMACX_TEST_HERMES_IMAGE=smacx-agent-harness:test \
+  smacx-agent-control:test scripts/control_worker_mcp_live_test.py
+```
+
+Validate packaged imports before launching: source-mounted contracts cannot prove
+that newly added modules were copied into the image. The control Dockerfile now
+imports the installed MCP/intent/export modules during its build. For failed-run
+inspection, `SMACX_TEST_KEEP_ON_FAILURE=1` retains test resources and pauses the
+test control service; preserve evidence and remove only that run's labeled
+resources after inspection. This flag does not pause every native container.
+
 To add the managed-provider gate, also set `SMACX_TEST_PROVIDER_URL` and
 `SMACX_TEST_PROVIDER_MODEL` through the local environment. The provider run is
 successful only after a journal-observed semantic revision changes; merely

@@ -1,7 +1,9 @@
 {
-  "full_run_complete": false,
-  "image": "diagnostics-6904082",
-  "evidence": "controlled running native through managed MCP; provider inference not claimed",
+  "full_run_complete": true,
+  "driver_commit": "9bc69f7",
+  "control_harness_image": "diagnostics-f012532",
+  "worker_image": "diagnostics-3bd6c1d",
+  "evidence": "controlled native managed MCP; optional autonomous provider/specialist stages not enabled",
   "checkpoints": [
     {
       "event": "counterfactual_checkpoint",
@@ -38,8 +40,8 @@
           "production_project",
           "production_interrupt"
         ],
-        "milestone_watch_id": "watch-23c5bf8083b64f498ff34bf27d976e85",
-        "plan_id": "plan-b002dcd3342d43c5adaf3d2042d277a7"
+        "milestone_watch_id": "watch-dac7ba3198824ea89970c71c1cef81cc",
+        "plan_id": "plan-91e3228d118e4e7bad3d5e15480cdc4c"
       }
     },
     {
@@ -62,6 +64,8 @@
         "turn_before": 1,
         "turn_after_receipt": 2,
         "auto_transition_observed": true,
+        "next_turn_actionable": true,
+        "turn_handoff_before_next_turn_interactions": true,
         "native_execution_status": "accepted"
       }
     },
@@ -105,9 +109,9 @@
         "owned_base_count": 512,
         "candidate_count": 32,
         "radius_squares": 21,
-        "wall_ms": 232.636,
-        "probe_gap_ms": 226.558,
-        "receipt_bytes": 170030,
+        "wall_ms": 235.427,
+        "probe_gap_ms": 246.322,
+        "receipt_bytes": 170428,
         "native_elapsed_ms": 0
       }
     },
@@ -116,10 +120,70 @@
       "payload": {
         "owned_base_input_rows": 511,
         "nominated_sites": 4,
-        "wall_ms": 250.119,
-        "probe_gap_ms": 226.764,
-        "receipt_bytes": 50834,
-        "native_elapsed_ms": 0
+        "wall_ms": 260.7,
+        "probe_gap_ms": 242.133,
+        "receipt_bytes": 52464,
+        "native_elapsed_ms": 4
+      }
+    },
+    {
+      "event": "intent_recovery",
+      "payload": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      }
+    },
+    {
+      "event": "pass",
+      "payload": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 222.882,
+          "maximum_page_bytes": 139521,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 2744,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 212.401,
+          "enumeration_probe_gap_ms": 215.515,
+          "enumeration_payload_bytes": 8670,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 230.094,
+          "exact_probe_gap_ms": 217.403,
+          "exact_payload_bytes": 288,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
       }
     }
   ]
