@@ -1,0 +1,25 @@
+{
+  "live_request_id": "033c93ab425346ae9b810c9aac3d8f05",
+  "live_turn": 29,
+  "sovereign_statement": "declined to persist strategic intent because it assumed observed_revision required an unavailable memory/database revision",
+  "actual_wire": {
+    "decision_id": "decision-aab5344345964d5293c39fcf1c682420",
+    "native_guard_delivered_at": "smac_decision.identity.revision",
+    "revision": "14083237302485968098",
+    "session_id": "session-147f5a7347f74cb891427dc1e6970ac4",
+    "old_description": "fresh snapshot guard without argument mapping"
+  },
+  "classification": "tool-affordance weakness; guard was delivered but its source was not explicitly mapped; no failed native write or lost committed cognition established",
+  "repair": "read/write tool descriptions explicitly map match_id/session_id and observed_revision to the latest decision identity; native guard is not a database revision or journal hash",
+  "tests": {
+    "production_decision_to_guarded_write": true,
+    "synchronous_journal_visibility": true,
+    "stale_native_revision_rejected_without_write": true,
+    "actual_mcp_schema_maps_source": true,
+    "managed_tools": 15,
+    "qwen_schema_tokens": 4550,
+    "schema_conservative_tokens": 7131,
+    "qwen_prompt_tokens": 1338
+  },
+  "autonomous_write_acceptance": "pending deployment"
+}

@@ -585,3 +585,5 @@ The isolated full control/worker/MCP live regression passed on the popup-lifetim
 `observation_feed_alignment_test.py` (container MCP environment) reproduces a late non-contact event causing identity churn, verifies the same stationary ref after catch-up/restart, preserves actual loss/reappearance separation and checks bounded conservative behavior under continuous native change.
 
 The popup lifetime test also verifies TOPMENU’s live SetupWin source ownership, wrong-vtable rejection and expired-modal rejection; this guards the LAN startup seam in addition to passive technology notices.
+
+`memory_guard_discovery_test.py` (container MCP environment) copies a real production decision identity into the guarded memory tool, verifies synchronous journal state, rejects a stale native revision without a write, and checks the issued MCP schema maps the guard source explicitly. Native responses are controlled adapters; autonomous usage remains a separate gate.
