@@ -23,7 +23,7 @@ def main():
         store = SmacxStore(root/'state.sqlite3')
         control = ControlPlane(store, root/'secrets')
         store.create_match(match_id='match-control-diagnostic', display_name='Test', mode='singleplayer')
-        def fail(_):
+        def fail(_, **kwargs):
             raise WorkerManagerError('checkpoint_test_failure:private-fixture-detail')
         server = ControlHTTPServer(('127.0.0.1',0), control, root,
             worker_manager=SimpleNamespace(recover_match=fail), service_token='fixture-service')
@@ -45,7 +45,7 @@ def main():
             assert 'private-' not in json.dumps(rows) and 'fixture-service' not in json.dumps(rows)
             metrics=Metrics();metrics.add(rows[0])
             assert metrics.as_dict()['failure_observations_by_layer']=={'control_operation_failed:checkpoint_test_failure':1}
-            server.worker_manager.recover_match = lambda _: (_ for _ in ()).throw(
+            server.worker_manager.recover_match = lambda _, **kwargs: (_ for _ in ()).throw(
                 WorkerManagerError('checkpoint_waiting_for_quiescence'))
             try: urlopen(request)
             except HTTPError as exc: assert exc.code == 409
@@ -53,6 +53,16 @@ def main():
             assert rows[-1]['kind']=='control_operation_deferred'
             metrics.add(rows[-1])
             assert metrics.as_dict()['failure_observations_by_layer']=={'control_operation_failed:checkpoint_test_failure':1}
+            refresh_requests=[]
+            def recover(match_id, *, refresh_runtime=False):
+                refresh_requests.append((match_id,refresh_runtime))
+                return {'ok':True}
+            server.worker_manager.recover_match=recover
+            for body,expected in [({},False),({'refresh_runtime':True},True),
+                                  ({'refresh_runtime':'true'},False),({'refresh_runtime':False},False)]:
+                with urlopen(Request(request.full_url,data=json.dumps(body).encode(),headers=headers)) as response:
+                    assert json.load(response)['ok']
+                assert refresh_requests[-1]==('match-control-diagnostic',expected)
         finally:
             server.shutdown();server.server_close();thread.join(2)
     print(json.dumps({'passed':True,'authenticated_http_failure_captured':True,

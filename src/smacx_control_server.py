@@ -1073,7 +1073,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         match_id, str(body.get("incident_id", "")),
                     )
                 else:
-                    result = manager.recover_match(match_id)
+                    result = manager.recover_match(
+                        match_id, refresh_runtime=body.get("refresh_runtime") is True,
+                    )
                 self.server.control.audit(
                     auth["admin_id"], f"match.{action}", "match", match_id,
                     "success", {"managed_recovery": True}, self.client_address[0],
