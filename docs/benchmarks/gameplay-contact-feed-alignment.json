@@ -1,0 +1,34 @@
+{
+  "live_observation": {
+    "turns": [
+      25,
+      26,
+      27
+    ],
+    "location_ref": "location-1576",
+    "unit_name": "Fungal Tower",
+    "native_key_private": true,
+    "canonical_ref": "contact-episode-5f07ec3a1ed1b1af30fc5c72bccef69e",
+    "example_cursors": [
+      129,
+      130
+    ],
+    "observed_behavior": "canonical ref removed/replaced by temporary snapshot ref, then canonical ref reappeared; repeated critical attention",
+    "checkpoint_id": "checkpoint-7916a0e7ef0642f391c72a5f4cfd080a",
+    "checkpoint_turn": 28
+  },
+  "root_cause": "late native feed events make the snapshot cut unaligned; conservative snapshot identity reset publishes temporary refs before the next complete feed restores the existing visible episode",
+  "before_repair_regression": "unrelated turn_started during collection changed an unchanged foreign contact ref",
+  "repair": "bounded durable feed catch-up and cut recheck; reuse snapshot only with same revision, empty complete feed and exact sequence; otherwise recollect within existing three attempts; unmatched final cut remains conservative",
+  "tests": {
+    "stationary_contact_preserved": true,
+    "genuine_loss_reappearance_new_identity": true,
+    "restart_no_second_change": true,
+    "continuous_activity_bounded_conservative": true,
+    "cross_publication_episodes": true,
+    "batched_publication_three_crash_windows": true,
+    "publication_transaction_22_crash_cases": true,
+    "fair_play_differential": true
+  },
+  "live_after_deployment": "pending"
+}

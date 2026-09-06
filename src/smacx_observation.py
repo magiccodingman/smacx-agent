@@ -275,6 +275,34 @@ class ObservationCollector:
                 self._contact_identity_reset = True
         return stage
 
+    def _native_contact_evidence(self) -> dict[str, Any]:
+        """Private correlation facts rebuilt from the durable feed stage."""
+        return {
+            "_continuous_visible_contact_moves": {
+                key: list(value) for key, value in self._continuous_contact_moves.items()
+            },
+            "_contact_identity_reset": self._contact_identity_reset,
+            "_broken_contact_handles": sorted({
+                f"vehicle-handle-{item['subject_a']}"
+                for item in self._pending_native_events
+                if item.get("native_kind") == "visible_unit_lost"
+                and isinstance(item.get("subject_a"), int)
+            }),
+            "_confirmed_destroyed_handles": sorted({
+                f"vehicle-handle-{item['subject_a']}"
+                for item in self._pending_native_events
+                if item.get("native_kind") == "visible_unit_destroyed"
+                and isinstance(item.get("subject_a"), int)
+            }),
+        }
+
+    def _snapshot_matches_feed_cut(self, bundle: Mapping[str, Any]) -> bool:
+        probe = self._bridge("observation_feed", after_sequence=self.native_after_sequence, limit=1)
+        return (probe.get("ok") is True and not probe.get("events")
+                and not probe.get("has_more") and probe.get("continuity") == "complete"
+                and int(probe.get("next_sequence", -1)) == self.native_after_sequence
+                and str(probe.get("action_revision") or "") == str(bundle.get("action_revision") or ""))
+
     def _bridge(self, operation: str, **kwargs: Any) -> dict[str, Any]:
         self._collection_metrics["bridge_calls"] = int(
             self._collection_metrics.get("bridge_calls", 0)
@@ -467,22 +495,7 @@ class ObservationCollector:
             "action_revision": revision, "map": summary.get("map", {}),
             "own_faction_ref": f"faction-{summary.get('faction_id')}",
             "global": global_objects, **collected,
-            "_continuous_visible_contact_moves": {
-                key: list(value) for key, value in self._continuous_contact_moves.items()
-            },
-            "_contact_identity_reset": self._contact_identity_reset,
-            "_broken_contact_handles": sorted({
-                f"vehicle-handle-{item['subject_a']}"
-                for item in self._pending_native_events
-                if item.get("native_kind") == "visible_unit_lost"
-                and isinstance(item.get("subject_a"), int)
-            }),
-            "_confirmed_destroyed_handles": sorted({
-                f"vehicle-handle-{item['subject_a']}"
-                for item in self._pending_native_events
-                if item.get("native_kind") == "visible_unit_destroyed"
-                and isinstance(item.get("subject_a"), int)
-            }),
+            **self._native_contact_evidence(),
         }
         # All native rows are already perspective-filtered.  The explicit
         # entitlement pass is retained as an independently testable boundary
@@ -1228,10 +1241,37 @@ class ObservationCollector:
         # State may move while bounded pages are drained. Retry a small fixed
         # number; never wait inside the native request path.
         last_error: Exception | None = None
-        for _ in range(3):
+        for attempt in range(3):
             try:
                 bundle = self._bundle()
                 self._preserve_project_report_history(bundle, current)
+                stable_cut = self._snapshot_matches_feed_cut(bundle)
+                if not stable_cut and attempt < 2:
+                    # Events may arrive after the initial drain but before the
+                    # coherent snapshot. Catch up through the durable stage,
+                    # then recollect against that cut. Otherwise even an
+                    # unrelated turn event forces temporary foreign identities
+                    # which revert on the next quiet publication. Keep the
+                    # existing conservative unmatched-cut fallback when the
+                    # bounded attempts cannot settle; never infer continuity.
+                    late = self._drain_native_feed()
+                    for metric, field in (("native_feed_pages", "drained_pages"),
+                                          ("native_events_drained", "drained_event_count")):
+                        self._collection_metrics[metric] += int(late.get(field) or 0)
+                    if late.get("continuity") == "incomplete":
+                        feed["continuity"] = "incomplete"
+                        self._collection_metrics["native_continuity_incomplete"] = True
+                    self._collection_metrics["snapshot_feed_alignment_retries"] = int(
+                        self._collection_metrics.get("snapshot_feed_alignment_retries", 0)) + 1
+                    # Reuse the already coherent snapshot only if a fresh
+                    # non-consuming probe proves the same revision and no
+                    # unread event. Rebind its private contact evidence to the
+                    # newly staged cut; this avoids another Huge-map scan.
+                    stable_cut = self._snapshot_matches_feed_cut(bundle)
+                    if stable_cut:
+                        bundle.update(self._native_contact_evidence())
+                        break
+                    continue
                 break
             except ObservationCollectorError as exc:
                 last_error = exc
@@ -1260,13 +1300,9 @@ class ObservationCollector:
             events=stage["events"], gaps=gaps,
             owned_keys={str(row.get("native_observation_key") or "vehicle-handle-"+str(row.get("own_unit_ref") or "").removeprefix("own-unit-"))
                         for row in bundle.get("units", ()) if row.get("owned")})
-        # This read does not consume or acknowledge later events. An empty,
-        # complete feed proves the cut stayed stable through snapshot collection.
-        probe = self._bridge("observation_feed", after_sequence=self.native_after_sequence, limit=1)
-        stable_cut = (probe.get("ok") is True and not probe.get("events") and not probe.get("has_more")
-                      and probe.get("continuity") == "complete"
-                      and int(probe.get("next_sequence", -1)) == self.native_after_sequence
-                      and str(probe.get("action_revision") or "") == str(bundle.get("action_revision") or ""))
+        # The final non-consuming probe above proves whether this snapshot and
+        # all staged temporal events share a cut. Unread future events still
+        # invalidate identity binding exactly as before.
         bundle["_native_temporal_authority"] = True
         bundle["_temporal_contact_refs"] = {}
         if not stable_cut:
