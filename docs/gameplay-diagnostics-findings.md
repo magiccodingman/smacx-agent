@@ -55,3 +55,7 @@ Classification: **confirmed harness response bug**, behavioral contribution not 
 ### Named technology lookup at turn 19
 
 Classification: **confirmed retrieval ranking weakness**. The sovereign requested both Centauri Ecology and Planetary Networks; only the former reached its evidence and it explicitly cited the missing latter when rejecting a trade. Exact-name control lookup finds the missing document. Query/title stemming differed, and full names inside the question lacked precedence. The scoped rank repair has 9/9 knowledge-service regression coverage. This does not establish that Datalinks prose exhaustively describes all unlocks; nor does it validate the sovereign's separate assumption that sharing a technology means losing it. See `benchmarks/gameplay-named-reference-search.json`.
+
+### Working-set private action selectors at turn 20
+
+Classification: **confirmed provider projection bug**. The live managed memory response included raw selectors in historical own-action choice_parameters because working_set returned before the shared provider filter. Other read paths also did not strip all native entity selector names. The repair filters every managed memory view and performs managed search matching after filtering; it leaves the authoritative journal untouched and does not infer historical public identity from current native slots. This observation proves internal selector exposure, not a hidden enemy-state disclosure. Evidence and recovery tests are in `benchmarks/gameplay-memory-provider-filter.json`.

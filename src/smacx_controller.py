@@ -1138,10 +1138,28 @@ def read_platform_memory(
         store = _store()
         journal = _journal()
         identity = _platform_scope_identity(scope, session_id or None)
+
+        def provider_safe(value: Any, *, choice_parameters: bool = False) -> Any:
+            if isinstance(value, Mapping):
+                result = {}
+                for key, item in value.items():
+                    key = str(key)
+                    if key.startswith("native_") or key in {
+                        "engine_id", "hidden_id", "subject_a", "subject_b", "direction_id",
+                        "chassis_id", "weapon_id", "armor_id", "reactor_id", "ability_id_1", "ability_id_2",
+                    } or re.search(r"(?:^|_)(?:unit|base|tile|prototype)_ids?$", key) \
+                            or (choice_parameters and key == "id"):
+                        continue
+                    result[key] = provider_safe(item, choice_parameters=choice_parameters or key == "choice_parameters")
+                return result
+            if isinstance(value, list):
+                return [provider_safe(item, choice_parameters=choice_parameters) for item in value]
+            return value
+
         if action == "working_set":
             memory = _journal_working_state(scope)
             journal.project_state(scope, memory)
-            return {"ok": True, "identity": identity, "memory": memory,
+            return {"ok": True, "identity": identity, "memory": provider_safe(memory),
                     "authority": "campaign_journal", "sqlite_role": "query_projection"}
         try:
             offset = int(cursor.removeprefix("offset-")) if cursor else 0
@@ -1169,15 +1187,6 @@ def read_platform_memory(
                 "truncated": consumed < len(rows), "total_count": len(rows),
             }
 
-        def provider_safe(value: Any) -> Any:
-            if isinstance(value, Mapping):
-                return {str(key): provider_safe(item) for key, item in value.items()
-                        if not str(key).startswith("native_") and str(key) not in
-                        {"engine_id", "hidden_id", "subject_a", "subject_b"}}
-            if isinstance(value, list):
-                return [provider_safe(item) for item in value]
-            return value
-
         def safe_search_results(*, search_query: str,
                                 kinds: Sequence[str], search_limit: int) -> list[dict[str, Any]]:
             """Sanitize journal search bodies before any provider-visible rendering.
@@ -1189,7 +1198,7 @@ def read_platform_memory(
             results: list[dict[str, Any]] = []
             for item in journal.search(
                     scope, search_query, document_kinds=tuple(kinds),
-                    limit=min(max(int(search_limit), 1), 100)):
+                    limit=min(max(int(search_limit), 1), 100), record_transform=provider_safe):
                 try:
                     parsed = json.loads(str(item.get("body") or "{}"))
                 except json.JSONDecodeError:

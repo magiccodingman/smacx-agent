@@ -1034,6 +1034,7 @@ class CampaignJournal:
     def search(
         self, scope: MemoryScope, query: str, *,
         document_kinds: tuple[str, ...] | list[str] = (), limit: int = 20,
+        record_transform: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Run a bounded lexical search over the active canonical timeline."""
         terms = [term.casefold() for term in re.findall(r"[\w'-]+", str(query), re.UNICODE)[:16]]
@@ -1054,6 +1055,11 @@ class CampaignJournal:
             if allowed and document_kind not in allowed and kind not in allowed:
                 return
             record = value.get("record") if isinstance(value.get("record"), Mapping) else value
+            # Managed readers filter private diagnostics before matching, so
+            # hidden fields cannot influence returned membership or ranking.
+            # Internal journal reconstruction/search keeps the original record.
+            if record_transform is not None:
+                record = record_transform(record)
             title = next((str(record.get(name)) for name in (
                 "title", "topic", "section", "subject", "actor_id", "key", "message_uid",
             ) if record.get(name)), f"{document_kind} {stable_key}")
