@@ -25,9 +25,42 @@
     "doctrine_compatibility_adapter": "passed"
   },
   "pending": [
-    "matched native post-fix replay",
-    "active popup interaction regression",
+    "complete active-popup and managed-action live regression",
     "invalid_tile_id origin",
-    "sustained full-game acceptance"
-  ]
+    "autonomous post-fix replay and sustained full-game acceptance"
+  ],
+  "live_post_fix": {
+    "session_id": "session-321a1b5382014d49b3868623a2d5ff46",
+    "timeline_id": "timeline-restore-5d8a459d3623408cbbac0b08",
+    "checkpoint": "checkpoint-0d35c5d505a34342b5a31dd1fede56ba",
+    "replayed_actions": [
+      "end_turn22",
+      "auto_explore_unit23",
+      "end_turn24",
+      "advance_technology_presentation25"
+    ],
+    "presentation_revision_after_lifetime_qualification": "4417576394864219457",
+    "presentation_notice": "WEDEVELOP",
+    "technology": "Social Psych",
+    "acknowledgement_ok": true,
+    "successful_snapshot_probes_ms": [
+      24.73,
+      2.01,
+      2.19,
+      2.29,
+      2.22
+    ],
+    "resulting_interaction": "turn",
+    "owned_technologies": [
+      "Biogenetics",
+      "Social Psych",
+      "Centauri Ecology"
+    ],
+    "blind_next_target_hidden": true,
+    "next_research_cost": 50,
+    "next_research_accumulated": 0,
+    "control_image": "sha256:c9c8d40fcfe41067f9855544fc0743dbb31536d5f81230e82a5c6c1717838f9c",
+    "worker_image": "sha256:a5d9e9c62b92d95b87dcbdc61f2911c39d9ba4f2bedc7dbc18834616c5c6d05f",
+    "classification": "matched saved game and actions, native replay; revised lifetime predicates change semantic revision"
+  }
 }
