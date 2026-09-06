@@ -20,6 +20,7 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener
 from smacx_generation import normalize_generation_settings, openai_extra_body
 from smacx_context_policy import (
     HERMES_COMPRESSION_TARGET_RATIO, HERMES_COMPRESSION_THRESHOLD_RATIO,
+    hermes_compression_trigger_tokens,
 )
 
 
@@ -201,6 +202,9 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "checkpoint_required": False,
             "progress_notices": False,
             "threshold": HERMES_COMPRESSION_THRESHOLD_RATIO,
+            # Hermes applies a 75% small-window floor even to an explicit
+            # ratio. Its supported absolute cap preserves our shared policy.
+            "threshold_tokens": hermes_compression_trigger_tokens(context_length or 65536),
             "target_ratio": HERMES_COMPRESSION_TARGET_RATIO,
             "protect_last_n": 20,
             "protect_first_n": 3,

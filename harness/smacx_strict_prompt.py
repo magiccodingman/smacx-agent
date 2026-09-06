@@ -511,7 +511,7 @@ def _install() -> None:
     original_sanitize = run_agent.AIAgent._sanitize_api_messages
     logger = logging.getLogger("smacx.context")
 
-    def compact_managed_context(messages):  # noqa: ANN001
+    def compact_managed_context(messages, *, include_runtime=True):  # noqa: ANN001
         # Hermes's sanitizer may return a shallow list whose message mappings
         # are still the durable transcript objects. All semantic GC and trusted
         # runtime augmentation are provider-wire transformations only.
@@ -717,9 +717,34 @@ def _install() -> None:
             "state_frames": compacted_frames, "episode_boundaries": compacted_boundaries,
             "historical_tool_calls": pruned_tool_calls, "historical_tool_results": pruned_tool_results,
         }, actor="runtime-context-builder", correlation={"episode_id": _episode_id(filtered)})
-        return _append_runtime_context(filtered)
+        return _append_runtime_context(filtered) if include_runtime else filtered
 
     run_agent.AIAgent._sanitize_api_messages = staticmethod(compact_managed_context)
+
+    # Resume/idle preflight runs before the send-time sanitizer. Counting the
+    # durable transcript there triggers lossy generic summarization of state
+    # that semantic GC would remove from the wire. Reuse the same copy-only
+    # projection without acquiring an attention lease or fetching game state.
+    import agent.turn_context as turn_context  # type: ignore
+    from smacx_runtime_context import RUNTIME_BUDGETS
+
+    def managed_preflight_tokens(agent, messages, system_prompt):  # noqa: ANN001,ARG001
+        projected = compact_managed_context(messages, include_runtime=False)
+        context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
+        tier = "64k" if context_length < 131072 else "256k"
+        estimate = turn_context.estimate_request_tokens_rough(
+            projected, tools=getattr(agent, "tools", None) or None,
+        ) + RUNTIME_BUDGETS[tier]["total"]
+        from smacx_diagnostics import record
+        record("semantic_preflight", {
+            "estimated_request_tokens": estimate,
+            "runtime_token_reserve": RUNTIME_BUDGETS[tier]["total"],
+            "source_rows": len(messages), "wire_rows": len(projected),
+            "runtime_context_fetched": False,
+        }, actor="runtime-context-builder", correlation={"episode_id": _episode_id(projected)})
+        return estimate
+
+    turn_context._preflight_request_tokens = managed_preflight_tokens
 
     # The prompt is the primary policy. These two post-processing hooks are a
     # narrow deterministic backstop for the one durable response type whose

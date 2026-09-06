@@ -40,6 +40,7 @@ def main() -> int:
         )
         profile_root = Path(profile["profile_root"])
         config = json.loads((profile_root / "config.yaml").read_text(encoding="utf-8"))
+        assert config["compression"]["threshold_tokens"] == 32768
         assert config["tools"]["tool_search"]["enabled"] == "off"
         assert set(config["mcp_servers"]["smacx"]["tools"]["include"]) == set(GAMEPLAY_MCP_TOOLS)
         assert config["mcp_servers"]["smacx"]["tools"]["resources"] is False

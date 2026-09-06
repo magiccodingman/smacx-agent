@@ -161,6 +161,33 @@ def main() -> int:
                 or metrics["after"] >= generic_trigger:
             raise AssertionError("semantic GC did not precede the real Hermes 50% trigger")
 
+        from types import SimpleNamespace
+        from agent import turn_context
+        from smacx_runtime_context import RUNTIME_BUDGETS
+        durable_before = json.dumps(five_hundred)
+        def forbidden_runtime(messages):
+            raise AssertionError("preflight fetched runtime state or acquired a lease")
+        smacx_strict_prompt._fetch_runtime_context = forbidden_runtime
+        preflight = turn_context._preflight_request_tokens(
+            SimpleNamespace(tools=[]), five_hundred, "managed test prompt")
+        assert RUNTIME_BUDGETS["64k"]["total"] < preflight < generic_trigger
+        assert json.dumps(five_hundred) == durable_before
+        try:
+            turn_context._preflight_request_tokens(
+                SimpleNamespace(tools=[]),
+                [{"role": "user", "content": "irreplaceable " * 100000}], "")
+        except RuntimeError as exc:
+            assert "context_budget_exhausted:durable_provider_history" in str(exc)
+        else:
+            raise AssertionError("irreducible preflight history did not fail closed")
+        from agent.context_compressor import ContextCompressor
+        for window in (65536, 262144):
+            compressor = ContextCompressor(
+                model="managed-test", config_context_length=window,
+                threshold_percent=0.5, threshold_tokens_cap=window // 2)
+            assert compressor.threshold_tokens == window // 2
+        smacx_strict_prompt._fetch_runtime_context = fake_runtime
+
         note_heavy = [{"role": "user", "content": "one note-heavy native turn"}]
         for index in range(500):
             identifier = f"note-{index}"
@@ -264,6 +291,8 @@ def main() -> int:
             "provider_wire_growth_bounded": True,
             "five_hundred_action_turn_bounded": True,
             "semantic_gc_precedes_real_half_window_compression": True,
+            "preflight_is_copy_only_and_has_no_runtime_fetch": True,
+            "effective_compression_caps_and_irreducible_failure": True,
             "five_hundred_cognition_notebook_turn_bounded": True,
             "durable_cognition_receipts": True,
             "unscoped_dispatcher_rejected": True,

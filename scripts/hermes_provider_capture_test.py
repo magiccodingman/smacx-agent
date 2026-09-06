@@ -10,6 +10,7 @@ from pathlib import Path
 import os
 import re
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import threading
@@ -300,6 +301,18 @@ def main() -> int:
                         if part.startswith("SMACX_SYSTEM_PROMPT_SHA256=") else part
                         for part in command
                     ]
+                    # Exercise real resumed SQLite history, not just the wire
+                    # sanitizer. This old result exceeds the raw preflight cap.
+                    database = root / "profiles" / profile["profile_id"] / "state.db"
+                    assert database.is_file(), list(root.rglob("*.db"))
+                    oversized_result = "DISPOSABLE_PREFLIGHT_MARKER " + "old state " * 150000
+                    with sqlite3.connect(database) as db:
+                        old_result = db.execute(
+                            "SELECT id FROM messages WHERE role='tool' ORDER BY id LIMIT 1"
+                        ).fetchone()
+                        assert old_result
+                        db.execute("UPDATE messages SET content=? WHERE id=?",
+                                   (oversized_result, old_result[0]))
                     resume_before = len(captured)
                     resumed = subprocess.run(resumed_command, text=True, capture_output=True,
                                              timeout=90, check=False)
@@ -310,6 +323,11 @@ def main() -> int:
                     resumed_messages = resumed_requests[0]["messages"]
                     assert [m["content"] for m in resumed_messages if m["role"] == "system"] == [revised_prompt]
                     assert any(m.get("content") == "capture complete" for m in resumed_messages), "resume discarded prior conversation"
+                    assert "DISPOSABLE_PREFLIGHT_MARKER" not in json.dumps(resumed_messages)
+                    assert "Compacting context" not in resumed.stdout + resumed.stderr
+                    with sqlite3.connect(database) as db:
+                        assert db.execute("SELECT content FROM messages WHERE id=?",
+                                          (old_result[0],)).fetchone()[0] == oversized_result
                     captured_resume = resumed_requests[0]
                     # The normal checks below still inspect the first request;
                     # diagnostics must contain both exact receiving-side bodies.
@@ -436,6 +454,7 @@ def main() -> int:
             "exact_single_system_message": True,
             "recompiled_prompt_replaces_saved_prompt_on_real_resume": True,
             "resume_preserves_conversation": True,
+            "oversized_durable_history_resume_uses_semantic_preflight": True,
             "unknown_tool_rejection_captured_before_executor": True,
             "truncated_response_releases_lease_before_real_hermes_continuation": True,
             "request_only_runtime_tail": True,

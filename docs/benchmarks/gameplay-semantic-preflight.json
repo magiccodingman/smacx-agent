@@ -1,0 +1,16 @@
+{
+  "checkpoint": "semantic-preflight",
+  "cause": "Hermes resume preflight estimated raw durable history before managed semantic projection; small-context threshold floor overrode configured ratio",
+  "repair": [
+    "copy-only semantic preflight without runtime fetch or attention lease",
+    "reserve bounded runtime and actual tool schemas",
+    "absolute compression cap aligned with shared 50% policy"
+  ],
+  "acceptance": {
+    "real_Hermes_resume": "oversized persisted tool result (150000 repeated old-state phrases) retained unchanged in SQLite; marker absent from wire; exactly one resumed provider request; no compaction",
+    "context_contract": "500-action history preflight below cap; original input unchanged; no runtime fetch; irreducible history fails closed",
+    "thresholds": "installed ContextCompressor absolute caps tested at 65536 and 262144",
+    "existing_wire_contracts": "15 gameplay and 9 communication schemas, request-only runtime, direct guard receipt, prompt replacement and length continuation pass"
+  },
+  "live_status": "pending deployment and restoration of verified pre-compaction turn-21 checkpoint"
+}
