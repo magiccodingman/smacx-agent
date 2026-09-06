@@ -1213,6 +1213,19 @@ class SemanticLodProjector:
                                   if key in {"region_ref", "version", "location_count"}}
                                  for item in anchor["regions"]]
         if estimate_tokens(anchor) > content_cap:
+            # Frontier geometry and display aliases are deliberate-zoom detail.
+            # Retain every frontier, its current/stale evidence and resource
+            # composition; never turn budget pressure into missing history.
+            frontier_detail = {"boundary_refs", "nearby_landmarks",
+                               "nearby_resource_counts", "nearby_foreign_faction_refs",
+                               "unknown_boundary_size", "detail"}
+            anchor["frontiers"] = [
+                {key: value for key, value in item.items() if key not in frontier_detail}
+                for item in anchor["frontiers"]]
+            anchor["lod"]["frontier_details_demoted"] = True
+            anchor["lod"]["frontier_detail_query"] = (
+                "Use area origin_ref=<frontier_ref> for boundary geometry and landmark detail.")
+        if estimate_tokens(anchor) > content_cap:
             raise WorldContractError("world_anchor_budget_exhausted")
         anchor["projection_integrity_hash"] = content_hash(provider_safe(anchor))
         anchor["token_estimate"] = 0

@@ -1,0 +1,41 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "failure": {
+    "turn": 68,
+    "call_id": "chatcmpl-tool-b7272b7ff10374ba",
+    "request_id": "efa2042d518f4004b4ddd851bf7c99bf",
+    "tool": "smac_world",
+    "arguments": {
+      "mode": "changes",
+      "since_cursor": 335
+    },
+    "error": "world_anchor_budget_exhausted",
+    "committed_cursor": 342,
+    "raw_anchor_tokens_after_existing_demotions": 6203,
+    "public_anchor_tokens_after_existing_demotions": 6128,
+    "declared_ceiling": 6000
+  },
+  "repair": "Under budget pressure demote frontier geometry and redundant display fields, retaining every frontier ref, map verification/current-stale evidence, separate current/stale faction refs, possible connectivity, resources composition and landmark refs. Expose deliberate area-query hint. Ceiling and historical cursor behavior unchanged.",
+  "validation": {
+    "baseline_new_regression": "fails with world_anchor_budget_exhausted",
+    "strategic_world_fixtures_test": "pass including Huge cases",
+    "geographic_semantics_contract_test": "pass",
+    "world_changes_pagination_test": "pass: 700 deltas/400 events",
+    "runtime_context_contract_test": "pass: 64K/256K, critical attention, commitments, Huge bounded runtime",
+    "captured_campaign_read_only_clone": {
+      "anchor_tokens": 5560,
+      "frontiers_retained": 8,
+      "deep_pages": 13,
+      "deltas": 32,
+      "temporal_events": 21,
+      "exact_order_and_completeness": true,
+      "provider_inference": false
+    }
+  },
+  "acceptance": {
+    "deployed": false,
+    "actual_repaired_provider_query": "pending",
+    "full_game": "unfinished"
+  }
+}

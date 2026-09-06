@@ -302,6 +302,20 @@ def main() -> int:
                for row in anchor["physical_masses"])
     assert {row["kind"] for row in anchor["strategic_objects"]} >= {"project", "council_state"}
     results["multi_front_warfare"] = results["project_global_race"] = True
+    pressure_anchor = SemanticLodProjector(context_tier="64k", token_cap=2320).build(
+        projection(32, 16, busy, world_objects),
+        active_plan_refs=["quiet-plan-base"], recent_material_refs=["front-b"],
+    )
+    assert pressure_anchor["token_estimate"] <= 2320
+    assert pressure_anchor["lod"].get("frontier_details_demoted"), pressure_anchor["token_estimate"]
+    assert {row["frontier_ref"] for row in pressure_anchor["frontiers"]} == {
+        row["frontier_ref"] for row in anchor["frontiers"]}
+    for rich, compact in zip(anchor["frontiers"], pressure_anchor["frontiers"]):
+        for key in ("map_information", "may_connect_elsewhere", "nearby_resource_composition",
+                    "nearby_current_foreign_faction_refs", "nearby_stale_foreign_faction_refs"):
+            assert compact[key] == rich[key]
+    results["frontier_pressure_preserves_epistemics_and_refs"] = True
+
 
     # Expansion/base-site comparison supplies affordances without a universal ranking.
     site_objects = {**objects}
