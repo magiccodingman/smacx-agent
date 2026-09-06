@@ -316,3 +316,9 @@ to title fallback as well. Knowledge service tests pass 8/8, including ranking
 parity, scope isolation and token-budget/truncation regression. Sanitized before
 evidence is retained; installed-image/live retrieval verification remains pending.
 This does not prove the old sovereign tried a lookup: its retained calls show none.
+
+### Deployment and reference acceptance (1416e24)
+
+All five current images were built and tagged; control, portal, knowledge and specialist services were recreated and healthy. Existing databases and parked turn-26 checkpoint were preserved. The live content lookup now ranks Alien Artifact first and includes the Network Node/technology mechanic within 447 approximate tokens. See the updated reference benchmark.
+
+The deployed admin lobby route generated a 1,133,538-byte archive; ZIP integrity passes and it contains committed journal, retained Hermes history, state, human transcript, metrics and manifest. Historical missing streams and the telemetry row limit are explicitly declared; completeness remains false. Desktop and 390px phone layout were visually inspected without horizontal overflow. Browser automation reported ERR_BLOCKED_BY_CLIENT on delivery (and its downloads settings page is unavailable); actual browser file delivery remains an open acceptance item, not a passed test.

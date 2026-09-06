@@ -22,5 +22,19 @@
     "Network Node"
   ],
   "classification": "confirmed content-search ranking bypass; historical sovereign did not invoke lookup",
-  "after_live_acceptance_pending": true
+  "after_live_acceptance_pending": false,
+  "after": {
+    "deployed_revision": "1416e24",
+    "include_content": true,
+    "titles": [
+      "Alien Artifact",
+      "Alien Crossfire faction definitions",
+      "Artifacts",
+      "Unit strategic roles",
+      "Network Node"
+    ],
+    "approximate_tokens": 447,
+    "evidence_selection": "hybrid_ranked_body_chunks_or_document_fallback",
+    "network_node_and_technology_mechanic_present": true
+  }
 }
