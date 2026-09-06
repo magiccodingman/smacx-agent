@@ -113,6 +113,10 @@ def summary(event):
             'completed','queued','action_id','effect_disposition','state_changed_during_enumeration',
             'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','citizen_context','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
+        if isinstance(result.get('acknowledged_ids'), list):
+            chosen['acknowledged_count'] = len(result['acknowledged_ids'])
+            chosen['attention_cursor'] = result.get('attention_cursor')
+            chosen['attention_lease_id'] = result.get('attention_lease_id')
         citizen=result.get('citizen_context')
         if isinstance(citizen,dict):
             tiles=citizen.get('tiles',[])

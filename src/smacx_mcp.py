@@ -2418,7 +2418,13 @@ def smac_attention_ack(
             acknowledged_ids=acknowledged_ids or (),
         )
     except (AttentionError, ValueError, RuntimeError) as exc:
-        return {"ok": False, "error": str(exc)}
+        error = str(exc)
+        if error in {"attention_ack_scope_mismatch", "attention_ack_cursor_out_of_range",
+                     "attention_not_cognitively_responded"}:
+            return {"ok": False, "error": error, "acknowledged_ids": [],
+                    "required_next": {"tool": "smac_decision",
+                                      "reason": "Refresh current attention, review it, then acknowledge only its issued lease, IDs and attention cursor."}}
+        return {"ok": False, "error": error}
 
 
 @mcp.tool(

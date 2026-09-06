@@ -1,0 +1,62 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 68,
+  "incident_id": "incident-09f772af877b43f8a7ea10647bf14897",
+  "gap_id": "gap-b5c0c4446c434a8c95e0f41a9920a22c",
+  "critical_attention_id": "attention-6dc55bef4436405daec161755e53ea44",
+  "critical_attention_sequence": 31,
+  "original_lease": {
+    "attention_lease_id": "attention-lease-65eb6050488746c48a33ea9dc1ea1244",
+    "leased_unix": 1788725723.496279,
+    "expires_unix": 1788726023.496279
+  },
+  "failed_acknowledgements": [
+    {
+      "call_id": "chatcmpl-tool-839bdb18b3b1f8bc",
+      "request_id": "27663ecf3f1e43afa22648b2a02021a2",
+      "lease_id": "attention-lease-fcbfc48868b940a88585735e4d89a077"
+    },
+    {
+      "call_id": "chatcmpl-tool-842a3455b3347208",
+      "request_id": "764d1ca0ca024b8fb895d3521a314112",
+      "lease_id": "attention-lease-7da57ca16bda48dbbcf355d315e0cae4"
+    }
+  ],
+  "actual_wire": {
+    "both_contexts_attention_items": [],
+    "both_contexts_lease_through_cursor": 0,
+    "both_ack_results": {
+      "ok": true,
+      "acknowledged_ids": [],
+      "through_cursor": 32,
+      "attention_cursor": 28
+    }
+  },
+  "root_cause": "Expired responded leases were not abandoned/requeued. Fresh leases were empty while unacknowledged critical rows still gated actions. Out-of-lease acknowledgements silently succeeded with zero effects.",
+  "repair": [
+    "Expire responded leases into redelivery without changing item IDs",
+    "Refresh completed responded leases for newly committed queued items; preserve in-flight placements",
+    "Reject out-of-lease IDs and out-of-range attention cursors with managed refresh guidance",
+    "Expose acknowledged_count and attention_cursor in human summaries"
+  ],
+  "supervisor_containment": {
+    "supervisor_generated": true,
+    "api_calls_without_progress": 10,
+    "generated_tokens_without_progress": 11980,
+    "stall_seconds": 363.46050477027893,
+    "native_worker_preserved": true
+  },
+  "validation": {
+    "new_expiry_regression": "pass; old code fails redelivery assertion",
+    "attention_communication_contract_test": "pass",
+    "runtime_context_contract_test": "pass",
+    "managed_refresh_guidance": "pass",
+    "diagnostic_summary_contract_test": "pass"
+  },
+  "acceptance": {
+    "deployed": false,
+    "live_repaired_redelivery_and_gate": "pending",
+    "full_game": "unfinished"
+  }
+}

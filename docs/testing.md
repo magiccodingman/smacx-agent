@@ -55,6 +55,7 @@ PYTHONPATH=src python3 scripts/movement_mechanics_contract_test.py
 PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
 PYTHONPATH=src python3 scripts/notebook_scale_test.py
 PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
+PYTHONPATH=src python3 scripts/attention_lease_expiry_test.py
 PYTHONPATH=src python3 scripts/spatial_scope_contract_test.py
 PYTHONPATH=src python3 scripts/spatial_scope_scale_test.py
 PYTHONPATH=src python3 scripts/milestone_contract_test.py

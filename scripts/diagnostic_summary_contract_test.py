@@ -93,3 +93,7 @@ assert 'base_citizens' in text and 'structured diagnostic record' in text
 assert menu == original  # Rendering cannot change the actual issued menu.
 print(json.dumps({'compact_menu_passed': True, 'rendered_characters': len(text),
                   'late_action_families_retained': True, 'provider_response_unchanged': True}))
+
+empty_ack = summary({'kind':'tool_returned','payload':{'managed_name':'smac_attention_ack',
+    'result':{'ok':True,'acknowledged_ids':[],'attention_cursor':28,'attention_lease_id':'lease-empty'}}})
+assert '"acknowledged_count":0' in empty_ack and '"attention_cursor":28' in empty_ack
