@@ -44,6 +44,7 @@ PYTHONPATH=src python3 scripts/campaign_journal_test.py
 PYTHONPATH=src python3 scripts/ai_memory_checkpoint_test.py
 PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
 PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
+python3 scripts/owned_progress_digest_contract_test.py
 PYTHONPATH=src python3 scripts/world_model_contract_test.py
 PYTHONPATH=src python3 scripts/native_observation_contract_test.py
 PYTHONPATH=src python3 scripts/fair_play_world_test.py
@@ -603,3 +604,5 @@ Live LAN acceptance now passes after the SetupWin correction: two isolated nativ
 `hermes_readonly_wal_checkpoint_test.py` runs in the MCP container as root to launch the real helper as uid10000 against an unwritable source. It covers closed/retained WAL, committed versus uncommitted data, source byte preservation, scoped filtering, integrity and fail-closed malformed schema. Run with `ai_memory_checkpoint_test.py` and host `checkpoint_helper_permissions_live_test.py`. Native deployment acceptance remains separate.
 
 `base_selector_feedback_test.py` verifies all three base-specific families reject missing public actors without a native call, retain valid selector binding, translate ownership-race errors into public recovery wording and permit bound preparation continuations. Run alongside staged managed-action, production/citizen and provider-schema budget tests.
+
+The owned-progress C++ regression requires host `g++` and compiles the production digest against controlled native rows. It checks real function behavior for production, allocation, movement, foreign changes and reordered slots; it does not claim running-game equivalence. The managed native acceptance suite separately compares digest values across actual production/citizen effects and repeated reads. Run that suite against the exact worker image being deployed.
