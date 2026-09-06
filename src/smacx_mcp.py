@@ -2599,11 +2599,20 @@ def smac_decision(
             "required_next": {
                 "tool": "smac_execute_choice", "execute_at_most": 1,
                 "decision_id": decision_id,
-                "then": "Call smac_decision again; never reuse this frame.",
+                "then": "Follow the execution receipt's next step; never reuse this frame.",
             },
             "choices": public_choices,
             "information": _decision_information(choices_result.get("choices", []), semantic_context),
         }
+        if phase == "turn":
+            frame["choice_scope"] = {
+                "family": choice_kind,
+                "all_management_actions_enumerated": False,
+                "other_management_queries": {
+                    "tool": "smac_choices", "kinds": ["production", "base_citizens", "research"],
+                },
+                "meaning": "These are this frame's choices only. Query other families before concluding a management action is unavailable; their native legality is checked separately.",
+            }
         if any(row.get("command") in {"give_energy_gift", "propose_human_energy"}
                for row in choices_result.get("choices", ())):
             semantic_context = _semantic_selector_context(str(identity["revision"]))

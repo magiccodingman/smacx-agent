@@ -21,6 +21,19 @@
   "limitations": [
     "Receipt was present in the immediate actual request; later supersession is not evidence it was absent initially",
     "No new handoff enforcement or inferred cognition added",
-    "Live corrected receipt and sovereign compliance pending"
-  ]
+    "Corrected receipt and one explicit/implicit handoff observed; sustained compliance remains monitored"
+  ],
+  "deployed": {
+    "control_and_MCP_image": "sha256:d2232acc6b217cf7148b7b06a14ae5d6b4a0c4c98fe05891e56f448afb94822f",
+    "explicit_transition": "18->19",
+    "provider_request_id": "75bd4fedda37403c9e661157483f799b",
+    "required_next": {
+      "stop_after": true,
+      "ordinary_message": "TURN HANDOFF"
+    },
+    "sovereign_handoff_emitted_unix": 1788676474.601225,
+    "next_supervised_episode_sequence": 4,
+    "implicit_transition": "17->18",
+    "implicit_receipt_request_id": "2abcae5e0d16493f977426d7e2356122"
+  }
 }
