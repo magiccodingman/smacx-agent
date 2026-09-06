@@ -26,6 +26,14 @@
   "limitations": [
     "Internal journal and administrator diagnostic records retain their original authoritative detail",
     "No historical identity is reconstructed from current native slots",
-    "Live corrected memory read and subsequent provider wire pending"
-  ]
+    "Deployed current-timeline memory read verified; subsequent sovereign memory read and provider-wire inspection remain open"
+  ],
+  "deployed_read": {
+    "kind": "operator read through deployed managed tool; not a sovereign-commissioned call",
+    "control_and_MCP_image": "sha256:79f30edd5dbdef8f8a339b1393bb1aa99092e9d0fa7036c6a4a8b3ffb9dae2ed",
+    "timeline_id": "timeline-restore-ae9091c3e4f64ffe8602e4e7",
+    "private_selector_paths": [],
+    "recent_actions": 12,
+    "public_execution_receipts": 12
+  }
 }
