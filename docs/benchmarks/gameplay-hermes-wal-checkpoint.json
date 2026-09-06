@@ -1,0 +1,22 @@
+{
+  "classification": "confirmed checkpoint helper read-only WAL failure",
+  "native_turn": 41,
+  "live_attempts_failed": 2,
+  "live_error": "sqlite3.OperationalError: unable to open database file",
+  "source_sidecars_present": false,
+  "source_readonly_preserved": true,
+  "old_code_regression_failed": true,
+  "new_regression_passed": true,
+  "passed": [
+    "hermes_readonly_wal_checkpoint_test",
+    "ai_memory_checkpoint_test",
+    "checkpoint_helper_permissions_live_test"
+  ],
+  "source_reference": "https://www.sqlite.org/wal.html#read_only_databases",
+  "pending": [
+    "deployed checkpoint",
+    "restore latest native and AI state",
+    "citizen allocation recovery"
+  ],
+  "no_gameplay_rollback_performed": true
+}

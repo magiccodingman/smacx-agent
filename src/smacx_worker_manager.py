@@ -60,7 +60,7 @@ NATIVE_RESOLUTION_PROFILES: dict[str, tuple[int, int]] = {
     "5120x1440": (5120, 1440),
 }
 
-HERMES_CHECKPOINT_SCRIPT = r'''import io,json,os,pathlib,sqlite3,tarfile,tempfile
+HERMES_CHECKPOINT_SCRIPT = r'''import io,json,os,pathlib,shutil,sqlite3,tarfile,tempfile
 profile=os.environ["SMACX_HERMES_PROFILE_ID"]
 match_id=os.environ["SMACX_MATCH_ID"]
 target=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ["SMACX_CHECKPOINT_RELATIVE"]
@@ -70,7 +70,21 @@ session_ids=[]
 with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
     stable=pathlib.Path(temporary)/"state.db"
     if present:
-        origin=sqlite3.connect(f"file:{source}?mode=ro",uri=True)
+        # The checkpoint manager has frozen/stopped the match-bound writer.
+        # A cleanly closed WAL database has no -wal/-shm files, so SQLite
+        # cannot open it directly on our read-only mount. Copy the quiescent
+        # durable files together; rebuild transient SQLite metadata privately.
+        # Never omit a retained WAL or hot rollback journal, or mutate source.
+        files=[source,pathlib.Path(str(source)+"-wal"),pathlib.Path(str(source)+"-journal")]
+        def signatures():
+            return [(p.name,p.stat().st_size,p.stat().st_mtime_ns) if p.exists() else (p.name,None,None) for p in files]
+        before=signatures()
+        staging=pathlib.Path(temporary)/"source"
+        staging.mkdir()
+        for p in files:
+            if p.exists(): shutil.copyfile(p,staging/p.name)
+        if signatures()!=before: raise RuntimeError("hermes_checkpoint_source_changed")
+        origin=sqlite3.connect(staging/"state.db")
         destination=sqlite3.connect(stable)
         try: origin.backup(destination)
         finally: destination.close();origin.close()
@@ -97,7 +111,8 @@ with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
             if "system_prompts" in tables:
                 copied.execute("DELETE FROM system_prompts WHERE hash NOT IN (SELECT system_prompt_hash FROM sessions WHERE system_prompt_hash IS NOT NULL)")
             copied.commit();copied.execute("VACUUM")
-        except sqlite3.Error: session_ids=[]
+        except sqlite3.Error as exc:
+            raise RuntimeError("hermes_checkpoint_session_filter_failed") from exc
         finally: copied.close()
     manifest={"schema":"smacx.hermes-checkpoint.v2","profile_id":profile,"match_id":match_id,"database_present":present,"session_ids":session_ids}
     with tarfile.open(target,"w:gz",compresslevel=6) as archive:
