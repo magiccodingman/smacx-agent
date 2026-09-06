@@ -103,6 +103,13 @@
     "repair": "recognize source membership only under the active native SetupWin modal with the reviewed vtable; never dereference historical popup to infer lifetime",
     "protected_memory_tests": true,
     "native_cross_build": true,
-    "live_lan_comparison": "running"
+    "live_lan_comparison": {
+      "passed": true,
+      "two_native_workers": true,
+      "host_join_start": true,
+      "managed_energy_technology_pact_social_effects": true,
+      "native_checkpoint_reload": true,
+      "no_transient_owned_identity_publications_both_seats": true
+    }
   }
 }

@@ -50,5 +50,14 @@
     "pending_attention_items": 0,
     "native_owned_unit_count": 3,
     "classification": "deployed solo checkpoint restore, before autonomous restart"
+  },
+  "live_lan_acceptance": {
+    "passed": true,
+    "script": "scripts/control_lan_live_test.py",
+    "both_seats_owned_refs_preserved": true,
+    "all_new_timeline_publications_audited": true,
+    "transient_owned_appearance_removal_count": 0,
+    "managed_agreement_effects_preserved": true,
+    "provider_inference": false
   }
 }
