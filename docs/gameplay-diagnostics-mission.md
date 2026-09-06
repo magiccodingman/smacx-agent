@@ -191,3 +191,18 @@ that unit's Skip without changing native readiness, then explicitly defer and ve
 an actual automatic native turn transition. It also checks named hurry receipts and
 blind research labels against native state. This extension is not yet a passing
 native acceptance result; it must run before deployment acceptance is claimed.
+
+## Live prompt cost and damaged-stream checkpoint
+
+The current operational prompt measures 1,324 exact Qwen3.8-27B tokens. Compiled
+match doctrine cases range from 8,407 to 8,714 exact tokens. A controlled pair of
+real provider requests each used 8,548 prompt tokens; the second reused 6,592
+tokens according to an isolated cache-counter delta. This validates prompt cost
+and prefix reuse, not gameplay cognition receipt. Sanitized evidence is retained
+in `benchmarks/gameplay-diagnostics-prompt-cost.json`.
+
+Campaign export now contains malformed compressed members without losing the
+whole download: a regression injects an invalid deflate block, verifies the raw
+file remains in the ZIP and checks the explicit compressed-stream gap. Scope and
+readability contracts still pass. Native integration is running separately; its
+result and deployed browser acceptance remain pending.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import gzip
+import zlib
 import io
 import json
 from pathlib import Path
@@ -141,7 +142,7 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
                                 for line in stream: yield line
                         else:
                             yield from data.splitlines()
-                    except (EOFError, OSError):
+                    except (EOFError, OSError, zlib.error):
                         manifest["gaps"].append({"file":path.name,"reason":"partial_compressed_tail"})
                 for line in lines():
                     try: event=json.loads(line)

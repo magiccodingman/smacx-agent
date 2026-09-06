@@ -409,3 +409,9 @@ container dispatch and browser download remain acceptance gates.
 Native auto-turn acceptance is being extended with a double-gated private fixture and
 real managed goal/write/skip path. The test requires observed turn advancement after
 explicit deferral; merely accepting Skip is insufficient. Result remains pending.
+
+Diagnostic export resilience: corrupt deflate members remain in the downloadable
+evidence with an explicit gap; scope/readability regression passes. Live Qwen
+prompt-cost/prefix test passes (1,324 operational tokens; 6,592/8,548 reused on
+the second controlled request). These checks do not certify game completion or
+native recovery. Native integration and deployed download acceptance remain open.
