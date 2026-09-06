@@ -921,6 +921,34 @@ class OperationsManager:
         except Exception as exc:
             return f"Log unavailable: {self._redact_text(str(exc))}\n"
 
+    def _capture_worker_loss(self, spec: Mapping[str, Any], observed: Mapping[str, Any]) -> None:
+        """Capture before replacement; logs belong only in admin diagnostics."""
+        from smacx_diagnostics import record
+        evidence: dict[str, Any] = {"instance_id": spec["instance_id"],
+            "observed": {key: observed.get(key) for key in
+                ("container_present", "running", "paused", "health", "exit_code", "session_id")},
+            "cause": "undetermined", "captured_before_recovery": True}
+        name = spec.get("container_name")
+        try:
+            container = self.worker_manager.docker.inspect_container(str(name))
+            self.worker_manager.docker.require_owned(
+                container, self.worker_manager.installation_id, purpose="game-worker")
+            state = container.get("State", {})
+            evidence["state"] = {key: state.get(key) for key in
+                ("Status", "Running", "Paused", "Restarting", "OOMKilled", "Dead",
+                 "ExitCode", "Error", "StartedAt", "FinishedAt")}
+            health = state.get("Health", {})
+            evidence["health"] = {"status": health.get("Status"),
+                "failing_streak": health.get("FailingStreak"),
+                "probes": [{key: str(row.get(key, ""))[:4000] for key in
+                    ("Start", "End", "ExitCode", "Output")}
+                    for row in health.get("Log", [])[-6:]]}
+            evidence["worker_log"] = self._container_log(str(name))
+        except Exception as exc:
+            evidence["capture_error"] = type(exc).__name__
+        record("worker_liveness_lost", self._redact_payload(evidence),
+               actor="operations-supervisor", match_id=str(spec["match_id"]))
+
     def _collect_recent_saves(self, instance_id: str, destination: Path) -> list[dict[str, Any]]:
         manager = self.worker_manager
         if manager is None or not manager.control_data_volume:
@@ -1248,6 +1276,7 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                                        {"action": "sidecar_restarted"})
                         recovered += 1
                     continue
+                self._capture_worker_loss(spec, observed)
                 checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
                 # A browser-managed human host is recoverable in exactly the
                 # same way as an agent host: it has an isolated worker and a

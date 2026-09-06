@@ -45,6 +45,14 @@ def main():
             assert 'private-' not in json.dumps(rows) and 'fixture-service' not in json.dumps(rows)
             metrics=Metrics();metrics.add(rows[0])
             assert metrics.as_dict()['failure_observations_by_layer']=={'control_operation_failed:checkpoint_test_failure':1}
+            server.worker_manager.recover_match = lambda _: (_ for _ in ()).throw(
+                WorkerManagerError('checkpoint_waiting_for_quiescence'))
+            try: urlopen(request)
+            except HTTPError as exc: assert exc.code == 409
+            rows=[json.loads(line) for path in paths for line in gzip.open(path,'rt')]
+            assert rows[-1]['kind']=='control_operation_deferred'
+            metrics.add(rows[-1])
+            assert metrics.as_dict()['failure_observations_by_layer']=={'control_operation_failed:checkpoint_test_failure':1}
         finally:
             server.shutdown();server.server_close();thread.join(2)
     print(json.dumps({'passed':True,'authenticated_http_failure_captured':True,

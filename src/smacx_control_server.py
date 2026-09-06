@@ -170,7 +170,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     category = str(code).split(":", 1)[0]
                     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", category):
                         category = "unclassified_control_error"
-                    record("control_operation_failed", {"operation": operation,
+                    event_kind = "control_operation_deferred" if (
+                        status == 409 and category == "checkpoint_waiting_for_quiescence"
+                    ) else "control_operation_failed"
+                    record(event_kind, {"operation": operation,
                         "http_status": int(status), "error_code": category,
                         "detail_omitted": "raw exception text may contain operational secrets",
                         "native_effect": "not_inferred_from_http_failure"},
