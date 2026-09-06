@@ -34,8 +34,15 @@
     }
   },
   "acceptance": {
-    "deployed": false,
+    "deployed": true,
     "actual_repaired_provider_query": "pending",
     "full_game": "unfinished"
+  },
+  "deployment": {
+    "run_id": "run-b6a4e3ebb4094255b3b050dd1dd1ec31",
+    "control_mcp_sha256": "1f5cce44c9348d6c0a25a54c34374297b3da5b1498d718f76192614c9a94ade9",
+    "harness_sha256": "5cc25280a7a3d06f7e430c23e1060ebc36d9a9dce79d91d4a127a250b2c88c22",
+    "native_worker_replaced": false,
+    "resume_notice": "Explicit repair notice requested retry of failed query at the same position; live retry is assisted acceptance."
   }
 }
