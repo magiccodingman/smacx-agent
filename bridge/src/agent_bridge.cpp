@@ -44,6 +44,11 @@ int* const BasePopFalloutLatch = reinterpret_cast<int*>(0x9B8CFC);
 HANDLE worker_thread = NULL;
 HANDLE response_event = NULL;
 HHOOK request_getmessage_hook = NULL;
+PVOID request_exception_observer = NULL;
+DWORD request_ui_thread_id = 0;
+volatile LONG request_execution_stage = 0;
+volatile LONG request_exception_code = 0;
+volatile LONG request_exception_stage = 0;
 CRITICAL_SECTION request_lock;
 bool lock_initialized = false;
 volatile LONG started = 0;
@@ -68,6 +73,20 @@ int agent_modal_service_depth = 0;
 uint64_t pending_sequence = 0;
 uint64_t response_sequence = 0;
 std::vector<int> pending_multiplayer_technology_presentations;
+
+// Diagnostic only: a first-chance exception may be handled by the engine or
+// Wine. Never consume it, mutate game state, or release the serialization guard.
+LONG CALLBACK observe_request_exception(EXCEPTION_POINTERS* exception) {
+    if (GetCurrentThreadId() == request_ui_thread_id && request_in_progress
+    && exception && exception->ExceptionRecord
+    && (exception->ExceptionRecord->ExceptionCode & 0xC0000000u) == 0xC0000000u) {
+        InterlockedExchange(&request_exception_stage,
+            InterlockedCompareExchange(&request_execution_stage, 0, 0));
+        InterlockedExchange(&request_exception_code,
+            static_cast<LONG>(exception->ExceptionRecord->ExceptionCode));
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 LRESULT CALLBACK agent_request_getmessage_hook(int code, WPARAM remove,
 LPARAM message_pointer) {
@@ -10206,6 +10225,7 @@ std::string perspective_world_page_response(const std::string& request) {
 #include "agent_doctrine.h"
 
 std::string semantic_snapshot_response() {
+    InterlockedExchange(&request_execution_stage, 10);
     if (!game_active()) return status_response();
     refresh_deferred_end_turn_state();
     if (*MultiplayerActive && agent_modal_service_depth == 0) {
@@ -10238,6 +10258,7 @@ std::string semantic_snapshot_response() {
     }
     const bool blind_research = *GameRules & RULES_BLIND_RESEARCH;
     int research_id = faction.tech_research_id;
+    InterlockedExchange(&request_execution_stage, 11);
     int research_cost = research_id >= 0 ? mod_tech_rate(faction_id) : -1;
     int research_progress = research_cost > 0
         ? clamp((100 * faction.tech_accumulated) / research_cost, 0, 100) : 0;
@@ -10250,7 +10271,9 @@ std::string semantic_snapshot_response() {
     const CSocialCategory& established =
         *reinterpret_cast<const CSocialCategory*>(&faction.SE_Politics);
     CSocialEffect social_effects;
+    InterlockedExchange(&request_execution_stage, 12);
     social_calc(const_cast<CSocialCategory*>(&selected), &social_effects, faction_id, false, false);
+    InterlockedExchange(&request_execution_stage, 13);
     const int native_time_control = *MultiplayerActive
         ? static_cast<int>(reinterpret_cast<signed char*>(0x90E8E0)[3]) : 0;
     std::ostringstream out;
@@ -18748,7 +18771,9 @@ std::string test_counterfactual_read_safety_response(const std::string& request)
 
 std::string execute_request(const std::string& request) {
     if (field_string(request, "token") != auth_token) return error_response("unauthorized", "Invalid bridge token.");
+    InterlockedExchange(&request_execution_stage, 2);
     apply_deferred_semantics();
+    InterlockedExchange(&request_execution_stage, 3);
     std::string op = field_string(request, "op");
     if (op == "ping" || op == "status") return status_response();
     if (op == "human_ui_state") return human_ui_state_response();
@@ -18941,6 +18966,12 @@ DWORD WINAPI server_worker(void*) {
                         + std::to_string(request_modal_wait_hits)
                         + ", handler="
                         + std::to_string(request_handler_hits)
+                        + ", execution_stage="
+                        + std::to_string(InterlockedCompareExchange(&request_execution_stage, 0, 0))
+                        + ", first_chance_exception="
+                        + std::to_string(static_cast<unsigned long>(InterlockedCompareExchange(&request_exception_code, 0, 0)))
+                        + ", exception_stage="
+                        + std::to_string(InterlockedCompareExchange(&request_exception_stage, 0, 0))
                         + ", acceptance_fixture_stage="
                         + std::to_string(InterlockedCompareExchange(&acceptance_fixture_stage, 0, 0)) + '.';
                     send_all(client, error_response(
@@ -19352,6 +19383,8 @@ void agent_bridge_start_once(HWND hwnd) {
     lock_initialized = true;
     response_event = CreateEventA(NULL, TRUE, FALSE, NULL);
     if (!response_event) return;
+    request_ui_thread_id = GetWindowThreadProcessId(hwnd, NULL);
+    request_exception_observer = AddVectoredExceptionHandler(0, observe_request_exception);
     request_getmessage_hook = SetWindowsHookExA(
         WH_GETMESSAGE, agent_request_getmessage_hook, NULL,
         GetCurrentThreadId());
@@ -20149,7 +20182,11 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
     }
     LeaveCriticalSection(&request_lock);
     if (request.empty()) return true;
+    InterlockedExchange(&request_execution_stage, 1);
+    InterlockedExchange(&request_exception_code, 0);
+    InterlockedExchange(&request_exception_stage, 0);
     std::string response = execute_request(request);
+    InterlockedExchange(&request_execution_stage, 0);
     EnterCriticalSection(&request_lock);
     bool current = sequence == pending_sequence;
     if (current) {
@@ -20189,6 +20226,10 @@ void agent_bridge_stop() {
     if (request_getmessage_hook) {
         UnhookWindowsHookEx(request_getmessage_hook);
         request_getmessage_hook = NULL;
+    }
+    if (request_exception_observer) {
+        RemoveVectoredExceptionHandler(request_exception_observer);
+        request_exception_observer = NULL;
     }
     DeleteCriticalSection(&request_lock);
     lock_initialized = false;

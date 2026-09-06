@@ -17,12 +17,38 @@
     "gap_id": "gap-bce845b017e0421aabd07125b8ec1c78",
     "preserved_bundle_sha256": "0b4ea06c8533fc07b6ccc74e47c6a29fb8eb0f38b9ec485859b4ce8d763ec20f",
     "worker_and_collector_paused": true,
-    "latest_verified_checkpoint": "checkpoint-0d35c5d505a34342b5a31dd1fede56ba"
+    "latest_verified_checkpoint": "checkpoint-0d35c5d505a34342b5a31dd1fede56ba",
+    "frozen_dispatch": {
+      "request_in_progress": true,
+      "request_pending": true,
+      "modal_service_depth": 1,
+      "handler_hits": 2,
+      "getmessage_hits": 1,
+      "pending_sequence": 1297,
+      "last_response_sequence": 1282,
+      "pending_operation": "semantic_snapshot",
+      "current_modal_depth": 0,
+      "current_modal_object_present": false,
+      "main_windows_stack": [
+        "ModPeekMessage",
+        "native wait_task",
+        "native Console_human_turn",
+        "control_turn",
+        "control_game"
+      ],
+      "guard_reset_attempted": false
+    },
+    "symbol_rebuild_text_sha256": "e0cdfee86c7ab955a4eee127df0b151283a2493d503650eb719157055354a597",
+    "symbol_rebuild_matches_preserved_native_text": true
   },
   "pending": [
     "deployment of origin telemetry",
     "original invalid_tile_id cause",
     "native technology-presentation hang cause and repair",
     "controlled recovery and sustained full-game acceptance"
-  ]
+  ],
+  "deployment": {
+    "control_api": "diagnostics-fault-origin",
+    "mcp": "pending recovery replacement"
+  }
 }

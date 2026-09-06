@@ -1,0 +1,26 @@
+{
+  "checkpoint": "native-request-stall-diagnostics",
+  "controlled_validation": {
+    "windows_exception_dispatch": "passed under worker Wine with compiled bridge observer",
+    "active_ui_request_only": true,
+    "continues_to_following_exception_handler": true,
+    "serialization_guard_unchanged": true,
+    "llvm_mingw_cross_build": "passed"
+  },
+  "stage_codes": {
+    "1": "request execution",
+    "2": "deferred semantics",
+    "3": "operation dispatch",
+    "10": "snapshot entry and readiness",
+    "11": "research cost",
+    "12": "social calculation",
+    "13": "snapshot serialization"
+  },
+  "scope": "diagnostics only; no exception consumption, state correction, or request-guard reset",
+  "pending": [
+    "native deployment",
+    "controlled turn25 replay",
+    "root-cause repair and verified recovery",
+    "full-game acceptance"
+  ]
+}
