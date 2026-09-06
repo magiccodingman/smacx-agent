@@ -259,3 +259,21 @@ captured response or transport-failure terminal event. Header receipt alone does
 not close the request. The bounded ID list explicitly permits in-flight, interrupted
 or missing capture interpretations; it does not infer provider failure. Summary
 and campaign-export regressions pass. This does not certify full stream capture.
+
+## Native managed action and automatic-turn acceptance
+
+The corrected native run passes council result verification, citizen/governor
+management, production queue/retool/hurry effects, transport/founding and the
+remaining managed action fixtures. Named Explore flags match native blind research.
+Production timing matches six controlled native upkeeps; this is not a full campaign
+simulation. Milestone/production/interruption attention reaches runtime across seven
+acknowledged batches (trusted response hook simulated, no provider inference claim).
+
+The new intent boundary passes end-to-end: typed goal write → next runtime → final
+ready-unit Skip rejected without consumption or native state change → same-record
+explicit deferral → accepted Skip → actual automatic native turn 1→2. This proves
+the automatic transition guard against the running game. The bounded 512-base site
+fixtures complete in 233/250 ms, with maximum observed probe gaps about 227 ms.
+Sanitized evidence is in `benchmarks/gameplay-diagnostics-native-checkpoints.json`.
+Post-intent native recovery and the full test's terminal acceptance remain pending,
+as do deployment, browser export and autonomous full-game acceptance.

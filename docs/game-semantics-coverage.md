@@ -442,3 +442,10 @@ captured response or transport-failure terminal event. Header receipt alone does
 not close the request. The bounded ID list explicitly permits in-flight, interrupted
 or missing capture interpretations; it does not infer provider failure. Summary
 and campaign-export regressions pass. This does not certify full stream capture.
+
+Native checkpoint acceptance: current-turn goal is written, appears next runtime,
+blocks final-ready-unit Skip without effect/consumption, and explicit deferral
+permits actual automatic native turn 1→2. Managed actions and named Explore flags
+pass against native state; milestone attention delivered in seven batches. Evidence:
+`benchmarks/gameplay-diagnostics-native-checkpoints.json`. Post-intent recovery,
+full test completion, deployment/browser export and full-game acceptance remain open.
