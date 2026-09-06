@@ -106,6 +106,7 @@ def _provider_safe_temporal_events(
 ) -> list[dict[str, Any]]:
     """Convert observed transitions into semantic history with no native identity."""
     events = [dict(item) for item in projected if isinstance(item, Mapping)]
+    discovered_count, discovered_refs, discovered_features = 0, [], {}
     for delta in deltas:
         current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
         previous = delta.get("previous") if isinstance(delta.get("previous"), Mapping) else {}
@@ -137,6 +138,14 @@ def _provider_safe_temporal_events(
                     "observed_hp_before": prior_hp, "observed_hp_after": current_hp,
                     "turn": turn,
                 })
+        elif kind == "location" and change == "appeared":
+            discovered_count += 1
+            if len(discovered_refs) < 8: discovered_refs.append(object_ref)
+            feature_field = current.get("fields", {}).get("features", {})
+            freshness = feature_field.get("epistemic_status", "unknown")
+            for feature in feature_field.get("value", ()) or ():
+                key = str(feature) + ":" + str(freshness)
+                discovered_features[key] = discovered_features.get(key, 0) + 1
         elif kind == "location" and change == "changed":
             changed_fields = [name for name in ("terrain", "features", "owner_ref")
                               if _field_value(current, name) != _field_value(previous, name)]
@@ -145,6 +154,11 @@ def _provider_safe_temporal_events(
                     "event_kind": "terrain_or_improvement_changed",
                     "location_ref": object_ref, "changed_fields": changed_fields,
                     "turn": turn,
+                    "change_basis": "observed_values_changed" if all(
+                        previous.get("fields", {}).get(name, {}).get("epistemic_status") == "current"
+                        and current.get("fields", {}).get(name, {}).get("epistemic_status") == "current"
+                        for name in changed_fields) else "knowledge_refresh",
+                    "cause": "not_determined", "occurrence_time": "between_observations",
                 })
         elif kind in {
             "game_settings", "scenario_rules", "council_state", "victory_state",
@@ -163,6 +177,11 @@ def _provider_safe_temporal_events(
                 "changed_fields": changed_fields[:32],
                 "turn": turn,
             })
+    if discovered_count:
+        events.append({"event_kind": "known_extent_increased", "turn": turn,
+            "newly_known_location_count": discovered_count, "sample_location_refs": discovered_refs,
+            "newly_known_features_by_freshness": dict(sorted(discovered_features.items())[:32]),
+            "change_basis": "new_to_perspective", "physical_creation_inferred": False})
     # Exact duplicates can arise when an appearance also has an ordinary
     # projection delta.  Keep one deterministic semantic occurrence.
     unique: dict[str, dict[str, Any]] = {}
@@ -838,6 +857,8 @@ class ObservationCollector:
             elif kind == "known_tile_changed" and location:
                 events.append({"event_kind": "terrain_or_improvement_changed",
                                "location_ref": location,
+                               "change_basis": "known_tile_cache_changed",
+                               "cause": "not_determined",
                                "turn": raw.get("turn", turn)})
             elif kind == "known_tile_visibility" and location:
                 events.append({"event_kind": "visibility_changed",

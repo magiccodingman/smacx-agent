@@ -44,6 +44,44 @@ def _field(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
     return value.get("value", default) if isinstance(value, Mapping) else default
 
 
+def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
+    """Count current owned evidence, never infer assignments from capabilities."""
+    roles, orders, production = {}, {}, {}
+    unknown = {"roles": 0, "orders": 0, "production": 0}
+    units = 0
+    for item in projection.get("objects", ()):
+        if item.get("status") != "active":
+            continue
+        kind = item.get("kind")
+        fields = item.get("fields", {})
+        def current(name):
+            value = fields.get(name, {})
+            return value.get("value") if value.get("epistemic_status") == "current" else None
+        if kind == "own_unit":
+            units += 1
+            capabilities = current("roles")
+            if isinstance(capabilities, Mapping):
+                for role, enabled in capabilities.items():
+                    if enabled is True: roles[str(role)] = roles.get(str(role), 0) + 1
+            else: unknown["roles"] += 1
+            order = current("order_name")
+            if isinstance(order, str): orders[order] = orders.get(order, 0) + 1
+            else: unknown["orders"] += 1
+        elif kind == "base" and fields.get("owner_ref", {}).get("source") == "owned_state":
+            name = current("production_name")
+            if isinstance(name, str): production[name] = production.get(name, 0) + 1
+            else: unknown["production"] += 1
+    def bounded(values):
+        rows = sorted(values.items(), key=lambda row: (-row[1], row[0]))
+        return {"counts": dict(rows[:24]), "omitted_categories": len(rows[24:]),
+                "omitted_count": sum(count for _, count in rows[24:])}
+    return {"scope": "active owned projection objects; current fields only",
+            "world_revision": projection.get("world_revision"), "owned_unit_count": units,
+            "capability_roles_overlap_not_assignments": bounded(roles),
+            "observed_orders": bounded(orders), "current_production": bounded(production),
+            "missing_or_noncurrent_fields": unknown}
+
+
 def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     protocol = snapshot.get("protocol") if isinstance(snapshot.get("protocol"), Mapping) else {}
     phase = str(protocol.get("phase") or "unknown")
@@ -75,6 +113,7 @@ def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "focus_id": "focus-unit-" + own_unit_ref,
             "kind": "ready_unit", "mandatory": False,
+            "other_actions": "smac_choices exposes base/research/strategic management while units are ready, subject to native legality.",
             "unit": {key: unit.get(key) for key in
                      ("own_unit_ref", "name", "location_ref", "roles")
                      if unit.get(key) is not None},
@@ -282,6 +321,7 @@ class RuntimeContextAssembler:
         snapshot: Callable[[], Mapping[str, Any]],
         working_state: Callable[[], Mapping[str, Any]],
         interpretive_recall: Callable[[str], Mapping[str, Any]] | None = None,
+        intent_review: Callable[[int], Mapping[str, Any]] | None = None,
     ) -> None:
         self.scope = scope
         self.world = world
@@ -289,6 +329,7 @@ class RuntimeContextAssembler:
         self.snapshot = snapshot
         self.working_state = working_state
         self.interpretive_recall = interpretive_recall
+        self.intent_review = intent_review
 
     def build(self, *, episode_id: str, episode_mode: str,
               context_length: int) -> dict[str, Any]:
@@ -392,6 +433,8 @@ class RuntimeContextAssembler:
                     "facts": recalled["facts"][:8],
                     "authority": "fallible_history_not_current_mechanical_truth",
                 }
+        intent_review = dict(self.intent_review(int(turn))) if self.intent_review and turn is not None else {}
+        intent_review.pop("resolution_options", None)
         # Reserve all non-anchor mandatory/current cognition first.  Semantic
         # LOD receives only the remaining coherent envelope budget.
         payload = {
@@ -407,6 +450,8 @@ class RuntimeContextAssembler:
             },
             "world": {},
             "focus": focus,
+            "force_summary": _force_summary(projection),
+            **({"current_turn_intent_review": intent_review} if intent_review.get("total_pending") else {}),
             "attention": attention_context,
             "working_cognition": cognition,
             "operations": operations,
@@ -439,6 +484,7 @@ class RuntimeContextAssembler:
             "anchor_observation_cursor": anchor["anchor_observation_cursor"],
             "anchor": anchor["payload"],
             "net_deltas": anchor.get("net_deltas", []),
+            "delta_semantics": "appeared/changed describe known representation, not physical creation/growth. Feature and landmark counts are known extent; increases may be discovery. Use qualified temporal events for observed changes; no event is not proof of no physical change.",
             "net_deltas_truncated": bool(anchor.get("net_deltas_truncated")),
         }
         # The authoritative anchor/focus, binding commitments, and critical
@@ -480,6 +526,8 @@ class RuntimeContextAssembler:
             "anchor": estimate_tokens(payload["world"]["anchor"]),
             "deltas": estimate_tokens(payload["world"]["net_deltas"]),
             "focus": estimate_tokens(payload["focus"]),
+            "force_summary": estimate_tokens(payload["force_summary"]),
+            "intent_review": estimate_tokens(payload.get("current_turn_intent_review", {})),
             "attention": estimate_tokens(payload["attention"]),
             "cognition": estimate_tokens(cognition),
             "operations": estimate_tokens(payload["operations"]),

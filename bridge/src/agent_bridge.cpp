@@ -10421,6 +10421,19 @@ std::string semantic_snapshot_response() {
             << ",\"progress_percent\":" << research_progress
             << ",\"accumulated\":" << faction.tech_accumulated
             << ",\"cost\":" << research_cost;
+        out << ",\"selected_priorities\":[";
+        const char* priority_names[] = {"Explore", "Discover", "Build", "Conquer"};
+        const bool priority_flags[] = {bool(faction.AI_growth), bool(faction.AI_tech),
+                                      bool(faction.AI_wealth), bool(faction.AI_power)};
+        bool priority_comma = false;
+        for (int p = 0; p < 4; ++p) {
+            if (!priority_flags[p]) continue;
+            if (priority_comma) out << ',';
+            priority_comma = true;
+            out << json_string(priority_names[p]);
+        }
+        out << "],\"target_visibility\":\"hidden_by_blind_research\""
+            << ",\"priority_meaning\":\"Category preferences, not the hidden technology target. Zero is Explore; progress can continue without a disclosed target.\"";
     } else {
         out << research_id << ",\"tech_name\":"
             << json_string(research_id >= 0 && research_id < MaxTechnologyNum
@@ -10809,7 +10822,8 @@ std::string production_choices_response(int faction_id, int base_id) {
             << "\",\"command\":\"hurry_production\",\"base_id\":" << base_id
             << ",\"energy_cost\":" << full_hurry_cost
             << ",\"minerals_added\":" << hurry_minerals
-            << ",\"meaning\":\"Pay the full native hurry cost to complete current production.\"}";
+            << ",\"production_name\":" << json_string(production_name(Bases[base_id].queue_items[0]).c_str())
+            << ",\"meaning\":\"Pay the quoted native cost to add minerals to the named current item. This does not switch production; actual completion must be observed.\"}";
     }
     out << "]}";
     return out.str();
@@ -16391,6 +16405,9 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"hurry_production\",\"base_id\":")
             + std::to_string(base_id) + ",\"energy_cost\":" + std::to_string(cost)
             + ",\"minerals_added\":" + std::to_string(minerals)
+            + ",\"production_name\":" + json_string(production_name(base.queue_items[0]).c_str())
+            + ",\"minerals_accumulated\":" + std::to_string(base.minerals_accumulated)
+            + ",\"production_switched\":false,\"completion_verified\":false"
             + ",\"energy_credits\":" + std::to_string(Factions[faction_id].energy_credits) + '}';
     }
     if (command == "nerve_staple") {

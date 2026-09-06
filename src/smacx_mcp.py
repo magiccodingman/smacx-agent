@@ -41,6 +41,7 @@ from smacx_controller import (
     record_campaign_action as controller_record_campaign_action,
     read_game_reference,
     read_platform_memory,
+    current_turn_intents,
     semantic_chat as controller_semantic_chat,
     semantic_group_chat as controller_semantic_group_chat,
     stop_game,
@@ -198,13 +199,15 @@ def _runtime_services() -> tuple[RuntimeContextAssembler, object]:
             agent_id=agent_id, perspective_id=perspective_id,
         )
         if not isinstance(result, dict) or not result.get("ok"):
-            return {}
+            raise RuntimeError("runtime_cognition_unavailable")
         value = result.get("working_state") or result.get("memory") or result
         return value if isinstance(value, dict) else {}
 
     return RuntimeContextAssembler(
         scope=scope, world=world, attention=attention,
         snapshot=snapshot, working_state=working_state,
+        intent_review=lambda turn: current_turn_intents(match_id, session_id,
+            agent_id=agent_id, perspective_id=perspective_id, turn=turn),
         interpretive_recall=lambda query: _graphiti_recall({
             "match_id": match_id, "session_id": session_id,
         }, query, limit=8),
@@ -2727,6 +2730,45 @@ def smac_choices(
     return frame
 
 
+def _turn_reconciliation_gate(command_arguments: dict) -> dict | None:
+    command = str(command_arguments["command"])
+    unit_id = int(command_arguments.get("unit_id", -1))
+    match_id = str(command_arguments["match_id"])
+    session_id = str(command_arguments["session_id"])
+    if MANAGED_ATTACHED and (unit_id >= 0 or command in {"end_turn", "skip_all_ready_units", "respond_to_end_turn_confirmation"}):
+        from smacx_intent import may_close_turn
+        observed = _call("semantic_snapshot")
+        snapshot = observed.get("snapshot", {})
+        if not observed.get("ok") or not isinstance(snapshot, dict):
+            return {"ok": False, "error": {"code": "intent_guard_observation_unavailable"}}
+        if may_close_turn(command, snapshot, command_arguments):
+            try:
+                _, _, agent, perspective = _managed_scope_identity()
+                reconciliation = current_turn_intents(match_id, session_id,
+                    agent_id=agent, perspective_id=perspective, turn=int(snapshot["turn"]))
+            except Exception as exc:
+                return {"ok": False, "error": {"code": "intent_reconciliation_unavailable",
+                        "detail": type(exc).__name__}}
+            _, attention = _runtime_services()
+            critical = attention.unacknowledged_critical()
+            if critical["items"]:
+                return {"ok": False, "kind": "turn_attention_reconciliation",
+                    "error": {"code": "critical_attention_requires_review"},
+                    "native_action_executed": False, "critical_attention": critical,
+                    "required_next": {"tool": "smac_attention_ack",
+                        "reason": "Consider the critical items in the next runtime context before acknowledging; acknowledgement is awareness, not resolution."}}
+            if reconciliation["total_pending"]:
+                return {"ok": False, "kind": "turn_intent_reconciliation",
+                    "error": {"code": "current_turn_intent_requires_review"},
+                    "native_action_executed": False, "identity": {
+                        "match_id": match_id, "session_id": session_id,
+                        "revision": snapshot.get("revision")},
+                    "reconciliation": reconciliation,
+                    "required_next": {"tool": "smac_memory_update",
+                        "reason": "Resolve, explicitly defer, cancel or mark blocked before an action that may close the turn."}}
+    return None
+
+
 def smac_command(
     command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
@@ -2918,6 +2960,9 @@ def smac_command(
         name=name,
         slot=slot,
     )
+    reconciliation_block = _turn_reconciliation_gate(command_arguments)
+    if reconciliation_block:
+        return reconciliation_block
     result = _call("semantic_command", **command_arguments)
     if result.get("error", {}).get("code") == "stale_state":
         refreshed = _fresh_unit_choice_for_stale_command(
@@ -2927,6 +2972,9 @@ def smac_command(
             fresh_revision = str(refreshed.get("revision", ""))
             if fresh_revision and fresh_revision != expected_revision:
                 command_arguments["expected_revision"] = fresh_revision
+                reconciliation_block = _turn_reconciliation_gate(command_arguments)
+                if reconciliation_block:
+                    return reconciliation_block
                 retried = _call("semantic_command", **command_arguments)
                 if retried.get("ok"):
                     result = {
@@ -3229,6 +3277,13 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         identity = dict(decision.get("identity") or {})
         choice_label = str(decision.get("choice_labels", {}).get(choice_id) or "Selected choice")
 
+    from smacx_diagnostics import record as diagnostic_record, INVOCATION
+    diagnostic_record("choice_selected", {"choice": choice, "label": choice_label,
+        "focus_before": decision.get("focus"), "phase": decision.get("phase"),
+        "turn": decision.get("turn"), "identity": identity,
+        "offered_choice_labels": decision.get("choice_labels")},
+        correlation={"decision_id": decision_id, "choice_id": choice_id,
+                     "invocation_id": INVOCATION.get()})
     progress_key = (str(identity.get("match_id") or ""),
                     str(identity.get("session_id") or ""))
     semantic_key = _choice_semantic_key(choice)
@@ -3661,6 +3716,8 @@ def smac_investigate(
         "goal={goal_key?,title,description,priority,status,due_turn?,due_year?,trigger?,parent_goal_id?,source_event_id?}; "
         "plan={plan_key,title,objective,status,target_refs?,participants?,timing?,dependencies?,intended_role?,contingencies?,last_confirmation?,linked_commitments?,contradictory_evidence?}; "
         "summary={section,content,through_event_id?}, where section is situation, relationships, goals, plans, commitments, recent_events, or chat. "
+        "Goal trigger / plan timing may include intent_horizon: this_turn_required, this_turn_preferred, next_opportunity, persistent_goal, monitor or backlog. "
+        "Current-turn intent is reviewed before possible turn closure; intentional deferral/blocking uses reconciliation={turn,disposition:deferred|blocked,reason}. Preserve other fields when revising. "
         "Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
         "Actor and event references are mechanically restricted to this same fair-play perspective."
     )

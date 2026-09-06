@@ -97,8 +97,11 @@ parsing, or hidden state. Read and acknowledge `smac_match_briefing` at match
 opening or only when its configuration hash changes; obey enabled victories,
 scenario restrictions, faction, clock, and policy.
 
-Use `smac_decision` for guarded mutation. Resolve current focus before unrelated
-play, execute one returned opaque `choice_id` with `smac_execute_choice`, then
+Use `smac_decision` for guarded mutation. Resolve blocking interactions before
+incompatible play. A ready-unit focus is a suggestion, not your only concern:
+`smac_choices` exposes production, base_citizens and other management while units
+remain ready when native rules permit. Execute one returned opaque `choice_id`
+with `smac_execute_choice`, then
 discard that frame even if the action is rejected. A consumed frame cannot be
 used to Skip or choose a different action. Copy both IDs from one fresh frame.
 Accepted orders do not prove movement or arrival; verify the next observed unit
@@ -128,6 +131,9 @@ Persist what mechanics do not decide: beliefs, suspicions, strategic conclusions
 goals, relationships, commitments, plans, named concepts/territories, and open
 questions. Reference world objects and preserve why a fact matters rather than
 duplicating its snapshot. Keep match cognition only in typed SMACX memory.
+Use `smac_memory_update` to write; `smac_memory` reads. Persist consequential
+unfinished intentions before a turn boundary. Handoff prose is a summary, not
+a substitute for typed plans/goals. A schema-rejected memory call saved nothing. Verify write receipts; after ambiguous failures, inspect persisted state before retrying.
 
 Focus is the immediate current concern. An operation is optional disposable
 working context for a real multi-query or multi-unit problem. A plan is durable
@@ -153,6 +159,9 @@ reference faculty for context-heavy or
 multi-hop mechanics research, and the world faculty for broad multi-query
 analysis. Continue playing while background work is pending unless the current
 focus genuinely depends on it. Retrieve a completed result only when relevant.
+Investigate a material uncertain mechanic with bounded reference lookup rather
+than repeatedly carrying it forward. Use semantic spatial queries for consequential
+distance estimates; do not infer distance by subtracting location identifiers.
 Neither faculty is hidden match state or a strategy guide. Never use internet
 guides or transfer match claims across matches.
 

@@ -95,3 +95,38 @@ Validation: campaign export contract passes scope isolation, partial-tail report
 manifest honesty and readable summaries; diagnostic writer contract passes; strict
 prompt contract passes in the control image. Portal suite: 72/72. Browser validation,
 live helper execution, aggregate retention and end-to-end capture remain required.
+
+## Semantic and current-turn review checkpoint (implementation; native acceptance pending)
+
+The runtime now presents bounded owned capability-role counts, observed orders and
+production counts. Roles explicitly overlap and are not inferred assignments; absent
+or noncurrent fields are counted separately. Ready-unit focus explicitly preserves
+management access. Blind research exposes category names and hidden-target semantics;
+hurry receipts identify the current item and distinguish added minerals from verified
+completion. Native cross-build passed after these additive receipt changes.
+
+Existing goal `trigger` / plan `timing` supports six `intent_horizon` values. Only
+explicit `this_turn_required` / `this_turn_preferred` work participates in the bounded
+review. Unbudgeted journal replay supplies it, so cognition trimming cannot hide a
+blocking item. A same-record reconciliation records current-turn deferral/blocking
+and a reason; it does not complete the goal. Cancellation uses existing abandoned
+status. Next turn reconsiders deferred current-turn work; longer horizons never gate.
+Native execution is guarded before End Turn, skip-all and final-unit actions, including
+stale retries. Production remains reachable. Critical committed attention must be
+considered/acknowledged separately. Actual native auto-transition acceptance is still
+required; adapter tests alone do not certify the running game's behavior.
+
+Discovery batches now report newly known extent and qualified feature counts, rather
+than implying physical creation. Terrain differences distinguish current/current
+observations from knowledge refresh, with cause and occurrence time not invented.
+Native cache-change events are explicitly labeled as cache evidence. Runtime delta
+semantics explain that anchor representation changes do not establish physical growth.
+
+Validation: runtime context/huge-map contract passes (64K and 256K); guarded controller
+memory survives journal reinitialization; internal journal crash cases pass. Intent
+journal/policy and production managed-command adapter tests pass, including last-unit
+closure, explicit closure, management reachability and critical-attention gating.
+Discovery aggregation/epistemic contract, native observation contract, concurrent
+publication visibility/crash cases, opaque choice execution and doctrine content
+contracts pass. Full provider delivery/recovery chain, native management replay,
+performance/retention, deployment and full-game acceptance remain open.

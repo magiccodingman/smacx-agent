@@ -755,6 +755,18 @@ def _guard_platform_observation(
     return scope, snapshot
 
 
+def current_turn_intents(match_id: str, session_id: str, *, agent_id: str = "",
+                         perspective_id: str = "", turn: int) -> dict[str, Any]:
+    from smacx_intent import pending_intents
+    scope = _scope_for_match(match_id, session_id=session_id,
+                            agent_id=agent_id, perspective_id=perspective_id)
+    if scope is None:
+        raise StoreError("unknown_or_invalid_match_id")
+    replayed = _journal().replay(scope, sections=("goals", "plans", "manifest"))
+    return {**pending_intents(replayed, turn),
+            "journal_head_hash": replayed["manifest"]["head_hash"]}
+
+
 def write_platform_memory(
     action: str,
     match_id: str,
@@ -777,6 +789,14 @@ def write_platform_memory(
         store = _store()
         turn = snapshot.get("turn")
         year = snapshot.get("year")
+        if action in {"goal", "plan"}:
+            from smacx_intent import validate_intent
+            record = dict(record)
+            metadata_field = "trigger" if action == "goal" else "timing"
+            metadata = record.get(metadata_field) or {}
+            if not isinstance(metadata, Mapping):
+                raise ValueError("invalid_intent_metadata")
+            record[metadata_field] = validate_intent(metadata, int(turn))
         encoded_record = json.dumps(record, ensure_ascii=False, sort_keys=True,
                                     separators=(",", ":"))
         mechanical_keys = {

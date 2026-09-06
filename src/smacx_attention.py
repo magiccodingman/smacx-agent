@@ -276,6 +276,19 @@ class AttentionService:
             values.append(item)
         return {"operations": values, "active_watch_count": watch_count}
 
+    def unacknowledged_critical(self, *, limit: int = 8) -> dict[str, Any]:
+        """Only committed, perspective-scoped critical attention can gate a turn."""
+        with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.world_store.committed_cursor(self.scope, self.timeline_id, connection)
+            rows = connection.execute(
+                "SELECT attention_id,attention_kind,status FROM attention_items WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND critical=1 "
+                "AND status NOT IN ('acknowledged','superseded') AND observation_cursor<=? "
+                "ORDER BY attention_sequence LIMIT ?", (*self._key(self.timeline_id), cap, limit+1),
+            ).fetchall()
+        return {"items": [dict(row) for row in rows[:limit]], "more": len(rows)>limit}
+
     def pending_summary(self) -> dict[str, Any]:
         with self.store._connect() as connection:
             connection.execute("BEGIN")

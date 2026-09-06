@@ -9,7 +9,7 @@ import tempfile
 
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
-from smacx_runtime_context import RuntimeContextAssembler, _attention_payload
+from smacx_runtime_context import RuntimeContextAssembler, _attention_payload, _force_summary
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world import WorldService
 from smacx_world_model import PerspectiveProjector, estimate_tokens
@@ -18,6 +18,15 @@ from smacx_world_types import WorldIdentity, content_hash
 
 
 def main() -> int:
+    force = _force_summary({"world_revision": 4, "objects": [
+        {"kind": "own_unit", "status": "active", "fields": {
+            "roles": {"value": {"combat": True, "scout": True}, "epistemic_status": "current"},
+            "order_name": {"value": "sentry", "epistemic_status": "stale"}}},
+        {"kind": "foreign_contact", "status": "active", "fields": {
+            "roles": {"value": {"combat": True}, "epistemic_status": "current"}}}]})
+    assert force["owned_unit_count"] == 1
+    assert force["capability_roles_overlap_not_assignments"]["counts"] == {"combat": 1, "scout": 1}
+    assert force["observed_orders"]["counts"] == {} and force["missing_or_noncurrent_fields"]["orders"] == 1
     summary = _attention_payload({"attention_kind": "watch_trigger", "payload": {
         "watch_id": "watch-mobilization", "watch_kind": "milestone", "subject_refs": ["base-home"],
         "matches": [{"milestone": {"state": "blocked", "ready_count": 1, "required_count": 2,

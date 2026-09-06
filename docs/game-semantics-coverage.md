@@ -379,3 +379,12 @@ verify match isolation, bounded output and explicit gaps; portal tests pass 72/7
 Specialist attempts/dependencies/manifests are scoped via mission joins. No claim of
 historical provider delivery, full trace completeness or gameplay acceptance follows
 from these fixtures. See `gameplay-diagnostics-mission.md` for outstanding gates.
+
+| Diagnostics review layer | Current evidence | Remaining acceptance |
+| --- | --- | --- |
+| Research/hurry semantics | Additive native named preferences and item/mineral receipt; cross-build passes | Controlled native comparison and provider delivery |
+| Focus/force representation | Current owned role/order/production summary; runtime tier and huge fixture pass | Live use and home-base/assigned-mission detail |
+| Intent reconciliation | Canonical goal/plan metadata; bounded unbudgeted review; managed explicit/final-unit tests | Native auto-turn and full provider action/write loop |
+| Discovery vs change | Bounded newly-known extent; current vs refresh qualifiers; observer contracts pass | Saved/live campaign trace comparison |
+| Cognition persistence | Guarded write + journal reinitialization; internal crash tests | Same-record next-request/handoff/GC/recovery provider capture |
+| Journal diagnostic export | Locked committed-prefix snapshots implemented | Export against running/parked/archive campaign and browser |
