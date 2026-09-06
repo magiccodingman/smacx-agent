@@ -14,7 +14,8 @@
     "existing_oversized_world_retry_pass": true,
     "full_world_model_contract_pass": true,
     "publication_visibility_four_cases_pass": true,
-    "batch_recovery_three_crash_windows_pass": true
+    "batch_recovery_three_crash_windows_pass": true,
+    "packaged_image_regression_pass": true
   },
-  "live_acceptance": "pending packaged deployment; no claim of autonomous large-history traversal"
+  "live_acceptance": "packaged code passes; resumed native campaign uses upgraded MCP, autonomous large-history traversal not observed"
 }

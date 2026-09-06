@@ -42,13 +42,12 @@
     "symbol_rebuild_matches_preserved_native_text": true
   },
   "pending": [
-    "deployment of origin telemetry",
-    "original invalid_tile_id cause",
-    "native technology-presentation hang cause and repair",
-    "controlled recovery and sustained full-game acceptance"
+    "original invalid_tile_id cause; origin telemetry deployed, no recurrence reproduced",
+    "sustained full-game acceptance"
   ],
   "deployment": {
-    "control_api": "diagnostics-fault-origin",
-    "mcp": "pending recovery replacement"
+    "control_api": "diagnostics-history-final-cut",
+    "mcp": "diagnostics-history-final-cut",
+    "native_hang_repair_evidence": "gameplay-popup-lifetime-repair.json"
   }
 }

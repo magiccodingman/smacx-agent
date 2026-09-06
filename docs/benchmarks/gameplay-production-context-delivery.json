@@ -28,5 +28,6 @@
     "turn": 22,
     "verified": true
   },
-  "deployed_provider_acceptance": "pending"
+  "deployed_provider_acceptance": "turn29 managed answer existed but GC erased it before delivery; repaired turn32 actual wire retains quote and citizen answer, sovereign-selected hurry verified by independent native read",
+  "evidence": "gameplay-complementary-result-delivery.json"
 }

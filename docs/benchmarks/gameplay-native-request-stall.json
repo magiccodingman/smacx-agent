@@ -18,9 +18,10 @@
   },
   "scope": "diagnostics only; no exception consumption, state correction, or request-guard reset",
   "pending": [
-    "native deployment",
-    "controlled turn25 replay",
-    "root-cause repair and verified recovery",
-    "full-game acceptance"
+    "sustained full-game acceptance"
+  ],
+  "subsequent_acceptance_evidence": [
+    "gameplay-popup-lifetime-repair.json",
+    "gameplay-recovery-observation-order.json"
   ]
 }

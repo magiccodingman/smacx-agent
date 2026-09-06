@@ -32,9 +32,7 @@
     "ai_memory_checkpoint_contract": "passed"
   },
   "pending": [
-    "live LAN identity-order acceptance",
-    "turn25 diagnostic replay and root-cause repair",
-    "full-game acceptance"
+    "sustained full-game acceptance"
   ],
   "live_acceptance": {
     "session_id": "session-57943c3baafd4fc39e8d8d0138372a3b",
@@ -59,5 +57,9 @@
     "transient_owned_appearance_removal_count": 0,
     "managed_agreement_effects_preserved": true,
     "provider_inference": false
-  }
+  },
+  "subsequent_acceptance_evidence": [
+    "gameplay-popup-lifetime-repair.json",
+    "../../scripts/control_lan_live_test.py"
+  ]
 }

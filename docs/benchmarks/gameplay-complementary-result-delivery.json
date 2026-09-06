@@ -45,7 +45,7 @@
     "packaged_real_hermes_provider_capture_pass": true,
     "legacy_tool_context_policy_pass": true
   },
-  "limits": "Actual autonomous wire retains complementary citizen/research queries and execution receipt; production requery/use and typed memory write remain unobserved. Controlled tests do not establish mechanics or full-game completion.",
+  "limits": "Actual provider delivery and sovereign-selected guarded hurry effect are verified after an explicit operational recheck notice. Spontaneous requery, autonomous typed writes, native completion of the pod, recovery of this new effect and full game remain separate gates.",
   "recovery_checkpoint": {
     "id": "checkpoint-7659fa18b9764d0e8336e2c8ead4a85a",
     "turn": 30,
@@ -68,5 +68,20 @@
     ],
     "memory_guard_mapping_on_actual_wire": true,
     "production_requery": "not yet observed after repair"
+  },
+  "live_production_acceptance": {
+    "turn": 32,
+    "resumption": "one-time operator repair notice requested a fresh production query; no strategy/action was prescribed",
+    "provider_request_with_production_and_citizens": "6d7459bf0dbd4d5bbd74c4625e8ecc1f",
+    "provider_request_with_execution_receipt": "8bb146bec6e04ed78246fddd5d1a5bb4",
+    "production_call_id": "chatcmpl-tool-8849d80be0bc02a4",
+    "execute_call_id": "chatcmpl-tool-b03874c145e7aad0",
+    "hurry_choice": "choice-868775971021493cb549948b5669ee34",
+    "energy_before": 88,
+    "energy_after": 69,
+    "minerals_before": 22,
+    "minerals_after": 30,
+    "independent_native_read_verifies_effect": true,
+    "completion": "awaiting native turn resolution"
   }
 }
