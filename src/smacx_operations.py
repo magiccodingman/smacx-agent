@@ -169,7 +169,7 @@ class OperationsManager:
                     identifier=manager.docker.create_container(manager._name("diagnostic",uuid.uuid4().hex),{
                         "Image":manager.mcp_image,"Entrypoint":["python3"],"Cmd":["-c",script],"User":"0:0",
                         "Labels":manager._labels("diagnostic-helper"),
-                        "HostConfig":{"NetworkMode":"none","ReadonlyRootfs":True,"CapDrop":["ALL"],"CapAdd":["DAC_OVERRIDE"],
+                        "HostConfig":{"NetworkMode":"none","ReadonlyRootfs":True,"CapDrop":["ALL"],"CapAdd":["DAC_OVERRIDE","CHOWN","FOWNER"],
                           "SecurityOpt":["no-new-privileges"],"Mounts":[
                             {"Type":"volume","Source":runtime["data_volume"],"Target":"/source","ReadOnly":True},
                             {"Type":"volume","Source":manager.control_data_volume,"Target":"/control"}]}})

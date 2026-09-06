@@ -175,3 +175,11 @@ managed boundary test leave the decision available and do not open an execution
 failure circuit. Genuine failed submissions keep the existing circuit contract.
 Historical case classifications and verified message IDs are consolidated in
 `gameplay-diagnostics-findings.md`; the sanitized parked-session audit is committed.
+
+Operational adapter follow-up: the helper's exact production restrictions (no network,
+read-only root, dropped capabilities with DAC_OVERRIDE/CHOWN/FOWNER for the read-only
+Hermes volume and output ownership handoff) passed against the parked volume. These
+ownership capabilities are required to publish files readable by the control/portal
+UID. Compact `SMACX_TRACE` request/result lines now reach normal process stderr; giant
+records stay in the compressed streams. Terminal control characters are removed and
+human lines are capped at 1,400 characters with an explicit details marker.

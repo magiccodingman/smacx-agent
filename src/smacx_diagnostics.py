@@ -13,6 +13,7 @@ import inspect
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 import re
 import threading
@@ -99,7 +100,8 @@ class DiagnosticWriter:
     def __init__(self, root: Path, match_id: str, actor: str, *,
                  max_bytes: int = 512 * 1024 * 1024,
                  max_event_bytes: int = 2 * 1024 * 1024,
-                 compress: bool = False, max_match_bytes: int = 2 * 1024 * 1024 * 1024):
+                 compress: bool = False, max_match_bytes: int = 2 * 1024 * 1024 * 1024,
+                 human_log: bool = False):
         if not _SAFE.fullmatch(match_id) or not _SAFE.fullmatch(actor):
             raise ValueError("invalid_diagnostic_scope")
         if max_bytes < 1024 or max_event_bytes < 256:
@@ -109,6 +111,7 @@ class DiagnosticWriter:
         self.stream_id = uuid.uuid4().hex
         self.path = self.directory / (f"{actor}-{self.stream_id}.jsonl" + (".gz" if compress else ""))
         self.compress, self.max_match_bytes = compress, max_match_bytes
+        self.human_log = human_log
         self.match_id, self.actor = match_id, actor
         self.max_bytes, self.max_event_bytes = max_bytes, max_event_bytes
         self._lock = threading.Lock()
@@ -162,6 +165,13 @@ class DiagnosticWriter:
                 # Never report a diagnostic record as captured when its write failed.
                 raise
             self._bytes += len(packed)
+            if self.human_log and event["kind"] in {"tool_requested", "tool_returned",
+                    "managed_tool_started", "managed_tool_returned", "choice_selected", "capture_gap"}:
+                from smacx_diagnostic_summary import summary
+                rendered = summary(event)
+                rendered = re.sub(r"[\x00-\x1f\x7f]", " ", rendered)
+                suffix = " [details in diagnostics]" if len(rendered)>1400 else ""
+                print(f"SMACX_TRACE [{self.actor}] {rendered[:1400]}{suffix}", file=sys.stderr, flush=True)
             return {"ok": not self._exhausted, "event_id": event["event_id"],
                     "stream_id": self.stream_id, "sequence": self._sequence,
                     "capture_status": "incomplete" if self._exhausted else "recorded"}

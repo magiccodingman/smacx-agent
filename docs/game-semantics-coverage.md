@@ -401,3 +401,7 @@ Reconciliation follow-up acceptance: repeated pre-dispatch reviews do not consum
 choices or count as repeated native attempts (eight-review adapter regression).
 The full parked baseline attribution audit is in `gameplay-diagnostics-findings.md`;
 remaining native/provider acceptance is still explicitly open.
+
+Operational tracing follow-up: exact constrained helper execution passes on the parked
+Hermes volume; compact named request/result lines are enabled in process logs. Live
+container dispatch and browser download remain acceptance gates.
