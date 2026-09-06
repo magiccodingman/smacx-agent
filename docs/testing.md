@@ -525,3 +525,5 @@ For exact active-scope tail acceptance, run `active_scope_collector_benchmark.py
 The installed Hermes MCP child-watcher race can be checked with `docker run --rm --entrypoint /opt/hermes/.venv/bin/python -v "$PWD:/workspace:ro" smacx-agent-harness:dev /workspace/scripts/hermes_mcp_watcher_test.py`. It verifies one RPC/watcher, cancellation and reconnect on child exit, synchronous stubs, and no orphan tasks/coroutines.
 
 Run `scripts/mcp_argument_validation_test.py` in the container MCP environment to verify that unknown top-level arguments are rejected before dispatch and recorded, while declared nested data/defaults still work. The specialist provider capture test additionally exercises rejection and recovery through actual Hermes and the frozen MCP instruments.
+
+`PYTHONPATH=src python3 scripts/ecology_attention_contract_test.py` replays inactive sunspot ticks, active countdown, start/end and other ecology changes through the collector and verifies both retained world state and critical-attention selection.

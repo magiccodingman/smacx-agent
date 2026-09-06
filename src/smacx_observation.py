@@ -38,8 +38,23 @@ def _delta_attention(delta: Mapping[str, Any]) -> tuple[bool, int] | None:
     fields = current.get("fields") if isinstance(current.get("fields"), Mapping) else {}
     values = {name: item.get("value") for name, item in fields.items()
               if isinstance(item, Mapping)}
+    if kind == "ecology_state":
+        state = values.get("state")
+        previous = delta.get("previous")
+        prior_state = _field_value(previous, "state") if isinstance(previous, Mapping) else None
+        if isinstance(state, Mapping) and isinstance(prior_state, Mapping):
+            duration, prior_duration = state.get("sunspot_duration"), prior_state.get("sunspot_duration")
+            if type(duration) is int and type(prior_duration) is int:
+                # gameturn.cpp decrements this counter even while inactive
+                # (negative). Countdowns do not imply a new ecology incident.
+                # Preserve starts/ends and every other state-field change.
+                material = {key: value for key, value in state.items() if key != "sunspot_duration"}
+                prior_material = {key: value for key, value in prior_state.items() if key != "sunspot_duration"}
+                if material == prior_material and (duration > 0) == (prior_duration > 0):
+                    return None
+        return True, 95
     if kind in {"victory", "victory_state", "victory_posture", "global_event",
-                "council_state", "ecology_state", "planetary_state"}:
+                "council_state", "planetary_state"}:
         return True, 95
     if kind == "foreign_contact":
         return True, 90
