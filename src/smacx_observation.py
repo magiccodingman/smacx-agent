@@ -1092,6 +1092,17 @@ class ObservationCollector:
                 for values in attention_groups.values()),
         })
         self._last_action_revision = action_revision
+        from smacx_diagnostics import record
+        record("observation_publication_committed", {
+            "publication_hash": publication_key, "journal_event_id": reconciled["event_id"],
+            "timeline_id": self.timeline_id, "turn": turn, "world_revision": stored["world_revision"],
+            "observation_cursor": cursor, "native_feed_continuity": continuity,
+            "snapshot_at_native_feed_cut": package.get("snapshot_at_native_feed_cut"),
+            "snapshot_contact_registry_reset": bool(frozen_bundle.get("_contact_identity_reset")),
+            "temporal_contact_reference_count": len(frozen_bundle.get("_temporal_contact_refs") or {}),
+            "material_delta_count": len(deltas), "semantic_event_count": len(temporal_events),
+            "critical_attention_groups": sum(bool(critical) for critical, _ in attention_groups),
+        }, actor="observation-collector")
         return {"ok": True, "changed": stored["changed"], "deltas": len(deltas),
                 "world_revision": stored["world_revision"],
                 "observation_cursor": cursor,
@@ -1310,6 +1321,7 @@ class ObservationCollector:
             # projection candidate. Projection and delta hashes make replay a
             # checked deterministic derivation without duplicating every Huge
             # map object twice in the private stage.
+            "snapshot_at_native_feed_cut": bool(stable_cut),
             "projection_input": bundle,
             "projection_hash": _sequence_content_hash(current_objects),
             "world_delta_hash": _sequence_content_hash(deltas),

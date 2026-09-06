@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Frozen journal publication survives either side of a batched cache commit."""
 import json
+import gzip
+import os
 import tempfile
 from pathlib import Path
 
@@ -15,6 +17,12 @@ def main():
     for window in ("before_commit", "during_commit", "after_commit"):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            os.environ.update(SMACX_DIAGNOSTICS_ENABLED="1", SMACX_AGENT_MATCH_ID="match-batch",
+                              SMACX_DIAGNOSTICS_ROOT=str(root / "diagnostics"))
+            def publications():
+                return [json.loads(line) for path in (root / "diagnostics").rglob("*.gz")
+                        for line in gzip.open(path, "rt")
+                        if json.loads(line).get("kind") == "observation_publication_committed"]
             store = SmacxStore(root / "state.sqlite3")
             store.ensure_agent("agent-batch", "Batch")
             store.create_match(match_id="match-batch", display_name="Batch", mode="solo")
@@ -51,6 +59,7 @@ def main():
                 raise AssertionError("cache failure was not injected")
             except RuntimeError as error:
                 assert str(error) == "injected_cache_commit_failure"
+            assert not publications(), "failed publication reported committed"
             assert batches and journal.verify(scope)["ok"]
             timeline = journal.timeline_id(scope)
             cached = worlds.changes_since(scope, timeline, 0, limit=512)
@@ -60,6 +69,10 @@ def main():
             assert bool(raw_count) == (window == "after_commit")
             worlds.record_observation_projections = original
             recovered = collector().collect_once()
+            receipts = publications()
+            assert len(receipts) == 1 and receipts[0]["payload"]["snapshot_at_native_feed_cut"] is True
+            assert receipts[0]["payload"]["publication_hash"] == recovered["publication_hash"]
+            assert "vehicle-handle" not in json.dumps(receipts)
             count = recovered["collector_metrics"]["world_objects"]
             assert len(journal.replay(scope)["world_objects"]) == count
             assert len(worlds.changes_since(scope, timeline, 0, limit=512)) == count
