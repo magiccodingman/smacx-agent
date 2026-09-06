@@ -1,0 +1,26 @@
+{
+  "provider_request_id": "dc431aed58ee4f00a7e938c921d27ffa",
+  "turn": 23,
+  "owned_units": 3,
+  "names": {
+    "Scout Patrol": 3
+  },
+  "orders": {
+    "auto_explore": 2,
+    "none": 1
+  },
+  "current_production": {
+    "Colony Pod": 1
+  },
+  "missing_or_noncurrent_fields": {
+    "design": 0,
+    "home_base": 0,
+    "orders": 0,
+    "production": 0,
+    "roles": 0
+  },
+  "qualified_capability_roles_not_assignments": true,
+  "home_base_label_not_defense_assignment": true,
+  "scope": "actual provider request; not inferred strategic assignments or completed production",
+  "behavior": "Sovereign queried production/citizens and selected Colony Pod at22; requested reference/typed cognition behavioral gates remain separate"
+}
