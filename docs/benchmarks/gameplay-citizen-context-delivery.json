@@ -29,12 +29,26 @@
     "human_trace_retains_workflow": true,
     "opaque_execution_regression_pass": true,
     "managed_staged_actions_contract_pass": true,
-    "diagnostic_summary_contract_pass": true
+    "diagnostic_summary_contract_pass": true,
+    "packaged_image_pass": true
   },
   "checkpoint": {
     "id": "checkpoint-775f757c99c14b68b923fc7c22019436",
     "turn": 34,
     "verified": true
   },
-  "live_after": "pending deployment and provider/native effect verification"
+  "live_after": "Installed code and restored native state verified. Sovereign advanced through35\u219236 with valid movement and production; citizen requery/use remains unobserved. Expanded isolated native reassignment test running.",
+  "deployment": {
+    "run_id": "run-22993042848845a1a649bd50cb238272",
+    "timeline": "timeline-restore-781ce24ffc064e138d9c5c41",
+    "session_id": "session-ec88fcb0cf9749a4b044b17800b67616",
+    "restored_turn": 34,
+    "native_units_restored": [
+      "Scout Patrol",
+      "Scout Patrol",
+      "Scout Patrol",
+      "Colony Pod"
+    ],
+    "control_and_harness_image": "diagnostics-citizen-context"
+  }
 }
