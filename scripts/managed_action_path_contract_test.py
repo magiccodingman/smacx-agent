@@ -9,6 +9,12 @@ from smacx_choice_preparation import ChoicePreparations, PreparationError
 
 
 def main():
+    support = {"epistemic_status": "conditional", "current_support_minerals": 2,
+               "free_supported_units": 2, "current_eligible_units": 4,
+               "gross_mineral_output": 2, "additional_support_minerals": 1,
+               "support_after_one_completion": 3, "exceeds_current_gross_output": True,
+               "condition": "Current population and mineral output remain unchanged. " * 6}
+    assert mcp._production_catalog_context({"support_projection": support})["support_projection"] == support
     refused = {"action_id": 1, "status": "rejected", "native_call_attempted": True,
                "resolution": "native_turn_transition_not_accepted"}
     with patch.object(mcp, "_call", return_value={"ok": True, "action": refused}) as poll:
@@ -143,6 +149,10 @@ def main():
         # These are native-shaped interface proofs, not native gameplay proof.
         # Closed Council/research/human clauses need no arbitrary parameter API.
         for kind, row, information in (
+            ("interaction", {"command": "acknowledge_popup"},
+             [{"kind": "information", "event": "unit_support_shortage", "base_name": "HQ",
+               "unit_name": "Garrison", "effect_status": "forced_disband_pending_native_processing",
+               "meaning": "Verify the resulting owned units afterward; this is not a combat loss."}]),
             ("interaction", {"command": "defer_social_engineering", "meaning": "Continue current models; review social_engineering after interactions"},
              [{"kind": "information", "technology_name": "Industrial Economics", "unlocked_model_name": "Free Market"}]),
             ("research", {"command": "choose_research", "tech_id": 12, "name": "Test advance"}, []),

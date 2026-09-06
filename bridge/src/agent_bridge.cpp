@@ -1353,6 +1353,7 @@ bool test_production_interruption = false;
 bool test_production_preserve_progress = false;
 bool test_endgame_fixture_initialized = false;
 int test_endgame_fixture_stage = -1;
+int test_support_shortage_base = -1;
 bool test_full_endgame_fixture_initialized = false;
 bool test_full_endgame_fixture_pending = false;
 bool test_full_endgame_narrative = false;
@@ -3991,9 +3992,9 @@ bool reviewed_information_popup(const std::string& label) {
         // the shared timer has already crossed its threshold. Acknowledging it
         // only dismisses presentation on this client.
         || label == "TIMEWARNING"
-        // The base-support routine has already disbanded the named unit before
-        // this warning is shown.  NOSUPPORT therefore reports a completed
-        // outcome; it does not offer the player a decision.
+        // The base-support routine selected a unit for forced disbanding.
+        // It performs the removal after this notice returns. Acknowledgement
+        // offers no alternative, but is not itself proof of completed removal.
         || label == "NOSUPPORT" || label == "WEASELEDOUT" || label == "HALFBRIBE"
         || label == "SEEMONOLITH" || label == "MONOLITH0" || label == "MONOLITHHEAL"
         || label == "CALLSCOUNCIL"
@@ -9517,6 +9518,8 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
 
 // Isolated managed-action acceptance inputs. Gameplay mutations in the test
 // still travel through the normal semantic choices and guarded executor.
+void append_production_support(std::ostringstream& out, int faction_id, int base_id, int item);
+
 std::string test_managed_action_fixture_response(const std::string& request) {
     char test_mode[8] = {}, acceptance[8] = {};
     if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
@@ -9529,6 +9532,64 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
+    if (phase == "diagnostics_support_shortage") {
+        if (*MultiplayerActive || test_support_shortage_base >= 0)
+            return error_response("fixture_unavailable", "Isolated idle single-player support notice only.");
+        BASE& base = Bases[base_id];
+        const int added = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+        if (added < 0) return error_response("fixture_unavailable", "Cannot create isolated support actor.");
+        for (int id = 0; id < *VehCount; ++id)
+            if (Vehs[id].faction_id == faction) Vehs[id].home_base_id = -1;
+        Vehs[added].home_base_id = base_id;
+        Factions[faction].SE_support_pending = -4;
+        set_base(base_id);
+        mod_base_support();
+        base.mineral_intake_2 = 0;
+        test_support_shortage_base = base_id;
+        PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0);
+        return std::string("{\"ok\":true,\"own_unit_ref\":")
+            + json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(added))).c_str())
+            + ",\"base_name\":" + json_string(base.name) + '}';
+    }
+    if (phase == "diagnostics_support_comparison") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Isolated single-player support comparison only.");
+        BASE& base = Bases[base_id];
+        for (int index = 0; index < 4; ++index) {
+            const int seed = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+            if (seed < 0) return error_response("fixture_unavailable", "Cannot seed isolated support threshold.");
+            Vehs[seed].home_base_id = base_id;
+        }
+        const int original_rating = Factions[faction].SE_support_pending;
+        const int original_population = base.pop_size;
+        set_base(base_id);
+        base_compute(1);
+        std::ostringstream out;
+        out << "{\"ok\":true,\"comparisons\":[";
+        bool comma = false;
+        for (int population : {1, 4}) for (int rating = -4; rating <= 3; ++rating) {
+            base.pop_size = population;
+            Factions[faction].SE_support_pending = rating;
+            mod_base_support();
+            const int before = *BaseForcesMaintCost;
+            if (comma) out << ',';
+            comma = true;
+            out << "{\"rating\":" << rating << ",\"population\":" << population
+                << ",\"native_before\":" << before << ",\"projection\":";
+            append_production_support(out, faction, base_id, BSC_SCOUT_PATROL);
+            const int added = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+            if (added < 0) return error_response("fixture_unavailable", "Cannot create isolated support actor.");
+            Vehs[added].home_base_id = base_id;
+            mod_base_support();
+            out << ",\"native_after\":" << *BaseForcesMaintCost << '}';
+            veh_kill(added);
+        }
+        Factions[faction].SE_support_pending = original_rating;
+        base.pop_size = original_population;
+        base_compute(1);
+        ++semantic_mutation_generation;
+        out << "]}";
+        return out.str();
+    }
     if (phase == "diagnostics_end_turn_refusal" || phase == "diagnostics_end_turn_release") {
         if (*MultiplayerActive || deferred_end_turn_faction_id >= 0)
             return error_response("fixture_unavailable", "Requires an idle single-player turn.");
@@ -10879,6 +10940,42 @@ std::string social_engineering_choices_response(int faction_id, const std::strin
     return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
+// Conditional one-unit completion estimate, using owned units and current rules only.
+// This does not run upkeep, choose a casualty, or predict future resource changes.
+void append_production_support(std::ostringstream& out, int faction_id, int base_id, int item) {
+    const BASE& base = Bases[base_id];
+    int eligible = 0;
+    for (int id = 0; id < *VehCount; ++id) {
+        VEH& unit = Vehs[id];
+        if (unit.faction_id != faction_id || unit.home_base_id != base_id
+        || unit.plan() > unit_support_plan() || has_abil(unit.unit_id, ABL_CLEAN_REACTOR)) continue;
+        MAP* tile = mapsq(unit.x, unit.y);
+        if (tile && (!unit.is_native_unit() || !tile->is_fungus())) ++eligible;
+    }
+    const int rating = Factions[faction_id].SE_support_pending;
+    const int free = unit_support_free(rating, base.pop_size)
+        + (is_human(faction_id) ? 0 : conf.unit_support_bonus[*DiffLevel]);
+    const int cost = unit_support_cost(rating);
+    const int before = max(0, eligible - free) * cost;
+    bool added = false;
+    if (item >= 0 && item < MaxProtoNum) {
+        VEH prototype = {};
+        prototype.unit_id = item; prototype.faction_id = faction_id;
+        MAP* tile = mapsq(base.x, base.y);
+        added = prototype.plan() <= unit_support_plan() && !has_abil(item, ABL_CLEAN_REACTOR)
+            && tile && (!prototype.is_native_unit() || !tile->is_fungus());
+    }
+    const int after = max(0, eligible + int(added) - free) * cost;
+    out << "{\"epistemic_status\":\"conditional\",\"current_support_minerals\":" << before
+        << ",\"free_supported_units\":" << free
+        << ",\"current_eligible_units\":" << eligible
+        << ",\"gross_mineral_output\":" << base.mineral_intake_2
+        << ",\"additional_support_minerals\":" << after - before
+        << ",\"support_after_one_completion\":" << after
+        << ",\"exceeds_current_gross_output\":" << (after > base.mineral_intake_2 ? "true" : "false")
+        << ",\"condition\":\"One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support.\"}";
+}
+
 std::string production_choices_response(int faction_id, int base_id) {
     if (base_id < 0 || base_id >= *BaseCount || Bases[base_id].faction_id != faction_id) {
         return error_response("invalid_base", "base_id must identify a base owned by the human faction.");
@@ -10910,7 +11007,9 @@ std::string production_choices_response(int faction_id, int base_id) {
         << ",\"affordable\":" << (hurry_legal && full_hurry_cost <= available_energy ? "true" : "false")
         << ",\"minerals_added\":" << hurry_minerals
         << ",\"energy_cost\":" << full_hurry_cost
-        << ",\"available_energy\":" << available_energy << "},\"choices\":[";
+        << ",\"available_energy\":" << available_energy << "},\"support_projection\":";
+    append_production_support(out, faction_id, base_id, base.queue_items[0]);
+    out << ",\"choices\":[";
     bool comma = false;
     for (int unit_id = 0; unit_id < MaxProtoNum; ++unit_id) {
         if (!Units[unit_id].name[0] || !mod_veh_avail(unit_id, faction_id, base_id)
@@ -13298,6 +13397,21 @@ std::string semantic_choices_response(const std::string& request) {
         } else if (reviewed_information_popup(label)) {
             out << "{\"id\":\"popup:acknowledge\",\"command\":\"acknowledge_popup\","
                 "\"meaning\":\"Acknowledge this reviewed information-only game notification.\"}";
+            if (!strcmp(label, "NOSUPPORT")) {
+                out << ",{\"id\":\"support_shortage:context\",\"kind\":\"information\","
+                    "\"event\":\"unit_support_shortage\",\"base_name\":"
+                    << json_string(agent_popup_parse_string(0))
+                    << ",\"unit_name\":" << json_string(agent_popup_parse_string(1))
+                    << ",\"effect_status\":\"forced_disband_pending_native_processing\","
+                    "\"meaning\":\"The home base lacks enough gross mineral output to pay unit support. The game selected the named unit for forced disbanding; this is not a combat loss. Acknowledgement resumes native processing and cannot cancel it. Verify the resulting owned units afterward; the name alone does not identify a unique unit. Review home-base support and mineral output before adding more supported units.\"";
+                const int base_id = *CurrentBaseID;
+                if (base_id >= 0 && base_id < *BaseCount
+                && Bases[base_id].faction_id == faction_id
+                && !strcmp(Bases[base_id].name, agent_popup_parse_string(0))) {
+                    out << ",\"base_id\":" << base_id;
+                }
+                out << '}';
+            }
             const char* base_event = base_status_event(label);
             if (base_event) {
                 int base_id = *CurrentBaseID;
@@ -18591,6 +18705,8 @@ std::string action_counterfactual_receipt(const std::string& request, int factio
             << ",\"mineral_accumulation_halted_by_riots\":" << (base.drone_riots_active() ? "true" : "false")
             << ",\"colony_population_decision_required\":" << (colony_population_decision ? "true" : "false") << '}';
         if (item >= 0) { out << ",\"prototype\":"; append_counterfactual_prototype(out, faction_id, item); }
+        out << ",\"support_projection\":";
+        append_production_support(out, faction_id, id, item);
         out << ",\"assumptions\":[\"net mineral surplus and production remain fixed\",\"completion occurs at native production upkeep\"]";
     } else if (command == "upgrade_unit") {
         const int id = field_int(request, "unit_id", -1);
@@ -19616,6 +19732,22 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
                 test_full_endgame_control_turn_a = *ControlTurnA;
                 test_full_endgame_control_turn_b = *ControlTurnB;
                 test_full_endgame_result_captured = true;
+            }
+            return true;
+        }
+        if (test_support_shortage_base >= 0) {
+            const int base_id = test_support_shortage_base;
+            test_support_shortage_base = -1;
+            const int faction = game_active() ? *CurrentPlayerFaction : -1;
+            if (human_turn_actionable(faction) && base_id < *BaseCount
+            && Bases[base_id].faction_id == faction) {
+                set_base(base_id);
+                parse_says(0, Bases[base_id].name, -1, -1);
+                const int prior_warnings = *GameWarnings;
+                *GameWarnings |= WARN_STOP_MINERAL_SHORTAGE;
+                mod_base_check_support();
+                *GameWarnings = prior_warnings;
+                ++semantic_mutation_generation;
             }
             return true;
         }

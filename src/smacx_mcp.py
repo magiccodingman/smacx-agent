@@ -967,8 +967,13 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
         "current": ("name", "mineral_cost", "minerals_accumulated", "mineral_surplus"),
         "hurry": ("legal", "affordable", "minerals_added", "energy_cost", "available_energy"),
         "queue": ("entries", "capacity"),
+        "support_projection": ("epistemic_status", "current_support_minerals",
+                               "free_supported_units", "current_eligible_units",
+                               "gross_mineral_output", "additional_support_minerals",
+                               "support_after_one_completion", "exceeds_current_gross_output",
+                               "condition"),
     }
-    result = {section: {key: (value[:160] if isinstance(value, str) else value)
+    result = {section: {key: (value[:640 if key == "condition" else 160] if isinstance(value, str) else value)
                       for key in keys
                       if isinstance((value := catalog[section].get(key)), (str, int, float, bool))}
             for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}

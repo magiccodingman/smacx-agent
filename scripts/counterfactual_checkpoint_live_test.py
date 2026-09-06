@@ -152,6 +152,33 @@ def exercise_counterfactual_checkpoint(call, native, site_tanks_center_delta):
     return evidence
 
 
+def settle_native_move(call, native, execution):
+    """Arrival alone does not prove a queued move's native continuation returned."""
+    action_id = execution.get("action_id") or execution.get("execution", {}).get("action_id")
+    assert action_id is not None, execution
+    notices = []
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        snapshot = native("semantic_snapshot")["snapshot"]
+        receipt = native("action_status", action_id=action_id)["action"]
+        assert receipt.get("status") not in {"rejected", "failed"}, receipt
+        interaction = snapshot.get("interaction", {})
+        if receipt.get("status") == "completed" and interaction.get("kind") == "turn":
+            return {"receipt": receipt, "acknowledged_notices": notices}
+        if interaction.get("kind") not in {"turn", "wait"}:
+            frame = call("smac_choices", {"kind": "interaction"})
+            assert frame.get("ok"), {"snapshot": snapshot, "frame": frame}
+            acknowledge = next((row for row in frame.get("choices", [])
+                                if row.get("label") == "Acknowledge popup"), None)
+            assert acknowledge is not None, {"unexpected_move_interaction": interaction, "frame": frame}
+            result = call("smac_execute_choice", {"decision_id": frame["decision_id"],
+                                                  "choice_id": acknowledge["choice_id"]})
+            assert result.get("ok"), result
+            notices.append(interaction.get("popup_label"))
+        time.sleep(.1)
+    raise AssertionError({"move_did_not_finish_native_processing": receipt, "interaction": interaction})
+
+
 def exercise_native_production_timing(call, native, base_ref):
     """Compare constant-surplus timing with real production upkeep calls."""
     bases = native("perspective_world_page", domain="bases", cursor=0, limit=256)["items"]
@@ -198,10 +225,11 @@ def exercise_native_production_timing(call, native, base_ref):
             continue
         executed = call("smac_execute_choice", {"decision_id": frame["decision_id"], "choice_id": choice["choice_id"]})
         assert executed.get("ok"), executed
+        settled = settle_native_move(call, native, executed)
         world = call("smac_world", {"mode": "forces", "subject_refs": [actor_ref], "detail": "deep"})
         assert any(row.get("object_ref") == actor_ref and row.get("location_ref") == target
                    for row in world.get("items", [])), world
         return {"actual_native_production_upkeeps": expected, "production_timing_matches": True,
-                "one_phase_native_move_matches": True,
+                "one_phase_native_move_matches": True, "native_move_completion": settled,
                 "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": True}
     raise AssertionError("No single-phase native movement comparison was available")

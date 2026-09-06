@@ -100,6 +100,21 @@
     },
     "upheaval_cost_paid_this_turn_before_and_after": 0,
     "native_window_closed": true,
-    "post_effect_restore_not_yet_exercised": true
+    "post_effect_restore_not_yet_exercised": false
+  },
+  "post_effect_restore": {
+    "checkpoint_id": "checkpoint-5aae178b8229432b94e055a8e14c803e",
+    "turn": 75,
+    "session_id": "session-f6f1062b943941b097168a89d5597d5c",
+    "native_phase": "turn",
+    "selected_and_established_models": [
+      "Frontier",
+      "Simple",
+      "Survival",
+      "None"
+    ],
+    "free_market_available": true,
+    "upheaval_paid": 0,
+    "resumed_sovereign_post_restore_verification": "pending support repair deployment"
   }
 }

@@ -1,0 +1,436 @@
+{
+  "classification": "actual autonomous interface omission; repair acceptance in progress",
+  "turn": 75,
+  "session_id": "session-47965e5abd0f4d15a6433afc6f12a8db",
+  "decision_request_id": "20470beedb6c4f9a959d2abe3889b4c5",
+  "decision_id": "decision-1d2105b0a751411f8eaf448e9539bb87",
+  "popup_label": "NOSUPPORT",
+  "information": [],
+  "acknowledge_request_id": "b8d11cf893db4781bae0dc10fbb75a1f",
+  "native_source_order": "mod_base_check_support selects supported unit, displays NOSUPPORT, then decrements support and kills the unit after acknowledgement; no alternative choice",
+  "observed_unit_loss": "own-unit-19, Garrison previously at location-1214",
+  "newly_completed_unit_retained": "own-unit-27 at location-1134",
+  "recovery": {
+    "checkpoint_id": "checkpoint-5aae178b8229432b94e055a8e14c803e",
+    "turn": 75,
+    "session_id": "session-f6f1062b943941b097168a89d5597d5c",
+    "native_units": 7,
+    "interpretation": "The newer turn75 checkpoint preserves the new Garrison; old Garrison loss predates recovery."
+  },
+  "repair": {
+    "popup_context": "forced native support disband pending; named unit is not a unique identity; reobserve effect",
+    "production_support": "conditional owned-unit/current-rule estimate; no predicted casualty or future resource simulation"
+  },
+  "acceptance": {
+    "managed_adapter": true,
+    "running_native_support_comparison": true,
+    "repaired_popup_actual_provider_delivery": false,
+    "autonomous_prevention": false,
+    "controlled_native_popup_and_removal": true,
+    "full_native_mcp_suite": true
+  },
+  "controlled_native_validation": {
+    "passed": true,
+    "classification": "controlled running native support comparison",
+    "comparisons": [
+      {
+        "rating": -4,
+        "population": 1,
+        "native_before": 8,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 8,
+          "free_supported_units": 0,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 2,
+          "support_after_one_completion": 10,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 10
+      },
+      {
+        "rating": -3,
+        "population": 1,
+        "native_before": 4,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 4,
+          "free_supported_units": 0,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 5,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 5
+      },
+      {
+        "rating": -2,
+        "population": 1,
+        "native_before": 3,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 3,
+          "free_supported_units": 1,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 4,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 4
+      },
+      {
+        "rating": -1,
+        "population": 1,
+        "native_before": 3,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 3,
+          "free_supported_units": 1,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 4,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 4
+      },
+      {
+        "rating": 0,
+        "population": 1,
+        "native_before": 2,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 2,
+          "free_supported_units": 2,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 3,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 3
+      },
+      {
+        "rating": 1,
+        "population": 1,
+        "native_before": 1,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 1,
+          "free_supported_units": 3,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 2,
+          "exceeds_current_gross_output": false,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 2
+      },
+      {
+        "rating": 2,
+        "population": 1,
+        "native_before": 0,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 0,
+          "free_supported_units": 4,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 1,
+          "exceeds_current_gross_output": false,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 1
+      },
+      {
+        "rating": 3,
+        "population": 1,
+        "native_before": 0,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 0,
+          "free_supported_units": 4,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 1,
+          "exceeds_current_gross_output": false,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 1
+      },
+      {
+        "rating": -4,
+        "population": 4,
+        "native_before": 8,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 8,
+          "free_supported_units": 0,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 2,
+          "support_after_one_completion": 10,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 10
+      },
+      {
+        "rating": -3,
+        "population": 4,
+        "native_before": 4,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 4,
+          "free_supported_units": 0,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 5,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 5
+      },
+      {
+        "rating": -2,
+        "population": 4,
+        "native_before": 3,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 3,
+          "free_supported_units": 1,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 4,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 4
+      },
+      {
+        "rating": -1,
+        "population": 4,
+        "native_before": 3,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 3,
+          "free_supported_units": 1,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 4,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 4
+      },
+      {
+        "rating": 0,
+        "population": 4,
+        "native_before": 2,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 2,
+          "free_supported_units": 2,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 3,
+          "exceeds_current_gross_output": true,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 3
+      },
+      {
+        "rating": 1,
+        "population": 4,
+        "native_before": 1,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 1,
+          "free_supported_units": 3,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 2,
+          "exceeds_current_gross_output": false,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 2
+      },
+      {
+        "rating": 2,
+        "population": 4,
+        "native_before": 0,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 0,
+          "free_supported_units": 4,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 1,
+          "exceeds_current_gross_output": false,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 1
+      },
+      {
+        "rating": 3,
+        "population": 4,
+        "native_before": 0,
+        "projection": {
+          "epistemic_status": "conditional",
+          "current_support_minerals": 0,
+          "free_supported_units": 4,
+          "current_eligible_units": 4,
+          "gross_mineral_output": 2,
+          "additional_support_minerals": 1,
+          "support_after_one_completion": 1,
+          "exceeds_current_gross_output": false,
+          "condition": "One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support."
+        },
+        "native_after": 1
+      }
+    ],
+    "forced_disband_popup_exercised": true,
+    "information": {
+      "id": "support_shortage:context",
+      "kind": "information",
+      "event": "unit_support_shortage",
+      "base_name": "Semantic Dawn",
+      "unit_name": "Scout Patrol",
+      "effect_status": "forced_disband_pending_native_processing",
+      "meaning": "The home base lacks enough gross mineral output to pay unit support. The game selected the named unit for forced disbanding; this is not a combat loss. Acknowledgement resumes native processing and cannot cancel it. Verify the resulting owned units afterward; the name alone does not identify a unique unit. Review home-base support and mineral output before adding more supported units.",
+      "base_id": 0
+    },
+    "acknowledgement": {
+      "ok": true,
+      "command": "acknowledge_popup",
+      "popup_label": "NOSUPPORT"
+    },
+    "unit_count_before": 6,
+    "unit_count_after": 5
+  },
+  "validation_environment": {
+    "initial_full_suite": "failed before gameplay preparing disposable game image: host ENOSPC",
+    "response": "remove reconstructible unused Docker build cache, preserve campaign volumes and diagnostic evidence, rerun",
+    "host_free_after_cleanup": "21GB",
+    "reclaimed_build_cache_reported_size": "29.86GB",
+    "full_suite_after_disk_cleanup": {
+      "result": "failed at next intent production query with wrong_choice_phase",
+      "preceding_move_receipt_status": "pending",
+      "preceding_move_world_arrival_observed": true,
+      "exact_native_interaction_label": "not retained in failed test output",
+      "repair": "Require completed native action and actionable turn; acknowledge only an issued reviewed information notice, otherwise fail with semantic evidence. Keep exact arrival assertion."
+    }
+  },
+  "tested_images": {
+    "worker": "sha256:41ccf2366511a9b3c44e8f434781bfc533fecfb26c68257cb6e998fb4e1da90d",
+    "control": "sha256:91c0060f033bb79c9472681d957bef895fd153e48259d075ef9d0c8d2553500a",
+    "harness": "sha256:396abc5ddcd95823c07c6d50cec5164c04143558d813b3f5fcca83e4449edb94",
+    "engine_source_sha256": "664de0c1519103e30f28debbc4379b3210c489a80ebec3825b6553b07125f005"
+  },
+  "full_native_suite": {
+    "counterfactual_checkpoint": {
+      "actors_represented_with_mechanical_roles": true,
+      "completed_terraform_matches_standalone_and_owned_base_yields": true,
+      "positive_retool_penalty_matches_native_change": true,
+      "hurry_charge_and_progress_match_without_claiming_instant_completion": true,
+      "rehome_support_and_journal_link_match_observed_effect": true,
+      "disband_support_and_explicit_garrison_departure": true,
+      "site_facility_delta_matches_managed_build_and_actual_native_completion": true,
+      "blind_research_explore_native_flags_and_named_snapshot": true,
+      "production_and_travel_timing": {
+        "actual_native_production_upkeeps": 3,
+        "production_timing_matches": true,
+        "one_phase_native_move_matches": true,
+        "native_move_completion": {
+          "receipt": {
+            "action_id": 5,
+            "command": "move_unit",
+            "status": "completed",
+            "native_result": 1,
+            "native_call_attempted": true,
+            "resolution": "native_move_resolved",
+            "unit_id": 46,
+            "origin_tile_id": 211,
+            "target_tile_id": 148,
+            "observed_tile_id": 148
+          },
+          "acknowledged_notices": []
+        },
+        "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true
+      }
+    },
+    "intent_recovery": {
+      "native_completed_units_preserved": true,
+      "journaled_plan_preserved": true,
+      "same_checkpoint_recovered_twice_after_timeline_gc": true,
+      "journaled_conflict_and_stationary_assignment_preserved": true,
+      "ephemeral_old_timeline_watch_discarded": true,
+      "old_session_counterfactual_choice_rejected": true
+    },
+    "pass": {
+      "authenticated_control_lifecycle": true,
+      "managed_action_failure_containment": false,
+      "dedicated_mcp_sidecar": true,
+      "mcp_tool_count": 15,
+      "mcp_bound_to_exact_match": true,
+      "native_unity_governor_entitlements": true,
+      "native_no_timer": true,
+      "native_orbital_project_global_adapter": true,
+      "native_base_geography_and_unit_traits": true,
+      "native_airdrop_diplomacy_and_anti_drop_guards": true,
+      "native_pact_port_amphibious_sequence": true,
+      "native_airdrop_collection_stress": {
+        "ready_drop_units": 129,
+        "maximum_page_latency_ms": 246.266,
+        "maximum_page_bytes": 139260,
+        "map_tiles": 8192,
+        "demand_receipt_matches_actions": true,
+        "enumeration_target_count": 4627,
+        "enumeration_native_ms": 0.0,
+        "enumeration_wall_ms": 246.065,
+        "enumeration_probe_gap_ms": 249.548,
+        "enumeration_payload_bytes": 8526,
+        "exact_native_ms": 0.0,
+        "exact_wall_ms": 268.747,
+        "exact_probe_gap_ms": 243.639,
+        "exact_payload_bytes": 286,
+        "outside_first_128_semantic_choice_executed": true,
+        "provider_model_supplied_raw_tile_id": false,
+        "revision_cache_hit": true
+      },
+      "native_global_projection_world_runtime_path": true,
+      "managed_lifecycle_blocked": true,
+      "bridge_verified_checkpoint": true,
+      "live_worker_volume_backup_verified": true,
+      "native_crash_recovered_without_ui": true,
+      "semantic_vehicle_identity_survived_native_restart": true,
+      "recovered_checkpoint_turn": 1,
+      "sidecar_removed_on_park": true,
+      "hermes_semantic_turn": false,
+      "hermes_low_reasoning": false,
+      "hermes_native_revision_advanced": false,
+      "hermes_managed_container": false,
+      "hermes_session_backup_verified": false,
+      "hermes_usage": null,
+      "specialist": null
+    },
+    "provider_inference_supplied": false
+  }
+}
