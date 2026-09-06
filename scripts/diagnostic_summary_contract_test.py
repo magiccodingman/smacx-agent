@@ -34,4 +34,23 @@ metrics.add({'kind':'provider_response_headers','correlation':{'request_id':'req
 assert metrics.as_dict()['provider_requests_without_terminal_capture']['count']==1
 metrics.add({'kind':'provider_transport_failed','correlation':{'request_id':'request-open'}})
 assert metrics.as_dict()['provider_requests_without_terminal_capture']['count']==0
+taxonomy=Metrics()
+for name, fields in [('smac_attention_ack','attention_lease_id, through_cursor'),
+                     ('smac_choices','kind')]:
+    error=f"tool_call to 'mcp__smacx__{name}' is missing required argument(s): {fields}. The tool was NOT invoked. Parameters schema: {{}}"
+    event={'kind':'tool_returned','payload':{'content':json.dumps({'error':error})}}
+    taxonomy.add(event)
+    assert error in result_object(event['payload']['content'])['error']
+taxonomy.add({'kind':'tool_returned','payload':{'result':{'error':"tool_call cannot invoke 'tool_describe' (it is itself a bridge tool)"}}})
+for error in ['invalid_tile_id','sovereign_invocation_already_active','native_observation_feed_failed']:
+    taxonomy.add({'kind':'runtime_context_failed','payload':{'error':error}})
+taxonomy.add({'kind':'runtime_context_failed','payload':{'error':'Unexpected problem: invalid_tile_id'}})
+assert taxonomy.as_dict()['failure_observations_by_layer']=={
+    'tool_returned:schema_missing_required':2,
+    'tool_returned:bridge_tool_not_invocable':1,
+    'runtime_context_failed:invalid_tile_id':1,
+    'runtime_context_failed:sovereign_invocation_already_active':1,
+    'runtime_context_failed:native_observation_feed_failed':1,
+    'runtime_context_failed:unclassified_error_text':1,
+}
 print(json.dumps({'passed':True,'hermes_envelope_decoded':True,'pre_mcp_failure_named':True,'queued_not_completed':True}))

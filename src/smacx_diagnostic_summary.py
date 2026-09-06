@@ -1,7 +1,24 @@
 """Human summaries preserve receipt semantics and label uncertain attribution."""
 from __future__ import annotations
 import json
+import re
 from collections import Counter
+
+
+def failure_code(error):
+    """Normalize known transport/dispatcher forms without guessing their cause."""
+    if isinstance(error, dict):
+        return str(error.get('code', 'structured_error'))[:160]
+    value = str(error or '')
+    # These are the pinned Hermes dispatcher's pre-invocation failures. Keep
+    # raw messages in the event, but do not use parameter/schema text as keys.
+    if re.match(r"^tool_call to '[^']+' is missing required argument\(s\):", value):
+        return 'schema_missing_required'
+    if re.match(r"^tool_call cannot invoke '[^']+' \(it is itself a bridge tool\)", value):
+        return 'bridge_tool_not_invocable'
+    if re.fullmatch(r'[a-z][a-z0-9_]{0,159}', value):
+        return value
+    return 'unclassified_error_text'
 
 
 def result_object(value):
@@ -95,12 +112,13 @@ class Metrics:
             result=result_object(payload.get('result',payload.get('content')))
             error=result.get('error')
             if error:
-                code=error.get('code','structured_error') if isinstance(error,dict) else str(error)
-                self.failures[kind+':'+code[:160]]+=1
+                self.failures[kind+':'+failure_code(error)]+=1
             elif result.get('isError') or result.get('ok') is False:
                 self.failures[kind+':unclassified_failure']+=1
         if kind in {'provider_transport_failed','managed_tool_exception','runtime_context_failed','capture_gap'}:
-            self.failures[kind+':'+str(payload.get('reason',payload.get('exception_type','unspecified')))]+=1
+            error=payload.get('error') or payload.get('reason')
+            code=failure_code(error) if error else str(payload.get('exception_type','unspecified'))
+            self.failures[kind+':'+code]+=1
         if kind=='provider_response_stream':
             if payload.get('done_marker_observed') and not payload.get('capture_truncated'):self.streams_finished+=1
             else:self.streams_incomplete+=1
