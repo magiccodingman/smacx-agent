@@ -2,6 +2,7 @@
 """Diagnostic storage bounds and actor isolation, independent of gameplay."""
 import concurrent.futures
 import json
+import gzip
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -35,6 +36,14 @@ def main():
         bounded_rows = [json.loads(s) for s in bounded.path.read_text().splitlines()]
         assert bounded_rows[-1]["kind"] == "capture_gap"
         assert sum(r["kind"] == "capture_gap" for r in bounded_rows) == 1
+        compressed = DiagnosticWriter(root, "match-compressed", "sovereign", compress=True, max_match_bytes=1024)
+        for n in range(8): compressed.emit("context", {"n":n,"body":"large repeated context "*1000})
+        restored = [json.loads(line) for line in gzip.decompress(compressed.path.read_bytes()).splitlines()]
+        assert restored[0]["payload"]["body"].startswith("large repeated")
+        assert restored[-1]["kind"] == "capture_gap"
+        restarted = DiagnosticWriter(root, "match-compressed", "sovereign", compress=True, max_match_bytes=1024)
+        assert restarted.emit("context", {})["reason"] == "match_byte_limit"
+        assert not restarted.path.exists(), "restart bypassed aggregate retention limit"
         for bad in ("../escape", "match/name", ""):
             try: DiagnosticWriter(root, bad, "sovereign")
             except ValueError: pass

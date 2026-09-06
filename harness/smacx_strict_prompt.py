@@ -480,7 +480,7 @@ def _install() -> None:
         from smacx_diagnostics import DiagnosticWriter, install_hermes_capture, install_httpx_capture
         diagnostic_writer = DiagnosticWriter(
             Path(os.environ.get("SMACX_DIAGNOSTICS_ROOT", "/opt/data/diagnostics")),
-            os.environ["SMACX_AGENT_MATCH_ID"], "sovereign",
+            os.environ["SMACX_AGENT_MATCH_ID"], "sovereign", compress=True,
         )
         install_hermes_capture(run_agent.AIAgent, diagnostic_writer)
         import httpx

@@ -59,6 +59,9 @@ public sealed class PortalFlowTests : IAsyncLifetime
         using var lobbyDirectory = await client.GetAsync("/api/lobbies");
         Assert.Equal(HttpStatusCode.Unauthorized, lobbyDirectory.StatusCode);
 
+        using var diagnostics = await client.GetAsync("/api/lobbies/match-test/diagnostics");
+        Assert.Equal(HttpStatusCode.Unauthorized, diagnostics.StatusCode);
+
         using var legacy = await client.GetAsync("/Account/Login");
         Assert.Equal(HttpStatusCode.NotFound, legacy.StatusCode);
     }
@@ -516,6 +519,8 @@ public sealed class PortalFlowTests : IAsyncLifetime
             new LoginRequest("guestone", "GuestA1b"), csrf.Token);
         Assert.Equal("GuestOne", signedIn.Payload.Data?.User?.GameHandle);
         Assert.Equal("GuestOne", signedIn.Payload.Data?.User?.DisplayName);
+        using var deniedDiagnostics = await client!.GetAsync($"api/lobbies/{matchId}/diagnostics");
+        Assert.Equal(HttpStatusCode.Forbidden, deniedDiagnostics.StatusCode);
         var claimedLobby = await GetDataAsync<LobbyDetails>($"api/lobbies/{matchId}");
         Assert.Contains(claimedLobby.Seats,
             seat => seat.PlayerHandle == "GuestOne" && seat.CanJoin && !seat.CanLeave);

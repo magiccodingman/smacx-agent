@@ -312,7 +312,9 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                 attention.placed(str(lease["attention_lease_id"]))
                 lease["status"] = "placed"
             diagnostic_record("runtime_context_built", {"runtime_context": payload},
-                              actor="runtime-context-builder", correlation={"episode_id": episode_id})
+                              actor="runtime-context-builder", correlation={"episode_id": episode_id,
+                                  "runtime_context_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                      separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()})
             self._json(200, {"ok": True, "runtime_context": payload})
         except Exception as exc:
             diagnostic_record("runtime_context_failed", {"error": str(exc)}, actor="runtime-context-builder")

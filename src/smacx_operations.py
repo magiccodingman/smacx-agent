@@ -143,13 +143,16 @@ class OperationsManager:
     """One-process coordinator backed by cross-process-safe SQLite claims."""
 
     def campaign_diagnostics(self, match_id: str) -> dict[str, Any]:
-        from smacx_campaign_diagnostics import build_bundle
+        from smacx_campaign_diagnostics import build_bundle, snapshot_journals
         self.control.get_match(match_id)
         with self._operation_lock:
             staging = Path(tempfile.mkdtemp(prefix=".campaign-", dir=self.diagnostic_root))
             roots = [self.data_root / "gameplay-diagnostics" / match_id,
                      self.data_root / "specialist-traces" / match_id]
             try:
+                journal_destination = staging / "journal"
+                snapshot_journals(self.data_root / "campaigns", journal_destination, match_id)
+                roots.append(journal_destination)
                 profiles = {run["harness_profile_id"] for run in self.control.list_harness_runs()
                             if run["match_id"] == match_id}
                 for profile in profiles:

@@ -46,8 +46,8 @@ def _field(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
 
 def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
     """Count current owned evidence, never infer assignments from capabilities."""
-    roles, orders, production = {}, {}, {}
-    unknown = {"roles": 0, "orders": 0, "production": 0}
+    roles, orders, production, designs, home_bases = {}, {}, {}, {}, {}
+    unknown = {"roles": 0, "orders": 0, "production": 0, "design": 0, "home_base": 0}
     units = 0
     for item in projection.get("objects", ()):
         if item.get("status") != "active":
@@ -59,6 +59,14 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
             return value.get("value") if value.get("epistemic_status") == "current" else None
         if kind == "own_unit":
             units += 1
+            design = current("name")
+            if isinstance(design, str): designs[design] = designs.get(design, 0) + 1
+            else: unknown["design"] += 1
+            home = current("home_base_ref")
+            if isinstance(home, str): home_bases[home] = home_bases.get(home, 0) + 1
+            elif fields.get("home_base_ref", {}).get("epistemic_status") == "current":
+                home_bases["no_home_base"] = home_bases.get("no_home_base", 0) + 1
+            else: unknown["home_base"] += 1
             capabilities = current("roles")
             if isinstance(capabilities, Mapping):
                 for role, enabled in capabilities.items():
@@ -79,6 +87,7 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
             "world_revision": projection.get("world_revision"), "owned_unit_count": units,
             "capability_roles_overlap_not_assignments": bounded(roles),
             "observed_orders": bounded(orders), "current_production": bounded(production),
+            "unit_names": bounded(designs), "support_home_base_not_defense_assignment": bounded(home_bases),
             "missing_or_noncurrent_fields": unknown}
 
 

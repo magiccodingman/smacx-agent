@@ -778,6 +778,7 @@ def write_platform_memory(
     perspective_id: str = "",
 ) -> dict[str, Any]:
     """Write one typed memory projection behind a fresh fair-play observation guard."""
+    write_stage = "not_started"
     try:
         scope, snapshot = _guard_platform_observation(
             match_id,
@@ -987,6 +988,7 @@ def write_platform_memory(
             )
         else:
             return {"ok": False, "error": "invalid_memory_update_action"}
+        write_stage = "sqlite_projection_written"
         journal = _journal()
         journal_event = journal.append(
             scope, f"memory.{action}", {
@@ -994,7 +996,9 @@ def write_platform_memory(
                 "record": stored, "observed_revision": observed_revision,
             }, session_id=session_id, turn=turn, year=year,
         )
+        write_stage = "journal_committed"
         journal.project_state(scope, _journal_working_state(scope))
+        write_stage = "runtime_projection_built"
         return {
             "ok": True,
             "identity": _platform_scope_identity(scope, session_id),
@@ -1005,11 +1009,15 @@ def write_platform_memory(
             "observed_year": year,
             "journal_event_id": journal_event["event_id"],
             "cognition_hygiene": hygiene,
+            "persistence": {"stage": write_stage, "authority": "campaign_journal",
+                            "next_context_source": "fresh_journal_working_state"},
         }
     except BridgeUnavailable:
         return {"ok": False, "error": "game_not_connected"}
     except (StoreError, JournalError, TypeError, ValueError) as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc), "persistence": {"stage": write_stage,
+            "authority": "campaign_journal",
+            "retry_policy": "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."}}
 
 
 def campaign_notebook(

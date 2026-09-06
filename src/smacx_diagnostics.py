@@ -6,6 +6,8 @@ process writes its own stream; correlation IDs join streams during export.
 from __future__ import annotations
 
 import hashlib
+import gzip
+import fcntl
 import functools
 import inspect
 import json
@@ -25,6 +27,11 @@ _SAFE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 _WRITERS = {}
 _WRITER_LOCK = threading.Lock()
 INVOCATION = ContextVar("smacx_diagnostic_invocation", default="")
+PROVIDER_CORRELATION = ContextVar("smacx_provider_correlation", default=None)
+
+def payload_sha256(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode()).hexdigest()
 
 
 def record(kind: str, payload: Mapping[str, Any], *, actor: str = "managed-mcp",
@@ -40,7 +47,7 @@ def record(kind: str, payload: Mapping[str, Any], *, actor: str = "managed-mcp",
             if key not in _WRITERS:
                 _WRITERS[key] = DiagnosticWriter(Path(root), match, actor)
             writer = _WRITERS[key]
-        receipt = writer.emit(kind, payload, correlation=correlation)
+        receipt = writer.emit(kind, payload, correlation={**(PROVIDER_CORRELATION.get() or {}), **(correlation or {})})
         if not receipt["ok"]:
             logging.getLogger("smacx.diagnostics").error("Capture incomplete: %s", receipt)
     except Exception as exc:
@@ -90,8 +97,9 @@ def redact(value: Any) -> Any:
 
 class DiagnosticWriter:
     def __init__(self, root: Path, match_id: str, actor: str, *,
-                 max_bytes: int = 128 * 1024 * 1024,
-                 max_event_bytes: int = 2 * 1024 * 1024):
+                 max_bytes: int = 512 * 1024 * 1024,
+                 max_event_bytes: int = 2 * 1024 * 1024,
+                 compress: bool = False, max_match_bytes: int = 2 * 1024 * 1024 * 1024):
         if not _SAFE.fullmatch(match_id) or not _SAFE.fullmatch(actor):
             raise ValueError("invalid_diagnostic_scope")
         if max_bytes < 1024 or max_event_bytes < 256:
@@ -99,7 +107,8 @@ class DiagnosticWriter:
         self.directory = Path(root) / match_id
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.stream_id = uuid.uuid4().hex
-        self.path = self.directory / f"{actor}-{self.stream_id}.jsonl"
+        self.path = self.directory / (f"{actor}-{self.stream_id}.jsonl" + (".gz" if compress else ""))
+        self.compress, self.max_match_bytes = compress, max_match_bytes
         self.match_id, self.actor = match_id, actor
         self.max_bytes, self.max_event_bytes = max_bytes, max_event_bytes
         self._lock = threading.Lock()
@@ -118,7 +127,10 @@ class DiagnosticWriter:
             clean = {"capture_status": "omitted", "reason": "event_byte_limit",
                      "original_bytes": len(encoded_payload),
                      "redacted_payload_sha256": hashlib.sha256(encoded_payload).hexdigest()}
-        with self._lock:
+        with self._lock, (self.directory / ".capture.lock").open("a+b") as match_lock:
+            fcntl.flock(match_lock.fileno(), fcntl.LOCK_EX)
+            if (self.directory / ".capacity-exhausted").exists():
+                return {"ok": False, "reason": "match_byte_limit", "stream_id": self.stream_id}
             if self._exhausted:
                 return {"ok": False, "reason": "stream_byte_limit", "stream_id": self.stream_id}
             self._sequence += 1
@@ -129,22 +141,27 @@ class DiagnosticWriter:
                      "correlation": redact(correlation or {}), "payload": clean}
             line = json.dumps(event, sort_keys=True, separators=(",", ":"),
                               ensure_ascii=False, allow_nan=False).encode() + b"\n"
-            if self._bytes + len(line) > self.max_bytes:
+            packed = gzip.compress(line, compresslevel=3, mtime=0) if self.compress else line
+            match_bytes = sum(path.stat().st_size for path in self.directory.glob("*.jsonl*") if path.is_file())
+            match_exhausted = match_bytes + len(packed) > self.max_match_bytes
+            if self._bytes + len(packed) > self.max_bytes or match_exhausted:
                 self._exhausted = True
                 event["kind"] = "capture_gap"
-                event["payload"] = {"reason": "stream_byte_limit", "capture_status": "incomplete"}
+                event["payload"] = {"reason": "match_byte_limit" if match_exhausted else "stream_byte_limit", "capture_status": "incomplete"}
                 line = json.dumps(event, separators=(",", ":")).encode() + b"\n"
+                packed = gzip.compress(line, compresslevel=3, mtime=0) if self.compress else line
+                if match_exhausted: (self.directory / ".capacity-exhausted").touch(mode=0o600)
             # A unique file per writer avoids cross-process append interleaving.
             # The single terminal gap record is allowed beyond the data budget.
             fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
             try:
                 with os.fdopen(fd, "ab") as stream:
-                    stream.write(line)
+                    stream.write(packed)
                     stream.flush()
             except Exception:
                 # Never report a diagnostic record as captured when its write failed.
                 raise
-            self._bytes += len(line)
+            self._bytes += len(packed)
             return {"ok": not self._exhausted, "event_id": event["event_id"],
                     "stream_id": self.stream_id, "sequence": self._sequence,
                     "capture_status": "incomplete" if self._exhausted else "recorded"}
@@ -173,7 +190,7 @@ def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
     def captured(self, assistant_message, messages, effective_task_id, api_call_count=0):
         batch_id = uuid.uuid4().hex
         started = time.monotonic_ns()
-        correlations = {"batch_id": batch_id, "task_id": str(effective_task_id),
+        correlations = {**(PROVIDER_CORRELATION.get() or {}), "batch_id": batch_id, "task_id": str(effective_task_id),
                         "provider_call_index": str(api_call_count)}
         names = {}
         for call in assistant_message.tool_calls:
@@ -225,7 +242,8 @@ def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
 def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
     """Audit serialized chat-completions requests at the synchronous HTTP boundary.
 
-    No headers, URL credentials, query strings or response bodies are collected.
+    No headers, URL credentials or query strings are collected. Response capture
+    retains only emitted provider data, including exposed reasoning fields.
     Returning HTTP headers is not proof that a streaming completion finished.
     Other provider protocols remain explicitly outside this adapter's coverage.
     """
@@ -235,7 +253,7 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
 
     def emit(kind, payload, request_id):
         try:
-            receipt = writer.emit(kind, payload, correlation={"request_id": request_id})
+            receipt = writer.emit(kind, payload, correlation={**(PROVIDER_CORRELATION.get() or {}), "request_id": request_id})
             if not receipt["ok"]:
                 logging.getLogger("smacx.diagnostics").error("Provider audit incomplete: %s", receipt)
         except Exception as exc:
@@ -245,10 +263,25 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
         if request.method != "POST" or not request.url.path.rstrip("/").endswith("/chat/completions"):
             return original(self, request, *args, **kwargs)
         request_id = uuid.uuid4().hex
+        PROVIDER_CORRELATION.set({"request_id": request_id})
         started = time.monotonic_ns()
         try:
             raw = request.content
             payload = json.loads(raw)
+            for message in reversed(payload.get("messages", [])):
+                content = message.get("content") if isinstance(message, dict) else None
+                marker = '<SMACX_RUNTIME_CONTEXT schema="smacx.runtime-context.v1">'
+                if not isinstance(content, str) or not content.endswith('</SMACX_RUNTIME_CONTEXT>') or marker not in content:
+                    continue
+                try:
+                    context = json.loads(content.rsplit(marker, 1)[1].rsplit('</SMACX_RUNTIME_CONTEXT>', 1)[0])
+                    PROVIDER_CORRELATION.set({"request_id": request_id,
+                        "runtime_context_sha256": payload_sha256(context),
+                        "episode_id": str(context.get("episode", {}).get("episode_id", "")),
+                        "attention_lease_id": str(context.get("attention", {}).get("attention_lease_id", ""))})
+                except (ValueError, TypeError, AttributeError):
+                    pass
+                break
             # Capture the serialized body, not an earlier mutable message list.
             emit("provider_request_submitted", {
                 "protocol": "chat_completions", "body": payload,
@@ -272,6 +305,62 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
             "elapsed_ms": (time.monotonic_ns() - started) / 1_000_000,
             "completion_verified": False,
         }, request_id)
+        if response.is_stream_consumed:
+            try:
+                emit("provider_response_body", {"body": response.json(),
+                    "transport_body_complete": True,
+                    "elapsed_ms": (time.monotonic_ns()-started)/1e6}, request_id)
+            except Exception:
+                emit("capture_gap", {"reason": "non_json_provider_response",
+                    "transport_body_complete": True}, request_id)
+        else:
+            import httpx
+            original_stream = response.stream
+            class CapturedStream(httpx.SyncByteStream):
+                def __init__(self):
+                    self.pending = b""
+                    self.chunks = []
+                    self.size = 0
+                    self.omitted = False
+                    self.done = False
+                    self.finished = False
+                    self.recorded = False
+                    self.digest = hashlib.sha256()
+                def line(self, line):
+                    if not line.startswith(b"data:"): return
+                    data = line[5:].strip()
+                    if data == b"[DONE]": self.done = True; return
+                    try: value = json.loads(data)
+                    except ValueError: self.omitted = True; return
+                    if self.size + len(data) <= writer.max_event_bytes // 2:
+                        self.chunks.append(value); self.size += len(data)
+                    else: self.omitted = True
+                def receipt(self):
+                    if self.recorded: return
+                    self.recorded = True
+                    emit("provider_response_stream", {"chunks": self.chunks,
+                        "stream_exhausted": self.finished, "done_marker_observed": self.done,
+                        "capture_truncated": self.omitted,
+                        "stream_sha256": self.digest.hexdigest(),
+                        "elapsed_ms": (time.monotonic_ns()-started)/1e6}, request_id)
+                def __iter__(self):
+                    try:
+                        for data in original_stream:
+                            self.digest.update(data)
+                            self.pending += data
+                            while b"\n" in self.pending:
+                                line, self.pending = self.pending.split(b"\n", 1)
+                                self.line(line)
+                            if len(self.pending) > writer.max_event_bytes:
+                                self.pending = b""; self.omitted = True
+                            yield data
+                        if self.pending: self.line(self.pending)
+                        self.finished = True
+                    finally: self.receipt()
+                def close(self):
+                    try: original_stream.close()
+                    finally: self.receipt()
+            response.stream = CapturedStream()
         return response
 
     client_class.send = send

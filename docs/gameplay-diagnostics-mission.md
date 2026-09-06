@@ -130,3 +130,41 @@ Discovery aggregation/epistemic contract, native observation contract, concurren
 publication visibility/crash cases, opaque choice execution and doctrine content
 contracts pass. Full provider delivery/recovery chain, native management replay,
 performance/retention, deployment and full-game acceptance remain open.
+
+## Delivery-chain and export evidence update
+
+`cognition_delivery_contract_test.py` exercises the production typed writer with a
+controlled fair-play observation, real SQLite and canonical journal, real runtime
+assembler, actual Hermes request sanitizer/semantic GC and HTTPX MockTransport.
+The same goal survives the immediate next request, handoff/resume, a 385,083-token
+history pressure case (11,090 tokens after GC), and journal reinitialization. Request
+assembly leaves durable message history untouched. Injected post-journal projection
+failure reports `journal_committed`; subsequent canonical reads retain the record.
+This is not a bridge/native checkpoint recovery claim.
+
+The provider adapter now captures emitted response-stream JSON, including reasoning
+fields legitimately returned by the provider. It records stream exhaustion, truncation
+and the completion marker separately from header receipt. Request/context hashes,
+episode and attention-lease IDs correlate the assembled envelope with serialized
+wire requests and subsequent dispatch. Controlled transport tests pass.
+
+Production diagnostic streams use gzip members and persistent match-wide byte limits
+(512 MiB per stream, 2 GiB per diagnostic root/match). Restart cannot bypass the limit;
+a durable exhaustion marker and capture-gap receipt remain visible. Export accepts
+compressed streams, preserves journal committed-prefix watermarks, produces bounded
+human summaries and layer-labeled failure/latency metrics. Failure observations from
+multiple layers are not falsely counted as distinct incidents. The three latest
+regenerable ZIP exports per match are retained. Administrator authorization is tested
+at the HTTP endpoint, including denial to an authenticated lobby participant.
+
+The parked AI - 3 Hermes snapshot helper was exercised read-only: 405 retained messages
+(26 user, 196 assistant, 183 tool), 806,041 bytes. A storage-only benchmark reconstructed
+615,919-byte payloads from retained messages: 20 compressed records occupied 1,860,960
+bytes; median emit 9.50 ms, maximum 10.12 ms. This is not retroactive provider-wire
+capture. Full original requests remain unavailable for that historical run.
+
+Specialist supervisor host contract passes including real child processes, isolation,
+cancellation, timeout, bounded retries, trace hashes/redaction and retention. Specialist
+trace rows now carry faculty actor, mission, attempt, parent episode and timeline IDs.
+The existing specialist proxy already captures offered tools/provider exchanges and
+MCP queries; campaign exports now retain those compressed traces and related tables.

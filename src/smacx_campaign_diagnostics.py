@@ -1,6 +1,8 @@
 """Review-only campaign exports with bounded, explicit capture watermarks."""
 from __future__ import annotations
 import hashlib
+import gzip
+import io
 import json
 from pathlib import Path
 import time
@@ -13,7 +15,7 @@ from smacx_diagnostics import redact
 TABLES = ("matches", "harness_runs", "supervision_incidents", "attention_items",
           "attention_leases", "world_watches", "world_observation_projection",
           "specialist_missions", "specialist_attempts", "world_telemetry",
-          "goals", "plans", "commitments", "specialist_dependencies", "specialist_trace_manifests")
+          "goals", "plans", "commitments", "events", "cognitive_operations", "campaign_checkpoint_generations", "specialist_dependencies", "specialist_trace_manifests")
 
 
 def snapshot_hermes(source: Path, target: Path, match_id: str, profile_id: str) -> None:
@@ -32,16 +34,20 @@ def snapshot_hermes(source: Path, target: Path, match_id: str, profile_id: str) 
             with (target/"hermes-history.jsonl").open("w") as out:
                 for row in connection.execute("SELECT m.id,m.session_id,m.role,m.content,m.tool_call_id,m.tool_calls,m.tool_name,m.timestamp FROM messages m JOIN sessions s ON s.id=m.session_id WHERE s.title=? ORDER BY m.id",(match_id,)):
                     record=json.dumps({"schema":"smacx.hermes-history.v1","actor":"sovereign",
-                        "kind":"retained_message","payload":redact(dict(row))})+"\n"
+                        "kind":"retained_message","recorded_unix":row["timestamp"],"payload":redact(dict(row))})+"\n"
                     size=len(record.encode())
                     if total+size>128*1024*1024:
                         out.write(json.dumps({"kind":"capture_gap","payload":{"reason":"history_byte_limit"}})+"\n")
                         break
                     out.write(record);total+=size
         finally:connection.close()
+    else:
+        (target/"history-missing.jsonl").write_text(json.dumps({"kind":"capture_gap","payload":{"reason":"retained_history_missing"}})+"\n")
     logs=source/"diagnostics"/match_id
+    if (logs/".capacity-exhausted").exists():
+        (target/"capacity-gap.jsonl").write_text(json.dumps({"kind":"capture_gap","payload":{"reason":"match_byte_limit"}})+"\n")
     if logs.exists():
-        for path in sorted(logs.glob("*.jsonl")):
+        for path in sorted(logs.glob("*.jsonl*")):
             if path.is_symlink():continue
             size=path.stat().st_size
             if total+size>256*1024*1024:
@@ -67,6 +73,10 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
                 "files": [], "gaps": [], "complete": False}
     total = 0
     human = []
+    human_bytes = 0
+    human_truncated = False
+    from smacx_diagnostic_summary import Metrics, summary
+    metrics = Metrics()
     def write(archive, name, data):
         nonlocal total
         if total + len(data) > max_bytes:
@@ -75,6 +85,7 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
         archive.writestr(name, data)
         manifest["files"].append({"path": name, "bytes": len(data),
             "sha256": hashlib.sha256(data).hexdigest()})
+    target.touch(mode=0o600)
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
         with store.transaction() as connection:
             available = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -103,7 +114,9 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
         for index, root in enumerate(roots):
             if not root.exists():
                 manifest["gaps"].append({"source": index, "reason": "source_missing"});continue
-            for path in sorted(list(root.rglob("*.jsonl")) + list(root.rglob("*.jsonl.zst"))):
+            if (root / ".capacity-exhausted").exists():
+                manifest["gaps"].append({"source":index,"reason":"match_byte_limit"})
+            for path in sorted(list(root.rglob("*.jsonl")) + list(root.rglob("*.jsonl.zst")) + list(root.rglob("*.jsonl.gz"))):
                 if path.is_symlink() or not path.is_file(): continue
                 if not path.resolve().is_relative_to(root.resolve()): continue
                 stream_count += 1
@@ -115,28 +128,85 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
                     write(archive, f"streams/{index}/{path.relative_to(root).as_posix()}", data)
                     manifest["files"][-1]["source_byte_watermark"] = len(data)
                     continue
-                end = data.rfind(b"\n")+1
+                compressed = path.name.endswith(".gz")
+                end = len(data) if compressed else data.rfind(b"\n")+1
                 if end != len(data): manifest["gaps"].append({"file": path.name,"reason":"partial_final_record"})
                 data = data[:end]
                 write(archive, f"streams/{index}/{path.relative_to(root).as_posix()}", data)
                 manifest["files"][-1]["source_byte_watermark"] = end
-                for line in data.splitlines():
+                def lines():
+                    try:
+                        if compressed:
+                            with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
+                                for line in stream: yield line
+                        else:
+                            yield from data.splitlines()
+                    except (EOFError, OSError):
+                        manifest["gaps"].append({"file":path.name,"reason":"partial_compressed_tail"})
+                for line in lines():
                     try: event=json.loads(line)
                     except ValueError:
                         manifest["gaps"].append({"file":path.name,"reason":"invalid_json_record"});continue
                     payload=event.get("payload",{})
                     if event.get("kind")=="capture_gap" or payload.get("capture_status")=="omitted":
                         manifest["gaps"].append({"event_id":event.get("event_id"),"reason":"capture_gap"})
-                    if event.get("kind") in {"tool_requested","managed_tool_returned","sovereign_response","tool_returned","retained_message"}:
-                        tool=payload.get("managed_name",payload.get("tool",""))
-                        summary=payload.get("result",payload.get("content",payload.get("message",{})))
-                        human.append(f"{event.get('recorded_unix','')} [{event.get('actor','')}] {event.get('kind')} {tool} {json.dumps(summary,ensure_ascii=False)[:1800]}")
+                    metrics.add(event)
+                    rendered = summary(event)
+                    if rendered:
+                        timestamp=event.get("recorded_unix") or 0
+                        try: timestamp=float(timestamp)
+                        except (TypeError,ValueError): timestamp=0
+                        if len(rendered)>6000:rendered=rendered[:6000]+" [truncated; see structured stream]"
+                        line=f"{timestamp} [{event.get('actor','unknown')}] {rendered}"
+                        size=len(line.encode())
+                        if human_bytes+size <= 8*1024*1024:
+                            human.append((timestamp,line));human_bytes+=size
+                        elif not human_truncated:
+                            human_truncated=True
+                            manifest["gaps"].append({"reason":"human_summary_byte_limit","structured_streams_retained":True})
         if not stream_count:manifest["gaps"].append({"reason":"no_diagnostic_streams"})
         # The current adapters do not yet certify all requested categories.
         manifest["gaps"].append({"reason":"acceptance_coverage_in_progress",
             "details":"See gameplay diagnostics coverage matrix; absence of errors is not completeness."})
-        write(archive,"gameplay.txt",("\n".join(human)+"\n").encode())
+        write(archive,"gameplay.txt",("\n".join(line for _,line in sorted(human,key=lambda row:row[0]))+"\n").encode())
+        write(archive,"metrics.json",json.dumps(metrics.as_dict(),indent=2).encode())
         archive.writestr("manifest.json",json.dumps(manifest,indent=2))
+    older=sorted(output.glob(f"campaign-{match_id}-*.zip"),key=lambda path:path.stat().st_mtime,reverse=True)
+    for stale in older[3:]:
+        if stale != target: stale.unlink(missing_ok=True)
     return {"file_name":target.name,"relative_path":"diagnostics/"+target.name,
             "size_bytes":target.stat().st_size,"complete":manifest["complete"],
             "gap_count":len(manifest["gaps"])}
+
+
+def snapshot_journals(root: Path, target: Path, match_id: str, *, max_bytes: int = 64*1024*1024) -> None:
+    """Freeze committed prefixes under the same locks used by journal writers."""
+    from smacx_journal import CampaignJournal
+    journal = CampaignJournal(root)
+    target.mkdir(parents=True, exist_ok=True)
+    used = 0
+    with (target / 'campaign-journal.jsonl').open('w') as output:
+        for timeline in sorted((root/match_id).glob('perspectives/*/*/timelines/*')):
+            if not timeline.is_dir() or timeline.is_symlink(): continue
+            with journal._locked(root, shared=True), journal._locked(timeline):
+                manifest_path = timeline/'manifest.json'
+                if not manifest_path.exists(): continue
+                manifest = json.loads(manifest_path.read_text())
+                head = int(manifest.get('sequence', 0))
+                watermark = {'kind':'journal_snapshot_watermark','actor':'campaign-journal',
+                    'payload':{'timeline_path':str(timeline.relative_to(root/match_id)),
+                               'sequence':head,'head_hash':manifest.get('head_hash'),
+                               'diagnostic_copy_not_restore_authority':True}}
+                output.write(json.dumps(watermark)+'\n')
+                for path in sorted((timeline/'events').glob('*.json')):
+                    if path.is_symlink(): continue
+                    event = json.loads(path.read_text())
+                    if int(event.get('sequence', head+1)) > head: continue
+                    if event.get('match_id') != match_id: raise ValueError('journal_export_scope_mismatch')
+                    line = json.dumps({'kind':'journal_event','actor':'campaign-journal',
+                        'recorded_unix':event.get('recorded_unix'), 'payload':redact(event)})+'\n'
+                    size = len(line.encode())
+                    if used + size > max_bytes:
+                        output.write(json.dumps({'kind':'capture_gap','payload':{'reason':'journal_snapshot_byte_limit'}})+'\n')
+                        return
+                    output.write(line);used += size

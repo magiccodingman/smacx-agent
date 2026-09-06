@@ -226,7 +226,10 @@ class SpecialistTraceStore:
 
         scrubbed = []
         for row in rows:
-            clean = scrub(dict(row))
+            clean = scrub({**dict(row), "actor": str(mission.get("faculty", "unknown")) + "-specialist",
+                "mission_id": mission["mission_id"], "attempt_id": attempt_id,
+                "parent_episode_id": mission.get("parent_episode_id"),
+                "match_id": mission["match_id"], "timeline_id": mission["timeline_id"]})
             scrubbed.append(canonical_json(clean))
         raw = ("\n".join(scrubbed) + "\n").encode()
         with tempfile.NamedTemporaryFile(prefix="smacx-specialist-trace-", delete=False) as stream:

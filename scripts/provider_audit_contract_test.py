@@ -6,7 +6,7 @@ import tempfile
 
 import httpx
 
-from smacx_diagnostics import DiagnosticWriter, install_httpx_capture
+from smacx_diagnostics import DiagnosticWriter, install_httpx_capture, payload_sha256
 
 
 def main():
@@ -23,8 +23,9 @@ def main():
             if request.headers.get("x-test-fail"):
                 raise httpx.ConnectError("private transport details", request=request)
             return httpx.Response(200, json={"id": "response-test"})
+        context={"episode":{"episode_id":"episode-test"},"attention":{"attention_lease_id":"lease-test"}}
         body = {"model": "test", "messages": [{"role": "user", "content":
-                "question\n<SMACX_RUNTIME_CONTEXT>final-state</SMACX_RUNTIME_CONTEXT>"}],
+                'question\n<SMACX_RUNTIME_CONTEXT schema="smacx.runtime-context.v1">'+json.dumps(context)+'</SMACX_RUNTIME_CONTEXT>'}],
                 "tools": [], "stream": True}
         with Client(transport=httpx.MockTransport(transport)) as client:
             response = client.post("https://provider.invalid/v1/chat/completions?secret=hidden",
@@ -41,13 +42,29 @@ def main():
         text = writer.path.read_text()
         rows = [json.loads(s) for s in text.splitlines()]
         assert [r["kind"] for r in rows] == ["provider_request_submitted",
-            "provider_response_headers", "provider_request_submitted", "provider_transport_failed"]
+            "provider_response_headers", "provider_response_body", "provider_request_submitted", "provider_transport_failed"]
         assert rows[0]["payload"]["body"] == json.loads(received[0]) == body
+        assert rows[0]["correlation"]["runtime_context_sha256"] == payload_sha256(context)
+        assert rows[0]["correlation"]["episode_id"] == "episode-test"
         assert rows[0]["correlation"] == rows[1]["correlation"]
-        assert rows[0]["correlation"] != rows[2]["correlation"]
+        assert rows[0]["correlation"] != rows[3]["correlation"]
         assert rows[1]["payload"]["completion_verified"] is False
         assert "hidden-key" not in text and "secret=hidden" not in text
         assert "private transport details" not in text
+        class Stream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b'data: {"choices":[{"delta":{"reasoning_content":"emitted rationale"}}]}\n\n'
+                yield b'data: {"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}\n\n'
+                yield b'data: [DONE]\n\n'
+        with Client(transport=httpx.MockTransport(lambda r:httpx.Response(200,stream=Stream()))) as client:
+            with client.stream("POST", "https://provider.invalid/v1/chat/completions", json=body) as response:
+                received_stream=b"".join(response.iter_bytes())
+        rows = [json.loads(s) for s in writer.path.read_text().splitlines()]
+        stream = rows[-1]["payload"]
+        assert rows[-1]["kind"] == "provider_response_stream"
+        assert stream["stream_exhausted"] and stream["done_marker_observed"] and not stream["capture_truncated"]
+        assert stream["chunks"][0]["choices"][0]["delta"]["reasoning_content"] == "emitted rationale"
+        assert b'emitted rationale' in received_stream
     print(json.dumps({"event": "pass", "payload": {
         "http_serialized_body_matches_capture": True, "transport_unchanged": True,
         "headers_and_url_credentials_excluded": True,

@@ -388,3 +388,11 @@ from these fixtures. See `gameplay-diagnostics-mission.md` for outstanding gates
 | Discovery vs change | Bounded newly-known extent; current vs refresh qualifiers; observer contracts pass | Saved/live campaign trace comparison |
 | Cognition persistence | Guarded write + journal reinitialization; internal crash tests | Same-record next-request/handoff/GC/recovery provider capture |
 | Journal diagnostic export | Locked committed-prefix snapshots implemented | Export against running/parked/archive campaign and browser |
+
+Delivery/export update: controlled real writer→journal→runtime→Hermes sanitizer→HTTP
+serialization chain now passes immediate, handoff/resume, GC and journal-restart cases.
+Native checkpoint recovery remains pending. Compressed bounded tracing and immutable
+prefix exports pass contracts; parked Hermes extraction is verified (405 messages).
+SSE completion/rationale capture and envelope-hash correlation pass controlled transport
+checks. Specialist lifecycle/trace host tests pass. Live provider/full-game evidence,
+browser download checks and complete campaign attribution remain open.
