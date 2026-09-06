@@ -628,7 +628,7 @@ class SemanticLodProjector:
         kind = str(item.get("kind") or "unknown")
         keys = {
             "base": ("name", "owner_ref", "population", "production_name",
-                     "mineral_surplus", "drone_riots", "eco_damage"),
+                     "mineral_surplus", "nutrient_surplus", "drone_riots", "eco_damage"),
             "faction": ("faction_name", "leader_name", "relations", "alien"),
             "game_settings": ("state",), "scenario_rules": ("state",),
             "economy_state": ("state",), "research_state": ("state",),

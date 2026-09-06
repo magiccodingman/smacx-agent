@@ -62,7 +62,7 @@
   "acceptance": {
     "before_final_ready_unit_action": true,
     "effect_verified": true,
-    "specific_post_effect_recovery": "not yet performed",
+    "specific_post_effect_recovery": "Not established: checkpoint predates this action; attention-repair recovery restored the prior state.",
     "broad_strategy_quality": "not inferred"
   }
 }

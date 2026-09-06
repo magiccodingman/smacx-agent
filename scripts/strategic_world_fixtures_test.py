@@ -301,6 +301,13 @@ def main() -> int:
     assert any(row["lod_level"] == "geographic"
                for row in anchor["physical_masses"])
     assert {row["kind"] for row in anchor["strategic_objects"]} >= {"project", "council_state"}
+    # Strategic base summaries retain food balance with its evidence; a ready
+    # unit focus must not make a known starvation deficit invisible.
+    food_base = item("food-base", "base", "quiet-plan", nutrient_surplus=-1)
+    food_base["fields"]["nutrient_surplus"]["epistemic_status"] = "stale"
+    food_summary = SemanticLodProjector._strategic_summary(food_base)
+    assert food_summary["fields"]["nutrient_surplus"] == food_base["fields"]["nutrient_surplus"]
+    results["base_food_balance_preserves_evidence"] = True
     results["multi_front_warfare"] = results["project_global_race"] = True
     pressure_anchor = SemanticLodProjector(context_tier="64k", token_cap=2320).build(
         projection(32, 16, busy, world_objects),
