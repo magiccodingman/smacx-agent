@@ -1,0 +1,29 @@
+{
+  "scope": "actual provider requests and current owned-state evidence",
+  "previous": {
+    "turn": 24,
+    "owned_technologies": 2,
+    "request_id": "63dd9ddad64949198117772ac67f0634"
+  },
+  "current": {
+    "turn": 25,
+    "owned_technologies": 3,
+    "request_id": "abf6f0a23a414d13b72264d299724745",
+    "names": [
+      "Biogenetics",
+      "Social Psych",
+      "Centauri Ecology"
+    ]
+  },
+  "research_request_id": "f46e2491892f4d9289336d8a1f5b4d0a",
+  "research": {
+    "selected_priorities": [
+      "Build"
+    ],
+    "priority_meaning": "Category preferences, not the hidden technology target. Zero is Explore; progress can continue without a disclosed target.",
+    "target_visibility": "hidden_by_blind_research",
+    "tech_id": null,
+    "tech_name": null
+  },
+  "attribution": "Sovereign completed-Build-technology statement is supported by acquired count/name evidence; no hidden next target inferred"
+}

@@ -3,5 +3,10 @@
   "repair": "Authenticated diagnostics exports join safe control_operation_failed capture; anonymous failures cannot create streams",
   "acceptance": "Actual HTTP server: anonymous401 adds no record, authenticated409 records operation diagnostics and stable error code; private exception details and service token absent",
   "past_failure_cause": "unknown; subsequent live export succeeded",
-  "deployment": "pending control-API refresh; game worker/MCP need no restart"
+  "deployment": {
+    "control_image": "sha256:1b3300ec366a7081739b77dbded664d9a3be79d757e3b30b87f1233875adc622",
+    "control_health": "healthy",
+    "worker_and_MCP": "not restarted for this control-only change",
+    "future_failure_capture": "actual HTTP regression proven; no induced live failure"
+  }
 }
