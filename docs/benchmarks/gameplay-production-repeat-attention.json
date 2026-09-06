@@ -32,7 +32,7 @@
   },
   "acceptance": {
     "deployed": true,
-    "actual_repaired_provider_delivery": "pending",
+    "actual_repaired_provider_delivery": "pass",
     "autonomous_behavior": "pending",
     "native_mechanics_changed": false,
     "full_game": "pending"
@@ -42,5 +42,31 @@
     "harness_image_sha256": "247f04caa929722208fa71a9f8fd21c23e67e8f950e2b98b5af19821e75fbc64",
     "mcp_control_image_sha256": "19af0966db03ba4ff15cc62ae7ef092255114e44685df6ddc07ecfe64e67579e",
     "native_worker_replaced": false
+  },
+  "live_turn74": {
+    "request_id": "b6f0731546fa41f89cf525f6780b4028",
+    "attention_id": "attention-18563306c35846d4acc809a8c84cf603",
+    "observation_cursor": 378,
+    "event": "production_queue_exhausted",
+    "selection_occurrences": [
+      "production_repeat_selected"
+    ],
+    "base_ref": "base-location-1134",
+    "item_name": "Synthmetal Garrison",
+    "historical_turn": 74,
+    "native_units_before": 7,
+    "native_units_after": 8,
+    "native_garrisons_after": 4,
+    "hurry_request_id": "9a5bbf7db15e4138bec72d3abcba0b70",
+    "hurry_call_id": "chatcmpl-tool-9576a986774371b5",
+    "next_actual_hurry_receipt_request_id": "f10cfb4f31ad4a96bc8d8e30067b7ab9",
+    "exact_receipt_delivered": true,
+    "hurry_completion_verified_field": false,
+    "hurry_energy_cost": 34,
+    "hurry_minerals_added": 13,
+    "hurry_accumulated_before": 7,
+    "hurry_accumulated_after": 20,
+    "native_completion_observed_at_turn": 74,
+    "behavioral_note": "Premature completed wording followed by explicit will appear next turn and a still-correct seven-unit count; immediate fielded defender not claimed in count."
   }
 }
