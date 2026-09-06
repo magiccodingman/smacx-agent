@@ -36,6 +36,13 @@ def run_probe(package_root: Path, prompt_path: Path, expected_hash: str) -> subp
             "agent=SimpleNamespace(); "
             "value=s.build_system_prompt(agent, 'upstream additive text'); "
             "parts=s.build_system_prompt_parts(agent, 'upstream additive text'); "
+            "import run_agent, smacx_strict_prompt; "
+            "smacx_strict_prompt._append_runtime_context=lambda rows: rows; "
+            "history=[{'role':'system','content':'saved stale prompt'}, "
+            "{'role':'system','content':'upstream extra'}, {'role':'user','content':'resume'}]; "
+            "wire=run_agent.AIAgent._sanitize_api_messages(history); "
+            "assert history[0]['content']=='saved stale prompt'; "
+            "assert [row['content'] for row in wire if row['role']=='system']==[value]; "
             "print(json.dumps({'value':value,'parts':parts}))"
         )],
         cwd=ROOT, env=environment, text=True, capture_output=True, check=False,
@@ -107,6 +114,7 @@ def main() -> int:
         "payload": {
             "deterministic_prompt": True,
             "upstream_prompt_replaced": True,
+            "stale_duplicate_system_rows_replaced_without_history_mutation": True,
             "provider_system_message_exact": True,
             "integrity_failure_closed": True,
             "oversized_prompt_failure_closed_after_site_startup": True,

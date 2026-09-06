@@ -433,6 +433,16 @@ def _install() -> None:
     system_prompt.build_system_prompt_parts = build_parts
     system_prompt.build_system_prompt = build
 
+    def canonical_system(messages):  # noqa: ANN001
+        # Resume can reuse Hermes's persisted system prompt without invoking
+        # its builder. Enforce the approved, hash-validated prompt on every
+        # provider request as well. This changes the wire copy, not history.
+        value = load()
+        return [{"role": "system", "content": value}, *(
+            message for message in messages
+            if not isinstance(message, dict) or message.get("role") != "system"
+        )]
+
     # Specialists use the same Hermes runtime but must never receive the
     # sovereign request-tail context, attention lease, or semantic-GC hooks.
     # Their provider wire retains only the newest assistant reasoning segment:
@@ -448,6 +458,7 @@ def _install() -> None:
             sanitized = original_specialist_sanitize(copy.deepcopy(messages))
             if not isinstance(sanitized, list):
                 return sanitized
+            sanitized = canonical_system(sanitized)
             assistant_rows = [
                 index for index, message in enumerate(sanitized)
                 if isinstance(message, dict) and message.get("role") == "assistant"
@@ -496,6 +507,7 @@ def _install() -> None:
         sanitized = original_sanitize(copy.deepcopy(messages))
         if not isinstance(sanitized, list):
             return sanitized
+        sanitized = canonical_system(sanitized)
         last_user = max(
             (index for index, message in enumerate(sanitized)
              if isinstance(message, dict) and message.get("role") == "user"),

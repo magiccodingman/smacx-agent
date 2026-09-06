@@ -1,0 +1,9 @@
+{
+  "classification": "confirmed saved-system-prompt bypass on Hermes resume",
+  "profile_old_sha256": "56e2b89d45d16dbd9127dddd74b1d11010689725e3b7eaa9ca1ec30fa36e91b3",
+  "profile_recompiled_sha256": "d612cd0c5fb10a00ef1579a3a898027704bef4b3fe39d9f2539724a5b59ae5d7",
+  "observed_wire_before_repair_sha256": "56e2b89d45d16dbd9127dddd74b1d11010689725e3b7eaa9ca1ec30fa36e91b3",
+  "controlled_real_hermes_resume_replacement_verified": true,
+  "controlled_resume_history_preserved": true,
+  "deployed_corrected_wire_pending": true
+}
