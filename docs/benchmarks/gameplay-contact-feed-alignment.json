@@ -69,5 +69,25 @@
       "limitation": "Actual native catch-up retains contact identity; the final-attempt-after-two-bundle-failures case remains controlled regression evidence."
     },
     "publication_transaction_22_crash_cases_pass": true
+  },
+  "turn41_to42_bounded_fallback": {
+    "timeline": "timeline-restore-a4ef4e1a7eb44e3ab1812001",
+    "telemetry_id": "telemetry-5b8d5f0a5a204454a8856c2028ca3e1a",
+    "cursors": [
+      194,
+      195
+    ],
+    "bundle_failures": [
+      "world_changed_during_collection",
+      "world_changed_during_collection"
+    ],
+    "catch_up_attempts": 1,
+    "bridge_calls": 29,
+    "wall_ms": 546.383,
+    "first_cut_matched": false,
+    "first_registry_reset": true,
+    "next_cut_matched": true,
+    "next_registry_reset": false,
+    "interpretation": "The omitted-final-catch-up defect is not recurring: catch-up ran. Native activity still prevented proof of a common cut, so the locked conservative fallback issued temporary contact identity and the following matched publication restored the canonical episode. This is not a zero-churn acceptance result, and does not justify inferring continuity across an unproved cut."
   }
 }

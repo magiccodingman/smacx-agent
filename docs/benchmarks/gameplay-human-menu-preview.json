@@ -14,6 +14,26 @@
   ],
   "deployment_pending": false,
   "packaged_regression_passed": true,
-  "live_rendering_pending": true,
-  "harness_image_sha256": "26410feb11b243799fc084c2751e95a9c2dab4c4fccfeddc706810eaeee4cbf5"
+  "live_rendering_pending": false,
+  "harness_image_sha256": "26410feb11b243799fc084c2751e95a9c2dab4c4fccfeddc706810eaeee4cbf5",
+  "live_rendering": {
+    "turns": [
+      41,
+      42
+    ],
+    "unit_menu": {
+      "total": 19,
+      "groups": [
+        "Move unit",
+        "Skip unit",
+        "Hold unit",
+        "Sentry unit",
+        "Automate former",
+        "Disband unit"
+      ],
+      "complete_preview_visible": true
+    },
+    "production_hurry_group_visible": true,
+    "provider_menu_unchanged": true
+  }
 }
