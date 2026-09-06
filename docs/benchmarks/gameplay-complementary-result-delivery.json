@@ -1,0 +1,53 @@
+{
+  "classification": "confirmed harness provider-delivery failure, not established model strategy weakness",
+  "live_turn": 29,
+  "tool_call_id": "chatcmpl-tool-b2488bb8e382e2f2",
+  "production_answer": {
+    "base_ref": "base-location-1134",
+    "current": "Colony Pod",
+    "minerals": 16,
+    "cost": 30,
+    "surplus": 2,
+    "hurry_legal": true,
+    "hurry_affordable": true,
+    "hurry_energy_cost": 37,
+    "available_energy": 79,
+    "choice_id": "choice-36b44138574b494e8ce71cb4dd9ae1e7"
+  },
+  "provider_requests_missing_answer": [
+    "596b53d822904dea9e9e58a3360572ad",
+    "5d7d1f59b6fb47af968a79721604ca77",
+    "9b358111b5d940ca8b416eadbbe719e4",
+    "a5c7675f4a1e446aabc2562b18d7770f",
+    "763396b5214e4880b6aa08451b45c0be",
+    "033c93ab425346ae9b810c9aac3d8f05",
+    "f9a66f6d9e304596946ee364845b5f1c"
+  ],
+  "root_cause": "semantic GC classified complementary choice queries and execution receipts as interchangeable latest-state frames",
+  "repair": [
+    "retain distinct current-episode choice query signatures",
+    "retain execution and briefing receipts within normal episode retention",
+    "protect every latest assistant tool-batch result before subsequent provider response",
+    "fail closed on irreducibly oversized unseen batch"
+  ],
+  "controlled_acceptance": {
+    "actual_installed_hermes_sanitizer_and_controlled_http_wire": true,
+    "production_citizens_research_retained": true,
+    "execution_handoff_receipt_retained": true,
+    "identical_older_query_superseded_only": true,
+    "pressure_tokens_before": 73101,
+    "pressure_tokens_after": 5699,
+    "oversized_batch_tokens": 61124,
+    "oversized_batch_rejected": true,
+    "source_history_unchanged": true,
+    "direct_tool_context_policy_pass": true,
+    "guarded_writer_journal_runtime_hermes_transport_pass": true,
+    "packaged_real_hermes_provider_capture_pass": true
+  },
+  "limits": "Controlled receiving provider proves actual Hermes request/capture/resume behavior, not native mechanics or autonomous use. Deployed live wire acceptance pending.",
+  "recovery_checkpoint": {
+    "id": "checkpoint-7659fa18b9764d0e8336e2c8ead4a85a",
+    "turn": 30,
+    "bridge_verified": true
+  }
+}

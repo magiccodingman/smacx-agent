@@ -46,11 +46,11 @@ _HANDOFF_SECTIONS = (
 _HANDOFF_MAX_WORDS = 120
 _HANDOFF_SECTION_WORDS = 19
 _STATE_TOOL_NAMES = frozenset({
-    "smac_decision", "smac_choices", "smac_wait",
-    "smac_execute_choice", "smac_match_briefing", "smac_snapshot", "smac_observe",
+    "smac_decision", "smac_wait", "smac_snapshot", "smac_observe",
 })
+_QUERY_TOOL_NAMES = frozenset({"smac_choices", "smac_world", "smac_investigate"})
 _DISPOSABLE_TOOL_NAMES = frozenset({
-    *_STATE_TOOL_NAMES, "smac_world", "smac_investigate", "smac_list",
+    *_STATE_TOOL_NAMES, *_QUERY_TOOL_NAMES, "smac_execute_choice", "smac_match_briefing", "smac_list",
     "smac_memory", "smac_memory_update", "smac_notebook",
 })
 _COGNITION_TOOL_NAMES = frozenset({"smac_memory_update", "smac_notebook"})
@@ -526,16 +526,27 @@ def _install() -> None:
         )
         compacted_reasoning = compacted_think_blocks = 0
         compacted_frames = compacted_boundaries = 0
+        compacted_queries = evicted_queries = 0
         pruned_tool_calls = pruned_tool_results = 0
         tool_names: dict[str, str] = {}
         tool_signatures: dict[str, str] = {}
         tool_calls_by_id: dict[str, dict] = {}
         historical_tool_call_ids: set[str] = set()
+        pending_tool_ids: set[str] = set()
         state_rows: list[int] = []
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict):
                 continue
             if message.get("role") == "assistant":
+                if index >= last_user:
+                    # The latest assistant tool batch has not yet received a
+                    # following assistant response. Every one of its results
+                    # must reach the provider before it can be superseded or
+                    # evicted. A later ordinary response clears this protection.
+                    pending_tool_ids = {
+                        call["id"] for call in message.get("tool_calls") or []
+                        if isinstance(call, dict) and isinstance(call.get("id"), str)
+                    }
                 if index < last_user:
                     for field in ("reasoning", "reasoning_content", "reasoning_details"):
                         if field in message:
@@ -572,6 +583,8 @@ def _install() -> None:
                     compacted_boundaries += 1
         for index in state_rows[:-1]:
             message = sanitized[index]
+            if str(message.get("tool_call_id") or "") in pending_tool_ids:
+                continue
             message["content"] = json.dumps({
                 "ok": True,
                 "superseded_runtime_state": True,
@@ -579,23 +592,25 @@ def _install() -> None:
             }, separators=(",", ":"))
             compacted_frames += 1
         # Query evidence is retained within the current episode until it is
-        # actually superseded. Only earlier identical world/reference queries
+        # actually superseded. Choices for different families/subjects are
+        # complementary evidence, not interchangeable current-state frames.
+        # Only earlier identical choice/world/reference queries
         # are collapsed; provider-valid assistant/tool pairing remains intact.
         newest_query: dict[str, int] = {}
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict) or message.get("role") != "tool":
                 continue
             call_id = str(message.get("tool_call_id") or "")
-            if tool_names.get(call_id) not in {"smac_world", "smac_investigate"}:
+            if tool_names.get(call_id) not in _QUERY_TOOL_NAMES:
                 continue
             signature = tool_signatures.get(call_id, call_id)
             prior = newest_query.get(signature)
-            if prior is not None:
+            if prior is not None and str(sanitized[prior].get("tool_call_id") or "") not in pending_tool_ids:
                 sanitized[prior]["content"] = json.dumps({
                     "ok": True, "semantic_gc": "superseded_query_evidence",
                     "retention": "Use the later identical query result.",
                 }, separators=(",", ":"))
-                compacted_frames += 1
+                compacted_queries += 1
             newest_query[signature] = index
         # A managed user boundary is emitted only after the prior native-turn
         # episode has yielded its durable TURN HANDOFF. Retain that ordinary
@@ -640,6 +655,8 @@ def _install() -> None:
             ]
             for message in cognition_rows[:-4]:
                 call_id = str(message.get("tool_call_id") or "")
+                if call_id in pending_tool_ids:
+                    continue
                 call = tool_calls_by_id.get(call_id)
                 arguments = _managed_tool_arguments(call) if call else None
                 tool_name = tool_names.get(call_id)
@@ -675,13 +692,16 @@ def _install() -> None:
                 message for message in filtered
                 if isinstance(message, dict) and message.get("role") == "tool"
                 and tool_names.get(str(message.get("tool_call_id") or ""))
-                in {"smac_world", "smac_investigate"}
+                in _QUERY_TOOL_NAMES
             ]
             for message in query_tool_rows[:-1]:
+                if str(message.get("tool_call_id") or "") in pending_tool_ids:
+                    continue
                 message["content"] = json.dumps({
                     "ok": True, "semantic_gc": "context_pressure_query_eviction",
                     "retention": "Requery only if current consequential work still needs it.",
                 }, separators=(",", ":"))
+                evicted_queries += 1
             removed_indices = _collect_old_disposable_pairs(filtered, tool_names)
             removed_row_count = len(removed_indices)
             if removed_indices:
@@ -715,7 +735,10 @@ def _install() -> None:
         record("history_compaction", {**_RUNTIME_STATE.gc_metrics,
             "reasoning_fields": compacted_reasoning, "think_blocks": compacted_think_blocks,
             "state_frames": compacted_frames, "episode_boundaries": compacted_boundaries,
+            "query_results_superseded": compacted_queries,
+            "query_results_evicted_for_budget": evicted_queries,
             "historical_tool_calls": pruned_tool_calls, "historical_tool_results": pruned_tool_results,
+            "protected_latest_batch_results": len(pending_tool_ids),
         }, actor="runtime-context-builder", correlation={"episode_id": _episode_id(filtered)})
         return _append_runtime_context(filtered) if include_runtime else filtered
 

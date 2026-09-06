@@ -108,9 +108,11 @@ def main() -> int:
                        for item in wire if isinstance(item, dict)):
             raise AssertionError("completed historical tool protocol was retained")
         if "superseded_runtime_state" not in by_tool_call_id["new"]["content"] \
-                or "superseded_runtime_state" not in by_tool_call_id["execute"]["content"] \
+                or json.loads(by_tool_call_id["execute"]["content"]).get("executed") is not True \
                 or "latest_state" not in by_tool_call_id["latest"]["content"]:
-            raise AssertionError("state-frame compaction is incorrect")
+            # Execution is an outcome receipt, not an older state frame.
+            # A later decision must not erase evidence that it happened.
+            raise AssertionError("state-frame compaction or execution receipt retention is incorrect")
         # A realistic multi-turn transcript must stay bounded on the provider
         # wire even though Hermes preserves the full durable history in SQLite.
         long_history = [{"role": "user", "content": "opening episode"}]
@@ -284,7 +286,7 @@ def main() -> int:
             "historical_tool_protocol_pruned": True,
             "current_tool_chain_reasoning_retained": True,
             "superseded_state_compacted": True,
-            "superseded_execution_result_compacted": True,
+            "execution_outcome_receipt_retained": True,
             "latest_state_retained": True,
             "real_hermes_dispatcher_compacted": True,
             "call_transport": os.environ.get("SMACX_TEST_DIRECT_SERVER", "legacy_dispatcher"),
