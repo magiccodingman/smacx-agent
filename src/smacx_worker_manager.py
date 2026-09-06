@@ -572,20 +572,27 @@ class WorkerManager:
             if not target.is_file() or self._file_sha256(target) != snapshot.get(
                     "archive_sha256"):
                 raise WorkerManagerError("hermes_checkpoint_integrity_failure")
-            outcome = self._run_checkpoint_helper(
-                "hermes-restore", f"{harness_profile_id}-{uuid.uuid4().hex}",
-                image=self.mcp_image, script=HERMES_RESTORE_SCRIPT,
-                environment=[
-                    f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
-                    f"SMACX_MATCH_ID={match_id}",
-                    f"SMACX_CHECKPOINT_RELATIVE={relative}",
-                ], user="10000:10001",
-                mounts=[
-                    {"Type": "volume", "Source": self.control_data_volume,
-                     "Target": "/control", "ReadOnly": True},
-                    {"Type": "volume", "Source": volume, "Target": "/target"},
-                ],
-            )
+            # Checkpoints are sealed 0600 under the control uid. The restore
+            # helper runs as the Hermes uid with only the shared control group;
+            # grant read (never write) for its lifetime, then reseal even on failure.
+            os.chmod(target, 0o640)
+            try:
+                outcome = self._run_checkpoint_helper(
+                    "hermes-restore", f"{harness_profile_id}-{uuid.uuid4().hex}",
+                    image=self.mcp_image, script=HERMES_RESTORE_SCRIPT,
+                    environment=[
+                        f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
+                        f"SMACX_MATCH_ID={match_id}",
+                        f"SMACX_CHECKPOINT_RELATIVE={relative}",
+                    ], user="10000:10001",
+                    mounts=[
+                        {"Type": "volume", "Source": self.control_data_volume,
+                         "Target": "/control", "ReadOnly": True},
+                        {"Type": "volume", "Source": volume, "Target": "/target"},
+                    ],
+                )
+            finally:
+                os.chmod(target, 0o600)
             restored.append({
                 "harness_profile_id": harness_profile_id,
                 "database_present": outcome.get("database_present") is True,

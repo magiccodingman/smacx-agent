@@ -29,6 +29,10 @@ def inside() -> None:
             db.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY,session_id TEXT,value TEXT)")
             db.execute("INSERT INTO sessions VALUES ('session-test','match-test')")
             db.execute("INSERT INTO messages VALUES (1,'session-test','checkpoint memory')")
+        # Production Hermes data belongs to 10000, while the sealed archive
+        # belongs to control uid 10001. Exercise both directions across that seam.
+        for path in [root / "source", *(root / "source").rglob("*")]:
+            os.chown(path, 10000, 10001)
         target = root / "control"
         target.mkdir()
         os.chown(target, 10001, 10001)
@@ -51,7 +55,8 @@ def inside() -> None:
                 result = subprocess.run(
                     [sys.executable, "-c", kwargs["script"]],
                     env={**os.environ, **env, "SMACX_SOURCE_ROOT": str(root / "source"),
-                         "SMACX_CONTROL_ROOT": str(target)},
+                         "SMACX_CONTROL_ROOT": str(target),
+                         "SMACX_TARGET_ROOT": str(root / "source")},
                     user=10000, group=10001, extra_groups=[],
                     capture_output=True, text=True, timeout=30,
                 )
@@ -70,13 +75,29 @@ def inside() -> None:
             archive = target / receipts[0]["archive"]
             assert receipts[0]["database_present"] and receipts[0]["archive_bytes"] > 0
             assert archive.stat().st_mode & 0o777 == 0o600
+            restored = manager._restore_hermes_state("match-test", receipts)
+            assert restored[0]["database_present"]
+            assert archive.stat().st_mode & 0o777 == 0o600
+            with sqlite3.connect(source / "state.db") as db:
+                assert db.execute("SELECT value FROM messages").fetchall() == [("checkpoint memory",)]
+            def failed_restore(*args, **kwargs):
+                assert archive.stat().st_mode & 0o777 == 0o640
+                raise RuntimeError("injected_restore_failure")
+            manager._run_checkpoint_helper = failed_restore
+            try:
+                manager._restore_hermes_state("match-test", receipts)
+                raise AssertionError("restore failure was swallowed")
+            except RuntimeError as exc:
+                assert str(exc) == "injected_restore_failure"
+            assert archive.stat().st_mode & 0o777 == 0o600
         finally:
             os.seteuid(0)
             os.setegid(0)
             os.umask(previous_umask)
         print(json.dumps({"passed": True, "control_uid": 10001, "helper_uid": 10000,
                           "shared_gid": 10001, "umask": "0027", "final_archive_mode": "0600",
-                          "real_helper_sqlite_backup_and_archive": True}))
+                          "real_helper_sqlite_backup_and_archive": True,
+                          "real_helper_restore": True, "failure_reseals_archive": True}))
 
 
 if __name__ == "__main__":
