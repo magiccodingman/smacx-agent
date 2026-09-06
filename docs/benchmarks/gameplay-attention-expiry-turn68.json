@@ -58,8 +58,18 @@
     "intent_reconciliation_contract_test": "pass"
   },
   "acceptance": {
-    "deployed": false,
+    "deployed": true,
     "live_repaired_redelivery_and_gate": "pending",
     "full_game": "unfinished"
+  },
+  "deployment": {
+    "control_mcp_sha256": "7826edf795568e99789dbbdb810fe30e65eec26aa038b696f4ee70b4bc259452",
+    "harness_sha256": "0ace26e388198ff9c644eeaf38cb490b4d4665cb1e998e14703e3419b4f7d7d1",
+    "specialist_supervisor_refreshed": true,
+    "recovered_checkpoint_id": "checkpoint-814d9655049e4cd1a331e958cf70022e",
+    "active_timeline": "timeline-restore-be5cc6c4c27541bdba9a517c",
+    "run_id": "run-fe4c3af59b5a41cfa9aa3ecea83cb4c4",
+    "operator_attention_cleared": true,
+    "live_retry_notice": "Current-state and attention guidance supplied; no claimed spontaneous discovery of repair."
   }
 }
