@@ -583,3 +583,5 @@ The isolated full control/worker/MCP live regression passed on the popup-lifetim
 `PYTHONPATH=src python3 scripts/world_changes_budget_recovery_test.py` verifies that a standard/compact oversized historical row provides an executable deep retry without advancing the observation or sibling continuation, losing stale qualifiers, or modifying stored input.
 
 `observation_feed_alignment_test.py` (container MCP environment) reproduces a late non-contact event causing identity churn, verifies the same stationary ref after catch-up/restart, preserves actual loss/reappearance separation and checks bounded conservative behavior under continuous native change.
+
+The popup lifetime test also verifies TOPMENU’s live SetupWin source ownership, wrong-vtable rejection and expired-modal rejection; this guards the LAN startup seam in addition to passive technology notices.

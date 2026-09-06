@@ -93,5 +93,16 @@
     ],
     "recovered_with_fresh_frame": true,
     "classification": "actual sovereign execution and native effect; full-game acceptance incomplete"
+  },
+  "setup_window_owner_correction": {
+    "isolated_lan_failure": "native_semantic_lan_host_lobby_timeout",
+    "native_stage": 5,
+    "modal_state": true,
+    "modal_is_net_window": false,
+    "root_cause": "TOPMENU SetupWin owns a source BasePop at +0x1014; source popup is neither the current modal object nor the BasePop exec slot",
+    "repair": "recognize source membership only under the active native SetupWin modal with the reviewed vtable; never dereference historical popup to infer lifetime",
+    "protected_memory_tests": true,
+    "native_cross_build": true,
+    "live_lan_comparison": "running"
   }
 }

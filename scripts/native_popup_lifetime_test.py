@@ -23,8 +23,8 @@ def main():
 #include <windows.h>
 #include <cstdint>
 #include <cstdio>
-struct Win {};
-struct BasePop {};
+struct Win { void* vtable = NULL; };
+struct BasePop : Win {};
 int test_modal_depth = 0;
 int* WinModalState = &test_modal_depth;
 Win* test_modal = NULL;
@@ -50,6 +50,20 @@ int main() {
     if (agent_popup_object() != &active) return 16;
     test_exec_depth = 0;
     if (agent_popup_object() || agent_popup_object_is_active(reinterpret_cast<BasePop*>(2))) return 17;
+    alignas(void*) unsigned char setup[0x1100] = {};
+    test_modal = reinterpret_cast<Win*>(setup);
+    test_modal->vtable = reinterpret_cast<void*>(0x66D8E8);
+    *reinterpret_cast<BasePop**>(setup + 0x1014) = &active;
+    *WinModalState = 1;
+    if (agent_popup_object() != &active) return 18;
+    last_started_agent_popup = reinterpret_cast<BasePop*>(expired);
+    if (agent_popup_object()) return 19; // SetupWin owns only its source
+    last_started_agent_popup = &active;
+    test_modal->vtable = NULL;
+    if (agent_popup_object()) return 20; // arbitrary modal is not SetupWin
+    test_modal->vtable = reinterpret_cast<void*>(0x66D8E8);
+    *WinModalState = 0;
+    if (agent_popup_object()) return 21; // stale SetupWin slot is insufficient
     std::puts("native_popup_lifetime_passed");
     return 0;
 }
@@ -71,6 +85,7 @@ int main() {
     print(json.dumps({'passed': True, 'expired_page_is_inaccessible': True,
         'unrelated_modal_does_not_reactivate_history': True,
         'live_modal_and_exec_membership_preserved': True,
+        'live_setup_window_source_membership_preserved': True,
         'classification': 'actual lifetime helpers with Windows protected memory; native replay pending'}))
 
 

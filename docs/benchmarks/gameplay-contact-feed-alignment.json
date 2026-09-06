@@ -30,5 +30,15 @@
     "publication_transaction_22_crash_cases": true,
     "fair_play_differential": true
   },
-  "live_after_deployment": "pending"
+  "live_after_deployment": {
+    "timeline": "timeline-restore-a2be1f0120fa446aa51c40d9",
+    "autonomous_turns": [
+      28,
+      29
+    ],
+    "contact_change_count": 0,
+    "collector_failures": 0,
+    "alignment_retry_observed": false,
+    "classification": "quiet live continuity verified; actual late-cut recurrence still pending"
+  }
 }

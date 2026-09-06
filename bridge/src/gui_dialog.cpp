@@ -44,8 +44,15 @@ bool agent_popup_object_is_active(BasePop* popup) {
     Win* modal = *reinterpret_cast<Win**>(0x9B7AE0);
     BasePop* executing = *reinterpret_cast<BasePop**>(0x9B8D7C);
     const int exec_depth = *reinterpret_cast<int*>(0x9B8D00);
-    return (*WinModalState > 0 && modal == reinterpret_cast<Win*>(popup))
-        || (exec_depth > 0 && executing == popup);
+    if ((*WinModalState > 0 && modal == reinterpret_cast<Win*>(popup))
+        || (exec_depth > 0 && executing == popup)) return true;
+    // TOPMENU is displayed by a SetupWin whose live modal owns the source
+    // BasePop at +0x1014. The BasePop itself is not the modal/exec slot in
+    // this flow. Inspect only the currently owned SetupWin, never the saved
+    // popup, to establish that additional native lifetime relationship.
+    return *WinModalState > 0 && modal
+        && modal->vtable == reinterpret_cast<void*>(0x66D8E8)
+        && *reinterpret_cast<BasePop**>(reinterpret_cast<char*>(modal) + 0x1014) == popup;
 }
 
 BasePop* agent_popup_object() {
