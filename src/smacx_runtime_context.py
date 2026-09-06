@@ -455,6 +455,7 @@ class RuntimeContextAssembler:
                 "world_revision": int(projection["world_revision"]),
                 "observation_cursor": int(projection["observation_cursor"]),
                 "action_revision": snapshot.get("revision"),
+                "session_id": snapshot.get("session_id"),
                 "continuity": projection.get("continuity", "incomplete"),
             },
             "world": {},

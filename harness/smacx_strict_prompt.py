@@ -82,7 +82,10 @@ def _episode_id(messages) -> str:  # noqa: ANN001
     material = "\x1f".join((
         os.environ.get("SMACX_AGENT_MATCH_ID", ""),
         os.environ.get("SMACX_AGENT_ID", ""),
-        str(last_user[0]), str(last_user[1]),
+        # Tool-pair GC changes absolute row indices within one invocation.
+        # User-boundary ordinal remains stable under that wire-only cleanup.
+        str(sum(isinstance(message, dict) and message.get("role") == "user"
+                for message in messages)), str(last_user[1]),
     ))
     return "episode-" + hashlib.sha256(material.encode()).hexdigest()[:32]
 
@@ -732,6 +735,11 @@ def _install() -> None:
         if isinstance(message, dict) and not message.get("tool_calls") \
                 and finish_reason in {"stop", "end_turn"}:
             _end_runtime_episode(committed=True)
+        elif isinstance(message, dict) and not message.get("tool_calls") \
+                and finish_reason in {"length", "incomplete", "content_filter"}:
+            # Hermes may append a new user continuation after these responses.
+            # Release this invocation without claiming a completed handoff.
+            _end_runtime_episode(committed=False)
         return message
 
     run_agent.AIAgent._strip_think_blocks = bounded_strip_think_blocks

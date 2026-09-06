@@ -527,3 +527,5 @@ The installed Hermes MCP child-watcher race can be checked with `docker run --rm
 Run `scripts/mcp_argument_validation_test.py` in the container MCP environment to verify that unknown top-level arguments are rejected before dispatch and recorded, while declared nested data/defaults still work. The specialist provider capture test additionally exercises rejection and recovery through actual Hermes and the frozen MCP instruments.
 
 `PYTHONPATH=src python3 scripts/ecology_attention_contract_test.py` replays inactive sunspot ticks, active countdown, start/end and other ecology changes through the collector and verifies both retained world state and critical-attention selection.
+
+The Hermes provider capture test also emits a truncated (`length`) response and enforces exclusive runtime episode ownership. It requires cancellation before the real Hermes continuation can obtain its context. Runtime context tests assert the current native session and action revision remain available for guarded cognition writes. See `benchmarks/gameplay-episode-lifecycle.json` for the live trigger and validation limits.

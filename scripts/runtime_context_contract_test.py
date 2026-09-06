@@ -84,7 +84,7 @@ def main() -> int:
             observation_cursor=9, priority=100, critical=True,
         )
         snapshot = {
-            "turn": 9, "revision": "action-9",
+            "turn": 9, "revision": "action-9", "session_id": "session-runtime-current",
             "protocol": {"phase": "interaction", "required_action": "respond"},
             "interaction": {"kind": "proposal", "popup_label": "Treaty offer",
                             "faction_id": 2},
@@ -142,6 +142,8 @@ def main() -> int:
         rich = assembler.build(episode_id="episode-runtime-256k",
                                episode_mode="gameplay", context_length=262144)
         assert compact["identity"] == rich["identity"]
+        assert compact["identity"]["session_id"] == "session-runtime-current"
+        assert compact["identity"]["action_revision"] == "action-9"
         assert compact["focus"]["focus_id"] == rich["focus"]["focus_id"]
         assert compact["focus"]["mandatory"] is True
         assert compact["plan_health"]["active_plan_count"] == 1

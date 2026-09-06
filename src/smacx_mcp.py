@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import threading
 import time
+import traceback
 from typing import Any, Literal, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -317,7 +318,13 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                                       separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()})
             self._json(200, {"ok": True, "runtime_context": payload})
         except Exception as exc:
-            diagnostic_record("runtime_context_failed", {"error": str(exc)}, actor="runtime-context-builder")
+            diagnostic_record("runtime_context_failed", {"error": str(exc),
+                "exception_type": type(exc).__name__,
+                "stack": [{"file": Path(frame.filename).name, "line": frame.lineno,
+                           "function": frame.name}
+                          for frame in traceback.extract_tb(exc.__traceback__)[-8:]]},
+                actor="runtime-context-builder",
+                correlation={"episode_id": episode_id})
             self._json(409, {"ok": False, "error": str(exc)})
 
     def do_POST(self) -> None:  # noqa: N802

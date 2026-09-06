@@ -55,6 +55,11 @@ def main() -> int:
             if self.path.startswith("/runtime-context"):
                 query = parse_qs(urlsplit(self.path).query)
                 episode_id = query.get("episode_id", [""])[0]
+                active = getattr(self.server, "active_episode", "")
+                if active and active != episode_id:
+                    self.send_error(409, "sovereign_invocation_already_active")
+                    return
+                self.server.active_episode = episode_id
                 payload = {
                     "ok": True,
                     "runtime_context": {
@@ -101,6 +106,9 @@ def main() -> int:
             length = int(self.headers.get("Content-Length", "0"))
             request = json.loads(self.rfile.read(length))
             captured.append({"path": self.path, "request": request})
+            if self.path.endswith("/episode-ended"):
+                assert request["episode_id"] == self.server.active_episode
+                self.server.active_episode = ""
             payload = {
                 "id": "capture-response", "object": "chat.completion",
                 "created": 0, "model": "Qwen/Qwen3.8-27B",
@@ -111,7 +119,10 @@ def main() -> int:
                 }],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             }
-            if self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and not self.server.unknown_emitted:
+            if self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and self.server.unknown_emitted and not getattr(self.server, "length_emitted", False):
+                self.server.length_emitted = True
+                payload["choices"][0].update(message={"role": "assistant", "content": "Partial response before truncation."}, finish_reason="length")
+            elif self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and not self.server.unknown_emitted:
                 self.server.unknown_emitted = True
                 payload["choices"][0].update(message={"role": "assistant", "content": None,
                     "tool_calls": [{"id": "call-unknown-validation", "type": "function", "function": {
@@ -297,7 +308,7 @@ def main() -> int:
                     captured_resume = None
                 requests = [item["request"] for item in captured[before:]
                             if item["path"].endswith("/chat/completions")]
-                if len(requests) != (3 if captured_resume else 1):
+                if len(requests) != (4 if captured_resume else 1):
                     raise AssertionError(f"unexpected provider request count: {len(requests)} for {suffix}")
                 request = requests[0]
                 diagnostic_events=[]
@@ -305,11 +316,14 @@ def main() -> int:
                     with gzip.open(path,"rt") as stream:
                         diagnostic_events.extend(json.loads(line) for line in stream)
                 submitted=[row for row in diagnostic_events if row["kind"]=="provider_request_submitted"]
-                assert len(submitted)==(3 if captured_resume else 1), [row["kind"] for row in diagnostic_events]
+                assert len(submitted)==(4 if captured_resume else 1), [row["kind"] for row in diagnostic_events]
                 submitted.sort(key=lambda row: row["recorded_unix"])
                 assert submitted[0]["payload"]["body"]==request
                 if captured_resume:
-                    assert submitted[2]["payload"]["body"]==captured_resume
+                    assert submitted[3]["payload"]["body"]==captured_resume
+                    releases = [item["request"] for item in captured[before:]
+                                if item["path"].endswith("/episode-ended")]
+                    assert any(item["committed"] is False for item in releases), releases
                     rejected = [row for row in diagnostic_events if row["kind"] == "tool_validation_rejected"]
                     assert len(rejected) == 1 and rejected[0]["correlation"]["call_id"] == "call-unknown-validation"
                     assert rejected[0]["payload"]["arguments"] == {"purpose": "validation fixture"}
@@ -412,6 +426,7 @@ def main() -> int:
             "recompiled_prompt_replaces_saved_prompt_on_real_resume": True,
             "resume_preserves_conversation": True,
             "unknown_tool_rejection_captured_before_executor": True,
+            "truncated_response_releases_lease_before_real_hermes_continuation": True,
             "request_only_runtime_tail": True,
             "upstream_scaffold_absent": True,
             "generation_settings_reached_provider": True,
