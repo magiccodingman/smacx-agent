@@ -944,6 +944,25 @@ class OperationsManager:
                     ("Start", "End", "ExitCode", "Output")}
                     for row in health.get("Log", [])[-6:]]}
             evidence["worker_log"] = self._container_log(str(name))
+            # Prepared workers run from an ephemeral game directory. Capture
+            # its native exception report before recovery replaces the worker.
+            # Never extract an archive or expose this administrator evidence
+            # through a sovereign observation.
+            evidence["native_exception_reports"] = []
+            for location, path in (("prepared", "/opt/smacx/prepared/game/debug.txt"),
+                                   ("imported", "/var/lib/smacx/game/debug.txt")):
+                report: dict[str, Any] = {"location": location}
+                try:
+                    content = self.worker_manager.docker.read_container_file(
+                        str(name), path, max_bytes=65536)
+                    report.update(status="captured", bytes=len(content),
+                                  sha256=hashlib.sha256(content).hexdigest(),
+                                  text=content.decode("utf-8", errors="replace"))
+                except DockerNotFound:
+                    report["status"] = "absent"
+                except Exception as exc:
+                    report.update(status="capture_failed", error=type(exc).__name__)
+                evidence["native_exception_reports"].append(report)
         except Exception as exc:
             evidence["capture_error"] = type(exc).__name__
         record("worker_liveness_lost", self._redact_payload(evidence),

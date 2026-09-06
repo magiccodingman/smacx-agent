@@ -206,6 +206,13 @@ def main() -> int:
             "Health": {"Status": "unhealthy", "FailingStreak": 6,
                        "Log": [{"ExitCode": 1, "Output": "bridge timeout token=private-fixture"}]}})
         manager.docker.container_logs = lambda name, tail: "bridge stalled password=private-fixture"
+        def native_report(name, path, max_bytes):
+            assert name == "worker-recovery" and max_bytes == 65536
+            if path.startswith("/opt/"):
+                return b"ExceptionCode C0000005\npassword=private-fixture"
+            from smacx_docker import DockerNotFound
+            raise DockerNotFound("absent")
+        manager.docker.read_container_file = native_report
         evidence_verified = []
         def evidence_before_recovery(match_id):
             rows = [json.loads(line) for path in (root / "diagnostics").rglob("*.gz")
@@ -216,6 +223,10 @@ def main() -> int:
             assert "bridge stalled" in loss["payload"]["worker_log"]
             assert "private-fixture" not in json.dumps(loss)
             assert loss["payload"]["cause"] == "undetermined"
+            reports = loss["payload"]["native_exception_reports"]
+            assert reports[0]["status"] == "captured"
+            assert "C0000005" in reports[0]["text"]
+            assert reports[1]["status"] == "absent"
             evidence_verified.append(True)
             raise WorkerManagerError("fixture_recovery_failed")
         manager.recover_match = evidence_before_recovery
