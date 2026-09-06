@@ -30,7 +30,27 @@
     "production_context_delivery": "passed",
     "counterfactual_contract": "passed",
     "doctrine_integration": "passed; rendered fixture44381bytes",
-    "provider_schema_budget": "passed conservative;15tools7166proxy"
+    "provider_schema_budget": "passed exact Qwen:15tools4569tokens; operating contract1338"
   },
-  "deployment": "pending"
+  "deployment": {
+    "status": "deployed",
+    "control_image": "sha256:3eb6515781aae1359e42f47090b836f3a35acbe62509947646a80e71561c4cf6",
+    "harness_image": "sha256:f9a73ffec9709cf5c2dc50906bb77b24d8678c280c63887026c8279ae7a3a32a",
+    "checkpoint_id": "checkpoint-757b50b2f9d64f9ca50939af203c2a4d",
+    "checkpoint_turn": 52,
+    "timeline_id": "timeline-restore-792b77b1144f4f6881f771b0",
+    "session_id": "session-29720d28987e40989c010c14e92c9965",
+    "run_id": "run-41b2857ad1364694916c54e7f23bb803",
+    "actual_provider_request": "0be058cbd663402d81734584d6fa45fc",
+    "actual_system_sha256": "f4d14e8af14ddbd388f2d4e71bfae0e6021fb4b29644ad73cc447ac0fa362504",
+    "actual_system_matches_configured_profile": true,
+    "operator_managed_native_query": {
+      "turn": 52,
+      "accumulated": 3,
+      "net_surplus": 2,
+      "progress_state": "accumulating_at_current_surplus"
+    },
+    "zero_surplus_branch_after_deployment": "not observed live because the native condition changed; controlled adapter/current-stale comparisons pass",
+    "autonomous_behavior_change": "not attributed"
+  }
 }

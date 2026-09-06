@@ -22,8 +22,7 @@
     "turn": 38
   },
   "pending": [
-    "actual provider receipt delivery",
-    "continued autonomous gameplay",
+    "live nondisplacement interpretation when that branch recurs",
     "full game completion"
   ],
   "native_mechanics_changed": false,
@@ -37,5 +36,23 @@
     "run_id": "run-26667796a6114be9b126d6e0ed78037a",
     "native_turn_after_resume": 39,
     "operational_repair_notice": true
+  },
+  "live_delivery": {
+    "turn": 52,
+    "call_id": "chatcmpl-tool-8216908776997bad",
+    "choice_id": "choice-6a596d395ac1497a8ab52965221f80af",
+    "decision_id": "decision-376f94c5f38f4a2982df8509ddda7350",
+    "origin": "location-1856",
+    "target": "location-1776",
+    "observed": "location-1776",
+    "next_provider_request_id": "43ef811ff3794e2daf92bec61cc86e32",
+    "movement_fields_and_epistemic_qualifiers_retained": true,
+    "sovereign_handoff_acknowledges_receipt": true,
+    "independent_native_followup": {
+      "turn": 53,
+      "own_unit_ref": "own-unit-12",
+      "tile_id": 1776,
+      "order_name": "none"
+    }
   }
 }
