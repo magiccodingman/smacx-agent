@@ -43,9 +43,9 @@
     "production_handler_cpp": "pass",
     "managed_adapter_choice_binding": "pass",
     "native_cross_build": "pass",
-    "running_native_replay": "pending",
-    "actual_provider_receipt": "pending",
-    "effect_verified": "pending",
+    "running_native_replay": "pass",
+    "actual_provider_receipt": "pass",
+    "effect_verified": "pass",
     "coherent_recovery": "pass",
     "full_native_integration": "pass",
     "base_site_stress": {
@@ -79,5 +79,27 @@
     "initial_native_interaction": "turn",
     "initial_pending_receipt": false,
     "operator_attention_cleared": true
+  },
+  "live_effect": {
+    "run_id": "run-34317ab0d91f412fa32a11eef7460a32",
+    "decision_id": "decision-061ba77e42f44a1fa7a17374be28cfda",
+    "choice_id": "choice-677672b9195140d0a101cac727095e53",
+    "request_id": "dddefa9725274caaa8fd78cda8f886df",
+    "call_id": "chatcmpl-tool-8abc0e9a6bd86ae7",
+    "journal_event_id": "journal-5620ff76275246e28b9dc1718d25779c",
+    "next_actual_provider_request_id": "fb6c92a012f140139af04e82d664d006",
+    "exact_receipt_delivered": true,
+    "after_turn": 73,
+    "after_phase": "turn",
+    "after_popup_label": "",
+    "selected_models_before_and_after": {
+      "politics": "Frontier",
+      "economics": "Simple",
+      "values": "Survival",
+      "future": "None"
+    },
+    "upheaval_cost_paid_this_turn_before_and_after": 0,
+    "native_window_closed": true,
+    "post_effect_restore_not_yet_exercised": true
   }
 }

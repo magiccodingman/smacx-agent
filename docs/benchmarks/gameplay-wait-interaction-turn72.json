@@ -52,5 +52,13 @@
     "Not a new native deadlock",
     "Do not equate modal=true with engine processing or with an automatically dismissible dialog",
     "SOCIETY native replay remains pending"
-  ]
+  ],
+  "deployment": {
+    "control_mcp_image_sha256": "9d72e0a2d7aecfb36e0168ea3c39271a96435dce352989862532d32d1d91a36b",
+    "harness_specialist_image_sha256": "eee1c4781d19fd8010b7f300262be0dd5392a658461a885d1b8afc482885c4de",
+    "native_session_preserved": "session-47965e5abd0f4d15a6433afc6f12a8db",
+    "native_turn_preserved": 73,
+    "native_rollback": false,
+    "run_id": "run-34317ab0d91f412fa32a11eef7460a32"
+  }
 }
