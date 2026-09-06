@@ -42,12 +42,31 @@
     "source_history_unchanged": true,
     "direct_tool_context_policy_pass": true,
     "guarded_writer_journal_runtime_hermes_transport_pass": true,
-    "packaged_real_hermes_provider_capture_pass": true
+    "packaged_real_hermes_provider_capture_pass": true,
+    "legacy_tool_context_policy_pass": true
   },
-  "limits": "Controlled receiving provider proves actual Hermes request/capture/resume behavior, not native mechanics or autonomous use. Deployed live wire acceptance pending.",
+  "limits": "Actual autonomous wire retains complementary citizen/research queries and execution receipt; production requery/use and typed memory write remain unobserved. Controlled tests do not establish mechanics or full-game completion.",
   "recovery_checkpoint": {
     "id": "checkpoint-7659fa18b9764d0e8336e2c8ead4a85a",
     "turn": 30,
     "bridge_verified": true
+  },
+  "deployment": {
+    "run_id": "run-f7de387e8f0a4d22b02287a2d50309a0",
+    "session_id": "session-2ed3c287614e4a2dba6ea85932aa2495",
+    "timeline_id": "timeline-restore-4969c8445c434c4f88704164",
+    "restored_turn": 30,
+    "native_observed_turn": 31,
+    "harness_digest": "f95ecf1853d40c41e6544758b8a2c9c70a678702e34c406554c6ba0db8aa8eeb",
+    "worker_digest": "b0575fe95c1ac464abae532a4a028638d106fa274ed0e4bc209dd3b77ea7c900",
+    "mcp_digest": "14b1d4b3692875781b29c1b8ea568804b2341e2613ba77cf6cc5a2fcbe8d6362",
+    "provider_request_id": "ff5b23a6dbdf4b2ab0cbf05ebfea4d57",
+    "retained_same_episode_results": [
+      "base_citizens",
+      "research",
+      "end_turn_execution_receipt"
+    ],
+    "memory_guard_mapping_on_actual_wire": true,
+    "production_requery": "not yet observed after repair"
   }
 }
