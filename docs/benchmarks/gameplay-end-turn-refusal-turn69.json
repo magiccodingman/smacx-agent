@@ -55,7 +55,7 @@
       "controlled_native_refusal_verified": true,
       "original_turn69_refusal_reproduced": false
     },
-    "deployed": "no",
+    "deployed": "yes",
     "baseline_callback_contract": "fails because refusal remains pending",
     "managed_rejection_receipt": "passed; one poll and explicit no movement renewal guidance",
     "native_attempts": [
@@ -193,5 +193,18 @@
     "worker": "sha256:3911843bff304ff983f236cbab1d8761288f3d86dce0a775515d73ed786faaf9",
     "control": "sha256:eb93e3ac52fe379e6cec1c8f9bed4916ecc6546b0b22349f50a2c9fa1432746d",
     "harness": "sha256:aa6515c593a68344f350b71fbc8531a101188c355c019f898d8fd6a801df9597"
+  },
+  "deployment": {
+    "checkpoint_id": "checkpoint-997b03ee1a3748b0bc010c2e46a6fc9b",
+    "verified_turn": 69,
+    "recovery_api_success": true,
+    "restored_session_id": "session-f7791626f0e84163ad9c782f2048b71f",
+    "run_id": "run-f9947d007ffc42829258997ea4561f7a",
+    "active_run_count": 1,
+    "native_engine_source_matches_reviewed": true,
+    "initial_interaction": "turn",
+    "initial_pending_receipt": false,
+    "native_failure_capture_rearmed": true,
+    "autonomous_post_repair_turn_advance": "pending"
   }
 }
