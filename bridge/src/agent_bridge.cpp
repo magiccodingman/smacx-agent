@@ -4478,7 +4478,7 @@ bool semantic_interaction_command(const std::string& command) {
         "respond_to_base_obliteration", "respond_to_supreme_leader",
         "respond_to_game_over", "advance_endgame_presentation",
         "advance_technology_presentation", "advance_project_information",
-        "respond_to_design_offer",
+        "respond_to_design_offer", "defer_social_engineering",
         "respond_to_artifact", "respond_to_monolith",
         "respond_to_probe_incident", "choose_probe_sabotage_target",
         "respond_to_probe_sabotage_warning", "choose_captive_leader",
@@ -13284,6 +13284,17 @@ std::string semantic_choices_response(const std::string& request) {
                     << json_string("Replace the current blind-research focus with exactly this one area; the native multiplayer synchronization packet is sent after confirmation.")
                     << '}';
             }
+        } else if (!strcmp(label, "SOCIETY")) {
+            BasePop* active = active_default_popup();
+            if (active && popup_choice_count(active) == 2
+            && popup_has_choice_id(active, 0)) {
+                out << "{\"id\":\"society:defer\","
+                    "\"command\":\"defer_social_engineering\","
+                    "\"meaning\":\"Continue with current social models for now. Once blocking interactions finish, inspect social_engineering choices to review and apply a policy change through the managed tools.\"},"
+                    "{\"id\":\"society:context\",\"kind\":\"information\","
+                    "\"technology_name\":" << json_string(agent_popup_parse_string(0))
+                    << ",\"unlocked_model_name\":" << json_string(agent_popup_parse_string(1)) << '}';
+            }
         } else if (reviewed_information_popup(label)) {
             out << "{\"id\":\"popup:acknowledge\",\"command\":\"acknowledge_popup\","
                 "\"meaning\":\"Acknowledge this reviewed information-only game notification.\"}";
@@ -15274,6 +15285,24 @@ std::string semantic_command_response(const std::string& request) {
         submit_popup_choice(active, response == "finish" ? 0 : 1);
         return std::string("{\"ok\":true,\"command\":\"respond_to_game_over\","
             "\"response\":") + json_string(response.c_str()) + '}';
+    }
+    if (command == "defer_social_engineering") {
+        // Tutor.txt SOCIETY row 0 returns zero from X_pop_2. tech_achieved
+        // then continues without calling social_select or changing a model.
+        // Opening that native editor is not a reviewed semantic interaction;
+        // the existing social_engineering family offers staged policy changes.
+        BasePop* active = active_default_popup();
+        if (strcmp(semantic_popup_label(), "SOCIETY") || !active
+        || popup_choice_count(active) != 2 || !popup_has_choice_id(active, 0)) {
+            return error_response("society_prompt_changed",
+                "The reviewed two-choice social engineering invitation is no longer active. Observe again.");
+        }
+        if (!submit_popup_choice_id(active, 0)) {
+            return error_response("society_prompt_changed", "The reviewed continue choice is unavailable.");
+        }
+        return "{\"ok\":true,\"command\":\"defer_social_engineering\","
+            "\"policy_changed\":false,\"transition\":\"waiting_for_engine\","
+            "\"next_step\":\"After blocking interactions finish, use social_engineering choices to review or change models.\"}";
     }
     if (command == "acknowledge_popup") {
         std::string label = semantic_popup_label();

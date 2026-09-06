@@ -143,6 +143,8 @@ def main():
         # These are native-shaped interface proofs, not native gameplay proof.
         # Closed Council/research/human clauses need no arbitrary parameter API.
         for kind, row, information in (
+            ("interaction", {"command": "defer_social_engineering", "meaning": "Continue current models; review social_engineering after interactions"},
+             [{"kind": "information", "technology_name": "Industrial Economics", "unlocked_model_name": "Free Market"}]),
             ("research", {"command": "choose_research", "tech_id": 12, "name": "Test advance"}, []),
             ("interaction", {"command": "choose_council_proposal", "proposal_id": 3,
                               "ballot": {"type": "yea_nay", "responses": ["yea"]}}, []),

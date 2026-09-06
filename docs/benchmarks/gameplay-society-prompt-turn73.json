@@ -1,0 +1,59 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "confirmed managed interaction gap; native effect acceptance pending",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 73,
+  "incident_id": "incident-038b779683ed4d2bbc068dd147e748ed",
+  "gap_id": "gap-dce35150ebd844dba4fb86f956b2e927",
+  "report_origin": "sovereign",
+  "observed": {
+    "popup_label": "SOCIETY",
+    "technology": "Industrial Economics",
+    "unlocked_model": "Free Market",
+    "managed_choices_before": 0,
+    "native_screenshot_verified": true,
+    "native_choices": [
+      "No. Continue with current social model.",
+      "Yes. Commence social engineering."
+    ],
+    "worker_and_collector_quarantined": true,
+    "diagnostic_zip_sha256": "194f224ac84cbbb982f59884aef21bfb478fc66f3e7669f7f85d558ff7d788a6"
+  },
+  "reviewed_native_semantics": {
+    "source": "bridge/src/tech.cpp tech_achieved",
+    "script": "tutor.txt SOCIETY",
+    "continue_row_id": 0,
+    "return_zero_skips_social_select": true,
+    "policy_change": false
+  },
+  "repair": {
+    "command": "defer_social_engineering",
+    "guards": [
+      "active native popup lifetime",
+      "exact SOCIETY label",
+      "two native rows",
+      "native row ID zero",
+      "existing managed revision and decision binding"
+    ],
+    "policy_changes_remain": "existing staged social_engineering choice family after blocking interactions finish",
+    "multiplayer_allowlist_extended": false,
+    "new_managed_tool": false
+  },
+  "validation": {
+    "production_handler_cpp": "pass",
+    "managed_adapter_choice_binding": "pass",
+    "native_cross_build": "pass",
+    "running_native_replay": "pending",
+    "actual_provider_receipt": "pending",
+    "effect_verified": "pending",
+    "coherent_recovery": "pending",
+    "full_native_integration": "running"
+  },
+  "unresolved": [
+    "Full game acceptance",
+    "Separate native outages at55 and59",
+    "Turn69 original refusal cause",
+    "Colony Pod destruction claim attribution remains under investigation"
+  ],
+  "reviewed_engine_source_sha256": "a19d7b9a0ceb287d6e746480269dc2d769d2c5c391cf12d438d24c1a0ad6930a"
+}
