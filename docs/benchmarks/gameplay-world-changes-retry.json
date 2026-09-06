@@ -28,5 +28,11 @@
     "historical_stale_evidence_preserved": true,
     "same_observation_sibling_position_preserved": true
   },
-  "deployed_acceptance": "pending"
+  "deployed_acceptance": {
+    "image": "sha256:296d8a631593b230e8217b3d4a743d57f200ba44e18493e2e70b9c5f4edb001c",
+    "packaged_retry_regression": true,
+    "restored_current_changes_query_ok": true,
+    "current_result_tokens": 598,
+    "sovereign_follows_retry": "not yet observed"
+  }
 }

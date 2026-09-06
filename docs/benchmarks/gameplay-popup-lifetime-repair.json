@@ -78,5 +78,20 @@
     "provider_inference": false,
     "trusted_response_hook_simulated": true,
     "autonomous_acceptance": "pending"
+  },
+  "autonomous_post_fix": {
+    "turn_reached": 26,
+    "technology_acknowledged": "Social Psych",
+    "ordinary_turn_control": true,
+    "read_probe_ms": [
+      2.93,
+      2.54
+    ],
+    "guarded_rejections": [
+      "unknown_decision",
+      "invalid_choice"
+    ],
+    "recovered_with_fresh_frame": true,
+    "classification": "actual sovereign execution and native effect; full-game acceptance incomplete"
   }
 }
