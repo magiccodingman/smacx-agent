@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 
 from smacx_hermes import (
-    COMMUNICATION_MCP_TOOLS, HermesAdapterError, configure_from_descriptor,
+    COMMUNICATION_MCP_TOOLS, GAMEPLAY_MCP_TOOLS, HermesAdapterError, configure_from_descriptor,
     configure_profile, hermes_command,
 )
 from smacx_prompt import compose_player_system_prompt, prompt_sha256
@@ -40,6 +40,10 @@ def main() -> int:
         )
         profile_root = Path(profile["profile_root"])
         config = json.loads((profile_root / "config.yaml").read_text(encoding="utf-8"))
+        assert config["tools"]["tool_search"]["enabled"] == "off"
+        assert set(config["mcp_servers"]["smacx"]["tools"]["include"]) == set(GAMEPLAY_MCP_TOOLS)
+        assert config["mcp_servers"]["smacx"]["tools"]["resources"] is False
+        assert config["mcp_servers"]["smacx"]["tools"]["prompts"] is False
         if config["platform_toolsets"]["cli"] != ["smacx"]:
             raise AssertionError("visual, terminal, or unrelated tools entered the gameplay profile")
         if config["memory"]["memory_enabled"]:

@@ -43,6 +43,9 @@ COMMUNICATION_MCP_TOOLS = (
     "smac_notebook",
     "smac_investigate",
 )
+GAMEPLAY_MCP_TOOLS = (*COMMUNICATION_MCP_TOOLS,
+    "smac_decision", "smac_choices", "smac_execute_choice", "smac_wait",
+    "smac_report_capability_gap", "smac_match_briefing")
 
 
 class HermesAdapterError(RuntimeError):
@@ -207,8 +210,13 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "memory": {"memory_enabled": False, "user_profile_enabled": False},
         "terminal": {"backend": "local", "cwd": str(runtime_workspace)},
         "platform_toolsets": {"cli": ["smacx"]},
+        # The bounded 15-tool surface fits the reserved schema budget. Keep
+        # parameters present after episode GC instead of forcing rediscovery.
+        "tools": {"tool_search": {"enabled": "off"}},
         "mcp_servers": {
-            "smacx": {"url": mcp_url, "enabled": True},
+            "smacx": {"url": mcp_url, "enabled": True, "tools": {
+                "include": list(GAMEPLAY_MCP_TOOLS), "resources": False, "prompts": False,
+            }},
             "smacx-communication": {
                 "url": mcp_url, "enabled": True,
                 "tools": {

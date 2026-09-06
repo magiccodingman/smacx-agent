@@ -17,8 +17,9 @@ import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
-from smacx_hermes import COMMUNICATION_MCP_TOOLS, configure_profile
+from smacx_hermes import COMMUNICATION_MCP_TOOLS, GAMEPLAY_MCP_TOOLS, configure_profile
 from smacx_prompt import compose_player_system_prompt, prompt_sha256
+from smacx_diagnostic_summary import result_object
 
 
 IMAGE = os.environ.get("SMACX_TEST_HARNESS_IMAGE", "smacx-agent-harness:dev")
@@ -119,7 +120,14 @@ def main() -> int:
                 }],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             }
-            if self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and self.server.unknown_emitted and not getattr(self.server, "length_emitted", False):
+            if self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and self.server.unknown_emitted and not getattr(self.server, "direct_emitted", False):
+                self.server.direct_emitted = True
+                payload["choices"][0].update(message={"role": "assistant", "content": None,
+                    "tool_calls": [{"id": "call-direct-guard", "type": "function", "function": {
+                        "name": "mcp__smacx__smac_attention_ack",
+                        "arguments": '{"attention_lease_id":"missing-contract-lease","through_cursor":1}'}}]},
+                    finish_reason="tool_calls")
+            elif self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and self.server.unknown_emitted and not getattr(self.server, "length_emitted", False):
                 self.server.length_emitted = True
                 payload["choices"][0].update(message={"role": "assistant", "content": "Partial response before truncation."}, finish_reason="length")
             elif self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and not self.server.unknown_emitted:
@@ -228,6 +236,7 @@ def main() -> int:
                 if config.get("platform_toolsets", {}).get("cli") != ["smacx"] or \
                         config.get("mcp_servers", {}).get("smacx") != {
                             "url": f"http://127.0.0.1:{mcp_port}/mcp", "enabled": True,
+                            "tools": {"include": list(GAMEPLAY_MCP_TOOLS), "resources": False, "prompts": False},
                         } or set(communication.get("tools", {}).get("include", ())) != set(
                             COMMUNICATION_MCP_TOOLS):
                     raise AssertionError(f"managed gameplay tool boundary drifted: {config}")
@@ -265,7 +274,7 @@ def main() -> int:
                     "--toolsets", "smacx-communication" if episode_mode == "communication"
                     else "smacx",
                     "--reasoning", reasoning_effort,
-                    "--max-turns", "3", "--query",
+                    "--max-turns", "5", "--query",
                     "Begin or resume this managed match now. Follow the system contract's opening "
                     "briefing protocol, then continue autonomous play until the operator stops the run "
                     "or a semantic capability gap is reported.", "--quiet",
@@ -308,7 +317,7 @@ def main() -> int:
                     captured_resume = None
                 requests = [item["request"] for item in captured[before:]
                             if item["path"].endswith("/chat/completions")]
-                if len(requests) != (4 if captured_resume else 1):
+                if len(requests) != (5 if captured_resume else 1):
                     raise AssertionError(f"unexpected provider request count: {len(requests)} for {suffix}")
                 request = requests[0]
                 diagnostic_events=[]
@@ -316,11 +325,16 @@ def main() -> int:
                     with gzip.open(path,"rt") as stream:
                         diagnostic_events.extend(json.loads(line) for line in stream)
                 submitted=[row for row in diagnostic_events if row["kind"]=="provider_request_submitted"]
-                assert len(submitted)==(4 if captured_resume else 1), [row["kind"] for row in diagnostic_events]
+                assert len(submitted)==(5 if captured_resume else 1), [row["kind"] for row in diagnostic_events]
                 submitted.sort(key=lambda row: row["recorded_unix"])
                 assert submitted[0]["payload"]["body"]==request
                 if captured_resume:
-                    assert submitted[3]["payload"]["body"]==captured_resume
+                    assert submitted[4]["payload"]["body"]==captured_resume
+                    direct_results = [row for row in diagnostic_events if row["kind"] == "tool_returned"
+                                      and row["correlation"].get("call_id") == "call-direct-guard"]
+                    assert len(direct_results) == 1
+                    direct_result = result_object(direct_results[0]["payload"]["content"])
+                    assert direct_result.get("ok") is False and direct_result.get("error"), direct_result
                     releases = [item["request"] for item in captured[before:]
                                 if item["path"].endswith("/episode-ended")]
                     assert any(item["committed"] is False for item in releases), releases
@@ -354,19 +368,16 @@ def main() -> int:
                     str(item.get("function", {}).get("name") or "")
                     for item in tools if isinstance(item, dict)
                 }
-                # Hermes keeps deferred MCP schemas out of the permanent
-                # provider footprint. The authoritative provider-visible
-                # registry is therefore the catalog embedded in tool_search,
-                # followed by on-demand tool_describe/tool_call. Inspect that
-                # real wire representation rather than merely trusting config.
-                search = next((item.get("function", {}) for item in tools
-                               if item.get("function", {}).get("name") == "tool_search"), {})
-                catalog = str(search.get("description") or "")
-                discovered = set(re.findall(
-                    r"mcp__[^\s:]+__(smac_[A-Za-z0-9_]+)", catalog,
-                ))
+                assert not names & {"tool_search", "tool_describe", "tool_call"}, names
+                assert all(name.startswith("mcp__") for name in names), names
+                discovered = {name.rsplit("__", 1)[-1] for name in names}
+                assert all(item["function"].get("parameters", {}).get("type") == "object"
+                           for item in tools), "direct parameter schemas missing"
+                if captured_resume:
+                    assert captured_resume["tools"] == request["tools"], "resume removed tool schemas"
                 captured_tool_names[episode_mode] = discovered
                 if episode_mode == "gameplay":
+                    assert discovered == set(GAMEPLAY_MCP_TOOLS) and len(discovered) == 15, discovered
                     if not {"smac_decision", "smac_execute_choice"} <= discovered:
                         raise AssertionError(
                             f"gameplay provider catalog lacks guarded actions: {discovered}"
@@ -433,6 +444,8 @@ def main() -> int:
             "low_medium_high_reasoning_reached_provider": True,
             "managed_gameplay_prompt_and_tool_boundary": True,
             "captured_gameplay_and_communication_tool_lists": True,
+            "full_direct_schemas_present_initial_and_resumed": True,
+            "direct_call_reaches_mcp_and_returns_guard_error": True,
             "communication_provider_has_no_gameplay_mutation_schema": True,
         },
     }, separators=(",", ":")))

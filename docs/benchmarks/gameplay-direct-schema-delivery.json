@@ -1,0 +1,27 @@
+{
+  "trigger": "Repeated guessed parameters after episode resume; prior tool_describe results removed with historical tool protocol",
+  "change": "Disable deferred discovery for the bounded sovereign catalog; explicitly allowlist15 gameplay tools,9 communication tools; exclude resource/prompt helpers",
+  "validation": {
+    "real_Hermes_provider_capture": "pass: exact15/9 direct schemas, initial and resumed; direct call reaches MCP and returns negative guard receipt; unknown rejection; truncated continuation; unchanged provider generation parameters",
+    "context_GC": [
+      "legacy dispatch:1074282->13198 proxy tokens",
+      "direct gameplay:1069407->13120 proxy tokens",
+      "direct communication:1071157->13148 proxy tokens"
+    ],
+    "profile_and_manager_contracts": "pass",
+    "doctrine_and_strict_prompt": "pass",
+    "serialized_MCP_schema_exact_Qwen_tokens": 4479,
+    "serialized_MCP_schema_conservative_proxy": 7012,
+    "schema_reserve": 8192,
+    "operating_prompt_same_budget_fixture_exact_Qwen_tokens": {
+      "before": 1351,
+      "after": 1338
+    }
+  },
+  "limitations": [
+    "Schema token figure measures serialized MCP schemas, not the providers chat template overhead",
+    "No additional gameplay authority or tools",
+    "Live deployed schema/error-rate/cognition-use checks pending",
+    "Historical wrappers remain supported for GC only; new requests expose direct names"
+  ]
+}

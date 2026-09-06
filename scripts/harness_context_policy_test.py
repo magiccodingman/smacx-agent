@@ -13,6 +13,11 @@ import tempfile
 
 def dispatched_call(identifier: str, name: str, arguments: dict | None = None) -> dict:
     """Mirror Hermes's real generic MCP dispatcher envelope."""
+    direct_server = os.environ.get("SMACX_TEST_DIRECT_SERVER")
+    if direct_server:
+        return {"id": identifier, "type": "function", "function": {
+            "name": f"mcp__{direct_server}__{name}",
+            "arguments": json.dumps(arguments or {}, separators=(",", ":"))}}
     return {
         "id": identifier,
         "type": "function",
@@ -192,6 +197,7 @@ def main() -> int:
                    for item in bounded_notes if isinstance(item, dict)):
             raise AssertionError("committed cognition did not retain a typed receipt")
         untrusted_dispatch = dispatched_call("foreign", "smac_decision")
+        untrusted_dispatch["function"]["name"] = "tool_call"
         untrusted_dispatch["function"]["arguments"] = json.dumps({
             "name": "smac_decision", "arguments": {},
         })
@@ -254,6 +260,7 @@ def main() -> int:
             "superseded_execution_result_compacted": True,
             "latest_state_retained": True,
             "real_hermes_dispatcher_compacted": True,
+            "call_transport": os.environ.get("SMACX_TEST_DIRECT_SERVER", "legacy_dispatcher"),
             "provider_wire_growth_bounded": True,
             "five_hundred_action_turn_bounded": True,
             "semantic_gc_precedes_real_half_window_compression": True,

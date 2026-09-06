@@ -55,6 +55,7 @@ _DISPOSABLE_TOOL_NAMES = frozenset({
 })
 _COGNITION_TOOL_NAMES = frozenset({"smac_memory_update", "smac_notebook"})
 _SMACX_MCP_PREFIX = "mcp__smacx__"
+_SMACX_MCP_PREFIXES = (_SMACX_MCP_PREFIX, "mcp__smacx_communication__")
 _RUNTIME_OPEN = '<SMACX_RUNTIME_CONTEXT schema="smacx.runtime-context.v1">'
 _RUNTIME_CLOSE = "</SMACX_RUNTIME_CONTEXT>"
 _RUNTIME_STATE = threading.local()
@@ -251,12 +252,9 @@ def _compact_turn_handoff(content: str) -> str:
 def _managed_tool_name(call: object) -> str:
     """Return the semantic SMACX name from direct or Hermes-dispatched calls.
 
-    Hermes exposes MCP through one generic ``tool_call`` function. The actual
-    operation is a nested ``name`` argument such as
-    ``mcp__smacx__smac_decision``. Keeping direct-name support makes the hook
-    tolerant of upstream transport changes, while requiring the namespace on
-    dispatched calls prevents unrelated tools from being treated as game
-    state merely because an untrusted argument resembles a SMACX operation.
+    Current profiles expose direct schemas. Historical Hermes dispatch calls
+    still contain a nested namespaced operation. Both gameplay and the
+    restricted communication catalog use the same semantic GC policy.
     """
     if not isinstance(call, dict):
         return ""
@@ -266,8 +264,9 @@ def _managed_tool_name(call: object) -> str:
     outer_name = function.get("name")
     if not isinstance(outer_name, str):
         return ""
-    if outer_name.startswith(_SMACX_MCP_PREFIX):
-        return outer_name.removeprefix(_SMACX_MCP_PREFIX)
+    for prefix in _SMACX_MCP_PREFIXES:
+        if outer_name.startswith(prefix):
+            return outer_name.removeprefix(prefix)
     if outer_name != "tool_call":
         return outer_name
     arguments = function.get("arguments")
@@ -279,17 +278,18 @@ def _managed_tool_name(call: object) -> str:
     if not isinstance(arguments, dict):
         return ""
     dispatched_name = arguments.get("name")
-    if not isinstance(dispatched_name, str) \
-            or not dispatched_name.startswith(_SMACX_MCP_PREFIX):
-        return ""
-    return dispatched_name.removeprefix(_SMACX_MCP_PREFIX)
+    if isinstance(dispatched_name, str):
+        for prefix in _SMACX_MCP_PREFIXES:
+            if dispatched_name.startswith(prefix):
+                return dispatched_name.removeprefix(prefix)
+    return ""
 
 
 def _managed_tool_arguments(call: object) -> dict | None:
     if not isinstance(call, dict):
         return None
     function = call.get("function")
-    if not isinstance(function, dict) or function.get("name") != "tool_call":
+    if not isinstance(function, dict):
         return None
     outer = function.get("arguments")
     if isinstance(outer, str):
@@ -297,8 +297,10 @@ def _managed_tool_arguments(call: object) -> dict | None:
             outer = json.loads(outer)
         except json.JSONDecodeError:
             return None
-    if not isinstance(outer, dict) or not str(outer.get("name") or "").startswith(
-            _SMACX_MCP_PREFIX):
+    if str(function.get("name") or "").startswith(_SMACX_MCP_PREFIXES):
+        return outer if isinstance(outer, dict) else None
+    if function.get("name") != "tool_call" or not isinstance(outer, dict) \
+            or not str(outer.get("name") or "").startswith(_SMACX_MCP_PREFIXES):
         return None
     arguments = outer.get("arguments")
     if isinstance(arguments, str):
@@ -313,7 +315,13 @@ def _replace_managed_tool_arguments(call: object, arguments: dict) -> None:
     if not isinstance(call, dict):
         return
     function = call.get("function")
-    if not isinstance(function, dict) or function.get("name") != "tool_call":
+    if not isinstance(function, dict):
+        return
+    if str(function.get("name") or "").startswith(_SMACX_MCP_PREFIXES):
+        function["arguments"] = json.dumps(arguments, sort_keys=True, separators=(",", ":")) \
+            if isinstance(function.get("arguments"), str) else arguments
+        return
+    if function.get("name") != "tool_call":
         return
     outer = function.get("arguments")
     outer_was_text = isinstance(outer, str)
