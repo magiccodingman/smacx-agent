@@ -22,9 +22,21 @@
     "huge_chaotic_runtime_tokens": 25833
   },
   "limitations": [
-    "Not deployed at capture",
     "Live cognition write and next-request delivery pending",
     "Earlier invalid_tile_id cause not established",
     "No completed autonomous campaign"
-  ]
+  ],
+  "deployed_acceptance": {
+    "checkpoint_id": "checkpoint-7dd820c4d0414390bd82dee91a2d08e3",
+    "checkpoint_turn": 12,
+    "checkpoint_verified": true,
+    "control_and_mcp_image": "sha256:12ad6d50097ce8ea89ab09678eb706c5c29f4325175506e1b49be2a4a8b67426",
+    "harness_image": "sha256:b534e168bb55858eca6bf9b1e165638663fb9c0e121f9c15f119cb68935f62a5",
+    "request_id": "952839d5bb014de4a058c97fd7356af0",
+    "system_hash": "0f22b958ddba7b127443fd55b82e49b148ffefe68a7d37cbbf901d870355b6c3",
+    "wire_session_id": "session-2b310c67113b4baf865061e22b42499a",
+    "wire_action_revision": "9949466651854913741",
+    "native_progress_after_resume": "12 -> 13 by End turn, 13 -> 14 by automatic native transition",
+    "committed_publication_receipt_observed": true
+  }
 }
