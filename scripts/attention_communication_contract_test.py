@@ -83,6 +83,10 @@ def main() -> int:
             CampaignJournal(root / "campaigns",
                             timeline_resolver=store.active_timeline_id), scope,
         )
+        assert restarted.sovereign_state() is None
+        previous = restarted.sovereign_state(include_inactive=True)
+        assert previous['episode_id'] == 'episode-gameplay' and previous['status'] == 'cancelled'
+        assert not any('token' in key for key in previous)
         communication = restarted.acquire_sovereign("episode-communication", "communication")
         redelivered = restarted.lease("episode-communication")
         ids = [item["attention_id"] for item in redelivered["items"]]
@@ -176,6 +180,9 @@ def main() -> int:
                 "AND status='active'",
             )
         after_crash = AttentionService(store, journal, scope)
+        assert after_crash.sovereign_state() is None
+        expired = after_crash.sovereign_state(include_inactive=True)
+        assert expired['status'] == 'expired' and not any('token' in key for key in expired)
         recovery_token = after_crash.acquire_sovereign(
             "episode-after-specialist-crash", "gameplay",
         )

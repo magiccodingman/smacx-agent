@@ -1302,7 +1302,9 @@ class AttentionService:
             if current and current["status"] == "active" and float(current["expires_unix"]) > now:
                 if current["episode_id"] != episode_id or current["episode_mode"] != episode_mode:
                     raise AttentionError("sovereign_invocation_already_active")
-            if current and current["status"] == "active" \
+            # A prior authority read may already have marked this lease
+            # expired. Its attention still needs reclamation before replacement.
+            if current and current["status"] in {"active", "expired"} \
                     and float(current["expires_unix"]) <= now:
                 expired_leases = connection.execute(
                     "SELECT attention_lease_id FROM attention_leases WHERE match_id=? "
@@ -1321,8 +1323,8 @@ class AttentionService:
             )
         return token
 
-    def sovereign_state(self) -> dict[str, Any] | None:
-        """Return the active writer lease without exposing its capability token."""
+    def sovereign_state(self, *, include_inactive: bool = False) -> dict[str, Any] | None:
+        """Return writer metadata without its token; inactive identity detects restart reuse."""
         now = time.time()
         with self.store.transaction() as connection:
             connection.execute(
@@ -1333,7 +1335,7 @@ class AttentionService:
             row = connection.execute(
                 "SELECT episode_id,episode_mode,status,acquired_unix,expires_unix FROM "
                 "sovereign_leases WHERE match_id=? AND agent_id=? AND perspective_id=? "
-                "AND timeline_id=? AND status='active'",
+                "AND timeline_id=?" + ("" if include_inactive else " AND status='active'"),
                 self._key(self.timeline_id),
             ).fetchone()
         return dict(row) if row else None

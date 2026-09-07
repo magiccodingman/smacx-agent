@@ -108,10 +108,10 @@ def summary(event):
         return f"{tool} request {json.dumps(arguments,ensure_ascii=False,separators=(',',':'))}"
     if kind in {'tool_returned','managed_tool_returned','managed_tool_validation_rejected'}:
         result=result_object(payload.get('result',payload.get('content')))
-        chosen={k:result[k] for k in ('ok','kind','error','phase','focus','executed_choice',
+        chosen={k:result[k] for k in ('ok','kind','error','turn','year','phase','focus','executed_choice',
             'native_action_executed','execution','execution_status','decision_consumed',
             'completed','queued','action_id','gameplay','completion_semantics','effect_disposition','state_changed_during_enumeration',
-            'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','citizen_context','required_next','persistence','journal_event_id',
+            'turn_handoff_required','turn_provenance','base_screen_closed','turn_completion_verified','turn_boundary_notice','choice_scope','production_context','citizen_context','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name','terraform_completion_verified','follow_up') if k in result}
         health = result.get('plan_health')
         if isinstance(health, dict):

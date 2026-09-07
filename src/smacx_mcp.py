@@ -120,6 +120,7 @@ TURN_HANDOFF_STATE: dict[tuple[str, str], dict[str, int]] = {}
 TURN_HANDOFF_WORD_LIMIT = 120
 RUNTIME_EPISODE_LOCK = threading.RLock()
 RUNTIME_EPISODE_TOKENS: dict[str, str] = {}
+RUNTIME_EPISODE_TURNS: dict[str, dict] = {}
 
 
 def _short_text(value: object, maximum: int) -> str:
@@ -234,7 +235,27 @@ def _sovereign_gameplay_gate(operation: str) -> dict | None:
         return {"ok": False, "error": {"code": "communication_episode_read_only",
                 "message": f"{operation} is unavailable during a communication episode."},
                 "gameplay_mutations_blocked": True}
+    with RUNTIME_EPISODE_LOCK:
+        fence = RUNTIME_EPISODE_TURNS.get(str(active.get("episode_id")), {}).get("boundary")
+    if fence:
+        return {**fence, "gameplay_mutations_blocked": True,
+                "native_action_executed": False, "execution_status": "not_dispatched"}
     return None
+
+
+def _remember_episode_boundary(boundary: dict, active: dict | None) -> None:
+    # Resolve authority before marking the global boundary delivered. A failed
+    # authority read must not swallow a handoff without installing its fence.
+    if not MANAGED_ATTACHED:
+        return
+    if active and active.get("episode_mode") == "gameplay":
+        with RUNTIME_EPISODE_LOCK:
+            state = RUNTIME_EPISODE_TURNS.setdefault(str(active["episode_id"]), {})
+            state["boundary"] = {
+                "ok": True, "kind": "turn_handoff_required", "choices": [],
+                "turn_handoff_required": boundary["turn_handoff_required"],
+                "required_next": {"stop_after": True, "ordinary_message": "TURN HANDOFF"},
+            }
 
 
 def _refresh_request_world(episode_id: str) -> dict:
@@ -308,6 +329,17 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
             assembler, attention = _runtime_services()
             with RUNTIME_EPISODE_LOCK:
                 if episode_id not in RUNTIME_EPISODE_TOKENS:
+                    previous = attention.sovereign_state(include_inactive=True)
+                    if previous and previous.get("episode_id") == episode_id:
+                        # The durable lease survived an MCP restart, but its
+                        # episode turn fence did not. Never silently rebind an
+                        # ongoing episode to a possibly later native turn.
+                        raise RuntimeError("sovereign_episode_restart_required")
+                    initial = dict(assembler.snapshot())
+                    initial_turn = _turn_number(initial.get("turn"))
+                    if episode_mode == "gameplay" and initial_turn is None:
+                        raise RuntimeError("sovereign_episode_turn_unavailable")
+                    RUNTIME_EPISODE_TURNS[episode_id] = {"initial_turn": initial_turn}
                     RUNTIME_EPISODE_TOKENS[episode_id] = attention.acquire_sovereign(
                         episode_id, episode_mode,
                     )
@@ -364,6 +396,7 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                 episode_id = str(body.get("episode_id") or "")
                 with RUNTIME_EPISODE_LOCK:
                     token = RUNTIME_EPISODE_TOKENS.pop(episode_id, "")
+                    RUNTIME_EPISODE_TURNS.pop(episode_id, None)
                 if not token:
                     self._json(200, {"ok": True, "already_released": True})
                     return
@@ -481,6 +514,18 @@ def _implicit_turn_handoff(snapshot: dict, identity: dict) -> dict | None:
     key = (str(identity.get("match_id") or ""), str(identity.get("session_id") or ""))
     if current is None or not all(key):
         return None
+    active = None
+    if MANAGED_ATTACHED:
+        _, attention = _runtime_services()
+        active = attention.sovereign_state()
+        if active:
+            with RUNTIME_EPISODE_LOCK:
+                episode = RUNTIME_EPISODE_TURNS.get(str(active["episode_id"]), {})
+            initial_turn = _turn_number(episode.get("initial_turn"))
+            if initial_turn is not None:
+                with TURN_HANDOFF_LOCK:
+                    TURN_HANDOFF_STATE.setdefault(key, {
+                        "observed_turn": initial_turn, "handed_off_through": initial_turn - 1})
     with TURN_HANDOFF_LOCK:
         state = TURN_HANDOFF_STATE.get(key)
         if state is None or current < state["observed_turn"]:
@@ -488,11 +533,10 @@ def _implicit_turn_handoff(snapshot: dict, identity: dict) -> dict | None:
                 "observed_turn": current, "handed_off_through": current - 1,
             }
             return None
-        previous = state["observed_turn"]
-        if current <= previous:
-            return None
-        state["observed_turn"] = current
-        completed_from = max(previous, state["handed_off_through"] + 1)
+        state["observed_turn"] = max(state["observed_turn"], current)
+        # Observation is not delivery: a same-turn action receipt may have
+        # already seen the new turn without reporting the intervening boundary.
+        completed_from = state["handed_off_through"] + 1
         completed_through = current - 1
         # Turn zero is native match setup, not a playable turn to memorialize.
         if completed_through < max(completed_from, 1):
@@ -501,7 +545,7 @@ def _implicit_turn_handoff(snapshot: dict, identity: dict) -> dict | None:
         state["handed_off_through"] = completed_through
     handoff = _turn_handoff_payload(completed_from, completed_through, current)
     _semantic_turn_handoff_gc(identity, current)
-    return {
+    boundary = {
         "ok": True,
         "kind": "turn_handoff_required",
         "identity": identity,
@@ -518,11 +562,18 @@ def _implicit_turn_handoff(snapshot: dict, identity: dict) -> dict | None:
         "required_next": {"stop_after": True, "ordinary_message": "TURN HANDOFF"},
         "turn_handoff_required": handoff,
     }
+    _remember_episode_boundary(boundary, active)
+    return boundary
 
 
 def _attach_turn_handoff(response: dict, choice: dict, decision: dict,
                          snapshot: dict | None) -> None:
     """Tell the player when one native-control episode has truly ended."""
+    response["turn_provenance"] = {
+        "selected_turn": _turn_number(decision.get("turn")),
+        "observed_after_turn": _turn_number(snapshot.get("turn")) if isinstance(snapshot, dict) else None,
+        "scope": "native choice selection and post-action observation; neither proves completion",
+    }
     if not isinstance(snapshot, dict):
         return
     protocol = snapshot.get("protocol")
@@ -541,6 +592,10 @@ def _attach_turn_handoff(response: dict, choice: dict, decision: dict,
             turn_advanced or (end_action and after_phase == "wait")):
         return
     through = (current_turn - 1) if turn_advanced and current_turn is not None else before_turn
+    active = None
+    if MANAGED_ATTACHED:
+        _, attention = _runtime_services()
+        active = attention.sovereign_state()
     key = (str(identity.get("match_id") or ""), str(identity.get("session_id") or ""))
     if all(key):
         with TURN_HANDOFF_LOCK:
@@ -555,6 +610,7 @@ def _attach_turn_handoff(response: dict, choice: dict, decision: dict,
     # A consumed decision normally requires a fresh frame. At a native turn
     # boundary that frame belongs to the next episode, after the handoff.
     response["required_next"] = {"stop_after": True, "ordinary_message": "TURN HANDOFF"}
+    _remember_episode_boundary(response, active)
     _semantic_turn_handoff_gc(identity, current_turn or before_turn + 1)
 
 STALE_REBASE_UNIT_COMMANDS = {
@@ -2913,6 +2969,10 @@ def _smac_choices_once(
     snapshot = snapshot_result.get("snapshot")
     if snapshot_result.get("ok") is not True or not isinstance(snapshot, dict):
         return snapshot_result
+    boundary = _implicit_turn_handoff(snapshot, {
+        key: snapshot.get(key, "") for key in ("match_id", "session_id", "revision")})
+    if boundary is not None:
+        return boundary
     expected_revision = str(snapshot.get("revision") or "")
     prepared = None
     try:
@@ -2970,12 +3030,15 @@ def _smac_choices_once(
         identity, raw_choices, choice_kind=kind,
         choice_arguments=choice_arguments, semantic_context=semantic_context,
         catalog_information=_decision_information(result.get("choices", []), semantic_context),
+        turn=snapshot.get("turn"), year=snapshot.get("year"),
+        phase=(snapshot.get("protocol") or {}).get("phase"),
         citizen_catalog=result if kind == "base_citizens" else None,
         snapshot=snapshot,
     )
     frame = {
         "ok": True, "kind": "choice_frame", "decision_id": decision_id,
         "identity": identity, "choice_kind": kind, "choices": choices,
+        "turn": snapshot.get("turn"), "year": snapshot.get("year"),
         "information": _decision_information(result.get("choices", []), semantic_context),
         "required_next": {
             "tool": "smac_execute_choice", "decision_id": decision_id,
@@ -3043,7 +3106,7 @@ def _turn_reconciliation_gate(command_arguments: dict) -> dict | None:
 
 
 def smac_command(
-    command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
+    command: Literal["acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
     session_id: str,
     expected_revision: str,
@@ -3400,6 +3463,17 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
                 "native_action_executed": False, "execution_status": "not_dispatched",
                 "required_next": {"stop_after": True, "reason": "Operator recovery is required."}}
 
+    if MANAGED_ATTACHED:
+        observed = _call("semantic_snapshot")
+        snapshot = observed.get("snapshot")
+        if not observed.get("ok") or not isinstance(snapshot, dict):
+            return {"ok": False, "error": {"code": "execution_turn_observation_unavailable"},
+                    "native_action_executed": False}
+        boundary = _implicit_turn_handoff(snapshot, {
+            name: snapshot.get(name, "") for name in ("match_id", "session_id", "revision")})
+        if boundary is not None:
+            return {**boundary, "native_action_executed": False, "execution_status": "not_dispatched"}
+
     # Execution has already recorded its journal outcome. The provider uses
     # the selected opaque choice; native entity slots are not public identity.
     response = _public_execution_receipt(_execute_choice_once(decision_id, choice_id, text))
@@ -3411,7 +3485,9 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         current = DECISION_CACHE.get(decision_id)
         consumed = bool(current.get("consumed")) if current else None
     response["decision_consumed"] = consumed
-    if code in boundary_errors:
+    if response.get("native_action_executed") is False:
+        response.setdefault("execution_status", "not_dispatched")
+    elif code in boundary_errors:
         response["execution_status"] = "not_dispatched"
         response["native_action_executed"] = False
     elif not response.get("ok"):
@@ -3641,9 +3717,9 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             response = _semanticize_choice(response, {})
         if result.get("ok"):
             after = _call("semantic_snapshot")
-            snapshot = after.get("snapshot") if isinstance(after, dict) else None
-            after_turn = snapshot.get("turn") if isinstance(snapshot, dict) else decision.get("turn")
-            after_year = snapshot.get("year") if isinstance(snapshot, dict) else decision.get("year")
+            snapshot = after.get("snapshot") if isinstance(after, dict) and after.get("ok") else None
+            after_turn = snapshot.get("turn") if isinstance(snapshot, dict) else None
+            after_year = snapshot.get("year") if isinstance(snapshot, dict) else None
             journal = controller_record_campaign_action(
                 str(identity.get("match_id") or ""), str(identity.get("session_id") or ""),
                 {
@@ -3664,7 +3740,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                     },
                 },
                 turn=after_turn, year=after_year,
-                commit_reason=(f"Complete turn {after_turn}" if after_turn != decision.get("turn")
+                commit_reason=(f"Complete turn {after_turn}" if after_turn is not None and decision.get("turn") is not None and after_turn > decision["turn"]
                                else ("Checkpoint decision" if choice.get("command") == "save_game" else "")),
             )
             if not journal.get("ok"):
@@ -3695,8 +3771,28 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         "semantic_choices", kind=str(decision.get("choice_kind") or ""),
         **dict(decision.get("choice_arguments") or {}),
     )
+    # A fresh native revision is not permission to carry an old intent into
+    # another turn. Observe before rebasing; native revision validation still
+    # protects the race between this observation and the guarded command.
+    observed = _call("semantic_snapshot")
+    rebase_snapshot = observed.get("snapshot") if isinstance(observed, dict) else None
+    if not observed.get("ok") or not isinstance(rebase_snapshot, dict):
+        return {"ok": False, "error": {"code": "rebase_observation_unavailable"},
+                "native_action_executed": False, "required_next": {"tool": "smac_decision"}}
+    selected_turn = _turn_number(decision.get("turn"))
+    rebase_turn = _turn_number(rebase_snapshot.get("turn"))
+    if selected_turn is None or rebase_turn != selected_turn:
+        boundary = _implicit_turn_handoff(rebase_snapshot, identity)
+        if boundary is not None:
+            return {**boundary, "native_action_executed": False,
+                    "execution_status": "not_dispatched"}
+        return {"ok": False, "error": {"code": "choice_turn_changed"},
+                "native_action_executed": False, "execution_status": "not_dispatched",
+                "selected_turn": selected_turn, "observed_turn": rebase_turn,
+                "required_next": {"tool": "smac_decision"}}
     if (fresh.get("ok") and fresh.get("match_id") == identity.get("match_id")
             and fresh.get("session_id") == identity.get("session_id")
+            and fresh.get("revision") == rebase_snapshot.get("revision")
             and _decision_information(fresh.get("choices", []), None) ==
                 _decision_information(decision.get("information", []), None)):
         intended = _choice_semantic_key(choice)
@@ -3726,8 +3822,8 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                 if choice.get("command") in {"create_unit_design", "retire_unit_design", "upgrade_prototype"}:
                     response = _semanticize_choice(response, {})
                 after = _call("semantic_snapshot")
-                snapshot = after.get("snapshot") if isinstance(after, dict) else None
-                after_turn = snapshot.get("turn") if isinstance(snapshot, dict) else decision.get("turn")
+                snapshot = after.get("snapshot") if isinstance(after, dict) and after.get("ok") else None
+                after_turn = snapshot.get("turn") if isinstance(snapshot, dict) else None
                 journal = controller_record_campaign_action(
                     str(refreshed_identity.get("match_id") or ""),
                     str(refreshed_identity.get("session_id") or ""),
@@ -3736,11 +3832,11 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                         "selected_action": choice.get("command"), "guard_revalidated": True,
                         "before": {"turn": decision.get("turn"), "year": decision.get("year")},
                         "after": {"turn": after_turn,
-                                  "year": snapshot.get("year") if isinstance(snapshot, dict) else decision.get("year")},
+                                  "year": snapshot.get("year") if isinstance(snapshot, dict) else None},
                     },
                     turn=after_turn,
-                    year=snapshot.get("year") if isinstance(snapshot, dict) else decision.get("year"),
-                    commit_reason=(f"Complete turn {after_turn}" if after_turn != decision.get("turn") else ""),
+                    year=snapshot.get("year") if isinstance(snapshot, dict) else None,
+                    commit_reason=(f"Complete turn {after_turn}" if after_turn is not None and decision.get("turn") is not None and after_turn > decision["turn"] else ""),
                 )
                 if not journal.get("ok"):
                     return _latch_journal_failure(

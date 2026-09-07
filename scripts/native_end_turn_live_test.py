@@ -37,6 +37,7 @@ def main():
             start = None
             action_id = None
             refusal_verified = False
+            base_screen_verified = False
             gate_set = False
             last_diagnostic = None
             for _ in range(180):
@@ -59,11 +60,36 @@ def main():
                     print(json.dumps({'passed': True, 'classification': 'isolated guarded native end-turn acceptance',
                         'source_turn': start, 'observed_turn': snap['turn'], 'receipt': receipt,
                         'engine_state': {k: engine[k] for k in engine if k.startswith('end_turn_')},
-                        'controlled_native_refusal_verified': refusal_verified, 'original_turn69_refusal_reproduced': False}), flush=True)
+                        'controlled_native_refusal_verified': refusal_verified, 'controlled_native_base_screen_verified': base_screen_verified, 'original_turn69_refusal_reproduced': False}), flush=True)
                     return
                 if snap['interaction']['kind'] != 'turn':
                     play.handle_interaction(snap)
                     time.sleep(.25); continue
+                if not base_screen_verified:
+                    before_units = call('list_units', scope='own', limit=256)['items']
+                    before_bases = call('list_bases', scope='own', limit=256)['items']
+                    opened = call('test_managed_action_fixture', phase='diagnostics_base_management_screen')
+                    assert opened.get('ok'), opened
+                    screen = call('semantic_snapshot')['snapshot']
+                    assert screen['interaction']['kind'] == 'base_management_screen', screen
+                    assert screen['protocol']['phase'] == 'interaction'
+                    choices = call('semantic_choices', kind='interaction')
+                    action = next(c for c in choices['choices'] if c.get('command') == 'close_base_management')
+                    assert action['base_id'] == opened['base_id']
+                    closed = play.command(choices, 'close_base_management', base_id=action['base_id'])
+                    assert closed.get('ok') and closed.get('base_screen_closed'), closed
+                    assert closed['turn_completion_verified'] is False
+                    after = call('semantic_snapshot')['snapshot']
+                    assert after['turn'] == screen['turn'] == snap['turn']
+                    assert after['interaction']['kind'] == 'turn', after
+                    assert not after['interaction']['engine_state']['base_window_visible']
+                    assert call('list_units', scope='own', limit=256)['items'] == before_units
+                    assert call('list_bases', scope='own', limit=256)['items'] == before_bases
+                    stale = play.command(choices, 'close_base_management', base_id=action['base_id'])
+                    assert stale.get('error', {}).get('code') == 'stale_state', stale
+                    base_screen_verified = True
+                    print(json.dumps({'event': 'base_screen_verified', 'turn': after['turn'],
+                        'receipt': closed, 'stale_receipt': stale}), flush=True)
                 if start is None:
                     setup = call('test_managed_action_fixture', phase='diagnostics_explicit_turn_boundary')
                     assert setup.get('ok'), setup

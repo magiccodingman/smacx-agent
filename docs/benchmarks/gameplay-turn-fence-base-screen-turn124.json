@@ -1,0 +1,279 @@
+{
+  "status": "predeployment_validation_passed",
+  "observed_campaign": {
+    "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+    "episode_id": "episode-3f374ceef513271cbe2865dc36ea86b8",
+    "native_turn": 124,
+    "paused": true
+  },
+  "confirmed_turn_boundary_gap": {
+    "initial_decision_turn": 122,
+    "initial_request_id": "2fb5c8a30b34458c9686d13128f121ac",
+    "next_turn_choice_request_id": "ee983df2cfd1438a8394480550c86642",
+    "management_action_request_id": "bb847059462c42148eb0b11be15752b5",
+    "later_decision_turn": 123,
+    "later_decision_request_id": "73ef7aeed58a4714b8b79af0a44373d9",
+    "eventual_handoff_request_id": "f0fea66e243746778b141b7e7cfc95d4",
+    "eventual_completed_turns": "123",
+    "source_findings": [
+      "Choice enumeration did not detect a native turn boundary.",
+      "Choice-family cache registration omitted turn/year/phase.",
+      "Observing a later turn in a receipt could consume the marker before reporting the boundary.",
+      "Stale semantic rebase did not require the original native turn."
+    ],
+    "attribution": "One episode crossed 122 to 123 without a handoff. This does not establish world-context lag or false durable claims."
+  },
+  "native_stall": {
+    "turn": 124,
+    "end_turn_request_id": "f1aa03be17b14d978928c915f5dfb43d",
+    "worker_healthy": true,
+    "ui_responsive": true,
+    "base_window_visible": true,
+    "end_turn_native_returned": true,
+    "end_turn_receipt_pending": true,
+    "native_human_turn_input_active": true,
+    "modal": false,
+    "cause_limit": "Later actionable state is confirmed; exact timing of the original native return/modal transition and base-screen opening remains unestablished.",
+    "observed_snapshot": {
+      "session_id": "session-c4bb29c531ce42ec83b67c88ab998e7f",
+      "turn": 124,
+      "year": 2224,
+      "kind": "waiting_for_engine",
+      "protocol": {
+        "phase": "wait",
+        "required_action": "wait_then_observe",
+        "available_choice_kinds": [],
+        "contract": "Observe, enumerate one legal choice family, execute at most one guarded command, then observe again."
+      },
+      "last_deferred_action": {
+        "action_id": 1,
+        "command": "end_turn",
+        "status": "pending",
+        "native_result": 0,
+        "native_call_attempted": true
+      },
+      "engine_state": {
+        "win_modal": false,
+        "popup_dialog": false,
+        "game_halted": false,
+        "base_window_visible": true,
+        "native_human_turn_input_active": true,
+        "end_turn_native_returned": true,
+        "end_turn_receipt_pending": true
+      }
+    }
+  },
+  "repairs": [
+    "Fence choices and execution at observed turn boundaries; prohibit cross-turn rebase.",
+    "Cache and publish choice turn/year; qualify post-action turn observation including unknown.",
+    "Keep an emitted handoff closed for the active episode; lost active/expired episode fence fails closed on MCP restart, using existing durable lease identity without schema changes.",
+    "Re-evaluate returned End Turn refusal on subsequent native UI-thread polls.",
+    "Guard owned base-management OK through the existing opaque interaction surface; unvalidated multiplayer remains blocked."
+  ],
+  "validation": {
+    "adapter_regressions": "passed",
+    "private_http_restart_fence": "passed",
+    "native_cross_build": "passed",
+    "controlled_native_initial": {
+      "passed": true,
+      "classification": "isolated guarded native end-turn acceptance",
+      "source_turn": 1,
+      "observed_turn": 2,
+      "receipt": {
+        "action_id": 2,
+        "command": "end_turn",
+        "status": "completed",
+        "native_result": 1,
+        "native_call_attempted": true,
+        "resolution": "native_turn_advanced"
+      },
+      "engine_state": {
+        "end_turn_timer_queued": false,
+        "end_turn_native_returned": true,
+        "end_turn_receipt_pending": false
+      },
+      "controlled_native_refusal_verified": true,
+      "controlled_native_base_screen_verified": true,
+      "original_turn69_refusal_reproduced": false
+    },
+    "controlled_native_full_base_comparison": {
+      "result": "passed",
+      "unchanged_owned_bases_and_units": true,
+      "receipt": {
+        "event": "base_screen_verified",
+        "turn": 1,
+        "receipt": {
+          "ok": true,
+          "command": "close_base_management",
+          "base_screen_closed": true,
+          "turn_completion_verified": false,
+          "follow_up": "Observe the native state; closing this screen does not complete the turn."
+        },
+        "stale_receipt": {
+          "ok": false,
+          "error": {
+            "code": "stale_state",
+            "message": "Fair game state changed after observation; inspect a fresh snapshot and choices."
+          },
+          "current_revision": "5741640418460889474"
+        }
+      },
+      "turn_transition": {
+        "passed": true,
+        "classification": "isolated guarded native end-turn acceptance",
+        "source_turn": 1,
+        "observed_turn": 2,
+        "receipt": {
+          "action_id": 2,
+          "command": "end_turn",
+          "status": "completed",
+          "native_result": 1,
+          "native_call_attempted": true,
+          "resolution": "native_turn_advanced"
+        },
+        "engine_state": {
+          "end_turn_timer_queued": false,
+          "end_turn_native_returned": true,
+          "end_turn_receipt_pending": false
+        },
+        "controlled_native_refusal_verified": true,
+        "controlled_native_base_screen_verified": true,
+        "original_turn69_refusal_reproduced": false
+      }
+    },
+    "full_native_mcp": {
+      "initial_run": "failed",
+      "failure": "No single-phase native movement comparison was available",
+      "observed_candidates": 3,
+      "stage": "counterfactual production/travel timing",
+      "earlier_managed_and_counterfactual_stages": "passed",
+      "attribution": "Unestablished: initial failure log retained offered move choices but not candidate calculation details. Added candidate diagnostics and retain-on-failure for repeat; exact-state assertion unchanged.",
+      "repeat": "passed",
+      "result": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 234.682,
+          "maximum_page_bytes": 127199,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 4757,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 255.106,
+          "enumeration_probe_gap_ms": 248.224,
+          "enumeration_payload_bytes": 8671,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 223.215,
+          "exact_probe_gap_ms": 237.152,
+          "exact_payload_bytes": 289,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      },
+      "recovery": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "same_checkpoint_recovered_twice_after_timeline_gc": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      },
+      "production_and_travel_timing": {
+        "actual_native_production_upkeeps": 6,
+        "production_timing_matches": true,
+        "one_phase_native_move_matches": true,
+        "native_move_completion": {
+          "receipt": {
+            "action_id": 5,
+            "command": "move_unit",
+            "status": "completed",
+            "native_result": 1,
+            "native_call_attempted": true,
+            "resolution": "native_move_resolved",
+            "unit_id": 38,
+            "origin_tile_id": 205,
+            "target_tile_id": 206,
+            "observed_tile_id": 206
+          },
+          "acknowledged_notices": []
+        },
+        "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true
+      },
+      "performance": {
+        "base_site_stress": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 243.156,
+          "probe_gap_ms": 234.622,
+          "receipt_bytes": 169324,
+          "native_elapsed_ms": 0
+        },
+        "counterfactual_site_stress": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 241.02,
+          "probe_gap_ms": 241.894,
+          "receipt_bytes": 51647,
+          "native_elapsed_ms": 0
+        }
+      },
+      "scope": "Final native image and managed integration paths; subsequent Python-only authority-read fault ordering is checked separately in the final packaged image."
+    },
+    "deployed": false,
+    "actual_sovereign_delivery": "unobserved",
+    "campaign_recovery": "pending",
+    "full_game": "unfinished",
+    "expired_sovereign_attention_reclamation": "passed: real database reopen, inactive metadata without token, expired-status read before reacquisition, same attention IDs redelivered",
+    "compiled_native_base_guards": "passed: owned/foreign/invalid/hidden/phase/selector/replay and completion qualifier",
+    "final_packaged_python": "passed: recorded and fault-injected turn fence, same-turn rebase, private HTTP active/expired lost-fence rejection"
+  },
+  "native_handler_evidence": {
+    "dispatcher": "BaseWin::on_button_clicked 0x41D500",
+    "button_id": 0,
+    "close_branch": "0x41D61C",
+    "selected_base_field": "BaseWin->oRender.base_id",
+    "scope": "Static stock executable review plus isolated native closure; not a general UI-input capability."
+  },
+  "recovery_checkpoint": {
+    "checkpoint_id": "checkpoint-4f0380b0815d4440bc59b8654be794dc",
+    "turn": 124,
+    "verified": true,
+    "created_unix": 1788758704.7556207,
+    "native_save_sha256": "9462be9d853841b61c7009d4b6ed2929b362698f83bbed80de653b0034a4cc88",
+    "journal_head_hash": "a6fface6739fb6de3f0e9a6d4490fe524f2375fe3cbb3446f65c12f46f2e4c6d",
+    "hermes_archive_sha256": "0f4a1cc35d85d90168a0fe3d17e512436f4bd391f7b96f69c149bf26a4168c34"
+  },
+  "images": {
+    "worker": "sha256:251f632c5fe86042c458fd1d2bcc2eaeb47453e4d744f6aa05c217622c97807c",
+    "control_mcp": "sha256:a32c5b18b33e567e96cfc253862cc3fbfd1657c33d7b8a27ed0123e73db625ad",
+    "harness": "sha256:7078f58c89aba664aefbf65bf38efa7fb917498b5e684cf5eec10893700d20e1",
+    "native_fingerprint": "4b8e73da1d17af8b278ae5f885904ec6c6df1e121255791447a6f2dc85563440"
+  }
+}

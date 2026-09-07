@@ -1200,7 +1200,27 @@ void refresh_deferred_end_turn_state() {
         deferred_action.resolution = "game_no_longer_active";
         return;
     }
-    if (*CurrentTurn == deferred_end_turn_source_turn) return;
+    if (*CurrentTurn == deferred_end_turn_source_turn) {
+        // Returning from the native command is not evidence that it accepted the
+        // transition. Console::turn_complete (0x5169F0) clears field_23BE8
+        // when it commits the request; refusal leaves human input active. The
+        // STATE_UNK_2 flag can already be set before an explicit end-turn request.
+        // Only classify a refusal after the native call has unwound, on the same
+        // actionable human turn. Never clear a latch from a nested modal poll or
+        // while the native turn processor is running.
+        if (deferred_end_turn_native_returned
+        && deferred_end_turn_faction_id == *CurrentPlayerFaction
+        && *CurrentTurn == deferred_end_turn_source_turn && human_turn_actionable(deferred_end_turn_faction_id)
+        && MapWin->field_23BE8) {
+            deferred_end_turn_faction_id = -1;
+            deferred_end_turn_source_turn = -1;
+            pending_end_turn_completion = false;
+            pending_end_turn_source_turn = -1;
+            deferred_action.status = "rejected";
+            deferred_action.resolution = "native_turn_transition_not_accepted";
+        }
+        return;
+    }
     deferred_end_turn_faction_id = -1;
     deferred_end_turn_source_turn = -1;
     deferred_action.native_result = 1;
@@ -1233,24 +1253,6 @@ void CALLBACK deferred_end_turn_timer_proc(HWND, UINT, UINT_PTR timer_id, DWORD)
     Console_on_key_click(MapWin, 0, NativeEndTurnCommand);
     deferred_end_turn_native_returned = true;
     refresh_deferred_end_turn_state();
-    // Returning from the native command is not evidence that it accepted the
-    // transition. Console::turn_complete (0x5169F0) clears field_23BE8
-    // when it commits the request; refusal leaves human input active. The
-    // STATE_UNK_2 flag can already be set before an explicit end-turn request.
-    // Only classify a refusal after the native call has unwound, on the same
-    // actionable human turn. Never clear a latch from a nested modal poll or
-    // while the native turn processor is running.
-    if (deferred_end_turn_faction_id == faction_id
-    && deferred_end_turn_source_turn == source_turn
-    && *CurrentTurn == source_turn && human_turn_actionable(faction_id)
-    && MapWin->field_23BE8) {
-        deferred_end_turn_faction_id = -1;
-        deferred_end_turn_source_turn = -1;
-        pending_end_turn_completion = false;
-        pending_end_turn_source_turn = -1;
-        deferred_action.status = "rejected";
-        deferred_action.resolution = "native_turn_transition_not_accepted";
-    }
 }
 
 bool end_turn_completion_pending() {
@@ -4383,6 +4385,13 @@ int technology_presentation_tech_id() {
     return tech_id >= 0 && tech_id < MaxTechnologyNum ? tech_id : -1;
 }
 
+int owned_base_management_window(int faction_id) {
+    if (!Win_is_visible(BaseWin)) return -1;
+    const int base_id = BaseWin->oRender.base_id;
+    return base_id >= 0 && base_id < *BaseCount
+        && Bases[base_id].faction_id == faction_id ? base_id : -1;
+}
+
 std::string interaction_kind(int faction_id) {
     refresh_deferred_end_turn_state();
     update_human_diplomacy_lifecycle();
@@ -4432,6 +4441,10 @@ std::string interaction_kind(int faction_id) {
     if (human_diplomacy_settling()) return "waiting_for_engine";
     if (*GameHalted) return "waiting_for_engine";
     if (*CurrentFaction != faction_id) return "waiting_for_turn";
+    if (Win_is_visible(BaseWin)) {
+        return !*MultiplayerActive && owned_base_management_window(faction_id) >= 0
+            ? "base_management_screen" : "unsupported_modal";
+    }
     return "turn";
 }
 
@@ -4515,7 +4528,7 @@ void append_turn_protocol(std::ostringstream& out, int faction_id, int ready_uni
 
 bool semantic_interaction_command(const std::string& command) {
     static const char* commands[] = {
-        "acknowledge_popup", "respond_to_contact", "continue_diplomacy",
+        "acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy",
         "propose_human_relationship", "propose_human_technology",
         "propose_human_energy", "propose_human_joint_attack",
         "respond_human_diplomacy",
@@ -4605,6 +4618,8 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(*WinModalState));
     mix(static_cast<uint32_t>(*PopupDialogState));
     mix(static_cast<uint32_t>(*GameHalted));
+    mix(static_cast<uint32_t>(Win_is_visible(BaseWin) ? 1 : 0));
+    mix(static_cast<uint32_t>(owned_base_management_window(*CurrentPlayerFaction) + 1));
     mix(static_cast<uint32_t>(project_information_id()));
     mix(semantic_mutation_generation);
     mix(static_cast<uint32_t>(pending_multiplayer_technology_presentations.size()));
@@ -9662,6 +9677,14 @@ std::string test_managed_action_fixture_response(const std::string& request) {
         out << "]}";
         return out.str();
     }
+    if (phase == "diagnostics_base_management_screen") {
+        if (*MultiplayerActive || interaction_kind(faction) != "turn")
+            return error_response("fixture_unavailable", "Requires an actionable single-player turn.");
+        const int base_id = first_owned_base(faction);
+        if (base_id < 0) return error_response("fixture_unavailable", "Requires an owned base.");
+        BaseWin_zoom(BaseWin, base_id, 0);
+        return std::string("{\"ok\":true,\"base_id\":") + std::to_string(base_id) + '}';
+    }
     if (phase == "diagnostics_end_turn_refusal" || phase == "diagnostics_end_turn_release") {
         if (*MultiplayerActive || deferred_end_turn_faction_id >= 0)
             return error_response("fixture_unavailable", "Requires an idle single-player turn.");
@@ -13098,7 +13121,13 @@ std::string semantic_choices_response(const std::string& request) {
             << json_string(interaction_kind(faction_id).c_str()) << ",\"popup_label\":"
             << json_string(label) << ",\"instance_id\":" << agent_popup_generation()
             << ",\"choices\":[";
-        if (human_diplomacy_window_active()) {
+        if (interaction_kind(faction_id) == "base_management_screen") {
+            out << "{\"id\":\"base_management_screen:close\","
+                "\"command\":\"close_base_management\",\"base_id\":"
+                << owned_base_management_window(faction_id)
+                << ",\"label\":\"Close base management screen\","
+                "\"meaning\":\"Use the native OK button to return to the map. This does not choose production or finish the turn; observe again.\"}";
+        } else if (human_diplomacy_window_active()) {
             int initiator = human_diplomacy_participant(0);
             int counterpart = human_diplomacy_participant(1);
             bool first = true;
@@ -15522,6 +15551,22 @@ std::string semantic_command_response(const std::string& request) {
         return "{\"ok\":true,\"command\":\"defer_social_engineering\","
             "\"policy_changed\":false,\"transition\":\"waiting_for_engine\","
             "\"next_step\":\"After blocking interactions finish, use social_engineering choices to review or change models.\"}";
+    }
+    if (command == "close_base_management") {
+        const int base_id = field_int(request, "base_id", -1);
+        if (interaction_kind(faction_id) != "base_management_screen"
+        || base_id < 0 || owned_base_management_window(faction_id) != base_id) {
+            return error_response("base_management_screen_changed",
+                "The selected owned base screen is no longer actionable. Observe again.");
+        }
+        // Stock BaseWin::on_button_clicked (0x41D500), button 0, follows
+        // its OK branch (0x41D61C): release the native interface mode and
+        // redraw. Never emulate completion by hiding the Win object.
+        BaseWin_on_button_clicked(BaseWin, 0);
+        return std::string("{\"ok\":true,\"command\":\"close_base_management\","
+            "\"base_screen_closed\":") + (Win_is_visible(BaseWin) ? "false" : "true")
+            + ",\"turn_completion_verified\":false,"
+              "\"follow_up\":\"Observe the native state; closing this screen does not complete the turn.\"}";
     }
     if (command == "acknowledge_popup") {
         std::string label = semantic_popup_label();

@@ -57,6 +57,11 @@ int main() {
  assert(deferred_action.status=="completed" && deferred_action.native_result==1);
  reset(3); deferred_end_turn_timer_proc(nullptr,0,4,0);
  assert(deferred_action.status=="pending" && pending_end_turn_completion);
+ // Turn 124: native returned under a modal; a later UI poll sees human input.
+ refresh_deferred_end_turn_state(); assert(deferred_action.status=="pending");
+ modal=false; refresh_deferred_end_turn_state();
+ assert(deferred_action.status=="rejected" && deferred_action.resolution=="native_turn_transition_not_accepted");
+ assert(!pending_end_turn_completion && deferred_end_turn_faction_id==-1);
  reset(4); deferred_end_turn_timer_proc(nullptr,0,4,0);
  assert(deferred_action.status=="pending");
  reset(0); modal=true; deferred_end_turn_timer_proc(nullptr,0,4,0);

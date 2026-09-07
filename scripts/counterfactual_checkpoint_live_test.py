@@ -211,14 +211,17 @@ def exercise_native_production_timing(call, native, base_ref):
     # Compact managed choices intentionally omit native tile booleans. Ask
     # the world calculator about each issued semantic target instead.
     candidates = [row for row in frame["choices"] if row.get("label") == "Move unit"]
+    movement_evidence = []
     for choice in candidates:
         target = choice["target_location_ref"]
         route = call("smac_world", {"mode": "counterfactual", "detail": "deep",
             "subject_refs": [actor_ref], "target_ref": target,
             "scenario_json": '{"kind":"deployment","capability":"combat"}'})
         if not route.get("ok"):
+            movement_evidence.append({"target_ref": target, "error": route.get("error")})
             continue
         alternative = route["items"][0]["alternatives"][0]
+        movement_evidence.append({"target_ref": target, "calculation": alternative})
         # Conditional-minimum routes can fail native fungus/overspend rolls.
         # An exact arrival assertion requires deterministic route evidence.
         if alternative.get("total_turns") != 1 or alternative.get("route_evidence") != "exact_known_state":
@@ -232,4 +235,7 @@ def exercise_native_production_timing(call, native, base_ref):
         return {"actual_native_production_upkeeps": expected, "production_timing_matches": True,
                 "one_phase_native_move_matches": True, "native_move_completion": settled,
                 "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": True}
-    raise AssertionError("No single-phase native movement comparison was available")
+    print(json.dumps({"event": "native_movement_comparison_unavailable",
+        "actor_ref": actor_ref, "choice_count": len(frame["choices"]),
+        "candidates": movement_evidence}), flush=True)
+    raise AssertionError("No single-phase native movement comparison was available; candidate evidence recorded")

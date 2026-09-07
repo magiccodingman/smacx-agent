@@ -17,6 +17,8 @@ def main():
         ([{"ok": False, "error": "native_observation_feed_failed"}], 409, 1),
     ):
         assembler, attention = MagicMock(), MagicMock()
+        assembler.snapshot.return_value = {"turn": 122}
+        attention.sovereign_state.return_value = None
         assembler.build.return_value = {"identity": {}, "attention": {
             "attention_lease_id": "attention-test", "status": "leased"}}
         server = ThreadingHTTPServer(("127.0.0.1", 0), mcp._RuntimeContextHandler)
@@ -64,5 +66,41 @@ def main():
         "persistent_and_unrelated_errors_fail_closed": True}))
 
 
+def restart_fence():
+    for previous, snapshot, reason in (
+        ({"episode_id": "episode-test", "status": "active"}, {"turn": 123}, "sovereign_episode_restart_required"),
+        ({"episode_id": "episode-test", "status": "expired"}, {"turn": 123}, "sovereign_episode_restart_required"),
+        (None, {}, "sovereign_episode_turn_unavailable"),
+    ):
+        assembler, attention = MagicMock(), MagicMock()
+        assembler.snapshot.return_value = snapshot
+        attention.sovereign_state.return_value = previous
+        server = ThreadingHTTPServer(("127.0.0.1", 0), mcp._RuntimeContextHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        with patch.object(mcp._RuntimeContextHandler, "_authorized", return_value=True), \
+                patch.object(mcp, "_refresh_managed_world", return_value={"ok": True}), \
+                patch.object(mcp, "_managed_scope_identity", return_value=("match", "session", "agent", "perspective")), \
+                patch.object(mcp, "controller_chat_attention"), \
+                patch.object(mcp, "_runtime_services", return_value=(assembler, attention)), \
+                patch.object(mcp, "RUNTIME_EPISODE_TOKENS", {}), \
+                patch.object(mcp, "RUNTIME_EPISODE_TURNS", {}), \
+                patch.object(mcp, "diagnostic_record"):
+            thread.start()
+            try:
+                try:
+                    urlopen(f"http://127.0.0.1:{server.server_port}/runtime-context?episode_id=episode-test", timeout=5)
+                    raise AssertionError("episode rebound without its turn fence")
+                except HTTPError as exc:
+                    assert exc.code == 409
+                    payload = json.load(exc)
+                    assert reason in json.dumps(payload), payload
+                assembler.build.assert_not_called()
+                attention.acquire_sovereign.assert_not_called()
+            finally:
+                server.shutdown(); server.server_close(); thread.join(5)
+    print("PASS: actual HTTP handler refuses lost active/expired episode fence and unknown initial turn")
+
+
 if __name__ == "__main__":
     main()
+    restart_fence()
