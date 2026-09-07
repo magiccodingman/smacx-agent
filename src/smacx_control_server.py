@@ -1268,15 +1268,28 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                                            if isinstance(body.get("game_settings"), dict) else None),
                         )
                 elif action == "park":
-                    # Stop autonomous callers before touching native runtime
-                    # state.  This keeps direct API users as safe as the portal
-                    # and makes park idempotent across supervisor retries.
-                    for run in self.server.control.list_harness_runs():
-                        if run.get("match_id") == match_id and run.get("status") in {
-                            "queued", "starting", "running", "restarting",
-                        }:
-                            self._harness_manager().stop_run(str(run["run_id"]))
-                    result = manager.park_match(match_id)
+                    # A dormant reconciler may have observed recovery's temporary
+                    # parked/starting state. Check its observation AFTER waiting
+                    # for recovery, and BEFORE stopping any autonomous caller.
+                    with manager._lifecycle_lock:
+                        expected = body.get("expected_observation")
+                        current = self.server.control.get_match(match_id)
+                        if expected is not None and (
+                            not isinstance(expected, dict)
+                            or set(expected) != {"status", "runtime_generation"}
+                            or expected.get("status") != current["status"]
+                            or expected.get("runtime_generation") != current.get(
+                                "metadata", {}).get("last_recovered_unix", 0)
+                        ):
+                            result = {"ok": True, "skipped": True,
+                                      "reason": "lifecycle_observation_changed"}
+                        else:
+                            for run in self.server.control.list_harness_runs():
+                                if run.get("match_id") == match_id and run.get("status") in {
+                                    "queued", "starting", "running", "restarting",
+                                }:
+                                    self._harness_manager().stop_run(str(run["run_id"]))
+                            result = manager.park_match(match_id)
                 elif action == "complete":
                     # Native victory detection can mark the match completed
                     # before the portal observes it. Retiring that campaign

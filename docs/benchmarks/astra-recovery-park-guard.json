@@ -1,0 +1,14 @@
+{
+  "observed": "Isolated operator resume returned HTTP200, followed by portal POST park; campaign parked at turn2",
+  "cause": "Dormant reconciliation can act on a transient recovery observation; park stopped sovereign before waiting for lifecycle lock",
+  "repair": "Dormant park carries expected status and recovery generation. Control validates under lifecycle lock before stopping callers. Stale observation returns skipped; portal does not retire seats. Explicit park remains unconditional.",
+  "validation": {
+    "operator_contract": "Authenticated HTTP request queued behind lifecycle lock; simulated recovery advances generation; zero stop/park effects. Explicit park stops then parks.",
+    "portal_tests": "83 passed",
+    "diff_check": "passed"
+  },
+  "limits": [
+    "Live post-deployment recovery pending",
+    "HTTP test uses fixture native processes, not actual game recovery"
+  ]
+}
