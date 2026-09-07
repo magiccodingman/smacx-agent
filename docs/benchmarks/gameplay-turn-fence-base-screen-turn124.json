@@ -247,7 +247,52 @@
       "scope": "Final native image and managed integration paths; subsequent Python-only authority-read fault ordering is checked separately in the final packaged image."
     },
     "deployed": true,
-    "actual_sovereign_delivery": "unobserved",
+    "actual_sovereign_delivery": {
+      "status": "receipts_and_explicit_implicit_episode_boundaries_verified",
+      "receipts": [
+        {
+          "request_id": "33a669119740474a96cee058b3b2ee17",
+          "next_request_id": "d0df7395fbc44c4eaff18129577021d8",
+          "selected_turn": 124,
+          "observed_after_turn": 124,
+          "exact_immediate_next_delivery": true
+        },
+        {
+          "request_id": "f3ce1a452f804930b5a2f2f6ba130f2e",
+          "next_request_id": "0c30bb86386541c7a683f7793ad31fc3",
+          "selected_turn": 124,
+          "observed_after_turn": 124,
+          "exact_immediate_next_delivery": true
+        }
+      ],
+      "scope": "Actual automation receipts; assignment does not establish completed terraforming.",
+      "boundaries": [
+        {
+          "completed_turn": 124,
+          "kind": "explicit_confirmation",
+          "request_id": "52ebf04e7780415fbe3d603700a8b174",
+          "episode_id": "episode-5c9b6fe75b7e48e6fbe37d9809c993ab",
+          "next_provider_request": "9ef472487407452db5da39e32088f792",
+          "exact_immediate_next_delivery": true,
+          "following_episode": "episode-ea754bf88bc7c6d3c4d4fe67359f92ac",
+          "following_decision_request": "b45f8cdcfb9b4fffbfea16cc29e82c9e",
+          "following_decision_turn": 125
+        },
+        {
+          "completed_turn": 125,
+          "kind": "implicit_native_advance",
+          "request_id": "df80fa72fd5343e89bba82a837514f94",
+          "episode_id": "episode-ea754bf88bc7c6d3c4d4fe67359f92ac",
+          "next_turn": 126,
+          "next_provider_request": "e26167768bf84deb80ca6d2c841646fa",
+          "exact_immediate_next_delivery": true,
+          "following_episode": "episode-74770789cd0392457592f0d4899de116",
+          "following_decision_request": "6899c97153b04ecc98faf3d1ce127274",
+          "following_decision_turn": 126
+        }
+      ],
+      "base_screen_close": "Not needed in the recovered campaign segment; controlled native handler/effect proof remains separate."
+    },
     "campaign_recovery": {
       "result": "passed",
       "checkpoint_id": "checkpoint-4f0380b0815d4440bc59b8654be794dc",
@@ -311,5 +356,40 @@
     "native_failure_watcher_armed": true,
     "ten_minute_heartbeat_active": true,
     "initial_active_incidents": []
+  },
+  "live_progress": {
+    "native_turn": 126,
+    "units": 13,
+    "bases": 2,
+    "energy_credits": 181,
+    "end_turn_action_status": "completed",
+    "resolution": "native_turn_advanced",
+    "pending_gate": "Full game remains unfinished; continue diagnostics, attention, effects and recovery monitoring."
+  },
+  "live_memory_guard_followthrough": {
+    "rejection_request": "0c30bb86386541c7a683f7793ad31fc3",
+    "error": "stale_memory_observation",
+    "memory_write_committed": false,
+    "guidance_delivery_request": "3ee898d828fc4bff9cfdbdd8de693826",
+    "successful_retry_request": "983350f77240496ead56877c49251060",
+    "successful_receipt_delivery": "12d09ee48ac6432f99b65d35a666fc6f",
+    "journal_event_id": "journal-8fcbbb84c6f048d883925754fd4455e2",
+    "new_plan_id": "plan-1935f4548a594e92bddee6558c06bdc4",
+    "new_plan_revision": 10,
+    "first_resumed_context": {
+      "request_id": "25f184412c864bf3ac184b8904334e5a",
+      "plan_revision": 9
+    },
+    "following_episode_contexts": [
+      {
+        "request_id": "b45f8cdcfb9b4fffbfea16cc29e82c9e",
+        "plan_revision": 10
+      },
+      {
+        "request_id": "6899c97153b04ecc98faf3d1ce127274",
+        "plan_revision": 10
+      }
+    ],
+    "scope": "Actual working_cognition inside submitted provider requests, not only SQL records; plan objectives are sovereign intent rather than verified mechanical achievement."
   }
 }
