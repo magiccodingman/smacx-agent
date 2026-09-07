@@ -22,5 +22,12 @@
     "Fresh native game following deployment remains necessary to validate this opening boundary live.",
     "This does not exempt arbitrary cognition writes or observation calls from stall detection.",
     "Provider latency remains expected; no full-game success claimed."
-  ]
+  ],
+  "live_followup": {
+    "match": "Astra - Acceptance 4",
+    "acknowledgement_visible_in_supervisor": true,
+    "native_transition": "PLANETFALL acknowledged, next provider context identifies FIRSTBASE; first-base naming action returned observed_after_turn1.",
+    "quarantine_recurred": false,
+    "limits": "This validates the live opening path; it does not replay the prior ten-minute provider timing or prove a complete game."
+  }
 }
