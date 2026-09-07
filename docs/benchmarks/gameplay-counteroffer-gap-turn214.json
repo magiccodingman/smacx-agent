@@ -255,5 +255,49 @@
       "optional_inference_note": "Provider/Hermes inference and optional failure-containment injection were not enabled; false optional fields are not required-test failures."
     },
     "cleanup": "Isolated worker/volumes cleaned by test; its unreferenced owned prepared image removed after successful completion."
+  },
+  "post_deployment_guard_recovery": {
+    "run_id": "run-1354926507bd4b75bba5e45d5d0fe562",
+    "turn": 214,
+    "receipts": [
+      {
+        "request_id": "138412e3f5bd45cf86d771c6648c0691",
+        "episode_id": "episode-4fbb2f01f0f11126ff59fd7b375da75e",
+        "call_id": "chatcmpl-tool-9c80a86d64760118",
+        "kind": null,
+        "error": {
+          "code": "unknown_decision",
+          "message": "Obtain a fresh smac_decision frame."
+        },
+        "native_action_executed": false,
+        "turn": null,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "cbb2b0a5254c49a7a03cc73a20512f16",
+        "next_provider_contains_exact_result": true,
+        "following_tool": "mcp__smacx__smac_decision",
+        "following_tool_ok": true
+      },
+      {
+        "request_id": "5367a0eb9fae45aaa87a0b736b53bd17",
+        "episode_id": "episode-4fbb2f01f0f11126ff59fd7b375da75e",
+        "call_id": "chatcmpl-tool-8e3307c7a947ca0e",
+        "kind": null,
+        "error": {
+          "code": "consumed_decision",
+          "message": "This decision was already executed."
+        },
+        "native_action_executed": false,
+        "turn": null,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "d66dcc4346f3458da333570706f4f32c",
+        "next_provider_contains_exact_result": true,
+        "following_tool": "mcp__smacx__smac_decision",
+        "following_tool_ok": true
+      }
+    ],
+    "method": "Chronologically first provider request after each tool return; exact call_id and entire parsed result equality, then emitted fresh-decision tool return.",
+    "scope": "Two pre-dispatch rejection recoveries, not proof of counteroffer use or all failure recovery."
   }
 }

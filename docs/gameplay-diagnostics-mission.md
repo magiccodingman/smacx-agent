@@ -676,3 +676,7 @@ Counteroffer deployment acceptance: supported retry-after-update clears the inci
 ### Browser delivery recheck after counteroffer deployment
 
 The authenticated live lobby at214 exposes Download diagnostics and remains IN PROGRESS. Clicking the link opened a destination tab, but browser tooling refused inspection under its URL policy. This does not prove either browser file delivery or an application defect. No alternative route was used to bypass the restriction. Backend ZIP evidence remains separate, and coverage row16 remains open. Evidence: `benchmarks/gameplay-browser-download-recheck.json`.
+
+### Actual guarded-error recovery after deployment
+
+At214, unknown_decision and consumed_decision receipts each explicitly report no native action. Both entire results reach the chronologically next provider request with the same call ID. Each next request produces a successful fresh smac_decision; subsequent actions continue. This proves these two feedback/recovery chains, not all failure recovery or use of the repaired COUNTER0 branch. Coverage row14 and `benchmarks/gameplay-counteroffer-gap-turn214.json` retain that scope.
