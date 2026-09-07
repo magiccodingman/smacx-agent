@@ -603,5 +603,39 @@
       }
     ],
     "qualification": "Observed progression and exact immediate-next-provider receipt delivery; not full-game completion or proof of strategic quality. Additional stale memory writes were rejected before commitment; successful retry of those later writes is not established by this sample. Attention acknowledgements continue and no active incident is reported."
+  },
+  "live_memory_followthrough_turn138": {
+    "turn": 138,
+    "active_incidents": [],
+    "plan_revision": 11,
+    "proof": [
+      {
+        "request_id": "2283b2f04ccc4d8197d78b3ade1103da",
+        "episode_id": "episode-c3f5fd20aeb2e225a360b79301a09076",
+        "call_id": "chatcmpl-tool-96badd77948dd751",
+        "kind": null,
+        "turn": null,
+        "memory_ok": false,
+        "plan_revision": null,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "c65a431a2e484594a11b496945a212f4",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "c65a431a2e484594a11b496945a212f4",
+        "episode_id": "episode-c3f5fd20aeb2e225a360b79301a09076",
+        "call_id": "chatcmpl-tool-8ece6d6b80912e7c",
+        "kind": null,
+        "turn": null,
+        "memory_ok": true,
+        "plan_revision": 11,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "4a3457a0930242a18340f5337c89107c",
+        "next_provider_contains_exact_result": true
+      }
+    ],
+    "qualification": "Incorrect shortened agent_id was rejected, then the sovereign explicitly corrected the request. Exact next-provider delivery is verified for rejection and success. This does not prove every earlier rejected write was retried or validate the strategic prose."
   }
 }
