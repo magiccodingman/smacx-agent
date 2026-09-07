@@ -101,5 +101,31 @@
       "error_exact_next_request": "99b08eeb45f445d092a8a51d3b1c4736",
       "fresh_decision_followed_by_successful_action_request": "426fe98ee25449aba7fc2f4193d84fc6"
     }
+  },
+  "continued_218": {
+    "native_turn": 218,
+    "units": 16,
+    "bases": 2,
+    "credits": 839,
+    "active_incidents": 0,
+    "context_fetch_failures_observed": 0,
+    "handoff_request": "0f02bdaf71394355ba22a52dcb752333",
+    "exact_next_handoff_request": "c52ad504c4ee4f7a94f43212b8027406",
+    "critical_attention": {
+      "rejected_request": "50860c0c7235412aaa422c25ae8d0d85",
+      "native_dispatch": false,
+      "acknowledgement_request": "411f214718824356ba6b74aa97ded872",
+      "fresh_frame_request": "b6c0e49fe98842a9982870a08da454d1",
+      "successful_action_request": "05b5e7a64bfd45eb8a931ba323f93ccd"
+    },
+    "memory_retry": {
+      "rejected_request": "6761d60a1dea489fb307f0c49acc35ee",
+      "error": "stale_memory_observation",
+      "memory_write_committed": false,
+      "next_episode_request": "feca9cefc6114472927bffa579c930d1",
+      "raw_failed_pair_pruned": true,
+      "handoff_explicitly_retains_rejected_write_and_retry_intent": true,
+      "successful_retry": "not yet observed; do not count the draft as persisted"
+    }
   }
 }

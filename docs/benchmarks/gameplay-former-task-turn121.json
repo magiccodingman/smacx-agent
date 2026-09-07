@@ -144,5 +144,27 @@
     "worker": "sha256:8526e5c16a3757b55a7624e2533cfbd0cad8352ccb3fb5f05b5bb4a8d631a8b8",
     "control": "sha256:9870a1ab687709469f862d7da3e5160f4fb14ffc4c39096a89c38bc0ea7198b5",
     "harness": "sha256:473fd6cea395a2dda34981b69f86f84c033fb4a77fcd7c417f5ad654d1e56337"
+  },
+  "followup_turn217": {
+    "native_observation": {
+      "own-unit-13": {
+        "tile_id": 1014,
+        "automation": "auto_former_improve_home_base",
+        "active_task": false
+      },
+      "own-unit-14": {
+        "tile_id": 1214,
+        "automation": "auto_former_improve_home_base",
+        "active_task": false
+      },
+      "own-unit-16": {
+        "tile_id": 971,
+        "automation": "auto_former_full",
+        "order": "go_to",
+        "active_task": false
+      }
+    },
+    "source_and_configuration": "manage_player_units defaults0; installed thinker.ini has no override and thinker_user.ini is absent. faction.cpp gates Thinker player movement on this flag; do not attribute stock automation resets to replacement former_move search code.",
+    "limits": "Runtime config variable was not independently memory-probed. Reset cause remains unestablished; accepted policy is not evidence of selected work or completion."
   }
 }
