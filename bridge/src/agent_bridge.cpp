@@ -772,10 +772,18 @@ bool demanded_technology_context_valid(const std::string& label, int faction_id)
     return true;
 }
 
+bool unconditional_truce_offer_label(const std::string& label) {
+    // Script/xscript and both alien scripts use accept row0 / reject row1.
+    // Do not include paid, technology, base-return or other conditional offers.
+    return label == "WANTTOTRUCE0" || label == "WANTTOTRUCE1"
+        || label == "WANTTOTRUCE2" || label == "OFFERTRUCE"
+        || label == "MUSTTRUCE";
+}
+
 bool relationship_offer_label(const std::string& label) {
     return label == "FACTIONTREATY" || label == "FACTIONTRUCE"
         || label == "ALIENFACTIONTREATY" || label == "ALIENFACTIONTRUCE"
-        || label == "SWEARAPACT";
+        || label == "SWEARAPACT" || unconditional_truce_offer_label(label);
 }
 
 bool attack_demand_label(const std::string& label) {
@@ -5195,6 +5203,19 @@ bool submit_popup_choice_id(BasePop* popup, int choice_id) {
     begin_popup_transition(popup);
     BasePop_on_button_clicked(popup, 0);
     return true;
+}
+
+bool reviewed_unconditional_truce_popup(BasePop* popup, const std::string& label) {
+    return popup && unconditional_truce_offer_label(label)
+        && popup_choice_count(popup) == 2
+        && popup_has_choice_id(popup, 0) && popup_has_choice_id(popup, 1);
+}
+
+bool submit_unconditional_truce_response(BasePop* popup, const std::string& label,
+    const std::string& response) {
+    if (!reviewed_unconditional_truce_popup(popup, label)
+    || (response != "accept" && response != "reject")) return false;
+    return submit_popup_choice_id(popup, response == "accept" ? 0 : 1);
 }
 
 VOID CALLBACK energy_gift_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
@@ -13868,6 +13889,11 @@ std::string semantic_choices_response(const std::string& request) {
                 << json_string(!strcmp(label, "DEMANDTECHAGAIN1") ? "energy" : "technology");
             append_demand_technology_context(out, faction_id, label);
             out << '}';
+        } else if (unconditional_truce_offer_label(label)
+        && (*MultiplayerActive || !reviewed_unconditional_truce_popup(active_default_popup(), label))) {
+            out << "{\"id\":\"diplomatic_relation:unavailable\","
+                "\"kind\":\"capability_status\",\"supported\":false,"
+                "\"meaning\":\"The reviewed single-player two-choice truce popup is unavailable.\"}";
         } else if (relationship_offer_label(label)) {
             bool treaty = strstr(label, "TREATY") != NULL;
             bool pact = !strcmp(label, "SWEARAPACT");
@@ -14564,6 +14590,7 @@ std::string semantic_command_response(const std::string& request) {
     bool validated_multiplayer_reject_ai_technology_trade =
         command == "respond_to_diplomatic_offer"
         && field_string(request, "response") == "reject"
+        && !unconditional_truce_offer_label(active_label)
         && (technology_trade_label(active_label)
             || technology_demand_label(active_label)
             || relationship_offer_label(active_label))
@@ -16091,7 +16118,14 @@ std::string semantic_command_response(const std::string& request) {
             : loan_offer ? (response == "reject" ? 0 : response == "accept" ? 1 : 2)
             : tech_demand_counter ? (field_string(request, "payment") == "energy" ? 2 : 3)
             : counter ? 2 : (response == "accept" ? 1 : 0);
-        submit_popup_choice(active, choice);
+        if (unconditional_truce_offer_label(label)) {
+            if (!submit_unconditional_truce_response(active, label, response)) {
+                return error_response("truce_offer_changed",
+                    "The reviewed two-choice truce offer changed; obtain fresh diplomatic choices.");
+            }
+        } else {
+            submit_popup_choice(active, choice);
+        }
         const char* offer_type = relationship_offer
             ? (label == "SWEARAPACT" ? "pact"
                 : label.find("TREATY") != std::string::npos ? "treaty" : "truce")
@@ -16115,7 +16149,10 @@ std::string semantic_command_response(const std::string& request) {
             : tech_demand ? "technology_demand" : "technology_or_map_exchange";
         return std::string("{\"ok\":true,\"command\":\"respond_to_diplomatic_offer\",\"response\":")
             + json_string(response.c_str()) + ",\"offer_type\":"
-            + json_string(offer_type) + '}';
+            + json_string(offer_type)
+            + (unconditional_truce_offer_label(label)
+                ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta.\""
+                : "") + '}';
     }
     if (command == "respond_to_design_offer") {
         std::string label = agent_popup_label();

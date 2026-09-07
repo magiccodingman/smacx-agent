@@ -45,6 +45,7 @@ def main():
                "action_revision": "r1", "objects": {}, "by_ref": {}}
     effects = []
     injected_catalog = None
+    injected_receipt = None
     social = [{"key": key, "options": [{"model_id": value, "name": f"{key} model {value}",
                                         "intrinsic_effects": {"support": value}} for value in (0, 1)]}
               for key in ("politics", "economics", "values", "future")]
@@ -63,7 +64,7 @@ def main():
         if operation == "semantic_command":
             assert args["expected_revision"] == identity["revision"]
             effects.append(copy.deepcopy(args))
-            return {"ok": True, "changed": True}
+            return copy.deepcopy(injected_receipt) if injected_receipt is not None else {"ok": True, "changed": True}
         assert operation == "semantic_choices", operation
         result = {"ok": True, **identity, "kind": args["kind"], "choices": []}
         if injected_catalog is not None:
@@ -176,6 +177,21 @@ def main():
                 if key in row: assert effect[key] == row[key], effect
             if "technology_id" in row: assert effect["tech_id"] == row["technology_id"]
             if row["command"] == "choose_council_proposal": assert effect["response"] == "yea"
+        # A submitted truce response must retain its unverified-effect qualifier.
+        for response in ("accept", "reject"):
+            injected_catalog = [{"command": "respond_to_diplomatic_offer", "response": response,
+                                 "offer_type": "truce"}]
+            injected_receipt = {"ok": True, "command": "respond_to_diplomatic_offer",
+                                "response": response, "offer_type": "truce",
+                                "relationship_change_verified": False,
+                                "completion_semantics": "Inspect fresh diplomatic state after native processing."}
+            frame = mcp.smac_choices(kind="interaction")
+            result = mcp.smac_execute_choice(frame["decision_id"], frame["choices"][0]["choice_id"])
+            assert result["ok"] and result["relationship_change_verified"] is False, result
+            assert result["completion_semantics"] == injected_receipt["completion_semantics"], result
+            assert effects.pop()["response"] == response
+        injected_receipt = None
+
         for ballot, expected in (
             ({"type": "candidate", "candidates": [
                 {"faction_id": 2, "faction_name": "Candidate A"},
