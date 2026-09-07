@@ -98,6 +98,9 @@ with tempfile.TemporaryDirectory() as tmp:
         run={'status':'running','metadata':{'semantic_sample_unix':now,'semantic_progress_unix':now-10000}}
         # A long turn alone is not a deterministic stall.
         assert classify_health({},[run],[{'running':True,'health':'healthy'}],[],now)[0]=='observed_active'
+        run['metadata']['semantic_baseline_pending']=True
+        assert classify_health({},[run],[{'running':True,'health':'healthy'}],[],now)==('unknown',['supervisor_usage_baseline_pending'])
+        run['metadata'].pop('semantic_baseline_pending')
         run['metadata']['semantic_sample_unix']=now-121
         assert classify_health({},[run],[{'running':True,'health':'healthy'}],[],now)[0]=='unknown'
         print(json.dumps({'passed':True,'http_authorization':True,'cursor_replay':True,

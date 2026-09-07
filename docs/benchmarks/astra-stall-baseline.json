@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-07",
+  "observed": {
+    "turn": 1,
+    "baseline_api_calls": 4,
+    "completed_calls_at_last_native_effect": 6,
+    "latest_completed_api_calls": 7,
+    "reported_calls_without_progress": 3,
+    "actual_completed_calls_since_effect": 1,
+    "stall_seconds": 362.595,
+    "generated_tokens_reported": 2488,
+    "cause": "Progress sampled every30seconds but cached usage refreshed every60seconds. Native progress reset baseline using pre-effect usage, charging two completed pre-effect calls to the new window."
+  },
+  "repair": "Refresh usage immediately on progress or missing/pending baseline. Only establish baseline from successful fresh telemetry. Retry failed baseline reads and expose supervisor_usage_baseline_pending as unknown in operator health. Thresholds unchanged.",
+  "validation": [
+    "Recorded-count regression establishes6-call baseline despite recently cached4-call sample;7 does not stop,8 retains original stop behavior.",
+    "Telemetry failure retains pending status and cannot fabricate no-progress work; successful retry establishes baseline.",
+    "Continuation, exact briefing supervision, and operator contracts pass.",
+    "Installed control image continuation and briefing supervision contracts pass."
+  ],
+  "deployment": "Prepared isolated control image; same-campaign verified recovery to follow.",
+  "limits": [
+    "Does not infer provider queue time from elapsed response duration.",
+    "Live post-recovery accounting and full-game acceptance remain pending."
+  ]
+}

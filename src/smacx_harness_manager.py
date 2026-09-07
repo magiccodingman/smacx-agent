@@ -836,18 +836,28 @@ print(json.dumps(result,separators=(',',':')))
                 telemetry = metadata.get("semantic_telemetry") \
                     if isinstance(metadata.get("semantic_telemetry"), dict) else {}
                 last_telemetry = float(metadata.get("semantic_telemetry_unix") or 0)
-                if now - last_telemetry >= 60:
+                baseline_pending = bool(progress_changed or not previous_fingerprint
+                    or not metadata.get("semantic_baseline_telemetry")
+                    or metadata.get("semantic_baseline_pending"))
+                telemetry_fresh = False
+                if baseline_pending or now - last_telemetry >= 60:
                     try:
                         sample = self.telemetry(str(run["run_id"]))
                         if isinstance(sample.get("telemetry"), dict):
                             telemetry = sample["telemetry"]
                             last_telemetry = now
+                            telemetry_fresh = True
                     except (DockerError, StoreError, ValueError, json.JSONDecodeError):
                         pass
                 baseline = metadata.get("semantic_baseline_telemetry") \
                     if isinstance(metadata.get("semantic_baseline_telemetry"), dict) else {}
-                if progress_changed or not baseline:
+                # A cached sample may predate the native effect by up to a
+                # minute. Using it charges pre-effect calls to the new stall
+                # window. Establish the baseline only from a successful fresh
+                # read, retrying on failure without inventing no-progress work.
+                if baseline_pending and telemetry_fresh:
                     baseline = dict(telemetry)
+                    baseline_pending = False
                 # Hermes CanonicalUsage.output_tokens already includes its
                 # reasoning_tokens detail bucket. Adding the detail again
                 # inflates both the stop threshold and the incident evidence.
@@ -864,6 +874,7 @@ print(json.dumps(result,separators=(',',':')))
                     "semantic_telemetry": telemetry,
                     "semantic_telemetry_unix": last_telemetry,
                     "semantic_baseline_telemetry": baseline,
+                    "semantic_baseline_pending": baseline_pending,
                     "semantic_unavailable_since_unix": None,
                     "semantic_unavailable_samples": 0,
                     "semantic_unavailable_reason": None,
@@ -873,6 +884,7 @@ print(json.dumps(result,separators=(',',':')))
                 ), 120), 1800)
                 stalled = bool(
                     progress.get("available") and previous_fingerprint
+                    and not baseline_pending
                     and fingerprint == previous_fingerprint
                     and now - progress_since >= stall_seconds
                     and (generated >= 4096 or calls >= 2)
