@@ -1,6 +1,6 @@
 {
   "schema": "smacx.acceptance-evidence.v1",
-  "classification": "confirmed missing managed offer labels; final-build matched native accept/reject treasury and relationship effects verified; deployment pending",
+  "classification": "confirmed managed offer gaps repaired; final-build native effects and deployed recovery verified; actual sovereign offer use unobserved",
   "origin": {
     "match_id": "match-85285536ea844e87b51e5fd081ac555e",
     "save_sha256": "83a0a8b40cd1c0869d0b2163cc6c97a9a749fdd02c986f1b1b2ee399bfe3ae38",
@@ -354,7 +354,24 @@
         "specialist": null
       }
     },
-    "deployment": "pending",
+    "deployment": {
+      "passed": true,
+      "api": "recover with refresh_runtime true",
+      "turn": 107,
+      "session_id": "session-62f94f97a32d4a8a8dcc88a57910a815",
+      "worker_id": "074e7ab9963d",
+      "engine_source_sha256": "6ba3414a336615e7734890165d32bfa0905274b84ef3a1d604dd64b3c9a5cd16",
+      "owned_unit_count": 12,
+      "energy_credits": 124,
+      "bases": 2,
+      "spartan_treaty_preserved": true,
+      "post_war_plan_revision8_preserved": true,
+      "run_id": "run-965c9dfbfe3a426ea33171b15c8c20b6",
+      "one_sovereign_resumed": true,
+      "portal_unpaused": true,
+      "heartbeat_active_interval_minutes": 10,
+      "native_failure_watcher_rearmed": true
+    },
     "actual_provider_delivery": "not observed",
     "incomplete_first_replay": "75-credit truce accept assertion passed, but rejection replay missed target branch; interrupted and retained log. Final bounded replay must observe all four actual cases.",
     "engine_source_sha256": "6ba3414a336615e7734890165d32bfa0905274b84ef3a1d604dd64b3c9a5cd16",
