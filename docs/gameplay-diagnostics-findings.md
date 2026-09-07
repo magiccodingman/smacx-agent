@@ -407,3 +407,6 @@ Storage incident during council integration: disposable match provisioning retur
 
 
 Council integrated acceptance passes after storage cleanup:15 managed tools, native council/mechanical comparisons,243.507/242.626ms site probe gaps, crash recovery and two restores of the same checkpoint preserving journaled intent/owned identities. Optional provider inference was not enabled. Deployment and actual campaign ballot delivery remain separate pending gates.
+
+
+Council deployment passes: supported retry-after-update clears the incident and restores verified212 into session2831ce6571ac422a9e755b5807d49f93 on reviewed c3f7634c engine.20 units,2 bases,783 credits and journal-backed plan are present; checkpoint precedes later212 probe losses. One sovereign runcc14d894ca294984b072084838b7b5de starts before portal supervision resumes; native failure capture is rearmed. Actual repaired council ballot delivery and full-game acceptance remain open.

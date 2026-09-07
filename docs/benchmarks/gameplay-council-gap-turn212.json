@@ -155,7 +155,7 @@
         "specialist": null
       }
     },
-    "deployment": "pending; production remains quarantined",
+    "deployment": "deployed and supported recovery verified; one sovereign resumed",
     "qualification": "Isolated native/MCP suite exited0. Optional provider/Hermes inference and action-containment option were not enabled; actual campaign delivery remains separate."
   },
   "recovery_target": {
@@ -165,5 +165,19 @@
     "native_save_sha256": "68c85eb9d2d83d90f4d9abfc3e1bd5e8c9ff9f58005c90b6f3218c1d33407820",
     "journal_head": "ba1e60bac251cf697bed6e205da27ac5d129a52be3965b3d462d3a99612003cd",
     "qualification": "Read from current checkpoint metadata; recovery has not yet been performed."
+  },
+  "deployment": {
+    "supported_retry_after_update": true,
+    "incident_cleared": true,
+    "turn": 212,
+    "session_id": "session-2831ce6571ac422a9e755b5807d49f93",
+    "worker_base_image": "3290476c8c57673b433c947dd3024387b4e8f8c6f387bce5da8f173e2f7f8502",
+    "engine_source_sha256": "c3f7634c76dbbff35892ab74ca41fc93cb99fb1950240f2d2de7d06e35d2cbaf",
+    "owned_units": 20,
+    "bases": 2,
+    "credits": 783,
+    "canonical_plan_present": true,
+    "run_id": "run-cc14d894ca294984b072084838b7b5de",
+    "qualification": "Restored checkpoint predates later turn212 probe losses. Actual repaired council ballot delivery remains unobserved; full game unfinished."
   }
 }
