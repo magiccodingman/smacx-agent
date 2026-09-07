@@ -850,19 +850,22 @@ public sealed class LobbiesController(
         }
         if (!startupTracker.TryBegin(matchId))
             return Conflict(ApiResponse<LobbyDetails>.Failure("startup_in_progress", "This lobby is already preparing to start."));
+        // After accepting startup, client disconnects must not abandon the
+        // control-plane provision while leaving the portal lobby waiting.
+        // Control requests retain their bounded server-side HTTP timeout.
         try
         {
             await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
-                "LobbyChanged", matchId, HttpContext.RequestAborted);
-            var failure = await MaterializeAsync(profile, HttpContext.RequestAborted);
+                "LobbyChanged", matchId, CancellationToken.None);
+            var failure = await MaterializeAsync(profile, CancellationToken.None);
             if (failure is not null)
             {
                 return StatusCode(failure.Value.Status,
                     ApiResponse<LobbyDetails>.Failure(failure.Value.Code, failure.Value.Message));
             }
-            await matchAccess.RecordAssignedPlayersAsync(matchId, HttpContext.RequestAborted);
+            await matchAccess.RecordAssignedPlayersAsync(matchId, CancellationToken.None);
             await lobbyHub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(
-                "LobbyChanged", matchId, HttpContext.RequestAborted);
+                "LobbyChanged", matchId, CancellationToken.None);
             return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
         }
         finally

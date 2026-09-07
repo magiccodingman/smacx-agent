@@ -77,3 +77,5 @@ The archive uses the existing authorized diagnostic export. A packet adds health
 - Existing native checkpoint recovery remains the authority. A fresh full native-game acceptance run has not been performed for these additions; the original campaign remains paused.
 
 GitHub issue automation, storage policy changes, recurring agent scheduling and the knowledge-transfer prompt are a subsequent phase. These tools do not create issues, launch monitoring agents, merge PRs or resume games on their own.
+
+Accepted startup continues provisioning if the initiating HTTP client disconnects. The CLI may still report a timeout; inspect `status` before another mutation. For cold native preparation use `--timeout 900 start MATCH_ID --wait 300`. This shields caller cancellation, not server process loss; existing bounded control-service timeouts remain.
