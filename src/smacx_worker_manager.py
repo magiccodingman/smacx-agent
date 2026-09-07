@@ -4105,6 +4105,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise WorkerManagerError("external_human_host_recovery_required")
         self._stop_match_harnesses_for_restore(match_id)
         self.park_match(match_id)
+        # Verify the actual file before forking journals or restoring Hermes.
+        # A well-formed recorded digest alone cannot bind AI memory to bytes
+        # that may have been replaced since the checkpoint was published.
+        save_digest = self._checkpoint_save_digest(str(host_seat["instance_id"]), slot)
+        if save_digest.get("sha256") != checkpoint.get("native_save_sha256") \
+                or save_digest.get("bytes") != checkpoint.get("native_save_bytes"):
+            raise WorkerManagerError("native_checkpoint_digest_mismatch")
         memory_restore = self._prepare_memory_restore(match_id, checkpoint)
         runtime_refresh = self._refresh_match_worker_images(match_id) if refresh_runtime else []
         if match["mode"] == "lan":

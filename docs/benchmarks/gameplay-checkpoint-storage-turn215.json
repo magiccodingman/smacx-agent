@@ -16,7 +16,8 @@
     "checkpoint_atomicity": "Alternating bounded native save pair preserves last verified native slot until AI archive and metadata publication succeed. Logical slot unchanged; legacy metadata falls back to slot.",
     "containment": "No-progress clean-exit threshold latches run and match and quarantines native/collectors.",
     "standalone_incident_recovery": "Normal verified recovery clears only clean-yield incidents after native identity, AI memory and collectors succeed; capability retry still retains its own gate.",
-    "client_failure_trace": "Runtime context fetch timeout/HTTP/transport failure records episode, elapsed time and normalized reason before re-raising; no endpoint or token recorded. Human transcript and aggregate failures include it."
+    "client_failure_trace": "Runtime context fetch timeout/HTTP/transport failure records episode, elapsed time and normalized reason before re-raising; no endpoint or token recorded. Human transcript and aggregate failures include it.",
+    "native_digest_preflight": "After stopping/parking, verify native file SHA256 and byte count against the checkpoint before any journal fork, Hermes restore or worker restart."
   },
   "tests": {
     "large_helper": "PASS actual checkpoint/restore with136MiB retained payload under128MiB tmpfs, integrity/source hash/scope/staging checks",
@@ -24,13 +25,14 @@
     "ai_memory": "PASS scoped checkpoint/restore and post-checkpoint memory exclusion",
     "slot_atomicity": "PASS manager failure injection; repeated failures preserve prior native bytes/metadata, bounded pair, logical slot stable",
     "harness_continuation": "PASS clean-yield containment plus existing live stall/outage/restart contracts",
-    "recovery_orchestration": "PASS eight controlled cases: solo/LAN, legacy/staged slots, identity success/failure; failure never clears incident; internal load slot and public logical slot verified.",
+    "recovery_orchestration": "PASS twelve controlled solo/LAN cases across legacy/staged slots, successful recovery, identity failure and native digest mismatch; mismatch precedes all memory restoration.",
     "context_fetch_failure": "PASS four client exceptions; fail-closed cause preserved, one episode-linked event, summary/metrics and secret exclusion verified."
   },
   "pending": [
     "Final-image native/MCP checkpoint/recovery regression",
     "Actual deployed checkpoint and continued provider request proof",
-    "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair"
+    "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair",
+    "Final native digest preflight added after current integration image; requires validation before deployment"
   ],
   "deployment": "not deployed; portal paused and zero sovereign runs",
   "integrated_checkpoint_image": {

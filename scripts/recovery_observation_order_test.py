@@ -6,11 +6,12 @@ from types import SimpleNamespace
 from smacx_worker_manager import WorkerManager, WorkerManagerError
 
 
-def exercise(mode, fail_identity=False, staged_slot=False):
+def exercise(mode, fail_identity=False, staged_slot=False, fail_save=False):
     ids = ['instance-a'] if mode == 'singleplayer' else ['instance-a', 'instance-b']
     seats = [{'seat_index': i, 'instance_id': instance, 'metadata': {}}
              for i, instance in enumerate(ids)]
     checkpoint = {'verified': True, 'slot': 'control_recovery',
+                  'native_save_sha256':'a'*64, 'native_save_bytes':42,
                   'native_semantic_identity': {i: {'capsule': i} for i in ids}}
     if staged_slot:
         checkpoint['native_save_slot'] = 'ckpt_test_a'
@@ -42,7 +43,16 @@ def exercise(mode, fail_identity=False, staged_slot=False):
         recover_supervision_incidents=clear_incidents)
     manager._stop_match_harnesses_for_restore = lambda _: events.append(('stop',))
     manager.park_match = lambda _: lifecycle('match', 'parked')
-    manager._prepare_memory_restore = lambda *_: {'restored': True}
+    def digest(instance, slot):
+        assert instance == ids[0] and slot == expected_slot
+        events.append(('native_digest_verified', not fail_save))
+        return {'sha256':('b' if fail_save else 'a')*64, 'bytes':42}
+    manager._checkpoint_save_digest = digest
+    def memory(*_args):
+        assert ('native_digest_verified', True) in events
+        events.append(('memory_restore',))
+        return {'restored':True}
+    manager._prepare_memory_restore = memory
     manager._refresh_match_worker_images = lambda _: []
     def start(instance, **kwargs):
         assert kwargs.get('_defer_ready') is True
@@ -75,18 +85,22 @@ def exercise(mode, fail_identity=False, staged_slot=False):
     try:
         result = manager._recover_match_locked('match', refresh_runtime=True)
     except WorkerManagerError:
-        assert fail_identity
+        assert fail_identity or fail_save
         assert not any(e[0] == 'collector' for e in events)
         assert match['status'] != 'running'
         assert not any(e[0] == 'incident_recovered' for e in events)
+        if fail_save:
+            assert not any(e[0] in ('memory_restore','start_without_collector') for e in events)
     else:
-        assert not fail_identity and result['match']['status'] == 'running'
+        assert not fail_identity and not fail_save and result['match']['status'] == 'running'
         assert len(result['restored_mcp_endpoints']) == len(ids)
         assert result['recovered_incidents'][0]['status'] == 'recovered'
-    return {'mode': mode, 'identity_failure': fail_identity, 'staged_slot':staged_slot, 'passed': True}
+    return {'mode': mode, 'identity_failure': fail_identity, 'staged_slot':staged_slot,
+            'save_digest_failure':fail_save, 'passed': True}
 
 
 if __name__ == '__main__':
-    print(json.dumps({'cases': [exercise(mode, failure, staged)
-        for mode in ['singleplayer', 'lan'] for failure in [False, True] for staged in [False, True]],
+    print(json.dumps({'cases': [exercise(mode, failure, staged, save_failure)
+        for mode in ['singleplayer', 'lan'] for failure,save_failure in [(False,False),(True,False),(False,True)]
+        for staged in [False, True]],
         'classification': 'actual recovery orchestration with controlled native/collector adapters'}))
