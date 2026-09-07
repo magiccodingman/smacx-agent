@@ -1,5 +1,5 @@
 {
-  "status": "regressions pass; deployment pending",
+  "status": "deployed; packaged regressions and live context delivery pass; campaign paused by user request",
   "failure": {
     "turn": 221,
     "runtime_event": "4c92828b70864efdbcd7d6bf9b3325f0",
@@ -20,9 +20,33 @@
   },
   "acceptance": {
     "native_mechanical_behavior_changed": false,
-    "live_delivery": "pending",
+    "live_delivery": "verified actual submitted provider request",
     "resume_campaign_after_verification": false,
     "full_game_complete": false
   },
-  "operator_request": "After this repair and verification leave campaign paused and stop; monitoring automation paused."
+  "operator_request": "After this repair and verification leave campaign paused and stop; monitoring automation paused.",
+  "deployment": {
+    "control_image": "sha256:ca1ba531f86bab8d1d39e28710ab220a5d77a90d4b051e461207cc51ab2bf328",
+    "harness_image": "sha256:76cd39016d9fa38c06780bce411a0cbbb72a67664d6ac46ca50247d93fed8a5a",
+    "packaged_tests": "real collector and actual HTTP handler pass",
+    "provider_request": "47705c88ed8e45549dd7925043520fc5",
+    "episode": "episode-68dcd699f1b5d3cb26658fe4da350e3f",
+    "observation_cursor": 1490,
+    "world_revision": 51,
+    "native_session_preserved": true,
+    "live_limit": "Valid live cut delivered; original transient invalid row cannot be recreated on demand. Recollection behavior is controlled regression evidence."
+  },
+  "paused_state": {
+    "turn": 221,
+    "bases": 1,
+    "units": 9,
+    "credits": 435,
+    "popup": "SEIZEBASE3",
+    "active_sovereign_runs": 0,
+    "portal_control_mcp_native_and_specialist_containers": "paused",
+    "periodic_automation": "PAUSED",
+    "native_watcher": "terminated after PID and command verification",
+    "new_checkpoint": "rejected safely: checkpoint_waiting_for_quiescence:interaction",
+    "preservation": "Current native process is Docker-paused, not a newly checkpointed save. Prior verified221 checkpoint remains available."
+  }
 }
