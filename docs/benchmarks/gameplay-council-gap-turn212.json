@@ -62,5 +62,10 @@
   },
   "decision_request": "7a46aa7018c14f9fa3b9d9cccbaf895c",
   "finding": "Native unsupported_modal after CALLSCOUNCIL, not evidence that missing Former automation caused this stop. The managed capability-gap frame omitted interaction detail and the sovereign attributed the block to Formers. Native modal identity and safe managed handling remain to be investigated. Worker and MCP remain paused; portal supervision additionally paused.",
-  "bundle_sha256": "e50be513b99f29595fa73115d94ea06a66efd677fcfc3c887978e5838a5ab678"
+  "bundle_sha256": "e50be513b99f29595fa73115d94ea06a66efd677fcfc3c887978e5838a5ab678",
+  "source_audit": {
+    "finding": "active_council_window_proposal is used by interaction choice enumeration and cast_council_vote but absent from interaction_kind. An unlabeled council modal can therefore route to unsupported_modal before the managed decision reaches existing ballot choices.",
+    "qualification": "Source routing gap confirmed; preserved modal identity, safe classifier repair, regression and native acceptance remain pending.",
+    "compact_frame": "capability_gap branch omits snapshot.interaction even though the preserved native snapshot includes unsupported_modal and last_started_popup_label CALLSCOUNCIL."
+  }
 }
