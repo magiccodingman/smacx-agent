@@ -4209,6 +4209,12 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             result["runtime_refresh"] = runtime_refresh
         result["memory_restore"] = memory_restore
         result["native_semantic_identity_restore"] = restored_identity
+        # A standalone clean-yield incident has no capability-gap ID to pass
+        # to retry-after-update. Clear only this condition after normal
+        # verified native/AI recovery and collector startup have all succeeded.
+        result["recovered_incidents"] = self.control.recover_supervision_incidents(
+            match_id, kinds=("harness_clean_yield_no_progress",),
+        )
         return result
 
     def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:

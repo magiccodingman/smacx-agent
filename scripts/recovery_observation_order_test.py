@@ -6,12 +6,15 @@ from types import SimpleNamespace
 from smacx_worker_manager import WorkerManager, WorkerManagerError
 
 
-def exercise(mode, fail_identity=False):
+def exercise(mode, fail_identity=False, staged_slot=False):
     ids = ['instance-a'] if mode == 'singleplayer' else ['instance-a', 'instance-b']
     seats = [{'seat_index': i, 'instance_id': instance, 'metadata': {}}
              for i, instance in enumerate(ids)]
     checkpoint = {'verified': True, 'slot': 'control_recovery',
                   'native_semantic_identity': {i: {'capsule': i} for i in ids}}
+    if staged_slot:
+        checkpoint['native_save_slot'] = 'ckpt_test_a'
+    expected_slot = checkpoint.get('native_save_slot', checkpoint['slot'])
     match = {'mode': mode, 'status': 'error', 'metadata': {'recovery_checkpoint': checkpoint}}
     events = []
     imported = set()
@@ -19,15 +22,24 @@ def exercise(mode, fail_identity=False):
         if status == 'running':
             assert imported == set(ids)
             assert [e[1] for e in events if e[0] == 'collector'] == ids
+            assert kwargs['metadata']['last_recovered_slot'] == 'control_recovery'
         match['status'] = status
         events.append(('lifecycle', status))
         return copy.deepcopy(match)
+    def clear_incidents(_match_id, *, kinds):
+        assert kinds == ('harness_clean_yield_no_progress',)
+        assert match['status'] == 'running' and imported == set(ids)
+        events.append(('incident_recovered',))
+        return [{'incident_id':'incident-clean', 'status':'recovered'}]
+    def autostart(_instance, value):
+        assert value['startup_save'] == expected_slot
     manager = object.__new__(WorkerManager)
     manager.control_data_volume = 'fixture'
     manager.control = SimpleNamespace(
         get_match=lambda _: copy.deepcopy(match), list_seats=lambda _: seats,
         get_worker_spec=lambda _: {'autostart': {}, 'network': {'controller_kind': 'agent'}},
-        update_worker_autostart=lambda *args: None, update_match_lifecycle=lifecycle)
+        update_worker_autostart=autostart, update_match_lifecycle=lifecycle,
+        recover_supervision_incidents=clear_incidents)
     manager._stop_match_harnesses_for_restore = lambda _: events.append(('stop',))
     manager.park_match = lambda _: lifecycle('match', 'parked')
     manager._prepare_memory_restore = lambda *_: {'restored': True}
@@ -41,6 +53,7 @@ def exercise(mode, fail_identity=False):
     manager._wait_native = lambda *args, **kwargs: {'ok': True, 'snapshot': {'turn': 22}}
     def lan(match_id, **kwargs):
         assert kwargs.get('_defer_ready') is True
+        assert kwargs['resume_slot'] == expected_slot
         for instance in ids: start(instance, _defer_ready=True)
         return {'ok': True, 'match': lifecycle(match_id, 'starting')}
     manager.start_lan_match = lan
@@ -65,13 +78,15 @@ def exercise(mode, fail_identity=False):
         assert fail_identity
         assert not any(e[0] == 'collector' for e in events)
         assert match['status'] != 'running'
+        assert not any(e[0] == 'incident_recovered' for e in events)
     else:
         assert not fail_identity and result['match']['status'] == 'running'
         assert len(result['restored_mcp_endpoints']) == len(ids)
-    return {'mode': mode, 'identity_failure': fail_identity, 'passed': True}
+        assert result['recovered_incidents'][0]['status'] == 'recovered'
+    return {'mode': mode, 'identity_failure': fail_identity, 'staged_slot':staged_slot, 'passed': True}
 
 
 if __name__ == '__main__':
-    print(json.dumps({'cases': [exercise(mode, failure)
-        for mode in ['singleplayer', 'lan'] for failure in [False, True]],
+    print(json.dumps({'cases': [exercise(mode, failure, staged)
+        for mode in ['singleplayer', 'lan'] for failure in [False, True] for staged in [False, True]],
         'classification': 'actual recovery orchestration with controlled native/collector adapters'}))
