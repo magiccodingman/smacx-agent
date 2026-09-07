@@ -3678,6 +3678,24 @@ int semantic_air_full_safe_range(int veh_id) {
         / Rules->move_rate_roads);
 }
 
+bool semantic_friendly_air_refuel_tile(int faction_id, int x, int y);
+
+// movement_turns is shared storage: Formers accumulate terraform work here.
+// Fuel and current movement/refuel state are private to the owning faction.
+std::string semantic_owned_air_state(int faction_id, int veh_id) {
+    VEH& veh = Vehs[veh_id];
+    if (veh.faction_id != faction_id || veh.triad() != TRIAD_AIR) return "";
+    std::ostringstream out;
+    out << ",\"air_fuel_turns_used\":"
+        << (!veh.is_missile() && veh.range() > 0
+            ? static_cast<int>(veh.movement_turns) : -1)
+        << ",\"air_safe_range\":" << semantic_air_safe_range(veh_id)
+        << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(veh_id)
+        << ",\"air_origin_refuels\":"
+        << (semantic_friendly_air_refuel_tile(faction_id, veh.x, veh.y) ? "true" : "false");
+    return out.str();
+}
+
 bool semantic_bombing_run_unit_eligible(int faction_id, int veh_id) {
     if (veh_id < 0 || veh_id >= *VehCount) return false;
     VEH& veh = Vehs[veh_id];
@@ -7766,12 +7784,7 @@ std::string units_response() {
                 << ",\"ignores_rough_movement\":"
                 << (semantic_ignores_rough_movement(veh) ? "true" : "false")
                 << ",\"air_range\":" << static_cast<int>(veh.range())
-                << ",\"air_fuel_turns_used\":" << static_cast<int>(veh.movement_turns)
-                << ",\"air_safe_range\":" << semantic_air_safe_range(i)
-                << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(i)
-                << ",\"air_origin_refuels\":"
-                << (semantic_friendly_air_refuel_tile(faction_id, veh.x, veh.y)
-                    ? "true" : "false")
+                << semantic_owned_air_state(faction_id, i)
                 << ",\"airdrop_ready\":"
                 << (can_airdrop(i, mapsq(veh.x, veh.y)) ? "true" : "false")
                 << ",\"airdrop_range\":" << drop_range(faction_id)
@@ -10215,12 +10228,7 @@ std::string perspective_world_page_response(const std::string& request) {
                 << ",\"ignores_rough_movement\":"
                 << (semantic_ignores_rough_movement(veh) ? "true" : "false")
                 << ",\"air_range\":" << static_cast<int>(veh.range())
-                << ",\"air_fuel_turns_used\":" << static_cast<int>(veh.movement_turns)
-                << ",\"air_safe_range\":" << semantic_air_safe_range(index)
-                << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(index)
-                << ",\"air_origin_refuels\":"
-                << (owned && semantic_friendly_air_refuel_tile(
-                    faction_id, veh.x, veh.y) ? "true" : "false")
+                << semantic_owned_air_state(faction_id, index)
                 << ",\"airdrop_ready\":"
                 << (airdrop_ready ? "true" : "false")
                 << ",\"airdrop_range\":" << (owned ? drop_range(faction_id) : -1);
@@ -10251,7 +10259,8 @@ std::string perspective_world_page_response(const std::string& request) {
                 << ",\"controlled_native\":" << (veh.is_native_unit() && veh.faction_id ? "true" : "false")
                 << ",\"progenitor_force\":" << (!veh.is_native_unit() && is_alien(veh.faction_id) ? "true" : "false")
                 << ",\"airdrop_capable\":" << (has_abil(veh.unit_id, ABL_DROP_POD) ? "true" : "false")
-                << ",\"airdrop_used\":" << ((veh.state & VSTATE_MADE_AIRDROP) ? "true" : "false")
+                << (owned ? std::string(",\"airdrop_used\":")
+                    + ((veh.state & VSTATE_MADE_AIRDROP) ? "true" : "false") : "")
                 << ",\"amphibious\":" << (has_abil(veh.unit_id, ABL_AMPHIBIOUS) ? "true" : "false")
                 << ",\"cloaked\":" << (has_abil(veh.unit_id, ABL_CLOAKED) ? "true" : "false")
                 << (owned ? std::string(",\"carrier\":") + (page_carrier_capacity > 0 ? "true" : "false")

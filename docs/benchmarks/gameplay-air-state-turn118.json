@@ -1,0 +1,53 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "observed_turn": 118,
+  "classification": "native shared counter mislabeled as air fuel; foreign private aircraft state exposed in visible-contact page",
+  "observed_owned_former": {
+    "object_ref": "own-unit-13",
+    "location_ref": "location-1135",
+    "triad": "land",
+    "order_name": "auto_former_improve_home_base",
+    "air_fuel_turns_used": 4
+  },
+  "source_evidence": {
+    "shared_storage": "VEH.movement_turns",
+    "terraform_meaning": "Accumulated work contribution; not elapsed fuel turns or a remaining-turn prediction.",
+    "foreign_air_safe_range": "Uses private veh.moves_spent and movement_turns; now omitted for non-owned units.",
+    "foreign_airdrop_used": "Private per-turn state omitted from visible-contact roles."
+  },
+  "repair": {
+    "native": "One owned-aircraft output helper used by legacy list_units and semantic unit page. Non-air fuel fields omitted; range-zero/missile fuel counter is -1 (not applicable).",
+    "adapter": "Old native bundles filter non-air and foreign air state before evidence wrapping.",
+    "recovery": "Old world-object calculation inputs and provider evidence are sanitized without modifying retained journal/checkpoint originals.",
+    "cache": "Calculator version advanced to v6-air-state-visibility.",
+    "native_actions_changed": false
+  },
+  "tests": {
+    "compiled_production_helper_and_projection": "pass",
+    "fair_play_differential": "pass",
+    "movement_mechanics": "pass",
+    "counterfactual_contract": "pass",
+    "geographic_semantics": "pass",
+    "native_cross_build": "pass; thinker.dll and thinker.exe linked",
+    "full_native_mcp_recovery": "running"
+  },
+  "maintenance_checkpoint": "checkpoint-5a668fb8e8d14677b2d91064da87e151",
+  "engine_source_sha256": "f215821fb2c03667159d1b3f90c36baa8f8a3ea152fa7a94aef39f6c94ad291b",
+  "limits": [
+    "Adapter fixtures do not assert new native aircraft fuel prediction accuracy.",
+    "Former orders observed as road/sensor and later reset; exact terrain completion not independently proven by this checkpoint.",
+    "Deployed output, actual provider delivery, and recovery pending.",
+    "Full game unfinished."
+  ],
+  "separate_compact_history_response": {
+    "request_id": "b8a7e87bbf7d4f01a1090a673ac8038d",
+    "mode": "changes",
+    "since_cursor": 610,
+    "detail": "compact",
+    "code": "single_world_item_exceeds_budget",
+    "ceiling": 512,
+    "required_next": "Retry same position with deep detail; no changes returned or skipped.",
+    "classification": "Explicit bounded retry; sovereign follow-through not yet observed before operator maintenance stop."
+  }
+}

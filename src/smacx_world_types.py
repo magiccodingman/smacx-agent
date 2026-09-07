@@ -54,6 +54,24 @@ def provider_safe(value: Any) -> Any:
                     or lower in _PRIVATE_EXACT_KEYS:
                 continue
             result[key] = provider_safe(item)
+        # Legacy snapshots may contain a shared terraforming/fuel byte or
+        # foreign private aircraft state. Qualify the provider projection only;
+        # retained journal evidence must never be rewritten by this repair.
+        for key in ("air_fuel_turns_used", "air_safe_range", "air_full_safe_range",
+                    "air_origin_refuels"):
+            raw = result.get(key)
+            if not isinstance(raw, Mapping) or "source" not in raw:
+                continue
+            triad = result.get("triad")
+            triad = triad.get("value") if isinstance(triad, Mapping) else triad
+            if raw.get("source") != "owned_state" \
+                    or (key == "air_fuel_turns_used" and triad != "air") \
+                    or (triad is not None and triad != "air"):
+                result.pop(key, None)
+        roles = result.get("roles")
+        if isinstance(roles, Mapping) and roles.get("source") != "owned_state" \
+                and isinstance(roles.get("value"), Mapping):
+            roles["value"].pop("airdrop_used", None)
         if result.get("event_kind") in ("contact_moved", "unit_moved"):
             endpoints = [result.get("from_location_ref"), result.get("to_location_ref")]
             path = result.get("path")

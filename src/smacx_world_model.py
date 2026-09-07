@@ -20,7 +20,7 @@ from smacx_world_types import (
 
 
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
-CALCULATOR_VERSION = "smacx.calculators.v5-semantic-consumers"
+CALCULATOR_VERSION = "smacx.calculators.v6-air-state-visibility"
 
 ENTITLEMENT_EVIDENCE_SOURCES = {
     "unity_survey": EvidenceSource.SURVEY,
@@ -441,6 +441,15 @@ class PerspectiveProjector:
                         "to_location_ref": safe_path[-1]["to_location_ref"],
                         "turn": turn,
                     })
+            unit = dict(unit)
+            # Defend the adapter boundary when replaying older native bundles.
+            if not owned or unit.get("triad") != "air":
+                for name in ("air_fuel_turns_used", "air_safe_range", "air_full_safe_range",
+                             "air_origin_refuels"):
+                    unit.pop(name, None)
+            if not owned and isinstance(unit.get("roles"), Mapping):
+                unit["roles"] = dict(unit["roles"])
+                unit["roles"].pop("airdrop_used", None)
             fields = {name: _evidence(value, current=True, owned=owned, turn=turn,
                                       world_revision=revision_hint, provenance_ref=provenance)
                       for name, value in unit.items()

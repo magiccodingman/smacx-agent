@@ -69,7 +69,25 @@ class WorldService:
 
     @staticmethod
     def _objects(projection: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-        return {str(item["object_ref"]): dict(item) for item in projection.get("objects", ())}
+        objects = {str(item["object_ref"]): dict(item) for item in projection.get("objects", ())}
+        # Old checkpoints must not feed foreign private range counters into
+        # deterministic calculations, even before a fresh native observation.
+        for item in objects.values():
+            if item.get("kind") not in {"own_unit", "foreign_contact"}:
+                continue
+            fields = dict(item.get("fields") or {})
+            if item.get("kind") != "own_unit" or _value(item, "triad") != "air":
+                for name in ("air_fuel_turns_used", "air_safe_range", "air_full_safe_range",
+                             "air_origin_refuels"):
+                    fields.pop(name, None)
+            if item.get("kind") != "own_unit" and isinstance(fields.get("roles"), Mapping):
+                roles = dict(fields["roles"])
+                if isinstance(roles.get("value"), Mapping):
+                    roles["value"] = dict(roles["value"])
+                    roles["value"].pop("airdrop_used", None)
+                fields["roles"] = roles
+            item["fields"] = fields
+        return objects
 
     @staticmethod
     def _topology(projection: Mapping[str, Any]) -> PerspectiveTopology:
