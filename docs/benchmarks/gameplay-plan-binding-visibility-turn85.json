@@ -43,7 +43,7 @@
     "exact_qwen_operating_prompt_tokens": 1338,
     "exact_qwen_tool_schema_tokens": 4641,
     "managed_tools": 15,
-    "actual_repaired_provider_delivery": false,
+    "actual_repaired_provider_delivery": true,
     "guarded_writer_next_request_handoff_gc_journal_restart": true,
     "controlled_http_serialization": true
   },
@@ -79,5 +79,21 @@
     "control": "sha256:b7f6b7a16cf245c39341c53ac49a7ce8b284ef42080c7a3af679eafeb44fa2a4",
     "harness": "sha256:c5c926e8ec5f6bb0feaaebe4f403faf29c3f401f1eea194a7029c0b8d356cc5c",
     "native": "unchanged support repair"
+  },
+  "deployment": {
+    "commit": "2ac354e",
+    "session_id": "session-b9e3bd44786c476c868c5c2dc6312ef3",
+    "native_worker_replaced": false,
+    "turn": 85,
+    "run_id": "run-8706a537c0434ffb9867c31a30792174",
+    "active_sovereigns": 1,
+    "actual_provider_request_ids": [
+      "998c53e454204d638adc6d594d5806a3",
+      "9038b169e11648f58f865b24fa3a33e2"
+    ],
+    "assessment_scope_delivered": true,
+    "all_three_unbound_plan_refs_delivered": true,
+    "memory_tool_participant_guidance_delivered": true,
+    "autonomous_structured_binding_use": "not yet observed"
   }
 }
