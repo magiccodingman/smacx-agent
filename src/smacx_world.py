@@ -69,7 +69,25 @@ class WorldService:
 
     @staticmethod
     def _objects(projection: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-        return {str(item["object_ref"]): dict(item) for item in projection.get("objects", ())}
+        objects = {str(item["object_ref"]): dict(item) for item in projection.get("objects", ())}
+        # Old checkpoints must not feed foreign private range counters into
+        # deterministic calculations, even before a fresh native observation.
+        for item in objects.values():
+            if item.get("kind") not in {"own_unit", "foreign_contact"}:
+                continue
+            fields = dict(item.get("fields") or {})
+            if item.get("kind") != "own_unit" or _value(item, "triad") != "air":
+                for name in ("air_fuel_turns_used", "air_safe_range", "air_full_safe_range",
+                             "air_origin_refuels"):
+                    fields.pop(name, None)
+            if item.get("kind") != "own_unit" and isinstance(fields.get("roles"), Mapping):
+                roles = dict(fields["roles"])
+                if isinstance(roles.get("value"), Mapping):
+                    roles["value"] = dict(roles["value"])
+                    roles["value"].pop("airdrop_used", None)
+                fields["roles"] = roles
+            item["fields"] = fields
+        return objects
 
     @staticmethod
     def _topology(projection: Mapping[str, Any]) -> PerspectiveTopology:
@@ -401,6 +419,7 @@ class WorldService:
             (6000 if tier == "64k" else 16000),
         )
         regenerate = current is None or current["world_epoch"] != identity.world_epoch \
+            or current["payload"].get("projector_version") != SemanticLodProjector.FORMAT_VERSION \
             or current["payload"].get("turn") != turn \
             or int(current.get("token_estimate") or estimate_tokens(current["payload"])) \
                 > effective_token_cap \
@@ -777,8 +796,11 @@ class WorldService:
             "radius": radius, "since_cursor": int(since_cursor), "detail": detail,
             "continuation": continuation,
         }
+        if mode in {"overview", "changes"}:
+            request["anchor_projector_version"] = SemanticLodProjector.FORMAT_VERSION
         if mode == "changes":
             request["committed_observation_cursor"] = int(projection["observation_cursor"])
+            request["history_pagination_version"] = 2
         if airdrop_evidence:
             request["_airdrop_evidence"] = airdrop_evidence
         if spatial_center:
@@ -798,10 +820,14 @@ class WorldService:
         if continuation and not continuation.startswith("cursor-"):
             raise WorldQueryError("invalid_world_continuation")
         try:
-            continuation_offset = int(continuation.removeprefix("cursor-")) if continuation else 0
+            offsets = continuation.removeprefix("cursor-").split("-") if continuation else ["0"]
+            if len(offsets) > (2 if mode == "changes" else 1):
+                raise ValueError("invalid_cursor_parts")
+            continuation_offset = int(offsets[0])
+            temporal_offset = int(offsets[1]) if len(offsets) == 2 else 0
         except ValueError as exc:
             raise WorldQueryError("invalid_world_continuation") from exc
-        if continuation_offset < 0 or continuation_offset > 1_000_000:
+        if any(offset < 0 or offset > 1_000_000 for offset in (continuation_offset, temporal_offset)):
             raise WorldQueryError("invalid_world_continuation")
         dependency_refs = self._dependency_refs(
             mode, objects, subjects=subjects, origin_ref=origin_ref,
@@ -1241,10 +1267,12 @@ class WorldService:
                 "anchor_observation_cursor": anchor["anchor_observation_cursor"],
             }
             result["items"] = self.store.changes_since(
-                self.scope, identity.timeline_id, int(since_cursor), limit=512, through_cursor=int(projection["observation_cursor"]),
+                self.scope, identity.timeline_id, int(since_cursor), limit=513, through_cursor=int(projection["observation_cursor"]),
+                offset=continuation_offset,
             )
             result["temporal_events"] = self.store.temporal_events_since(
-                self.scope, identity.timeline_id, int(since_cursor), limit=256, through_cursor=int(projection["observation_cursor"]),
+                self.scope, identity.timeline_id, int(since_cursor), limit=257, through_cursor=int(projection["observation_cursor"]),
+                offset=temporal_offset,
             )
         elif mode == "render":
             topology = self._topology(projection)
@@ -1259,7 +1287,7 @@ class WorldService:
                     topology, objects, max_cells=point_limit,
                 )
                 result["truncated"] = True
-        if isinstance(result.get("items"), list) and continuation_offset:
+        if mode != "changes" and isinstance(result.get("items"), list) and continuation_offset:
             result["items"] = result["items"][continuation_offset:]
         available_before_trim = len(result.get("items", [])) \
             if isinstance(result.get("items"), list) else 0
@@ -1268,12 +1296,43 @@ class WorldService:
         # budget seal.  Replacing it with the real cursor (or null) can only
         # shrink the final payload, preserving the trim decision.
         result["continuation"] = (
-            "cursor-1000000000000" if isinstance(result.get("items"), list) else None
+            ("cursor-1000000000000-1000000000000" if mode == "changes" else "cursor-1000000000000")
+            if isinstance(result.get("items"), list) else None
         )
+        available_temporal = len(result.get("temporal_events", []))
         result = self._trim(provider_safe(result), budget)
+        if mode == "changes" and result.get("ok") is not False \
+                and (available_before_trim or available_temporal) \
+                and not result.get("items") and not result.get("temporal_events"):
+            result = {"ok": False, "schema": "smacx.world-result.v1", "mode": mode,
+                      "error": {"code": "single_world_item_exceeds_budget"},
+                      "declared_token_ceiling": budget,
+                      "query_hint": "Use deep detail without advancing the continuation."}
+        if mode == "changes" and result.get("ok") is False \
+                and isinstance(result.get("error"), Mapping) \
+                and result.get("error", {}).get("code") == "single_world_item_exceeds_budget" \
+                and detail != "deep":
+            # A complete historical object may exceed the standard page even
+            # though deep detail can return it. Preserve the exact position;
+            # advancing since_cursor here could skip sibling deltas from the
+            # same observation. Do not suggest subject filtering, which this
+            # historical stream does not implement.
+            result["query_hint"] = "Retry the same position with deep detail; no changes were returned or skipped."
+            result["required_next"] = {
+                "tool": "smac_world",
+                "arguments": {"mode": "changes", "since_cursor": int(since_cursor),
+                              "detail": "deep", "continuation": continuation},
+            }
         returned = len(result.get("items", [])) if isinstance(result.get("items"), list) else 0
         if result.get("ok") is False:
             result["continuation"] = None
+        elif mode == "changes":
+            returned_temporal = len(result.get("temporal_events", []))
+            if returned < available_before_trim or returned_temporal < available_temporal \
+                    or available_before_trim == 513 or available_temporal == 257:
+                result["continuation"] = f"cursor-{continuation_offset + returned}-{temporal_offset + returned_temporal}"
+            else:
+                result["continuation"] = None
         elif returned < available_before_trim:
             result["continuation"] = f"cursor-{continuation_offset + returned}"
         else:

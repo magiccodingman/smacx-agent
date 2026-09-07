@@ -20,7 +20,7 @@ from smacx_world_types import (
 
 
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
-CALCULATOR_VERSION = "smacx.calculators.v5-semantic-consumers"
+CALCULATOR_VERSION = "smacx.calculators.v6-air-state-visibility"
 
 ENTITLEMENT_EVIDENCE_SOURCES = {
     "unity_survey": EvidenceSource.SURVEY,
@@ -414,6 +414,8 @@ class PerspectiveProjector:
                     self.contacts.states[native_key].contact_ref = ref
                 kind = "foreign_contact"
                 metadata = {"native_observation_key": native_key}
+                if bundle.get("_native_temporal_authority"):
+                    metadata["native_episode_schema_version"] = bundle.get("_native_episode_schema_version")
                 safe_path = [
                     {"from_location_ref": str(step.get("from")),
                      "to_location_ref": str(step.get("to")),
@@ -439,6 +441,17 @@ class PerspectiveProjector:
                         "to_location_ref": safe_path[-1]["to_location_ref"],
                         "turn": turn,
                     })
+            unit = dict(unit)
+            # Defend the adapter boundary when replaying older native bundles.
+            if not owned or unit.get("triad") != "air":
+                for name in ("air_fuel_turns_used", "air_safe_range", "air_full_safe_range",
+                             "air_origin_refuels"):
+                    unit.pop(name, None)
+            if not owned:
+                unit.pop("terraform_task", None)
+            if not owned and isinstance(unit.get("roles"), Mapping):
+                unit["roles"] = dict(unit["roles"])
+                unit["roles"].pop("airdrop_used", None)
             fields = {name: _evidence(value, current=True, owned=owned, turn=turn,
                                       world_revision=revision_hint, provenance_ref=provenance)
                       for name, value in unit.items()
@@ -611,6 +624,9 @@ class PerspectiveProjector:
 class SemanticLodProjector:
     """Create a bounded strategic anchor whose size follows active complexity."""
 
+    # Bump when persisted summaries change independently of world material.
+    FORMAT_VERSION = 2
+
     def __init__(self, *, context_tier: str, token_cap: int | None = None) -> None:
         if context_tier not in {"64k", "256k"}:
             raise WorldContractError("invalid_context_tier")
@@ -628,7 +644,7 @@ class SemanticLodProjector:
         kind = str(item.get("kind") or "unknown")
         keys = {
             "base": ("name", "owner_ref", "population", "production_name",
-                     "mineral_surplus", "drone_riots", "eco_damage"),
+                     "mineral_surplus", "nutrient_surplus", "drone_riots", "eco_damage"),
             "faction": ("faction_name", "leader_name", "relations", "alien"),
             "game_settings": ("state",), "scenario_rules": ("state",),
             "economy_state": ("state",), "research_state": ("state",),
@@ -1126,6 +1142,7 @@ class SemanticLodProjector:
                     "_region_projection": [*regions, *physical_masses]}
         anchor = {
             "schema": "smacx.world-anchor.v1",
+            "projector_version": self.FORMAT_VERSION,
             "identity": dict(projection["identity"]),
             "world_revision": int(projection.get("world_revision", 0)),
             "observation_cursor": int(projection.get("observation_cursor", 0)),
@@ -1212,6 +1229,19 @@ class SemanticLodProjector:
             anchor["regions"] = [{key: value for key, value in item.items()
                                   if key in {"region_ref", "version", "location_count"}}
                                  for item in anchor["regions"]]
+        if estimate_tokens(anchor) > content_cap:
+            # Frontier geometry and display aliases are deliberate-zoom detail.
+            # Retain every frontier, its current/stale evidence and resource
+            # composition; never turn budget pressure into missing history.
+            frontier_detail = {"boundary_refs", "nearby_landmarks",
+                               "nearby_resource_counts", "nearby_foreign_faction_refs",
+                               "unknown_boundary_size", "detail"}
+            anchor["frontiers"] = [
+                {key: value for key, value in item.items() if key not in frontier_detail}
+                for item in anchor["frontiers"]]
+            anchor["lod"]["frontier_details_demoted"] = True
+            anchor["lod"]["frontier_detail_query"] = (
+                "Use area origin_ref=<frontier_ref> for boundary geometry and landmark detail.")
         if estimate_tokens(anchor) > content_cap:
             raise WorldContractError("world_anchor_budget_exhausted")
         anchor["projection_integrity_hash"] = content_hash(provider_safe(anchor))

@@ -1,0 +1,303 @@
+{
+  "classification": "Actual sovereign/native capability gap; native state preserved",
+  "incident_id": "incident-ae798cd7665649b5b31600d2eb28b522",
+  "gap_id": "gap-423657bb3f0f4ec78de289d92c42381f",
+  "run_id": "run-e1b4ea08561b4d52b8cbda9231976508",
+  "turn": 214,
+  "revision": "9171161540471225590",
+  "native_popup": "COUNTER0",
+  "observed": {
+    "choices": [],
+    "modal": true,
+    "tracked_popup_visible": true,
+    "last_started_popup_label": "COUNTER0",
+    "current_faction_id": 4,
+    "owned_units": 18,
+    "bases": 2,
+    "credits": 799
+  },
+  "sovereign": "Requested a semantic response; bounded wait did not resolve it; reported capability gap.",
+  "bundle": {
+    "sha256": "ae83f1be7aa899b98f832078e66b3fcf0dfa440a13ec12d2a5257e8b0ca6d21d",
+    "bytes": 192162,
+    "raw_bundle_committed": false
+  },
+  "source_findings": [
+    "Native menu renderer and semantic option resolver recognize COUNTER1 but not COUNTER0.",
+    "Installed Script COUNTER0 asks what is offered in return; COUNTERMENU has negotiation options. This is not evidence that an unguarded acknowledgement is correct."
+  ],
+  "status": "Deployed; verified turn214 checkpoint recovered and one sovereign resumed. Actual COUNTER0 sovereign use remains pending.",
+  "maintenance_note": "Unrelated cognition provenance code was installed after quarantine. Start attempts failed closed with game_worker_not_healthy. No unpause or native recovery occurred; actual new provenance capture remains pending.",
+  "reviewed_native_binary_sha256": "573fd44cf18392da7cd048e2d8c24a8e130034364f374647e34e79a6c621d6f4",
+  "native_menu_audit": {
+    "function": "proposal_menu at0x54dcf0",
+    "label_selection": "0x54ea96..0x54eab9 builds COUNTER plus (proposal==1), so ordinary consideration uses COUNTER0 and gifts use COUNTER1",
+    "menu_source": "COUNTERMENU loaded at0x54eb0e",
+    "native_ids": {
+      "cancel": "0 at0x54ebed",
+      "goodwill": "1 at0x54ec5f",
+      "name_price": "2 at0x54ec98",
+      "threat_or_pact_threat": "3 at0x54ecde/0x54ed24",
+      "research_data": "4 at0x54ed60",
+      "all_research_data": "7 at0x54ed9a",
+      "energy_payment": "5 at0x54edd5",
+      "base_transfer": "8 at0x54ee37"
+    },
+    "return": "0x54ee5d stores native result in diplo_counter_proposal_id; cancellation clears proposal at0x54efea",
+    "energy_boundary": "COUNTER0 selection must return to its suspended native proposal caller; separate COUNTER1 gift routine cancels selector then invokes make_gift and is not reused."
+  },
+  "repair_checkpoint": {
+    "changes": [
+      "Recognize COUNTER0 through existing guarded semantic option surface.",
+      "Correct all_research_data7 and remove misidentified cancel_pact7; native threat3 covers conditional Pact threat.",
+      "Preserve counteroffer energy selection distinct from chosen-amount gift transfer."
+    ],
+    "compiled_production_contract": "pass: option IDs, unknown label rejection, native row filtering, counter/gift energy separation",
+    "native_fixture": {
+      "passed": true,
+      "stock_native_proposal_menu_cases": [
+        {
+          "menu": "COUNTER0",
+          "option": "cancel",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 0,
+            "proposal_id": 0,
+            "counter_id": 0
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "goodwill",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 1
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "name_price",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 2
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "threaten",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 3
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "energy_payment",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 5
+          }
+        },
+        {
+          "menu": "COUNTER1",
+          "option": "all_research_data",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 1,
+            "proposal_id": 1,
+            "counter_id": 7
+          }
+        }
+      ],
+      "energy_not_transferred_by_selector": true,
+      "duplicate_rejected": true,
+      "classification": "Actual stock menu and native return values; downstream negotiated deal effects separate"
+    },
+    "deployment": {
+      "status": "deployed",
+      "checkpoint_id": "checkpoint-d8cd3c93dcc8411c880193c155dca936",
+      "checkpoint_turn": 214,
+      "native_save_sha256": "f203128505b9a0ed743e7b0e3bd4ae8acec9364b84a8fc07af14e937dbbfabdf",
+      "native_session": "session-5574b92c635847ca8172f8fc265f7035",
+      "engine_source_sha256": "737fc9e3e38fa9821c96b73b33dc646eb51b07528b96d24fe2b0e71299ff7f20",
+      "owned_units": 19,
+      "bases": 2,
+      "credits": 799,
+      "active_plan_revision": 14,
+      "plan_last_confirmation_turn": 192,
+      "run_id": "run-1354926507bd4b75bba5e45d5d0fe562",
+      "first_provider_request_id": "eb2d51d45bd145acb4dcb938628a2d15",
+      "restored_plan_on_actual_provider_wire": true,
+      "operator_attention_cleared": true,
+      "native_failure_capture_armed": true
+    },
+    "integrated_native_mcp": {
+      "exit_code": 0,
+      "evidence": {
+        "counterfactual_checkpoint": {
+          "actors_represented_with_mechanical_roles": true,
+          "completed_terraform_matches_standalone_and_owned_base_yields": true,
+          "positive_retool_penalty_matches_native_change": true,
+          "hurry_charge_and_progress_match_without_claiming_instant_completion": true,
+          "rehome_support_and_journal_link_match_observed_effect": true,
+          "disband_support_and_explicit_garrison_departure": true,
+          "site_facility_delta_matches_managed_build_and_actual_native_completion": true,
+          "blind_research_explore_native_flags_and_named_snapshot": true,
+          "production_and_travel_timing": {
+            "actual_native_production_upkeeps": 4,
+            "production_timing_matches": true,
+            "one_phase_native_move_matches": true,
+            "native_move_completion": {
+              "receipt": {
+                "action_id": 5,
+                "command": "move_unit",
+                "status": "completed",
+                "native_result": 1,
+                "native_call_attempted": true,
+                "resolution": "native_move_resolved",
+                "unit_id": 31,
+                "origin_tile_id": 240,
+                "target_tile_id": 305,
+                "observed_tile_id": 305
+              },
+              "acknowledged_notices": []
+            },
+            "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true
+          }
+        },
+        "base_site_stress": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 233.153,
+          "probe_gap_ms": 227.57,
+          "receipt_bytes": 170495,
+          "native_elapsed_ms": 0
+        },
+        "counterfactual_site_stress": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 222.997,
+          "probe_gap_ms": 213.048,
+          "receipt_bytes": 51679,
+          "native_elapsed_ms": 2
+        },
+        "intent_recovery": {
+          "native_completed_units_preserved": true,
+          "journaled_plan_preserved": true,
+          "same_checkpoint_recovered_twice_after_timeline_gc": true,
+          "journaled_conflict_and_stationary_assignment_preserved": true,
+          "ephemeral_old_timeline_watch_discarded": true,
+          "old_session_counterfactual_choice_rejected": true
+        },
+        "pass": {
+          "authenticated_control_lifecycle": true,
+          "managed_action_failure_containment": false,
+          "dedicated_mcp_sidecar": true,
+          "mcp_tool_count": 15,
+          "mcp_bound_to_exact_match": true,
+          "native_unity_governor_entitlements": true,
+          "native_no_timer": true,
+          "native_orbital_project_global_adapter": true,
+          "native_base_geography_and_unit_traits": true,
+          "native_airdrop_diplomacy_and_anti_drop_guards": true,
+          "native_pact_port_amphibious_sequence": true,
+          "native_airdrop_collection_stress": {
+            "ready_drop_units": 129,
+            "maximum_page_latency_ms": 224.664,
+            "maximum_page_bytes": 127192,
+            "map_tiles": 8192,
+            "demand_receipt_matches_actions": true,
+            "enumeration_target_count": 3580,
+            "enumeration_native_ms": 0.0,
+            "enumeration_wall_ms": 245.321,
+            "enumeration_probe_gap_ms": 231.004,
+            "enumeration_payload_bytes": 8671,
+            "exact_native_ms": 0.0,
+            "exact_wall_ms": 297.823,
+            "exact_probe_gap_ms": 305.663,
+            "exact_payload_bytes": 289,
+            "outside_first_128_semantic_choice_executed": true,
+            "provider_model_supplied_raw_tile_id": false,
+            "revision_cache_hit": true
+          },
+          "native_global_projection_world_runtime_path": true,
+          "managed_lifecycle_blocked": true,
+          "bridge_verified_checkpoint": true,
+          "live_worker_volume_backup_verified": true,
+          "native_crash_recovered_without_ui": true,
+          "semantic_vehicle_identity_survived_native_restart": true,
+          "recovered_checkpoint_turn": 1,
+          "sidecar_removed_on_park": true,
+          "hermes_semantic_turn": false,
+          "hermes_low_reasoning": false,
+          "hermes_native_revision_advanced": false,
+          "hermes_managed_container": false,
+          "hermes_session_backup_verified": false,
+          "hermes_usage": null,
+          "specialist": null
+        }
+      },
+      "optional_inference_note": "Provider/Hermes inference and optional failure-containment injection were not enabled; false optional fields are not required-test failures."
+    },
+    "cleanup": "Isolated worker/volumes cleaned by test; its unreferenced owned prepared image removed after successful completion."
+  },
+  "post_deployment_guard_recovery": {
+    "run_id": "run-1354926507bd4b75bba5e45d5d0fe562",
+    "turn": 214,
+    "receipts": [
+      {
+        "request_id": "138412e3f5bd45cf86d771c6648c0691",
+        "episode_id": "episode-4fbb2f01f0f11126ff59fd7b375da75e",
+        "call_id": "chatcmpl-tool-9c80a86d64760118",
+        "kind": null,
+        "error": {
+          "code": "unknown_decision",
+          "message": "Obtain a fresh smac_decision frame."
+        },
+        "native_action_executed": false,
+        "turn": null,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "cbb2b0a5254c49a7a03cc73a20512f16",
+        "next_provider_contains_exact_result": true,
+        "following_tool": "mcp__smacx__smac_decision",
+        "following_tool_ok": true
+      },
+      {
+        "request_id": "5367a0eb9fae45aaa87a0b736b53bd17",
+        "episode_id": "episode-4fbb2f01f0f11126ff59fd7b375da75e",
+        "call_id": "chatcmpl-tool-8e3307c7a947ca0e",
+        "kind": null,
+        "error": {
+          "code": "consumed_decision",
+          "message": "This decision was already executed."
+        },
+        "native_action_executed": false,
+        "turn": null,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "d66dcc4346f3458da333570706f4f32c",
+        "next_provider_contains_exact_result": true,
+        "following_tool": "mcp__smacx__smac_decision",
+        "following_tool_ok": true
+      }
+    ],
+    "method": "Chronologically first provider request after each tool return; exact call_id and entire parsed result equality, then emitted fresh-decision tool return.",
+    "scope": "Two pre-dispatch rejection recoveries, not proof of counteroffer use or all failure recovery."
+  }
+}

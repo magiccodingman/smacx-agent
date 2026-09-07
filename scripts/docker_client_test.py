@@ -71,6 +71,7 @@ def main() -> int:
         else:
             raise AssertionError("cross-installation Docker mutation was allowed")
         docker.put_archive(container_id, "/target", archive())
+        assert docker.read_container_file(container_id, "/target/probe") == b"archive-ok\n"
         docker.start_container(container_id)
         finished = docker.wait_container(container_id, timeout=30)
         logs = docker.container_logs(container_id)

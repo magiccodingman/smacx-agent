@@ -45,6 +45,7 @@ enum DiploCounter {
 // The label is an engine script identifier, not text recovered from pixels.
 const char* agent_popup_label();
 const char* agent_popup_last_started_label();
+bool agent_popup_object_is_active(BasePop* popup);
 BasePop* agent_popup_object();
 uint64_t agent_popup_generation();
 void agent_popup_started(const char* label, BasePop* popup);

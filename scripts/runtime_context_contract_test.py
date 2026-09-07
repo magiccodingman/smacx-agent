@@ -9,7 +9,7 @@ import tempfile
 
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
-from smacx_runtime_context import RuntimeContextAssembler, _attention_payload
+from smacx_runtime_context import RuntimeContextAssembler, _attention_payload, _force_summary
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world import WorldService
 from smacx_world_model import PerspectiveProjector, estimate_tokens
@@ -18,6 +18,15 @@ from smacx_world_types import WorldIdentity, content_hash
 
 
 def main() -> int:
+    force = _force_summary({"world_revision": 4, "objects": [
+        {"kind": "own_unit", "status": "active", "fields": {
+            "roles": {"value": {"combat": True, "scout": True}, "epistemic_status": "current"},
+            "order_name": {"value": "sentry", "epistemic_status": "stale"}}},
+        {"kind": "foreign_contact", "status": "active", "fields": {
+            "roles": {"value": {"combat": True}, "epistemic_status": "current"}}}]})
+    assert force["owned_unit_count"] == 1
+    assert force["capability_roles_overlap_not_assignments"]["counts"] == {"combat": 1, "scout": 1}
+    assert force["observed_orders"]["counts"] == {} and force["missing_or_noncurrent_fields"]["orders"] == 1
     summary = _attention_payload({"attention_kind": "watch_trigger", "payload": {
         "watch_id": "watch-mobilization", "watch_kind": "milestone", "subject_refs": ["base-home"],
         "matches": [{"milestone": {"state": "blocked", "ready_count": 1, "required_count": 2,
@@ -58,6 +67,26 @@ def main() -> int:
                                   action_revision="action-9", continuity="complete",
                                   journal_head_hash="0" * 64)
         attention = AttentionService(store, journal, scope)
+        captured = []
+        real_enqueue = attention.enqueue
+        attention.enqueue = lambda kind, payload, **kwargs: captured.append(payload)
+        attention.capture_production_attention([
+            {"event_kind": "production_queue_exhausted", "base_ref": "base-home", "turn": 9},
+            {"event_kind": "production_repeat_selected", "base_ref": "base-home", "turn": 9,
+             "item_name": "Garrison", "occurrence_ref": "production-native-78",
+             "evidence_kind": "owned_native_occurrence"},
+            {"event_kind": "production_repeat_selected", "base_ref": "base-away", "turn": 9,
+             "item_name": "Other base"},
+            {"event_kind": "production_fallback_selected", "base_ref": "base-home", "turn": 8,
+             "item_name": "Old selection"},
+        ], observation_cursor=9, turn=9)
+        attention.enqueue = real_enqueue
+        event = captured[0]["events"][0]
+        assert len(event["selection_occurrences"]) == 1
+        assert event["selection_occurrences"][0]["item_name"] == "Garrison"
+        bounded = _attention_payload({"attention_kind": "production_progress", "payload": captured[0]})
+        assert bounded["events"][0]["selection_occurrences"] == event["selection_occurrences"]
+        assert "does not establish idle" in bounded["events"][0]["meaning"]
         dependencies = attention.semantic_dependency_hashes()
         operation_refs = ["base-home", "own-unit-7"]
         operation = attention.upsert_operation(
@@ -75,7 +104,7 @@ def main() -> int:
             observation_cursor=9, priority=100, critical=True,
         )
         snapshot = {
-            "turn": 9, "revision": "action-9",
+            "turn": 9, "revision": "action-9", "session_id": "session-runtime-current",
             "protocol": {"phase": "interaction", "required_action": "respond"},
             "interaction": {"kind": "proposal", "popup_label": "Treaty offer",
                             "faction_id": 2},
@@ -133,6 +162,8 @@ def main() -> int:
         rich = assembler.build(episode_id="episode-runtime-256k",
                                episode_mode="gameplay", context_length=262144)
         assert compact["identity"] == rich["identity"]
+        assert compact["identity"]["session_id"] == "session-runtime-current"
+        assert compact["identity"]["action_revision"] == "action-9"
         assert compact["focus"]["focus_id"] == rich["focus"]["focus_id"]
         assert compact["focus"]["mandatory"] is True
         assert compact["plan_health"]["active_plan_count"] == 1

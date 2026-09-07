@@ -1,0 +1,120 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "confirmed managed interaction gap; native effect acceptance pending",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 73,
+  "incident_id": "incident-038b779683ed4d2bbc068dd147e748ed",
+  "gap_id": "gap-dce35150ebd844dba4fb86f956b2e927",
+  "report_origin": "sovereign",
+  "observed": {
+    "popup_label": "SOCIETY",
+    "technology": "Industrial Economics",
+    "unlocked_model": "Free Market",
+    "managed_choices_before": 0,
+    "native_screenshot_verified": true,
+    "native_choices": [
+      "No. Continue with current social model.",
+      "Yes. Commence social engineering."
+    ],
+    "worker_and_collector_quarantined": true,
+    "diagnostic_zip_sha256": "194f224ac84cbbb982f59884aef21bfb478fc66f3e7669f7f85d558ff7d788a6"
+  },
+  "reviewed_native_semantics": {
+    "source": "bridge/src/tech.cpp tech_achieved",
+    "script": "tutor.txt SOCIETY",
+    "continue_row_id": 0,
+    "return_zero_skips_social_select": true,
+    "policy_change": false
+  },
+  "repair": {
+    "command": "defer_social_engineering",
+    "guards": [
+      "active native popup lifetime",
+      "exact SOCIETY label",
+      "two native rows",
+      "native row ID zero",
+      "existing managed revision and decision binding"
+    ],
+    "policy_changes_remain": "existing staged social_engineering choice family after blocking interactions finish",
+    "multiplayer_allowlist_extended": false,
+    "new_managed_tool": false
+  },
+  "validation": {
+    "production_handler_cpp": "pass",
+    "managed_adapter_choice_binding": "pass",
+    "native_cross_build": "pass",
+    "running_native_replay": "pass",
+    "actual_provider_receipt": "pass",
+    "effect_verified": "pass",
+    "coherent_recovery": "pass",
+    "full_native_integration": "pass",
+    "base_site_stress": {
+      "wall_ms": 257.813,
+      "probe_gap_ms": 241.04
+    },
+    "counterfactual_site_stress": {
+      "wall_ms": 253.084,
+      "probe_gap_ms": 238.859
+    },
+    "repeated_isolated_checkpoint_recovery": "pass",
+    "live_provider_used_in_native_suite": false
+  },
+  "unresolved": [
+    "Full game acceptance",
+    "Separate native outages at55 and59",
+    "Turn69 original refusal cause",
+    "Colony Pod destruction claim attribution remains under investigation"
+  ],
+  "reviewed_engine_source_sha256": "a19d7b9a0ceb287d6e746480269dc2d769d2c5c391cf12d438d24c1a0ad6930a",
+  "deployment": {
+    "control_mcp_image_sha256": "b4ca16d350998b954f31577eae813bb176461a8807a001f3ce0e3cca30355927",
+    "harness_specialist_image_sha256": "a3425e10044cff5d84af5660a323b100dc03326e16ab78dee8448a6b7f33a36e",
+    "worker_base_image_sha256": "1384b5ee2f8d8b9e90a1da22f74d6eb89042b9c48ef64557364f3c0cf073c4b7",
+    "observed_engine_source_sha256": "a19d7b9a0ceb287d6e746480269dc2d769d2c5c391cf12d438d24c1a0ad6930a",
+    "restored_checkpoint_id": "checkpoint-4309b9c72c8c42688c6984ed97bdaaf2",
+    "restored_turn": 72,
+    "timeline_id": "timeline-restore-211520a508194c9f8f100542",
+    "session_id": "session-47965e5abd0f4d15a6433afc6f12a8db",
+    "run_id": "run-0cf2e4aa010d488c9e708d7cc90af892",
+    "initial_native_interaction": "turn",
+    "initial_pending_receipt": false,
+    "operator_attention_cleared": true
+  },
+  "live_effect": {
+    "run_id": "run-34317ab0d91f412fa32a11eef7460a32",
+    "decision_id": "decision-061ba77e42f44a1fa7a17374be28cfda",
+    "choice_id": "choice-677672b9195140d0a101cac727095e53",
+    "request_id": "dddefa9725274caaa8fd78cda8f886df",
+    "call_id": "chatcmpl-tool-8abc0e9a6bd86ae7",
+    "journal_event_id": "journal-5620ff76275246e28b9dc1718d25779c",
+    "next_actual_provider_request_id": "fb6c92a012f140139af04e82d664d006",
+    "exact_receipt_delivered": true,
+    "after_turn": 73,
+    "after_phase": "turn",
+    "after_popup_label": "",
+    "selected_models_before_and_after": {
+      "politics": "Frontier",
+      "economics": "Simple",
+      "values": "Survival",
+      "future": "None"
+    },
+    "upheaval_cost_paid_this_turn_before_and_after": 0,
+    "native_window_closed": true,
+    "post_effect_restore_not_yet_exercised": false
+  },
+  "post_effect_restore": {
+    "checkpoint_id": "checkpoint-5aae178b8229432b94e055a8e14c803e",
+    "turn": 75,
+    "session_id": "session-f6f1062b943941b097168a89d5597d5c",
+    "native_phase": "turn",
+    "selected_and_established_models": [
+      "Frontier",
+      "Simple",
+      "Survival",
+      "None"
+    ],
+    "free_market_available": true,
+    "upheaval_paid": 0,
+    "resumed_sovereign_post_restore_verification": "pending support repair deployment"
+  }
+}

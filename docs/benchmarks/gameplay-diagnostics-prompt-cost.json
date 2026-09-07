@@ -1,0 +1,227 @@
+{
+  "passed": true,
+  "classification": "live exact provider tokenizer and actual compiled-prefix request usage",
+  "model": "Qwen3.8-27B",
+  "operational_exact_tokens": 1324,
+  "prompts": [
+    {
+      "case": "stock-blind",
+      "bytes": 43951,
+      "exact_tokens": 8489,
+      "sha256": "4990881d52fd35c69cd7452fd8f7de1635f581ed99b26febc1654326d396ffa3",
+      "context_fraction_65536": 0.129532,
+      "context_remaining_65536_before_tools_history_runtime_output": 57047,
+      "conservative_system_tool_reserve": 22843,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "morgan",
+      "bytes": 43918,
+      "exact_tokens": 8478,
+      "sha256": "8f25b9e584d383f0ed72b7f6fe7e12764753e6b423e800a5c29d4ccc15b89753",
+      "context_fraction_65536": 0.129364,
+      "context_remaining_65536_before_tools_history_runtime_output": 57058,
+      "conservative_system_tool_reserve": 22832,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "university",
+      "bytes": 43915,
+      "exact_tokens": 8473,
+      "sha256": "78e5bbc4bf5b30d44e09c1c6ed4fcb5c66752445b28fe3c78f378fe5cb70e3b3",
+      "context_fraction_65536": 0.129288,
+      "context_remaining_65536_before_tools_history_runtime_output": 57063,
+      "conservative_system_tool_reserve": 22831,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "directed",
+      "bytes": 43927,
+      "exact_tokens": 8481,
+      "sha256": "b1ebca66f8123d2814849a3eaf048897a53c50d79698cd188d14b3f75c91f80d",
+      "context_fraction_65536": 0.12941,
+      "context_remaining_65536_before_tools_history_runtime_output": 57055,
+      "conservative_system_tool_reserve": 22835,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "progenitor",
+      "bytes": 44785,
+      "exact_tokens": 8641,
+      "sha256": "1d0fafb39030d79415120afbd0e79d1d2a757e5e3bdec9dca637e18e7c26ea6e",
+      "context_fraction_65536": 0.131851,
+      "context_remaining_65536_before_tools_history_runtime_output": 56895,
+      "conservative_system_tool_reserve": 23121,
+      "semantic_history_ceiling": 26031
+    },
+    {
+      "case": "human-progenitor-opponent",
+      "bytes": 44540,
+      "exact_tokens": 8618,
+      "sha256": "a04e083e297f2a7e3050e7a6dcee15813bbd4100ba034b00ae9f09d9a2bfcdc7",
+      "context_fraction_65536": 0.1315,
+      "context_remaining_65536_before_tools_history_runtime_output": 56918,
+      "conservative_system_tool_reserve": 23039,
+      "semantic_history_ceiling": 26113
+    },
+    {
+      "case": "cooperative",
+      "bytes": 43950,
+      "exact_tokens": 8486,
+      "sha256": "b0857799ceb48dbe6997d57abd5465ac0a73a81d12f86567ff35158635db6511",
+      "context_fraction_65536": 0.129486,
+      "context_remaining_65536_before_tools_history_runtime_output": 57050,
+      "conservative_system_tool_reserve": 22842,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "conquest-only",
+      "bytes": 43309,
+      "exact_tokens": 8368,
+      "sha256": "2dec353b1f7be04aa00e14bde6a62be8ddf7854def2b197a9a9e53f807299d8d",
+      "context_fraction_65536": 0.127686,
+      "context_remaining_65536_before_tools_history_runtime_output": 57168,
+      "conservative_system_tool_reserve": 22629,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "tiny-crowded",
+      "bytes": 44637,
+      "exact_tokens": 8714,
+      "sha256": "f2630f65fd76777b572f262b7fb2b1d02773187d817fd5702c744d2b1edf4b20",
+      "context_fraction_65536": 0.132965,
+      "context_remaining_65536_before_tools_history_runtime_output": 56822,
+      "conservative_system_tool_reserve": 23071,
+      "semantic_history_ceiling": 26081
+    },
+    {
+      "case": "huge-sparse",
+      "bytes": 43953,
+      "exact_tokens": 8491,
+      "sha256": "4966c28257e443ea44ddb2776fc54792f1bca699c3812f252050ddef7aa9160b",
+      "context_fraction_65536": 0.129562,
+      "context_remaining_65536_before_tools_history_runtime_output": 57045,
+      "conservative_system_tool_reserve": 22843,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "custom-map",
+      "bytes": 43952,
+      "exact_tokens": 8490,
+      "sha256": "07a82db87d271b94cd74678e12043dadaa4fbfcba9803cda47e1775012ce6f7b",
+      "context_fraction_65536": 0.129547,
+      "context_remaining_65536_before_tools_history_runtime_output": 57046,
+      "conservative_system_tool_reserve": 22843,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "time-warp",
+      "bytes": 44103,
+      "exact_tokens": 8515,
+      "sha256": "817664efc23a6236a54088c8f294d36e9a17ade00eebccd0402a1b7a47e2ce4a",
+      "context_fraction_65536": 0.129929,
+      "context_remaining_65536_before_tools_history_runtime_output": 57021,
+      "conservative_system_tool_reserve": 22893,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "look-first",
+      "bytes": 44048,
+      "exact_tokens": 8506,
+      "sha256": "df6e1c75628e823910a94a0dccae6241934c06cd2fa19a9c908d0341e960061b",
+      "context_fraction_65536": 0.129791,
+      "context_remaining_65536_before_tools_history_runtime_output": 57030,
+      "conservative_system_tool_reserve": 22875,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "iron-man",
+      "bytes": 44151,
+      "exact_tokens": 8524,
+      "sha256": "2979a396a9845dc1b539f0d6b21c110f7d200305a64b53b2dd510538659759d7",
+      "context_fraction_65536": 0.130066,
+      "context_remaining_65536_before_tools_history_runtime_output": 57012,
+      "conservative_system_tool_reserve": 22909,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "resolved-random-morgan",
+      "bytes": 43918,
+      "exact_tokens": 8478,
+      "sha256": "8f25b9e584d383f0ed72b7f6fe7e12764753e6b423e800a5c29d4ccc15b89753",
+      "context_fraction_65536": 0.129364,
+      "context_remaining_65536_before_tools_history_runtime_output": 57058,
+      "conservative_system_tool_reserve": 22832,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "imported-midgame",
+      "bytes": 43951,
+      "exact_tokens": 8489,
+      "sha256": "4990881d52fd35c69cd7452fd8f7de1635f581ed99b26febc1654326d396ffa3",
+      "context_fraction_65536": 0.129532,
+      "context_remaining_65536_before_tools_history_runtime_output": 57047,
+      "conservative_system_tool_reserve": 22843,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "custom-faction-compatible",
+      "bytes": 43830,
+      "exact_tokens": 8453,
+      "sha256": "45f26c1f0ba3bc5cb376d811b2d05e0ccc49de1d64a8779b2f4cdde5ff759adb",
+      "context_fraction_65536": 0.128983,
+      "context_remaining_65536_before_tools_history_runtime_output": 57083,
+      "conservative_system_tool_reserve": 22802,
+      "semantic_history_ceiling": 26214
+    },
+    {
+      "case": "optional-unknown",
+      "bytes": 43546,
+      "exact_tokens": 8407,
+      "sha256": "80709b73a4134be0e9c410a67eab69a1c5c90f878f2d0c348d47b166a499c4bd",
+      "context_fraction_65536": 0.128281,
+      "context_remaining_65536_before_tools_history_runtime_output": 57129,
+      "conservative_system_tool_reserve": 22708,
+      "semantic_history_ceiling": 26214
+    }
+  ],
+  "cache_probe": [
+    {
+      "tail": "first request",
+      "latency_seconds": 1.946,
+      "usage": {
+        "prompt_tokens": 8548,
+        "total_tokens": 8550,
+        "completion_tokens": 2,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "cache_counter_delta": {
+        "queries": 8548.0,
+        "hits": 0.0
+      },
+      "isolated_query_count_matches": true
+    },
+    {
+      "tail": "second request",
+      "latency_seconds": 0.598,
+      "usage": {
+        "prompt_tokens": 8548,
+        "total_tokens": 8550,
+        "completion_tokens": 2,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "cache_counter_delta": {
+        "queries": 8548.0,
+        "hits": 6592.0
+      },
+      "isolated_query_count_matches": true
+    }
+  ],
+  "budget_note": "Remaining context also must contain tools, durable history, request-local runtime and output reserve; this is not all free gameplay capacity."
+}

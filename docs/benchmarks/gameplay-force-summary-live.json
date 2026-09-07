@@ -1,0 +1,48 @@
+{
+  "provider_request_id": "dc431aed58ee4f00a7e938c921d27ffa",
+  "turn": 23,
+  "owned_units": 3,
+  "names": {
+    "Scout Patrol": 3
+  },
+  "orders": {
+    "auto_explore": 2,
+    "none": 1
+  },
+  "current_production": {
+    "Colony Pod": 1
+  },
+  "missing_or_noncurrent_fields": {
+    "design": 0,
+    "home_base": 0,
+    "orders": 0,
+    "production": 0,
+    "roles": 0
+  },
+  "qualified_capability_roles_not_assignments": true,
+  "home_base_label_not_defense_assignment": true,
+  "scope": "actual provider request; not inferred strategic assignments or completed production",
+  "behavior": "Sovereign queried production/citizens and selected Colony Pod at22; requested reference/typed cognition behavioral gates remain separate",
+  "later_literal_count_misstatement": {
+    "request_id": "d1261b23a42a4b83b4cae82fa0dcb239",
+    "response_capture": "provider_response_stream with same request_id",
+    "emitted_claim": "zero combat units",
+    "delivered_force_summary": {
+      "owned_unit_count": 6,
+      "unit_names": {
+        "Scout Patrol": 4,
+        "Formers": 2
+      },
+      "capability_roles_overlap_not_assignments": {
+        "combat": 4,
+        "former": 2
+      },
+      "observed_orders": {
+        "auto_explore": 4,
+        "auto_former_improve_home_base": 2
+      }
+    },
+    "classification": "Literal sovereign count is inaccurate despite correct delivered aggregate; desire for stronger units is not thereby disproven. No contrary zero-combat field found in that runtime context.",
+    "harness_change_required_by_this_evidence": false
+  }
+}

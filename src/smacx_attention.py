@@ -121,6 +121,8 @@ class AttentionService:
 
     def lease(self, episode_id: str, *, limit: int = 32, ttl_seconds: int = 300, committed_cursor: int | None = None) -> dict[str, Any]:
         require_ref(episode_id, "episode_id")
+        self.capture_confirmed_unit_losses()
+        self.capture_former_automation()
         timeline = self.timeline_id
         now = time.time()
         lease_id = "attention-lease-" + uuid.uuid4().hex
@@ -137,7 +139,7 @@ class AttentionService:
             # redelivery without changing their attention identity.
             expired = connection.execute(
                 "SELECT attention_lease_id FROM attention_leases WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND status IN ('leased','placed') "
+                "AND perspective_id=? AND timeline_id=? AND status IN ('leased','placed','responded') "
                 "AND expires_unix<=?", (*self._key(timeline), now),
             ).fetchall()
             for row in expired:
@@ -153,6 +155,15 @@ class AttentionService:
                     "ON i.attention_id=li.attention_id WHERE li.attention_lease_id=? AND "
                     "(i.observation_cursor>? OR i.attention_sequence>=?) LIMIT 1",
                     (existing["attention_lease_id"], cap, barrier)).fetchone():
+                self._abandon_locked(connection, str(existing["attention_lease_id"]))
+                existing = None
+            if existing and existing["status"] == "responded" and connection.execute(
+                    "SELECT 1 FROM attention_items WHERE match_id=? AND agent_id=? AND perspective_id=? "
+                    "AND timeline_id=? AND status='queued' AND attention_sequence<? LIMIT 1",
+                    (*self._key(timeline), barrier)).fetchone():
+                # A completed request may be replaced, an in-flight placement
+                # may not. Reissue unacknowledged IDs together with newly
+                # committed attention so an empty old lease cannot hide a gate.
                 self._abandon_locked(connection, str(existing["attention_lease_id"]))
                 existing = None
             if existing:
@@ -276,6 +287,19 @@ class AttentionService:
             values.append(item)
         return {"operations": values, "active_watch_count": watch_count}
 
+    def unacknowledged_critical(self, *, limit: int = 8) -> dict[str, Any]:
+        """Only committed, perspective-scoped critical attention can gate a turn."""
+        with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.world_store.committed_cursor(self.scope, self.timeline_id, connection)
+            rows = connection.execute(
+                "SELECT attention_id,attention_kind,status FROM attention_items WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND critical=1 "
+                "AND status NOT IN ('acknowledged','superseded') AND observation_cursor<=? "
+                "ORDER BY attention_sequence LIMIT ?", (*self._key(self.timeline_id), cap, limit+1),
+            ).fetchall()
+        return {"items": [dict(row) for row in rows[:limit]], "more": len(rows)>limit}
+
     def pending_summary(self) -> dict[str, Any]:
         with self.store._connect() as connection:
             connection.execute("BEGIN")
@@ -392,6 +416,10 @@ class AttentionService:
                 "attention_lease_items li ON li.attention_id=i.attention_id "
                 "WHERE li.attention_lease_id=? ORDER BY i.attention_sequence", (lease_id,),
             ).fetchall()
+            if not ids.issubset({str(row["attention_id"]) for row in rows}):
+                raise AttentionError("attention_ack_scope_mismatch")
+            if int(through_cursor) < 0 or int(through_cursor) > int(lease["through_cursor"]):
+                raise AttentionError("attention_ack_cursor_out_of_range")
             eligible = [str(row["attention_id"]) for row in rows
                         if int(row["attention_sequence"]) <= int(through_cursor)
                         or str(row["attention_id"]) in ids]
@@ -724,6 +752,116 @@ class AttentionService:
             self.journal.append(self.scope, "attention.plan_dependency_state", {"states": current},
                 idempotency_key="plan-dependency-state:" + content_hash({"prior": prior, "current": current}))
 
+    def capture_former_automation(self) -> None:
+        from smacx_former_attention import former_state, classify_attempt
+        events = self.journal.latest_events(self.scope, timeline_id=self.timeline_id, limit=500)
+        checked = {event.get("payload", {}).get("source_action_event_id") for event in events
+                   if event.get("event_type") == "attention.former_automation_checked"}
+        attempts = [event for event in events if event.get("event_type") == "game.action"
+                    and event.get("payload", {}).get("former_automation_attempt")
+                    and event.get("event_id") not in checked][:32]
+        if not attempts:
+            return
+        projection = self.world_store.load(self.scope, self.timeline_id)
+        if not projection:
+            return
+        for event in reversed(attempts):
+            source = event["event_id"]
+            if source in checked:
+                continue
+            attempt = event["payload"]["former_automation_attempt"]
+            if attempt.get("world_epoch") != projection["identity"]["world_epoch"]:
+                continue
+            if int(projection.get("observation_cursor") or 0) <= int(attempt.get("observation_cursor") or 0):
+                continue
+            before = attempt["before"]
+            after = former_state(projection, before["unit_ref"])
+            outcome = classify_attempt(before, after)
+            # A later accepted unit command supersedes this assignment. Never
+            # attribute an intentional replacement to native cancellation.
+            unit_id = event.get("payload", {}).get("choice_parameters", {}).get("unit_id")
+            if unit_id is not None and any(
+                e.get("event_type") == "game.action" and e.get("sequence", 0) > event["sequence"]
+                and e.get("payload", {}).get("choice_parameters", {}).get("unit_id") == unit_id
+                for e in events):
+                outcome = "superseded"
+            if projection["observation_cursor"] - int(attempt.get("observation_cursor") or 0) > 64:
+                outcome = "observation_gap_unknown"
+            if outcome == "pending":
+                continue
+            repeated = 0
+            fingerprint = content_hash({"unit": before["unit_ref"], "mode": attempt.get("mode"),
+                                        "location": before.get("location_ref"), "features": before.get("features_hash")})
+            previous = next((e["payload"] for e in events
+                             if e.get("event_type") == "attention.former_automation_checked"
+                             and e.get("payload", {}).get("unit_ref") == before["unit_ref"]), {})
+            qualified = outcome == "stopped" and before.get("features_hash") and after.get("features_hash")
+            if qualified:
+                repeated = 1
+                if (previous.get("fingerprint") == fingerprint and previous.get("outcome") == "stopped"
+                        and previous.get("world_epoch") == attempt.get("world_epoch")
+                        and 0 < int(previous.get("observation_cursor") or 0)
+                        <= int(attempt.get("observation_cursor") or 0)):
+                    repeated += int(previous.get("repeated_observations") or 0)
+            if outcome == "stopped":
+                payload = {"unit_ref": before["unit_ref"], "automation_mode": attempt.get("mode"),
+                    "location_ref": after["location_ref"], "source_action_event_id": source,
+                    "assignment_turn": attempt.get("turn"), "observation_cursor": projection["observation_cursor"],
+                    "current_order": "no active automation or terraform task",
+                    "repeated_observations": repeated,
+                    "progress_evidence": "No movement, active task or tile-feature change observed between qualified endpoints; intervening work is not established." if qualified else "Progress unknown: tile evidence is incomplete.",
+                    "cause": "unknown", "guidance": "Inspect available terraforming actions or reconsider the automation policy before repeating it. Native cancellation does not prove no useful work is available."}
+                # Stable action identity prevents re-raising after acknowledgement or restart.
+                with self.store._connect() as connection:
+                    exists = connection.execute("SELECT 1 FROM attention_items WHERE match_id=? AND agent_id=? "
+                        "AND perspective_id=? AND timeline_id=? AND attention_kind='former_automation' "
+                        "AND json_extract(payload_json,'$.source_action_event_id')=? LIMIT 1",
+                        (*self._key(self.timeline_id), source)).fetchone()
+                if not exists:
+                    self.enqueue("former_automation", payload, observation_cursor=projection["observation_cursor"],
+                                 priority=80 if repeated >= 2 else 55, critical=False,
+                                 turn=attempt.get("turn"), dedupe_key=source)
+            record = {"source_action_event_id": source, "unit_ref": before["unit_ref"],
+                      "outcome": outcome, "fingerprint": fingerprint, "repeated_observations": repeated,
+                      "world_epoch": attempt.get("world_epoch"),
+                      "observation_cursor": projection["observation_cursor"]}
+            written = self.journal.append(self.scope, "attention.former_automation_checked", record,
+                                         idempotency_key="former-automation-checked:" + source)
+            events.insert(0, {**written, "event_type": "attention.former_automation_checked", "payload": record})
+
+    def capture_confirmed_unit_losses(self, observation_cursor: int | None = None,
+                                      *, session_id: str | None = None) -> None:
+        """Promote confirmed deaths; never turn an ambiguous removal into one.
+
+        Recent removal notices allow an existing database to adopt this
+        projection on upgrade without rewriting its journal or requiring a new
+        game. New publications pass their exact committed cursor directly.
+        """
+        cursors = {observation_cursor} if observation_cursor is not None else set()
+        if observation_cursor is None:
+            with self.store._connect() as connection:
+                rows = connection.execute(
+                    "SELECT observation_cursor,payload_json FROM attention_items "
+                    "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                    "AND attention_kind IN ('world_change','world_changes') "
+                    "AND status IN ('queued','leased','responded','acknowledged') "
+                    "ORDER BY captured_unix DESC LIMIT 32", self._key(self.timeline_id),
+                ).fetchall()
+            for row in rows:
+                payload = json.loads(row["payload_json"])
+                deltas = [payload["delta"]] if "delta" in payload else payload.get("deltas", ())
+                if any(isinstance(delta, Mapping) and delta.get("change") == "removed"
+                       and str(delta.get("object_ref", "")).startswith("own-unit-") for delta in deltas):
+                    cursors.add(int(row["observation_cursor"]))
+        for cursor in sorted(cursors):
+            payload = self.world_store.confirmed_unit_losses_at(self.scope, self.timeline_id, int(cursor))
+            if not payload["event_count"]:
+                continue
+            turns = [event["turn"] for event in payload["events"] if isinstance(event.get("turn"), int)]
+            self.enqueue("unit_losses", payload, observation_cursor=int(cursor),
+                         priority=100, critical=True, turn=max(turns) if turns else None,
+                         session_id=session_id, dedupe_key=f"confirmed-unit-losses:{cursor}")
+
     def capture_production_attention(self, events: Iterable[Mapping[str, Any]], *,
                                      observation_cursor: int, turn: int | None,
                                      session_id: str | None = None) -> None:
@@ -745,7 +883,23 @@ class AttentionService:
         for event in production:
             plan_refs = linked.get(str(event.get("base_ref") or ""), [])
             if event.get("event_kind") in {"production_queue_exhausted", "production_interrupted"} or plan_refs:
-                meaningful.append({**event, "linked_plan_refs": plan_refs[:8]})
+                notice = {**event, "linked_plan_refs": plan_refs[:8]}
+                if event.get("event_kind") == "production_queue_exhausted":
+                    notice["meaning"] = "Queued orders exhausted; this does not establish idle production."
+                    # Preserve the paired occurrence, not an assertion about the
+                    # current selection. Never join different bases or turns.
+                    selections = [candidate for candidate in production
+                                  if event.get("base_ref") and event.get("turn") is not None
+                                  and candidate.get("base_ref") == event.get("base_ref")
+                                  and candidate.get("turn") == event.get("turn")
+                                  and candidate.get("event_kind") in {
+                                      "production_repeat_selected", "production_fallback_selected"}]
+                    notice["selection_occurrences"] = [
+                        {key: candidate[key] for key in
+                         ("event_kind", "item_name", "turn", "occurrence_ref", "evidence_kind")
+                         if key in candidate} for candidate in selections[:2]]
+                    notice["selection_details_truncated"] = len(selections) > 2
+                meaningful.append(notice)
         if meaningful:
             self.enqueue("production_progress", {"events": meaningful[:8],
                          "event_count": len(meaningful), "details_truncated": len(meaningful) > 8},
@@ -1260,7 +1414,9 @@ class AttentionService:
             if current and current["status"] == "active" and float(current["expires_unix"]) > now:
                 if current["episode_id"] != episode_id or current["episode_mode"] != episode_mode:
                     raise AttentionError("sovereign_invocation_already_active")
-            if current and current["status"] == "active" \
+            # A prior authority read may already have marked this lease
+            # expired. Its attention still needs reclamation before replacement.
+            if current and current["status"] in {"active", "expired"} \
                     and float(current["expires_unix"]) <= now:
                 expired_leases = connection.execute(
                     "SELECT attention_lease_id FROM attention_leases WHERE match_id=? "
@@ -1279,8 +1435,8 @@ class AttentionService:
             )
         return token
 
-    def sovereign_state(self) -> dict[str, Any] | None:
-        """Return the active writer lease without exposing its capability token."""
+    def sovereign_state(self, *, include_inactive: bool = False) -> dict[str, Any] | None:
+        """Return writer metadata without its token; inactive identity detects restart reuse."""
         now = time.time()
         with self.store.transaction() as connection:
             connection.execute(
@@ -1291,7 +1447,7 @@ class AttentionService:
             row = connection.execute(
                 "SELECT episode_id,episode_mode,status,acquired_unix,expires_unix FROM "
                 "sovereign_leases WHERE match_id=? AND agent_id=? AND perspective_id=? "
-                "AND timeline_id=? AND status='active'",
+                "AND timeline_id=?" + ("" if include_inactive else " AND status='active'"),
                 self._key(self.timeline_id),
             ).fetchone()
         return dict(row) if row else None

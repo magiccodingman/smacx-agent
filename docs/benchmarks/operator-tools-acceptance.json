@@ -1,0 +1,46 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "scope": "operator tooling checkpoint",
+  "implementation": [
+    "shared portal lifecycle APIs consumed by standard-library CLI",
+    "account-scoped retry-safe lobby creation",
+    "five-faction preset with read-back",
+    "operator-only health, committed inspection, paged journal",
+    "durable investigation pause with actual process read-back",
+    "incident-bound verified recovery",
+    "diagnostic packet with explicit capture watermarks"
+  ],
+  "validation": {
+    "portal_tests": "81/81",
+    "real_portal_http": "passed: Kestrel, Identity, cookies, CSRF, persistent creation retry/conflict, CLI process status",
+    "cli_http_fixture": "passed: exact five-faction roster, repeated create/start, packet archive and manifest",
+    "control_http_fixture": "passed: auth, journal cursor replay, epistemic projection, pause fence/read-back, unverified recovery rejected, unrelated incident preserved",
+    "real_docker": "passed: native-shaped process frozen, collector stopped, sovereign process removed, idempotent pause; no checkpoint claimed",
+    "specialist_host_contract": "passed: real child lifecycle, cancellation/timeout kill, telemetry and isolation",
+    "packaged_control": "passed: operator HTTP, CLI and Former contracts without source mount; final health classifications rechecked",
+    "regressions": "passed: worker lifecycle serialization, incident recovery, publication visibility, runtime context",
+    "runtime_256k_tokens": 25998
+  },
+  "limitations": [
+    "No fresh native game was started.",
+    "CLI startup is tested against HTTP fixtures; existing native start/recovery paths are reused.",
+    "Cached supervisor progress is not a new native liveness probe.",
+    "Original campaign and monitoring remain paused.",
+    "Images built separately; production deployment not changed."
+  ],
+  "follow_up_phase": [
+    "GitHub issue workflow",
+    "storage checks/policy",
+    "agent handoff and recurring mission"
+  ],
+  "images": {
+    "smacx-agent-control:operator-tools": "sha256:aa5fb3f1f31724a75bc04ae858301990f83724fbbf0463fab0dff020483c200f",
+    "smacx-agent-portal:operator-tools": "sha256:d901aaa0f594a814e0a3fd9898bf07c3a6c3c562974fa89bd2ad7d2f293f9262"
+  },
+  "repairs_discovered": [
+    "Docker stop transport timeout now exceeds the requested grace period.",
+    "Operator containment stops collectors instead of freezing an active SQLite writer.",
+    "Worker read-back checks the MCP sidecar even when the native container is absent.",
+    "Control image now packages the previously pending Former attention module."
+  ]
+}

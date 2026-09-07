@@ -21,6 +21,7 @@ def plan_health(
     assigned: set[str] = set()
     reservations: dict[str, list[dict[str, Any]]] = defaultdict(list)
     dependencies = []
+    unbound = []
     active = [plan for plan in plans if plan.get("status", "active") == "active"]
     complete = complete and len(active) <= 128
     for plan in active[:128]:
@@ -29,6 +30,8 @@ def plan_health(
         if not isinstance(participants, list):
             complete = False
             continue
+        if not participants and not plan.get("target_refs") and not plan.get("dependencies"):
+            unbound.append(plan_ref)
         complete &= len(participants) <= 64
         for participant in participants[:64]:
             if not isinstance(participant, Mapping):
@@ -129,6 +132,14 @@ def plan_health(
                and field_value(objects[ref], "order_name") not in {None, "none"}}
     ready = set(ready_refs) & own
     return {"active_plan_count": len(active), "intent_coverage_complete": bool(complete),
+            "assessment_scope": (
+                "Only declared references, reservations and dependencies are checked. "
+                "Objective prose is not interpreted or verified. intent_coverage_complete "
+                "means declared inputs were fully enumerated, not that a plan is achievable "
+                "or its narrative facts are current."),
+            "plans_without_world_bindings_count": len(unbound),
+            "plans_without_world_bindings": unbound[:8],
+            "world_binding_details_truncated": len(unbound) > 8,
             "assigned_owned_unit_count": len(assigned & own),
             "mechanically_ordered_unit_count": len(ordered), "active_operation_unit_count": len(operational),
             "snapshot_actionable_unassigned_count": len(ready - assigned - operational) if complete else None,

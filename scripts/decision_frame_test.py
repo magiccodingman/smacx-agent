@@ -80,6 +80,9 @@ def main() -> int:
                     "kind": "unit_actions", "unit_id": 7,
                 }):
             raise AssertionError(f"bad ready-unit frame: {frame}, calls={calls}")
+        if frame.get("choice_scope", {}).get("family") != "unit_actions" \
+                or frame["choice_scope"].get("all_management_actions_enumerated") is not False:
+            raise AssertionError("ready-unit frame implied exhaustive management choices")
 
         full_frame = smacx_mcp.smac_decision(detail="full")
         if full_frame.get("snapshot", {}).get("revision") != "r1":
@@ -125,6 +128,23 @@ def main() -> int:
         )
         if conflict.get("error", {}).get("code") != "conflicting_decision_focus":
             raise AssertionError(f"finish/unit focus conflict was not rejected: {conflict}")
+        calls.clear()
+        def no_ready_call(operation, **arguments):
+            calls.append((operation, arguments))
+            return snapshot("turn", ready=[]) if operation == "semantic_snapshot" else {
+                "ok": True, "match_id": "match-test", "session_id": "session-test",
+                "revision": "r1", "choices": [{"command": "end_turn"}],
+            }
+        smacx_mcp._call = no_ready_call
+        management = smacx_mcp.smac_decision()
+        scope = management.get("choice_scope", {})
+        if scope.get("family") != "game_management" \
+                or scope.get("all_management_actions_enumerated") is not False \
+                or scope.get("other_management_queries", {}).get("kinds") != [
+                    "production", "base_citizens", "research"] \
+                or len(management.get("choices", [])) != 1 \
+                or [name for name, _ in calls] != ["semantic_snapshot", "semantic_choices"]:
+            raise AssertionError(f"end-turn-only frame hid its query scope or enumerated extra native actions: {management}")
 
         compact_moves = smacx_mcp._compact_decision_choices([{
             "id": "move:12", "command": "move_unit", "unit_id": 7,
@@ -158,6 +178,8 @@ def main() -> int:
             }
         )
         frame = smacx_mcp.smac_decision()
+        if "choice_scope" in frame:
+            raise AssertionError("blocking interaction advertised unrelated management")
         if frame.get("focus", {}).get("kind") != "interaction" \
                 or frame.get("choices", [{}])[0].get("label") != "Acknowledge popup" \
                 or "action" in frame.get("choices", [{}])[0] \

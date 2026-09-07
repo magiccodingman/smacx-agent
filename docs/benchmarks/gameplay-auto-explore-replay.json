@@ -1,0 +1,28 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "source": "controlled native replay of AI - 4 verified turn-1 checkpoint",
+  "runtime": {
+    "control": "09d6660",
+    "worker": "1416e24"
+  },
+  "action": "auto_explore_unit on sole ready Scout",
+  "result": {
+    "native_receipt_ok": true,
+    "persistent_order": true,
+    "automatic_turn_transition": [
+      1,
+      2
+    ],
+    "terminal_interaction": "GOODYCOMM",
+    "snapshot_probes": 15,
+    "max_snapshot_elapsed_ms": 3,
+    "worker_running": true,
+    "health": "healthy",
+    "oom_killed": false
+  },
+  "limitations": [
+    "Original worker loss was not reproduced; cause remains undetermined.",
+    "Diagnostic replay is not autonomous gameplay acceptance.",
+    "Checkpoint restored again before sovereign continuation; diagnostic native action discarded."
+  ]
+}

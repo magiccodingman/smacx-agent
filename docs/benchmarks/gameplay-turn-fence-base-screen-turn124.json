@@ -1,0 +1,641 @@
+{
+  "status": "deployed_live_acceptance_continues",
+  "observed_campaign": {
+    "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+    "episode_id": "episode-3f374ceef513271cbe2865dc36ea86b8",
+    "native_turn": 124,
+    "paused": true
+  },
+  "confirmed_turn_boundary_gap": {
+    "initial_decision_turn": 122,
+    "initial_request_id": "2fb5c8a30b34458c9686d13128f121ac",
+    "next_turn_choice_request_id": "ee983df2cfd1438a8394480550c86642",
+    "management_action_request_id": "bb847059462c42148eb0b11be15752b5",
+    "later_decision_turn": 123,
+    "later_decision_request_id": "73ef7aeed58a4714b8b79af0a44373d9",
+    "eventual_handoff_request_id": "f0fea66e243746778b141b7e7cfc95d4",
+    "eventual_completed_turns": "123",
+    "source_findings": [
+      "Choice enumeration did not detect a native turn boundary.",
+      "Choice-family cache registration omitted turn/year/phase.",
+      "Observing a later turn in a receipt could consume the marker before reporting the boundary.",
+      "Stale semantic rebase did not require the original native turn."
+    ],
+    "attribution": "One episode crossed 122 to 123 without a handoff. This does not establish world-context lag or false durable claims."
+  },
+  "native_stall": {
+    "turn": 124,
+    "end_turn_request_id": "f1aa03be17b14d978928c915f5dfb43d",
+    "worker_healthy": true,
+    "ui_responsive": true,
+    "base_window_visible": true,
+    "end_turn_native_returned": true,
+    "end_turn_receipt_pending": true,
+    "native_human_turn_input_active": true,
+    "modal": false,
+    "cause_limit": "Later actionable state is confirmed; exact timing of the original native return/modal transition and base-screen opening remains unestablished.",
+    "observed_snapshot": {
+      "session_id": "session-c4bb29c531ce42ec83b67c88ab998e7f",
+      "turn": 124,
+      "year": 2224,
+      "kind": "waiting_for_engine",
+      "protocol": {
+        "phase": "wait",
+        "required_action": "wait_then_observe",
+        "available_choice_kinds": [],
+        "contract": "Observe, enumerate one legal choice family, execute at most one guarded command, then observe again."
+      },
+      "last_deferred_action": {
+        "action_id": 1,
+        "command": "end_turn",
+        "status": "pending",
+        "native_result": 0,
+        "native_call_attempted": true
+      },
+      "engine_state": {
+        "win_modal": false,
+        "popup_dialog": false,
+        "game_halted": false,
+        "base_window_visible": true,
+        "native_human_turn_input_active": true,
+        "end_turn_native_returned": true,
+        "end_turn_receipt_pending": true
+      }
+    }
+  },
+  "repairs": [
+    "Fence choices and execution at observed turn boundaries; prohibit cross-turn rebase.",
+    "Cache and publish choice turn/year; qualify post-action turn observation including unknown.",
+    "Keep an emitted handoff closed for the active episode; lost active/expired episode fence fails closed on MCP restart, using existing durable lease identity without schema changes.",
+    "Re-evaluate returned End Turn refusal on subsequent native UI-thread polls.",
+    "Guard owned base-management OK through the existing opaque interaction surface; unvalidated multiplayer remains blocked."
+  ],
+  "validation": {
+    "adapter_regressions": "passed",
+    "private_http_restart_fence": "passed",
+    "native_cross_build": "passed",
+    "controlled_native_initial": {
+      "passed": true,
+      "classification": "isolated guarded native end-turn acceptance",
+      "source_turn": 1,
+      "observed_turn": 2,
+      "receipt": {
+        "action_id": 2,
+        "command": "end_turn",
+        "status": "completed",
+        "native_result": 1,
+        "native_call_attempted": true,
+        "resolution": "native_turn_advanced"
+      },
+      "engine_state": {
+        "end_turn_timer_queued": false,
+        "end_turn_native_returned": true,
+        "end_turn_receipt_pending": false
+      },
+      "controlled_native_refusal_verified": true,
+      "controlled_native_base_screen_verified": true,
+      "original_turn69_refusal_reproduced": false
+    },
+    "controlled_native_full_base_comparison": {
+      "result": "passed",
+      "unchanged_owned_bases_and_units": true,
+      "receipt": {
+        "event": "base_screen_verified",
+        "turn": 1,
+        "receipt": {
+          "ok": true,
+          "command": "close_base_management",
+          "base_screen_closed": true,
+          "turn_completion_verified": false,
+          "follow_up": "Observe the native state; closing this screen does not complete the turn."
+        },
+        "stale_receipt": {
+          "ok": false,
+          "error": {
+            "code": "stale_state",
+            "message": "Fair game state changed after observation; inspect a fresh snapshot and choices."
+          },
+          "current_revision": "5741640418460889474"
+        }
+      },
+      "turn_transition": {
+        "passed": true,
+        "classification": "isolated guarded native end-turn acceptance",
+        "source_turn": 1,
+        "observed_turn": 2,
+        "receipt": {
+          "action_id": 2,
+          "command": "end_turn",
+          "status": "completed",
+          "native_result": 1,
+          "native_call_attempted": true,
+          "resolution": "native_turn_advanced"
+        },
+        "engine_state": {
+          "end_turn_timer_queued": false,
+          "end_turn_native_returned": true,
+          "end_turn_receipt_pending": false
+        },
+        "controlled_native_refusal_verified": true,
+        "controlled_native_base_screen_verified": true,
+        "original_turn69_refusal_reproduced": false
+      }
+    },
+    "full_native_mcp": {
+      "initial_run": "failed",
+      "failure": "No single-phase native movement comparison was available",
+      "observed_candidates": 3,
+      "stage": "counterfactual production/travel timing",
+      "earlier_managed_and_counterfactual_stages": "passed",
+      "attribution": "Unestablished: initial failure log retained offered move choices but not candidate calculation details. Added candidate diagnostics and retain-on-failure for repeat; exact-state assertion unchanged.",
+      "repeat": "passed",
+      "result": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 234.682,
+          "maximum_page_bytes": 127199,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 4757,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 255.106,
+          "enumeration_probe_gap_ms": 248.224,
+          "enumeration_payload_bytes": 8671,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 223.215,
+          "exact_probe_gap_ms": 237.152,
+          "exact_payload_bytes": 289,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      },
+      "recovery": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "same_checkpoint_recovered_twice_after_timeline_gc": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      },
+      "production_and_travel_timing": {
+        "actual_native_production_upkeeps": 6,
+        "production_timing_matches": true,
+        "one_phase_native_move_matches": true,
+        "native_move_completion": {
+          "receipt": {
+            "action_id": 5,
+            "command": "move_unit",
+            "status": "completed",
+            "native_result": 1,
+            "native_call_attempted": true,
+            "resolution": "native_move_resolved",
+            "unit_id": 38,
+            "origin_tile_id": 205,
+            "target_tile_id": 206,
+            "observed_tile_id": 206
+          },
+          "acknowledged_notices": []
+        },
+        "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true
+      },
+      "performance": {
+        "base_site_stress": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 243.156,
+          "probe_gap_ms": 234.622,
+          "receipt_bytes": 169324,
+          "native_elapsed_ms": 0
+        },
+        "counterfactual_site_stress": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 241.02,
+          "probe_gap_ms": 241.894,
+          "receipt_bytes": 51647,
+          "native_elapsed_ms": 0
+        }
+      },
+      "scope": "Final native image and managed integration paths; subsequent Python-only authority-read fault ordering is checked separately in the final packaged image."
+    },
+    "deployed": true,
+    "actual_sovereign_delivery": {
+      "status": "receipts_and_explicit_implicit_episode_boundaries_verified",
+      "receipts": [
+        {
+          "request_id": "33a669119740474a96cee058b3b2ee17",
+          "next_request_id": "d0df7395fbc44c4eaff18129577021d8",
+          "selected_turn": 124,
+          "observed_after_turn": 124,
+          "exact_immediate_next_delivery": true
+        },
+        {
+          "request_id": "f3ce1a452f804930b5a2f2f6ba130f2e",
+          "next_request_id": "0c30bb86386541c7a683f7793ad31fc3",
+          "selected_turn": 124,
+          "observed_after_turn": 124,
+          "exact_immediate_next_delivery": true
+        }
+      ],
+      "scope": "Actual automation receipts; assignment does not establish completed terraforming.",
+      "boundaries": [
+        {
+          "completed_turn": 124,
+          "kind": "explicit_confirmation",
+          "request_id": "52ebf04e7780415fbe3d603700a8b174",
+          "episode_id": "episode-5c9b6fe75b7e48e6fbe37d9809c993ab",
+          "next_provider_request": "9ef472487407452db5da39e32088f792",
+          "exact_immediate_next_delivery": true,
+          "following_episode": "episode-ea754bf88bc7c6d3c4d4fe67359f92ac",
+          "following_decision_request": "b45f8cdcfb9b4fffbfea16cc29e82c9e",
+          "following_decision_turn": 125
+        },
+        {
+          "completed_turn": 125,
+          "kind": "implicit_native_advance",
+          "request_id": "df80fa72fd5343e89bba82a837514f94",
+          "episode_id": "episode-ea754bf88bc7c6d3c4d4fe67359f92ac",
+          "next_turn": 126,
+          "next_provider_request": "e26167768bf84deb80ca6d2c841646fa",
+          "exact_immediate_next_delivery": true,
+          "following_episode": "episode-74770789cd0392457592f0d4899de116",
+          "following_decision_request": "6899c97153b04ecc98faf3d1ce127274",
+          "following_decision_turn": 126
+        }
+      ],
+      "base_screen_close": "Not needed in the recovered campaign segment; controlled native handler/effect proof remains separate."
+    },
+    "campaign_recovery": {
+      "result": "passed",
+      "checkpoint_id": "checkpoint-4f0380b0815d4440bc59b8654be794dc",
+      "native_session_id": "session-a45a088000ce44548499673de56b69c9",
+      "turn": 124,
+      "owned_refs": [
+        "own-unit-13",
+        "own-unit-14",
+        "own-unit-16",
+        "own-unit-21",
+        "own-unit-25",
+        "own-unit-27",
+        "own-unit-28",
+        "own-unit-30",
+        "own-unit-34",
+        "own-unit-35",
+        "own-unit-36",
+        "own-unit-39"
+      ],
+      "units": 12,
+      "bases": 2,
+      "energy_credits": 168,
+      "ready_units": 2,
+      "interaction": "turn",
+      "active_plan_id": "plan-7bc6c5d5e1d04052b6a40db56a8c3b8d",
+      "active_plan_revision": 9
+    },
+    "full_game": "unfinished",
+    "expired_sovereign_attention_reclamation": "passed: real database reopen, inactive metadata without token, expired-status read before reacquisition, same attention IDs redelivered",
+    "compiled_native_base_guards": "passed: owned/foreign/invalid/hidden/phase/selector/replay and completion qualifier",
+    "final_packaged_python": "passed: recorded and fault-injected turn fence, same-turn rebase, private HTTP active/expired lost-fence rejection"
+  },
+  "native_handler_evidence": {
+    "dispatcher": "BaseWin::on_button_clicked 0x41D500",
+    "button_id": 0,
+    "close_branch": "0x41D61C",
+    "selected_base_field": "BaseWin->oRender.base_id",
+    "scope": "Static stock executable review plus isolated native closure; not a general UI-input capability."
+  },
+  "recovery_checkpoint": {
+    "checkpoint_id": "checkpoint-4f0380b0815d4440bc59b8654be794dc",
+    "turn": 124,
+    "verified": true,
+    "created_unix": 1788758704.7556207,
+    "native_save_sha256": "9462be9d853841b61c7009d4b6ed2929b362698f83bbed80de653b0034a4cc88",
+    "journal_head_hash": "a6fface6739fb6de3f0e9a6d4490fe524f2375fe3cbb3446f65c12f46f2e4c6d",
+    "hermes_archive_sha256": "0f4a1cc35d85d90168a0fe3d17e512436f4bd391f7b96f69c149bf26a4168c34"
+  },
+  "images": {
+    "worker": "sha256:251f632c5fe86042c458fd1d2bcc2eaeb47453e4d744f6aa05c217622c97807c",
+    "control_mcp": "sha256:a32c5b18b33e567e96cfc253862cc3fbfd1657c33d7b8a27ed0123e73db625ad",
+    "harness": "sha256:7078f58c89aba664aefbf65bf38efa7fb917498b5e684cf5eec10893700d20e1",
+    "native_fingerprint": "4b8e73da1d17af8b278ae5f885904ec6c6df1e121255791447a6f2dc85563440"
+  },
+  "live_run": {
+    "run_id": "run-0e64e6f0e7804cad80783a350b05d6b8",
+    "created_unix": 1788762911.8985841,
+    "worker_id": "305aabb43f8c",
+    "exactly_one_active_sovereign": true,
+    "portal_supervision_restored": true,
+    "native_failure_watcher_armed": true,
+    "ten_minute_heartbeat_active": true,
+    "initial_active_incidents": []
+  },
+  "live_progress": {
+    "native_turn": 126,
+    "units": 13,
+    "bases": 2,
+    "energy_credits": 181,
+    "end_turn_action_status": "completed",
+    "resolution": "native_turn_advanced",
+    "pending_gate": "Full game remains unfinished; continue diagnostics, attention, effects and recovery monitoring."
+  },
+  "live_memory_guard_followthrough": {
+    "rejection_request": "0c30bb86386541c7a683f7793ad31fc3",
+    "error": "stale_memory_observation",
+    "memory_write_committed": false,
+    "guidance_delivery_request": "3ee898d828fc4bff9cfdbdd8de693826",
+    "successful_retry_request": "983350f77240496ead56877c49251060",
+    "successful_receipt_delivery": "12d09ee48ac6432f99b65d35a666fc6f",
+    "journal_event_id": "journal-8fcbbb84c6f048d883925754fd4455e2",
+    "new_plan_id": "plan-1935f4548a594e92bddee6558c06bdc4",
+    "new_plan_revision": 10,
+    "first_resumed_context": {
+      "request_id": "25f184412c864bf3ac184b8904334e5a",
+      "plan_revision": 9
+    },
+    "following_episode_contexts": [
+      {
+        "request_id": "b45f8cdcfb9b4fffbfea16cc29e82c9e",
+        "plan_revision": 10
+      },
+      {
+        "request_id": "6899c97153b04ecc98faf3d1ce127274",
+        "plan_revision": 10
+      }
+    ],
+    "scope": "Actual working_cognition inside submitted provider requests, not only SQL records; plan objectives are sovereign intent rather than verified mechanical achievement."
+  },
+  "live_progress_turn134": {
+    "control": {
+      "created_unix": 1788762911.8985841,
+      "status": "running",
+      "active_incidents": []
+    },
+    "native": {
+      "turn": 134,
+      "session_id": "session-a45a088000ce44548499673de56b69c9",
+      "faction": {
+        "id": 1,
+        "name": "Peacekeeping Forces",
+        "energy_credits": 229,
+        "bases": 2,
+        "units": 13,
+        "ready_units": 0
+      },
+      "interaction": "popup",
+      "popup": "BEGINPROJECT",
+      "action": {
+        "action_id": 1,
+        "command": "end_turn",
+        "status": "completed",
+        "native_result": 1,
+        "native_call_attempted": true,
+        "resolution": "native_turn_advanced"
+      }
+    },
+    "recent_delivery": [
+      {
+        "request_id": "957ae455eb0245feb030d5eed12ead2f",
+        "episode_id": "episode-03cf56fe8f1bae64ed28e0e2ea6834a3",
+        "call_id": "chatcmpl-tool-be2d366dde746bc0",
+        "kind": "decision_frame",
+        "turn": 132,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "08a9260e7b7042248856a86aecb7bf93",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "08a9260e7b7042248856a86aecb7bf93",
+        "episode_id": "episode-03cf56fe8f1bae64ed28e0e2ea6834a3",
+        "call_id": "chatcmpl-tool-aaceb66b19bb9647",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 132,
+          "observed_after_turn": 132,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "7154c08773ae4edea8aacc9f9699cd4f",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "7154c08773ae4edea8aacc9f9699cd4f",
+        "episode_id": "episode-03cf56fe8f1bae64ed28e0e2ea6834a3",
+        "call_id": "chatcmpl-tool-90a81ce7d662a637",
+        "kind": "turn_handoff_required",
+        "turn": 133,
+        "turn_provenance": null,
+        "handoff": {
+          "required": true,
+          "completed_turns": "132",
+          "next_turn": 133,
+          "instruction": "Native control passed. Make no more tool calls in this episode. Return the concise TURN HANDOFF required by your system contract now.",
+          "sections": [
+            "Outcome",
+            "Rationale",
+            "Changed conclusions",
+            "Next intent",
+            "Uncertainty"
+          ],
+          "target_words": 85,
+          "maximum_words": 120
+        },
+        "next_provider_request": "68f3b836278a45e88b85c1c71c7376cf",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "0d1699cfdac1407c906456d11582f234",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-9406094115b49c7c",
+        "kind": "decision_frame",
+        "turn": 133,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "a243d24bbcc64264a8972dfb52b3cc55",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "a243d24bbcc64264a8972dfb52b3cc55",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-80d8506497dc8521",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 133,
+          "observed_after_turn": 133,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "0ce59d26604f4ad9bed4c8657a04d417",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "0ce59d26604f4ad9bed4c8657a04d417",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-b6f6dc97bcbdb5ff",
+        "kind": "decision_frame",
+        "turn": 133,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "17cf2adcb32a4649a87cc468e1ae675a",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "17cf2adcb32a4649a87cc468e1ae675a",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-83bdd16dbf963791",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 133,
+          "observed_after_turn": 133,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "31f161269aef4d6f96ea7931cd9f556c",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "91a9f167ba0a40d2a3540efc01c88435",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-a58921b20751fe66",
+        "kind": "turn_handoff_required",
+        "turn": 134,
+        "turn_provenance": null,
+        "handoff": {
+          "required": true,
+          "completed_turns": "133",
+          "next_turn": 134,
+          "instruction": "Native control passed. Make no more tool calls in this episode. Return the concise TURN HANDOFF required by your system contract now.",
+          "sections": [
+            "Outcome",
+            "Rationale",
+            "Changed conclusions",
+            "Next intent",
+            "Uncertainty"
+          ],
+          "target_words": 85,
+          "maximum_words": 120
+        },
+        "next_provider_request": "80ace1c82326447d9df59100db38d1c0",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "032b5e1d633448c595643e8d62de6d55",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-ae40e23c9bfe2e78",
+        "kind": "decision_frame",
+        "turn": 134,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "c8dcec0c08f040cd8acb3f0edc953659",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "c8dcec0c08f040cd8acb3f0edc953659",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-8f18eac36760e4f8",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 134,
+          "observed_after_turn": 134,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "e79cc9ec24984228a09a86a3651bc8a0",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "e79cc9ec24984228a09a86a3651bc8a0",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-a49822613cb32d73",
+        "kind": "decision_frame",
+        "turn": 134,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "0dc7d0b4af6b49e78e13f158577a4b89",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "0dc7d0b4af6b49e78e13f158577a4b89",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-b06a8f2874f56106",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 134,
+          "observed_after_turn": 134,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "29c8a977e916437ea04a6c2c18e89a85",
+        "next_provider_contains_exact_result": true
+      }
+    ],
+    "qualification": "Observed progression and exact immediate-next-provider receipt delivery; not full-game completion or proof of strategic quality. Additional stale memory writes were rejected before commitment; successful retry of those later writes is not established by this sample. Attention acknowledgements continue and no active incident is reported."
+  },
+  "live_memory_followthrough_turn138": {
+    "turn": 138,
+    "active_incidents": [],
+    "plan_revision": 11,
+    "proof": [
+      {
+        "request_id": "2283b2f04ccc4d8197d78b3ade1103da",
+        "episode_id": "episode-c3f5fd20aeb2e225a360b79301a09076",
+        "call_id": "chatcmpl-tool-96badd77948dd751",
+        "kind": null,
+        "turn": null,
+        "memory_ok": false,
+        "plan_revision": null,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "c65a431a2e484594a11b496945a212f4",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "c65a431a2e484594a11b496945a212f4",
+        "episode_id": "episode-c3f5fd20aeb2e225a360b79301a09076",
+        "call_id": "chatcmpl-tool-8ece6d6b80912e7c",
+        "kind": null,
+        "turn": null,
+        "memory_ok": true,
+        "plan_revision": 11,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "4a3457a0930242a18340f5337c89107c",
+        "next_provider_contains_exact_result": true
+      }
+    ],
+    "qualification": "Incorrect shortened agent_id was rejected, then the sovereign explicitly corrected the request. Exact next-provider delivery is verified for rejection and success. This does not prove every earlier rejected write was retried or validate the strategic prose."
+  }
+}

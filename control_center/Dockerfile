@@ -33,7 +33,7 @@ RUN apt-get -o Acquire::Retries=3 update \
 FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv tini \
+    && apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv tini zstd \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin smacx \
     && install -d -o smacx -g smacx /var/lib/smacx /opt/smacx/src /opt/smacx/control_center/static
@@ -51,9 +51,12 @@ RUN python3 -m venv /opt/smacx/mcp-venv \
 COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_docker.py src/smacx_worker_manager.py src/smacx_operations.py \
     src/smacx_harness_manager.py src/smacx_hermes.py src/smacx_controller.py \
-    src/smacx_mcp.py src/smacx_reference.py src/smacx_capabilities.py \
+    src/smacx_mcp.py src/smacx_mcp_validation.py src/smacx_reference.py src/smacx_capabilities.py \
     src/smacx_game_settings.py src/smacx_prompt.py src/smacx_generation.py /opt/smacx/src/
 COPY src/smacx_journal.py src/smacx_context_policy.py src/smacx_choice_preparation.py /opt/smacx/src/
+COPY src/smacx_diagnostics.py src/smacx_diagnostic_summary.py \
+    src/smacx_campaign_diagnostics.py src/smacx_intent.py /opt/smacx/src/
+COPY src/smacx_operator.py src/smacx_ops.py src/smacx_former_attention.py /opt/smacx/src/
 COPY src/smacx_attention.py src/smacx_spatial_scope.py src/smacx_milestones.py src/smacx_plan_health.py src/smacx_counterfactual.py src/smacx_entitlements.py src/smacx_mechanics.py \
     src/smacx_observation.py src/smacx_temporal_episodes.py src/smacx_regions.py src/smacx_runtime_context.py \
     src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \
@@ -64,6 +67,7 @@ COPY src/doctrine/ /opt/smacx/src/doctrine/
 COPY src/smacx_provider_meter.py src/smacx_specialist_mcp.py src/smacx_specialist_supervisor.py /opt/smacx/src/
 COPY knowledge/ /opt/smacx/knowledge/
 COPY control_center/static/ /opt/smacx/control_center/static/
+COPY --chmod=0755 control_center/smacx-ops /usr/local/bin/smacx-ops
 COPY --chmod=0755 control_center/smacx-control /usr/local/bin/smacx-control
 COPY --chmod=0755 control_center/smacx-mcp /usr/local/bin/smacx-mcp
 
@@ -75,6 +79,7 @@ ENV PYTHONPATH=/opt/smacx/src \
     SMACX_CONTROL_PORT=8081
 
 WORKDIR /opt/smacx
+RUN /opt/smacx/mcp-venv/bin/python -c "import smacx_mcp, smacx_campaign_diagnostics, smacx_intent, smacx_operator, smacx_former_attention"
 VOLUME ["/var/lib/smacx"]
 EXPOSE 8081
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=4 \

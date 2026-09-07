@@ -1,0 +1,22 @@
+{
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "observed_trigger": "Sovereign assigned last ready Scout Auto Explore to free attention for base development; native processing advanced turn13->14 and14->15 before management",
+  "change": "Opaque choices expose may_close_turn from the existing execution reconciliation predicate; affected frames explain immediate native processing risk",
+  "validation": {
+    "opaque_choice_execution": "pass: one vs two ready units, no management mark, no selector leakage or action",
+    "intent_managed_guard": "pass: explicit and automatic closure guarded, management reachable"
+  },
+  "limitations": [
+    "Conservative possibility, not an exact prediction",
+    "No prose-to-intent inference or new turn blocker",
+    "Live End turn notice delivered; next last-ready-unit automatic-closure frame and sustained behavior remain to inspect"
+  ],
+  "deployed": {
+    "turn": 16,
+    "decision_id": "decision-dbf1f033c9a142ab8c91de86c9f5a0ea",
+    "marked_choice": "End turn",
+    "provider_request_id": "0268e3a3e00f4cfeac3964cbcb65ee56",
+    "notice_present_in_actual_request": true,
+    "next_observed_management_query": "smac_choices(kind=production, base_ref=base-location-1134)"
+  }
+}

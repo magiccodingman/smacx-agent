@@ -55,11 +55,28 @@ def main():
     partial = plan_health([first], objects, operations, ready, set(objects), complete=False)
     assert partial["snapshot_actionable_unassigned_count"] is None
     vague = {"plan_id": "plan-vague", "status": "active", "objective": first["objective"]}
-    assert plan_health([vague], objects, [], ready, set(objects), complete=True)["conflict_count"] == 0
+    before = deepcopy(vague)
+    unbound = plan_health([vague], objects, [], ready, set(objects), complete=True)
+    assert unbound["conflict_count"] == 0 and unbound["assigned_owned_unit_count"] == 0
+    assert unbound["intent_coverage_complete"]  # Enumeration, not narrative verification.
+    assert unbound["plans_without_world_bindings_count"] == 1
+    assert unbound["plans_without_world_bindings"] == ["plan-vague"]
+    assert "Objective prose is not interpreted or verified" in unbound["assessment_scope"]
+    assert "not that a plan is achievable" in unbound["assessment_scope"]
+    assert vague == before
+    target_only = {**vague, "target_refs": ["base-a"]}
+    bound = plan_health([target_only], objects, [], ready, set(objects), complete=True)
+    assert bound["plans_without_world_bindings_count"] == 0 and bound["assigned_owned_unit_count"] == 0
+    many = [{**vague, "plan_id": f"plan-{i}"} for i in range(12)]
+    bounded = plan_health(many, objects, [], ready, set(objects), complete=True)
+    assert bounded["plans_without_world_bindings_count"] == 12
+    assert len(bounded["plans_without_world_bindings"]) == 8
+    assert bounded["world_binding_details_truncated"]
     print(json.dumps({"ok": True, "explicit_assignment_distinct_from_order": True,
                       "timed_unit_production_credit_conflicts": True, "stale_credit_withheld": True,
                       "dependency_change_qualified": True, "incomplete_intent_not_unassigned": True,
-                      "prose_has_no_mechanical_authority": True}))
+                      "prose_has_no_mechanical_authority": True,
+                      "unbound_plan_scope_explicit_and_bounded": True}))
 
 
 if __name__ == "__main__":

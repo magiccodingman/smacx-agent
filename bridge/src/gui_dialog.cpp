@@ -26,8 +26,8 @@ const char* agent_popup_label() {
     // recorded BasePop has closed (notably while LAN clients rendezvous after
     // PLANETFALL). Never let that unrelated modal resurrect a stale script
     // label and invite replay of an already completed semantic action.
-    if (!last_started_agent_popup
-    || !Win_is_visible(reinterpret_cast<Win*>(last_started_agent_popup))) return "";
+    BasePop* popup = agent_popup_object();
+    if (!popup || !Win_is_visible(reinterpret_cast<Win*>(popup))) return "";
     return last_started_agent_popup_label.c_str();
 }
 
@@ -35,8 +35,29 @@ const char* agent_popup_last_started_label() {
     return last_started_agent_popup_label.c_str();
 }
 
+bool agent_popup_object_is_active(BasePop* popup) {
+    // BasePop::start also records stack-local notices. A historical pointer
+    // is not a lifetime guarantee: after WEDEVELOP closes, that stack storage
+    // is reused before the next semantic snapshot. Compare with native live
+    // ownership slots BEFORE inspecting any object or parent-window fields.
+    if (reinterpret_cast<uintptr_t>(popup) < 0x10000) return false;
+    Win* modal = *reinterpret_cast<Win**>(0x9B7AE0);
+    BasePop* executing = *reinterpret_cast<BasePop**>(0x9B8D7C);
+    const int exec_depth = *reinterpret_cast<int*>(0x9B8D00);
+    if ((*WinModalState > 0 && modal == reinterpret_cast<Win*>(popup))
+        || (exec_depth > 0 && executing == popup)) return true;
+    // TOPMENU is displayed by a SetupWin whose live modal owns the source
+    // BasePop at +0x1014. The BasePop itself is not the modal/exec slot in
+    // this flow. Inspect only the currently owned SetupWin, never the saved
+    // popup, to establish that additional native lifetime relationship.
+    return *WinModalState > 0 && modal
+        && modal->vtable == reinterpret_cast<void*>(0x66D8E8)
+        && *reinterpret_cast<BasePop**>(reinterpret_cast<char*>(modal) + 0x1014) == popup;
+}
+
 BasePop* agent_popup_object() {
-    return last_started_agent_popup;
+    return agent_popup_object_is_active(last_started_agent_popup)
+        ? last_started_agent_popup : NULL;
 }
 
 uint64_t agent_popup_generation() {

@@ -1,0 +1,127 @@
+{
+  "checkpoint": "confirmed owned-unit loss attention at turn 220",
+  "status": "deployed; live provider delivery and sovereign acknowledgement verified; full-game acceptance open",
+  "observed": {
+    "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+    "turn": 219,
+    "native_event_sequences": [
+      1070,
+      1093,
+      1094,
+      1095,
+      1096
+    ],
+    "unit_refs": [
+      "own-unit-64",
+      "own-unit-61",
+      "own-unit-52",
+      "own-unit-51",
+      "own-unit-47"
+    ],
+    "location_ref": "location-1334",
+    "owned_unit_count_before": 16,
+    "owned_unit_count_after": 11,
+    "provider_request_id": "efc3283c83984e92919b92b723fc0b95",
+    "gap": "Confirmed destruction existed in temporal history while default attention carried only priority-45 projection removals and unverified-fate guidance. Attacker and current threat resolution are not established."
+  },
+  "repair": {
+    "attention_kind": "unit_losses",
+    "priority": 100,
+    "critical": true,
+    "source": "committed perspective-scoped temporal events only",
+    "bounded_details": 8,
+    "exact_count": true,
+    "upgrade": "Backfill latest 32 recent removal notices, including acknowledged generic notices; confirmation has a separate deduplicated attention identity. New publications capture directly.",
+    "recovery": "Frozen publication retries capture after installed head before acknowledgement; acknowledged notices deduplicate."
+  },
+  "validation": {
+    "classification": "native-shaped production collector and real journal/store/attention contracts, not new live native mechanics comparison",
+    "focused_cases": [
+      "five confirmed deaths; foreign and ambiguous losses excluded",
+      "existing-database backfill",
+      "post-head interruption and retry",
+      "64 deaths with bounded details and exact count",
+      "acknowledgement and restart deduplication",
+      "future cursor and other timeline excluded",
+      "acknowledged generic removal backfills distinct confirmed-loss notice"
+    ],
+    "contracts_passed": [
+      "confirmed_unit_loss_attention_test",
+      "observation_batch_recovery_test",
+      "publication_visibility_test",
+      "publication_transaction_test",
+      "native_observation_contract_test",
+      "runtime_context_contract_test"
+    ]
+  },
+  "acceptance": {
+    "observed": true,
+    "represented": true,
+    "calculated": "exact count over committed observed events",
+    "provider_queryable": "actual provider request990c01adc96a422cb1a69c83eb54465e contains all five confirmed219 losses and journal source",
+    "sovereign_expressible": "actual smac_attention_ack after request990c01adc96a422cb1a69c83eb54465e succeeds through cursor49 including both confirmed-loss IDs",
+    "executable": "no native action added",
+    "effect_verified": "actual native events -> committed history -> critical attention -> actual provider delivery -> managed acknowledgement verified; strategic response quality remains under observation",
+    "recovery_safe": "publication interruption and acknowledgement deduplication fixtures pass",
+    "full_game_complete": false
+  },
+  "deployment_attempts": [
+    {
+      "commit": "2c6daca",
+      "checkpoint_id": "checkpoint-f9ef55f76de940d6a59f25a6c4be83dd",
+      "native_session_preserved": true,
+      "run_id": "run-979493e512f4486b85263028384a92c6",
+      "provider_request_id": "a7f3af8d612f4832a73aaaa7f9638a44",
+      "delivery_passed": false,
+      "reason": "Original generic notice was already acknowledged; pending-only upgrade scan omitted it. Run stopped and portal paused for correction."
+    },
+    {
+      "commit": "f9867f6",
+      "control_image": "sha256:137a684905198969253b64e513eaf40b1255dbdc8793b96ca04324bfc17a59fd",
+      "harness_image": "sha256:cdfa175e70b92328daa8e15c6073202475174f7a76629ab8354bbacf012b813f",
+      "native_session_preserved": true,
+      "session_id": "session-8021511caf17445388b52e7cb51d5cc4",
+      "run_id": "run-c4f8ffdb23524e66ae419215badc340b",
+      "provider_request_id": "990c01adc96a422cb1a69c83eb54465e",
+      "episode_id": "episode-c641f4babc3a343e29e9e7ef3db990b7",
+      "delivery_passed": true,
+      "attention_id": "attention-ab6f2d5ccf754c81ae40a9743f56d1be",
+      "source_journal_event_id": "journal-a275a2c3ff6c4e2a8c7088ce059d871e",
+      "count": 5,
+      "priority": 100,
+      "critical": true,
+      "also_delivered": "one historical turn217 confirmed loss, separately dated",
+      "packaged_five_case_contract_passed": true,
+      "active_incidents": 0
+    }
+  ],
+  "live_followup_221": {
+    "new_loss_delivery_request": "174caebfd49c4a75a80abaa5b33b2310",
+    "new_losses": [
+      {
+        "unit_ref": "own-unit-97",
+        "location_ref": "location-1334",
+        "cursor": 1479,
+        "journal_event_id": "journal-7fb482a4c7bb47b5a360acd7ed6d7a16"
+      },
+      {
+        "unit_ref": "own-unit-63",
+        "location_ref": "location-1134",
+        "cursor": 1480,
+        "journal_event_id": "journal-a4a58a6267fb4a64be8a003c0eb8696c"
+      }
+    ],
+    "next_episode_request": "b88e318100664faf9bfd59571ddb633e",
+    "next_episode_id": "episode-61e40606a0a76aa6eeea2ddaecea3805",
+    "same_attention_ids_redelivered": true,
+    "terminal_order_exact_next_provider": true,
+    "handoff_exact_next_provider": true,
+    "checkpoint_id": "checkpoint-4d5c38e3deb44c768a6b1c836c17ada4",
+    "checkpoint_turn": 221,
+    "checkpoint_verified": true,
+    "native_save_sha256": "bffc777b41ab816bc307aab0dd8795d2f338df38cbfd5765a44834e8afcad5d2",
+    "active_runs": 1,
+    "active_incidents": 0,
+    "tool_or_context_fetch_errors_in_sample": 0
+  }
+}

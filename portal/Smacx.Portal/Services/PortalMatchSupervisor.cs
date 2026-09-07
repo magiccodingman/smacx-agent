@@ -22,6 +22,7 @@ public sealed class PortalMatchSupervisor(
 {
     private int dormantReconcileOffset;
     private bool dormantReconciled;
+    private DateTimeOffset nextDormantReconciliation;
     private readonly Dictionary<string, string> announcedCapabilityIncidents =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTimeOffset> lastNativeStatusReads =
@@ -262,14 +263,16 @@ public sealed class PortalMatchSupervisor(
         ApplicationDbContext database, ControlPlaneClient control,
         CancellationToken cancellationToken)
     {
-        if (dormantReconciled) return;
-        var dormant = await database.PortalMatches.AsNoTracking()
-            .Where(item => item.Status == "parked" || item.Status == "completed")
+        if (DateTimeOffset.UtcNow < nextDormantReconciliation) return;
+        var dormant = await database.PortalMatches
+            .Where(item => item.Status == "parked" || !dormantReconciled && item.Status == "completed")
             .OrderBy(item => item.MatchId).Skip(dormantReconcileOffset).Take(20)
             .ToArrayAsync(cancellationToken);
         if (dormant.Length == 0)
         {
             dormantReconciled = true;
+            dormantReconcileOffset = 0;
+            nextDormantReconciliation = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(1);
             return;
         }
         var processed = 0;
@@ -278,6 +281,13 @@ public sealed class PortalMatchSupervisor(
             try
             {
                 var observed = await control.GetMatchAsync(match.MatchId, cancellationToken);
+                if (await RecoveredMatchReconciliation.ApplyAsync(
+                        database, match, observed.Match, cancellationToken))
+                {
+                    await NotifyAsync(match.MatchId, cancellationToken);
+                    processed++;
+                    continue;
+                }
                 var status = observed.Match.Status;
                 if (status != match.Status)
                 {

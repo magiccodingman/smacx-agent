@@ -142,7 +142,12 @@ def exercise_managed_actions(call, native, fixture):
     assert deployment.get("ok"), deployment
     build = next(row for row in deployment["items"][0]["alternatives"] if row.get("alternative") == "set_production")
     assert build["travel_turns"] == 0 and build["preparation_turns"] == production_preview["estimated_production_turns"]
+    production_digest_before = native("semantic_snapshot")["snapshot"]["owned_progress_digest"]
     execute(production, production_choice)
+    production_digest_after = native("semantic_snapshot")["snapshot"]["owned_progress_digest"]
+    assert production_digest_after != production_digest_before
+    assert native("semantic_snapshot")["snapshot"]["owned_progress_digest"] == production_digest_after
+    record("production_effect_changes_stable_supervisor_digest")
     base = fields("base", base_ref)
     assert base["production_queue"][0]["name"] == design_name, base
     assert base["minerals_accumulated"] == production_preview["resulting_progress"]
@@ -168,11 +173,32 @@ def exercise_managed_actions(call, native, fixture):
         execute(citizens, select(citizens, lambda row: row["label"] == "Assign specialist to tile"))
         citizens = choices("base_citizens", base_ref=base_ref)
     specialists_before = len(fields("base", base_ref)["citizens"]["specialists"])
-    execute(citizens, select(citizens, lambda row: row.get("label") == "Convert worker to specialist"))
+    freed = select(citizens, lambda row: row.get("label") == "Convert worker to specialist")
+    assert citizens["citizen_context"]["tile_reassignment"]["next_query"]["arguments"]["base_ref"] == base_ref
+    assert freed.get("allocation_location_ref") and isinstance(freed.get("allocation_yields"), dict)
+    citizen_digest_before = native("semantic_snapshot")["snapshot"]["owned_progress_digest"]
+    execute(citizens, freed)
+    assert native("semantic_snapshot")["snapshot"]["owned_progress_digest"] != citizen_digest_before
+    record("citizen_effect_changes_supervisor_digest")
     assert len(fields("base", base_ref)["citizens"]["specialists"]) == specialists_before + 1
     after_citizens = choices("base_citizens", base_ref=base_ref)
-    assert any(row.get("label") == "Assign specialist to tile" for row in after_citizens["choices"])
+    reassigned = select(after_citizens, lambda row: row.get("label") == "Assign specialist to tile"
+                        and row.get("allocation_location_ref") != freed["allocation_location_ref"])
+    execute(after_citizens, reassigned)
+    after_reassignment = choices("base_citizens", base_ref=base_ref)
+    allocation = {row["location_ref"]: row for row in after_reassignment["citizen_context"]["tiles"]}
+    assert not allocation[freed["allocation_location_ref"]]["worked"]
+    assert allocation[reassigned["allocation_location_ref"]]["worked"]
+    base = fields("base", base_ref)
+    assert len(base["citizens"]["specialists"]) == specialists_before
+    native_base = next(row for row in native("list_bases")["items"] if row["name"] == base["name"])
+    native_allocation = native("semantic_choices", kind="base_citizens", base_id=native_base["id"])
+    actual = {f"location-{row['tile_id']}": row for row in native_allocation["tiles"]}
+    assert not actual[freed["allocation_location_ref"]]["worked"]
+    assert actual[reassigned["allocation_location_ref"]]["worked"]
+    assert allocation[reassigned["allocation_location_ref"]]["yields"] == actual[reassigned["allocation_location_ref"]]["yields"]
     record("governor_and_citizen_managed_workflow")
+    record("two_step_citizen_reassignment_native_effect_and_yields")
 
     rendezvous = call("smac_world", {"mode": "compare",
         "subject_refs": [fixture["passenger_ref"], fixture["transport_ref"]],
@@ -254,6 +280,9 @@ def exercise_managed_actions(call, native, fixture):
             snapshot = native("semantic_snapshot")["snapshot"]
             if snapshot.get("interaction", {}).get("kind") == "turn":
                 return snapshot
+            if snapshot.get("protocol", {}).get("phase") == "wait":
+                time.sleep(0.1)
+                continue
             frame = choices("interaction")
             options = frame["choices"]
             closing = next((row for row in options if row.get("option") == "finish"

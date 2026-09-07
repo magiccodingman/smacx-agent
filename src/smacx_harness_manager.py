@@ -438,6 +438,8 @@ class HarnessManager:
                 "HOME=/opt/data", "HERMES_HOME=/opt/data",
                 "PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1",
                 "SMACX_STRICT_SYSTEM_PROMPT=1",
+                "SMACX_DIAGNOSTICS_ENABLED=1",
+                "SMACX_DIAGNOSTICS_ROOT=/opt/data/diagnostics",
                 f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
                 f"SMACX_SYSTEM_PROMPT_SHA256={prompt_hash}",
                 f"SMACX_AGENT_MATCH_ID={run['match_id']}",
@@ -846,11 +848,12 @@ print(json.dumps(result,separators=(',',':')))
                     if isinstance(metadata.get("semantic_baseline_telemetry"), dict) else {}
                 if progress_changed or not baseline:
                     baseline = dict(telemetry)
-                generated = (
+                # Hermes CanonicalUsage.output_tokens already includes its
+                # reasoning_tokens detail bucket. Adding the detail again
+                # inflates both the stop threshold and the incident evidence.
+                generated = max(0,
                     int(telemetry.get("output_tokens") or 0)
-                    + int(telemetry.get("reasoning_tokens") or 0)
                     - int(baseline.get("output_tokens") or 0)
-                    - int(baseline.get("reasoning_tokens") or 0)
                 )
                 calls = int(telemetry.get("api_calls") or 0) - int(baseline.get("api_calls") or 0)
                 metadata_update = {
@@ -1005,8 +1008,21 @@ print(json.dumps(result,separators=(',',':')))
                     self.control.update_harness_run(
                         str(run["run_id"]), status="error", desired_status="stopped",
                         exit_code=0, last_error="harness_clean_yield_no_progress",
-                        metadata_update={**yield_metadata, "supervision_incident": incident},
+                        metadata_update={**yield_metadata, "supervision_incident": incident,
+                                         "operator_attention_required": True},
                     )
+                    # The run-level stop alone leaves the match runnable to
+                    # portal supervision, which can create a fresh run and
+                    # reset this circuit breaker. Preserve the same campaign
+                    # containment used by a live semantic stall.
+                    self.control.update_match_lifecycle(str(run["match_id"]), "error", metadata={
+                        "recovery_required": True,
+                        "recovery_reason": "harness_clean_yield_no_progress",
+                    })
+                    quarantine = self.worker_manager.quarantine_match(str(run["match_id"]))
+                    self.control.update_match_lifecycle(str(run["match_id"]), "error", metadata={
+                        "incident_quarantine": quarantine,
+                    })
                     errors += 1
                     operator_required += 1
                     continue

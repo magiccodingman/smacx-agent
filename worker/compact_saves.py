@@ -88,6 +88,7 @@ def main() -> int:
         item for item in ordered
         if item.name in {"control_recovery.sav", "control_recovery.sav.zst",
                          "final.sav", "final.sav.zst"}
+        or re.fullmatch(r"ckpt_[0-9a-f]{16}_[ab]\.sav(?:\.zst)?", item.name)
     }
     keep = set(ordered if full else ordered[-recent:]) | protected
     if not full and milestone:

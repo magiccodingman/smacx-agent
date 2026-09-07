@@ -1,0 +1,59 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "failure": {
+    "turn": 68,
+    "call_id": "chatcmpl-tool-b7272b7ff10374ba",
+    "request_id": "efa2042d518f4004b4ddd851bf7c99bf",
+    "tool": "smac_world",
+    "arguments": {
+      "mode": "changes",
+      "since_cursor": 335
+    },
+    "error": "world_anchor_budget_exhausted",
+    "committed_cursor": 342,
+    "raw_anchor_tokens_after_existing_demotions": 6203,
+    "public_anchor_tokens_after_existing_demotions": 6128,
+    "declared_ceiling": 6000
+  },
+  "repair": "Under budget pressure demote frontier geometry and redundant display fields, retaining every frontier ref, map verification/current-stale evidence, separate current/stale faction refs, possible connectivity, resources composition and landmark refs. Expose deliberate area-query hint. Ceiling and historical cursor behavior unchanged.",
+  "validation": {
+    "baseline_new_regression": "fails with world_anchor_budget_exhausted",
+    "strategic_world_fixtures_test": "pass including Huge cases",
+    "geographic_semantics_contract_test": "pass",
+    "world_changes_pagination_test": "pass: 700 deltas/400 events",
+    "runtime_context_contract_test": "pass: 64K/256K, critical attention, commitments, Huge bounded runtime",
+    "captured_campaign_read_only_clone": {
+      "anchor_tokens": 5560,
+      "frontiers_retained": 8,
+      "deep_pages": 13,
+      "deltas": 32,
+      "temporal_events": 21,
+      "exact_order_and_completeness": true,
+      "provider_inference": false
+    }
+  },
+  "acceptance": {
+    "deployed": true,
+    "actual_repaired_provider_query": "pass: assisted same-position deep retry, exact result retained in next provider request",
+    "full_game": "unfinished"
+  },
+  "deployment": {
+    "run_id": "run-b6a4e3ebb4094255b3b050dd1dd1ec31",
+    "control_mcp_sha256": "1f5cce44c9348d6c0a25a54c34374297b3da5b1498d718f76192614c9a94ade9",
+    "harness_sha256": "5cc25280a7a3d06f7e430c23e1060ebc36d9a9dce79d91d4a127a250b2c88c22",
+    "native_worker_replaced": false,
+    "resume_notice": "Explicit repair notice requested retry of failed query at the same position; live retry is assisted acceptance."
+  },
+  "live_query": {
+    "call_id": "chatcmpl-tool-8b54944f9351000a",
+    "request_id": "c0eac73f69ec4285b468160f38ab5a17",
+    "receiving_request_id": "ce340bdb089f49e582f1e1775189cbcf",
+    "items": 1,
+    "temporal_events": 8,
+    "continuation": "cursor-1-8",
+    "result_tokens": 3195,
+    "exact_result_retained": true,
+    "complete_autonomous_pagination": "not claimed"
+  }
+}

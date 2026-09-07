@@ -102,6 +102,34 @@ public sealed class LobbiesController(
         return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(profile));
     }
 
+    [HttpGet("{matchId}/diagnostics")]
+    [Authorize(Roles = PortalRoles.Administrator)]
+    public async Task<IActionResult> DownloadCampaignDiagnostics(string matchId)
+    {
+        if (!await database.PortalMatches.AsNoTracking().AnyAsync(
+                item => item.MatchId == matchId, HttpContext.RequestAborted)) return NotFound();
+        try
+        {
+            using var response = await control.GetRawAsync(
+                $"api/v1/matches/{Uri.EscapeDataString(matchId)}/diagnostics", HttpContext.RequestAborted);
+            var bundle = response.RootElement.GetProperty("bundle");
+            var name = Path.GetFileName(bundle.GetProperty("file_name").GetString());
+            if (string.IsNullOrEmpty(name) || !name.StartsWith("campaign-", StringComparison.Ordinal))
+                return StatusCode(502);
+            var root = Path.GetFullPath(Environment.GetEnvironmentVariable("SMACX_CONTROL_DATA_MOUNT")
+                ?? "/var/lib/smacx-control");
+            var path = Path.Combine(root, "diagnostics", name);
+            if (!System.IO.File.Exists(path)) return NotFound();
+            return File(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read),
+                "application/zip", name, enableRangeProcessing: false);
+        }
+        catch (ControlPlaneException exception)
+        {
+            return StatusCode(exception.StatusCode ?? 502,
+                ApiResponse<object>.Failure(exception.Code, exception.Message));
+        }
+    }
+
     [HttpGet("{matchId}/incidents/{incidentId}/diagnostic")]
     [Authorize]
     public async Task<IActionResult> DownloadDiagnostic(string matchId, string incidentId)
@@ -158,9 +186,27 @@ public sealed class LobbiesController(
         {
             return BadRequest(ApiResponse<LobbyDetails>.Failure(validation.Value.Code, validation.Value.Message));
         }
+        if (request.RequestId is not null && !System.Text.RegularExpressions.Regex.IsMatch(
+                request.RequestId, "^[A-Za-z0-9_-]{8,96}$"))
+            return BadRequest(ApiResponse<LobbyDetails>.Failure("invalid_request_id", "Use 8–96 letters, digits, underscores or hyphens."));
+        var requestHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request))));
+        var requestedMatchId = request.RequestId is null ? null : "match-" + Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(user.Id + ":" + request.RequestId))).ToLowerInvariant()[..32];
         await WaitingLobbyCreationGate.WaitAsync(HttpContext.RequestAborted);
         try
         {
+            if (requestedMatchId is not null)
+            {
+                var existing = await database.PortalMatches.SingleOrDefaultAsync(
+                    item => item.MatchId == requestedMatchId, HttpContext.RequestAborted);
+                if (existing is not null)
+                {
+                    using var settings = JsonDocument.Parse(existing.SettingsJson);
+                    if (!settings.RootElement.TryGetProperty("RequestHash", out var priorHash) || priorHash.GetString() != requestHash)
+                        return Conflict(ApiResponse<LobbyDetails>.Failure("request_id_conflict", "That request ID already describes a different lobby."));
+                    return ApiResponse<LobbyDetails>.Success(await MapDetailsAsync(existing));
+                }
+            }
             if (!User.IsInRole(PortalRoles.Administrator))
             {
                 var ownedWaiting = await database.PortalMatches.AsNoTracking().CountAsync(
@@ -172,7 +218,7 @@ public sealed class LobbiesController(
                         $"Members may own at most {WaitingLobbyPolicy.MemberLimit} waiting lobbies. Start or close one before creating another."));
             }
 
-            var matchId = $"match-{Guid.NewGuid():N}";
+            var matchId = requestedMatchId ?? $"match-{Guid.NewGuid():N}";
             var now = DateTimeOffset.UtcNow;
             var profile = new PortalMatchProfile
             {
@@ -186,6 +232,7 @@ public sealed class LobbiesController(
                 LanProfile = ResolveProfile(request.WorldSize),
                 SettingsJson = JsonSerializer.Serialize(new
                 {
+                    RequestHash = requestHash,
                     request.WorldSize,
                     request.Difficulty,
                     request.RandomMap,

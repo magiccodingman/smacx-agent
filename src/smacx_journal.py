@@ -918,6 +918,27 @@ class CampaignJournal:
                         and len(facts_value) > 1 else summaries_value
                     target.pop()
         estimates = {name: estimate(value) for name, value in sections.items()}
+        from smacx_diagnostics import record as diagnostic_record
+        selection = {}
+        allowed = {"goals": {"active", "paused"}, "plans": {"proposed", "active", "paused"},
+                   "commitments": set(commitment_status_rank)}
+        for section in ("goals", "plans", "commitments", "beliefs", "relationships"):
+            singular = section[:-1] if section != "beliefs" else "belief"
+            def record_id(row):
+                return str(row.get(singular + "_id") or row.get(singular + "_key") or
+                           hashlib.sha256(_canonical(row)).hexdigest())
+            included = {record_id(row) for row in sections[section]}
+            candidates = records(section)
+            selection[section] = {"source_count": len(candidates), "included_ids": sorted(included),
+                "omitted": [{"record_id": record_id(row), "reason":
+                    "status_filter" if section in allowed and str(row.get("status") or "active") not in allowed[section]
+                    else "section_count_or_token_budget"}
+                    for row in candidates if record_id(row) not in included]}
+        diagnostic_record("journal_cognition_selection", {"selection": selection,
+            "token_budgets": budgets, "source_token_estimates": source_estimates,
+            "selected_token_estimates": estimates}, actor="runtime-context-builder",
+            correlation={"journal_head_hash": replayed["manifest"]["head_hash"],
+                         "timeline_id": self.timeline_id(scope, timeline_id)})
         return {
             "scope": {
                 "match_id": scope.match_id, "agent_id": scope.agent_id,
@@ -1013,6 +1034,7 @@ class CampaignJournal:
     def search(
         self, scope: MemoryScope, query: str, *,
         document_kinds: tuple[str, ...] | list[str] = (), limit: int = 20,
+        record_transform: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Run a bounded lexical search over the active canonical timeline."""
         terms = [term.casefold() for term in re.findall(r"[\w'-]+", str(query), re.UNICODE)[:16]]
@@ -1033,6 +1055,11 @@ class CampaignJournal:
             if allowed and document_kind not in allowed and kind not in allowed:
                 return
             record = value.get("record") if isinstance(value.get("record"), Mapping) else value
+            # Managed readers filter private diagnostics before matching, so
+            # hidden fields cannot influence returned membership or ranking.
+            # Internal journal reconstruction/search keeps the original record.
+            if record_transform is not None:
+                record = record_transform(record)
             title = next((str(record.get(name)) for name in (
                 "title", "topic", "section", "subject", "actor_id", "key", "message_uid",
             ) if record.get(name)), f"{document_kind} {stable_key}")

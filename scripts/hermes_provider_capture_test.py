@@ -5,10 +5,12 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import gzip
 from pathlib import Path
 import os
 import re
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import threading
@@ -16,8 +18,9 @@ import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
-from smacx_hermes import COMMUNICATION_MCP_TOOLS, configure_profile
+from smacx_hermes import COMMUNICATION_MCP_TOOLS, GAMEPLAY_MCP_TOOLS, configure_profile
 from smacx_prompt import compose_player_system_prompt, prompt_sha256
+from smacx_diagnostic_summary import result_object
 
 
 IMAGE = os.environ.get("SMACX_TEST_HARNESS_IMAGE", "smacx-agent-harness:dev")
@@ -54,6 +57,11 @@ def main() -> int:
             if self.path.startswith("/runtime-context"):
                 query = parse_qs(urlsplit(self.path).query)
                 episode_id = query.get("episode_id", [""])[0]
+                active = getattr(self.server, "active_episode", "")
+                if active and active != episode_id:
+                    self.send_error(409, "sovereign_invocation_already_active")
+                    return
+                self.server.active_episode = episode_id
                 payload = {
                     "ok": True,
                     "runtime_context": {
@@ -100,6 +108,9 @@ def main() -> int:
             length = int(self.headers.get("Content-Length", "0"))
             request = json.loads(self.rfile.read(length))
             captured.append({"path": self.path, "request": request})
+            if self.path.endswith("/episode-ended"):
+                assert request["episode_id"] == self.server.active_episode
+                self.server.active_episode = ""
             payload = {
                 "id": "capture-response", "object": "chat.completion",
                 "created": 0, "model": "Qwen/Qwen3.8-27B",
@@ -110,21 +121,52 @@ def main() -> int:
                 }],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             }
+            if self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and self.server.unknown_emitted and not getattr(self.server, "direct_emitted", False):
+                self.server.direct_emitted = True
+                payload["choices"][0].update(message={"role": "assistant", "content": None,
+                    "tool_calls": [{"id": "call-direct-guard", "type": "function", "function": {
+                        "name": "mcp__smacx__smac_attention_ack",
+                        "arguments": '{"attention_lease_id":"missing-contract-lease","through_cursor":1}'}}]},
+                    finish_reason="tool_calls")
+            elif self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and self.server.unknown_emitted and not getattr(self.server, "length_emitted", False):
+                self.server.length_emitted = True
+                payload["choices"][0].update(message={"role": "assistant", "content": "Partial response before truncation."}, finish_reason="length")
+            elif self.path.endswith("/chat/completions") and getattr(self.server, "inject_unknown", False) and not self.server.unknown_emitted:
+                self.server.unknown_emitted = True
+                payload["choices"][0].update(message={"role": "assistant", "content": None,
+                    "tool_calls": [{"id": "call-unknown-validation", "type": "function", "function": {
+                        "name": "unknown_diagnostic_tool", "arguments": '{"purpose":"validation fixture"}'}}]},
+                    finish_reason="tool_calls")
             if request.get("stream"):
+                delta = dict(payload["choices"][0]["message"])
+                if delta.get("tool_calls"):
+                    delta["content"] = ":"
+                    delta["tool_calls"] = [{"index": index, **call} for index, call in enumerate(delta["tool_calls"])]
                 events = [{
                     "id": "capture-response", "object": "chat.completion.chunk",
                     "created": 0, "model": "Qwen/Qwen3.8-27B",
                     "choices": [{
                         "index": 0,
-                        "delta": {"role": "assistant", "content": "capture complete"},
+                        "delta": delta,
                         "finish_reason": None,
                     }],
                 }, {
                     "id": "capture-response", "object": "chat.completion.chunk",
                     "created": 0, "model": "Qwen/Qwen3.8-27B",
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": payload["choices"][0]["finish_reason"]}],
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
                 }]
+                if payload["choices"][0]["finish_reason"] == "stop" and not delta.get("tool_calls"):
+                    # A colon emitted alone looks like an SSE comment to
+                    # Hermes's text-display buffer. Completion/usage metadata
+                    # on the final text delta must still be consumed.
+                    events = [events[0], {
+                        **events[0], "choices": [{"index": 0,
+                            "delta": {"content": ":"}, "finish_reason": None}],
+                    }, {
+                        **events[1], "choices": [{"index": 0,
+                            "delta": {"content": " bounded."}, "finish_reason": "stop"}],
+                    }]
                 data = ("".join(f"data: {json.dumps(event)}\n\n" for event in events)
                         + "data: [DONE]\n\n").encode()
                 content_type = "text/event-stream"
@@ -207,6 +249,7 @@ def main() -> int:
                 if config.get("platform_toolsets", {}).get("cli") != ["smacx"] or \
                         config.get("mcp_servers", {}).get("smacx") != {
                             "url": f"http://127.0.0.1:{mcp_port}/mcp", "enabled": True,
+                            "tools": {"include": list(GAMEPLAY_MCP_TOOLS), "resources": False, "prompts": False},
                         } or set(communication.get("tools", {}).get("include", ())) != set(
                             COMMUNICATION_MCP_TOOLS):
                     raise AssertionError(f"managed gameplay tool boundary drifted: {config}")
@@ -218,6 +261,8 @@ def main() -> int:
                 server.match_id = match_id
                 server.perspective_id = f"perspective-provider-capture-{suffix}"
                 server.episode_mode = episode_mode
+                server.inject_unknown = suffix == "low"
+                server.unknown_emitted = False
                 before = len(captured)
                 command = [
                     "docker", "run", "--rm", "--network", "host",
@@ -225,6 +270,8 @@ def main() -> int:
                     "-v", f"{root}:/opt/data",
                     "-e", "HOME=/opt/data", "-e", "HERMES_HOME=/opt/data",
                     "-e", "SMACX_STRICT_SYSTEM_PROMPT=1",
+                    "-e", "SMACX_DIAGNOSTICS_ENABLED=1",
+                    "-e", "SMACX_DIAGNOSTICS_ROOT=/opt/data/diagnostics",
                     "-e", f"SMACX_SYSTEM_PROMPT_FILE={prompt_path}",
                     "-e", f"SMACX_SYSTEM_PROMPT_SHA256={prompt_sha256(prompt)}",
                     "-e", f"SMACX_RUNTIME_CONTEXT_URL=http://127.0.0.1:{server.server_port}/runtime-context",
@@ -240,7 +287,7 @@ def main() -> int:
                     "--toolsets", "smacx-communication" if episode_mode == "communication"
                     else "smacx",
                     "--reasoning", reasoning_effort,
-                    "--max-turns", "1", "--query",
+                    "--max-turns", "5", "--query",
                     "Begin or resume this managed match now. Follow the system contract's opening "
                     "briefing protocol, then continue autonomous play until the operator stops the run "
                     "or a semantic capability gap is reported.", "--quiet",
@@ -253,11 +300,84 @@ def main() -> int:
                         f"derived Hermes capture failed ({completed.returncode}):\n"
                         f"stdout={completed.stdout}\nstderr={completed.stderr}"
                     )
+                # Recompile the exact prompt while retaining the real Hermes
+                # SQLite session, then exercise its actual --continue path.
+                # Hermes may reuse its persisted system row instead of calling
+                # build_system_prompt again; the wire hook must still replace it.
+                if suffix == "low":
+                    revised_prompt = prompt + "\nManaged prompt revision acceptance marker."
+                    (root / "profiles" / profile["profile_id"] / "SYSTEM.md").write_text(
+                        revised_prompt, encoding="utf-8")
+                    resumed_command = [
+                        f"SMACX_SYSTEM_PROMPT_SHA256={prompt_sha256(revised_prompt)}"
+                        if part.startswith("SMACX_SYSTEM_PROMPT_SHA256=") else part
+                        for part in command
+                    ]
+                    # Exercise real resumed SQLite history, not just the wire
+                    # sanitizer. This old result exceeds the raw preflight cap.
+                    database = root / "profiles" / profile["profile_id"] / "state.db"
+                    assert database.is_file(), list(root.rglob("*.db"))
+                    oversized_result = "DISPOSABLE_PREFLIGHT_MARKER " + "old state " * 150000
+                    with sqlite3.connect(database) as db:
+                        old_result = db.execute(
+                            "SELECT id FROM messages WHERE role='tool' ORDER BY id LIMIT 1"
+                        ).fetchone()
+                        assert old_result
+                        db.execute("UPDATE messages SET content=? WHERE id=?",
+                                   (oversized_result, old_result[0]))
+                    resume_before = len(captured)
+                    resumed = subprocess.run(resumed_command, text=True, capture_output=True,
+                                             timeout=90, check=False)
+                    assert resumed.returncode == 0, resumed.stderr
+                    resumed_requests = [item["request"] for item in captured[resume_before:]
+                                        if item["path"].endswith("/chat/completions")]
+                    assert len(resumed_requests) == 1
+                    resumed_messages = resumed_requests[0]["messages"]
+                    assert [m["content"] for m in resumed_messages if m["role"] == "system"] == [revised_prompt]
+                    assert any(m.get("content") == "capture complete: bounded." for m in resumed_messages), "resume discarded prior conversation"
+                    assert "DISPOSABLE_PREFLIGHT_MARKER" not in json.dumps(resumed_messages)
+                    assert "Compacting context" not in resumed.stdout + resumed.stderr
+                    with sqlite3.connect(database) as db:
+                        assert db.execute("SELECT content FROM messages WHERE id=?",
+                                          (old_result[0],)).fetchone()[0] == oversized_result
+                    captured_resume = resumed_requests[0]
+                    # The normal checks below still inspect the first request;
+                    # diagnostics must contain both exact receiving-side bodies.
+                else:
+                    captured_resume = None
                 requests = [item["request"] for item in captured[before:]
                             if item["path"].endswith("/chat/completions")]
-                if len(requests) != 1:
-                    raise AssertionError(f"expected one provider request, captured={captured[before:]}")
+                if len(requests) != (5 if captured_resume else 1):
+                    raise AssertionError(f"unexpected provider request count: {len(requests)} for {suffix}")
                 request = requests[0]
+                diagnostic_events=[]
+                for path in (root/"diagnostics"/match_id).glob("*.jsonl.gz"):
+                    with gzip.open(path,"rt") as stream:
+                        diagnostic_events.extend(json.loads(line) for line in stream)
+                submitted=[row for row in diagnostic_events if row["kind"]=="provider_request_submitted"]
+                assert len(submitted)==(5 if captured_resume else 1), [row["kind"] for row in diagnostic_events]
+                submitted.sort(key=lambda row: row["recorded_unix"])
+                assert submitted[0]["payload"]["body"]==request
+                if captured_resume:
+                    assert submitted[4]["payload"]["body"]==captured_resume
+                    direct_results = [row for row in diagnostic_events if row["kind"] == "tool_returned"
+                                      and row["correlation"].get("call_id") == "call-direct-guard"]
+                    assert len(direct_results) == 1
+                    direct_result = result_object(direct_results[0]["payload"]["content"])
+                    assert direct_result.get("ok") is False and direct_result.get("error"), direct_result
+                    releases = [item["request"] for item in captured[before:]
+                                if item["path"].endswith("/episode-ended")]
+                    assert any(item["committed"] is False for item in releases), releases
+                    rejected = [row for row in diagnostic_events if row["kind"] == "tool_validation_rejected"]
+                    assert len(rejected) == 1 and rejected[0]["correlation"]["call_id"] == "call-unknown-validation"
+                    assert rejected[0]["payload"]["arguments"] == {"purpose": "validation fixture"}
+                    assert rejected[0]["payload"]["native_action_executed"] is False
+                    assert rejected[0]["correlation"]["request_id"] == submitted[0]["correlation"]["request_id"]
+                    assert not any(row["kind"] == "tool_requested" and row["payload"].get("managed_name") == "unknown_diagnostic_tool" for row in diagnostic_events)
+                assert submitted[0]["correlation"].get("runtime_context_sha256")
+                responses=[row for row in diagnostic_events if row["kind"] in
+                           {"provider_response_body","provider_response_stream"}]
+                assert responses and any(row["correlation"]==submitted[0]["correlation"] for row in responses)
                 messages = request.get("messages")
                 systems = [item.get("content") for item in messages or []
                            if item.get("role") == "system"]
@@ -278,19 +398,16 @@ def main() -> int:
                     str(item.get("function", {}).get("name") or "")
                     for item in tools if isinstance(item, dict)
                 }
-                # Hermes keeps deferred MCP schemas out of the permanent
-                # provider footprint. The authoritative provider-visible
-                # registry is therefore the catalog embedded in tool_search,
-                # followed by on-demand tool_describe/tool_call. Inspect that
-                # real wire representation rather than merely trusting config.
-                search = next((item.get("function", {}) for item in tools
-                               if item.get("function", {}).get("name") == "tool_search"), {})
-                catalog = str(search.get("description") or "")
-                discovered = set(re.findall(
-                    r"mcp__[^\s:]+__(smac_[A-Za-z0-9_]+)", catalog,
-                ))
+                assert not names & {"tool_search", "tool_describe", "tool_call"}, names
+                assert all(name.startswith("mcp__") for name in names), names
+                discovered = {name.rsplit("__", 1)[-1] for name in names}
+                assert all(item["function"].get("parameters", {}).get("type") == "object"
+                           for item in tools), "direct parameter schemas missing"
+                if captured_resume:
+                    assert captured_resume["tools"] == request["tools"], "resume removed tool schemas"
                 captured_tool_names[episode_mode] = discovered
                 if episode_mode == "gameplay":
+                    assert discovered == set(GAMEPLAY_MCP_TOOLS) and len(discovered) == 15, discovered
                     if not {"smac_decision", "smac_execute_choice"} <= discovered:
                         raise AssertionError(
                             f"gameplay provider catalog lacks guarded actions: {discovered}"
@@ -344,13 +461,24 @@ def main() -> int:
         "payload": {
             "real_derived_image": True,
             "provider_request_captured": True,
+            "production_diagnostic_matches_received_request": True,
+            "production_response_capture_correlated": True,
+            "terminal_metadata_survives_sse_like_prose": True,
+            "tool_deltas_survive_sse_like_prose": True,
             "exact_single_system_message": True,
+            "recompiled_prompt_replaces_saved_prompt_on_real_resume": True,
+            "resume_preserves_conversation": True,
+            "oversized_durable_history_resume_uses_semantic_preflight": True,
+            "unknown_tool_rejection_captured_before_executor": True,
+            "truncated_response_releases_lease_before_real_hermes_continuation": True,
             "request_only_runtime_tail": True,
             "upstream_scaffold_absent": True,
             "generation_settings_reached_provider": True,
             "low_medium_high_reasoning_reached_provider": True,
             "managed_gameplay_prompt_and_tool_boundary": True,
             "captured_gameplay_and_communication_tool_lists": True,
+            "full_direct_schemas_present_initial_and_resumed": True,
+            "direct_call_reaches_mcp_and_returns_guard_error": True,
             "communication_provider_has_no_gameplay_mutation_schema": True,
         },
     }, separators=(",", ":")))

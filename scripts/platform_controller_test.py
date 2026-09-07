@@ -164,6 +164,17 @@ def main() -> int:
             sections = working.get("memory", {}).get("sections", {})
             if len(sections.get("relationships", [])) != 1 or len(sections.get("goals", [])) != 1:
                 raise AssertionError(f"working set omitted projections: {working}")
+            # A fresh process must reconstruct the successful write from journal
+            # authority, without relying on the in-process working-state cache.
+            controller._journal_instance = None
+            controller._journal_instance_root = None
+            recovered = controller.read_platform_memory(
+                "working_set", match_id, session_id=session_id,
+            )
+            recovered_goals = recovered.get("memory", {}).get("sections", {}).get("goals", [])
+            assert any(row.get("goal_key") == "secure-western-border" for row in recovered_goals), recovered
+            assert controller._journal().verify(controller._scope_for_match(
+                match_id, session_id=session_id))["ok"]
             searched = controller.read_platform_memory(
                 "search", match_id, session_id=session_id, query="western border",
             )

@@ -1,0 +1,170 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "observed_turn": 121,
+  "classification": "Automation mode hides selected native task; repeated assignments do not prove work or completion. Cause of native automation clearing remains undetermined.",
+  "baseline": {
+    "owned_formers": 4,
+    "selected_native_tasks": [
+      "mine",
+      "farm"
+    ],
+    "no_selected_terraform_order": 2,
+    "provider_order_names_mask_active_task": true,
+    "sovereign_turn120_handoff": "Describes four Formers as terraforming after reassigning two idle Formers; no independent completion evidence provided.",
+    "previous_air_state_fix": "Preserved; work counters are not aircraft fuel.",
+    "temporal_limit": "Handoff120 and native121 are adjacent observations; they do not establish that the handoff was false at its exact instant."
+  },
+  "repair": {
+    "owned_terraform_task": "State, automation flag, semantic order kind, and active task name/work points; completion not inferred.",
+    "runtime_force_summary": "Current active task counts separate from no-active-task and missing/stale counts; automation counts remain separate.",
+    "receipt": "Explicit terraform_completion_verified=false and fresh task inspection guidance.",
+    "human_trace": "Retains task state and receipt qualifier.",
+    "native_orders_and_ai_policy": "unchanged",
+    "forecast": "No ETA or completion prediction added."
+  },
+  "tests": {
+    "compiled_native_output_helper": "pass",
+    "current_stale_foreign_summary_cases": "pass",
+    "air_state_regression": "pass",
+    "runtime_context_contract": "pass",
+    "fair_play_contract": "pass",
+    "managed_action_adapter_contract": "pass",
+    "native_cross_build": "pass"
+  },
+  "runtime_context_bounds": {
+    "64k_tokens": 5152,
+    "256k_tokens": 8521,
+    "huge_chaotic_256k_tokens": 25997
+  },
+  "maintenance": {
+    "initial_checkpoint_refusal": "HTTP409 during native BEGINPROJECT popup; guard preserved.",
+    "serialized_sovereign_resolved_popup_run": "run-b668d41b5c424915a89319a53f22632c",
+    "stopped_at_stable_turn": 121,
+    "verified_checkpoint": "checkpoint-a46a572f894f4ac6afa29f02538cb0f8"
+  },
+  "engine_source_sha256": "82f5510557dd2a769d0701f4e6c06549ae753b6ebfff33d04d76bb4036958b24",
+  "remaining": [
+    "Reason repeated native automation clears on other idle Formers remains undetermined.",
+    "Continue sovereign follow-through, task effects, cognition, specialists and recovery monitoring.",
+    "Full game unfinished."
+  ],
+  "validation_scope": "Information-only native serialization and receipt addition, current-only summary, logging. Prior aircraft-state full native/MCP run remains separate evidence, not a rerun of this build; fresh deployment/native comparison is required.",
+  "deployment": {
+    "session_id": "session-c4bb29c531ce42ec83b67c88ab998e7f",
+    "native_worker_id": "8ea16496571e",
+    "turn": 121,
+    "units": 12,
+    "bases": 2,
+    "credits": 194,
+    "plan_id": "plan-7bc6c5d5e1d04052b6a40db56a8c3b8d",
+    "plan_revision": 9,
+    "task_comparison": {
+      "Mine_work_points": 2,
+      "Farm_work_points": 6,
+      "no_active_terraform_order": 2,
+      "missing_or_noncurrent": 0
+    },
+    "provider_facade_query": {
+      "mode": "forces",
+      "subject_refs": [
+        "own-unit-13"
+      ],
+      "detail": "deep",
+      "task_state": "active_terraform_order",
+      "task_name": "Mine",
+      "work_points": 2,
+      "source": "owned_state",
+      "epistemic_status": "current",
+      "provenance_ref": "observation-638"
+    },
+    "run_id": "run-ce5ccddbb05b49feb7568d84c8e36afd",
+    "heartbeat": "active every 10 minutes",
+    "watcher": "armed on current worker"
+  },
+  "actual_provider_delivery": {
+    "first_request_id": "088173dda18e4954947154bcb07feb12",
+    "current_task_counts": {
+      "Farm": 1,
+      "Mine": 1,
+      "no_active_terraform_order": 2,
+      "missing_or_noncurrent": 0
+    },
+    "receipts": [
+      {
+        "request_id": "b5db0077b9934d6fb77ea5b6aab07605",
+        "call_id": "chatcmpl-tool-9e9f2254a9965a2a",
+        "journal_event_id": "journal-c007de72c5e046c2b21bf3517a2e6603",
+        "next_exact_provider_request": "9c5989d4db4048969965ec77fd127a0d"
+      },
+      {
+        "request_id": "8298a4e3b9af494bbd1b85c99fa400ef",
+        "call_id": "chatcmpl-tool-97cff1f464a3eab1",
+        "journal_event_id": "journal-586317638bf4490ab68c66e861f85430",
+        "next_exact_provider_request": "db0d88aebce84fec973ea78b7d8e8325"
+      }
+    ],
+    "receipt_fields": {
+      "execution_status": "order_assigned",
+      "terraform_completion_verified": false,
+      "follow_up": "Inspect current terraform_task after native processing; assignment alone does not establish work or completion."
+    }
+  },
+  "native_effect_interval": {
+    "former_ref": "own-unit-16",
+    "location_ref": "location-1093",
+    "before_turn": 121,
+    "before_features": [
+      "rolling",
+      "vehicle"
+    ],
+    "before_task": "Farm",
+    "before_work_points": 6,
+    "after_turn": 122,
+    "after_features": [
+      "farm",
+      "rolling",
+      "vehicle"
+    ],
+    "after_task_state": "no_active_terraform_order",
+    "after_automation_active": true,
+    "after_provenance_ref": "observation-644",
+    "interpretation": "Observed farm addition and active-task clearing, not a forecast or proof every automation assignment produces useful work."
+  },
+  "separate_recovered_choice_errors": {
+    "initial_request": "9fb483bf212548d5911090b9e2516109",
+    "initial_code": "decision_conflict",
+    "unknown_request": "6ff71320c8054a87b2eb7028320eeb6b",
+    "unissued_decision_id": "decision-27d99213015048d08d950a909801b7b5",
+    "unissued_choice_id": "choice-a83c953c26c04778870791a07497e1b3",
+    "retained_trace_search": "IDs occur only in that direct tool request; no issuance found.",
+    "classification": "Likely sovereign ID-selection error after an initial rebase conflict; no native action dispatched for unknown_decision. Fresh-decision retry succeeds; native122 reached. Initial conflict cause not established."
+  },
+  "images": {
+    "worker": "sha256:8526e5c16a3757b55a7624e2533cfbd0cad8352ccb3fb5f05b5bb4a8d631a8b8",
+    "control": "sha256:9870a1ab687709469f862d7da3e5160f4fb14ffc4c39096a89c38bc0ea7198b5",
+    "harness": "sha256:473fd6cea395a2dda34981b69f86f84c033fb4a77fcd7c417f5ad654d1e56337"
+  },
+  "followup_turn217": {
+    "native_observation": {
+      "own-unit-13": {
+        "tile_id": 1014,
+        "automation": "auto_former_improve_home_base",
+        "active_task": false
+      },
+      "own-unit-14": {
+        "tile_id": 1214,
+        "automation": "auto_former_improve_home_base",
+        "active_task": false
+      },
+      "own-unit-16": {
+        "tile_id": 971,
+        "automation": "auto_former_full",
+        "order": "go_to",
+        "active_task": false
+      }
+    },
+    "source_and_configuration": "manage_player_units defaults0; installed thinker.ini has no override and thinker_user.ini is absent. faction.cpp gates Thinker player movement on this flag; do not attribute stock automation resets to replacement former_move search code.",
+    "limits": "Runtime config variable was not independently memory-probed. Reset cause remains unestablished; accepted policy is not evidence of selected work or completion."
+  }
+}

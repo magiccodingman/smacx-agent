@@ -28,6 +28,21 @@ def field_is_current(item: Mapping[str, Any], name: str) -> bool:
     return isinstance(field, Mapping) and field.get("epistemic_status") == "current"
 
 
+def production_flow_state(cost: Any, progress: Any, surplus: Any, *,
+                          inputs_current: bool) -> str:
+    """Conditional accumulation state, never a claim of native completion."""
+    if not inputs_current or not all(type(v) in (int, float) and isfinite(v)
+                                    for v in (cost, progress, surplus)):
+        return "unknown"
+    if cost < 0 or progress < 0:
+        return "unknown"
+    if progress >= cost:
+        return "cost_already_accumulated_pending_native_processing"
+    if surplus <= 0:
+        return "no_passive_progress_at_current_surplus"
+    return "accumulating_at_current_surplus"
+
+
 def base_support_cost(item: Mapping[str, Any]) -> int | float | None:
     minerals = field_value(item, "minerals", {})
     if isinstance(minerals, Mapping) and isinstance(
@@ -416,6 +431,8 @@ def base_mechanics(topology: PerspectiveTopology,
                            "turns_remaining": completion,
                            "estimate_kind": "constant_current_surplus" if completion is not None else "unknown",
                            "inputs_current": production_current,
+                           "progress_state": production_flow_state(cost, progress, surplus,
+                                                                    inputs_current=production_current),
                            "assumptions": ["production and net mineral surplus remain unchanged"]},
             "friendly_response": sorted(reinforcements,
                                          key=lambda row: (row["eta_turns"] is None,

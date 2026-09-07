@@ -1,0 +1,35 @@
+{
+  "checkpoint": "recovered-campaign-spectator-visibility",
+  "observed": {
+    "native_status": "running",
+    "portal_status": "parked",
+    "browser_existing_and_new_tab": "No managed seat is available to watch.",
+    "native_turn": 55
+  },
+  "cause": "Portal observed intermediate recovery parking; dormant reconciliation was startup-only and could enforce the stale parked state on restart.",
+  "repair": {
+    "bounded_poll": "20 dormant matches per cycle; parked matches rescan after one minute; completed startup reconciliation retained",
+    "qualification": "Only a running control match with a verified recovery newer than the parked portal timestamp may restore running visibility.",
+    "owner_authority": "Completed campaigns, later parks and pending maintenance excluded; persisted status/timestamp compare-and-update prevents concurrent owner park overwrite.",
+    "native_mutations": "None in the new recovery mirror path."
+  },
+  "validation": {
+    "portal_tests_passed": 80,
+    "new_recovery_cases": 8,
+    "database_persistence_and_deduplication": true,
+    "concurrent_owner_park": true,
+    "browser_after_deployment": {
+      "existing_tab": 87220305,
+      "reload_required": false,
+      "seat": "Commissioner Pravin Lal",
+      "embedded_stream": "Selkies",
+      "portal_digest": "sha256:c8a190053917e5f39abc8019d673f0bd01ce44d5ec82e841e14613978675c455",
+      "active_run": "run-30bfe72af8b34c0386c0711c83a44fc7",
+      "active_sovereigns": 1
+    }
+  },
+  "pending": [
+    "Original native stall cause",
+    "Full autonomous game"
+  ]
+}

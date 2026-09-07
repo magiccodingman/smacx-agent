@@ -116,7 +116,35 @@ class ContractHarnessManager(HarnessManager):
         )
 
 
+def reasoning_detail_is_not_extra_output() -> None:
+    for total, should_stop in ((2500, False), (4096, True)):
+        control = FakeControl()
+        worker = FakeWorkerManager()
+        manager = ContractHarnessManager(control, worker)
+        manager.observed_running = True
+        control.run["metadata"] = {
+            "semantic_sample_unix": time.time() - 61,
+            "semantic_telemetry_unix": time.time() - 61,
+            "semantic_fingerprint": "turn-2",
+            "semantic_progress_unix": time.time() - 400,
+            "semantic_baseline_telemetry": {
+                "api_calls": 10, "output_tokens": 10000, "reasoning_tokens": 8000,
+            },
+        }
+        manager.telemetry = lambda _: {"ok": True, "telemetry": {
+            "api_calls": 11, "output_tokens": 10000 + total,
+            "reasoning_tokens": 10000,
+        }}
+        result = manager.reconcile_once()
+        assert bool(result["operator_required"]) is should_stop, result
+        if should_stop:
+            assert manager.capability_report["generated_tokens_without_progress"] == total
+        else:
+            assert not control.incidents and not worker.quarantines
+
+
 def main() -> int:
+    reasoning_detail_is_not_extra_output()
     control = FakeControl()
     worker = FakeWorkerManager()
     manager = ContractHarnessManager(control, worker)
@@ -137,6 +165,14 @@ def main() -> int:
     if stopped.get("operator_required") != 1 or control.run["status"] != "error" \
             or control.run["desired_status"] != "stopped" or not control.incidents:
         raise AssertionError(f"no-progress circuit breaker failed: {stopped}")
+    assert control.run["metadata"]["operator_attention_required"] is True
+    assert control.match_state["status"] == "error"
+    assert worker.quarantines == ["match-continuation"]
+    assert control.match_state["metadata"]["incident_quarantine"]["native_and_collectors_frozen"]
+    start_count = manager.start_count
+    manager.reconcile_once()
+    assert manager.start_count == start_count, "operator stop restarted the sovereign"
+    worker.quarantines.clear()
 
     control.run.update({
         "desired_status": "running", "status": "running", "restart_count": 0,

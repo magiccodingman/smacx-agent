@@ -1,0 +1,46 @@
+{
+  "classification": "confirmed conditional-argument discoverability and native-error wording gap",
+  "live_calls": [
+    "chatcmpl-tool-a35c0e5ae7142791",
+    "chatcmpl-tool-a4293430357b5763"
+  ],
+  "live_error": "invalid_base with native base_id instruction",
+  "sovereign_later_recovered_with_base_ref": true,
+  "tests_passed": [
+    "base_selector_feedback_test",
+    "managed_action_path_contract_test",
+    "production_context_delivery_test",
+    "citizen_context_delivery_test",
+    "provider_schema_budget_test"
+  ],
+  "budget": {
+    "managed_tools": 15,
+    "exact_qwen_schema_tokens": 4569,
+    "schema_conservative_tokens": 7166,
+    "operating_contract_exact_tokens": 1338
+  },
+  "verified_checkpoint": {
+    "checkpoint_id": "checkpoint-046820b146644b60bbfd047cd111f1ef",
+    "turn": 46
+  },
+  "deployment_pending": false,
+  "autonomous_rejection_path_after_repair_not_claimed": true,
+  "deployment": {
+    "control_image_sha256": "a5263f0e4819c71c66af213039571751813e497b7147ef9f6fb4686615da5682",
+    "harness_image_sha256": "4b93e4b16492a6da33d91f6edf028d932998de086d3c107cfd8d333b4dbe28f6",
+    "timeline_id": "timeline-restore-4b2bb56866d24f8dbf888723",
+    "run_id": "run-abf8eaaac6b9496cb6acdd29bf4eb1e4",
+    "packaged_regression_passed": true,
+    "actual_schema_request_ids": [
+      "c19d118379f14e8b8d64cdb875ec3143",
+      "6f606a5b9d0e4ef8bbd7eff25f71cc3e"
+    ],
+    "actual_tool_count": 15,
+    "conditional_requirement_in_actual_schema": true,
+    "turn_frame_metadata_pending": false,
+    "turn_frame_metadata_actual_request_ids": [
+      "a19405dac5e448f2a8a1d9aa9a66a031",
+      "5329617d2ebb4fffa47da90a22f5d47f"
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "live_observation": {
+    "turns": [
+      25,
+      26,
+      27
+    ],
+    "location_ref": "location-1576",
+    "unit_name": "Fungal Tower",
+    "native_key_private": true,
+    "canonical_ref": "contact-episode-5f07ec3a1ed1b1af30fc5c72bccef69e",
+    "example_cursors": [
+      129,
+      130
+    ],
+    "observed_behavior": "canonical ref removed/replaced by temporary snapshot ref, then canonical ref reappeared; repeated critical attention",
+    "checkpoint_id": "checkpoint-7916a0e7ef0642f391c72a5f4cfd080a",
+    "checkpoint_turn": 28
+  },
+  "root_cause": "late native feed events make the snapshot cut unaligned; conservative snapshot identity reset publishes temporary refs before the next complete feed restores the existing visible episode",
+  "before_repair_regression": "unrelated turn_started during collection changed an unchanged foreign contact ref",
+  "repair": "bounded durable feed catch-up and cut recheck; reuse snapshot only with same revision, empty complete feed and exact sequence; otherwise recollect within existing three attempts; unmatched final cut remains conservative",
+  "tests": {
+    "stationary_contact_preserved": true,
+    "genuine_loss_reappearance_new_identity": true,
+    "restart_no_second_change": true,
+    "continuous_activity_bounded_conservative": true,
+    "cross_publication_episodes": true,
+    "batched_publication_three_crash_windows": true,
+    "publication_transaction_22_crash_cases": true,
+    "fair_play_differential": true
+  },
+  "live_after_deployment": {
+    "timeline": "timeline-restore-a2be1f0120fa446aa51c40d9",
+    "autonomous_turns": [
+      28,
+      29
+    ],
+    "contact_change_count": 0,
+    "collector_failures": 0,
+    "alignment_retry_observed": false,
+    "classification": "quiet live continuity verified; actual late-cut recurrence still pending"
+  },
+  "turn32_recurrence": {
+    "timeline": "timeline-restore-4969c8445c434c4f88704164",
+    "cursors": [
+      145,
+      146
+    ],
+    "unmatched_then_matched_cut": true,
+    "registry_reset_then_restored": true,
+    "first_publication_bridge_calls": 24,
+    "first_publication_alignment_retries": 0,
+    "checkpoint_id": "checkpoint-b0d0834c127c46b1a45af80466361563",
+    "checkpoint_turn": 32,
+    "root_cause_scope": "Native receipt proves unmatched final cut without catch-up. Two earlier bundle failures reproduce the sequencing defect; exact live retry error codes were not retained.",
+    "repair": "Every coherent bundle, including final attempt, receives one durable catch-up and cut probe. Maximum three bundle attempts, three catch-ups and six cut probes. Truly unmatched final cut remains conservative.",
+    "telemetry": "bounded snapshot_bundle_failures now records retry codes",
+    "new_regression": "old code fails after two pagination races; repaired collector preserves identity and restart, genuine loss/reappearance remains separate",
+    "live_acceptance": {
+      "timeline": "timeline-restore-10f8ef1b078b40dab6347fab",
+      "native_turn": 33,
+      "contact_changes": 0,
+      "catch_up_observed": true,
+      "alignment_retries": 1,
+      "native_events_drained": 10,
+      "bridge_calls": 14,
+      "wall_ms": 388.946,
+      "limitation": "Actual native catch-up retains contact identity; the final-attempt-after-two-bundle-failures case remains controlled regression evidence."
+    },
+    "publication_transaction_22_crash_cases_pass": true
+  },
+  "turn41_to42_bounded_fallback": {
+    "timeline": "timeline-restore-a4ef4e1a7eb44e3ab1812001",
+    "telemetry_id": "telemetry-5b8d5f0a5a204454a8856c2028ca3e1a",
+    "cursors": [
+      194,
+      195
+    ],
+    "bundle_failures": [
+      "world_changed_during_collection",
+      "world_changed_during_collection"
+    ],
+    "catch_up_attempts": 1,
+    "bridge_calls": 29,
+    "wall_ms": 546.383,
+    "first_cut_matched": false,
+    "first_registry_reset": true,
+    "next_cut_matched": true,
+    "next_registry_reset": false,
+    "interpretation": "The omitted-final-catch-up defect is not recurring: catch-up ran. Native activity still prevented proof of a common cut, so the locked conservative fallback issued temporary contact identity and the following matched publication restored the canonical episode. This is not a zero-churn acceptance result, and does not justify inferring continuity across an unproved cut."
+  }
+}

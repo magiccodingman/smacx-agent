@@ -9,11 +9,43 @@ from smacx_choice_preparation import ChoicePreparations, PreparationError
 
 
 def main():
+    support = {"epistemic_status": "conditional", "current_support_minerals": 2,
+               "free_supported_units": 2, "current_eligible_units": 4,
+               "gross_mineral_output": 2, "additional_support_minerals": 1,
+               "support_after_one_completion": 3, "exceeds_current_gross_output": True,
+               "condition": "Current population and mineral output remain unchanged. " * 6}
+    assert mcp._production_catalog_context({"support_projection": support})["support_projection"] == support
+    refused = {"action_id": 1, "status": "rejected", "native_call_attempted": True,
+               "resolution": "native_turn_transition_not_accepted"}
+    with patch.object(mcp, "_call", return_value={"ok": True, "action": refused}) as poll:
+        result = mcp._await_deferred_action({"ok": True, "queued": True,
+                                           "command": "end_turn", "action_id": 1})
+        assert not result["ok"] and result["error"]["code"] == "native_action_rejected"
+        assert result["execution"] == refused and poll.call_count == 1
+        assert "movement has not been renewed" in result["error"]["message"]
+        assert "do not keep waiting" in result["error"]["message"]
+    transient={"ok":False,"error":{"code":"invalid_semantic_selector",
+        "detail":"semantic_reference_stale_revision"}}
+    with patch.object(mcp,"_smac_choices_once",side_effect=[transient,{"ok":True,"choices":[]}]) as enumerate_once:
+        assert mcp.smac_choices("interaction")["ok"]
+        assert enumerate_once.call_count==2
+    with patch.object(mcp,"_smac_choices_once",return_value=transient) as enumerate_once:
+        result=mcp.smac_choices("interaction")
+        assert enumerate_once.call_count==2 and result["state_changed_during_enumeration"]
+        assert result["native_action_executed"] is False
+    with patch.object(mcp,"_smac_choices_once",return_value=transient) as enumerate_once:
+        assert not mcp.smac_choices("interaction",preparation_ref="preparation-existing")["ok"]
+        assert enumerate_once.call_count==1
+    invalid={"ok":False,"error":{"code":"invalid_semantic_selector","detail":"unknown_reference"}}
+    with patch.object(mcp,"_smac_choices_once",return_value=invalid) as enumerate_once:
+        assert mcp.smac_choices("unit_actions",own_unit_ref="unknown")==invalid
+        assert enumerate_once.call_count==1
     identity = {"match_id": "match-actions", "session_id": "session-actions", "revision": "r1"}
     context = {"identity": {"timeline_id": "timeline-main", "world_epoch": "epoch-one"},
                "action_revision": "r1", "objects": {}, "by_ref": {}}
     effects = []
     injected_catalog = None
+    injected_receipt = None
     social = [{"key": key, "options": [{"model_id": value, "name": f"{key} model {value}",
                                         "intrinsic_effects": {"support": value}} for value in (0, 1)]}
               for key in ("politics", "economics", "values", "future")]
@@ -32,7 +64,7 @@ def main():
         if operation == "semantic_command":
             assert args["expected_revision"] == identity["revision"]
             effects.append(copy.deepcopy(args))
-            return {"ok": True, "changed": True}
+            return copy.deepcopy(injected_receipt) if injected_receipt is not None else {"ok": True, "changed": True}
         assert operation == "semantic_choices", operation
         result = {"ok": True, **identity, "kind": args["kind"], "choices": []}
         if injected_catalog is not None:
@@ -118,6 +150,12 @@ def main():
         # These are native-shaped interface proofs, not native gameplay proof.
         # Closed Council/research/human clauses need no arbitrary parameter API.
         for kind, row, information in (
+            ("interaction", {"command": "acknowledge_popup"},
+             [{"kind": "information", "event": "unit_support_shortage", "base_name": "HQ",
+               "unit_name": "Garrison", "effect_status": "forced_disband_pending_native_processing",
+               "meaning": "Verify the resulting owned units afterward; this is not a combat loss."}]),
+            ("interaction", {"command": "defer_social_engineering", "meaning": "Continue current models; review social_engineering after interactions"},
+             [{"kind": "information", "technology_name": "Industrial Economics", "unlocked_model_name": "Free Market"}]),
             ("research", {"command": "choose_research", "tech_id": 12, "name": "Test advance"}, []),
             ("interaction", {"command": "choose_council_proposal", "proposal_id": 3,
                               "ballot": {"type": "yea_nay", "responses": ["yea"]}}, []),
@@ -139,6 +177,37 @@ def main():
                 if key in row: assert effect[key] == row[key], effect
             if "technology_id" in row: assert effect["tech_id"] == row["technology_id"]
             if row["command"] == "choose_council_proposal": assert effect["response"] == "yea"
+        # A submitted truce response must retain its unverified-effect qualifier.
+        for response in ("accept", "reject"):
+            injected_catalog = [{"command": "respond_to_diplomatic_offer", "response": response,
+                                 "offer_type": "truce"}]
+            injected_receipt = {"ok": True, "command": "respond_to_diplomatic_offer",
+                                "response": response, "offer_type": "truce",
+                                "relationship_change_verified": False,
+                                "completion_semantics": "Inspect fresh diplomatic state after native processing."}
+            frame = mcp.smac_choices(kind="interaction")
+            result = mcp.smac_execute_choice(frame["decision_id"], frame["choices"][0]["choice_id"])
+            assert result["ok"] and result["relationship_change_verified"] is False, result
+            assert result["completion_semantics"] == injected_receipt["completion_semantics"], result
+            assert effects.pop()["response"] == response
+        for offer in ("truce", "treaty"):
+            for response in ("accept", "reject"):
+                injected_catalog = [{"command": "respond_to_diplomatic_offer", "response": response,
+                                     "amount": 25, "offer_type": offer, "incoming_energy_credits": 25,
+                                     "payment_direction": "counterpart_to_self"}]
+                injected_receipt = {"ok": True, "response": response, "offer_type": offer,
+                                    "energy_change_verified": False, "relationship_change_verified": False}
+                frame = mcp.smac_choices(kind="interaction")
+                assert frame["choices"][0]["incoming_energy_credits"] == 25, frame
+                result = mcp.smac_execute_choice(frame["decision_id"], frame["choices"][0]["choice_id"])
+                assert result["ok"] and result["energy_change_verified"] is False, result
+                assert result["relationship_change_verified"] is False, result
+                effect = effects.pop()
+                assert effect["amount"] == 25 and effect["response"] == response, effect
+                changed = {**injected_catalog[0], "amount": 30, "incoming_energy_credits": 30}
+                assert mcp._choice_semantic_key(injected_catalog[0]) != mcp._choice_semantic_key(changed)
+        injected_receipt = None
+
         for ballot, expected in (
             ({"type": "candidate", "candidates": [
                 {"faction_id": 2, "faction_name": "Candidate A"},

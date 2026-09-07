@@ -1,0 +1,39 @@
+{
+  "status": "implemented; container source-mounted contracts passed; live delivery pending",
+  "basis": "gameplay-former-native-cancellation-turn221.json",
+  "behavior": {
+    "accepted_assignment": "managed automate_former stores current revision-matched owned-unit baseline in canonical game.action receipt",
+    "observation": "later committed same-epoch projection; unknown cause retained",
+    "notification": "noncritical priority 55; priority 80 after separately resolved repeated qualified endpoints",
+    "bounds": "newest 500 journal events, at most 32 pending attempts, maximum 64 observation cursor gap",
+    "deduplication": "source action identity survives acknowledgement and restart; enqueue-before-check retry tested"
+  },
+  "contracts": {
+    "former_automation_attention_test.py": 13,
+    "confirmed_unit_loss_attention_test.py": "pass",
+    "runtime_context_contract_test.py": "pass, Huge chaotic 256K runtime 25998 tokens",
+    "runtime_collection_retry_contract_test.py": "pass",
+    "publication_visibility_test.py": "pass",
+    "turn_episode_fence_test.py": "pass"
+  },
+  "acceptance_chain": {
+    "observed": "prior controlled native/UI cancellation comparison retained",
+    "represented": "owned current task, order, tile features and location in collector projection",
+    "calculated": "qualified endpoint classification; no inference about intervening activity or native cause",
+    "provider_queryable": "attention lease and runtime payload adapter tested",
+    "sovereign_expressible": "existing automate_former choice retained; actual execution facade receipt path tested with native adapter stub",
+    "executable": "native execution unchanged; prior controlled comparison retained",
+    "effect_verified": "notice/dedup/priority verified in fixtures; live provider receipt not yet verified",
+    "recovery_safe": "acknowledgement/restart and injected post-enqueue pre-marker failure tested; epoch mismatch excluded"
+  },
+  "limitations": [
+    "No attribution of native task-selection cause.",
+    "No retrospective cancellation claim for old actions lacking current baselines.",
+    "No cancellation tracking when no revision-matched baseline is available.",
+    "No proof of sovereign strategy improvement or successful resumed gameplay.",
+    "Movement, active work or tile change resolves this attempt; later cancellation after observed progress is outside this initial no-progress notice.",
+    "No database rebuild or migration needed: additive journal payloads and existing attention schema."
+  ],
+  "deployment": "not deployed; original campaign and monitoring remain paused",
+  "packaged_validation": "Passed in smacx-agent-control:operator-tools without source mount; not deployed."
+}

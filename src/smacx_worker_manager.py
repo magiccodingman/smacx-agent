@@ -60,20 +60,39 @@ NATIVE_RESOLUTION_PROFILES: dict[str, tuple[int, int]] = {
     "5120x1440": (5120, 1440),
 }
 
-HERMES_CHECKPOINT_SCRIPT = r'''import io,json,os,pathlib,sqlite3,tarfile,tempfile
+HERMES_CHECKPOINT_SCRIPT = r'''import io,json,os,pathlib,shutil,sqlite3,tarfile,tempfile
 profile=os.environ["SMACX_HERMES_PROFILE_ID"]
 match_id=os.environ["SMACX_MATCH_ID"]
 target=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ["SMACX_CHECKPOINT_RELATIVE"]
 source=pathlib.Path(os.environ.get("SMACX_SOURCE_ROOT","/source"))/"profiles"/profile/"state.db"
 present=source.is_file()
 session_ids=[]
-with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+# Database copies, rollback journals and VACUUM scratch can exceed the
+# helper's small /tmp tmpfs in a long campaign. Keep private staging beside
+# the already-scoped archive on the control volume and remove it on exit.
+with tempfile.TemporaryDirectory(dir=target.parent,prefix=".hermes-checkpoint-") as temporary:
+    os.environ["SQLITE_TMPDIR"]=temporary
     stable=pathlib.Path(temporary)/"state.db"
     if present:
-        origin=sqlite3.connect(f"file:{source}?mode=ro",uri=True)
+        # The checkpoint manager has frozen/stopped the match-bound writer.
+        # A cleanly closed WAL database has no -wal/-shm files, so SQLite
+        # cannot open it directly on our read-only mount. Copy the quiescent
+        # durable files together; rebuild transient SQLite metadata privately.
+        # Never omit a retained WAL or hot rollback journal, or mutate source.
+        files=[source,pathlib.Path(str(source)+"-wal"),pathlib.Path(str(source)+"-journal")]
+        def signatures():
+            return [(p.name,p.stat().st_size,p.stat().st_mtime_ns) if p.exists() else (p.name,None,None) for p in files]
+        before=signatures()
+        staging=pathlib.Path(temporary)/"source"
+        staging.mkdir()
+        for p in files:
+            if p.exists(): shutil.copyfile(p,staging/p.name)
+        if signatures()!=before: raise RuntimeError("hermes_checkpoint_source_changed")
+        origin=sqlite3.connect(staging/"state.db")
         destination=sqlite3.connect(stable)
         try: origin.backup(destination)
         finally: destination.close();origin.close()
+        shutil.rmtree(staging)
         copied=sqlite3.connect(stable)
         try:
             session_ids=[str(row[0]) for row in copied.execute("SELECT id FROM sessions WHERE title=?",(match_id,))]
@@ -97,7 +116,8 @@ with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
             if "system_prompts" in tables:
                 copied.execute("DELETE FROM system_prompts WHERE hash NOT IN (SELECT system_prompt_hash FROM sessions WHERE system_prompt_hash IS NOT NULL)")
             copied.commit();copied.execute("VACUUM")
-        except sqlite3.Error: session_ids=[]
+        except sqlite3.Error as exc:
+            raise RuntimeError("hermes_checkpoint_session_filter_failed") from exc
         finally: copied.close()
     manifest={"schema":"smacx.hermes-checkpoint.v2","profile_id":profile,"match_id":match_id,"database_present":present,"session_ids":session_ids}
     with tarfile.open(target,"w:gz",compresslevel=6) as archive:
@@ -113,7 +133,8 @@ match_id=os.environ["SMACX_MATCH_ID"]
 archive_path=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ["SMACX_CHECKPOINT_RELATIVE"]
 profile_root=pathlib.Path(os.environ.get("SMACX_TARGET_ROOT","/target"))/"profiles"/profile
 profile_root.mkdir(parents=True,exist_ok=True)
-with tempfile.TemporaryDirectory(dir="/tmp") as work:
+with tempfile.TemporaryDirectory(dir=profile_root,prefix=".hermes-restore-") as work:
+    os.environ["SQLITE_TMPDIR"]=work
     checkpoint=pathlib.Path(work)/"state.db"
     with tarfile.open(archive_path,"r:gz") as archive:
         members=archive.getmembers()
@@ -219,16 +240,31 @@ if database.exists():
     finally: db.close()
 print(json.dumps({"ok":True,"profile_id":profile,"match_id":match_id,"removed_sessions":removed},separators=(",",":")))'''
 
-SAVE_DIGEST_SCRIPT = r'''import hashlib,json,os,pathlib
+SAVE_DIGEST_SCRIPT = r'''import hashlib,json,os,pathlib,subprocess
 slot=os.environ["SMACX_SAVE_SLOT"].casefold()
 root=pathlib.Path(os.environ.get("SMACX_STATE_ROOT","/state"))/"game"/"saves"
-candidates=[p for p in root.rglob("*") if p.is_file() and p.name.casefold()==slot+".sav"]
+candidates=[p for p in root.rglob("*") if p.is_file() and p.name.casefold() in (slot+".sav",slot+".sav.zst")]
 if not candidates: raise RuntimeError("checkpoint_save_file_missing")
 path=max(candidates,key=lambda p:p.stat().st_mtime_ns)
 digest=hashlib.sha256()
-with path.open("rb") as stream:
-    for block in iter(lambda:stream.read(1024*1024),b""): digest.update(block)
-print(json.dumps({"ok":True,"sha256":digest.hexdigest(),"bytes":path.stat().st_size},separators=(",",":")))'''
+size=0
+process=None
+try:
+    if path.suffix.casefold()==".zst":
+        process=subprocess.Popen(["zstd","-q","-d","-c","--memory=64MB",str(path)],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+        stream=process.stdout
+    else: stream=path.open("rb")
+    with stream:
+        for block in iter(lambda:stream.read(1024*1024),b""):
+            size+=len(block)
+            if size>512*1024*1024: raise RuntimeError("checkpoint_save_size_limit")
+            digest.update(block)
+    if process is not None and process.wait()!=0: raise RuntimeError("checkpoint_save_decompression_failed")
+finally:
+    if process is not None and process.poll() is None:
+        process.kill()
+        process.wait()
+print(json.dumps({"ok":True,"sha256":digest.hexdigest(),"bytes":size},separators=(",",":")))'''
 
 
 def stream_bitrate_kbps(width: int, height: int) -> int:
@@ -259,6 +295,9 @@ def _semantic_progress_fingerprint(snapshot: Mapping[str, Any]) -> str:
         # Attempt IDs, targets and even a reported completion are not evidence
         # of a gameplay effect. Effects must appear in the observed state.
         "last_deferred_action",
+        # End-turn instrumentation records dispatch/latch state, not effects.
+        "base_window_visible", "native_turn_complete_flag", "native_human_turn_input_active", "end_turn_timer_queued",
+        "end_turn_native_returned", "end_turn_receipt_pending",
     }
 
     def stable(value: Any) -> Any:
@@ -572,20 +611,27 @@ class WorkerManager:
             if not target.is_file() or self._file_sha256(target) != snapshot.get(
                     "archive_sha256"):
                 raise WorkerManagerError("hermes_checkpoint_integrity_failure")
-            outcome = self._run_checkpoint_helper(
-                "hermes-restore", f"{harness_profile_id}-{uuid.uuid4().hex}",
-                image=self.mcp_image, script=HERMES_RESTORE_SCRIPT,
-                environment=[
-                    f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
-                    f"SMACX_MATCH_ID={match_id}",
-                    f"SMACX_CHECKPOINT_RELATIVE={relative}",
-                ], user="10000:10001",
-                mounts=[
-                    {"Type": "volume", "Source": self.control_data_volume,
-                     "Target": "/control", "ReadOnly": True},
-                    {"Type": "volume", "Source": volume, "Target": "/target"},
-                ],
-            )
+            # Checkpoints are sealed 0600 under the control uid. The restore
+            # helper runs as the Hermes uid with only the shared control group;
+            # grant read (never write) for its lifetime, then reseal even on failure.
+            os.chmod(target, 0o640)
+            try:
+                outcome = self._run_checkpoint_helper(
+                    "hermes-restore", f"{harness_profile_id}-{uuid.uuid4().hex}",
+                    image=self.mcp_image, script=HERMES_RESTORE_SCRIPT,
+                    environment=[
+                        f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
+                        f"SMACX_MATCH_ID={match_id}",
+                        f"SMACX_CHECKPOINT_RELATIVE={relative}",
+                    ], user="10000:10001",
+                    mounts=[
+                        {"Type": "volume", "Source": self.control_data_volume,
+                         "Target": "/control", "ReadOnly": True},
+                        {"Type": "volume", "Source": volume, "Target": "/target"},
+                    ],
+                )
+            finally:
+                os.chmod(target, 0o600)
             restored.append({
                 "harness_profile_id": harness_profile_id,
                 "database_present": outcome.get("database_present") is True,
@@ -593,6 +639,7 @@ class WorkerManager:
         return restored
 
     def _cleanup_recovery_snapshots(self, match_id: str, keep_checkpoint_id: str) -> int:
+        WorldStore(self.store).release_obsolete_checkpoint_pins(match_id, keep_checkpoint_id)
         root = self.store.path.parent / "recovery-snapshots" / match_id
         if not root.is_dir():
             return 0
@@ -1609,11 +1656,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return {"ok": True, "match": updated, "seat_index": int(seat_index),
                 "instance_id": seat["instance_id"]}
 
-    def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+    def start_worker(self, instance_id: str, *, timeout: float = 240.0,
+                     _defer_ready: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
-            return self._start_worker_locked(instance_id, timeout=timeout)
+            return self._start_worker_locked(
+                instance_id, timeout=timeout, _defer_ready=_defer_ready)
 
-    def _start_worker_locked(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+    def _start_worker_locked(self, instance_id: str, *, timeout: float = 240.0,
+                             _defer_ready: bool = False) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         source = self.control.get_game_source(spec["game_source_id"])
         runtime = self.control.get_runtime(spec["runtime_id"])
@@ -1755,7 +1805,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
             mcp_endpoint = (
                 self.start_mcp_sidecar(instance_id)
-                if self.control_data_volume
+                if not _defer_ready and self.control_data_volume
                 and spec["network"].get("controller_kind", "agent") == "agent"
                 else None
             )
@@ -2404,20 +2454,20 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,
-                        timeout: float = 420.0) -> dict[str, Any]:
+                        timeout: float = 420.0, _defer_ready: bool = False) -> dict[str, Any]:
         # The whole paired transition is atomic with recovery and parking,
         # including the interval between starting the host and joining peers.
         with self._lifecycle_lock:
             return self._start_lan_match_locked(
                 match_id, session_name=session_name, profile=profile,
                 resume_slot=resume_slot, scenario_id=scenario_id,
-                game_settings=game_settings, timeout=timeout)
+                game_settings=game_settings, timeout=timeout, _defer_ready=_defer_ready)
 
     def _start_lan_match_locked(self, match_id: str, *, session_name: str | None = None,
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,
-                        timeout: float = 420.0) -> dict[str, Any]:
+                        timeout: float = 420.0, _defer_ready: bool = False) -> dict[str, Any]:
         match = self.control.get_match(match_id)
         if session_name is None:
             session_name = str(
@@ -2522,7 +2572,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         autostart["lan_scenario_id"] = scenario_context_id
                     self.control.update_worker_autostart(instance_id, autostart)
                 remaining = max(30.0, deadline - time.monotonic())
-                self.start_worker(instance_id, timeout=min(remaining, 300.0))
+                self.start_worker(instance_id, timeout=min(remaining, 300.0),
+                                  **({"_defer_ready": True} if _defer_ready else {}))
             host_player_name = str(
                 host.get("metadata", {}).get("external_player_name")
                 or self._managed_lan_player_name(int(host["seat_index"]), host)
@@ -3065,7 +3116,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "lifecycle": game["lifecycle"],
                 })
             match = self.control.update_match_lifecycle(
-                match_id, "running", host_instance_id=host_instance,
+                match_id, "starting" if _defer_ready else "running",
+                host_instance_id=host_instance,
                 metadata={"network_session_id": network_session_id,
                           "participant_count": len(managed_seats) + len(external_human_seats),
                           "delegated_native_ai_seats": [
@@ -3525,6 +3577,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         match = self.control.get_match(match_id)
         if match["status"] != "running":
             raise WorkerManagerError("checkpoint_requires_running_match")
+        # Stage into the inactive member of a bounded pair. A failed AI
+        # archive must never overwrite the native half of the last verified
+        # checkpoint. Keep the caller's logical slot stable in public metadata.
+        previous_checkpoint = match.get("metadata", {}).get("recovery_checkpoint") or {}
+        previous_slot = str(previous_checkpoint.get("native_save_slot")
+                            or previous_checkpoint.get("slot") or "")
+        slot_prefix = "ckpt_" + hashlib.sha256(slot.encode()).hexdigest()[:16]
+        native_slot = slot_prefix + ("_b" if previous_slot == slot_prefix + "_a" else "_a")
         seats = self.control.list_seats(match_id)
         # A browser-managed human host is just as recoverable as an agent:
         # both have an isolated worker and authenticated native bridge. Only a
@@ -3652,17 +3712,18 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if not choice:
                 raise WorkerManagerError("native_checkpoint_not_currently_legal")
             saved = self._native_request(
-                host_instance_id, "semantic_command", command="save_game", slot=slot,
+                host_instance_id, "semantic_command", command="save_game", slot=native_slot,
                 match_id=choices.get("match_id"), session_id=choices.get("session_id"),
                 expected_revision=choices.get("revision"), timeout=30.0,
             )
             if not saved.get("ok"):
                 raise WorkerManagerError("native_checkpoint_failed")
-            save_digest = self._checkpoint_save_digest(host_instance_id, slot)
+            save_digest = self._checkpoint_save_digest(host_instance_id, native_slot)
             checkpoint_id = _new_id("checkpoint")
             checkpoint = {
                 "checkpoint_id": checkpoint_id,
-                "slot": slot, "verified": True, "created_unix": time.time(),
+                "slot": slot, "native_save_slot": native_slot,
+                "verified": True, "created_unix": time.time(),
                 "host_instance_id": host_instance_id,
                 "turn": saved.get("turn"), "year": saved.get("year"),
                 "path": saved.get("relative_path") or saved.get("path"),
@@ -3719,6 +3780,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         journal_head_hash=str(event["event_hash"]),
                         journal_sequence=int(event["sequence"]),
                         calculator_versions={"world": CALCULATOR_VERSION},
+                        pin_owner=("checkpoint", checkpoint_id),
                     ))
             checkpoint["campaign_journal"] = journal_checkpoints
             checkpoint["world_snapshots"] = world_snapshots
@@ -3756,7 +3818,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         finally:
             self._unpause_harnesses(paused_harnesses)
 
-    def quarantine_match(self, match_id: str) -> dict[str, Any]:
+    def quarantine_match(self, match_id: str, *, stop_collectors: bool = False) -> dict[str, Any]:
         """Freeze native execution and collectors while retaining incident RAM.
 
         This is deliberately not a recovery checkpoint or a resume operation.
@@ -3780,9 +3842,17 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         continue
                     state = container.get("State", {})
                     if state.get("Running"):
-                        if not state.get("Paused"):
-                            self.docker.pause_container(str(name))
-                        paused.append(str(name))
+                        if purpose == "mcp-sidecar" and stop_collectors:
+                            # A frozen SQLite writer can retain its lock while
+                            # the operator tries to persist containment receipts.
+                            # Stop collectors, retaining their durable volumes.
+                            if state.get("Paused"):
+                                self.docker.unpause_container(str(name))
+                            self.docker.stop_container(str(name), timeout=5)
+                        else:
+                            if not state.get("Paused"):
+                                self.docker.pause_container(str(name))
+                            paused.append(str(name))
             stopped = self._stop_match_harnesses_for_restore(match_id, reason="incident")
             for scope in self.store.scopes_for_match(match_id):
                 AttentionService(self.store, self.journal, scope).cancel_active_sovereign(
@@ -3893,6 +3963,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         )
                 except (ValueError, WorldStoreError) as exc:
                     raise WorkerManagerError("world_snapshot_checkpoint_mismatch") from exc
+                # Adopt still-present pre-pin checkpoints before timeline GC.
+                # Missing or mismatched content remains a hard failure above.
+                WorldStore(self.store).pin_snapshot(snapshot_id, "checkpoint", checkpoint_id)
             fork = self.journal.fork_timeline(
                 scope, timeline_id, native_save_sha256=native_digest,
                 from_event_hash=head_hash, parent_timeline_id=parent_timeline,
@@ -4041,8 +4114,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
         if not isinstance(checkpoint, Mapping) or checkpoint.get("verified") is not True:
             raise WorkerManagerError("verified_recovery_checkpoint_required")
-        slot = str(checkpoint.get("slot") or "")
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
+        logical_slot = str(checkpoint.get("slot") or "")
+        slot = str(checkpoint.get("native_save_slot") or logical_slot)
+        if not all(re.fullmatch(r"[A-Za-z0-9_-]{1,32}", value)
+                   for value in (logical_slot, slot)):
             raise WorkerManagerError("invalid_recovery_checkpoint")
         seats = self.control.list_seats(match_id)
         host_index = int(match.get("metadata", {}).get("managed_host_seat_index", 0))
@@ -4053,6 +4128,13 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             raise WorkerManagerError("external_human_host_recovery_required")
         self._stop_match_harnesses_for_restore(match_id)
         self.park_match(match_id)
+        # Verify the actual file before forking journals or restoring Hermes.
+        # A well-formed recorded digest alone cannot bind AI memory to bytes
+        # that may have been replaced since the checkpoint was published.
+        save_digest = self._checkpoint_save_digest(str(host_seat["instance_id"]), slot)
+        if save_digest.get("sha256") != checkpoint.get("native_save_sha256") \
+                or save_digest.get("bytes") != checkpoint.get("native_save_bytes"):
+            raise WorkerManagerError("native_checkpoint_digest_mismatch")
         memory_restore = self._prepare_memory_restore(match_id, checkpoint)
         runtime_refresh = self._refresh_match_worker_images(match_id) if refresh_runtime else []
         if match["mode"] == "lan":
@@ -4074,7 +4156,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "lan_session_name", "SMACX Managed LAN"
                 )),
                 profile=recovery_profile,
-                resume_slot=slot,
+                resume_slot=slot, _defer_ready=True,
             )
         elif match["mode"] == "singleplayer":
             instance_id = str(host_seat.get("instance_id") or "")
@@ -4085,7 +4167,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             autostart["enabled"] = False
             autostart["startup_save"] = slot
             self.control.update_worker_autostart(instance_id, autostart)
-            started = self.start_worker(instance_id)
+            started = self.start_worker(instance_id, _defer_ready=True)
             loaded = self._wait_native(
                 instance_id, "semantic_snapshot",
                 lambda value: value.get("ok") is True
@@ -4094,9 +4176,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 timeout=120.0, context="solo_recovery",
             )
             running = self.control.update_match_lifecycle(
-                match_id, "running", host_instance_id=instance_id,
-                metadata={"recovery_required": False, "last_recovered_unix": time.time(),
-                          "last_recovered_slot": slot},
+                match_id, "starting", host_instance_id=instance_id,
+                metadata={"recovery_required": True, "last_recovered_unix": time.time(),
+                          "last_recovered_slot": logical_slot},
             )
             result = {"ok": True, "match": running, "worker": started,
                       "loaded_checkpoint": loaded}
@@ -4130,16 +4212,39 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "instance_id": instance_id,
                 "handle_count": response.get("handle_count"),
             })
-        self.control.update_match_lifecycle(
+        # A collector publishes durable observations immediately on startup.
+        # Keep every sidecar absent until ALL native identity capsules have
+        # been restored; otherwise temporary handles become false deaths/births.
+        restored_mcp = []
+        for seat in seats:
+            instance_id = seat.get("instance_id")
+            if not isinstance(instance_id, str) or not instance_id:
+                continue
+            if seat.get("metadata", {}).get("delegation_status") == "active":
+                continue
+            spec = self.control.get_worker_spec(instance_id)
+            if self.control_data_volume and spec["network"].get("controller_kind", "agent") == "agent":
+                endpoint = self.start_mcp_sidecar(instance_id)
+                restored_mcp.append(endpoint)
+                if result.get("worker", {}).get("instance_id") == instance_id:
+                    result["worker"]["mcp"] = endpoint
+        result["restored_mcp_endpoints"] = restored_mcp
+        result["match"] = self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_required": False,
                                            "incident_quarantine": {},
                                            "last_recovered_unix": time.time(),
-                                           "last_recovered_slot": slot},
+                                           "last_recovered_slot": logical_slot},
         )
         if refresh_runtime:
             result["runtime_refresh"] = runtime_refresh
         result["memory_restore"] = memory_restore
         result["native_semantic_identity_restore"] = restored_identity
+        # A standalone clean-yield incident has no capability-gap ID to pass
+        # to retry-after-update. Clear only this condition after normal
+        # verified native/AI recovery and collector startup have all succeeded.
+        result["recovered_incidents"] = self.control.recover_supervision_incidents(
+            match_id, kinds=("harness_clean_yield_no_progress",),
+        )
         return result
 
     def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:
@@ -4262,6 +4367,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "Env": [
                 "HOME=/tmp",
                 "SMACX_MANAGED_ATTACHED=1",
+                "SMACX_DIAGNOSTICS_ENABLED=1",
+                "SMACX_DIAGNOSTICS_ROOT=/var/lib/smacx/gameplay-diagnostics",
                 f"SMACX_BRIDGE_HOST={bridge_host}",
                 "SMACX_BRIDGE_PORT=47814",
                 "SMACX_AGENT_TOKEN_FILE=/run/secrets/bridge-token",
@@ -4393,11 +4500,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             container = self.docker.inspect_container(spec["container_name"])
             self.docker.require_owned(container, self.installation_id, purpose="game-worker")
         except DockerNotFound:
-            return {"ok": True, "instance_id": instance_id, "container_present": False,
-                    "observed_status": spec["observed_status"]}
+            container = {}
         state = container.get("State", {})
         result = {
-            "ok": True, "instance_id": instance_id, "container_present": True,
+            "ok": True, "instance_id": instance_id, "container_present": bool(container),
+            "image_id": container.get("Image"), "image_ref": spec.get("image_ref"),
             "running": bool(state.get("Running")),
             "paused": bool(state.get("Paused")),
             "health": state.get("Health", {}).get("Status"),
@@ -4422,6 +4529,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 result["mcp"] = {
                     "container_present": True,
                     "running": bool(sidecar.get("State", {}).get("Running")),
+                    "paused": bool(sidecar.get("State", {}).get("Paused")),
                     "health": sidecar.get("State", {}).get("Health", {}).get("Status"),
                     "url": spec["network"].get("mcp_url"),
                 }

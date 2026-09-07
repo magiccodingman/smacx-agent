@@ -1,0 +1,82 @@
+{
+  "active_messages": 405,
+  "compacted_messages": 0,
+  "completed_sessions": 1,
+  "compression_fallbacks": 0,
+  "compression_ineffective": 0,
+  "end_reasons": {
+    "cli_close": 1
+  },
+  "exact_repeated_tool_call_pairs": 0,
+  "finish_reasons": {
+    "length": 1,
+    "stop": 22,
+    "tool_calls": 172
+  },
+  "longest_exact_tool_call_run": 1,
+  "malformed_tool_call_records": 0,
+  "per_session_input_tokens": {
+    "maximum": 7270800,
+    "mean": 7270800.0,
+    "median": 7270800,
+    "minimum": 7270800,
+    "samples": 1
+  },
+  "per_session_output_tokens": {
+    "maximum": 138620,
+    "mean": 138620.0,
+    "median": 138620,
+    "minimum": 138620,
+    "samples": 1
+  },
+  "privacy": {
+    "message_content_included": false,
+    "provider_endpoint_included": false,
+    "reasoning_text_included": false,
+    "system_prompt_included": false,
+    "tool_arguments_included": false
+  },
+  "schema": "smacx.hermes-session-audit.v1",
+  "sessions": 1,
+  "tool_calls": {
+    "mcp__smacx__smac_attention_ack": 1,
+    "mcp__smacx__smac_decision": 2,
+    "smac_attention_ack": 21,
+    "smac_choices": 13,
+    "smac_decision": 73,
+    "smac_execute_choice": 54,
+    "smac_match_briefing": 3,
+    "smac_memory": 1,
+    "smac_wait": 3,
+    "smac_world": 1,
+    "tool_call": 1,
+    "tool_describe": 8,
+    "tool_search": 2
+  },
+  "tool_result_errors": {
+    "invalid_base": 3,
+    "reported_error": 16,
+    "unit_not_ready_in_decision_frame": 1,
+    "unknown_decision": 1
+  },
+  "totals": {
+    "api_call_count": 194,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "input_tokens": 7270800,
+    "output_tokens": 138620,
+    "reasoning_tokens": 109023
+  },
+  "turn_handoffs": {
+    "all_within_contract": true,
+    "count": 17,
+    "maximum_words_contract": 120,
+    "word_counts": {
+      "maximum": 120,
+      "mean": 108.529,
+      "median": 104,
+      "minimum": 99,
+      "samples": 17
+    }
+  }
+}

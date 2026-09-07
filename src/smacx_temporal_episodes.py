@@ -7,13 +7,28 @@ from copy import deepcopy
 from smacx_world_types import content_hash
 
 
+EPISODE_STATE_SCHEMA_VERSION = 2
+
+
+def episode_schema_upgrade_required(identity, prior_objects, state):
+    if state and state.get('identity') == identity.as_dict():
+        return state.get('schema_version') != EPISODE_STATE_SCHEMA_VERSION
+    # A coherent checkpoint restore can have a projection but no new-timeline
+    # collector stage. Current-format projection evidence remains bootstrappable.
+    return any(row.get('kind') == 'foreign_contact'
+               and row.get('status', 'active') == 'active'
+               and row.get('metadata', {}).get('native_episode_schema_version') != EPISODE_STATE_SCHEMA_VERSION
+               for row in prior_objects)
+
+
 def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys=()):
     namespace = identity.as_dict()
     valid = state.get('identity') == namespace
-    opened = deepcopy(state.get('open', {})) if valid else {}
-    # Bootstrap an installation without the private temporal checkpoint only.
-    # Once it exists, snapshot endpoints cannot resurrect closed stream state.
-    if not valid:
+    upgrading = episode_schema_upgrade_required(identity, prior_objects, state)
+    opened = deepcopy(state.get('open', {})) if valid and not upgrading else {}
+    # Reuse prior snapshot evidence only within the current identity semantics.
+    # An old schema must not resurrect a closed stream identity from endpoints.
+    if not valid and not upgrading:
         for row in prior_objects:
             key = row.get('metadata', {}).get('native_observation_key')
             if key and row.get('kind') == 'foreign_contact' and row.get('status', 'active') == 'active':
@@ -23,6 +38,15 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
            for row in prior_objects if row.get('kind') == 'own_unit'}
     owned_lifecycles = deepcopy(state.get('owned_lifecycles', {})) if valid else {}
     assignments, terminal, just_lost, owned_lost = {}, {}, {}, {}
+    if upgrading:
+        # Old checkpoints may contain a snapshot-resurrected foreign episode.
+        # Revalidate once, preserving owned lifecycle identities and journal
+        # originals. A schema upgrade is not evidence of physical destruction.
+        terminal.update({row['object_ref']: 'unknown' for row in prior_objects
+                         if row.get('kind') == 'foreign_contact'
+                         and row.get('status', 'active') == 'active'})
+        if valid:
+            terminal.update({row['ref']: 'unknown' for row in state.get('open', {}).values()})
     boundaries = sorted({int(gap['before_native_sequence']) for gap in gaps})
     def close_all():
         terminal.update({value['ref']: 'unknown' for value in opened.values()})
@@ -82,6 +106,16 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
             current = create(key, raw); opened[key] = current
             just_lost.pop(key, None)
         elif kind == 'visible_unit_moved':
+            if before_ref is None or after_ref is None:
+                # Native sentinel coordinates cannot extend a visible episode
+                # across this boundary, even if the raw visibility bit is set.
+                if current is None or before_ref is None or current.get('location') != before_ref:
+                    if current: terminal[current['ref']] = 'unknown'
+                    current = create(key, raw)
+                assignments[str(sequence)] = current['ref']
+                terminal[current['ref']] = 'unknown'
+                opened.pop(key, None); just_lost.pop(key, None)
+                continue
             if raw.get('continuous_visibility') is not True:
                 if current: terminal[current['ref']] = 'unknown'
                 opened.pop(key, None); continue
@@ -95,6 +129,11 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
             # An observed loss/damage after a gap still has qualified evidence,
             # but no private handle may attach it to a pre-gap identity.
             current = create(key, raw)
+            # A newly observed damage occurrence at a known square begins a
+            # fresh episode after a gap. Keep it for the matching snapshot and
+            # subsequent observations; never reattach it to the closed episode.
+            if kind == 'visible_unit_damaged' and (after_ref or before_ref):
+                opened[key] = current
         assignments[str(sequence)] = current['ref']
         if kind in ('visible_unit_lost', 'visible_unit_destroyed'):
             terminal[current['ref']] = 'confirmed_destroyed' if kind.endswith('destroyed') else 'unknown'
@@ -105,4 +144,4 @@ def advance_episodes(*, identity, prior_objects, state, events, gaps, owned_keys
             current['last_sequence'] = sequence
     if boundaries:
         close_all()
-    return {'identity': namespace, 'open': opened, 'owned_lifecycles': owned_lifecycles}, assignments, terminal
+    return {'schema_version': EPISODE_STATE_SCHEMA_VERSION, 'identity': namespace, 'open': opened, 'owned_lifecycles': owned_lifecycles}, assignments, terminal

@@ -1,0 +1,264 @@
+{
+  "turn": 215,
+  "incident_id": "incident-8e58164cb4164d65a55298aa7a243abe",
+  "failed_run": "run-1354926507bd4b75bba5e45d5d0fe562",
+  "replacement_run_stopped": "run-dbf66ec365f8421988738b3f682f00ae",
+  "observed": [
+    "Hermes runtime-context HTTP requests time out at10 seconds before provider submission; later server-built records do not establish delivery.",
+    "Supervisor records three clean exits without native progress and stops only the run; portal creates a replacement.",
+    "Checkpoint API409 identifies hermes_checkpoint_session_filter_failed from SQLite VACUUM database or disk is full.",
+    "Checkpoint helper /tmp tmpfs is capped at128MiB; source database is37031936 bytes. Host has122GiB available.",
+    "Native feed repeatedly emits perspective_changed while collector material_deltas remain zero during checkpoint retries.",
+    "After portal pause and sovereign stop, an operator recovery-mode context request completes in2.033 seconds; its episode is explicitly released."
+  ],
+  "repairs": {
+    "temporary_storage": "Checkpoint and restore use private scoped volume staging, SQLite scratch redirected there, source staging removed after backup, cleanup on exit.",
+    "checkpoint_atomicity": "Alternating bounded native save pair preserves last verified native slot until AI archive and metadata publication succeed. Logical slot unchanged; legacy metadata falls back to slot.",
+    "containment": "No-progress clean-exit threshold latches run and match and quarantines native/collectors.",
+    "standalone_incident_recovery": "Normal verified recovery clears only clean-yield incidents after native identity, AI memory and collectors succeed; capability retry still retains its own gate.",
+    "client_failure_trace": "Runtime context fetch timeout/HTTP/transport failure records episode, elapsed time and normalized reason before re-raising; no endpoint or token recorded. Human transcript and aggregate failures include it.",
+    "native_digest_preflight": "After stopping/parking, verify native file SHA256 and byte count against the checkpoint before any journal fork, Hermes restore or worker restart.",
+    "compressed_native_digest": "Hash decoded bytes from bounded zstd stream without extraction; corrupt archives fail closed. Both internal checkpoint slots protected from save pruning."
+  },
+  "tests": {
+    "large_helper": "PASS actual checkpoint/restore with136MiB retained payload under128MiB tmpfs, integrity/source hash/scope/staging checks",
+    "readonly_wal": "PASS closed and retained WAL, uncommitted exclusion, source unchanged, invalid schema fail closed",
+    "ai_memory": "PASS scoped checkpoint/restore and post-checkpoint memory exclusion",
+    "slot_atomicity": "PASS manager failure injection; repeated failures preserve prior native bytes/metadata, bounded pair, logical slot stable",
+    "harness_continuation": "PASS clean-yield containment plus existing live stall/outage/restart contracts",
+    "recovery_orchestration": "PASS twelve controlled solo/LAN cases across legacy/staged slots, successful recovery, identity failure and native digest mismatch; mismatch precedes all memory restoration.",
+    "context_fetch_failure": "PASS four client exceptions; fail-closed cause preserved, one episode-linked event, summary/metrics and secret exclusion verified.",
+    "compressed_digest": "PASS plain and compressed identity, truncated archive rejection and missing save rejection",
+    "save_retention": "PASS final worker image: both older managed slots retained alongside legacy recovery, ten recent saves, milestone and final export",
+    "packaged_compressed_digest": "PASS installed final control module: plain/compressed native-byte identity, corrupt archive and missing save fail closed"
+  },
+  "pending": [
+    "Next-turn automatic checkpoint and subsequent fresh-episode provider timing",
+    "Full-game completion and sustained sovereign intent/specialist acceptance"
+  ],
+  "deployment": "PASS fresh215 native+AI checkpoint, supported refresh-runtime recovery, incident cleared, one sovereign started before portal unpause; native failure watcher and ten-minute heartbeat active",
+  "integrated_checkpoint_image": {
+    "control_image": "sha256:cd98bb891ee13eef17c6e1996cae1716c41db2f777e3ba47c96ea607441b251f",
+    "exit_code": 0,
+    "events": [
+      {
+        "event": "base_site_stress",
+        "payload": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 216.066,
+          "probe_gap_ms": 228.519,
+          "receipt_bytes": 170793,
+          "native_elapsed_ms": 0
+        }
+      },
+      {
+        "event": "counterfactual_site_stress",
+        "payload": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 237.759,
+          "probe_gap_ms": 231.57,
+          "receipt_bytes": 52085,
+          "native_elapsed_ms": 0
+        }
+      },
+      {
+        "event": "intent_recovery",
+        "payload": {
+          "native_completed_units_preserved": true,
+          "journaled_plan_preserved": true,
+          "same_checkpoint_recovered_twice_after_timeline_gc": true,
+          "journaled_conflict_and_stationary_assignment_preserved": true,
+          "ephemeral_old_timeline_watch_discarded": true,
+          "old_session_counterfactual_choice_rejected": true
+        }
+      },
+      {
+        "event": "pass",
+        "payload": {
+          "authenticated_control_lifecycle": true,
+          "managed_action_failure_containment": false,
+          "dedicated_mcp_sidecar": true,
+          "mcp_tool_count": 15,
+          "mcp_bound_to_exact_match": true,
+          "native_unity_governor_entitlements": true,
+          "native_no_timer": true,
+          "native_orbital_project_global_adapter": true,
+          "native_base_geography_and_unit_traits": true,
+          "native_airdrop_diplomacy_and_anti_drop_guards": true,
+          "native_pact_port_amphibious_sequence": true,
+          "native_airdrop_collection_stress": {
+            "ready_drop_units": 129,
+            "maximum_page_latency_ms": 208.981,
+            "maximum_page_bytes": 127212,
+            "map_tiles": 8192,
+            "demand_receipt_matches_actions": true,
+            "enumeration_target_count": 4586,
+            "enumeration_native_ms": 0.0,
+            "enumeration_wall_ms": 234.19,
+            "enumeration_probe_gap_ms": 215.641,
+            "enumeration_payload_bytes": 8670,
+            "exact_native_ms": 0.0,
+            "exact_wall_ms": 214.198,
+            "exact_probe_gap_ms": 218.697,
+            "exact_payload_bytes": 288,
+            "outside_first_128_semantic_choice_executed": true,
+            "provider_model_supplied_raw_tile_id": false,
+            "revision_cache_hit": true
+          },
+          "native_global_projection_world_runtime_path": true,
+          "managed_lifecycle_blocked": true,
+          "bridge_verified_checkpoint": true,
+          "live_worker_volume_backup_verified": true,
+          "native_crash_recovered_without_ui": true,
+          "semantic_vehicle_identity_survived_native_restart": true,
+          "recovered_checkpoint_turn": 1,
+          "sidecar_removed_on_park": true,
+          "hermes_semantic_turn": false,
+          "hermes_low_reasoning": false,
+          "hermes_native_revision_advanced": false,
+          "hermes_managed_container": false,
+          "hermes_session_backup_verified": false,
+          "hermes_usage": null,
+          "specialist": null
+        }
+      }
+    ],
+    "scope": "Checkpoint staging, bounded save slots and native/AI recovery. Subsequent incident-clearance and client-failure tracing changes are tested separately and final-image integration is running."
+  },
+  "final_images": {
+    "control": "sha256:cdb8b73729e38e8de877fbb9a9f10a5a45b9d981c12fe8480f0cd59f42f5f194",
+    "harness": "sha256:d41c106b05af1b3cd2bcf12cf6d85d0421ea0eb1c6201a68ba823d60d5af6068",
+    "integration": "PASS exit0 before final native-file digest preflight",
+    "packaged_client_failure_test": "PASS four cases using installed strict-prompt module",
+    "counterfactual_probe_gap_ms": 222.53
+  },
+  "digest_preflight_image": {
+    "control": "sha256:1db6e43ff39ff4e1f6619df4273aab2162ea1057a1d947daf66ee10324ef633a",
+    "integration": "FAIL exit1: parked save compressed to .sav.zst; digest helper searched only .sav; automatic recovery failed closed before AI memory restore."
+  },
+  "compressed_images": {
+    "control": "sha256:b2591c0981d924025858eb17fabdb0b4fd62b59ff96ceb92a1eddbd2919f5220",
+    "worker": "sha256:c647c56855d5b2701300c9e4bd2e1386a4daec4a39c26a39ce97fdb7228fb314",
+    "integration": "PASS exit0, full native/MCP suite with compressed native digest preflight",
+    "events": [
+      {
+        "event": "base_site_stress",
+        "payload": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 287.329,
+          "probe_gap_ms": 259.73,
+          "receipt_bytes": 169309,
+          "native_elapsed_ms": 0
+        }
+      },
+      {
+        "event": "counterfactual_site_stress",
+        "payload": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 297.15,
+          "probe_gap_ms": 259.679,
+          "receipt_bytes": 52345,
+          "native_elapsed_ms": 2
+        }
+      },
+      {
+        "event": "intent_recovery",
+        "payload": {
+          "native_completed_units_preserved": true,
+          "journaled_plan_preserved": true,
+          "same_checkpoint_recovered_twice_after_timeline_gc": true,
+          "journaled_conflict_and_stationary_assignment_preserved": true,
+          "ephemeral_old_timeline_watch_discarded": true,
+          "old_session_counterfactual_choice_rejected": true
+        }
+      },
+      {
+        "event": "pass",
+        "payload": {
+          "authenticated_control_lifecycle": true,
+          "managed_action_failure_containment": false,
+          "dedicated_mcp_sidecar": true,
+          "mcp_tool_count": 15,
+          "mcp_bound_to_exact_match": true,
+          "native_unity_governor_entitlements": true,
+          "native_no_timer": true,
+          "native_orbital_project_global_adapter": true,
+          "native_base_geography_and_unit_traits": true,
+          "native_airdrop_diplomacy_and_anti_drop_guards": true,
+          "native_pact_port_amphibious_sequence": true,
+          "native_airdrop_collection_stress": {
+            "ready_drop_units": 129,
+            "maximum_page_latency_ms": 242.029,
+            "maximum_page_bytes": 127205,
+            "map_tiles": 8192,
+            "demand_receipt_matches_actions": true,
+            "enumeration_target_count": 4721,
+            "enumeration_native_ms": 0.0,
+            "enumeration_wall_ms": 243.309,
+            "enumeration_probe_gap_ms": 257.018,
+            "enumeration_payload_bytes": 8671,
+            "exact_native_ms": 0.0,
+            "exact_wall_ms": 251.616,
+            "exact_probe_gap_ms": 237.065,
+            "exact_payload_bytes": 289,
+            "outside_first_128_semantic_choice_executed": true,
+            "provider_model_supplied_raw_tile_id": false,
+            "revision_cache_hit": true
+          },
+          "native_global_projection_world_runtime_path": true,
+          "managed_lifecycle_blocked": true,
+          "bridge_verified_checkpoint": true,
+          "live_worker_volume_backup_verified": true,
+          "native_crash_recovered_without_ui": true,
+          "semantic_vehicle_identity_survived_native_restart": true,
+          "recovered_checkpoint_turn": 1,
+          "sidecar_removed_on_park": true,
+          "hermes_semantic_turn": false,
+          "hermes_low_reasoning": false,
+          "hermes_native_revision_advanced": false,
+          "hermes_managed_container": false,
+          "hermes_session_backup_verified": false,
+          "hermes_usage": null,
+          "specialist": null
+        }
+      }
+    ]
+  },
+  "production_checkpoint": {
+    "checkpoint_id": "checkpoint-da4a808551c24b409ef74c5df1605682",
+    "turn": 215,
+    "native_save_slot": "ckpt_6e5cbc45860b9447_a",
+    "native_save_sha256": "5f19c1b7997968fc65ac4dcc97d9ea32d8d27bca71cee576442a03574aba5627",
+    "native_save_bytes": 354632,
+    "verified": true
+  },
+  "production_recovery": {
+    "session_id": "session-f413f990aaec489c91a8ff9d57040adb",
+    "run_id": "run-697af0b2797c4512ba5db9de6913eb1d",
+    "turn": 215,
+    "units": 19,
+    "bases": 2,
+    "credits": 809,
+    "incident_status": "recovered",
+    "active_incidents": 0,
+    "native_worker_id": "39b2e56bf13e844fd227b93b7dfce8c369eaef8fd48ee2bb692333c44bffe126",
+    "prepared_image": "sha256:81b2a11aae4d834d875fd33a2c703278c532f84bf53d11c1c9ad7c1e4248a0af"
+  },
+  "actual_provider_delivery": {
+    "request_id": "a41eb0eae3de4ece9f68c9faf8d43533",
+    "episode_id": "episode-77d1f71da46354754f4965581717fc7c",
+    "plan_id": "plan-92f8d665ad8a44df91f34b4c5aa3aee5",
+    "plan_revision": 14,
+    "last_confirmation_turn": 192,
+    "claim": "Actual submitted provider body contains recovered plan; historical narrative is not certified current truth.",
+    "subsequent_requests_observed": 4,
+    "successful_managed_order": "Automate former",
+    "execution_status": "order_assigned"
+  }
+}

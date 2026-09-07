@@ -110,6 +110,8 @@ Technology is potential until used. After an important discovery, reconsider uni
 
 A base normally produces one item at a time from accumulated minerals. Switching production, hurrying it with Energy Credits, or applying an Artifact can have special costs and restrictions; use the exact legal choices and inspect unfamiliar consequences when they matter.
 
+A queued unit is not a fielded defender. If minerals remain to be accumulated and net mineral surplus is zero or negative, ordinary production makes no progress while that condition persists. Check support and citizen allocation, or other legal ways to change the condition, before relying on that build for timely defense. Already accumulated cost still requires native completion processing.
+
 A **Base Facility** belongs to one base. It can improve growth, Economy, Labs, Psych, defense, military quality, Probe security, ecology, production, or another local system. Many facilities consume Energy Credits every turn as maintenance. Build one when its benefit justifies its mineral cost, maintenance, and the item delayed by building it.
 
 A **Secret Project** is a major unique achievement. Once one faction completes a particular Project, no other faction can complete another copy. Projects can create races, and capturing the base containing one can transfer its benefits. Judge a Project by its strategic effect, construction time, opportunity cost, chance of finishing first, value to rivals, and consequence of losing the race.

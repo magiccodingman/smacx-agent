@@ -1,0 +1,88 @@
+{
+  "status": "controlled native reproduction and UI comparison complete",
+  "classification": "installed native automation cancellation reproduced through both UI and harness; not a harness-only invocation or reporting defect",
+  "campaign_preserved_paused": true,
+  "comparison": {
+    "source_checkpoint": "checkpoint-4d5c38e3deb44c768a6b1c836c17ada4",
+    "turn": 221,
+    "copied_save_sha256": "bffc777b41ab816bc307aab0dd8795d2f338df38cbfd5765a44834e8afcad5d2",
+    "isolated_match": "match-former-test",
+    "subject": "Former at tile1214, native row5 in copied save",
+    "bridge_action": "guarded semantic_command automate_former automation_mode=improve_home_base",
+    "ui_action": "native Ctrl+Shift+A via XTest keyboard input; no semantic automation command in that comparison",
+    "ui_before": {
+      "id": 5,
+      "name": "Formers",
+      "x": null,
+      "y": null,
+      "tile_id": 1214,
+      "order_name": "none",
+      "order_auto_type": 3,
+      "moves_spent": 0,
+      "terraform_task": {
+        "state": "no_active_terraform_order",
+        "automation_active": false,
+        "order_kind": "none",
+        "completion_verified": false
+      },
+      "home_base_id": 18
+    },
+    "ui_after": {
+      "id": 5,
+      "name": "Formers",
+      "x": null,
+      "y": null,
+      "tile_id": 1214,
+      "order_name": "none",
+      "order_auto_type": 3,
+      "moves_spent": 3,
+      "terraform_task": {
+        "state": "no_active_terraform_order",
+        "automation_active": false,
+        "order_kind": "none",
+        "completion_verified": false
+      },
+      "home_base_id": 18
+    },
+    "bridge_after": {
+      "tile_id": 1214,
+      "order_name": "none",
+      "order_auto_type": 3,
+      "moves_spent": 3,
+      "automation_active": false,
+      "active_terraform_order": false
+    },
+    "bridge_reproductions": 3,
+    "ui_reproductions": 1
+  },
+  "native_trace": {
+    "watched_field": "row5 vehicle state bitfield",
+    "assignment": {
+      "pc_after_write": "0x004d8c11",
+      "function": "Console_automate",
+      "state": "0x04000200"
+    },
+    "ui_assignment_caller": "0x005176ad",
+    "cancellation": {
+      "pc_after_write": "0x005741bf",
+      "function": "original enemy_move address range",
+      "state": "0x04000000",
+      "instruction": "clear bit0x200 at0x005741b6, write state at0x005741b9",
+      "branch": "order byte is zero at0x005741a6..0x005741ae before clearing automation"
+    },
+    "veh_wake_breakpoint": "No matching row5 wake call during reproduced interval; hardware watchpoint found direct original routine write instead.",
+    "limits": "Only state/order fields from debugger are used; movement comes from semantic snapshots. Stack unwinding was partial. This is installed game/mod behavior, not a pristine unmodified-engine comparison."
+  },
+  "findings": [
+    "Harness calls same Console_automate function and mode3 as native keyboard handler.",
+    "Native automation itself clears the flag without selecting a terraform order in this saved situation.",
+    "No movement or active work is observed for this Former during the reproduced attempt; full movement is spent.",
+    "Other Formers perform movement or Sensor Array work, so automation is not globally broken."
+  ],
+  "not_proven": [
+    "Why the native search selected no task: cannot equate this with no legal or useful improvements.",
+    "Whether terrain, threats, support-base restrictions or native search defects caused the no-task outcome.",
+    "No trace of every earlier historical reset."
+  ],
+  "recommended_followup": "Do not blindly reissue identical automation after repeated no-progress cancellation. Surface interruption/no-progress evidence and let the sovereign inspect direct terraform choices or choose another policy; do not make strategic choices automatically. No gameplay or prompt change implemented in this investigation."
+}

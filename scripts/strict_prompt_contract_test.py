@@ -36,6 +36,27 @@ def run_probe(package_root: Path, prompt_path: Path, expected_hash: str) -> subp
             "agent=SimpleNamespace(); "
             "value=s.build_system_prompt(agent, 'upstream additive text'); "
             "parts=s.build_system_prompt_parts(agent, 'upstream additive text'); "
+            "import run_agent, smacx_strict_prompt; "
+            "smacx_strict_prompt._append_runtime_context=lambda rows: rows; "
+            "history=[{'role':'system','content':'saved stale prompt'}, "
+            "{'role':'system','content':'upstream extra'}, {'role':'user','content':'resume'}]; "
+            "wire=run_agent.AIAgent._sanitize_api_messages(history); "
+            "assert history[0]['content']=='saved stale prompt'; "
+            "assert [row['content'] for row in wire if row['role']=='system']==[value]; "
+            "released=[]; "
+            "smacx_strict_prompt._mark_runtime_responded=lambda: None; "
+            "smacx_strict_prompt._end_runtime_episode=lambda **kw: released.append(kw['committed']); "
+            "instance=run_agent.AIAgent(); "
+            "instance._build_assistant_message({'content':'partial'}, 'length'); "
+            "instance._build_assistant_message({'content':'continue'}, 'incomplete'); "
+            "instance._build_assistant_message({'content':'filtered'}, 'content_filter'); "
+            "instance._build_assistant_message({'tool_calls':[{'id':'call'}]}, 'tool_calls'); "
+            "instance._build_assistant_message({'content':'done'}, 'stop'); "
+            "assert released==[False,False,False,True], released; "
+            "boundary=[{'role':'user','content':'old'}, {'role':'assistant','content':'old'}, "
+            "{'role':'tool','content':'old'}, {'role':'user','content':'resume'}]; "
+            "assert smacx_strict_prompt._episode_id(boundary)==smacx_strict_prompt._episode_id([boundary[0],boundary[-1]]); "
+            "assert smacx_strict_prompt._episode_id(boundary)!=smacx_strict_prompt._episode_id(boundary+[boundary[-1]]); "
             "print(json.dumps({'value':value,'parts':parts}))"
         )],
         cwd=ROOT, env=environment, text=True, capture_output=True, check=False,
@@ -68,6 +89,13 @@ def main() -> int:
         package = root / "agent"
         package.mkdir()
         (package / "__init__.py").write_text("", encoding="utf-8")
+        # The strict hook also installs the managed preflight projection. This
+        # isolated prompt fixture must provide that current Hermes module seam.
+        (package / "turn_context.py").write_text(
+            "def estimate_request_tokens_rough(messages, tools=None):\n"
+            "    return sum(len(str(message)) for message in messages) // 4\n",
+            encoding="utf-8",
+        )
         (package / "system_prompt.py").write_text(
             "def build_system_prompt_parts(agent, system_message=None):\n"
             "    return {'stable':'upstream','context':'extra','volatile':'extra'}\n"
@@ -107,6 +135,7 @@ def main() -> int:
         "payload": {
             "deterministic_prompt": True,
             "upstream_prompt_replaced": True,
+            "stale_duplicate_system_rows_replaced_without_history_mutation": True,
             "provider_system_message_exact": True,
             "integrity_failure_closed": True,
             "oversized_prompt_failure_closed_after_site_startup": True,

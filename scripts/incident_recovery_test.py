@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import gzip
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -19,6 +21,7 @@ from smacx_worker_manager import WorkerManager, WorkerManagerError
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="smacx-incident-recovery-") as temporary:
         root = Path(temporary)
+        os.environ["SMACX_DIAGNOSTICS_ROOT"] = str(root / "diagnostics")
         store = SmacxStore(root / "smacx.sqlite3")
         control = ControlPlane(store, root / "secrets")
         agent = control.create_agent("Recovery agent", agent_id="agent-recovery")
@@ -189,6 +192,46 @@ def main() -> int:
         repeated_stop = operations.reconcile_once()
         assert repeated_stop["operator_required"] == 0 and repeated_stop["recovered"] == 0
         assert journal.verify(scope)["head_hash"] == stopped_head
+
+        # The original unhealthy process evidence must exist before recovery
+        # removes/replaces the container, and must survive a failed recovery.
+        control.update_match_lifecycle(scope.match_id, "running", metadata={
+            "incident_quarantine": {}, "recovery_required": False,
+            "recovery_checkpoint": {"verified": True, "slot": "fixture"}})
+        with store.transaction() as connection:
+            connection.execute("UPDATE worker_specs SET desired_status='running',updated_unix=0")
+        containers["worker-recovery"]["Config"] = {"Labels": {
+            "io.smacx.managed": "true", "io.smacx.installation": store.installation_id()}}
+        containers["worker-recovery"]["State"].update({"OOMKilled": False,
+            "Health": {"Status": "unhealthy", "FailingStreak": 6,
+                       "Log": [{"ExitCode": 1, "Output": "bridge timeout token=private-fixture"}]}})
+        manager.docker.container_logs = lambda name, tail: "bridge stalled password=private-fixture"
+        def native_report(name, path, max_bytes):
+            assert name == "worker-recovery" and max_bytes == 65536
+            if path.startswith("/opt/"):
+                return b"ExceptionCode C0000005\npassword=private-fixture"
+            from smacx_docker import DockerNotFound
+            raise DockerNotFound("absent")
+        manager.docker.read_container_file = native_report
+        evidence_verified = []
+        def evidence_before_recovery(match_id):
+            rows = [json.loads(line) for path in (root / "diagnostics").rglob("*.gz")
+                    for line in gzip.open(path, "rt")]
+            loss = [row for row in rows if row["kind"] == "worker_liveness_lost"][-1]
+            assert loss["payload"]["state"]["OOMKilled"] is False
+            assert loss["payload"]["health"]["failing_streak"] == 6
+            assert "bridge stalled" in loss["payload"]["worker_log"]
+            assert "private-fixture" not in json.dumps(loss)
+            assert loss["payload"]["cause"] == "undetermined"
+            reports = loss["payload"]["native_exception_reports"]
+            assert reports[0]["status"] == "captured"
+            assert "C0000005" in reports[0]["text"]
+            assert reports[1]["status"] == "absent"
+            evidence_verified.append(True)
+            raise WorkerManagerError("fixture_recovery_failed")
+        manager.recover_match = evidence_before_recovery
+        assert operations.reconcile_once()["operator_required"] == 1
+        assert evidence_verified == [True]
 
         print(json.dumps({
             "event": "pass",

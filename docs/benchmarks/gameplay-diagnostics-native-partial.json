@@ -1,0 +1,92 @@
+{
+  "complete": false,
+  "image": "diagnostics-c2c23d7",
+  "classification": "controlled running native effects; run interrupted at council dialog settling",
+  "verified_events": [
+    {
+      "event": "acceptance_stage",
+      "stage": "pact_port"
+    },
+    {
+      "event": "acceptance_stage",
+      "stage": "managed_actions"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "actors_discovered_through_managed_world"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "custom_design_create_and_discover"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "single_unit_upgrade_and_observation"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "upgrade_preview_cost_matches_execution"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "energy_allocation_effect"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "social_preview_native_ratings_cost_and_read_safety"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "social_models_atomic_effect"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "production_loss_preview_and_deployment_composition"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "production_set_append_remove_effect"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "governor_and_citizen_managed_workflow"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "colocated_rendezvous_query_and_transport_boarding_effect"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "terraform_order_effect_verified"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "site_variants_restore_state_and_ignore_hidden_mirrors_and_foreign_workers"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "site_center_preview_matches_managed_founding"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "colony_founding_effect_verified"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "bulk_upgrade_staged_cost_and_observed_effect"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "selected_diplomatic_gift_native_effect"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "technology_purchase_terms_and_observed_transfer"
+    },
+    {
+      "event": "managed_action_verified",
+      "capability": "native_quoted_loan_terms_and_effect"
+    }
+  ],
+  "failure": "interaction enumeration raced native council wait transition; full rerun required"
+}

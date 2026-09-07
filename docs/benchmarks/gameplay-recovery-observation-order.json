@@ -1,0 +1,65 @@
+{
+  "checkpoint": "recovery-observation-order",
+  "observed": {
+    "native_session": "session-fe4d90de7cd949bbb3a244bd439213c5",
+    "turn": 22,
+    "critical_attention_cursors": [
+      110,
+      111
+    ],
+    "temporary_removals": [
+      [
+        "own-unit-10",
+        "own-unit-6",
+        "own-unit-8"
+      ],
+      [
+        "own-unit-3",
+        "own-unit-4",
+        "own-unit-5"
+      ]
+    ],
+    "native_owned_unit_count": 3,
+    "autonomous_sovereign_running": false
+  },
+  "repair": "defer all collectors and match readiness until all native identity capsules restore",
+  "controlled_validation": {
+    "singleplayer_success": true,
+    "singleplayer_identity_failure_no_collector": true,
+    "lan_all_capsules_before_any_collector": true,
+    "lan_identity_failure_no_collector": true,
+    "incident_recovery_contract": "passed",
+    "ai_memory_checkpoint_contract": "passed"
+  },
+  "pending": [
+    "sustained full-game acceptance"
+  ],
+  "live_acceptance": {
+    "session_id": "session-57943c3baafd4fc39e8d8d0138372a3b",
+    "timeline_id": "timeline-restore-e6a48dffed4d4a919f5bbf4c",
+    "turn": 22,
+    "publication_hash": "293fa53c3b4e605e5f0e4afefdf6d40ae8e764d04be6c9fbec9adbf8a44dd2ba",
+    "journal_event_id": "journal-eb516b1f6e45456cade2192a0de2a698",
+    "observation_cursor": 110,
+    "native_feed_continuity": "complete",
+    "material_delta_count": 0,
+    "semantic_event_count": 0,
+    "critical_attention_groups": 0,
+    "pending_attention_items": 0,
+    "native_owned_unit_count": 3,
+    "classification": "deployed solo checkpoint restore, before autonomous restart"
+  },
+  "live_lan_acceptance": {
+    "passed": true,
+    "script": "scripts/control_lan_live_test.py",
+    "both_seats_owned_refs_preserved": true,
+    "all_new_timeline_publications_audited": true,
+    "transient_owned_appearance_removal_count": 0,
+    "managed_agreement_effects_preserved": true,
+    "provider_inference": false
+  },
+  "subsequent_acceptance_evidence": [
+    "gameplay-popup-lifetime-repair.json",
+    "../../scripts/control_lan_live_test.py"
+  ]
+}

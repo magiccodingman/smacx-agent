@@ -97,6 +97,35 @@ def managed_effect_state(worker: dict) -> dict:
         runtime_context(sidecar, episode, end=True)
 
 
+def restored_identity_publications(worker: dict) -> dict:
+    """Audit every new-timeline publication, not only the eventual projection."""
+    script = """
+import json
+from smacx_controller import world_service, _store
+scope, world, _ = world_service(MATCH, agent_id=AGENT)
+identity, projection = world._projection()
+own_refs = sorted(row['object_ref'] for row in projection['objects']
+                  if row.get('kind') == 'own_unit' and row.get('status') == 'active')
+with _store()._connect() as connection:
+    rows = connection.execute(
+        'SELECT payload_json FROM world_observation_projection WHERE match_id=? '
+        'AND agent_id=? AND perspective_id=? AND timeline_id=? '
+        "AND observation_kind IN ('world_object','world_batch')",
+        (scope.match_id, scope.agent_id, scope.perspective_id, identity.timeline_id)).fetchall()
+transitions = []
+for row in rows:
+    payload = json.loads(row[0])
+    for delta in payload.get('deltas', [payload]):
+        if str(delta.get('object_ref', '')).startswith('own-unit-') \\
+                and delta.get('change') in ('appeared', 'removed'):
+            transitions.append({'object_ref': delta['object_ref'], 'change': delta['change']})
+print(json.dumps({'owned_refs': own_refs, 'identity_transitions': transitions}))
+"""
+    bindings = f"MATCH={worker['match_id']!r}\nAGENT={worker['agent_id']!r}\n"
+    return json.loads(docker("exec", worker["network"]["mcp_container_name"],
+                             "/opt/smacx/mcp-venv/bin/python", "-c", bindings + script))
+
+
 def main() -> int:
     game = os.environ.get("SMACX_TEST_GAME_SOURCE")
     if not game:
@@ -230,6 +259,8 @@ def main() -> int:
         from managed_human_action_live_test import exercise_human_actions
         human_evidence = exercise_human_actions(lan_workers, host_worker)
         before_recovery = {worker["instance_id"]: managed_effect_state(worker) for worker in lan_workers}
+        owned_before = {worker["instance_id"]: restored_identity_publications(worker)["owned_refs"]
+                        for worker in lan_workers}
         saved = api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/checkpoint",
                     {"slot": save_slot}, csrf, 120)["checkpoint"]
         save_path = f"/var/lib/smacx/game/saves/agent/{match_id}/{save_slot}.sav"
@@ -268,6 +299,10 @@ def main() -> int:
                             if worker["match_id"] == match_id]
         after_recovery = {worker["instance_id"]: managed_effect_state(worker) for worker in restored_workers}
         assert after_recovery == before_recovery, "managed agreement effects changed across checkpoint recovery"
+        for worker in restored_workers:
+            publications = restored_identity_publications(worker)
+            assert publications["owned_refs"] == owned_before[worker["instance_id"]], publications
+            assert not publications["identity_transitions"], publications
         api(opener, base_url, "POST", f"/api/v1/matches/{match_id}/park", {}, csrf, 180)
         print(json.dumps({
             "event": "pass",
@@ -286,6 +321,7 @@ def main() -> int:
                 "faction_seats_restored": True,
                 "journal_and_native_identity_restored": True,
                 "agreement_effects_preserved_in_current_world_after_recovery": True,
+                "both_seats_no_transient_owned_identity_publications": True,
                 "pixels_or_ui_input_used": False,
                 "match_wide_park": True,
             },

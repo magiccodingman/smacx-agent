@@ -94,7 +94,7 @@ def _seed_and_run(root: Path, base_url: str, reference_url: str) -> int:
             "VALUES('specialist.policy',?,?)", (canonical_json({
                 "installation_concurrency": 1, "seat_concurrency": 1,
                 "automatic_retries": 0, "schema_repairs": 0,
-                "synthesis": {"tool_budget": 4, "provider_call_budget": 4,
+                "synthesis": {"tool_budget": 4, "provider_call_budget": 5,
                               "provider_token_budget": 96000, "wall_seconds": 45},
                 "investigation": {"tool_budget": 8, "provider_call_budget": 8,
                                   "provider_token_budget": 96000, "wall_seconds": 45},
@@ -169,6 +169,9 @@ def _seed_and_run(root: Path, base_url: str, reference_url: str) -> int:
             raise AssertionError("trace omitted mission/provider trajectory/validated result")
         if not envelope["mission"].get("system_prompt_hash"):
             raise AssertionError("trace omitted exact specialist prompt hash")
+        rejected = [item for item in trace_rows if item.get("kind") == "managed_tool_validation_rejected"]
+        assert len(rejected) == 1, "invalid arguments omitted from specialist trace"
+        assert rejected[0]["payload"]["result"]["error"]["code"] == "unknown_tool_arguments"
         exchange_text = json.dumps(exchanges, separators=(",", ":"))
         if '"tool_calls"' not in exchange_text or '"content"' not in exchange_text:
             raise AssertionError("trace omitted assistant tool/reasoning/final trajectory")
@@ -199,6 +202,7 @@ def _completion(request: dict[str, Any], mission: dict[str, Any], call_count: in
             {"mode": "area", "origin_ref": "base-home", "radius": 2},
         ]
     )
+    query_plan.insert(0, {"unsupported_focus_id": "must-not-be-discarded"})
     if call_count < len(query_plan):
         arguments = query_plan[call_count]
         tool_name = str((request.get("tools") or [{}])[0].get("function", {}).get(
@@ -398,8 +402,8 @@ def main() -> int:
     finally:
         server.shutdown(); server.server_close(); thread.join(2)
 
-    if len(captured) != 13:
-        raise AssertionError(f"expected thirteen provider calls, got {len(captured)}")
+    if len(captured) != 16:
+        raise AssertionError(f"expected sixteen provider calls, got {len(captured)}")
     seen_missions: list[str] = []
     mission_calls: dict[str, int] = {}
     stable_prefixes: dict[str, set[str]] = {"world": set(), "reference": set()}

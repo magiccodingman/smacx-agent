@@ -1,0 +1,195 @@
+{
+  "classification": "Production journal/runtime selection contract plus bounded live diagnostic inspection",
+  "contract": {
+    "source_goals": 131,
+    "working_count_limit": 100,
+    "runtime_count_limit": 12,
+    "status_and_count_budget_omissions_accounted": true,
+    "small_token_budget_omissions_accounted": true,
+    "journal_unchanged_after_projection_and_reopen": true
+  },
+  "live": {
+    "run_id": "run-e1b4ea08561b4d52b8cbda9231976508",
+    "journal_selection_events": 13,
+    "runtime_selection_events": 10,
+    "latest_observed_journal_head": "bee605618e1d377a9f1a4a4759873352062312502d6324d90cc8920cc79fb06d",
+    "journal_plan_source_count": 3,
+    "journal_selected_plan_ids": [
+      "plan-92f8d665ad8a44df91f34b4c5aa3aee5"
+    ],
+    "journal_excluded_by_status": [
+      "plan-c9463d17637a43758ad0e7a01945320b",
+      "plan-90675bc75cea442893e80707a19668cd"
+    ],
+    "runtime_plan_source_count": 1,
+    "runtime_selected_plan_ids": [
+      "plan-92f8d665ad8a44df91f34b4c5aa3aee5"
+    ],
+    "runtime_plan_omissions": []
+  },
+  "limits": [
+    "Live events are separately observed; temporal proximity is not an exact same-input join.",
+    "Exact lease/episode links the deployed runtime-selection event to this actual provider request; this does not infer model use.",
+    "The controlled test does not prove semantic usefulness or sovereign follow-through."
+  ],
+  "repair": {
+    "runtime_selection_working_projection": [
+      "journal_head_hash",
+      "scope",
+      "token_budgets",
+      "source_token_estimates",
+      "selected_token_estimates"
+    ],
+    "authority": "Metadata copied from the exact working object used by the runtime selector; diagnostic only.",
+    "tests": "two-stage audit and full runtime context contract pass",
+    "deployment": {
+      "status": "deployed_actual_capture_verified",
+      "event_id": "71ace5a9dc6547dd851d730a0eddf31d",
+      "working_journal_head": "62a9d475c36deb49bf5ebb00a6962fd2fe7371beb69e3ada38f165242837f3e3",
+      "episode_id": "episode-4fbb2f01f0f11126ff59fd7b375da75e",
+      "attention_lease_id": "attention-lease-3fdfb57d51254408b738d7d7d3f2a2f5",
+      "actual_provider_request_id": "eb2d51d45bd145acb4dcb938628a2d15",
+      "actual_provider_same_lease_episode_and_plan_revision": 14,
+      "selected_plan_token_estimate": 665
+    }
+  },
+  "post_recovery_next_episode": {
+    "run_id": "run-1354926507bd4b75bba5e45d5d0fe562",
+    "request_id": "324d690e93b74d06aa3b57a6b9566c82",
+    "episode_id": "episode-2ccb1f09405ac99b0f398140aa34aee8",
+    "identity": {
+      "action_revision": "4542869650098639958",
+      "continuity": "complete",
+      "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+      "observation_cursor": 1363,
+      "perspective_id": "perspective-3a01920ce8b2446f8e9b8967f6dffe17",
+      "session_id": "session-5574b92c635847ca8172f8fc265f7035",
+      "timeline_id": "timeline-restore-5263e09491b14fe2b9c123f9",
+      "world_epoch": "world-00060ffea9d7ce1f999fba41bb3d2bd4",
+      "world_revision": 17
+    },
+    "plan": {
+      "plan_id": "plan-92f8d665ad8a44df91f34b4c5aa3aee5",
+      "plan_revision": 14,
+      "status": "active",
+      "last_confirmation": {
+        "note": "Both recurring-reset Formers re-delegated to auto_former_improve_home_base; 12 combat on_alert; base 1334 pop 6 (dominant engine); 9 public projects; 10 techs",
+        "turn": 192
+      },
+      "objective_truncated": true
+    },
+    "force_summary": {
+      "capability_roles_overlap_not_assignments": {
+        "counts": {
+          "artillery": 2,
+          "combat": 12,
+          "former": 3,
+          "probe": 3
+        },
+        "omitted_categories": 0,
+        "omitted_count": 0
+      },
+      "current_production": {
+        "counts": {
+          "Recon Rover Battery": 1,
+          "Synthmetal Garrison": 1
+        },
+        "omitted_categories": 0,
+        "omitted_count": 0
+      },
+      "former_tasks": {
+        "active_task_names": {
+          "counts": {},
+          "omitted_categories": 0,
+          "omitted_count": 0
+        },
+        "missing_or_noncurrent_task": 0,
+        "no_active_terraform_order": 3,
+        "scope": "current owned Former roles and task evidence; orders do not prove completion or ETA"
+      },
+      "missing_or_noncurrent_fields": {
+        "design": 0,
+        "home_base": 0,
+        "orders": 0,
+        "production": 0,
+        "roles": 0
+      },
+      "observed_orders": {
+        "counts": {
+          "auto_former_full": 1,
+          "none": 5,
+          "on_alert": 12
+        },
+        "omitted_categories": 0,
+        "omitted_count": 0
+      },
+      "owned_unit_count": 18,
+      "scope": "active owned projection objects; current fields only",
+      "support_home_base_not_defense_assignment": {
+        "counts": {
+          "base-location-1134": 9,
+          "base-location-1334": 9
+        },
+        "omitted_categories": 0,
+        "omitted_count": 0
+      },
+      "unit_names": {
+        "counts": {
+          "Formers": 3,
+          "Probe Team": 3,
+          "Recon Rover Battery": 2,
+          "Synthmetal Garrison": 10
+        },
+        "omitted_categories": 0,
+        "omitted_count": 0
+      },
+      "world_revision": 17
+    },
+    "focus": {
+      "action_revision": "4542869650098639958",
+      "focus_id": "focus-unit-own-unit-13",
+      "kind": "ready_unit",
+      "mandatory": false,
+      "other_actions": "smac_choices exposes base/research/strategic management while units are ready, subject to native legality.",
+      "ready_count": 6,
+      "unit": {
+        "location_ref": "location-1014",
+        "name": "Formers",
+        "own_unit_ref": "own-unit-13",
+        "roles": {
+          "colony": false,
+          "combat": false,
+          "former": true,
+          "probe": false,
+          "supply": false,
+          "transport": false
+        }
+      }
+    },
+    "plan_health": {
+      "active_operation_unit_count": 0,
+      "active_plan_count": 1,
+      "assessment_scope": "Only declared references, reservations and dependencies are checked. Objective prose is not interpreted or verified. intent_coverage_complete means declared inputs were fully enumerated, not that a plan is achievable or its narrative facts are current.",
+      "assigned_owned_unit_count": 0,
+      "conflict_count": 0,
+      "conflicts": [],
+      "dependency_exception_count": 0,
+      "dependency_exceptions": [],
+      "exception_details_truncated": false,
+      "intent_coverage_complete": true,
+      "mechanically_ordered_unit_count": 13,
+      "plans_without_world_bindings": [
+        "plan-92f8d665ad8a44df91f34b4c5aa3aee5"
+      ],
+      "plans_without_world_bindings_count": 1,
+      "snapshot_actionable_unassigned_count": 5,
+      "world_binding_details_truncated": false
+    },
+    "limits": [
+      "Actual submitted provider body, not proof of sovereign use.",
+      "Plan confirmation remains turn192; preservation does not make its narrative current.",
+      "Force summary belongs to the named world projection revision; do not substitute it for a later native snapshot.",
+      "No spontaneous specialist or COUNTER0 use is established by this sample."
+    ]
+  }
+}

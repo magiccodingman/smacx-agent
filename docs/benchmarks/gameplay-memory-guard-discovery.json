@@ -1,0 +1,52 @@
+{
+  "live_request_id": "033c93ab425346ae9b810c9aac3d8f05",
+  "live_turn": 29,
+  "sovereign_statement": "declined to persist strategic intent because it assumed observed_revision required an unavailable memory/database revision",
+  "actual_wire": {
+    "decision_id": "decision-aab5344345964d5293c39fcf1c682420",
+    "native_guard_delivered_at": "smac_decision.identity.revision",
+    "revision": "14083237302485968098",
+    "session_id": "session-147f5a7347f74cb891427dc1e6970ac4",
+    "old_description": "fresh snapshot guard without argument mapping"
+  },
+  "classification": "tool-affordance weakness; guard was delivered but its source was not explicitly mapped; no failed native write or lost committed cognition established",
+  "repair": "read/write tool descriptions explicitly map match_id/session_id and observed_revision to the latest decision identity; native guard is not a database revision or journal hash",
+  "tests": {
+    "production_decision_to_guarded_write": true,
+    "synchronous_journal_visibility": true,
+    "stale_native_revision_rejected_without_write": true,
+    "actual_mcp_schema_maps_source": true,
+    "managed_tools": 15,
+    "qwen_schema_tokens": 4550,
+    "schema_conservative_tokens": 7131,
+    "qwen_prompt_tokens": 1338
+  },
+  "autonomous_write_acceptance": "Sovereign plan42 is canonically committed, present in the immediate next request and next episode, and preserved by verified43 native/AI recovery into the actual resumed provider context.",
+  "live_sovereign_plan_write": {
+    "turn": 42,
+    "call_id": "chatcmpl-tool-9c1a99ec15553912",
+    "journal_event_id": "journal-17b924e2405746e9a7301648e382f5b4",
+    "canonical_event_type": "memory.plan",
+    "plan_id": "plan-d30b73ac14174e9b91590210b8f0531c",
+    "plan_key": "t42-uranium-terraforming-posture",
+    "observed_revision": "15676463927220498252",
+    "first_next_request": "98f28fb742c84dbc8682e90c792343fd",
+    "next_episode_first_request": "549acf099cf848798e2d86a3082452c4",
+    "next_episode_id": "episode-a94e7cb9ffee6c83844845b685afd3e2",
+    "actual_context_path": "working_cognition/plans/0",
+    "intent_horizon": "persistent_goal",
+    "status": "active",
+    "canonical_journal_independently_read": true,
+    "recovery_pending": false,
+    "recovery": {
+      "checkpoint_id": "checkpoint-cfff9b481bee42c49a102af09f883c7c",
+      "turn": 43,
+      "timeline_id": "timeline-restore-32f5554d7797433d8d7ba0e1",
+      "canonical_working_state_verified": true,
+      "first_resumed_provider_request": "8c5798d4139e4c61aaf28cd77966c9c0",
+      "resumed_episode_id": "episode-dba14de6838643cabf114024d24f69f3",
+      "actual_context_path": "working_cognition/plans/0",
+      "same_active_plan_id": true
+    }
+  }
+}

@@ -1,0 +1,192 @@
+{
+  "full_run_complete": true,
+  "driver_commit": "a847852",
+  "worker_image": "diagnostics-1416e24",
+  "evidence": "controlled native managed MCP; optional autonomous provider/specialist stages not enabled",
+  "checkpoints": [
+    {
+      "event": "counterfactual_checkpoint",
+      "payload": {
+        "actors_represented_with_mechanical_roles": true,
+        "completed_terraform_matches_standalone_and_owned_base_yields": true,
+        "positive_retool_penalty_matches_native_change": true,
+        "hurry_charge_and_progress_match_without_claiming_instant_completion": true,
+        "rehome_support_and_journal_link_match_observed_effect": true,
+        "disband_support_and_explicit_garrison_departure": true,
+        "site_facility_delta_matches_managed_build_and_actual_native_completion": true,
+        "blind_research_explore_native_flags_and_named_snapshot": true,
+        "production_and_travel_timing": {
+          "actual_native_production_upkeeps": 6,
+          "production_timing_matches": true,
+          "one_phase_native_move_matches": true,
+          "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true
+        }
+      }
+    },
+    {
+      "event": "intent_checkpoint",
+      "payload": {
+        "managed_base_radius_scope": true,
+        "private_membership": true,
+        "journaled_plan_and_milestone": true,
+        "native_repeat_completion_two_units": true,
+        "native_occurrence_to_managed_ready": true,
+        "provider_queryable_plan_health": true,
+        "managed_journaled_reservation_conflict": true,
+        "stationary_unit_assignment_visible": true,
+        "native_production_cases": [
+          "production_facility",
+          "production_project",
+          "production_interrupt"
+        ],
+        "milestone_watch_id": "watch-d3f8f7b81e5a4efc833d10791f6c9c80",
+        "plan_id": "plan-a45bcce6afd74b35b8859cfe4bcc0cba"
+      }
+    },
+    {
+      "event": "intent_attention_delivery",
+      "payload": {
+        "milestone_and_production_runtime_delivery": true,
+        "acknowledged_batches": 7,
+        "native_project_interruption_delivered": true,
+        "provider_inference": false,
+        "trusted_response_hook_simulated": true
+      }
+    },
+    {
+      "event": "diagnostics_checkpoint",
+      "payload": {
+        "current_turn_intent_in_next_runtime": true,
+        "last_ready_native_unit_blocked_without_effect": true,
+        "explicit_deferral_releases_native_skip": true,
+        "automatic_turn_preference_enabled": true,
+        "turn_before": 1,
+        "turn_after_receipt": 2,
+        "auto_transition_observed": true,
+        "next_turn_actionable": true,
+        "turn_handoff_before_next_turn_interactions": true,
+        "native_execution_status": "accepted"
+      }
+    },
+    {
+      "event": "managed_action_paths",
+      "payload": {
+        "passed": true,
+        "managed_endpoint": true,
+        "evidence": {
+          "actors_discovered_through_managed_world": true,
+          "custom_design_create_and_discover": true,
+          "single_unit_upgrade_and_observation": true,
+          "upgrade_preview_cost_matches_execution": true,
+          "energy_allocation_effect": true,
+          "social_preview_native_ratings_cost_and_read_safety": true,
+          "social_models_atomic_effect": true,
+          "production_loss_preview_and_deployment_composition": true,
+          "production_set_append_remove_effect": true,
+          "governor_and_citizen_managed_workflow": true,
+          "colocated_rendezvous_query_and_transport_boarding_effect": true,
+          "terraform_order_effect_verified": true,
+          "site_tanks_center_delta": {
+            "nutrients": 1,
+            "minerals": 1,
+            "energy": 1
+          },
+          "site_variants_restore_state_and_ignore_hidden_mirrors_and_foreign_workers": true,
+          "site_center_preview_matches_managed_founding": true,
+          "colony_founding_effect_verified": true,
+          "bulk_upgrade_staged_cost_and_observed_effect": true,
+          "selected_diplomatic_gift_native_effect": true,
+          "technology_purchase_terms_and_observed_transfer": true,
+          "native_quoted_loan_terms_and_effect": true,
+          "council_proposal_ballot_and_public_result": true
+        }
+      }
+    },
+    {
+      "event": "base_site_stress",
+      "payload": {
+        "owned_base_count": 512,
+        "candidate_count": 32,
+        "radius_squares": 21,
+        "wall_ms": 273.714,
+        "probe_gap_ms": 300.05,
+        "receipt_bytes": 170274,
+        "native_elapsed_ms": 0
+      }
+    },
+    {
+      "event": "counterfactual_site_stress",
+      "payload": {
+        "owned_base_input_rows": 511,
+        "nominated_sites": 4,
+        "wall_ms": 267.653,
+        "probe_gap_ms": 265.575,
+        "receipt_bytes": 50035,
+        "native_elapsed_ms": 0
+      }
+    },
+    {
+      "event": "intent_recovery",
+      "payload": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "same_checkpoint_recovered_twice_after_timeline_gc": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      }
+    },
+    {
+      "event": "pass",
+      "payload": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 228.856,
+          "maximum_page_bytes": 139510,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 3857,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 227.031,
+          "enumeration_probe_gap_ms": 236.624,
+          "enumeration_payload_bytes": 8671,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 224.765,
+          "exact_probe_gap_ms": 232.266,
+          "exact_payload_bytes": 289,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      }
+    }
+  ],
+  "control_image": "diagnostics-pins",
+  "harness_image": "diagnostics-resume"
+}

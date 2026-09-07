@@ -122,10 +122,11 @@ class SpecialistSupervisor:
 
     def _publish_health(self, status: str = "ready") -> None:
         with self.children_lock:
-            child_count = len(self.children)
+            child_ids = [key for key, process in self.children.items() if process.poll() is None]
+            child_count = len(child_ids)
         value = canonical_json({
             "status": status, "owner": self.owner, "process_id": os.getpid(),
-            "active_children": child_count, "heartbeat_unix": time.time(),
+            "active_children": child_count, "active_child_attempt_ids": child_ids, "heartbeat_unix": time.time(),
         })
         with self.store.transaction() as connection:
             connection.execute(

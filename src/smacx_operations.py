@@ -142,6 +142,46 @@ def _validate_specialist_trace_archive(path: Path) -> list[tarfile.TarInfo]:
 class OperationsManager:
     """One-process coordinator backed by cross-process-safe SQLite claims."""
 
+    def campaign_diagnostics(self, match_id: str) -> dict[str, Any]:
+        from smacx_campaign_diagnostics import build_bundle, snapshot_journals
+        self.control.get_match(match_id)
+        with self._operation_lock:
+            staging = Path(tempfile.mkdtemp(prefix=".campaign-", dir=self.diagnostic_root))
+            roots = [self.data_root / "gameplay-diagnostics" / match_id,
+                     self.data_root / "specialist-traces" / match_id]
+            try:
+                journal_destination = staging / "journal"
+                snapshot_journals(self.data_root / "campaigns", journal_destination, match_id)
+                roots.append(journal_destination)
+                profiles = {run["harness_profile_id"] for run in self.control.list_harness_runs()
+                            if run["match_id"] == match_id}
+                for profile in profiles:
+                    destination=staging/profile
+                    roots.append(destination)
+                    if self.worker_manager is None:continue
+                    runtime=self.control.get_harness_runtime_spec(profile)
+                    external=runtime.get("metadata",{}).get("profile_id")
+                    if not external:continue
+                    manager=self.worker_manager
+                    relative=str(destination.relative_to(self.data_root))
+                    script=("from pathlib import Path; from smacx_campaign_diagnostics import snapshot_hermes; "
+                            f"snapshot_hermes(Path('/source'),Path('/control')/{relative!r},{match_id!r},{external!r})")
+                    identifier=manager.docker.create_container(manager._name("diagnostic",uuid.uuid4().hex),{
+                        "Image":manager.mcp_image,"Entrypoint":["python3"],"Cmd":["-c",script],"User":"0:0",
+                        "Labels":manager._labels("diagnostic-helper"),
+                        "HostConfig":{"NetworkMode":"none","ReadonlyRootfs":True,"CapDrop":["ALL"],"CapAdd":["DAC_OVERRIDE","CHOWN","FOWNER"],
+                          "SecurityOpt":["no-new-privileges"],"Mounts":[
+                            {"Type":"volume","Source":runtime["data_volume"],"Target":"/source","ReadOnly":True},
+                            {"Type":"volume","Source":manager.control_data_volume,"Target":"/control"}]}})
+                    try:
+                        manager.docker.start_container(identifier)
+                        state = manager.docker.wait_container(identifier,timeout=120)
+                        if int(state.get("State", {}).get("ExitCode", -1)) != 0:
+                            raise WorkerManagerError("campaign_diagnostic_helper_failed")
+                    finally:manager._cleanup_container(identifier,"diagnostic-helper")
+                return build_bundle(self.store,match_id,self.diagnostic_root,roots)
+            finally:shutil.rmtree(staging,ignore_errors=True)
+
     def __init__(self, control, *, data_root: Path | str,
                  worker_manager: WorkerManager | None = None,
                  harness_manager: "HarnessManager | None" = None) -> None:
@@ -881,6 +921,53 @@ class OperationsManager:
         except Exception as exc:
             return f"Log unavailable: {self._redact_text(str(exc))}\n"
 
+    def _capture_worker_loss(self, spec: Mapping[str, Any], observed: Mapping[str, Any]) -> None:
+        """Capture before replacement; logs belong only in admin diagnostics."""
+        from smacx_diagnostics import record
+        evidence: dict[str, Any] = {"instance_id": spec["instance_id"],
+            "observed": {key: observed.get(key) for key in
+                ("container_present", "running", "paused", "health", "exit_code", "session_id")},
+            "cause": "undetermined", "captured_before_recovery": True}
+        name = spec.get("container_name")
+        try:
+            container = self.worker_manager.docker.inspect_container(str(name))
+            self.worker_manager.docker.require_owned(
+                container, self.worker_manager.installation_id, purpose="game-worker")
+            state = container.get("State", {})
+            evidence["state"] = {key: state.get(key) for key in
+                ("Status", "Running", "Paused", "Restarting", "OOMKilled", "Dead",
+                 "ExitCode", "Error", "StartedAt", "FinishedAt")}
+            health = state.get("Health", {})
+            evidence["health"] = {"status": health.get("Status"),
+                "failing_streak": health.get("FailingStreak"),
+                "probes": [{key: str(row.get(key, ""))[:4000] for key in
+                    ("Start", "End", "ExitCode", "Output")}
+                    for row in health.get("Log", [])[-6:]]}
+            evidence["worker_log"] = self._container_log(str(name))
+            # Prepared workers run from an ephemeral game directory. Capture
+            # its native exception report before recovery replaces the worker.
+            # Never extract an archive or expose this administrator evidence
+            # through a sovereign observation.
+            evidence["native_exception_reports"] = []
+            for location, path in (("prepared", "/opt/smacx/prepared/game/debug.txt"),
+                                   ("imported", "/var/lib/smacx/game/debug.txt")):
+                report: dict[str, Any] = {"location": location}
+                try:
+                    content = self.worker_manager.docker.read_container_file(
+                        str(name), path, max_bytes=65536)
+                    report.update(status="captured", bytes=len(content),
+                                  sha256=hashlib.sha256(content).hexdigest(),
+                                  text=content.decode("utf-8", errors="replace"))
+                except DockerNotFound:
+                    report["status"] = "absent"
+                except Exception as exc:
+                    report.update(status="capture_failed", error=type(exc).__name__)
+                evidence["native_exception_reports"].append(report)
+        except Exception as exc:
+            evidence["capture_error"] = type(exc).__name__
+        record("worker_liveness_lost", self._redact_payload(evidence),
+               actor="operations-supervisor", match_id=str(spec["match_id"]))
+
     def _collect_recent_saves(self, instance_id: str, destination: Path) -> list[dict[str, Any]]:
         manager = self.worker_manager
         if manager is None or not manager.control_data_volume:
@@ -1208,6 +1295,7 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                                        {"action": "sidecar_restarted"})
                         recovered += 1
                     continue
+                self._capture_worker_loss(spec, observed)
                 checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
                 # A browser-managed human host is recoverable in exactly the
                 # same way as an agent host: it has an isolated worker and a

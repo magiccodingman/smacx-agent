@@ -1,0 +1,61 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "stale guard selection despite current context; later sovereign self-correction verified; response affordance improvement",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "observed_turn": 109,
+  "request_id": "3748022a204f456e87481f1cfbcfff37",
+  "submitted_revision": "11431975549688416910",
+  "delivered_runtime_action_revision": "18380813457838866940",
+  "original_error_delivery": {
+    "request_id": "3748022a204f456e87481f1cfbcfff37",
+    "call_id": "chatcmpl-tool-a581640e5ffa81d9",
+    "receipt": {
+      "ok": false,
+      "error": "stale_memory_observation",
+      "persistence": {
+        "stage": "not_started",
+        "authority": "campaign_journal",
+        "retry_policy": "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
+      }
+    },
+    "next_exact_provider_request": "2dabc711ca074876803c0b4b53b48b05"
+  },
+  "later_self_correction": {
+    "request_id": "262f1605f5d14e7c8a9436c34000e1b2",
+    "next_exact_provider_request": "9a8047dd61994f9f953abe91a9aa63af",
+    "observed_turn": 110,
+    "plan_id": "plan-7bc6c5d5e1d04052b6a40db56a8c3b8d",
+    "plan_revision": 9,
+    "journal_event_id": "journal-f67438620e1948b397297e2e9ba02f9c",
+    "persistence": {
+      "stage": "runtime_projection_built",
+      "authority": "campaign_journal",
+      "next_context_source": "fresh_journal_working_state"
+    }
+  },
+  "repair": {
+    "scope": "Only missing/stale observation guard responses before any memory write.",
+    "guidance": "Fetch a fresh decision, reconsider the record against current evidence, explicitly retry with its guard if still appropriate.",
+    "no_automatic_rebase_or_write": true,
+    "ambiguous_postcommit_failures": "unchanged"
+  },
+  "validation": {
+    "real_guard_rejects_without_cognition_mutation": "pass",
+    "explicit_fresh_retry_journal_and_projection": "pass",
+    "real_Hermes_transport_handoff_GC_restart_and_ambiguous_postcommit_failure": "pass",
+    "native_changes": false,
+    "deployment": {
+      "passed": true,
+      "turn": 111,
+      "native_worker_retained": "074e7ab9963d",
+      "session_id": "session-62f94f97a32d4a8a8dcc88a57910a815",
+      "feedback_loaded_in_active_mcp": true,
+      "control_image": "1fd8988449b4050ceb2e248b45ee0012981828f9e433611955382cbbc9de3073",
+      "harness_image": "5b46e0c8b6d4e3a3f190a999392b40fd447bbc937283bb08e77e20af71fb9f8f",
+      "run_id": "run-68ea0ee1bf81447fb69c757d58315bd2",
+      "one_sovereign_resumed": true,
+      "portal_and_heartbeat_restored": true
+    },
+    "actual_new_guidance_delivery": "unobserved"
+  }
+}

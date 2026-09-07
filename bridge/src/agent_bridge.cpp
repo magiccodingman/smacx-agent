@@ -44,6 +44,12 @@ int* const BasePopFalloutLatch = reinterpret_cast<int*>(0x9B8CFC);
 HANDLE worker_thread = NULL;
 HANDLE response_event = NULL;
 HHOOK request_getmessage_hook = NULL;
+PVOID request_exception_observer = NULL;
+DWORD request_ui_thread_id = 0;
+volatile LONG request_execution_stage = 0;
+volatile LONG request_exception_code = 0;
+volatile LONG request_exception_address = 0;
+volatile LONG request_exception_stage = 0;
 CRITICAL_SECTION request_lock;
 bool lock_initialized = false;
 volatile LONG started = 0;
@@ -68,6 +74,22 @@ int agent_modal_service_depth = 0;
 uint64_t pending_sequence = 0;
 uint64_t response_sequence = 0;
 std::vector<int> pending_multiplayer_technology_presentations;
+
+// Diagnostic only: a first-chance exception may be handled by the engine or
+// Wine. Never consume it, mutate game state, or release the serialization guard.
+LONG CALLBACK observe_request_exception(EXCEPTION_POINTERS* exception) {
+    if (GetCurrentThreadId() == request_ui_thread_id && request_in_progress
+    && exception && exception->ExceptionRecord
+    && (exception->ExceptionRecord->ExceptionCode & 0xC0000000u) == 0xC0000000u) {
+        InterlockedExchange(&request_exception_stage,
+            InterlockedCompareExchange(&request_execution_stage, 0, 0));
+        InterlockedExchange(&request_exception_code,
+            static_cast<LONG>(exception->ExceptionRecord->ExceptionCode));
+        InterlockedExchange(&request_exception_address, static_cast<LONG>(
+            reinterpret_cast<uintptr_t>(exception->ExceptionRecord->ExceptionAddress)));
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 LRESULT CALLBACK agent_request_getmessage_hook(int code, WPARAM remove,
 LPARAM message_pointer) {
@@ -486,6 +508,7 @@ int deferred_council_faction_id = -1;
 int deferred_end_turn_faction_id = -1;
 int deferred_end_turn_source_turn = -1;
 UINT_PTR deferred_end_turn_timer_id = 0;
+bool deferred_end_turn_native_returned = false;
 int deferred_nerve_staple_base_id = -1;
 int deferred_obliterate_base_id = -1;
 int deferred_obliterate_unit_id = -1;
@@ -548,7 +571,7 @@ void begin_popup_transition(BasePop* popup) {
 
 bool popup_transition_is_pending() {
     if (!pending_popup_transition) return false;
-    if (!pending_popup_object
+    if (!agent_popup_object_is_active(pending_popup_object)
     || !Win_is_visible(reinterpret_cast<Win*>(pending_popup_object))
     || agent_popup_generation() != pending_popup_generation) {
         pending_popup_transition = false;
@@ -749,10 +772,24 @@ bool demanded_technology_context_valid(const std::string& label, int faction_id)
     return true;
 }
 
+bool unconditional_truce_offer_label(const std::string& label) {
+    // Script/xscript and both alien scripts use accept row0 / reject row1.
+    // Do not include paid, technology, base-return or other conditional offers.
+    return label == "WANTTOTRUCE0" || label == "WANTTOTRUCE1"
+        || label == "WANTTOTRUCE2" || label == "OFFERTRUCE"
+        || label == "MUSTTRUCE";
+}
+
+bool energy_peace_offer_label(const std::string& label) {
+    // Public quote: the counterpart pays us in exchange for peace.
+    return label == "ENERGYTRUCE" || label == "ENERGYTREATY";
+}
+
 bool relationship_offer_label(const std::string& label) {
     return label == "FACTIONTREATY" || label == "FACTIONTRUCE"
         || label == "ALIENFACTIONTREATY" || label == "ALIENFACTIONTRUCE"
-        || label == "SWEARAPACT";
+        || label == "SWEARAPACT" || unconditional_truce_offer_label(label)
+        || energy_peace_offer_label(label);
 }
 
 bool attack_demand_label(const std::string& label) {
@@ -1163,7 +1200,27 @@ void refresh_deferred_end_turn_state() {
         deferred_action.resolution = "game_no_longer_active";
         return;
     }
-    if (*CurrentTurn == deferred_end_turn_source_turn) return;
+    if (*CurrentTurn == deferred_end_turn_source_turn) {
+        // Returning from the native command is not evidence that it accepted the
+        // transition. Console::turn_complete (0x5169F0) clears field_23BE8
+        // when it commits the request; refusal leaves human input active. The
+        // STATE_UNK_2 flag can already be set before an explicit end-turn request.
+        // Only classify a refusal after the native call has unwound, on the same
+        // actionable human turn. Never clear a latch from a nested modal poll or
+        // while the native turn processor is running.
+        if (deferred_end_turn_native_returned
+        && deferred_end_turn_faction_id == *CurrentPlayerFaction
+        && *CurrentTurn == deferred_end_turn_source_turn && human_turn_actionable(deferred_end_turn_faction_id)
+        && MapWin->field_23BE8) {
+            deferred_end_turn_faction_id = -1;
+            deferred_end_turn_source_turn = -1;
+            pending_end_turn_completion = false;
+            pending_end_turn_source_turn = -1;
+            deferred_action.status = "rejected";
+            deferred_action.resolution = "native_turn_transition_not_accepted";
+        }
+        return;
+    }
     deferred_end_turn_faction_id = -1;
     deferred_end_turn_source_turn = -1;
     deferred_action.native_result = 1;
@@ -1192,7 +1249,9 @@ void CALLBACK deferred_end_turn_timer_proc(HWND, UINT, UINT_PTR timer_id, DWORD)
     // Console::on_key_click may remain synchronous through bot turns and modal
     // technology/research screens; with no bridge request frame underneath it,
     // those interactions remain independently observable and resolvable.
+    deferred_action.native_call_attempted = 1;
     Console_on_key_click(MapWin, 0, NativeEndTurnCommand);
+    deferred_end_turn_native_returned = true;
     refresh_deferred_end_turn_state();
 }
 
@@ -1310,6 +1369,7 @@ bool test_production_interruption = false;
 bool test_production_preserve_progress = false;
 bool test_endgame_fixture_initialized = false;
 int test_endgame_fixture_stage = -1;
+int test_support_shortage_base = -1;
 bool test_full_endgame_fixture_initialized = false;
 bool test_full_endgame_fixture_pending = false;
 bool test_full_endgame_narrative = false;
@@ -1338,6 +1398,11 @@ int test_council_bargain_other_id = -1;
 bool test_energy_gift_fixture_initialized = false;
 int test_energy_gift_fixture_stage = -1;
 int test_energy_gift_other_id = -1;
+int test_counter_menu_stage = -1;
+int test_counter_menu_other_id = -1;
+int test_counter_menu_result = -1;
+int test_counter_menu_selected_proposal = -1;
+int test_counter_menu_selected_counter = -1;
 bool test_unit_gift_fixture_initialized = false;
 bool test_proposal_guard_fixture_initialized = false;
 int test_proposal_guard_fixture_stage = -1;
@@ -3524,6 +3589,24 @@ const char* semantic_unit_order_name(const VEH& veh) {
     return unit_order_name(veh.order);
 }
 
+// Automation policy and the currently selected terraforming task are distinct.
+// Only owned Formers expose this shared native work counter; no ETA is inferred.
+std::string semantic_owned_terraform_task(int faction_id, VEH& veh) {
+    if (veh.faction_id != faction_id || !veh.is_former()) return "";
+    const bool active = veh.order >= VehOrderFormerFirst && veh.order <= VehOrderFormerLast;
+    std::ostringstream out;
+    out << ",\"terraform_task\":{\"state\":"
+        << json_string(active ? "active_terraform_order" : "no_active_terraform_order")
+        << ",\"automation_active\":" << (semantic_native_automation_active(veh) ? "true" : "false")
+        << ",\"order_kind\":" << json_string(unit_order_name(veh.order));
+    if (active) {
+        out << ",\"name\":" << json_string(Terraform[veh.order - VehOrderFormerFirst].name)
+            << ",\"accumulated_work_points\":" << static_cast<int>(veh.movement_turns);
+    }
+    out << ",\"completion_verified\":false}";
+    return out.str();
+}
+
 int former_automation_mode_id(const std::string& mode) {
     if (mode == "full") return ORDERA_TERRA_AUTO_FULL;
     if (mode == "roads") return ORDERA_TERRA_AUTO_ROAD;
@@ -3618,6 +3701,24 @@ int semantic_air_full_safe_range(int veh_id) {
     if (!veh.range()) return 9999;
     return max(0, (static_cast<int>(veh.range()) * veh_speed(veh_id, 0))
         / Rules->move_rate_roads);
+}
+
+bool semantic_friendly_air_refuel_tile(int faction_id, int x, int y);
+
+// movement_turns is shared storage: Formers accumulate terraform work here.
+// Fuel and current movement/refuel state are private to the owning faction.
+std::string semantic_owned_air_state(int faction_id, int veh_id) {
+    VEH& veh = Vehs[veh_id];
+    if (veh.faction_id != faction_id || veh.triad() != TRIAD_AIR) return "";
+    std::ostringstream out;
+    out << ",\"air_fuel_turns_used\":"
+        << (!veh.is_missile() && veh.range() > 0
+            ? static_cast<int>(veh.movement_turns) : -1)
+        << ",\"air_safe_range\":" << semantic_air_safe_range(veh_id)
+        << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(veh_id)
+        << ",\"air_origin_refuels\":"
+        << (semantic_friendly_air_refuel_tile(faction_id, veh.x, veh.y) ? "true" : "false");
+    return out.str();
 }
 
 bool semantic_bombing_run_unit_eligible(int faction_id, int veh_id) {
@@ -3948,9 +4049,9 @@ bool reviewed_information_popup(const std::string& label) {
         // the shared timer has already crossed its threshold. Acknowledging it
         // only dismisses presentation on this client.
         || label == "TIMEWARNING"
-        // The base-support routine has already disbanded the named unit before
-        // this warning is shown.  NOSUPPORT therefore reports a completed
-        // outcome; it does not offer the player a decision.
+        // The base-support routine selected a unit for forced disbanding.
+        // It performs the removal after this notice returns. Acknowledgement
+        // offers no alternative, but is not itself proof of completed removal.
         || label == "NOSUPPORT" || label == "WEASELEDOUT" || label == "HALFBRIBE"
         || label == "SEEMONOLITH" || label == "MONOLITH0" || label == "MONOLITHHEAL"
         || label == "CALLSCOUNCIL"
@@ -4289,6 +4390,13 @@ int technology_presentation_tech_id() {
     return tech_id >= 0 && tech_id < MaxTechnologyNum ? tech_id : -1;
 }
 
+int owned_base_management_window(int faction_id) {
+    if (!Win_is_visible(BaseWin)) return -1;
+    const int base_id = BaseWin->oRender.base_id;
+    return base_id >= 0 && base_id < *BaseCount
+        && Bases[base_id].faction_id == faction_id ? base_id : -1;
+}
+
 std::string interaction_kind(int faction_id) {
     refresh_deferred_end_turn_state();
     update_human_diplomacy_lifecycle();
@@ -4320,6 +4428,11 @@ std::string interaction_kind(int faction_id) {
                 ? "waiting_for_engine" : "endgame_presentation";
         }
         if (semantic_popup_label()[0]) return "popup";
+        // The stock Council window is not a BasePop and has no popup label.
+        // Route only a validated active ballot to the existing guarded choices.
+        if (!*MultiplayerActive && active_council_window_proposal() >= 0) {
+            return "council_vote";
+        }
         if (Factions[faction_id].tech_research_id < 0) {
             if (*MultiplayerActive) return "waiting_for_engine";
             return (*GameRules & RULES_BLIND_RESEARCH) ? "research_priority" : "research_choice";
@@ -4338,6 +4451,10 @@ std::string interaction_kind(int faction_id) {
     if (human_diplomacy_settling()) return "waiting_for_engine";
     if (*GameHalted) return "waiting_for_engine";
     if (*CurrentFaction != faction_id) return "waiting_for_turn";
+    if (Win_is_visible(BaseWin)) {
+        return !*MultiplayerActive && owned_base_management_window(faction_id) >= 0
+            ? "base_management_screen" : "unsupported_modal";
+    }
     return "turn";
 }
 
@@ -4421,7 +4538,7 @@ void append_turn_protocol(std::ostringstream& out, int faction_id, int ready_uni
 
 bool semantic_interaction_command(const std::string& command) {
     static const char* commands[] = {
-        "acknowledge_popup", "respond_to_contact", "continue_diplomacy",
+        "acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy",
         "propose_human_relationship", "propose_human_technology",
         "propose_human_energy", "propose_human_joint_attack",
         "respond_human_diplomacy",
@@ -4435,7 +4552,7 @@ bool semantic_interaction_command(const std::string& command) {
         "respond_to_base_obliteration", "respond_to_supreme_leader",
         "respond_to_game_over", "advance_endgame_presentation",
         "advance_technology_presentation", "advance_project_information",
-        "respond_to_design_offer",
+        "respond_to_design_offer", "defer_social_engineering",
         "respond_to_artifact", "respond_to_monolith",
         "respond_to_probe_incident", "choose_probe_sabotage_target",
         "respond_to_probe_sabotage_warning", "choose_captive_leader",
@@ -4511,6 +4628,8 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(*WinModalState));
     mix(static_cast<uint32_t>(*PopupDialogState));
     mix(static_cast<uint32_t>(*GameHalted));
+    mix(static_cast<uint32_t>(Win_is_visible(BaseWin) ? 1 : 0));
+    mix(static_cast<uint32_t>(owned_base_management_window(*CurrentPlayerFaction) + 1));
     mix(static_cast<uint32_t>(project_information_id()));
     mix(semantic_mutation_generation);
     mix(static_cast<uint32_t>(pending_multiplayer_technology_presentations.size()));
@@ -4967,14 +5086,15 @@ std::string validate_semantic_guard(const std::string& request) {
 }
 
 BasePop* active_default_popup() {
+    if (!*WinModalState && !*PopupDialogState && *BasePopExecDepth <= 0) return NULL;
     BasePop* started_popup = agent_popup_object();
     if (reinterpret_cast<uintptr_t>(started_popup) >= 0x10000
     && Win_is_visible(reinterpret_cast<Win*>(started_popup))) return started_popup;
     BasePop* popup_a = *DefaultPopupA;
     BasePop* popup_b = *DefaultPopupB;
-    if (reinterpret_cast<uintptr_t>(popup_b) >= 0x10000
+    if (agent_popup_object_is_active(popup_b)
     && Win_is_visible(reinterpret_cast<Win*>(popup_b))) return popup_b;
-    if (reinterpret_cast<uintptr_t>(popup_a) >= 0x10000
+    if (agent_popup_object_is_active(popup_a)
     && Win_is_visible(reinterpret_cast<Win*>(popup_a))) return popup_a;
     // Win_get_key_window returns an engine window identifier for some
     // transient NetMsg notifications (commonly the small integer 2), but
@@ -5150,6 +5270,32 @@ bool submit_popup_choice_id(BasePop* popup, int choice_id) {
     begin_popup_transition(popup);
     BasePop_on_button_clicked(popup, 0);
     return true;
+}
+
+bool reviewed_unconditional_truce_popup(BasePop* popup, const std::string& label) {
+    return popup && unconditional_truce_offer_label(label)
+        && popup_choice_count(popup) == 2
+        && popup_has_choice_id(popup, 0) && popup_has_choice_id(popup, 1);
+}
+
+bool submit_unconditional_truce_response(BasePop* popup, const std::string& label,
+    const std::string& response) {
+    if (!reviewed_unconditional_truce_popup(popup, label)
+    || (response != "accept" && response != "reject")) return false;
+    return submit_popup_choice_id(popup, response == "accept" ? 0 : 1);
+}
+
+bool reviewed_energy_peace_popup(BasePop* popup, const std::string& label, int quote) {
+    return popup && energy_peace_offer_label(label) && quote > 0
+        && popup_choice_count(popup) == 2
+        && popup_has_choice_id(popup, 0) && popup_has_choice_id(popup, 1);
+}
+
+bool submit_energy_peace_response(BasePop* popup, const std::string& label,
+    const std::string& response, int quote, int accepted_quote) {
+    if (!reviewed_energy_peace_popup(popup, label, quote) || quote != accepted_quote
+    || (response != "accept" && response != "reject")) return false;
+    return submit_popup_choice_id(popup, response == "accept" ? 0 : 1);
 }
 
 VOID CALLBACK energy_gift_timer_proc(HWND, UINT, UINT_PTR, DWORD) {
@@ -5355,10 +5501,9 @@ const NamedDiplomacyOption GiftMenuOptions[] = {
     {6, "loan_payments", "Offer a native schedule of loan payments."},
     {1, "goodwill", "Offer goodwill and friendship."},
     {2, "name_price", "Ask the counterpart to name a price."},
-    {3, "threaten", "Threaten the counterpart instead of giving a gift."},
-    {7, "cancel_pact", "Threaten to cancel the current Pact."},
+    {3, "threaten", "Threaten the counterpart with attack or cancellation of an existing Pact."},
     {4, "research_data", "Offer one item of research data."},
-    {9, "all_research_data", "Offer all owned research data."},
+    {7, "all_research_data", "Offer all owned research data."},
     {5, "energy_payment", "Offer a chosen amount of energy credits."},
     {8, "give_base", "Offer control of one eligible base."},
 };
@@ -5373,7 +5518,7 @@ const std::string& name) {
     } else if (label == "PROPOSAL") {
         options = ProposalMenuOptions;
         count = sizeof(ProposalMenuOptions) / sizeof(ProposalMenuOptions[0]);
-    } else if (label == "COUNTER1") {
+    } else if (label == "COUNTER0" || label == "COUNTER1") {
         options = GiftMenuOptions;
         count = sizeof(GiftMenuOptions) / sizeof(GiftMenuOptions[0]);
     }
@@ -5413,7 +5558,12 @@ const std::string& label) {
         out << "{\"id\":\"diplomacy:" << options[i].name
             << "\",\"command\":\"choose_diplomacy_option\",\"option\":"
             << json_string(options[i].name) << ",\"native_option_id\":"
-            << options[i].id << ",\"meaning\":" << json_string(options[i].meaning) << '}';
+            << options[i].id << ",\"meaning\":"
+            << json_string(label == "COUNTER0" && options[i].id == 0
+                ? "Withdraw this proposal without offering consideration."
+                : label == "COUNTER0" && options[i].id == DiploCounterEnergyPayment
+                    ? "Offer energy as consideration for this proposal. Continue the native negotiation; this selection alone transfers no energy."
+                    : options[i].meaning) << '}';
     }
     if (!comma) {
         out << "{\"id\":\"diplomacy:no_native_options\",\"kind\":\"capability_status\","
@@ -7555,6 +7705,8 @@ std::string bases_response() {
         }
         out << "],\"governor\":{\"active\":"
             << ((base.governor_flags & GOV_ACTIVE) ? "true" : "false")
+            << ",\"permission_scope\":\"native_governor_automation_only\""
+            << ",\"player_action_legality\":\"Enumerate the relevant choice family; governor permission flags do not restrict direct player actions.\""
             << ",\"manage_citizens\":"
             << ((base.governor_flags & GOV_MANAGE_CITIZENS) ? "true" : "false")
             << ",\"manage_production\":"
@@ -7679,12 +7831,7 @@ std::string units_response() {
                 << ",\"ignores_rough_movement\":"
                 << (semantic_ignores_rough_movement(veh) ? "true" : "false")
                 << ",\"air_range\":" << static_cast<int>(veh.range())
-                << ",\"air_fuel_turns_used\":" << static_cast<int>(veh.movement_turns)
-                << ",\"air_safe_range\":" << semantic_air_safe_range(i)
-                << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(i)
-                << ",\"air_origin_refuels\":"
-                << (semantic_friendly_air_refuel_tile(faction_id, veh.x, veh.y)
-                    ? "true" : "false")
+                << semantic_owned_air_state(faction_id, i)
                 << ",\"airdrop_ready\":"
                 << (can_airdrop(i, mapsq(veh.x, veh.y)) ? "true" : "false")
                 << ",\"airdrop_range\":" << drop_range(faction_id)
@@ -7740,6 +7887,7 @@ std::string units_response() {
             out << '}'
                 << ",\"order\":" << static_cast<int>(veh.order)
                 << ",\"order_name\":" << json_string(semantic_unit_order_name(veh))
+                << semantic_owned_terraform_task(faction_id, veh)
                 << ",\"order_auto_type\":" << static_cast<int>(veh.order_auto_type)
                 << ",\"moves_spent\":" << static_cast<int>(veh.moves_spent)
                 << ",\"home_base_id\":" << veh.home_base_id
@@ -9471,6 +9619,8 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
 
 // Isolated managed-action acceptance inputs. Gameplay mutations in the test
 // still travel through the normal semantic choices and guarded executor.
+void append_production_support(std::ostringstream& out, int faction_id, int base_id, int item);
+
 std::string test_managed_action_fixture_response(const std::string& request) {
     char test_mode[8] = {}, acceptance[8] = {};
     if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
@@ -9483,6 +9633,96 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
+    if (phase == "diagnostics_support_shortage") {
+        if (*MultiplayerActive || test_support_shortage_base >= 0)
+            return error_response("fixture_unavailable", "Isolated idle single-player support notice only.");
+        BASE& base = Bases[base_id];
+        const int added = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+        if (added < 0) return error_response("fixture_unavailable", "Cannot create isolated support actor.");
+        for (int id = 0; id < *VehCount; ++id)
+            if (Vehs[id].faction_id == faction) Vehs[id].home_base_id = -1;
+        Vehs[added].home_base_id = base_id;
+        Factions[faction].SE_support_pending = -4;
+        set_base(base_id);
+        mod_base_support();
+        base.mineral_intake_2 = 0;
+        test_support_shortage_base = base_id;
+        PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0);
+        return std::string("{\"ok\":true,\"own_unit_ref\":")
+            + json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(added))).c_str())
+            + ",\"base_name\":" + json_string(base.name) + '}';
+    }
+    if (phase == "diagnostics_support_comparison") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Isolated single-player support comparison only.");
+        BASE& base = Bases[base_id];
+        for (int index = 0; index < 4; ++index) {
+            const int seed = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+            if (seed < 0) return error_response("fixture_unavailable", "Cannot seed isolated support threshold.");
+            Vehs[seed].home_base_id = base_id;
+        }
+        const int original_rating = Factions[faction].SE_support_pending;
+        const int original_population = base.pop_size;
+        set_base(base_id);
+        base_compute(1);
+        std::ostringstream out;
+        out << "{\"ok\":true,\"comparisons\":[";
+        bool comma = false;
+        for (int population : {1, 4}) for (int rating = -4; rating <= 3; ++rating) {
+            base.pop_size = population;
+            Factions[faction].SE_support_pending = rating;
+            mod_base_support();
+            const int before = *BaseForcesMaintCost;
+            if (comma) out << ',';
+            comma = true;
+            out << "{\"rating\":" << rating << ",\"population\":" << population
+                << ",\"native_before\":" << before << ",\"projection\":";
+            append_production_support(out, faction, base_id, BSC_SCOUT_PATROL);
+            const int added = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+            if (added < 0) return error_response("fixture_unavailable", "Cannot create isolated support actor.");
+            Vehs[added].home_base_id = base_id;
+            mod_base_support();
+            out << ",\"native_after\":" << *BaseForcesMaintCost << '}';
+            veh_kill(added);
+        }
+        Factions[faction].SE_support_pending = original_rating;
+        base.pop_size = original_population;
+        base_compute(1);
+        ++semantic_mutation_generation;
+        out << "]}";
+        return out.str();
+    }
+    if (phase == "diagnostics_base_management_screen") {
+        if (*MultiplayerActive || interaction_kind(faction) != "turn")
+            return error_response("fixture_unavailable", "Requires an actionable single-player turn.");
+        const int base_id = first_owned_base(faction);
+        if (base_id < 0) return error_response("fixture_unavailable", "Requires an owned base.");
+        BaseWin_zoom(BaseWin, base_id, 0);
+        return std::string("{\"ok\":true,\"base_id\":") + std::to_string(base_id) + '}';
+    }
+    if (phase == "diagnostics_end_turn_refusal" || phase == "diagnostics_end_turn_release") {
+        if (*MultiplayerActive || deferred_end_turn_faction_id >= 0)
+            return error_response("fixture_unavailable", "Requires an idle single-player turn.");
+        // Controlled native Console::turn_complete refusal gate. This is only
+        // available in the isolated acceptance process, never managed gameplay.
+        *ControlTurnC = phase == "diagnostics_end_turn_refusal" ? 1 : 0;
+        return "{\"ok\":true}";
+    }
+    if (phase == "diagnostics_turn_boundary" || phase == "diagnostics_explicit_turn_boundary") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player turn-boundary fixture only.");
+        int selected = -1;
+        for (int id = 0; id < *VehCount; ++id)
+            if (Vehs[id].faction_id == faction && semantic_unit_requires_decision(id)) { selected = id; break; }
+        if (selected < 0) return error_response("fixture_unavailable", "Requires one currently ready owned unit.");
+        for (int id = 0; id < *VehCount; ++id)
+            if (id != selected && Vehs[id].faction_id == faction)
+                Vehs[id].moves_spent = static_cast<uint8_t>(std::min(255, veh_speed(id, 0)));
+        if (phase == "diagnostics_explicit_turn_boundary") *GamePreferences |= PREF_BSC_PAUSE_END_TURN;
+        else *GamePreferences &= ~PREF_BSC_PAUSE_END_TURN;
+        ++semantic_mutation_generation;
+        return std::string("{\"ok\":true,\"automatic_turn_preference_enabled\":")
+            + (phase == "diagnostics_turn_boundary" ? "true" : "false") + ",\"own_unit_ref\":"
+            + json_string(("own-unit-" + std::to_string(semantic_vehicle_handle(selected))).c_str()) + '}';
+    }
     if (phase == "counterfactual_inputs") {
         if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player counterfactual fixture only.");
         BASE& base = Bases[base_id];
@@ -10044,12 +10284,7 @@ std::string perspective_world_page_response(const std::string& request) {
                 << ",\"ignores_rough_movement\":"
                 << (semantic_ignores_rough_movement(veh) ? "true" : "false")
                 << ",\"air_range\":" << static_cast<int>(veh.range())
-                << ",\"air_fuel_turns_used\":" << static_cast<int>(veh.movement_turns)
-                << ",\"air_safe_range\":" << semantic_air_safe_range(index)
-                << ",\"air_full_safe_range\":" << semantic_air_full_safe_range(index)
-                << ",\"air_origin_refuels\":"
-                << (owned && semantic_friendly_air_refuel_tile(
-                    faction_id, veh.x, veh.y) ? "true" : "false")
+                << semantic_owned_air_state(faction_id, index)
                 << ",\"airdrop_ready\":"
                 << (airdrop_ready ? "true" : "false")
                 << ",\"airdrop_range\":" << (owned ? drop_range(faction_id) : -1);
@@ -10080,7 +10315,8 @@ std::string perspective_world_page_response(const std::string& request) {
                 << ",\"controlled_native\":" << (veh.is_native_unit() && veh.faction_id ? "true" : "false")
                 << ",\"progenitor_force\":" << (!veh.is_native_unit() && is_alien(veh.faction_id) ? "true" : "false")
                 << ",\"airdrop_capable\":" << (has_abil(veh.unit_id, ABL_DROP_POD) ? "true" : "false")
-                << ",\"airdrop_used\":" << ((veh.state & VSTATE_MADE_AIRDROP) ? "true" : "false")
+                << (owned ? std::string(",\"airdrop_used\":")
+                    + ((veh.state & VSTATE_MADE_AIRDROP) ? "true" : "false") : "")
                 << ",\"amphibious\":" << (has_abil(veh.unit_id, ABL_AMPHIBIOUS) ? "true" : "false")
                 << ",\"cloaked\":" << (has_abil(veh.unit_id, ABL_CLOAKED) ? "true" : "false")
                 << (owned ? std::string(",\"carrier\":") + (page_carrier_capacity > 0 ? "true" : "false")
@@ -10115,7 +10351,8 @@ std::string perspective_world_page_response(const std::string& request) {
                         << semantic_tile_id(Bases[veh.home_base_id].x, Bases[veh.home_base_id].y)
                         << "\"";
                 } else out << "null";
-                out << ",\"order_name\":" << json_string(semantic_unit_order_name(veh));
+                out << ",\"order_name\":" << json_string(semantic_unit_order_name(veh))
+                << semantic_owned_terraform_task(faction_id, veh);
             }
             out << '}';
         }
@@ -10189,7 +10426,46 @@ std::string perspective_world_page_response(const std::string& request) {
 
 #include "agent_doctrine.h"
 
+// Observed owned effects omitted from the compact decision snapshot. This is
+// deliberately independent of semantic_revision: attempted commands, receipts,
+// popup generations and packet-pump activity are not gameplay progress.
+std::string semantic_owned_progress_digest() {
+    uint64_t hash = 1469598103934665603ULL;
+    uint64_t sum = 0, parity = 0, count = 0;
+    auto finish = [&]() {
+        sum += hash; parity ^= hash; ++count; hash = 1469598103934665603ULL;
+    };
+    auto mix = [&](uint64_t value) { hash ^= value; hash *= 1099511628211ULL; };
+    const int faction_id = *CurrentPlayerFaction;
+    for (int i = 0; i < *BaseCount; ++i) {
+        const BASE& base = Bases[i];
+        if (base.faction_id != faction_id) continue;
+        mix(1); mix(base.x); mix(base.y); mix(base.pop_size);
+        mix(base.queue_size);
+        for (int q = 0; q <= base.queue_size && q < 10; ++q) mix(base.queue_items[q]);
+        mix(base.minerals_accumulated); mix(base.worked_tiles);
+        mix(base.specialist_total);
+        mix(base.specialist_types[0]); mix(base.specialist_types[1]);
+        mix(base.governor_flags);
+        for (size_t f = 0; f < sizeof(base.facilities_built); ++f) mix(base.facilities_built[f]);
+        finish();
+    }
+    for (int i = 0; i < *VehCount; ++i) {
+        VEH& veh = Vehs[i];
+        if (veh.faction_id != faction_id) continue;
+        mix(2); mix(semantic_vehicle_handle(i)); mix(veh.unit_id);
+        mix(veh.x); mix(veh.y); mix(veh.cur_hitpoints()); mix(veh.moves_spent);
+        mix(veh.order); mix(veh.order_auto_type);
+        mix(veh.waypoint_count); mix(veh.waypoint_x[0]); mix(veh.waypoint_y[0]);
+        finish();
+    }
+    // Native array compaction must not count as an owned effect. Combine
+    // stable per-object records without exposing or depending on slot order.
+    return std::to_string(count) + ":" + std::to_string(sum) + ":" + std::to_string(parity);
+}
+
 std::string semantic_snapshot_response() {
+    InterlockedExchange(&request_execution_stage, 10);
     if (!game_active()) return status_response();
     refresh_deferred_end_turn_state();
     if (*MultiplayerActive && agent_modal_service_depth == 0) {
@@ -10222,6 +10498,7 @@ std::string semantic_snapshot_response() {
     }
     const bool blind_research = *GameRules & RULES_BLIND_RESEARCH;
     int research_id = faction.tech_research_id;
+    InterlockedExchange(&request_execution_stage, 11);
     int research_cost = research_id >= 0 ? mod_tech_rate(faction_id) : -1;
     int research_progress = research_cost > 0
         ? clamp((100 * faction.tech_accumulated) / research_cost, 0, 100) : 0;
@@ -10234,7 +10511,9 @@ std::string semantic_snapshot_response() {
     const CSocialCategory& established =
         *reinterpret_cast<const CSocialCategory*>(&faction.SE_Politics);
     CSocialEffect social_effects;
+    InterlockedExchange(&request_execution_stage, 12);
     social_calc(const_cast<CSocialCategory*>(&selected), &social_effects, faction_id, false, false);
+    InterlockedExchange(&request_execution_stage, 13);
     const int native_time_control = *MultiplayerActive
         ? static_cast<int>(reinterpret_cast<signed char*>(0x90E8E0)[3]) : 0;
     std::ostringstream out;
@@ -10243,6 +10522,7 @@ std::string semantic_snapshot_response() {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"turn\":" << *CurrentTurn
         << ",\"year\":" << *CurrentMissionYear
+        << ",\"owned_progress_digest\":" << json_string(semantic_owned_progress_digest().c_str())
         << ",\"faction\":{\"id\":" << faction_id
         << ",\"name\":" << json_string(MFactions[faction_id].formal_name_faction)
         << ",\"energy_credits\":" << faction.energy_credits
@@ -10395,6 +10675,7 @@ std::string semantic_snapshot_response() {
             << ",\"moves_remaining\":"
             << std::max(0, veh_speed(veh_id, 0) - static_cast<int>(veh.moves_spent))
             << ",\"order_name\":" << json_string(semantic_unit_order_name(veh))
+                << semantic_owned_terraform_task(faction_id, veh)
             << ",\"ready\":true"
             << ",\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
             << ",\"former\":" << (veh.is_former() ? "true" : "false")
@@ -10421,6 +10702,19 @@ std::string semantic_snapshot_response() {
             << ",\"progress_percent\":" << research_progress
             << ",\"accumulated\":" << faction.tech_accumulated
             << ",\"cost\":" << research_cost;
+        out << ",\"selected_priorities\":[";
+        const char* priority_names[] = {"Explore", "Discover", "Build", "Conquer"};
+        const bool priority_flags[] = {bool(faction.AI_growth), bool(faction.AI_tech),
+                                      bool(faction.AI_wealth), bool(faction.AI_power)};
+        bool priority_comma = false;
+        for (int p = 0; p < 4; ++p) {
+            if (!priority_flags[p]) continue;
+            if (priority_comma) out << ',';
+            priority_comma = true;
+            out << json_string(priority_names[p]);
+        }
+        out << "],\"target_visibility\":\"hidden_by_blind_research\""
+            << ",\"priority_meaning\":\"Category preferences, not the hidden technology target. Zero is Explore; progress can continue without a disclosed target.\"";
     } else {
         out << research_id << ",\"tech_name\":"
             << json_string(research_id >= 0 && research_id < MaxTechnologyNum
@@ -10512,6 +10806,12 @@ std::string semantic_snapshot_response() {
         << ",\"engine_state\":{\"win_modal\":" << (*WinModalState ? "true" : "false")
         << ",\"popup_dialog\":" << (*PopupDialogState ? "true" : "false")
         << ",\"game_halted\":" << (*GameHalted ? "true" : "false")
+        << ",\"base_window_visible\":" << (Win_is_visible(BaseWin) ? "true" : "false")
+        << ",\"native_turn_complete_flag\":" << ((*GameState & STATE_UNK_2) ? "true" : "false")
+        << ",\"native_human_turn_input_active\":" << (MapWin->field_23BE8 ? "true" : "false")
+        << ",\"end_turn_timer_queued\":" << (deferred_end_turn_timer_id ? "true" : "false")
+        << ",\"end_turn_native_returned\":" << (deferred_end_turn_native_returned ? "true" : "false")
+        << ",\"end_turn_receipt_pending\":" << (deferred_end_turn_faction_id >= 0 ? "true" : "false")
         << ",\"human_diplomacy_settling\":"
         << (human_diplomacy_settling() ? "true" : "false")
         << ",\"popup_transition_pending\":"
@@ -10747,6 +11047,42 @@ std::string social_engineering_choices_response(int faction_id, const std::strin
     return result + ",\"choices\":[" + prepared.str() + "]}";
 }
 
+// Conditional one-unit completion estimate, using owned units and current rules only.
+// This does not run upkeep, choose a casualty, or predict future resource changes.
+void append_production_support(std::ostringstream& out, int faction_id, int base_id, int item) {
+    const BASE& base = Bases[base_id];
+    int eligible = 0;
+    for (int id = 0; id < *VehCount; ++id) {
+        VEH& unit = Vehs[id];
+        if (unit.faction_id != faction_id || unit.home_base_id != base_id
+        || unit.plan() > unit_support_plan() || has_abil(unit.unit_id, ABL_CLEAN_REACTOR)) continue;
+        MAP* tile = mapsq(unit.x, unit.y);
+        if (tile && (!unit.is_native_unit() || !tile->is_fungus())) ++eligible;
+    }
+    const int rating = Factions[faction_id].SE_support_pending;
+    const int free = unit_support_free(rating, base.pop_size)
+        + (is_human(faction_id) ? 0 : conf.unit_support_bonus[*DiffLevel]);
+    const int cost = unit_support_cost(rating);
+    const int before = max(0, eligible - free) * cost;
+    bool added = false;
+    if (item >= 0 && item < MaxProtoNum) {
+        VEH prototype = {};
+        prototype.unit_id = item; prototype.faction_id = faction_id;
+        MAP* tile = mapsq(base.x, base.y);
+        added = prototype.plan() <= unit_support_plan() && !has_abil(item, ABL_CLEAN_REACTOR)
+            && tile && (!prototype.is_native_unit() || !tile->is_fungus());
+    }
+    const int after = max(0, eligible + int(added) - free) * cost;
+    out << "{\"epistemic_status\":\"conditional\",\"current_support_minerals\":" << before
+        << ",\"free_supported_units\":" << free
+        << ",\"current_eligible_units\":" << eligible
+        << ",\"gross_mineral_output\":" << base.mineral_intake_2
+        << ",\"additional_support_minerals\":" << after - before
+        << ",\"support_after_one_completion\":" << after
+        << ",\"exceeds_current_gross_output\":" << (after > base.mineral_intake_2 ? "true" : "false")
+        << ",\"condition\":\"One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support.\"}";
+}
+
 std::string production_choices_response(int faction_id, int base_id) {
     if (base_id < 0 || base_id >= *BaseCount || Bases[base_id].faction_id != faction_id) {
         return error_response("invalid_base", "base_id must identify a base owned by the human faction.");
@@ -10778,7 +11114,9 @@ std::string production_choices_response(int faction_id, int base_id) {
         << ",\"affordable\":" << (hurry_legal && full_hurry_cost <= available_energy ? "true" : "false")
         << ",\"minerals_added\":" << hurry_minerals
         << ",\"energy_cost\":" << full_hurry_cost
-        << ",\"available_energy\":" << available_energy << "},\"choices\":[";
+        << ",\"available_energy\":" << available_energy << "},\"support_projection\":";
+    append_production_support(out, faction_id, base_id, base.queue_items[0]);
+    out << ",\"choices\":[";
     bool comma = false;
     for (int unit_id = 0; unit_id < MaxProtoNum; ++unit_id) {
         if (!Units[unit_id].name[0] || !mod_veh_avail(unit_id, faction_id, base_id)
@@ -10809,7 +11147,8 @@ std::string production_choices_response(int faction_id, int base_id) {
             << "\",\"command\":\"hurry_production\",\"base_id\":" << base_id
             << ",\"energy_cost\":" << full_hurry_cost
             << ",\"minerals_added\":" << hurry_minerals
-            << ",\"meaning\":\"Pay the full native hurry cost to complete current production.\"}";
+            << ",\"production_name\":" << json_string(production_name(Bases[base_id].queue_items[0]).c_str())
+            << ",\"meaning\":\"Pay the quoted native cost to add minerals to the named current item. This does not switch production; actual completion must be observed.\"}";
     }
     out << "]}";
     return out.str();
@@ -10832,6 +11171,8 @@ std::string base_management_choices_response(int faction_id, int base_id) {
         << ",\"base_name\":" << json_string(base.name)
         << ",\"current\":{\"governor\":{\"active\":"
         << ((base.governor_flags & GOV_ACTIVE) ? "true" : "false")
+        << ",\"permission_scope\":\"native_governor_automation_only\""
+        << ",\"player_action_legality\":\"Enumerate the relevant choice family; governor permission flags do not restrict direct player actions.\""
         << ",\"manage_citizens\":"
         << ((base.governor_flags & GOV_MANAGE_CITIZENS) ? "true" : "false")
         << ",\"manage_production\":"
@@ -11370,7 +11711,8 @@ int target_tile_id = -1, int target_unit_id = -1) {
         << ((veh.state & VSTATE_DESIGNATE_DEFENDER) ? "true" : "false")
         << "},\"order\":{\"id\":"
         << static_cast<int>(veh.order) << ",\"name\":"
-        << json_string(semantic_unit_order_name(veh)) << "},\"choices\":[";
+        << json_string(semantic_unit_order_name(veh)) << '}'
+        << semantic_owned_terraform_task(faction_id, veh) << ",\"choices\":[";
     bool comma = false;
     if (semantic_carrier_capacity(veh_id) > 0
     && semantic_carrier_dependency_count(veh_id) > 0) {
@@ -12793,7 +13135,13 @@ std::string semantic_choices_response(const std::string& request) {
             << json_string(interaction_kind(faction_id).c_str()) << ",\"popup_label\":"
             << json_string(label) << ",\"instance_id\":" << agent_popup_generation()
             << ",\"choices\":[";
-        if (human_diplomacy_window_active()) {
+        if (interaction_kind(faction_id) == "base_management_screen") {
+            out << "{\"id\":\"base_management_screen:close\","
+                "\"command\":\"close_base_management\",\"base_id\":"
+                << owned_base_management_window(faction_id)
+                << ",\"label\":\"Close base management screen\","
+                "\"meaning\":\"Use the native OK button to return to the map. This does not choose production or finish the turn; observe again.\"}";
+        } else if (human_diplomacy_window_active()) {
             int initiator = human_diplomacy_participant(0);
             int counterpart = human_diplomacy_participant(1);
             bool first = true;
@@ -13149,9 +13497,35 @@ std::string semantic_choices_response(const std::string& request) {
                     << json_string("Replace the current blind-research focus with exactly this one area; the native multiplayer synchronization packet is sent after confirmation.")
                     << '}';
             }
+        } else if (!strcmp(label, "SOCIETY")) {
+            BasePop* active = active_default_popup();
+            if (active && popup_choice_count(active) == 2
+            && popup_has_choice_id(active, 0)) {
+                out << "{\"id\":\"society:defer\","
+                    "\"command\":\"defer_social_engineering\","
+                    "\"meaning\":\"Continue with current social models for now. Once blocking interactions finish, inspect social_engineering choices to review and apply a policy change through the managed tools.\"},"
+                    "{\"id\":\"society:context\",\"kind\":\"information\","
+                    "\"technology_name\":" << json_string(agent_popup_parse_string(0))
+                    << ",\"unlocked_model_name\":" << json_string(agent_popup_parse_string(1)) << '}';
+            }
         } else if (reviewed_information_popup(label)) {
             out << "{\"id\":\"popup:acknowledge\",\"command\":\"acknowledge_popup\","
                 "\"meaning\":\"Acknowledge this reviewed information-only game notification.\"}";
+            if (!strcmp(label, "NOSUPPORT")) {
+                out << ",{\"id\":\"support_shortage:context\",\"kind\":\"information\","
+                    "\"event\":\"unit_support_shortage\",\"base_name\":"
+                    << json_string(agent_popup_parse_string(0))
+                    << ",\"unit_name\":" << json_string(agent_popup_parse_string(1))
+                    << ",\"effect_status\":\"forced_disband_pending_native_processing\","
+                    "\"meaning\":\"The home base lacks enough gross mineral output to pay unit support. The game selected the named unit for forced disbanding; this is not a combat loss. Acknowledgement resumes native processing and cannot cancel it. Verify the resulting owned units afterward; the name alone does not identify a unique unit. Review home-base support and mineral output before adding more supported units.\"";
+                const int base_id = *CurrentBaseID;
+                if (base_id >= 0 && base_id < *BaseCount
+                && Bases[base_id].faction_id == faction_id
+                && !strcmp(Bases[base_id].name, agent_popup_parse_string(0))) {
+                    out << ",\"base_id\":" << base_id;
+                }
+                out << '}';
+            }
             const char* base_event = base_status_event(label);
             if (base_event) {
                 int base_id = *CurrentBaseID;
@@ -13250,7 +13624,7 @@ std::string semantic_choices_response(const std::string& request) {
                     << ",\"leader_name\":" << json_string(MFactions[other].name_leader) << '}';
             }
         } else if (!strcmp(label, "DIPLO") || !strcmp(label, "PROPOSAL")
-        || !strcmp(label, "COUNTER1")) {
+        || !strcmp(label, "COUNTER0") || !strcmp(label, "COUNTER1")) {
             BasePop* active = active_default_popup();
             if (active) append_diplomacy_popup_choices(out, active, label);
         } else if (!strcmp(label, "PROPOSECOMMLINK")
@@ -13608,6 +13982,38 @@ std::string semantic_choices_response(const std::string& request) {
                 << json_string(!strcmp(label, "DEMANDTECHAGAIN1") ? "energy" : "technology");
             append_demand_technology_context(out, faction_id, label);
             out << '}';
+        } else if (energy_peace_offer_label(label)) {
+            int quote = ParseNumTable[0];
+            bool treaty = !strcmp(label, "ENERGYTREATY");
+            if (*MultiplayerActive || !reviewed_energy_peace_popup(active_default_popup(), label, quote)) {
+                out << "{\"kind\":\"capability_status\",\"supported\":false,"
+                    "\"meaning\":\"The reviewed single-player energy-for-peace quote is unavailable.\"}";
+            } else {
+                for (int accept = 1; accept >= 0; --accept) {
+                    if (!accept) out << ',';
+                    out << "{\"command\":\"respond_to_diplomatic_offer\",\"response\":"
+                        << json_string(accept ? "accept" : "reject") << ",\"amount\":" << quote
+                        << ",\"offer_type\":" << json_string(treaty ? "treaty" : "truce")
+                        << ",\"incoming_energy_credits\":" << quote
+                        << ",\"payment_direction\":\"counterpart_to_self\",\"meaning\":"
+                        << json_string(accept
+                            ? (treaty ? "Accept the offered credits and Treaty of Friendship."
+                                : "Accept the offered credits and Blood Truce.")
+                            : "Decline this energy-for-peace offer.") << '}';
+                }
+                int other = *diplo_second_faction;
+                out << ",{\"kind\":\"information\",\"offer_type\":"
+                    << json_string(treaty ? "treaty" : "truce")
+                    << ",\"incoming_energy_credits\":" << quote
+                    << ",\"payment_direction\":\"counterpart_to_self\",\"counterpart_faction_id\":" << other
+                    << ",\"counterpart_faction_name\":" << json_string(other >= 1 && other < MaxPlayerNum
+                        ? MFactions[other].formal_name_faction : "Unknown") << '}';
+            }
+        } else if (unconditional_truce_offer_label(label)
+        && (*MultiplayerActive || !reviewed_unconditional_truce_popup(active_default_popup(), label))) {
+            out << "{\"id\":\"diplomatic_relation:unavailable\","
+                "\"kind\":\"capability_status\",\"supported\":false,"
+                "\"meaning\":\"The reviewed single-player two-choice truce popup is unavailable.\"}";
         } else if (relationship_offer_label(label)) {
             bool treaty = strstr(label, "TREATY") != NULL;
             bool pact = !strcmp(label, "SWEARAPACT");
@@ -14304,6 +14710,8 @@ std::string semantic_command_response(const std::string& request) {
     bool validated_multiplayer_reject_ai_technology_trade =
         command == "respond_to_diplomatic_offer"
         && field_string(request, "response") == "reject"
+        && !unconditional_truce_offer_label(active_label)
+        && !energy_peace_offer_label(active_label)
         && (technology_trade_label(active_label)
             || technology_demand_label(active_label)
             || relationship_offer_label(active_label))
@@ -15140,6 +15548,40 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"respond_to_game_over\","
             "\"response\":") + json_string(response.c_str()) + '}';
     }
+    if (command == "defer_social_engineering") {
+        // Tutor.txt SOCIETY row 0 returns zero from X_pop_2. tech_achieved
+        // then continues without calling social_select or changing a model.
+        // Opening that native editor is not a reviewed semantic interaction;
+        // the existing social_engineering family offers staged policy changes.
+        BasePop* active = active_default_popup();
+        if (strcmp(semantic_popup_label(), "SOCIETY") || !active
+        || popup_choice_count(active) != 2 || !popup_has_choice_id(active, 0)) {
+            return error_response("society_prompt_changed",
+                "The reviewed two-choice social engineering invitation is no longer active. Observe again.");
+        }
+        if (!submit_popup_choice_id(active, 0)) {
+            return error_response("society_prompt_changed", "The reviewed continue choice is unavailable.");
+        }
+        return "{\"ok\":true,\"command\":\"defer_social_engineering\","
+            "\"policy_changed\":false,\"transition\":\"waiting_for_engine\","
+            "\"next_step\":\"After blocking interactions finish, use social_engineering choices to review or change models.\"}";
+    }
+    if (command == "close_base_management") {
+        const int base_id = field_int(request, "base_id", -1);
+        if (interaction_kind(faction_id) != "base_management_screen"
+        || base_id < 0 || owned_base_management_window(faction_id) != base_id) {
+            return error_response("base_management_screen_changed",
+                "The selected owned base screen is no longer actionable. Observe again.");
+        }
+        // Stock BaseWin::on_button_clicked (0x41D500), button 0, follows
+        // its OK branch (0x41D61C): release the native interface mode and
+        // redraw. Never emulate completion by hiding the Win object.
+        BaseWin_on_button_clicked(BaseWin, 0);
+        return std::string("{\"ok\":true,\"command\":\"close_base_management\","
+            "\"base_screen_closed\":") + (Win_is_visible(BaseWin) ? "false" : "true")
+            + ",\"turn_completion_verified\":false,"
+              "\"follow_up\":\"Observe the native state; closing this screen does not complete the turn.\"}";
+    }
     if (command == "acknowledge_popup") {
         std::string label = semantic_popup_label();
         if (!reviewed_information_popup(label) && !popup_information_only()
@@ -15813,7 +16255,20 @@ std::string semantic_command_response(const std::string& request) {
             : loan_offer ? (response == "reject" ? 0 : response == "accept" ? 1 : 2)
             : tech_demand_counter ? (field_string(request, "payment") == "energy" ? 2 : 3)
             : counter ? 2 : (response == "accept" ? 1 : 0);
-        submit_popup_choice(active, choice);
+        if (energy_peace_offer_label(label)) {
+            if (!submit_energy_peace_response(active, label, response,
+                ParseNumTable[0], field_int(request, "amount", -1))) {
+                return error_response("energy_peace_offer_changed",
+                    "The reviewed energy-for-peace quote changed; obtain fresh diplomatic choices.");
+            }
+        } else if (unconditional_truce_offer_label(label)) {
+            if (!submit_unconditional_truce_response(active, label, response)) {
+                return error_response("truce_offer_changed",
+                    "The reviewed two-choice truce offer changed; obtain fresh diplomatic choices.");
+            }
+        } else {
+            submit_popup_choice(active, choice);
+        }
         const char* offer_type = relationship_offer
             ? (label == "SWEARAPACT" ? "pact"
                 : label.find("TREATY") != std::string::npos ? "treaty" : "truce")
@@ -15837,7 +16292,13 @@ std::string semantic_command_response(const std::string& request) {
             : tech_demand ? "technology_demand" : "technology_or_map_exchange";
         return std::string("{\"ok\":true,\"command\":\"respond_to_diplomatic_offer\",\"response\":")
             + json_string(response.c_str()) + ",\"offer_type\":"
-            + json_string(offer_type) + '}';
+            + json_string(offer_type)
+            + (energy_peace_offer_label(label) ? ",\"energy_change_verified\":false" : "")
+            + (energy_peace_offer_label(label)
+                ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects.\""
+                : unconditional_truce_offer_label(label)
+                    ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta.\""
+                    : "") + '}';
     }
     if (command == "respond_to_design_offer") {
         std::string label = agent_popup_label();
@@ -16304,6 +16765,7 @@ std::string semantic_command_response(const std::string& request) {
         }
         deferred_end_turn_faction_id = faction_id;
         deferred_end_turn_source_turn = *CurrentTurn;
+        deferred_end_turn_native_returned = false;
         begin_deferred_action("end_turn");
         deferred_end_turn_timer_id = SetTimer(
             NULL, 0, 1, deferred_end_turn_timer_proc);
@@ -16391,6 +16853,9 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"hurry_production\",\"base_id\":")
             + std::to_string(base_id) + ",\"energy_cost\":" + std::to_string(cost)
             + ",\"minerals_added\":" + std::to_string(minerals)
+            + ",\"production_name\":" + json_string(production_name(base.queue_items[0]).c_str())
+            + ",\"minerals_accumulated\":" + std::to_string(base.minerals_accumulated)
+            + ",\"production_switched\":false,\"completion_verified\":false"
             + ",\"energy_credits\":" + std::to_string(Factions[faction_id].energy_credits) + '}';
     }
     if (command == "nerve_staple") {
@@ -17253,7 +17718,8 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"automate_former\",\"unit_id\":")
             + std::to_string(veh_id) + ",\"automation_mode\":" + json_string(mode.c_str())
             + ",\"native_mode_id\":" + std::to_string(mode_id)
-            + ",\"persistent\":true,\"ready\":false}";
+            + ",\"persistent\":true,\"ready\":false,\"terraform_completion_verified\":false,"
+            "\"follow_up\":\"Inspect current terraform_task after native processing; assignment alone does not establish work or completion.\"}";
     }
     if (command == "auto_explore_unit") {
         if (!veh.is_combat_unit() || veh.state & VSTATE_EXPLORE) {
@@ -18423,6 +18889,8 @@ std::string action_counterfactual_receipt(const std::string& request, int factio
             << ",\"mineral_accumulation_halted_by_riots\":" << (base.drone_riots_active() ? "true" : "false")
             << ",\"colony_population_decision_required\":" << (colony_population_decision ? "true" : "false") << '}';
         if (item >= 0) { out << ",\"prototype\":"; append_counterfactual_prototype(out, faction_id, item); }
+        out << ",\"support_projection\":";
+        append_production_support(out, faction_id, id, item);
         out << ",\"assumptions\":[\"net mineral surplus and production remain fixed\",\"completion occurs at native production upkeep\"]";
     } else if (command == "upgrade_unit") {
         const int id = field_int(request, "unit_id", -1);
@@ -18713,7 +19181,9 @@ std::string test_counterfactual_read_safety_response(const std::string& request)
 
 std::string execute_request(const std::string& request) {
     if (field_string(request, "token") != auth_token) return error_response("unauthorized", "Invalid bridge token.");
+    InterlockedExchange(&request_execution_stage, 2);
     apply_deferred_semantics();
+    InterlockedExchange(&request_execution_stage, 3);
     std::string op = field_string(request, "op");
     if (op == "ping" || op == "status") return status_response();
     if (op == "human_ui_state") return human_ui_state_response();
@@ -18725,6 +19195,33 @@ std::string execute_request(const std::string& request) {
     if (op == "list_units") return units_response();
     if (op == "list_factions") return factions_response();
     if (op == "list_technologies") return technologies_response();
+    if (op == "test_counter_menu_start" || op == "test_counter_menu_status") {
+        char enabled[8] = {};
+        if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", enabled, sizeof(enabled))
+        || strcmp(enabled, "1")) return error_response("test_mode_disabled", "Native counter menu test is disabled.");
+        if (op == "test_counter_menu_start") {
+            int faction = game_active() ? *CurrentPlayerFaction : -1;
+            if (faction < 1 || !human_turn_actionable(faction) || test_counter_menu_stage == 0
+            || test_counter_menu_stage == 1) return error_response("test_counter_menu_not_ready", "Resolve the active interaction first.");
+            int other = -1;
+            for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+                if (candidate != faction && is_alive(candidate) && !is_human(candidate)) { other = candidate; break; }
+            }
+            if (other < 1) return error_response("test_counter_menu_no_counterpart", "No native counterpart exists.");
+            treaty_on(faction, other, DIPLO_COMMLINK);
+            treaty_on(faction, other, DIPLO_TREATY);
+            Factions[faction].energy_credits = 500;
+            Factions[other].energy_credits = 1000;
+            test_counter_menu_other_id = other;
+            test_counter_menu_stage = 0;
+            test_counter_menu_result = test_counter_menu_selected_proposal = test_counter_menu_selected_counter = -1;
+            PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0);
+        }
+        return std::string("{\"ok\":true,\"stage\":") + std::to_string(test_counter_menu_stage)
+            + ",\"native_result\":" + std::to_string(test_counter_menu_result)
+            + ",\"proposal_id\":" + std::to_string(test_counter_menu_selected_proposal)
+            + ",\"counter_id\":" + std::to_string(test_counter_menu_selected_counter) + '}';
+    }
     if (op == "test_technology_demand_status") {
         return test_technology_demand_status_response();
     }
@@ -18906,6 +19403,14 @@ DWORD WINAPI server_worker(void*) {
                         + std::to_string(request_modal_wait_hits)
                         + ", handler="
                         + std::to_string(request_handler_hits)
+                        + ", execution_stage="
+                        + std::to_string(InterlockedCompareExchange(&request_execution_stage, 0, 0))
+                        + ", first_chance_exception="
+                        + std::to_string(static_cast<unsigned long>(InterlockedCompareExchange(&request_exception_code, 0, 0)))
+                        + ", exception_instruction="
+                        + std::to_string(static_cast<unsigned long>(InterlockedCompareExchange(&request_exception_address, 0, 0)))
+                        + ", exception_stage="
+                        + std::to_string(InterlockedCompareExchange(&request_exception_stage, 0, 0))
                         + ", acceptance_fixture_stage="
                         + std::to_string(InterlockedCompareExchange(&acceptance_fixture_stage, 0, 0)) + '.';
                     send_all(client, error_response(
@@ -19317,6 +19822,8 @@ void agent_bridge_start_once(HWND hwnd) {
     lock_initialized = true;
     response_event = CreateEventA(NULL, TRUE, FALSE, NULL);
     if (!response_event) return;
+    request_ui_thread_id = GetWindowThreadProcessId(hwnd, NULL);
+    request_exception_observer = AddVectoredExceptionHandler(0, observe_request_exception);
     request_getmessage_hook = SetWindowsHookExA(
         WH_GETMESSAGE, agent_request_getmessage_hook, NULL,
         GetCurrentThreadId());
@@ -19439,6 +19946,22 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             }
             return true;
         }
+        if (test_support_shortage_base >= 0) {
+            const int base_id = test_support_shortage_base;
+            test_support_shortage_base = -1;
+            const int faction = game_active() ? *CurrentPlayerFaction : -1;
+            if (human_turn_actionable(faction) && base_id < *BaseCount
+            && Bases[base_id].faction_id == faction) {
+                set_base(base_id);
+                parse_says(0, Bases[base_id].name, -1, -1);
+                const int prior_warnings = *GameWarnings;
+                *GameWarnings |= WARN_STOP_MINERAL_SHORTAGE;
+                mod_base_check_support();
+                *GameWarnings = prior_warnings;
+                ++semantic_mutation_generation;
+            }
+            return true;
+        }
         if (test_endgame_fixture_stage >= 0) {
             int stage = test_endgame_fixture_stage;
             test_endgame_fixture_stage = -1;
@@ -19452,6 +19975,14 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
                     popp(ScriptFile, "GAMEOVERMAN", 0, "stars_sm.pcx", 0);
                 }
             }
+            return true;
+        }
+        if (test_counter_menu_stage == 0) {
+            test_counter_menu_stage = 1;
+            test_counter_menu_result = proposal_menu(*CurrentPlayerFaction, test_counter_menu_other_id);
+            test_counter_menu_selected_proposal = *diplo_current_proposal_id;
+            test_counter_menu_selected_counter = *diplo_counter_proposal_id;
+            test_counter_menu_stage = 2;
             return true;
         }
         if (test_energy_gift_fixture_stage == 0) {
@@ -20114,7 +20645,12 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
     }
     LeaveCriticalSection(&request_lock);
     if (request.empty()) return true;
+    InterlockedExchange(&request_execution_stage, 1);
+    InterlockedExchange(&request_exception_code, 0);
+    InterlockedExchange(&request_exception_address, 0);
+    InterlockedExchange(&request_exception_stage, 0);
     std::string response = execute_request(request);
+    InterlockedExchange(&request_execution_stage, 0);
     EnterCriticalSection(&request_lock);
     bool current = sequence == pending_sequence;
     if (current) {
@@ -20154,6 +20690,10 @@ void agent_bridge_stop() {
     if (request_getmessage_hook) {
         UnhookWindowsHookEx(request_getmessage_hook);
         request_getmessage_hook = NULL;
+    }
+    if (request_exception_observer) {
+        RemoveVectoredExceptionHandler(request_exception_observer);
+        request_exception_observer = NULL;
     }
     DeleteCriticalSection(&request_lock);
     lock_initialized = false;
