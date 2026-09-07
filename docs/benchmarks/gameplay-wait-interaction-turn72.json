@@ -72,5 +72,60 @@
     "next_selected_tool": "smac_decision",
     "observed_wait_calls_in_sequence": 1,
     "limitation": "The popup was acknowledged before the wait; this is not live proof of the blocking-dialog variant."
+  },
+  "live_turn103": {
+    "blocking_popup": "COMM",
+    "delivery": {
+      "request_id": "d750eabeb93f496ba050e5de22562473",
+      "call_id": "chatcmpl-tool-97476c0ad85444a3",
+      "receipt": {
+        "ok": true,
+        "changed": false,
+        "observation": {
+          "ok": true,
+          "observation": {
+            "screen": "game",
+            "turn": 103,
+            "faction": {
+              "id": 1,
+              "name": "Peacekeeping Forces",
+              "energy_credits": 105,
+              "bases": 2,
+              "units": 11
+            },
+            "ui": {
+              "current_vehicle_id": -1,
+              "can_act": false,
+              "modal": true
+            },
+            "fair_play": {
+              "perspective_faction": 1,
+              "hidden_engine_state_excluded": true
+            }
+          }
+        },
+        "gameplay": {
+          "turn": 103,
+          "phase": "interaction",
+          "interaction_kind": "popup",
+          "popup_label": "COMM",
+          "required_action": "resolve_interaction"
+        },
+        "required_next": {
+          "tool": "smac_decision",
+          "reason": "Obtain a fresh decision now. A blocking interaction or actionable turn requires a decision, not further waiting."
+        }
+      },
+      "next_exact_provider_request": "c2e4d2285cf8458996bdfb7b3cd2f853"
+    },
+    "next_actual_tool": "mcp__smacx__smac_decision",
+    "next_actual_arguments": {
+      "detail": "compact"
+    },
+    "subsequent_native_contact_accepted": {
+      "request_id": "d74275829cc04f918a9779dac8417510",
+      "observed_popup_after": "INTRO3"
+    },
+    "repeated_waits_in_sequence": false
   }
 }
