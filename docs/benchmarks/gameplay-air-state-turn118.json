@@ -39,8 +39,8 @@
   "limits": [
     "Adapter fixtures do not assert new native aircraft fuel prediction accuracy.",
     "Former orders observed as road/sensor and later reset; exact terrain completion not independently proven by this checkpoint.",
-    "Deployed output, actual provider delivery, and recovery pending.",
-    "Full game unfinished."
+    "Full game unfinished.",
+    "Actual sovereign delivery of corrected unit detail remains unobserved; live foreign page had one contact, not a controlled foreign-aircraft fuel comparison."
   ],
   "separate_compact_history_response": {
     "request_id": "b8a7e87bbf7d4f01a1090a673ac8038d",
@@ -83,5 +83,25 @@
     "counterfactual_site_probe_gap_ms": 243.69,
     "airdrop_max_page_ms": 247.409,
     "optional_live_provider_and_hermes": "not configured / not run"
+  },
+  "deployment": {
+    "recovery_api": "recover(refresh_runtime=true)",
+    "turn": 118,
+    "session_id": "session-a33a6c447f1c4a1b9c527deda1f03fa3",
+    "native_worker_id": "5b842356c207",
+    "units": 12,
+    "bases": 2,
+    "credits": 179,
+    "retained_plan_id": "plan-7bc6c5d5e1d04052b6a40db56a8c3b8d",
+    "retained_plan_revision": 9,
+    "same_forces_query_has_no_former_fuel": true,
+    "legacy_native_formers_without_fuel_fields": 4,
+    "native_page_rows": 13,
+    "visible_foreign_rows_without_private_air_state": 1,
+    "operator_queries_not_provider_delivery": true,
+    "run_id": "run-97f695f16fd94e8883a456cc09d734d1",
+    "sovereign_status": "running",
+    "heartbeat": "active every 10 minutes",
+    "failure_watcher": "armed on current native worker"
   }
 }
