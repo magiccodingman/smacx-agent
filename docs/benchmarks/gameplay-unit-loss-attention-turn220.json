@@ -1,6 +1,6 @@
 {
   "checkpoint": "confirmed owned-unit loss attention at turn 220",
-  "status": "contracts passed; deployment and actual provider delivery pending",
+  "status": "deployed; actual provider delivery verified; sovereign response and full-game acceptance under observation",
   "observed": {
     "match_id": "match-85285536ea844e87b51e5fd081ac555e",
     "turn": 219,
@@ -58,10 +58,10 @@
     "observed": true,
     "represented": true,
     "calculated": "exact count over committed observed events",
-    "provider_queryable": "fixture runtime payload; actual deployment pending",
+    "provider_queryable": "actual provider request990c01adc96a422cb1a69c83eb54465e contains all five confirmed219 losses and journal source",
     "sovereign_expressible": "existing attention acknowledgement surface; fixture passes",
     "executable": "no native action added",
-    "effect_verified": "native feed confirms original losses; live attention delivery pending",
+    "effect_verified": "actual native events -> committed history -> critical attention -> actual provider delivery verified; sovereign acknowledgement/response still under observation",
     "recovery_safe": "publication interruption and acknowledgement deduplication fixtures pass",
     "full_game_complete": false
   },
@@ -74,6 +74,25 @@
       "provider_request_id": "a7f3af8d612f4832a73aaaa7f9638a44",
       "delivery_passed": false,
       "reason": "Original generic notice was already acknowledged; pending-only upgrade scan omitted it. Run stopped and portal paused for correction."
+    },
+    {
+      "commit": "f9867f6",
+      "control_image": "sha256:137a684905198969253b64e513eaf40b1255dbdc8793b96ca04324bfc17a59fd",
+      "harness_image": "sha256:cdfa175e70b92328daa8e15c6073202475174f7a76629ab8354bbacf012b813f",
+      "native_session_preserved": true,
+      "session_id": "session-8021511caf17445388b52e7cb51d5cc4",
+      "run_id": "run-c4f8ffdb23524e66ae419215badc340b",
+      "provider_request_id": "990c01adc96a422cb1a69c83eb54465e",
+      "episode_id": "episode-c641f4babc3a343e29e9e7ef3db990b7",
+      "delivery_passed": true,
+      "attention_id": "attention-ab6f2d5ccf754c81ae40a9743f56d1be",
+      "source_journal_event_id": "journal-a275a2c3ff6c4e2a8c7088ce059d871e",
+      "count": 5,
+      "priority": 100,
+      "critical": true,
+      "also_delivered": "one historical turn217 confirmed loss, separately dated",
+      "packaged_five_case_contract_passed": true,
+      "active_incidents": 0
     }
   ]
 }
