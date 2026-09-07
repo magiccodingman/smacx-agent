@@ -1,5 +1,5 @@
 {
-  "status": "predeployment_validation_passed",
+  "status": "deployed_live_acceptance_continues",
   "observed_campaign": {
     "match_id": "match-85285536ea844e87b51e5fd081ac555e",
     "episode_id": "episode-3f374ceef513271cbe2865dc36ea86b8",
@@ -246,9 +246,35 @@
       },
       "scope": "Final native image and managed integration paths; subsequent Python-only authority-read fault ordering is checked separately in the final packaged image."
     },
-    "deployed": false,
+    "deployed": true,
     "actual_sovereign_delivery": "unobserved",
-    "campaign_recovery": "pending",
+    "campaign_recovery": {
+      "result": "passed",
+      "checkpoint_id": "checkpoint-4f0380b0815d4440bc59b8654be794dc",
+      "native_session_id": "session-a45a088000ce44548499673de56b69c9",
+      "turn": 124,
+      "owned_refs": [
+        "own-unit-13",
+        "own-unit-14",
+        "own-unit-16",
+        "own-unit-21",
+        "own-unit-25",
+        "own-unit-27",
+        "own-unit-28",
+        "own-unit-30",
+        "own-unit-34",
+        "own-unit-35",
+        "own-unit-36",
+        "own-unit-39"
+      ],
+      "units": 12,
+      "bases": 2,
+      "energy_credits": 168,
+      "ready_units": 2,
+      "interaction": "turn",
+      "active_plan_id": "plan-7bc6c5d5e1d04052b6a40db56a8c3b8d",
+      "active_plan_revision": 9
+    },
     "full_game": "unfinished",
     "expired_sovereign_attention_reclamation": "passed: real database reopen, inactive metadata without token, expired-status read before reacquisition, same attention IDs redelivered",
     "compiled_native_base_guards": "passed: owned/foreign/invalid/hidden/phase/selector/replay and completion qualifier",
@@ -275,5 +301,15 @@
     "control_mcp": "sha256:a32c5b18b33e567e96cfc253862cc3fbfd1657c33d7b8a27ed0123e73db625ad",
     "harness": "sha256:7078f58c89aba664aefbf65bf38efa7fb917498b5e684cf5eec10893700d20e1",
     "native_fingerprint": "4b8e73da1d17af8b278ae5f885904ec6c6df1e121255791447a6f2dc85563440"
+  },
+  "live_run": {
+    "run_id": "run-0e64e6f0e7804cad80783a350b05d6b8",
+    "created_unix": 1788762911.8985841,
+    "worker_id": "305aabb43f8c",
+    "exactly_one_active_sovereign": true,
+    "portal_supervision_restored": true,
+    "native_failure_watcher_armed": true,
+    "ten_minute_heartbeat_active": true,
+    "initial_active_incidents": []
   }
 }
