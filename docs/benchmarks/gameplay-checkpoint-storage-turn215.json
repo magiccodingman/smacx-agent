@@ -129,7 +129,12 @@
   "final_images": {
     "control": "sha256:cdb8b73729e38e8de877fbb9a9f10a5a45b9d981c12fe8480f0cd59f42f5f194",
     "harness": "sha256:d41c106b05af1b3cd2bcf12cf6d85d0421ea0eb1c6201a68ba823d60d5af6068",
-    "integration": "running",
-    "packaged_client_failure_test": "PASS four cases using installed strict-prompt module"
+    "integration": "PASS exit0 before final native-file digest preflight",
+    "packaged_client_failure_test": "PASS four cases using installed strict-prompt module",
+    "counterfactual_probe_gap_ms": 222.53
+  },
+  "digest_preflight_image": {
+    "control": "sha256:1db6e43ff39ff4e1f6619df4273aab2162ea1057a1d947daf66ee10324ef633a",
+    "integration": "running"
   }
 }
