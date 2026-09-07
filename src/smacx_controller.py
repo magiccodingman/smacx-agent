@@ -17,7 +17,7 @@ import uuid
 
 from smacx_game_settings import game_settings_environment, normalize_game_settings
 from smacx_journal import CampaignJournal, JournalError
-from smacx_store import MemoryScope, SmacxStore, StoreError
+from smacx_store import MEMORY_STATUS_VALUES, MemoryScope, SmacxStore, StoreError
 from smacx_reference import read_reference as read_reference_store
 from smacx_attention import AttentionService
 from smacx_observation import ObservationCollector
@@ -838,7 +838,7 @@ def write_platform_memory(
         source_event_id = str(record.get("source_event_id") or "") or None
         if action == "claim":
             status = str(record.get("status") or "unverified")
-            if status not in {"unverified", "corroborated", "disputed", "false", "retracted"}:
+            if status not in MEMORY_STATUS_VALUES["claim"]:
                 raise StoreError("invalid_claim_status")
             stored = store.record_claim(
                 scope,
@@ -898,7 +898,7 @@ def write_platform_memory(
             )
         elif action == "commitment":
             status = str(record.get("status") or "proposed")
-            if status not in {"proposed", "accepted", "fulfilled", "broken", "expired", "cancelled"}:
+            if status not in MEMORY_STATUS_VALUES["commitment"]:
                 raise StoreError("invalid_commitment_status")
             parties_value = record.get("parties", [])
             if not isinstance(parties_value, list):
@@ -925,7 +925,7 @@ def write_platform_memory(
             )
         elif action == "goal":
             status = str(record.get("status") or "active")
-            if status not in {"active", "paused", "completed", "abandoned"}:
+            if status not in MEMORY_STATUS_VALUES["goal"]:
                 raise StoreError("invalid_goal_status")
             trigger = record.get("trigger")
             if trigger is not None and not isinstance(trigger, Mapping):
@@ -1015,7 +1015,14 @@ def write_platform_memory(
     except BridgeUnavailable:
         return {"ok": False, "error": "game_not_connected"}
     except (StoreError, JournalError, TypeError, ValueError) as exc:
-        return {"ok": False, "error": str(exc), "persistence": {"stage": write_stage,
+        guidance = {}
+        if action in MEMORY_STATUS_VALUES and str(exc) == f"invalid_{action}_status":
+            guidance = {"validation": {
+                "field": "record_json.status",
+                "allowed_values": list(MEMORY_STATUS_VALUES[action]),
+                "message": "Choose the status matching your intent; preserve other record fields when revising. No status is substituted automatically.",
+            }}
+        return {"ok": False, "error": str(exc), **guidance, "persistence": {"stage": write_stage,
             "authority": "campaign_journal",
             "retry_policy": "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."}}
 

@@ -1,0 +1,41 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "confirmed managed memory status affordance omission",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 91,
+  "attempt": {
+    "request_id": "c51ec64eb6bf43c9948ebda14c69e0f3",
+    "call_id": "chatcmpl-tool-99b822e17ef65e74",
+    "plan_key": "t44-discover-posture",
+    "submitted_status": "cancelled",
+    "result": "invalid_plan_status",
+    "persistence_stage": "not_started",
+    "actual_description_present": true,
+    "actual_description_lists_plan_statuses": false,
+    "next_provider_request_id": "a7f6fddc5de34c16b540573cb3fe1c07",
+    "exact_error_delivered": true,
+    "next_action": "End turn; stale plan was not retired by this rejected write"
+  },
+  "repair": [
+    "Shared existing status values between validators and managed description",
+    "Rejected statuses return field and allowed values without substituting intent",
+    "Preserve journal authority, original error code and persistence-stage reporting"
+  ],
+  "acceptance": {
+    "four_record_kinds_invalid_status_no_cognition_write": "pass",
+    "active_to_abandoned_plan_revision_journal_and_runtime": "pass",
+    "description_matches_shared_values": "pass",
+    "actual_hermes_next_request_handoff_gc_restart_and_ambiguous_projection_failure": "pass",
+    "managed_tools": 15,
+    "exact_operating_prompt_tokens": 1338,
+    "exact_tool_schema_tokens": 4706,
+    "deployment": "pending",
+    "actual_repaired_provider_description": "pending",
+    "autonomous_retirement_retry": "pending"
+  },
+  "limits": [
+    "Controlled writer test uses a mocked native guard, not a new native action",
+    "No plan is retired automatically; sovereign owns status choice",
+    "Full game acceptance remains open"
+  ]
+}

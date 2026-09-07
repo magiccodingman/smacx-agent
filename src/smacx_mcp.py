@@ -24,6 +24,7 @@ from smacx_mcp_validation import StrictMCPServer
 
 from smacx_capabilities import capability_manifest
 from smacx_choice_preparation import ChoicePreparations, PreparationError, bind_numeric_choices, bind_ballot_choices
+from smacx_store import MEMORY_STATUS_VALUES
 from smacx_controller import (
     acknowledge_match_briefing as controller_acknowledge_match_briefing,
     BridgeUnavailable,
@@ -3999,6 +4000,7 @@ def smac_investigate(
         "commitment={commitment_key,title,terms,status,parties?:[{actor_id,role}],due_turn?,due_year?,source_event_id?,resolution_event_id?}; "
         "goal={goal_key?,title,description,priority,status,due_turn?,due_year?,trigger?,parent_goal_id?,source_event_id?}; "
         "plan={plan_key,title,objective,status,target_refs?,participants?,timing?,dependencies?,intended_role?,contingencies?,last_confirmation?,linked_commitments?,contradictory_evidence?}; "
+        f"Record status values: {'; '.join(name + '=' + '|'.join(values) for name, values in MEMORY_STATUS_VALUES.items())}. "
         "Use objective for the intended outcome. Bind concrete actors/bases with target_refs and "
         "participants [{ref,intended_role?,target_ref?,exclusive?,production_item?,energy_credits?,timing?}]; "
         "reservation timing uses {start_turn,end_turn}. Abstract plans may omit bindings, but prose "
