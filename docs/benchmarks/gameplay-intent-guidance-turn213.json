@@ -1,0 +1,35 @@
+{
+  "classification": "Prompt workflow correction; live behavioral acceptance pending",
+  "trigger": {
+    "turn": 174,
+    "request_id": "132a3696e8324dddad4a2833be8eb805",
+    "rejection": "stale_memory_observation",
+    "supplied_observed_revision": "5764361213733276522",
+    "provider_runtime_action_revision": "5365651642340903660",
+    "interpretation": "One verified wrong-guard case; rejected write is not proof of lost committed cognition."
+  },
+  "change": [
+    "Explain automatic boundary after last ready unit, including Skip/persistent orders.",
+    "Persist consequential intent before that action using a fresh decision guard.",
+    "Explicitly reconsider and retry stale rejected writes; never treat them as saved.",
+    "Describe current-turn versus persistent horizons without forcing long-term completion."
+  ],
+  "validation": {
+    "strict_prompt_contract": "pass; isolated fixture updated to include current Hermes turn_context module seam",
+    "memory_guard_discovery": "pass: production tools with controlled native adapter; synchronous journal visibility and stale rejection",
+    "intent_reconciliation_contract": "pass: canonical journal, restart deferral, long-horizon nonblocking, final-unit boundary policy",
+    "exact_qwen_operational_prompt_tokens": {
+      "before": 1336,
+      "after": 1470,
+      "delta": 134
+    }
+  },
+  "limits": [
+    "No native or journal guard changed.",
+    "No claim that prompt wording guarantees sovereign compliance.",
+    "Actual revised provider prompt delivery and sustained successful intent maintenance remain pending."
+  ],
+  "deployment": {
+    "status": "pending"
+  }
+}

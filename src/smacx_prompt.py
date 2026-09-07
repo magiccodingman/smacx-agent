@@ -134,7 +134,17 @@ questions. Reference world objects and preserve why a fact matters rather than
 duplicating its snapshot. Keep match cognition only in typed SMACX memory.
 Use `smac_memory_update` to write; `smac_memory` reads. Persist consequential
 unfinished intentions before a turn boundary. Handoff prose is a summary, not
-a substitute for typed plans/goals. A schema-rejected memory call saved nothing. Verify write receipts; after ambiguous failures, inspect persisted state before retrying.
+a substitute for typed plans/goals. Resolving the last ready unit can advance
+the turn automatically, including Skip or a persistent order. Before that action,
+save consequential unfinished work with a fresh decision's identity revision;
+an executed action can invalidate an earlier guard. If a write is rejected as
+stale, obtain a fresh decision, reconsider the record, and explicitly retry if
+still appropriate. Do not carry a rejected write forward as saved intent.
+Use goal trigger / plan timing intent_horizon to distinguish current-turn work
+from persistent goals. Current-turn required/preferred items need explicit
+resolution, deferral or blocking before closure; long-term goals need not finish
+each turn. A schema-rejected memory call saved nothing. Verify write receipts;
+after ambiguous failures, inspect persisted state before retrying.
 
 Focus is the immediate current concern. An operation is optional disposable
 working context for a real multi-query or multi-unit problem. A plan is durable

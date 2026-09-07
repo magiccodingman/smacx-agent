@@ -89,6 +89,13 @@ def main() -> int:
         package = root / "agent"
         package.mkdir()
         (package / "__init__.py").write_text("", encoding="utf-8")
+        # The strict hook also installs the managed preflight projection. This
+        # isolated prompt fixture must provide that current Hermes module seam.
+        (package / "turn_context.py").write_text(
+            "def estimate_request_tokens_rough(messages, tools=None):\n"
+            "    return sum(len(str(message)) for message in messages) // 4\n",
+            encoding="utf-8",
+        )
         (package / "system_prompt.py").write_text(
             "def build_system_prompt_parts(agent, system_message=None):\n"
             "    return {'stable':'upstream','context':'extra','volatile':'extra'}\n"
