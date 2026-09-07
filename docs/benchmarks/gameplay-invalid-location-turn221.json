@@ -1,0 +1,28 @@
+{
+  "status": "regressions pass; deployment pending",
+  "failure": {
+    "turn": 221,
+    "runtime_event": "4c92828b70864efdbcd7d6bf9b3325f0",
+    "collector_telemetry": "telemetry-074db41134634e2bad124e07b45152af",
+    "code": "invalid_tile_id",
+    "projector_line": 395,
+    "domain": "units",
+    "recorded_unix": 1788807180.6566901,
+    "native_backlog_preserved": 118,
+    "fresh_read": "all 13 unit rows and124 base rows had valid coordinates",
+    "limits": "Original offending row was not captured; ownership and exact raw sentinel are unknown. Regression uses -1 to exercise the identical failure path. Base-capture timing is observed, not proof of the internal native cause."
+  },
+  "repair": "Recollect whole rejected cut at most three times before runtime assembly or attention; preserve strict projector validation and existing pending tool history. Persistent invalid state fails closed.",
+  "tests": {
+    "real_collector_owned_and_foreign": "pass; two rejected cuts then valid third; no invalid history/projection publication",
+    "actual_http_handler": "pass; recovered200, persistent409, unrelated failure one attempt, no attention before valid cut",
+    "initial_test_failure": "test caught RuntimeError only; corrected to include ValueError matching production exception contract"
+  },
+  "acceptance": {
+    "native_mechanical_behavior_changed": false,
+    "live_delivery": "pending",
+    "resume_campaign_after_verification": false,
+    "full_game_complete": false
+  },
+  "operator_request": "After this repair and verification leave campaign paused and stop; monitoring automation paused."
+}

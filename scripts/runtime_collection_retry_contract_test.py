@@ -12,11 +12,14 @@ import smacx_mcp as mcp
 def main():
     transient = {"ok": False, "error": "world_changed_during_collection"}
     pagination = {"ok": False, "error": "world_changed_during_pagination"}
+    invalid_location = {"ok": False, "error": "invalid_tile_id"}
     for outcomes, expected_status, expected_attempts in (
         ([transient, transient, {"ok": True}], 200, 3),
         ([transient] * 3, 409, 3),
         ([pagination, transient, {"ok": True}], 200, 3),
         ([pagination] * 3, 409, 3),
+        ([invalid_location, invalid_location, {"ok": True}], 200, 3),
+        ([invalid_location] * 3, 409, 3),
         ([{"ok": False, "error": "native_observation_feed_failed"}], 409, 1),
     ):
         assembler, attention = MagicMock(), MagicMock()

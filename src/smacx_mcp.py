@@ -262,9 +262,13 @@ def _refresh_request_world(episode_id: str) -> dict:
     """Retry a rejected collection cut, never publish a mixed native snapshot.
 
     The collector restores its private staging state on failure. Retry only its
-    explicit revision-race receipts, before acquiring any request attention.
+    explicit revision-race and invalid-location receipts, before acquiring any
+    request attention. Native destruction/capture processing can briefly expose
+    a unit sentinel location even at a stable revision. Recollect the whole cut;
+    never drop the row, fabricate coordinates, or use the previous context.
     """
-    transient = {"world_changed_during_collection", "world_changed_during_pagination"}
+    transient = {"world_changed_during_collection", "world_changed_during_pagination",
+                 "invalid_tile_id"}
     for attempt in range(1, 4):
         result = _refresh_managed_world()
         if result.get("ok") or result.get("error") not in transient:
