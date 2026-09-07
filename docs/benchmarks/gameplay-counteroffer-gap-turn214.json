@@ -128,7 +128,115 @@
       "classification": "Actual stock menu and native return values; downstream negotiated deal effects separate"
     },
     "deployment": "not deployed; campaign remains preserved and paused",
-    "integrated_native_mcp": "running; no result claimed",
+    "integrated_native_mcp": {
+      "exit_code": 0,
+      "evidence": {
+        "counterfactual_checkpoint": {
+          "actors_represented_with_mechanical_roles": true,
+          "completed_terraform_matches_standalone_and_owned_base_yields": true,
+          "positive_retool_penalty_matches_native_change": true,
+          "hurry_charge_and_progress_match_without_claiming_instant_completion": true,
+          "rehome_support_and_journal_link_match_observed_effect": true,
+          "disband_support_and_explicit_garrison_departure": true,
+          "site_facility_delta_matches_managed_build_and_actual_native_completion": true,
+          "blind_research_explore_native_flags_and_named_snapshot": true,
+          "production_and_travel_timing": {
+            "actual_native_production_upkeeps": 4,
+            "production_timing_matches": true,
+            "one_phase_native_move_matches": true,
+            "native_move_completion": {
+              "receipt": {
+                "action_id": 5,
+                "command": "move_unit",
+                "status": "completed",
+                "native_result": 1,
+                "native_call_attempted": true,
+                "resolution": "native_move_resolved",
+                "unit_id": 31,
+                "origin_tile_id": 240,
+                "target_tile_id": 305,
+                "observed_tile_id": 305
+              },
+              "acknowledged_notices": []
+            },
+            "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": true
+          }
+        },
+        "base_site_stress": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 233.153,
+          "probe_gap_ms": 227.57,
+          "receipt_bytes": 170495,
+          "native_elapsed_ms": 0
+        },
+        "counterfactual_site_stress": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 222.997,
+          "probe_gap_ms": 213.048,
+          "receipt_bytes": 51679,
+          "native_elapsed_ms": 2
+        },
+        "intent_recovery": {
+          "native_completed_units_preserved": true,
+          "journaled_plan_preserved": true,
+          "same_checkpoint_recovered_twice_after_timeline_gc": true,
+          "journaled_conflict_and_stationary_assignment_preserved": true,
+          "ephemeral_old_timeline_watch_discarded": true,
+          "old_session_counterfactual_choice_rejected": true
+        },
+        "pass": {
+          "authenticated_control_lifecycle": true,
+          "managed_action_failure_containment": false,
+          "dedicated_mcp_sidecar": true,
+          "mcp_tool_count": 15,
+          "mcp_bound_to_exact_match": true,
+          "native_unity_governor_entitlements": true,
+          "native_no_timer": true,
+          "native_orbital_project_global_adapter": true,
+          "native_base_geography_and_unit_traits": true,
+          "native_airdrop_diplomacy_and_anti_drop_guards": true,
+          "native_pact_port_amphibious_sequence": true,
+          "native_airdrop_collection_stress": {
+            "ready_drop_units": 129,
+            "maximum_page_latency_ms": 224.664,
+            "maximum_page_bytes": 127192,
+            "map_tiles": 8192,
+            "demand_receipt_matches_actions": true,
+            "enumeration_target_count": 3580,
+            "enumeration_native_ms": 0.0,
+            "enumeration_wall_ms": 245.321,
+            "enumeration_probe_gap_ms": 231.004,
+            "enumeration_payload_bytes": 8671,
+            "exact_native_ms": 0.0,
+            "exact_wall_ms": 297.823,
+            "exact_probe_gap_ms": 305.663,
+            "exact_payload_bytes": 289,
+            "outside_first_128_semantic_choice_executed": true,
+            "provider_model_supplied_raw_tile_id": false,
+            "revision_cache_hit": true
+          },
+          "native_global_projection_world_runtime_path": true,
+          "managed_lifecycle_blocked": true,
+          "bridge_verified_checkpoint": true,
+          "live_worker_volume_backup_verified": true,
+          "native_crash_recovered_without_ui": true,
+          "semantic_vehicle_identity_survived_native_restart": true,
+          "recovered_checkpoint_turn": 1,
+          "sidecar_removed_on_park": true,
+          "hermes_semantic_turn": false,
+          "hermes_low_reasoning": false,
+          "hermes_native_revision_advanced": false,
+          "hermes_managed_container": false,
+          "hermes_session_backup_verified": false,
+          "hermes_usage": null,
+          "specialist": null
+        }
+      },
+      "optional_inference_note": "Provider/Hermes inference and optional failure-containment injection were not enabled; false optional fields are not required-test failures."
+    },
     "cleanup": "Isolated worker/volumes cleaned by test; its unreferenced owned prepared image removed after successful completion."
   }
 }
