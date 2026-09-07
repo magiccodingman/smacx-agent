@@ -1,0 +1,14 @@
+{
+  "date": "2026-09-07",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "deployed_head": "7a8cdab",
+  "browser": "Chrome",
+  "authenticated_role": "administrator",
+  "lobby_status": "IN PROGRESS",
+  "turn": 214,
+  "action": "Clicked visible Download diagnostics link on live lobby",
+  "result": "New destination tab opened; browser tool rejected inspection under its URL policy",
+  "browser_delivery_verified": false,
+  "backend_evidence_is_separate": true,
+  "circumvention_attempted": false
+}
