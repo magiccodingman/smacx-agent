@@ -63,6 +63,14 @@ def main() -> int:
             "event_kind": "contact_lost", "contact_ref": "contact-safe",
             "location_ref": "location-safe", "provenance": "direct_observation",
         }, turn=121)
+        journal.append(scope, "game.action", {
+            "summary": "historical exploration receipt", "choice_id": "choice-public",
+            "choice_parameters": {"command": "auto_explore_unit", "id": "private-selector-honeytoken",
+                "unit_id": 987654, "target_tile_id": 456789, "source_prototype_id": 777777,
+                "native_option_id": 8, "own_unit_ref": "own-unit-safe", "target_location_ref": "location-safe"},
+            "native_result": {"command": "auto_explore_unit", "queued": False,
+                              "private_marker": "private-result-honeytoken"},
+        }, turn=122)
 
         smacx_controller.PLATFORM_DB_PATH = store.path
         smacx_controller._store_instance = None
@@ -119,6 +127,31 @@ def main() -> int:
         # The working set is independently section-budgeted. Raw campaign
         # storage may be large without becoming proportional provider context.
         assert _tokens(working) < 16_000
+        public_history = [working, events,
+            smacx_controller.read_platform_memory("search", scope.match_id,
+                query="historical exploration receipt", **common),
+            smacx_controller.read_platform_memory("recall", scope.match_id,
+                queries=({"query":"historical exploration receipt"},), **common)]
+        for view in public_history:
+            rendered = json.dumps(view)
+            for private in ["private-selector-honeytoken", "private-result-honeytoken",
+                            "987654", "456789", "777777", "native_option_id"]:
+                assert private not in rendered, (private, view)
+            assert "choice-public" in rendered
+        assert "own-unit-safe" in json.dumps(working)
+        assert "location-safe" in json.dumps(working)
+        assert working["memory"]["sections"]["recent_events"][0]["execution_receipt"] == {
+            "command": "auto_explore_unit", "queued": False}
+        # Filtering occurs before search matching, not just after rendering.
+        assert journal.search(scope, "private-selector-honeytoken")
+        hidden_search = smacx_controller.read_platform_memory("search", scope.match_id,
+            query="private-selector-honeytoken", **common)
+        assert hidden_search["items"] == [], hidden_search
+        hidden_recall = smacx_controller.read_platform_memory("recall", scope.match_id,
+            queries=({"query":"private-selector-honeytoken"},), **common)
+        assert hidden_recall["recall"]["groups"][0]["matches"] == []
+        # Provider projection must never rewrite the authoritative old record.
+        assert journal.replay(scope)["recent_actions"][-1]["choice_parameters"]["unit_id"] == 987654
 
     print(json.dumps({"event": "pass", "payload": {
         "records_per_projection": 120,

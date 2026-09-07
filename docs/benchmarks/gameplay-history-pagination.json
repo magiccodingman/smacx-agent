@@ -1,0 +1,21 @@
+{
+  "classification": "real committed SQLite history and production WorldService contract; no provider inference",
+  "before": "700 world deltas and400 temporal events in same-observation batches did not finish within100 pages; storage truncation and repeated auxiliary temporal results had no independent progress cursor",
+  "repair": "Expand semantic batch siblings inside the committed SQLite read cut before bounded LIMIT/OFFSET. Changes continuations track both world and temporal positions, preserving legacy item-only input. Cache fingerprint versions new pagination. Oversized temporal-only rows fail explicitly with exact deep retry.",
+  "acceptance": {
+    "world_deltas_exactly_once": 700,
+    "temporal_events_exactly_once": 400,
+    "pages": 7,
+    "deep_ceiling_tokens": 8192,
+    "same_observation_siblings_retained": true,
+    "uncommitted_future_excluded": true,
+    "epistemic_status_unchanged": true,
+    "oversized_temporal_retry_preserves_position": true,
+    "existing_oversized_world_retry_pass": true,
+    "full_world_model_contract_pass": true,
+    "publication_visibility_four_cases_pass": true,
+    "batch_recovery_three_crash_windows_pass": true,
+    "packaged_image_regression_pass": true
+  },
+  "live_acceptance": "packaged code passes; resumed native campaign uses upgraded MCP, autonomous large-history traversal not observed"
+}

@@ -156,32 +156,6 @@ public sealed class KnowledgeCorpus(
         var collections = await storage.GetCollectionsAsync(knowledgeBaseId, cancellationToken);
         var documents = await storage.GetDocumentsAsync(knowledgeBaseId, cancellationToken);
         var selected = SelectCollections(request.Topic, collections);
-        var search = new KnowledgeSearchRequest
-        {
-            KnowledgeBaseId = knowledgeBaseId,
-            Mode = selected.Length == 0 ? KnowledgeSearchMode.Smart : KnowledgeSearchMode.Scoped,
-            CollectionIds = selected,
-            IncludeDescendants = true,
-            Top = Math.Clamp(request.Top, 1, 30),
-            Include = KnowledgeResultInclude.MatchedChunks,
-        };
-        if (request.IncludeContent)
-        {
-            var content = await storeSearch().SearchContentAsync(
-                limited.Query, search, Math.Clamp(request.MaxContentTokens, 256, 64_000), cancellationToken);
-            return new
-            {
-                query = limited.Query, original_query = request.Query,
-                query_truncated = limited.Truncated, query_tokens = limited.Tokens,
-                results = content.Hits.Select(item => ToHit(item, collections)).ToArray(),
-                evidence = content.Evidence.Select(item => new
-                {
-                    document_id = item.DocumentId, field = item.FieldKey,
-                    content = item.Text, token_count = item.TokenCount,
-                }).ToArray(),
-                approximate_tokens = content.ApproximateTokenCount,
-            };
-        }
         var advanced = KnowledgeSearchQuery.Create(knowledgeBaseId, limited.Query)
             .Add(KnowledgeRetrievalStage.Semantic("semantic-context",
                     KnowledgeSearchField.Title(4), KnowledgeSearchField.Description(3),
@@ -225,36 +199,73 @@ public sealed class KnowledgeCorpus(
             }
         }
         var normalized = NormalizeTitle(limited.Query);
-        var rankedResults = documents.Select(document =>
+        var rankedDocuments = documents
+            .Where(document => selected.Length == 0 || selected.Any(id => IsDescendant(document.CollectionId, id, collections)))
+            .Select(document =>
             {
                 var normalizedTitle = NormalizeTitle(document.Title);
-                var words = normalizedTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var words = LexicalTokens(document.Title).ToArray();
                 return new
                 {
                     Document = document,
                     Exact = normalizedTitle == normalized,
+                    NamedPhrase = normalizedTitle.Length > 0 &&
+                        (" " + normalized + " ").Contains(" " + normalizedTitle + " ", StringComparison.Ordinal),
                     TitleTerms = lexicalTokens.Count(token => words.Contains(token, StringComparer.Ordinal)),
                     Fused = fused.GetValueOrDefault(document.Id),
                 };
             })
-            .Where(item => item.Exact || item.TitleTerms > 0 || item.Fused.Hit is not null)
+            .Where(item => item.Exact || item.NamedPhrase || item.TitleTerms > 0 || item.Fused.Hit is not null)
             .OrderByDescending(item => item.Exact)
+            .ThenByDescending(item => item.NamedPhrase)
             .ThenByDescending(item => item.TitleTerms)
             .ThenByDescending(item => item.Fused.Score)
             .Take(Math.Clamp(request.Top, 1, 30))
-            .Select(item => item.Fused.Hit is not null
+            .ToArray();
+        var rankedResults = rankedDocuments.Select(item => item.Fused.Hit is not null
                 ? ToHit(item.Fused.Hit, collections)
                 : ToDocumentHit(item.Document, collections))
             .ToArray();
+        if (request.IncludeContent)
+        {
+            var remaining = Math.Clamp(request.MaxContentTokens, 256, 64_000);
+            var evidence = new List<object>();
+            var used = 0;
+            for (var index = 0; index < rankedDocuments.Length && remaining > 0; index++)
+            {
+                var item = rankedDocuments[index];
+                var chunks = item.Fused.Hit?.Matches
+                    .Where(chunk => chunk.FieldKey == KnowledgeSystemFields.Body && !string.IsNullOrWhiteSpace(chunk.Text))
+                    .Select(chunk => chunk.Text).Distinct().Take(4).ToArray() ?? [];
+                var text = string.Join("\n\n", chunks);
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    var document = await store.GetDocumentAsync(item.Document.Id, cancellationToken);
+                    text = document is not null && document.Values.TryGetValue(KnowledgeSystemFields.Body, out var body)
+                        ? body.Text ?? "" : "";
+                }
+                if (string.IsNullOrWhiteSpace(text)) continue;
+                // Reserve a share for later ranked hits, so a long configuration
+                // document cannot consume the entire evidence budget.
+                var share = Math.Max(1, remaining / (rankedDocuments.Length - index));
+                var excerpt = await LimitQueryAsync(text, share, cancellationToken);
+                if (excerpt.Tokens > remaining) continue;
+                evidence.Add(new { document_id = item.Document.Id, field = KnowledgeSystemFields.Body,
+                    content = excerpt.Query, token_count = excerpt.Tokens, truncated = excerpt.Truncated });
+                used += excerpt.Tokens;
+                remaining -= excerpt.Tokens;
+            }
+            return new { query = limited.Query, original_query = request.Query,
+                query_truncated = limited.Truncated, query_tokens = limited.Tokens,
+                results = rankedResults, evidence, approximate_tokens = used,
+                evidence_selection = "hybrid_ranked_body_chunks_or_document_fallback" };
+        }
         return new
         {
             query = limited.Query, original_query = request.Query,
             query_truncated = limited.Truncated, query_tokens = limited.Tokens,
             results = rankedResults,
         };
-
-        IKnowledgeContentSearch storeSearch() => contentSearch
-            ?? throw new InvalidOperationException("Knowledge content search is unavailable.");
         }
         catch (Exception exception)
         {

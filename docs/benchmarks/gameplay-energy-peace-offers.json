@@ -1,0 +1,392 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "confirmed managed offer gaps repaired; final-build native effects and deployed recovery verified; actual sovereign offer use unobserved",
+  "origin": {
+    "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+    "save_sha256": "83a0a8b40cd1c0869d0b2163cc6c97a9a749fdd02c986f1b1b2ee399bfe3ae38",
+    "labels": [
+      "ENERGYTRUCE",
+      "ENERGYTREATY"
+    ],
+    "ENERGYTREATY_prior_managed_choices": 0,
+    "actual_campaign_stopped_turn": 107,
+    "verified_checkpoint_id": "checkpoint-87e7a18c1feb4fe6a2b3c2ecbb2f608d"
+  },
+  "reviewed_semantics": {
+    "scripts": [
+      "Script.txt",
+      "xscript.txt",
+      "alienuscript.txt",
+      "alienIscript.txt"
+    ],
+    "quote_source": "public ParseNumTable[0] displayed as NUM0",
+    "payment_direction": "counterpart_to_self",
+    "accept_row_id": 0,
+    "reject_row_id": 1,
+    "guard": "Exact two labels, positive quote, two reviewed row IDs, bound amount equality and existing native session/revision/UI-thread guards.",
+    "multiplayer_permissions": "unchanged; new offers remain single-player only",
+    "receipt": "Energy and relationship effects remain unverified until fresh native observation."
+  },
+  "validation": {
+    "compiled_production_helpers": "pass",
+    "native_shaped_managed_quote_binding_and_receipt_qualifiers": "pass",
+    "matched_native_four_cases": {
+      "passed": true,
+      "classification": "isolated matched-save energy-for-peace accept/reject and observed treasury/relationship effects",
+      "cases": [
+        {
+          "target": "ENERGYTREATY",
+          "response": "accept",
+          "turn_before": 103,
+          "turn_after": 103,
+          "quote": 50,
+          "credits_before": 105,
+          "credits_after": 155,
+          "receipt": {
+            "ok": true,
+            "command": "respond_to_diplomatic_offer",
+            "response": "accept",
+            "offer_type": "treaty",
+            "energy_change_verified": false,
+            "relationship_change_verified": false,
+            "completion_semantics": "The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects."
+          },
+          "relations": {
+            "commlink": true,
+            "vendetta": false,
+            "truce": true,
+            "treaty": true,
+            "pact": false,
+            "infiltrated": false
+          },
+          "labels": [
+            "",
+            "COMM",
+            "INTRO1",
+            "PROTORIVAL",
+            "WANTTOTRUCE1",
+            "MAKETRUCE",
+            "FACTIONTREATY",
+            "ENERGYTREATY",
+            "MAKETREATY0"
+          ],
+          "observed_follow_on": "MAKETREATY0",
+          "full_turn_completed": false
+        },
+        {
+          "target": "ENERGYTREATY",
+          "response": "reject",
+          "turn_before": 103,
+          "turn_after": 103,
+          "quote": 50,
+          "credits_before": 105,
+          "credits_after": 105,
+          "receipt": {
+            "ok": true,
+            "command": "respond_to_diplomatic_offer",
+            "response": "reject",
+            "offer_type": "treaty",
+            "energy_change_verified": false,
+            "relationship_change_verified": false,
+            "completion_semantics": "The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects."
+          },
+          "relations": {
+            "commlink": true,
+            "vendetta": false,
+            "truce": true,
+            "treaty": false,
+            "pact": false,
+            "infiltrated": false
+          },
+          "labels": [
+            "",
+            "COMM",
+            "INTRO2",
+            "PROTORIVAL",
+            "WANTTOTRUCE1",
+            "MAKETRUCE",
+            "FACTIONTREATY",
+            "ENERGYTREATY",
+            "DIPLO"
+          ],
+          "observed_follow_on": "DIPLO",
+          "full_turn_completed": false
+        },
+        {
+          "target": "ENERGYTRUCE",
+          "response": "accept",
+          "turn_before": 103,
+          "turn_after": 103,
+          "quote": 75,
+          "credits_before": 105,
+          "credits_after": 180,
+          "receipt": {
+            "ok": true,
+            "command": "respond_to_diplomatic_offer",
+            "response": "accept",
+            "offer_type": "truce",
+            "energy_change_verified": false,
+            "relationship_change_verified": false,
+            "completion_semantics": "The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects."
+          },
+          "relations": {
+            "commlink": true,
+            "vendetta": false,
+            "truce": true,
+            "treaty": false,
+            "pact": false,
+            "infiltrated": false
+          },
+          "labels": [
+            "",
+            "COMM",
+            "INTRO3",
+            "PROTORIVAL",
+            "WANTTOTRUCE1",
+            "ENERGYTRUCE",
+            "MAKETRUCE"
+          ],
+          "observed_follow_on": "MAKETRUCE",
+          "full_turn_completed": false
+        },
+        {
+          "target": "ENERGYTRUCE",
+          "response": "reject",
+          "turn_before": 103,
+          "turn_after": 103,
+          "quote": 75,
+          "credits_before": 105,
+          "credits_after": 105,
+          "receipt": {
+            "ok": true,
+            "command": "respond_to_diplomatic_offer",
+            "response": "reject",
+            "offer_type": "truce",
+            "energy_change_verified": false,
+            "relationship_change_verified": false,
+            "completion_semantics": "The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects."
+          },
+          "relations": {
+            "commlink": true,
+            "vendetta": true,
+            "truce": false,
+            "treaty": false,
+            "pact": false,
+            "infiltrated": false
+          },
+          "labels": [
+            "",
+            "COMM",
+            "INTRO3",
+            "PROTORIVAL",
+            "WANTTOTRUCE1",
+            "ENERGYTRUCE",
+            "MOREWAR"
+          ],
+          "observed_follow_on": "MOREWAR",
+          "full_turn_completed": false
+        }
+      ],
+      "unobserved_attempts": [
+        {
+          "target": "ENERGYTRUCE",
+          "response": "accept",
+          "reason": "target offer did not occur before turn advanced",
+          "labels": [
+            "",
+            "COMM",
+            "INTRO0",
+            "PROTORIVAL",
+            "WANTTOTRUCE0",
+            "MOREWAR",
+            "",
+            "BEGINPROJECT",
+            ""
+          ]
+        },
+        {
+          "target": "ENERGYTRUCE",
+          "response": "reject",
+          "reason": "target offer did not occur before turn advanced",
+          "labels": [
+            "",
+            "COMM",
+            "INTRO0",
+            "PROTORIVAL",
+            "WANTTOTRUCE2",
+            "MOREWAR",
+            "",
+            "BEGINPROJECT",
+            ""
+          ]
+        },
+        {
+          "target": "ENERGYTRUCE",
+          "response": "accept",
+          "reason": "target offer did not occur before turn advanced",
+          "labels": [
+            "",
+            "COMM",
+            "INTRO1",
+            "PROTORIVAL",
+            "WANTTOTRUCE2",
+            "MOREWAR",
+            "",
+            "BEGINPROJECT",
+            ""
+          ]
+        },
+        {
+          "target": "ENERGYTRUCE",
+          "response": "reject",
+          "reason": "target offer did not occur before turn advanced",
+          "labels": [
+            "",
+            "COMM",
+            "INTRO2",
+            "PROTORIVAL",
+            "WANTTOTRUCE2",
+            "MOREWAR",
+            ""
+          ]
+        },
+        {
+          "target": "ENERGYTRUCE",
+          "response": "accept",
+          "reason": "target offer did not occur before turn advanced",
+          "labels": [
+            "",
+            "COMM",
+            "INTRO0",
+            "PROTORIVAL",
+            "FACTIONTRUCE",
+            "MOREWAR",
+            ""
+          ]
+        },
+        {
+          "target": "ENERGYTRUCE",
+          "response": "reject",
+          "reason": "target offer did not occur before turn advanced",
+          "labels": [
+            "",
+            "COMM",
+            "INTRO1",
+            "PROTORIVAL",
+            "WANTTOTRUCE1",
+            "MOREWAR",
+            ""
+          ]
+        }
+      ]
+    },
+    "full_native_mcp": {
+      "base_site_stress": {
+        "owned_base_count": 512,
+        "candidate_count": 32,
+        "radius_squares": 21,
+        "wall_ms": 252.064,
+        "probe_gap_ms": 245.09,
+        "receipt_bytes": 169652,
+        "native_elapsed_ms": 0
+      },
+      "counterfactual_site_stress": {
+        "owned_base_input_rows": 511,
+        "nominated_sites": 4,
+        "wall_ms": 255.687,
+        "probe_gap_ms": 227.408,
+        "receipt_bytes": 51675,
+        "native_elapsed_ms": 0
+      },
+      "intent_recovery": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "same_checkpoint_recovered_twice_after_timeline_gc": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      },
+      "pass": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 234.022,
+          "maximum_page_bytes": 139516,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 2890,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 291.715,
+          "enumeration_probe_gap_ms": 241.652,
+          "enumeration_payload_bytes": 8670,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 241.546,
+          "exact_probe_gap_ms": 238.802,
+          "exact_payload_bytes": 288,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      }
+    },
+    "deployment": {
+      "passed": true,
+      "api": "recover with refresh_runtime true",
+      "turn": 107,
+      "session_id": "session-62f94f97a32d4a8a8dcc88a57910a815",
+      "worker_id": "074e7ab9963d",
+      "engine_source_sha256": "6ba3414a336615e7734890165d32bfa0905274b84ef3a1d604dd64b3c9a5cd16",
+      "owned_unit_count": 12,
+      "energy_credits": 124,
+      "bases": 2,
+      "spartan_treaty_preserved": true,
+      "post_war_plan_revision8_preserved": true,
+      "run_id": "run-965c9dfbfe3a426ea33171b15c8c20b6",
+      "one_sovereign_resumed": true,
+      "portal_unpaused": true,
+      "heartbeat_active_interval_minutes": 10,
+      "native_failure_watcher_rearmed": true
+    },
+    "actual_provider_delivery": "not observed",
+    "incomplete_first_replay": "75-credit truce accept assertion passed, but rejection replay missed target branch; interrupted and retained log. Final bounded replay must observe all four actual cases.",
+    "engine_source_sha256": "6ba3414a336615e7734890165d32bfa0905274b84ef3a1d604dd64b3c9a5cd16",
+    "images": {
+      "worker": "bd0df999bb98b2355fb70e86dc883db1287992e64b20f20ff766a9949a9470c1",
+      "control": "f92905f67446e506bdf58db2790cb1a9dbb1bfa58f7006526218d513ae469ed6",
+      "harness": "c0b1923e648e61772204997df36bc7e9e40b6f8bad20304ca03cd97cf76006c8"
+    },
+    "provider_inference_in_isolated_suite": false
+  },
+  "operator_coordination": {
+    "finding": "PortalMatchSupervisor automatically started another run between sovereign stop and portal pause.",
+    "run_id": "run-7166cd02b3c240899fee38c82589dbab",
+    "native_progress": "104 to107, 12 owned units and124 credits at stop",
+    "correction": "Pause portal before stopping sovereign for repairs; confirm no active runs.",
+    "heartbeat": "temporarily paused during implementation; not established as the restart origin"
+  }
+}

@@ -13,16 +13,18 @@ from pathlib import Path
 import re
 import threading
 import time
+import traceback
 from typing import Any, Literal, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import parse_qs, urlsplit
 import uuid
 
-from mcp.server import MCPServer
+from smacx_mcp_validation import StrictMCPServer
 
 from smacx_capabilities import capability_manifest
 from smacx_choice_preparation import ChoicePreparations, PreparationError, bind_numeric_choices, bind_ballot_choices
+from smacx_store import MEMORY_STATUS_VALUES
 from smacx_controller import (
     acknowledge_match_briefing as controller_acknowledge_match_briefing,
     BridgeUnavailable,
@@ -41,6 +43,7 @@ from smacx_controller import (
     record_campaign_action as controller_record_campaign_action,
     read_game_reference,
     read_platform_memory,
+    current_turn_intents,
     semantic_chat as controller_semantic_chat,
     semantic_group_chat as controller_semantic_group_chat,
     stop_game,
@@ -50,15 +53,23 @@ from smacx_controller import (
 )
 from smacx_attention import AttentionError, WATCH_KINDS
 from smacx_world import WORLD_MODES, WorldQueryError
+from smacx_mechanics import production_flow_state
 from smacx_counterfactual import action_relationships, parse_scenario
 from smacx_runtime_context import RuntimeContextAssembler
+from smacx_diagnostics import record as diagnostic_record, trace_managed_tool, INVOCATION
 from smacx_world_types import content_hash
 from smacx_specialists import (
     SpecialistError, SpecialistService,
 )
 
 
-mcp = MCPServer(
+class TracedMCPServer(StrictMCPServer):
+    def tool(self, *args, **kwargs):
+        register = super().tool(*args, **kwargs)
+        return lambda function: register(trace_managed_tool(function))
+
+
+mcp = TracedMCPServer(
     "smacx",
     title="SMACX Agent",
     description="Nonvisual fair-play state and semantic control for Sid Meier's Alpha Centauri: Alien Crossfire.",
@@ -191,13 +202,15 @@ def _runtime_services() -> tuple[RuntimeContextAssembler, object]:
             agent_id=agent_id, perspective_id=perspective_id,
         )
         if not isinstance(result, dict) or not result.get("ok"):
-            return {}
+            raise RuntimeError("runtime_cognition_unavailable")
         value = result.get("working_state") or result.get("memory") or result
         return value if isinstance(value, dict) else {}
 
     return RuntimeContextAssembler(
         scope=scope, world=world, attention=attention,
         snapshot=snapshot, working_state=working_state,
+        intent_review=lambda turn: current_turn_intents(match_id, session_id,
+            agent_id=agent_id, perspective_id=perspective_id, turn=turn),
         interpretive_recall=lambda query: _graphiti_recall({
             "match_id": match_id, "session_id": session_id,
         }, query, limit=8),
@@ -222,6 +235,26 @@ def _sovereign_gameplay_gate(operation: str) -> dict | None:
                 "message": f"{operation} is unavailable during a communication episode."},
                 "gameplay_mutations_blocked": True}
     return None
+
+
+def _refresh_request_world(episode_id: str) -> dict:
+    """Retry a rejected collection cut, never publish a mixed native snapshot.
+
+    The collector restores its private staging state on failure. Retry only its
+    explicit revision-race receipt, before acquiring any request attention.
+    """
+    for attempt in range(1, 4):
+        result = _refresh_managed_world()
+        if result.get("ok") or result.get("error") != "world_changed_during_collection":
+            return result
+        if attempt == 3:
+            return result
+        diagnostic_record("runtime_context_deferred", {
+            "reason": "world_changed_during_collection", "attempt": attempt,
+            "retry_limit": 3, "context_issued": False,
+        }, actor="runtime-context-builder", correlation={"episode_id": episode_id})
+        time.sleep(0.1 * attempt)
+    raise AssertionError("unreachable")
 
 
 class _RuntimeContextHandler(BaseHTTPRequestHandler):
@@ -265,7 +298,7 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                 raise ValueError("invalid_episode_id")
             if not 65536 <= context_length <= 16_777_216:
                 raise ValueError("invalid_context_length")
-            refresh = _refresh_managed_world()
+            refresh = _refresh_request_world(episode_id)
             if not refresh.get("ok"):
                 raise RuntimeError(str(refresh.get("error")))
             match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
@@ -301,8 +334,19 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
             if lease.get("status", "leased") == "leased":
                 attention.placed(str(lease["attention_lease_id"]))
                 lease["status"] = "placed"
+            diagnostic_record("runtime_context_built", {"runtime_context": payload},
+                              actor="runtime-context-builder", correlation={"episode_id": episode_id,
+                                  "runtime_context_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                      separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()})
             self._json(200, {"ok": True, "runtime_context": payload})
         except Exception as exc:
+            diagnostic_record("runtime_context_failed", {"error": str(exc),
+                "exception_type": type(exc).__name__,
+                "stack": [{"file": Path(frame.filename).name, "line": frame.lineno,
+                           "function": frame.name}
+                          for frame in traceback.extract_tb(exc.__traceback__)[-8:]]},
+                actor="runtime-context-builder",
+                correlation={"episode_id": episode_id})
             self._json(409, {"ok": False, "error": str(exc)})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -508,6 +552,9 @@ def _attach_turn_handoff(response: dict, choice: dict, decision: dict,
     response["turn_handoff_required"] = _turn_handoff_payload(
         before_turn, through, current_turn if turn_advanced else None,
     )
+    # A consumed decision normally requires a fresh frame. At a native turn
+    # boundary that frame belongs to the next episode, after the handoff.
+    response["required_next"] = {"stop_after": True, "ordinary_message": "TURN HANDOFF"}
     _semantic_turn_handoff_gc(identity, current_turn or before_turn + 1)
 
 STALE_REBASE_UNIT_COMMANDS = {
@@ -588,14 +635,21 @@ def _capability_gap_blocked(operation: str) -> dict | None:
 
 
 def _call(operation: str, **arguments: object) -> dict:
+    invocation = INVOCATION.get()
+    started = time.monotonic_ns()
     try:
-        return bridge_request(operation, **arguments)
+        result = bridge_request(operation, **arguments)
     except BridgeUnavailable as exc:
         next_step = (
             "Ask the operator to start or recover this match's managed game worker."
             if MANAGED_ATTACHED else "Call smac_launch."
         )
-        return {"ok": False, "error": "game_not_connected", "message": str(exc), "next": next_step}
+        result = {"ok": False, "error": "game_not_connected", "message": str(exc), "next": next_step}
+    if invocation:
+        diagnostic_record("native_call_returned", {"operation": operation, "arguments": arguments,
+            "result": result, "elapsed_ms": (time.monotonic_ns() - started) / 1e6},
+            actor="native-bridge", correlation={"invocation_id": invocation})
+    return result
 
 
 def _resolve_native_unit_id(own_unit_ref: str) -> int | None:
@@ -906,6 +960,144 @@ def _semanticize_choice(value: Any, context: Mapping[str, Any] | None) -> Any:
             continue
         result[str(key)] = _semanticize_choice(item, context)
     return result
+
+
+def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
+    """Keep native production facts even when no hurry action is affordable."""
+    fields = {
+        "current": ("name", "mineral_cost", "minerals_accumulated", "mineral_surplus"),
+        "hurry": ("legal", "affordable", "minerals_added", "energy_cost", "available_energy"),
+        "queue": ("entries", "capacity"),
+        "support_projection": ("epistemic_status", "current_support_minerals",
+                               "free_supported_units", "current_eligible_units",
+                               "gross_mineral_output", "additional_support_minerals",
+                               "support_after_one_completion", "exceeds_current_gross_output",
+                               "condition"),
+    }
+    result = {section: {key: (value[:640 if key == "condition" else 160] if isinstance(value, str) else value)
+                      for key in keys
+                      if isinstance((value := catalog[section].get(key)), (str, int, float, bool))}
+            for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}
+    current = result.get("current")
+    if current:
+        current["progress_state"] = production_flow_state(
+            current.get("mineral_cost"), current.get("minerals_accumulated"),
+            current.get("mineral_surplus"), inputs_current=True)
+        if current["progress_state"] == "no_passive_progress_at_current_surplus":
+            current["condition"] = (
+                "Remaining minerals will not accumulate while this net surplus stays nonpositive. "
+                "Allocation, support, terraforming or a legal hurry may change this; "
+                "queued units are not fielded defenders.")
+    return result
+
+
+
+def _citizen_catalog_context(catalog: Mapping[str, Any], context: Mapping[str, Any] | None,
+                             base_ref: str) -> dict:
+    """Expose the bounded native allocation evidence and its existing two-step workflow."""
+    result = {key: catalog[key] for key in ("population", "governor_manages_citizens")
+              if isinstance(catalog.get(key), (int, bool))}
+    reverse = context.get("reverse_locations", {}) if isinstance(context, Mapping) else {}
+    tiles = catalog.get("tiles")
+    if isinstance(tiles, list):
+        result["tiles"] = []
+        unresolved = 0
+        for row in tiles[:21]:
+            if not isinstance(row, Mapping):
+                continue
+            ref = reverse.get(row.get("tile_id"))
+            if not isinstance(ref, str):
+                unresolved += 1
+                continue
+            item = {"location_ref": ref, **{key: row[key] for key in ("worked", "assignable")
+                                           if isinstance(row.get(key), bool)}}
+            if isinstance(row.get("yields"), Mapping):
+                item["yields"] = {key: row["yields"][key] for key in ("nutrients", "minerals", "energy")
+                                  if isinstance(row["yields"].get(key), (int, float))}
+            result["tiles"].append(item)
+        result["unresolved_location_count"] = unresolved
+        result["tiles_omitted_for_bound"] = max(0, len(tiles) - 21)
+    for section, fields in (("specialists", ("name",)),
+                            ("available_specialist_types", ("name", "economy", "psych", "labs"))):
+        rows = catalog.get(section)
+        if isinstance(rows, list):
+            result[section] = [{key: (row[key][:160] if isinstance(row[key], str) else row[key])
+                                for key in fields if isinstance(row.get(key), (str, int, float))}
+                               for row in rows[:16] if isinstance(row, Mapping)]
+            result[section + "_omitted_for_bound"] = max(0, len(rows) - 16)
+    commands = {row.get("command") for row in catalog.get("choices", []) if isinstance(row, Mapping)}
+    if base_ref and commands & {"convert_worker_to_specialist", "assign_specialist_to_tile"}:
+        result["tile_reassignment"] = {
+            "method": "Free a worked tile by converting its worker to a temporary specialist, then assign that specialist to a tile.",
+            "next_query": {"tool": "smac_choices", "arguments": {"kind": "base_citizens", "base_ref": base_ref}},
+            "selection": "After conversion, requery and select an issued Assign specialist to tile choice. A Doctor can be the temporary intermediate; choosing it need not mean keeping a Doctor.",
+            "guard": "Each step changes allocation immediately. Future target availability is conditional until the fresh catalog issues it; recheck before ending the turn.",
+        }
+    return result
+
+
+def _citizen_choice_evidence(raw: Mapping[str, Any], catalog: Mapping[str, Any],
+                             context: Mapping[str, Any] | None) -> dict:
+    tile = next((row for row in catalog.get("tiles", []) if isinstance(row, Mapping)
+                 and row.get("tile_index") == raw.get("tile_index")), None)
+    if tile is None:
+        return {}
+    reverse = context.get("reverse_locations", {}) if isinstance(context, Mapping) else {}
+    ref = reverse.get(tile.get("tile_id"))
+    evidence = {"allocation_location_ref": ref} if isinstance(ref, str) else {}
+    if isinstance(tile.get("yields"), Mapping):
+        evidence["allocation_yields"] = {key: tile["yields"][key] for key in ("nutrients", "minerals", "energy")
+                                         if isinstance(tile["yields"].get(key), (int, float))}
+    if raw.get("command") == "convert_worker_to_specialist":
+        evidence["meaning"] = "Free this worked tile as a specialist; for tile reassignment, requery base_citizens afterward and assign the temporary specialist to a fresh legal tile."
+    return evidence
+
+
+def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
+    """Keep player-issued movement observations without exposing native slots.
+
+    These three addresses come from the guarded owned-unit action receipt,
+    not from a foreign entity lookup. New arrivals can lie outside the previous
+    projection, so a pre-action registry alone cannot translate the observation.
+    Entity slots remain excluded, especially after destruction/compaction.
+    """
+    locations: dict[int, str] = {}
+    def collect(value):
+        if isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, Mapping):
+            if value.get("command") == "move_unit":
+                for key in ("origin_tile_id", "target_tile_id", "observed_tile_id"):
+                    tile = value.get(key)
+                    if isinstance(tile, int) and not isinstance(tile, bool) and tile >= 0:
+                        locations[tile] = f"location-{tile}"
+            for item in value.values():
+                collect(item)
+    collect(receipt)
+    public = _semanticize_choice(receipt, {"reverse_locations": locations})
+    def explain(value):
+        if isinstance(value, list):
+            for item in value:
+                explain(item)
+        elif isinstance(value, dict):
+            for item in list(value.values()):
+                explain(item)
+            if value.get("command") != "move_unit" or value.get("status") not in {"completed", "rejected"}:
+                return
+            if not str(value.get("resolution", "")).startswith("native_move_"):
+                return  # Combat/consumption is not an arrival or survival claim.
+            origin, target, observed = (value.get(key) for key in
+                ("origin_location_ref", "target_location_ref", "observed_location_ref"))
+            observation = {"scope": "Native resolution receipt, not a guarantee of current unit state.",
+                           "meaning": "Completed means the native attempt resolved, not necessarily arrival. Refresh the decision; an unreported movement failure reason remains unknown."}
+            if isinstance(origin, str) and isinstance(observed, str):
+                observation["reported_position_changed"] = observed != origin
+            if isinstance(target, str) and isinstance(observed, str):
+                observation["requested_target_reported"] = observed == target
+            value["movement_observation"] = observation
+    explain(public)
+    return public
 
 
 def _choice_contains_private_selector(value: Any) -> bool:
@@ -1239,16 +1431,30 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "next": "Wait, observe last_deferred_action, and do not queue another command meanwhile.",
         }
     if action.get("status") == "rejected":
+        message = (
+            "The native end-turn command returned without accepting a turn transition. "
+            "The turn has not advanced and movement has not been renewed. "
+            "Obtain a fresh decision; do not keep waiting on this rejected receipt."
+            if action.get("resolution") == "native_turn_transition_not_accepted"
+            else "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt."
+        )
         return {
             "ok": False,
             "error": {
                 "code": "native_action_rejected",
-                "message": "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt.",
+                "message": message,
             },
             "command": result.get("command"),
             "execution": action,
         }
-    return {**result, "queued": False, "completed": True, "execution": action}
+    completion = {**result, "queued": False, "completed": True, "execution": action}
+    if action.get("resolution") == "native_combat_resolved":
+        completion["completion_semantics"] = (
+            "The native combat call resolved. Completion alone does not establish attacker survival, "
+            "enemy destruction, or arrival at the target. Inspect fresh owned-unit state and temporal "
+            "events before recording casualties or a successful objective."
+        )
+    return completion
 
 
 @mcp.tool(description="Report whether SMACX and its fair-play in-game bridge are connected, plus current menu/game state.")
@@ -1662,7 +1868,8 @@ def _compact_decision_state(snapshot: dict) -> dict:
         "economy_allocation": economy.get("allocation", {}),
         "research": {
             key: research.get(key)
-            for key in ("enabled", "blind", "tech_name", "priority", "progress_percent")
+            for key in ("enabled", "blind", "tech_name", "priority", "selected_priorities",
+                        "target_visibility", "priority_meaning", "progress_percent")
             if key in research
         },
         "protocol": {
@@ -1765,14 +1972,25 @@ def _settlement_rule_explains_request(required_action: str,
                  and "base" in str(item.get("meaning", "")).casefold()), None)
 
 
+def _attach_turn_boundary_notice(frame: dict) -> dict:
+    if any(choice.get("may_close_turn") for choice in frame.get("choices", [])):
+        frame["turn_boundary_notice"] = (
+            "Marked choices may start native turn processing immediately. "
+            "If you intend management this turn, do it before these choices."
+        )
+    return frame
+
+
 def _cache_decision_choices(identity: dict, choices: object, *,
                             choice_kind: str, choice_arguments: dict,
                             semantic_context: Mapping[str, Any] | None = None,
                             catalog_information: list[dict] | None = None,
+                            citizen_catalog: Mapping[str, Any] | None = None,
                             focus: dict | None = None,
                             turn: int | None = None,
                             year: int | None = None,
-                            phase: str = "") -> tuple[str, list[dict]]:
+                            phase: str = "",
+                            snapshot: Mapping[str, Any] | None = None) -> tuple[str, list[dict]]:
     """Bind model-visible opaque choices to exact native command payloads."""
     now = time.monotonic()
     decision_id = "decision-" + uuid.uuid4().hex
@@ -1841,6 +2059,10 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             if key.startswith("confirm_"):
                 item.pop(key, None)
         item["choice_id"] = choice_id
+        if snapshot is not None:
+            from smacx_intent import may_close_turn
+            if may_close_turn(action, snapshot, bound):
+                item["may_close_turn"] = True
         if action == "set_first_base_name" or isinstance(name_contract, dict):
             design_name = action == "create_unit_design"
             item["text_input"] = {
@@ -1851,6 +2073,10 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             }
             if action == "set_first_base_name" and raw.get("suggested_name"):
                 item["text_input"]["default"] = raw["suggested_name"]
+        if citizen_catalog is not None:
+            item.update(_citizen_choice_evidence(raw, citizen_catalog, semantic_context))
+            for key in ("tile_index", "citizen_id", "specialist_index"):
+                item.pop(key, None)
         label = _short_text(item.get("label") or action.replace("_", " ").capitalize(), 160)
         item["label"] = label
         public.append(item)
@@ -2212,7 +2438,13 @@ def smac_attention_ack(
             acknowledged_ids=acknowledged_ids or (),
         )
     except (AttentionError, ValueError, RuntimeError) as exc:
-        return {"ok": False, "error": str(exc)}
+        error = str(exc)
+        if error in {"attention_ack_scope_mismatch", "attention_ack_cursor_out_of_range",
+                     "attention_not_cognitively_responded"}:
+            return {"ok": False, "error": error, "acknowledged_ids": [],
+                    "required_next": {"tool": "smac_decision",
+                                      "reason": "Refresh current attention, review it, then acknowledge only its issued lease, IDs and attention cursor."}}
+        return {"ok": False, "error": error}
 
 
 @mcp.tool(
@@ -2542,6 +2774,7 @@ def smac_decision(
             identity, choices_result.get("choices", []), choice_kind=choice_kind,
             choice_arguments=choice_arguments, semantic_context=semantic_context, focus=focus,
             turn=snapshot.get("turn"), year=snapshot.get("year"), phase=phase,
+            snapshot=snapshot,
         )
         frame = {
             "ok": True, "kind": "decision_frame", "identity": identity,
@@ -2551,11 +2784,21 @@ def smac_decision(
             "required_next": {
                 "tool": "smac_execute_choice", "execute_at_most": 1,
                 "decision_id": decision_id,
-                "then": "Call smac_decision again; never reuse this frame.",
+                "then": "Follow the execution receipt's next step; never reuse this frame.",
             },
             "choices": public_choices,
             "information": _decision_information(choices_result.get("choices", []), semantic_context),
         }
+        if phase == "turn":
+            frame["choice_scope"] = {
+                "family": choice_kind,
+                "all_management_actions_enumerated": False,
+                "other_management_queries": {
+                    "tool": "smac_choices", "kinds": ["production", "base_citizens", "research"],
+                    "base_ref_required_for": ["production", "base_citizens"],
+                },
+                "meaning": "These are this frame's choices only. Query other families before concluding a management action is unavailable; their native legality is checked separately.",
+            }
         if any(row.get("command") in {"give_energy_gift", "propose_human_energy"}
                for row in choices_result.get("choices", ())):
             semantic_context = _semantic_selector_context(str(identity["revision"]))
@@ -2575,7 +2818,7 @@ def smac_decision(
         if detail == "full":
             frame["snapshot"] = snapshot
         return _attach_working_state(_attach_chat_attention(
-            _attach_briefing_status(frame, briefing), identity,
+            _attach_briefing_status(_attach_turn_boundary_notice(frame), briefing), identity,
         ), identity)
     return {
         "ok": False,
@@ -2609,7 +2852,7 @@ def smac_list(
     return _call("list_tiles", **arguments)
 
 
-@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. Select owned actors with own_unit_ref/base_ref and exact world targets with target_location_ref/target_unit_ref from the current perspective. Use returned preparation_ref and option_ref for staged selections; amount is accepted only by an advertised energy prompt. Native IDs and coordinates never cross this managed boundary.")
+@mcp.tool(description="Enumerate currently legal semantic choices and compact parameter constraints. production, base_management and base_citizens require an owned base_ref unless continuing a preparation. Select owned actors with own_unit_ref/base_ref and exact world targets with target_location_ref/target_unit_ref from the current perspective. Use returned preparation_ref and option_ref for staged selections; amount is accepted only by an advertised energy prompt. Native IDs and coordinates never cross this managed boundary.")
 def smac_choices(
     kind: Literal["interaction", "research", "energy_allocation", "social_engineering", "diplomacy", "council", "unit_design", "production", "base_management", "base_citizens", "unit_actions", "game_management"],
     base_ref: str = "",
@@ -2620,9 +2863,48 @@ def smac_choices(
     option_ref: str = "",
     amount: int | None = None,
 ) -> dict:
+    arguments = dict(kind=kind, base_ref=base_ref, own_unit_ref=own_unit_ref,
+        target_location_ref=target_location_ref, target_unit_ref=target_unit_ref,
+        preparation_ref=preparation_ref, option_ref=option_ref, amount=amount)
+    for attempt in range(2):
+        result = _smac_choices_once(**arguments)
+        error = result.get("error", {})
+        changing = (error.get("code") == "choice_frame_revision_changed" or
+            error.get("code") == "invalid_semantic_selector" and error.get("detail") in {
+                "semantic_reference_stale_revision", "semantic_reference_native_revision_changed"})
+        if not changing:
+            return result
+        # Enumeration is read-only. Refresh the complete join once when the
+        # native UI advanced between collection and snapshot. Never replay a
+        # staged preparation, whose continuation may already have advanced.
+        if attempt == 0 and not preparation_ref:
+            continue
+        return {**result, "native_action_executed": False,
+            "state_changed_during_enumeration": True,
+            "required_next": {"tool": "smac_choices", "kind": kind,
+                "reason": "Native state changed during enumeration; obtain a fresh frame and preparation."}}
+    raise AssertionError("unreachable choice enumeration")
+
+
+def _smac_choices_once(
+    kind: str, base_ref: str = "", own_unit_ref: str = "",
+    target_location_ref: str = "", target_unit_ref: str = "",
+    preparation_ref: str = "", option_ref: str = "", amount: int | None = None,
+) -> dict:
     authority = _sovereign_gameplay_gate("Native choice enumeration")
     if authority:
         return authority
+    base_kinds = {"production", "base_management", "base_citizens"}
+    if kind in base_kinds and not base_ref and not preparation_ref \
+            and not option_ref and amount is None:
+        return {"ok": False, "error": {
+            "code": "base_ref_required",
+            "message": "Choose a current owned base_ref, then repeat this query for that base.",
+        }, "native_action_executed": False,
+            "required_next": {"tool": "smac_choices", "kind": kind,
+                "required_arguments": ["base_ref"],
+                "reference_source": {"tool": "smac_world", "arguments": {
+                    "mode": "overview", "detail": "standard"}}}}
     if MANAGED_ATTACHED:
         refresh = _refresh_managed_world()
         if not refresh.get("ok"):
@@ -2659,6 +2941,12 @@ def smac_choices(
         }}
     result = _call("semantic_choices", kind=kind, **choice_arguments)
     if not result.get("ok"):
+        if kind in base_kinds and (result.get("error") or {}).get("code") == "invalid_base":
+            # Ownership can change after selector resolution. Keep the native
+            # failure code but recover through the public semantic surface.
+            return {**result, "error": {**result["error"],
+                "message": "The selected base_ref is no longer an available owned base. Refresh the world and choose a current owned base_ref."},
+                "required_next": {"tool": "smac_world", "mode": "overview"}}
         return result
     identity = {
         "match_id": result.get("match_id", ""),
@@ -2682,6 +2970,8 @@ def smac_choices(
         identity, raw_choices, choice_kind=kind,
         choice_arguments=choice_arguments, semantic_context=semantic_context,
         catalog_information=_decision_information(result.get("choices", []), semantic_context),
+        citizen_catalog=result if kind == "base_citizens" else None,
+        snapshot=snapshot,
     )
     frame = {
         "ok": True, "kind": "choice_frame", "decision_id": decision_id,
@@ -2692,6 +2982,10 @@ def smac_choices(
             "execute_at_most": 1,
         },
     }
+    if kind == "production":
+        frame["production_context"] = _production_catalog_context(result)
+    if kind == "base_citizens":
+        frame["citizen_context"] = _citizen_catalog_context(result, semantic_context, base_ref)
     if not prepared:
         preparations = CHOICE_PREPARATIONS.begin(
             result, identity=identity, context=semantic_context, kind=kind,
@@ -2706,11 +3000,50 @@ def smac_choices(
     )
     if advisories:
         frame["rule_advisories"] = advisories
-    return frame
+    return _attach_turn_boundary_notice(frame)
+
+
+def _turn_reconciliation_gate(command_arguments: dict) -> dict | None:
+    command = str(command_arguments["command"])
+    unit_id = int(command_arguments.get("unit_id", -1))
+    match_id = str(command_arguments["match_id"])
+    session_id = str(command_arguments["session_id"])
+    if MANAGED_ATTACHED and (unit_id >= 0 or command in {"end_turn", "skip_all_ready_units", "respond_to_end_turn_confirmation"}):
+        from smacx_intent import may_close_turn
+        observed = _call("semantic_snapshot")
+        snapshot = observed.get("snapshot", {})
+        if not observed.get("ok") or not isinstance(snapshot, dict):
+            return {"ok": False, "error": {"code": "intent_guard_observation_unavailable"}}
+        if may_close_turn(command, snapshot, command_arguments):
+            try:
+                _, _, agent, perspective = _managed_scope_identity()
+                reconciliation = current_turn_intents(match_id, session_id,
+                    agent_id=agent, perspective_id=perspective, turn=int(snapshot["turn"]))
+            except Exception as exc:
+                return {"ok": False, "error": {"code": "intent_reconciliation_unavailable",
+                        "detail": type(exc).__name__}}
+            _, attention = _runtime_services()
+            critical = attention.unacknowledged_critical()
+            if critical["items"]:
+                return {"ok": False, "kind": "turn_attention_reconciliation",
+                    "error": {"code": "critical_attention_requires_review"},
+                    "native_action_executed": False, "critical_attention": critical,
+                    "required_next": {"tool": "smac_attention_ack",
+                        "reason": "Consider the critical items in the next runtime context before acknowledging; acknowledgement is awareness, not resolution."}}
+            if reconciliation["total_pending"]:
+                return {"ok": False, "kind": "turn_intent_reconciliation",
+                    "error": {"code": "current_turn_intent_requires_review"},
+                    "native_action_executed": False, "identity": {
+                        "match_id": match_id, "session_id": session_id,
+                        "revision": snapshot.get("revision")},
+                    "reconciliation": reconciliation,
+                    "required_next": {"tool": "smac_memory_update",
+                        "reason": "Resolve, explicitly defer, cancel or mark blocked before an action that may close the turn."}}
+    return None
 
 
 def smac_command(
-    command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
+    command: Literal["acknowledge_popup", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
     session_id: str,
     expected_revision: str,
@@ -2900,6 +3233,9 @@ def smac_command(
         name=name,
         slot=slot,
     )
+    reconciliation_block = _turn_reconciliation_gate(command_arguments)
+    if reconciliation_block:
+        return reconciliation_block
     result = _call("semantic_command", **command_arguments)
     if result.get("error", {}).get("code") == "stale_state":
         refreshed = _fresh_unit_choice_for_stale_command(
@@ -2909,6 +3245,9 @@ def smac_command(
             fresh_revision = str(refreshed.get("revision", ""))
             if fresh_revision and fresh_revision != expected_revision:
                 command_arguments["expected_revision"] = fresh_revision
+                reconciliation_block = _turn_reconciliation_gate(command_arguments)
+                if reconciliation_block:
+                    return reconciliation_block
                 retried = _call("semantic_command", **command_arguments)
                 if retried.get("ok"):
                     result = {
@@ -3061,7 +3400,9 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
                 "native_action_executed": False, "execution_status": "not_dispatched",
                 "required_next": {"stop_after": True, "reason": "Operator recovery is required."}}
 
-    response = _execute_choice_once(decision_id, choice_id, text)
+    # Execution has already recorded its journal outcome. The provider uses
+    # the selected opaque choice; native entity slots are not public identity.
+    response = _public_execution_receipt(_execute_choice_once(decision_id, choice_id, text))
     error = response.get("error")
     code = error.get("code") if isinstance(error, dict) else error
     boundary_errors = {"unknown_decision", "expired_decision", "consumed_decision",
@@ -3205,12 +3546,26 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                 "required_next": {"tool": "smac_execute_choice", "decision_id": decision_id,
                                   "choice_id": choice_id},
             }
+        # Reconciliation is a pre-dispatch review, not a failed native attempt.
+        # Keep the choice available and exclude it from unchanged-action counts.
+        reconciliation_block = _turn_reconciliation_gate(
+            _command_payload(choice, dict(decision.get("identity") or {})))
+        if reconciliation_block:
+            return {**reconciliation_block, "decision_id": decision_id, "choice_id": choice_id,
+                    "execution_status": "review_required"}
         # A decision is single-use even when the native operation rejects it.
         # Recovery always starts from a fresh authoritative frame.
         decision["consumed"] = True
         identity = dict(decision.get("identity") or {})
         choice_label = str(decision.get("choice_labels", {}).get(choice_id) or "Selected choice")
 
+    from smacx_diagnostics import record as diagnostic_record, INVOCATION
+    diagnostic_record("choice_selected", {"choice": choice, "label": choice_label,
+        "focus_before": decision.get("focus"), "phase": decision.get("phase"),
+        "turn": decision.get("turn"), "identity": identity,
+        "offered_choice_labels": decision.get("choice_labels")},
+        correlation={"decision_id": decision_id, "choice_id": choice_id,
+                     "invocation_id": INVOCATION.get()})
     progress_key = (str(identity.get("match_id") or ""),
                     str(identity.get("session_id") or ""))
     semantic_key = _choice_semantic_key(choice)
@@ -3460,6 +3815,7 @@ def smac_saves(
 @mcp.tool(
     description=(
         "Read the authoritative, durable memory for exactly one match/agent/perspective. "
+        "To write, use smac_memory_update with the guard from smac_decision.identity; memory has no separate write revision. "
         "working_set returns bounded current facts, relationships, goals, plans, commitments, summaries, "
         "recent events, and chat. search uses a rebuildable scoped SQLite FTS5/BM25 projection. recall accepts a JSON array "
         "of up to 12 objects such as [{\"query\":\"western pact\",\"document_kinds\":[\"chat\",\"belief\"]}] "
@@ -3636,13 +3992,22 @@ def smac_investigate(
 @mcp.tool(
     description=(
         "Create or revise one structured, perspective-scoped memory record using a fresh snapshot guard. "
+        "Copy match_id and session_id from the latest smac_decision.identity, and set observed_revision to its revision. "
+        "This is the native snapshot guard, not a memory/database revision or journal hash. After state changes, obtain a fresh decision. "
         "record_json schemas: claim={topic,content,asserted_by_actor_id?,about_actor_id?,confidence?,status?,source_event_id?}; "
         "belief={topic,content,confidence,evidence?:[{event_id,stance,weight}]}; "
         "relationship={actor_id,affinity,trust,respect,threat,grievance,obligation,confidence,reasons:[...],source_event_id?}; "
         "commitment={commitment_key,title,terms,status,parties?:[{actor_id,role}],due_turn?,due_year?,source_event_id?,resolution_event_id?}; "
         "goal={goal_key?,title,description,priority,status,due_turn?,due_year?,trigger?,parent_goal_id?,source_event_id?}; "
         "plan={plan_key,title,objective,status,target_refs?,participants?,timing?,dependencies?,intended_role?,contingencies?,last_confirmation?,linked_commitments?,contradictory_evidence?}; "
+        f"Record status values: {'; '.join(name + '=' + '|'.join(values) for name, values in MEMORY_STATUS_VALUES.items())}. "
+        "Use objective for the intended outcome. Bind concrete actors/bases with target_refs and "
+        "participants [{ref,intended_role?,target_ref?,exclusive?,production_item?,energy_credits?,timing?}]; "
+        "reservation timing uses {start_turn,end_turn}. Abstract plans may omit bindings, but prose "
+        "does not create assignments or dependency checks. Consult current world evidence for present facts. "
         "summary={section,content,through_event_id?}, where section is situation, relationships, goals, plans, commitments, recent_events, or chat. "
+        "Goal trigger / plan timing may include intent_horizon: this_turn_required, this_turn_preferred, next_opportunity, persistent_goal, monitor or backlog. "
+        "Current-turn intent is reviewed before possible turn closure; intentional deferral/blocking uses reconciliation={turn,disposition:deferred|blocked,reason}. Preserve other fields when revising. "
         "Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
         "Actor and event references are mechanically restricted to this same fair-play perspective."
     )
@@ -3730,6 +4095,28 @@ def smac_notebook(
     )
 
 
+def _wait_response(observation: dict, *, changed: bool) -> dict:
+    semantic = _call("semantic_snapshot")
+    if not semantic.get("ok"):
+        return {**semantic, "wait_stage": "semantic_observation",
+                "instruction": "STOP issuing gameplay actions. The native game bridge is unavailable; wait for platform recovery or operator attention."}
+    snapshot = semantic.get("snapshot", {})
+    protocol = snapshot.get("protocol", {})
+    interaction = snapshot.get("interaction", {})
+    phase = protocol.get("phase")
+    result = {
+        "ok": True, "changed": changed, "observation": observation,
+        "gameplay": {"turn": snapshot.get("turn"), "phase": phase,
+                     "interaction_kind": interaction.get("kind"),
+                     "popup_label": interaction.get("popup_label"),
+                     "required_action": protocol.get("required_action")},
+        "required_next": {"tool": "smac_wait" if phase == "wait" else "smac_decision",
+                          "reason": "Native processing is still pending." if phase == "wait" else
+                          "Obtain a fresh decision now. A blocking interaction or actionable turn requires a decision, not further waiting."},
+    }
+    return _attach_chat_attention(result, snapshot)
+
+
 @mcp.tool(description="Wait briefly for the game state to change, then return a fresh observation. Maximum 30 seconds.")
 def smac_wait(seconds: int = 2) -> dict:
     seconds = min(max(seconds, 0), 30)
@@ -3743,6 +4130,10 @@ def smac_wait(seconds: int = 2) -> dict:
                 "wait for platform recovery or operator attention."
             ),
         }
+    if before.get("observation", {}).get("ui", {}).get("modal") is True:
+        result = _wait_response(before, changed=False)
+        if not result.get("ok") or result.get("gameplay", {}).get("phase") != "wait":
+            return result
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         time.sleep(0.25)
@@ -3757,10 +4148,7 @@ def smac_wait(seconds: int = 2) -> dict:
                 ),
             }
         if after != before:
-            result = {"ok": True, "changed": True, "observation": after}
-            status = _call("status")
-            identity = status.get("identity", {}) if isinstance(status, dict) else {}
-            return _attach_chat_attention(result, identity if isinstance(identity, dict) else {})
+            return _wait_response(after, changed=True)
     final = _call("observe")
     if not final.get("ok"):
         return {
@@ -3771,10 +4159,7 @@ def smac_wait(seconds: int = 2) -> dict:
                 "wait for platform recovery or operator attention."
             ),
         }
-    result = {"ok": True, "changed": False, "observation": final}
-    status = _call("status")
-    identity = status.get("identity", {}) if isinstance(status, dict) else {}
-    return _attach_chat_attention(result, identity if isinstance(identity, dict) else {})
+    return _wait_response(final, changed=False)
 
 
 @mcp.tool(description="Report one missing semantic capability to the bridge developer and stop play. Do not attempt a UI workaround after calling this.")

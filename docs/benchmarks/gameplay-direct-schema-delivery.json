@@ -1,0 +1,47 @@
+{
+  "trigger": "Repeated guessed parameters after episode resume; prior tool_describe results removed with historical tool protocol",
+  "change": "Disable deferred discovery for the bounded sovereign catalog; explicitly allowlist15 gameplay tools,9 communication tools; exclude resource/prompt helpers",
+  "validation": {
+    "real_Hermes_provider_capture": "pass: exact15/9 direct schemas, initial and resumed; direct call reaches MCP and returns negative guard receipt; unknown rejection; truncated continuation; unchanged provider generation parameters",
+    "context_GC": [
+      "legacy dispatch:1074282->13198 proxy tokens",
+      "direct gameplay:1069407->13120 proxy tokens",
+      "direct communication:1071157->13148 proxy tokens"
+    ],
+    "profile_and_manager_contracts": "pass",
+    "doctrine_and_strict_prompt": "pass",
+    "serialized_MCP_schema_exact_Qwen_tokens": 4479,
+    "serialized_MCP_schema_conservative_proxy": 7012,
+    "schema_reserve": 8192,
+    "operating_prompt_same_budget_fixture_exact_Qwen_tokens": {
+      "before": 1351,
+      "after": 1338
+    }
+  },
+  "limitations": [
+    "Schema token figure measures serialized MCP schemas, not the providers chat template overhead",
+    "No additional gameplay authority or tools",
+    "Live schema delivery verified; sustained error-rate and autonomous cognition-use checks remain open",
+    "Historical wrappers remain supported for GC only; new requests expose direct names"
+  ],
+  "deployed": {
+    "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+    "run_id": "run-b7129c212ee3449587e045edc99a7eff",
+    "restored_checkpoint": "checkpoint-c9ac309d4b1a4d15acf113fbc103476b",
+    "turn": 16,
+    "provider_request_id": "cc34561a7c664219add35dbe69f3cce4",
+    "tool_count": 15,
+    "namespaces": [
+      "mcp__smacx__"
+    ],
+    "resource_prompt_discovery_helpers": 0,
+    "approved_and_wire_system_sha256": "78456966b3c07d5aec25e18f30f8d15f2d7afa6dabe74f8ad452a3f79310d4f4",
+    "runtime_session_id": "session-c6d879ca28a74e3086eb6cecdef624ea",
+    "observed_calls": [
+      "smac_decision",
+      "smac_attention_ack",
+      "smac_choices(kind=production)"
+    ],
+    "control_image": "sha256:151e0e4111587df69a7d6f666160c9ad500be29512f0092f5dde825f3d730f9c"
+  }
+}

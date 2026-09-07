@@ -1,0 +1,54 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "observed_turn": 121,
+  "classification": "Automation mode hides selected native task; repeated assignments do not prove work or completion. Cause of native automation clearing remains undetermined.",
+  "baseline": {
+    "owned_formers": 4,
+    "selected_native_tasks": [
+      "mine",
+      "farm"
+    ],
+    "no_selected_terraform_order": 2,
+    "provider_order_names_mask_active_task": true,
+    "sovereign_turn120_handoff": "Describes four Formers as terraforming after reassigning two idle Formers; no independent completion evidence provided.",
+    "previous_air_state_fix": "Preserved; work counters are not aircraft fuel.",
+    "temporal_limit": "Handoff120 and native121 are adjacent observations; they do not establish that the handoff was false at its exact instant."
+  },
+  "repair": {
+    "owned_terraform_task": "State, automation flag, semantic order kind, and active task name/work points; completion not inferred.",
+    "runtime_force_summary": "Current active task counts separate from no-active-task and missing/stale counts; automation counts remain separate.",
+    "receipt": "Explicit terraform_completion_verified=false and fresh task inspection guidance.",
+    "human_trace": "Retains task state and receipt qualifier.",
+    "native_orders_and_ai_policy": "unchanged",
+    "forecast": "No ETA or completion prediction added."
+  },
+  "tests": {
+    "compiled_native_output_helper": "pass",
+    "current_stale_foreign_summary_cases": "pass",
+    "air_state_regression": "pass",
+    "runtime_context_contract": "pass",
+    "fair_play_contract": "pass",
+    "managed_action_adapter_contract": "pass",
+    "native_cross_build": "pass"
+  },
+  "runtime_context_bounds": {
+    "64k_tokens": 5152,
+    "256k_tokens": 8521,
+    "huge_chaotic_256k_tokens": 25997
+  },
+  "maintenance": {
+    "initial_checkpoint_refusal": "HTTP409 during native BEGINPROJECT popup; guard preserved.",
+    "serialized_sovereign_resolved_popup_run": "run-b668d41b5c424915a89319a53f22632c",
+    "stopped_at_stable_turn": 121,
+    "verified_checkpoint": "checkpoint-a46a572f894f4ac6afa29f02538cb0f8"
+  },
+  "engine_source_sha256": "82f5510557dd2a769d0701f4e6c06549ae753b6ebfff33d04d76bb4036958b24",
+  "remaining": [
+    "Deployed native/provider facade comparison and recovery.",
+    "Actual next-provider summary and receipt delivery.",
+    "Sovereign follow-through and useful task effects; assignment is not completion.",
+    "Full game unfinished."
+  ],
+  "validation_scope": "Information-only native serialization and receipt addition, current-only summary, logging. Prior aircraft-state full native/MCP run remains separate evidence, not a rerun of this build; fresh deployment/native comparison is required."
+}

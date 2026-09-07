@@ -60,7 +60,7 @@ NATIVE_RESOLUTION_PROFILES: dict[str, tuple[int, int]] = {
     "5120x1440": (5120, 1440),
 }
 
-HERMES_CHECKPOINT_SCRIPT = r'''import io,json,os,pathlib,sqlite3,tarfile,tempfile
+HERMES_CHECKPOINT_SCRIPT = r'''import io,json,os,pathlib,shutil,sqlite3,tarfile,tempfile
 profile=os.environ["SMACX_HERMES_PROFILE_ID"]
 match_id=os.environ["SMACX_MATCH_ID"]
 target=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ["SMACX_CHECKPOINT_RELATIVE"]
@@ -70,7 +70,21 @@ session_ids=[]
 with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
     stable=pathlib.Path(temporary)/"state.db"
     if present:
-        origin=sqlite3.connect(f"file:{source}?mode=ro",uri=True)
+        # The checkpoint manager has frozen/stopped the match-bound writer.
+        # A cleanly closed WAL database has no -wal/-shm files, so SQLite
+        # cannot open it directly on our read-only mount. Copy the quiescent
+        # durable files together; rebuild transient SQLite metadata privately.
+        # Never omit a retained WAL or hot rollback journal, or mutate source.
+        files=[source,pathlib.Path(str(source)+"-wal"),pathlib.Path(str(source)+"-journal")]
+        def signatures():
+            return [(p.name,p.stat().st_size,p.stat().st_mtime_ns) if p.exists() else (p.name,None,None) for p in files]
+        before=signatures()
+        staging=pathlib.Path(temporary)/"source"
+        staging.mkdir()
+        for p in files:
+            if p.exists(): shutil.copyfile(p,staging/p.name)
+        if signatures()!=before: raise RuntimeError("hermes_checkpoint_source_changed")
+        origin=sqlite3.connect(staging/"state.db")
         destination=sqlite3.connect(stable)
         try: origin.backup(destination)
         finally: destination.close();origin.close()
@@ -97,7 +111,8 @@ with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
             if "system_prompts" in tables:
                 copied.execute("DELETE FROM system_prompts WHERE hash NOT IN (SELECT system_prompt_hash FROM sessions WHERE system_prompt_hash IS NOT NULL)")
             copied.commit();copied.execute("VACUUM")
-        except sqlite3.Error: session_ids=[]
+        except sqlite3.Error as exc:
+            raise RuntimeError("hermes_checkpoint_session_filter_failed") from exc
         finally: copied.close()
     manifest={"schema":"smacx.hermes-checkpoint.v2","profile_id":profile,"match_id":match_id,"database_present":present,"session_ids":session_ids}
     with tarfile.open(target,"w:gz",compresslevel=6) as archive:
@@ -259,6 +274,9 @@ def _semantic_progress_fingerprint(snapshot: Mapping[str, Any]) -> str:
         # Attempt IDs, targets and even a reported completion are not evidence
         # of a gameplay effect. Effects must appear in the observed state.
         "last_deferred_action",
+        # End-turn instrumentation records dispatch/latch state, not effects.
+        "base_window_visible", "native_turn_complete_flag", "native_human_turn_input_active", "end_turn_timer_queued",
+        "end_turn_native_returned", "end_turn_receipt_pending",
     }
 
     def stable(value: Any) -> Any:
@@ -572,20 +590,27 @@ class WorkerManager:
             if not target.is_file() or self._file_sha256(target) != snapshot.get(
                     "archive_sha256"):
                 raise WorkerManagerError("hermes_checkpoint_integrity_failure")
-            outcome = self._run_checkpoint_helper(
-                "hermes-restore", f"{harness_profile_id}-{uuid.uuid4().hex}",
-                image=self.mcp_image, script=HERMES_RESTORE_SCRIPT,
-                environment=[
-                    f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
-                    f"SMACX_MATCH_ID={match_id}",
-                    f"SMACX_CHECKPOINT_RELATIVE={relative}",
-                ], user="10000:10001",
-                mounts=[
-                    {"Type": "volume", "Source": self.control_data_volume,
-                     "Target": "/control", "ReadOnly": True},
-                    {"Type": "volume", "Source": volume, "Target": "/target"},
-                ],
-            )
+            # Checkpoints are sealed 0600 under the control uid. The restore
+            # helper runs as the Hermes uid with only the shared control group;
+            # grant read (never write) for its lifetime, then reseal even on failure.
+            os.chmod(target, 0o640)
+            try:
+                outcome = self._run_checkpoint_helper(
+                    "hermes-restore", f"{harness_profile_id}-{uuid.uuid4().hex}",
+                    image=self.mcp_image, script=HERMES_RESTORE_SCRIPT,
+                    environment=[
+                        f"SMACX_HERMES_PROFILE_ID={external_profile_id}",
+                        f"SMACX_MATCH_ID={match_id}",
+                        f"SMACX_CHECKPOINT_RELATIVE={relative}",
+                    ], user="10000:10001",
+                    mounts=[
+                        {"Type": "volume", "Source": self.control_data_volume,
+                         "Target": "/control", "ReadOnly": True},
+                        {"Type": "volume", "Source": volume, "Target": "/target"},
+                    ],
+                )
+            finally:
+                os.chmod(target, 0o600)
             restored.append({
                 "harness_profile_id": harness_profile_id,
                 "database_present": outcome.get("database_present") is True,
@@ -593,6 +618,7 @@ class WorkerManager:
         return restored
 
     def _cleanup_recovery_snapshots(self, match_id: str, keep_checkpoint_id: str) -> int:
+        WorldStore(self.store).release_obsolete_checkpoint_pins(match_id, keep_checkpoint_id)
         root = self.store.path.parent / "recovery-snapshots" / match_id
         if not root.is_dir():
             return 0
@@ -1609,11 +1635,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return {"ok": True, "match": updated, "seat_index": int(seat_index),
                 "instance_id": seat["instance_id"]}
 
-    def start_worker(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+    def start_worker(self, instance_id: str, *, timeout: float = 240.0,
+                     _defer_ready: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
-            return self._start_worker_locked(instance_id, timeout=timeout)
+            return self._start_worker_locked(
+                instance_id, timeout=timeout, _defer_ready=_defer_ready)
 
-    def _start_worker_locked(self, instance_id: str, *, timeout: float = 240.0) -> dict[str, Any]:
+    def _start_worker_locked(self, instance_id: str, *, timeout: float = 240.0,
+                             _defer_ready: bool = False) -> dict[str, Any]:
         spec = self.control.get_worker_spec(instance_id)
         source = self.control.get_game_source(spec["game_source_id"])
         runtime = self.control.get_runtime(spec["runtime_id"])
@@ -1755,7 +1784,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
             mcp_endpoint = (
                 self.start_mcp_sidecar(instance_id)
-                if self.control_data_volume
+                if not _defer_ready and self.control_data_volume
                 and spec["network"].get("controller_kind", "agent") == "agent"
                 else None
             )
@@ -2404,20 +2433,20 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,
-                        timeout: float = 420.0) -> dict[str, Any]:
+                        timeout: float = 420.0, _defer_ready: bool = False) -> dict[str, Any]:
         # The whole paired transition is atomic with recovery and parking,
         # including the interval between starting the host and joining peers.
         with self._lifecycle_lock:
             return self._start_lan_match_locked(
                 match_id, session_name=session_name, profile=profile,
                 resume_slot=resume_slot, scenario_id=scenario_id,
-                game_settings=game_settings, timeout=timeout)
+                game_settings=game_settings, timeout=timeout, _defer_ready=_defer_ready)
 
     def _start_lan_match_locked(self, match_id: str, *, session_name: str | None = None,
                         profile: str = "small_easy", resume_slot: str | None = None,
                         scenario_id: str | None = None,
                         game_settings: Mapping[str, Any] | None = None,
-                        timeout: float = 420.0) -> dict[str, Any]:
+                        timeout: float = 420.0, _defer_ready: bool = False) -> dict[str, Any]:
         match = self.control.get_match(match_id)
         if session_name is None:
             session_name = str(
@@ -2522,7 +2551,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         autostart["lan_scenario_id"] = scenario_context_id
                     self.control.update_worker_autostart(instance_id, autostart)
                 remaining = max(30.0, deadline - time.monotonic())
-                self.start_worker(instance_id, timeout=min(remaining, 300.0))
+                self.start_worker(instance_id, timeout=min(remaining, 300.0),
+                                  **({"_defer_ready": True} if _defer_ready else {}))
             host_player_name = str(
                 host.get("metadata", {}).get("external_player_name")
                 or self._managed_lan_player_name(int(host["seat_index"]), host)
@@ -3065,7 +3095,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "lifecycle": game["lifecycle"],
                 })
             match = self.control.update_match_lifecycle(
-                match_id, "running", host_instance_id=host_instance,
+                match_id, "starting" if _defer_ready else "running",
+                host_instance_id=host_instance,
                 metadata={"network_session_id": network_session_id,
                           "participant_count": len(managed_seats) + len(external_human_seats),
                           "delegated_native_ai_seats": [
@@ -3719,6 +3750,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         journal_head_hash=str(event["event_hash"]),
                         journal_sequence=int(event["sequence"]),
                         calculator_versions={"world": CALCULATOR_VERSION},
+                        pin_owner=("checkpoint", checkpoint_id),
                     ))
             checkpoint["campaign_journal"] = journal_checkpoints
             checkpoint["world_snapshots"] = world_snapshots
@@ -3893,6 +3925,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         )
                 except (ValueError, WorldStoreError) as exc:
                     raise WorkerManagerError("world_snapshot_checkpoint_mismatch") from exc
+                # Adopt still-present pre-pin checkpoints before timeline GC.
+                # Missing or mismatched content remains a hard failure above.
+                WorldStore(self.store).pin_snapshot(snapshot_id, "checkpoint", checkpoint_id)
             fork = self.journal.fork_timeline(
                 scope, timeline_id, native_save_sha256=native_digest,
                 from_event_hash=head_hash, parent_timeline_id=parent_timeline,
@@ -4074,7 +4109,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "lan_session_name", "SMACX Managed LAN"
                 )),
                 profile=recovery_profile,
-                resume_slot=slot,
+                resume_slot=slot, _defer_ready=True,
             )
         elif match["mode"] == "singleplayer":
             instance_id = str(host_seat.get("instance_id") or "")
@@ -4085,7 +4120,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             autostart["enabled"] = False
             autostart["startup_save"] = slot
             self.control.update_worker_autostart(instance_id, autostart)
-            started = self.start_worker(instance_id)
+            started = self.start_worker(instance_id, _defer_ready=True)
             loaded = self._wait_native(
                 instance_id, "semantic_snapshot",
                 lambda value: value.get("ok") is True
@@ -4094,8 +4129,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 timeout=120.0, context="solo_recovery",
             )
             running = self.control.update_match_lifecycle(
-                match_id, "running", host_instance_id=instance_id,
-                metadata={"recovery_required": False, "last_recovered_unix": time.time(),
+                match_id, "starting", host_instance_id=instance_id,
+                metadata={"recovery_required": True, "last_recovered_unix": time.time(),
                           "last_recovered_slot": slot},
             )
             result = {"ok": True, "match": running, "worker": started,
@@ -4130,7 +4165,24 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "instance_id": instance_id,
                 "handle_count": response.get("handle_count"),
             })
-        self.control.update_match_lifecycle(
+        # A collector publishes durable observations immediately on startup.
+        # Keep every sidecar absent until ALL native identity capsules have
+        # been restored; otherwise temporary handles become false deaths/births.
+        restored_mcp = []
+        for seat in seats:
+            instance_id = seat.get("instance_id")
+            if not isinstance(instance_id, str) or not instance_id:
+                continue
+            if seat.get("metadata", {}).get("delegation_status") == "active":
+                continue
+            spec = self.control.get_worker_spec(instance_id)
+            if self.control_data_volume and spec["network"].get("controller_kind", "agent") == "agent":
+                endpoint = self.start_mcp_sidecar(instance_id)
+                restored_mcp.append(endpoint)
+                if result.get("worker", {}).get("instance_id") == instance_id:
+                    result["worker"]["mcp"] = endpoint
+        result["restored_mcp_endpoints"] = restored_mcp
+        result["match"] = self.control.update_match_lifecycle(
             match_id, "running", metadata={"recovery_required": False,
                                            "incident_quarantine": {},
                                            "last_recovered_unix": time.time(),
@@ -4262,6 +4314,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "Env": [
                 "HOME=/tmp",
                 "SMACX_MANAGED_ATTACHED=1",
+                "SMACX_DIAGNOSTICS_ENABLED=1",
+                "SMACX_DIAGNOSTICS_ROOT=/var/lib/smacx/gameplay-diagnostics",
                 f"SMACX_BRIDGE_HOST={bridge_host}",
                 "SMACX_BRIDGE_PORT=47814",
                 "SMACX_AGENT_TOKEN_FILE=/run/secrets/bridge-token",

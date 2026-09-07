@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
+import traceback
+from pathlib import Path
 import threading
 import time
 from typing import Any, Callable, Mapping
@@ -38,8 +41,23 @@ def _delta_attention(delta: Mapping[str, Any]) -> tuple[bool, int] | None:
     fields = current.get("fields") if isinstance(current.get("fields"), Mapping) else {}
     values = {name: item.get("value") for name, item in fields.items()
               if isinstance(item, Mapping)}
+    if kind == "ecology_state":
+        state = values.get("state")
+        previous = delta.get("previous")
+        prior_state = _field_value(previous, "state") if isinstance(previous, Mapping) else None
+        if isinstance(state, Mapping) and isinstance(prior_state, Mapping):
+            duration, prior_duration = state.get("sunspot_duration"), prior_state.get("sunspot_duration")
+            if type(duration) is int and type(prior_duration) is int:
+                # gameturn.cpp decrements this counter even while inactive
+                # (negative). Countdowns do not imply a new ecology incident.
+                # Preserve starts/ends and every other state-field change.
+                material = {key: value for key, value in state.items() if key != "sunspot_duration"}
+                prior_material = {key: value for key, value in prior_state.items() if key != "sunspot_duration"}
+                if material == prior_material and (duration > 0) == (prior_duration > 0):
+                    return None
+        return True, 95
     if kind in {"victory", "victory_state", "victory_posture", "global_event",
-                "council_state", "ecology_state", "planetary_state"}:
+                "council_state", "planetary_state"}:
         return True, 95
     if kind == "foreign_contact":
         return True, 90
@@ -106,6 +124,7 @@ def _provider_safe_temporal_events(
 ) -> list[dict[str, Any]]:
     """Convert observed transitions into semantic history with no native identity."""
     events = [dict(item) for item in projected if isinstance(item, Mapping)]
+    discovered_count, discovered_refs, discovered_features = 0, [], {}
     for delta in deltas:
         current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
         previous = delta.get("previous") if isinstance(delta.get("previous"), Mapping) else {}
@@ -131,12 +150,40 @@ def _provider_safe_temporal_events(
             prior_hp, current_hp = _field_value(previous, "hp"), _field_value(current, "hp")
             if isinstance(prior_hp, (int, float)) and isinstance(current_hp, (int, float)) \
                     and current_hp < prior_hp:
+                # A snapshot interval can cover several native damage steps.
+                # Do not present its net change as another occurrence when the
+                # ordered native evidence already accounts for the whole interval.
+                steps = [event for event in projected
+                         if isinstance(event, Mapping)
+                         and event.get("event_kind") == "contact_damaged"
+                         and event.get("contact_ref") == object_ref
+                         and event.get("turn") == turn]
+                hp = prior_hp
+                complete_chain = bool(steps)
+                for step in steps:
+                    before, after = step.get("observed_hp_before"), step.get("observed_hp_after")
+                    if before != hp or type(after) not in (int, float) or after >= hp:
+                        complete_chain = False
+                        break
+                    hp = after
+                if complete_chain and hp == current_hp:
+                    continue
                 events.append({
                     "event_kind": "contact_damaged", "contact_ref": object_ref,
+                    "evidence_kind": "snapshot_interval_change",
+                    "aggregation_semantics": "Net observed HP change across this snapshot interval; may overlap native damage occurrences and must not be added to them.",
                     "location_ref": current.get("location_ref"),
                     "observed_hp_before": prior_hp, "observed_hp_after": current_hp,
                     "turn": turn,
                 })
+        elif kind == "location" and change == "appeared":
+            discovered_count += 1
+            if len(discovered_refs) < 8: discovered_refs.append(object_ref)
+            feature_field = current.get("fields", {}).get("features", {})
+            freshness = feature_field.get("epistemic_status", "unknown")
+            for feature in feature_field.get("value", ()) or ():
+                key = str(feature) + ":" + str(freshness)
+                discovered_features[key] = discovered_features.get(key, 0) + 1
         elif kind == "location" and change == "changed":
             changed_fields = [name for name in ("terrain", "features", "owner_ref")
                               if _field_value(current, name) != _field_value(previous, name)]
@@ -145,6 +192,11 @@ def _provider_safe_temporal_events(
                     "event_kind": "terrain_or_improvement_changed",
                     "location_ref": object_ref, "changed_fields": changed_fields,
                     "turn": turn,
+                    "change_basis": "observed_values_changed" if all(
+                        previous.get("fields", {}).get(name, {}).get("epistemic_status") == "current"
+                        and current.get("fields", {}).get(name, {}).get("epistemic_status") == "current"
+                        for name in changed_fields) else "knowledge_refresh",
+                    "cause": "not_determined", "occurrence_time": "between_observations",
                 })
         elif kind in {
             "game_settings", "scenario_rules", "council_state", "victory_state",
@@ -163,6 +215,11 @@ def _provider_safe_temporal_events(
                 "changed_fields": changed_fields[:32],
                 "turn": turn,
             })
+    if discovered_count:
+        events.append({"event_kind": "known_extent_increased", "turn": turn,
+            "newly_known_location_count": discovered_count, "sample_location_refs": discovered_refs,
+            "newly_known_features_by_freshness": dict(sorted(discovered_features.items())[:32]),
+            "change_basis": "new_to_perspective", "physical_creation_inferred": False})
     # Exact duplicates can arise when an appearance also has an ordinary
     # projection delta.  Keep one deterministic semantic occurrence.
     unique: dict[str, dict[str, Any]] = {}
@@ -223,20 +280,55 @@ class ObservationCollector:
             handle = payload.get("subject_a")
             key = f"vehicle-handle-{handle}" if isinstance(handle, int) else ""
             if kind == "visible_unit_moved" and payload.get("continuous_visibility") \
-                    and isinstance(payload.get("from_tile_id"), int) \
-                    and isinstance(payload.get("to_tile_id"), int):
+                    and type(payload.get("from_tile_id")) is int and payload["from_tile_id"] >= 0 \
+                    and type(payload.get("to_tile_id")) is int and payload["to_tile_id"] >= 0:
                 self._continuous_contact_moves.setdefault(key, []).append({
                     "from": f"location-{payload['from_tile_id']}",
                     "to": f"location-{payload['to_tile_id']}",
                     "native_sequence": payload["native_sequence"],
                     "relationship_at_occurrence": payload.get("relationship_at_occurrence", "unknown"),
                 })
+            elif kind == "visible_unit_moved" and key:
+                # An unavailable native endpoint is not a continuous route proof.
+                self._continuous_contact_moves.pop(key, None)
             elif kind in {"visible_unit_lost", "visible_unit_destroyed"} and key:
                 self._continuous_contact_moves.pop(key, None)
             elif kind == "contact_identity_reset":
                 self._continuous_contact_moves.clear()
                 self._contact_identity_reset = True
         return stage
+
+    def _native_contact_evidence(self) -> dict[str, Any]:
+        """Private correlation facts rebuilt from the durable feed stage."""
+        return {
+            "_continuous_visible_contact_moves": {
+                key: list(value) for key, value in self._continuous_contact_moves.items()
+            },
+            "_contact_identity_reset": self._contact_identity_reset,
+            "_broken_contact_handles": sorted({
+                f"vehicle-handle-{item['subject_a']}"
+                for item in self._pending_native_events
+                if (item.get("native_kind") == "visible_unit_lost"
+                    or (item.get("native_kind") == "visible_unit_moved"
+                        and (item.get("continuous_visibility") is not True
+                             or any(type(item.get(field)) is not int or item[field] < 0
+                                    for field in ("from_tile_id", "to_tile_id")))))
+                and isinstance(item.get("subject_a"), int)
+            }),
+            "_confirmed_destroyed_handles": sorted({
+                f"vehicle-handle-{item['subject_a']}"
+                for item in self._pending_native_events
+                if item.get("native_kind") == "visible_unit_destroyed"
+                and isinstance(item.get("subject_a"), int)
+            }),
+        }
+
+    def _snapshot_matches_feed_cut(self, bundle: Mapping[str, Any]) -> bool:
+        probe = self._bridge("observation_feed", after_sequence=self.native_after_sequence, limit=1)
+        return (probe.get("ok") is True and not probe.get("events")
+                and not probe.get("has_more") and probe.get("continuity") == "complete"
+                and int(probe.get("next_sequence", -1)) == self.native_after_sequence
+                and str(probe.get("action_revision") or "") == str(bundle.get("action_revision") or ""))
 
     def _bridge(self, operation: str, **kwargs: Any) -> dict[str, Any]:
         self._collection_metrics["bridge_calls"] = int(
@@ -430,22 +522,7 @@ class ObservationCollector:
             "action_revision": revision, "map": summary.get("map", {}),
             "own_faction_ref": f"faction-{summary.get('faction_id')}",
             "global": global_objects, **collected,
-            "_continuous_visible_contact_moves": {
-                key: list(value) for key, value in self._continuous_contact_moves.items()
-            },
-            "_contact_identity_reset": self._contact_identity_reset,
-            "_broken_contact_handles": sorted({
-                f"vehicle-handle-{item['subject_a']}"
-                for item in self._pending_native_events
-                if item.get("native_kind") == "visible_unit_lost"
-                and isinstance(item.get("subject_a"), int)
-            }),
-            "_confirmed_destroyed_handles": sorted({
-                f"vehicle-handle-{item['subject_a']}"
-                for item in self._pending_native_events
-                if item.get("native_kind") == "visible_unit_destroyed"
-                and isinstance(item.get("subject_a"), int)
-            }),
+            **self._native_contact_evidence(),
         }
         # All native rows are already perspective-filtered.  The explicit
         # entitlement pass is retained as an independently testable boundary
@@ -727,6 +804,23 @@ class ObservationCollector:
                 if handle_key in broken_handles and unit_ref == prior_handle_to_ref.get(handle_key):
                     continue
                 own = ref_kinds.get(unit_ref) == "own_unit"
+                before, after = raw.get("from_tile_id"), raw.get("to_tile_id")
+                if not (type(before) is int and before >= 0
+                        and type(after) is int and after >= 0):
+                    # Native transient coordinates can be sentinel -1 even
+                    # while its visibility bit remains set. Preserve the gap,
+                    # never publish a fabricated location or continuous path.
+                    events.append({
+                        "event_kind": "movement_observation_incomplete",
+                        ("unit_ref" if own else "contact_ref"): unit_ref,
+                        "turn": raw.get("turn", turn),
+                        "from_location_ref": f"location-{before}" if type(before) is int and before >= 0 else None,
+                        "to_location_ref": f"location-{after}" if type(after) is int and after >= 0 else None,
+                        "reason": "native_endpoint_unavailable",
+                        "continuous_visibility": False,
+                        "outcome": "not_established",
+                    })
+                    continue
                 row = move_by_contact.setdefault(unit_ref, {
                     "event_kind": "unit_moved" if own else "contact_moved",
                     ("unit_ref" if own else "contact_ref"): unit_ref,
@@ -838,6 +932,8 @@ class ObservationCollector:
             elif kind == "known_tile_changed" and location:
                 events.append({"event_kind": "terrain_or_improvement_changed",
                                "location_ref": location,
+                               "change_basis": "known_tile_cache_changed",
+                               "cause": "not_determined",
                                "turn": raw.get("turn", turn)})
             elif kind == "known_tile_visibility" and location:
                 events.append({"event_kind": "visibility_changed",
@@ -1056,6 +1152,17 @@ class ObservationCollector:
                 for values in attention_groups.values()),
         })
         self._last_action_revision = action_revision
+        from smacx_diagnostics import record
+        record("observation_publication_committed", {
+            "publication_hash": publication_key, "journal_event_id": reconciled["event_id"],
+            "timeline_id": self.timeline_id, "turn": turn, "world_revision": stored["world_revision"],
+            "observation_cursor": cursor, "native_feed_continuity": continuity,
+            "snapshot_at_native_feed_cut": package.get("snapshot_at_native_feed_cut"),
+            "snapshot_contact_registry_reset": bool(frozen_bundle.get("_contact_identity_reset")),
+            "temporal_contact_reference_count": len(frozen_bundle.get("_temporal_contact_refs") or {}),
+            "material_delta_count": len(deltas), "semantic_event_count": len(temporal_events),
+            "critical_attention_groups": sum(bool(critical) for critical, _ in attention_groups),
+        }, actor="observation-collector")
         return {"ok": True, "changed": stored["changed"], "deltas": len(deltas),
                 "world_revision": stored["world_revision"],
                 "observation_cursor": cursor,
@@ -1075,6 +1182,14 @@ class ObservationCollector:
             except Exception as exc:
                 self._collection_metrics["failed"] = True
                 self._collection_metrics["failure_kind"] = type(exc).__name__
+                self._collection_metrics["failure_code"] = (
+                    str(exc) if re.fullmatch(r"[a-z][a-z0-9_]{0,159}", str(exc))
+                    else type(exc).__name__)
+                self._collection_metrics["failure_stack"] = [
+                    {"file": Path(frame.filename).name, "line": frame.lineno,
+                     "function": frame.name}
+                    for frame in traceback.extract_tb(exc.__traceback__)[-8:]
+                ]
                 # Rebuild all transient correlation state from the durable
                 # private stage before an in-process retry.
                 self._restore_native_stage()
@@ -1157,7 +1272,12 @@ class ObservationCollector:
         })
         action_revision = str(feed.get("action_revision") or "")
         current = self.world_store.load(self.scope, self.timeline_id)
-        should_reconcile = action_revision != self._last_action_revision \
+        from smacx_temporal_episodes import episode_schema_upgrade_required
+        needs_identity_upgrade = bool(current) and episode_schema_upgrade_required(
+            WorldIdentity(**current["identity"]), current.get("objects", ()),
+            stage.get("episode_state", {}),
+        )
+        should_reconcile = needs_identity_upgrade or action_revision != self._last_action_revision \
             or feed.get("reconciliation_required") is True \
             or int(feed.get("drained_event_count") or 0) > 0 \
             or bool(self._pending_native_events) or current is None
@@ -1170,13 +1290,46 @@ class ObservationCollector:
         # State may move while bounded pages are drained. Retry a small fixed
         # number; never wait inside the native request path.
         last_error: Exception | None = None
-        for _ in range(3):
+        for attempt in range(3):
             try:
                 bundle = self._bundle()
                 self._preserve_project_report_history(bundle, current)
+                stable_cut = self._snapshot_matches_feed_cut(bundle)
+                if not stable_cut:
+                    # Even the final coherent bundle gets one catch-up:
+                    # earlier pagination races may have consumed both retries.
+                    # Events may arrive after the initial drain but before the
+                    # coherent snapshot. Catch up through the durable stage,
+                    # then recollect against that cut. Otherwise even an
+                    # unrelated turn event forces temporary foreign identities
+                    # which revert on the next quiet publication. Keep the
+                    # existing conservative unmatched-cut fallback when the
+                    # bounded attempts cannot settle; never infer continuity.
+                    late = self._drain_native_feed()
+                    for metric, field in (("native_feed_pages", "drained_pages"),
+                                          ("native_events_drained", "drained_event_count")):
+                        self._collection_metrics[metric] += int(late.get(field) or 0)
+                    if late.get("continuity") == "incomplete":
+                        feed["continuity"] = "incomplete"
+                        self._collection_metrics["native_continuity_incomplete"] = True
+                    self._collection_metrics["snapshot_feed_alignment_retries"] = int(
+                        self._collection_metrics.get("snapshot_feed_alignment_retries", 0)) + 1
+                    # Reuse the already coherent snapshot only if a fresh
+                    # non-consuming probe proves the same revision and no
+                    # unread event. Rebind its private contact evidence to the
+                    # newly staged cut; this avoids another Huge-map scan.
+                    stable_cut = self._snapshot_matches_feed_cut(bundle)
+                    if stable_cut:
+                        bundle.update(self._native_contact_evidence())
+                        break
+                    if attempt < 2:
+                        continue
                 break
             except ObservationCollectorError as exc:
                 last_error = exc
+                self._collection_metrics.setdefault("snapshot_bundle_failures", []).append(
+                    str(exc) if re.fullmatch(r"[a-z][a-z0-9_]{0,159}", str(exc))
+                    else type(exc).__name__)
                 time.sleep(0.05)
         else:
             raise last_error or ObservationCollectorError("world_reconciliation_failed")
@@ -1191,7 +1344,8 @@ class ObservationCollector:
         world_epoch = self._world_epoch(bundle, current)
         identity = WorldIdentity(self.scope.match_id, self.scope.perspective_id,
                                  self.timeline_id, world_epoch)
-        from smacx_temporal_episodes import advance_episodes
+        from smacx_temporal_episodes import (EPISODE_STATE_SCHEMA_VERSION, advance_episodes,
+                                             episode_schema_upgrade_required)
         prior_objects = current.get("objects", ()) if current else ()
         gaps = list(stage.get("continuity_gaps") or [])
         if not gaps and stage.get("continuity_gap"):
@@ -1202,13 +1356,14 @@ class ObservationCollector:
             events=stage["events"], gaps=gaps,
             owned_keys={str(row.get("native_observation_key") or "vehicle-handle-"+str(row.get("own_unit_ref") or "").removeprefix("own-unit-"))
                         for row in bundle.get("units", ()) if row.get("owned")})
-        # This read does not consume or acknowledge later events. An empty,
-        # complete feed proves the cut stayed stable through snapshot collection.
-        probe = self._bridge("observation_feed", after_sequence=self.native_after_sequence, limit=1)
-        stable_cut = (probe.get("ok") is True and not probe.get("events") and not probe.get("has_more")
-                      and probe.get("continuity") == "complete"
-                      and int(probe.get("next_sequence", -1)) == self.native_after_sequence
-                      and str(probe.get("action_revision") or "") == str(bundle.get("action_revision") or ""))
+        # The final non-consuming probe above proves whether this snapshot and
+        # all staged temporal events share a cut. Unread future events still
+        # invalidate identity binding exactly as before.
+        if episode_schema_upgrade_required(identity, prior_objects, stage.get("episode_state", {})):
+            bundle["_contact_identity_reset"] = True
+            bundle["_continuous_visible_contact_moves"] = {}
+            self._collection_metrics["foreign_identity_schema_revalidation"] = EPISODE_STATE_SCHEMA_VERSION
+        bundle["_native_episode_schema_version"] = EPISODE_STATE_SCHEMA_VERSION
         bundle["_native_temporal_authority"] = True
         bundle["_temporal_contact_refs"] = {}
         if not stable_cut:
@@ -1274,6 +1429,7 @@ class ObservationCollector:
             # projection candidate. Projection and delta hashes make replay a
             # checked deterministic derivation without duplicating every Huge
             # map object twice in the private stage.
+            "snapshot_at_native_feed_cut": bool(stable_cut),
             "projection_input": bundle,
             "projection_hash": _sequence_content_hash(current_objects),
             "world_delta_hash": _sequence_content_hash(deltas),

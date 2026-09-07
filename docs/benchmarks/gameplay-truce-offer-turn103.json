@@ -1,0 +1,286 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "confirmed managed interaction gap repaired; native comparisons and deployed recovery verified; actual new-variant sovereign delivery remains unobserved",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 103,
+  "incident_id": "incident-b5fbbd429841491a895519062e25d01b",
+  "gap_id": "gap-e765630cc6984dba9e22a17cd2ee2df2",
+  "observed": {
+    "popup_label": "WANTTOTRUCE0",
+    "counterpart": "Spartan Federation",
+    "managed_choices_before": 0,
+    "native_screenshot_verified": true,
+    "native_rows": {
+      "0": "Well spoken. Let it be done.",
+      "1": "Never! Prepare to be annihilated!"
+    },
+    "diagnostic_zip_sha256": "cc9ca52adde87c5c85ba8277e4610a8ef8dea286a0053db3e50556ac318b6590",
+    "quarantined": true
+  },
+  "repair": {
+    "reviewed_labels": [
+      "WANTTOTRUCE0",
+      "WANTTOTRUCE1",
+      "WANTTOTRUCE2",
+      "OFFERTRUCE",
+      "MUSTTRUCE"
+    ],
+    "excluded": "Conditional technology, energy and base-return offers; multiplayer permissions are unchanged.",
+    "guard": "Exact reviewed label, two rows with IDs0/1, existing session/revision and UI-thread command guards.",
+    "receipt": "Submission is explicitly not a verified relationship change.",
+    "engine_source_sha256": "caac96637735499c7b7d74128dd360326dba4ee1db135c25ae04f95846fde2df"
+  },
+  "validation": {
+    "compiled_production_guard_helpers": "pass",
+    "native_shaped_managed_adapter_both_responses_and_receipt_qualifier": "pass",
+    "matched_save_native_effects": {
+      "passed": true,
+      "classification": "isolated matched-save native truce accept/reject and observed relationship effects",
+      "cases": [
+        {
+          "response": "accept",
+          "turn_before": 103,
+          "turn_after": 103,
+          "receipt": {
+            "ok": true,
+            "command": "respond_to_diplomatic_offer",
+            "response": "accept",
+            "offer_type": "truce",
+            "relationship_change_verified": false,
+            "completion_semantics": "The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta."
+          },
+          "relations": {
+            "commlink": true,
+            "vendetta": false,
+            "truce": true,
+            "treaty": false,
+            "pact": false,
+            "infiltrated": false
+          },
+          "labels": [
+            "",
+            "COMM",
+            "INTRO1",
+            "PROTORIVAL",
+            "WANTTOTRUCE2",
+            "MAKETRUCE"
+          ],
+          "observed_follow_on": {
+            "kind": "popup",
+            "label": "MAKETRUCE"
+          },
+          "full_turn_completed": false
+        },
+        {
+          "response": "reject",
+          "turn_before": 103,
+          "turn_after": 103,
+          "receipt": {
+            "ok": true,
+            "command": "respond_to_diplomatic_offer",
+            "response": "reject",
+            "offer_type": "truce",
+            "relationship_change_verified": false,
+            "completion_semantics": "The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta."
+          },
+          "relations": {
+            "commlink": true,
+            "vendetta": true,
+            "truce": false,
+            "treaty": false,
+            "pact": false,
+            "infiltrated": false
+          },
+          "labels": [
+            "",
+            "COMM",
+            "INTRO1",
+            "PROTORIVAL",
+            "WANTTOTRUCE0",
+            "ENERGYTRUCE"
+          ],
+          "observed_follow_on": {
+            "kind": "popup",
+            "label": "ENERGYTRUCE"
+          },
+          "full_turn_completed": false
+        }
+      ]
+    },
+    "first_replay_attempt": "Failed disposable-volume root ownership during test setup; log retained, no gameplay effect claim.",
+    "full_native_mcp": {
+      "base_site_stress": {
+        "owned_base_count": 512,
+        "candidate_count": 32,
+        "radius_squares": 21,
+        "wall_ms": 247.107,
+        "probe_gap_ms": 236.666,
+        "receipt_bytes": 170306,
+        "native_elapsed_ms": 0
+      },
+      "counterfactual_site_stress": {
+        "owned_base_input_rows": 511,
+        "nominated_sites": 4,
+        "wall_ms": 253.064,
+        "probe_gap_ms": 238.246,
+        "receipt_bytes": 51781,
+        "native_elapsed_ms": 4
+      },
+      "intent_recovery": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "same_checkpoint_recovered_twice_after_timeline_gc": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      },
+      "pass": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 218.968,
+          "maximum_page_bytes": 139520,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 4801,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 227.65,
+          "enumeration_probe_gap_ms": 232.813,
+          "enumeration_payload_bytes": 8669,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 225.187,
+          "exact_probe_gap_ms": 244.64,
+          "exact_payload_bytes": 288,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      }
+    },
+    "deployed_recovery": {
+      "passed": true,
+      "api": "retry-after-update",
+      "incident_cleared": true,
+      "turn": 103,
+      "session_id": "session-e63dd53fbbd9452a9dfb38ec66b039c0",
+      "worker_id": "f26ac1730d63",
+      "owned_units": 11,
+      "bases": 2,
+      "energy_credits": 105,
+      "run_id": "run-96c4b33255fc4c389a78ee3f279de6f8",
+      "watcher_rearmed": true,
+      "portal_unpaused": true,
+      "native_prepared_image_base_sha256": "86d3e9d7ac4fe4e18d62a5b1eb84ce30b7675ecc76b18ef03368ddc947fc4240"
+    },
+    "actual_sovereign_choice_and_provider_delivery": {
+      "observed_variant": "FACTIONTRUCE",
+      "receipt_delivery": {
+        "request_id": "48eed2d82b2345f1a1b543f393492655",
+        "call_id": "chatcmpl-tool-8b837adbbe058ffd",
+        "receipt": {
+          "ok": true,
+          "response": "accept",
+          "offer_type": "truce",
+          "decision_id": "decision-e5afe494d96648e4b2a12e8cc3509afa",
+          "choice_id": "choice-68ad18e9f9f0477ca74ea6195c493ab7",
+          "executed_choice": {
+            "choice_id": "choice-68ad18e9f9f0477ca74ea6195c493ab7",
+            "label": "Respond to diplomatic offer"
+          },
+          "journal": {
+            "ok": true,
+            "journal_event_id": "journal-35c84551c6ac4c6aa63f5188b0ec6b91",
+            "event_hash": "9f5ac0fd70688e2bb4dc46f452b5997a96ef908c562adb1ec5ad10f69af77d5d"
+          },
+          "decision_consumed": true,
+          "execution_status": "accepted",
+          "required_next": {
+            "tool": "smac_decision",
+            "reason": "This decision is consumed, including after rejection. Obtain a fresh frame."
+          }
+        },
+        "next_exact_provider_request": "f1a0e8fc528a4607b94d9ab82337f3fd"
+      },
+      "native_relations_after": {
+        "vendetta": false,
+        "truce": true,
+        "treaty": false,
+        "pact": false
+      },
+      "new_WANTTOTRUCE_variant_live_delivery": "not observed; isolated native proof remains separate"
+    },
+    "incomplete_attempts": [
+      "Disposable root ownership setup failed; retained log.",
+      "Unconditional accept succeeded, then separate FACTIONTREATY required explicit test handling; not full acceptance.",
+      "Retry exhausted disk; unused cache and disposable images removed, no acceptance claim.",
+      "Independent ENERGYTREATY follow-on discovered; bounded final test observes relationship effects before further negotiations."
+    ],
+    "provider_inference_in_isolated_suite": false,
+    "images": {
+      "worker": "86d3e9d7ac4fe4e18d62a5b1eb84ce30b7675ecc76b18ef03368ddc947fc4240",
+      "control": "39d8426d950d885e869ea6842d54175e8800d336215501362569017ac67ed7bc",
+      "harness": "b104f9393f5be32b88365cda1ef3a0076612d78e493d7571c1f750be054ccc21"
+    },
+    "live_continuation": {
+      "turn": 104,
+      "owned_units": 11,
+      "energy_credits": 109,
+      "end_turn_status": "completed",
+      "end_turn_resolution": "native_turn_advanced",
+      "active_incidents": 0,
+      "full_game_finished": false
+    },
+    "post_war_plan_delivery": {
+      "request_id": "991421b0f85e45269ea99399c422858e",
+      "next_exact_provider_request": "405a7752e9764ceb8f775262f8e7ac71",
+      "plan_id": "plan-151c1c24852144aaa3ab523850db9447",
+      "plan_key": "t70-two-front-war-posture",
+      "plan_revision": 8,
+      "status": "active",
+      "persistence": {
+        "stage": "runtime_projection_built",
+        "authority": "campaign_journal",
+        "next_context_source": "fresh_journal_working_state"
+      },
+      "records_spartan_treaty": true,
+      "structured_participants": [],
+      "limits": "Successful persistence does not establish strategic quality or mechanically verify objective prose."
+    }
+  },
+  "unrelated_decision_error": {
+    "classification": "likely sovereign ID-selection error with verified fresh-frame delivery",
+    "request_id": "09d0ca39bbb5464d9a274d14bd4a0b7e",
+    "issued_decision": "decision-236bd03acfc34c79a7443f17ce12d9eb",
+    "issued_choice": "choice-1fb83cd07ce14b919f68a992185e2284",
+    "submitted_decision": "decision-5d2c25c32497418fbd4c85d8044d902b",
+    "submitted_choice": "choice-f7c819d35b3c47a0b3b09c55907b1e6d",
+    "exact_frame_delivered_to_failing_request": true,
+    "submitted_identifiers_in_retained_historical_tool_returns": false,
+    "recovered_with_fresh_frame": true
+  }
+}

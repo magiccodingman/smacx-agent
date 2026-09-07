@@ -21,6 +21,14 @@ from typing import Any, Iterator, Mapping, Sequence
 import uuid
 
 
+MEMORY_STATUS_VALUES = {
+    "claim": ("unverified", "corroborated", "disputed", "false", "retracted"),
+    "commitment": ("proposed", "accepted", "fulfilled", "broken", "expired", "cancelled"),
+    "goal": ("active", "paused", "completed", "abandoned"),
+    "plan": ("proposed", "active", "paused", "completed", "abandoned", "failed"),
+}
+
+
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,96}$")
 KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 SESSION_LOCAL_REFERENCE = re.compile(
@@ -3055,7 +3063,7 @@ class SmacxStore:
         title = _bounded_text(title, "plan_title", 200)
         objective = _bounded_text(objective, "plan_objective", 8000)
         status = _require_key(status, "plan_status")
-        if status not in {"proposed", "active", "paused", "completed", "abandoned", "failed"}:
+        if status not in MEMORY_STATUS_VALUES["plan"]:
             raise InvalidRecord("invalid_plan_status")
         for value in (*target_refs, *dependencies, *linked_commitments):
             _require_id(str(value), "plan_reference")

@@ -1,0 +1,36 @@
+{
+  "trigger": "Turn-17 live ZIP aggregates emitted runtime error identifiers as unspecified and pinned Hermes schema errors as long message keys",
+  "change": "Preserve structured/native error codes; recognize exact pinned pre-invocation schema/bridge-dispatch forms; label other free text unclassified without guessing cause",
+  "validation": {
+    "diagnostic_summary_contract": "pass: parameter variants coalesce, historical runtime codes retained, unrelated text not inferred",
+    "campaign_diagnostics_contract": "pass: scope, damaged tail, honest manifest and ZIP readability"
+  },
+  "live_archive": {
+    "file_name": "campaign-match-85285536ea844e87b51e5fd081ac555e-f43c4c7809cd483fbdbe06c9fc0a4688.zip",
+    "bytes": 10779333,
+    "elapsed_seconds": 1.974,
+    "zip_integrity": "pass",
+    "provider_requests": 160,
+    "finished_stream_records": 159,
+    "requests_without_terminal_capture": 1,
+    "explicit_gaps": [
+      "world_telemetry row_limit",
+      "specialist source_missing",
+      "acceptance_coverage_in_progress"
+    ]
+  },
+  "limitations": [
+    "Raw event payloads unchanged",
+    "Counts are per-layer observations, not deduplicated incidents",
+    "Earlier quiescence misclassification remains historical evidence",
+    "Updated deployed metrics verification pending; no gameplay restart required just for this diagnostic change"
+  ],
+  "retained_archive_replay": {
+    "runtime_context_failed:invalid_tile_id": 2,
+    "runtime_context_failed:sovereign_invocation_already_active": 3,
+    "runtime_context_failed:native_observation_feed_failed": 1,
+    "tool_returned:schema_missing_required": 10,
+    "tool_returned:bridge_tool_not_invocable": 4
+  },
+  "deployed_control_image": "sha256:9c0c930710fe2fb8db2f4223da184bd154d579f14adeac1bb942ab09f5f1677e"
+}

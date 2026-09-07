@@ -1,0 +1,42 @@
+{
+  "problem": "Unordered 10000-row SQL limit followed category index; actual live selection omitted all 2730 runtime_context telemetry records",
+  "repair": "Recent timestamp window with deterministic rowid tiebreak and manifest bounds, retaining explicit row-limit gap",
+  "acceptance": {
+    "fixture": "10006 same-match rows across category/insertion ordering plus newer foreign row: newest same-match retained, oldest excluded, scope intact",
+    "actual_live_readonly_database_export": {
+      "zip_valid": true,
+      "rows": 10000,
+      "newest_timestamp": 1788679851.828203,
+      "oldest_timestamp": 1788673876.5156243,
+      "categories": {
+        "observation_collector": 8900,
+        "runtime_context": 975,
+        "attention": 123,
+        "world_query": 2
+      }
+    },
+    "scope": "read-only backend export of live database; not portal/browser download acceptance"
+  },
+  "deployment": {
+    "file_name": "campaign-match-85285536ea844e87b51e5fd081ac555e-8b8a64553b74474c8a79f42f77ae81cc.zip",
+    "bytes": 15225068,
+    "zip_valid": true,
+    "window": {
+      "rows": 10000,
+      "newest": 1788680431.928613,
+      "oldest": 1788674320.3559623
+    },
+    "categories": {
+      "observation_collector": 8997,
+      "runtime_context": 897,
+      "attention": 104,
+      "world_query": 2
+    },
+    "gaps": [
+      "world_telemetry_row_limit",
+      "specialist_source_missing",
+      "acceptance_coverage_in_progress"
+    ],
+    "initial_attempt": "HTTP409 during startup; response body not retained, cause unknown; next request succeeded"
+  }
+}

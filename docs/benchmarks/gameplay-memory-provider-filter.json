@@ -1,0 +1,39 @@
+{
+  "trigger": {
+    "turn": 20,
+    "tool": "smac_memory(action=working_set)",
+    "exposed_fields": [
+      "choice_parameters.id",
+      "choice_parameters.unit_id",
+      "choice_parameters.native_option_id",
+      "native_result"
+    ],
+    "scope": "own historical action journal, not evidence of hidden enemy state disclosure"
+  },
+  "classification": "confirmed provider projection bypass and private-selector exposure",
+  "change": "Filter working_set as other managed memory reads; strip private entity selectors and native choice identifiers; apply filtering before managed journal search scoring; retain bounded public historical outcome fields as execution_receipt",
+  "validation": {
+    "managed_memory_scale": "pass: 120 records per projection, working_set/events/search/recall private-selector honeytokens excluded, safe refs retained, hidden-only searches return no match, raw historical record unchanged; historical command and queued=false receipt retained",
+    "campaign_journal": "pass: canonical hash/replay/search and checkpoint timeline contracts",
+    "fair_play_world": "pass: hidden-state differential and actor separation",
+    "ai_memory_checkpoint": "pass"
+  },
+  "checkpoint": {
+    "id": "checkpoint-a66ee4c3b5e64ec09dedddef9d9cb5a8",
+    "turn": 21,
+    "verified": true
+  },
+  "limitations": [
+    "Internal journal and administrator diagnostic records retain their original authoritative detail",
+    "No historical identity is reconstructed from current native slots",
+    "Deployed current-timeline memory read verified; subsequent sovereign memory read and provider-wire inspection remain open"
+  ],
+  "deployed_read": {
+    "kind": "operator read through deployed managed tool; not a sovereign-commissioned call",
+    "control_and_MCP_image": "sha256:79f30edd5dbdef8f8a339b1393bb1aa99092e9d0fa7036c6a4a8b3ffb9dae2ed",
+    "timeline_id": "timeline-restore-ae9091c3e4f64ffe8602e4e7",
+    "private_selector_paths": [],
+    "recent_actions": 12,
+    "public_execution_receipts": 12
+  }
+}

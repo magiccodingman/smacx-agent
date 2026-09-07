@@ -137,7 +137,7 @@ class AttentionService:
             # redelivery without changing their attention identity.
             expired = connection.execute(
                 "SELECT attention_lease_id FROM attention_leases WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND status IN ('leased','placed') "
+                "AND perspective_id=? AND timeline_id=? AND status IN ('leased','placed','responded') "
                 "AND expires_unix<=?", (*self._key(timeline), now),
             ).fetchall()
             for row in expired:
@@ -153,6 +153,15 @@ class AttentionService:
                     "ON i.attention_id=li.attention_id WHERE li.attention_lease_id=? AND "
                     "(i.observation_cursor>? OR i.attention_sequence>=?) LIMIT 1",
                     (existing["attention_lease_id"], cap, barrier)).fetchone():
+                self._abandon_locked(connection, str(existing["attention_lease_id"]))
+                existing = None
+            if existing and existing["status"] == "responded" and connection.execute(
+                    "SELECT 1 FROM attention_items WHERE match_id=? AND agent_id=? AND perspective_id=? "
+                    "AND timeline_id=? AND status='queued' AND attention_sequence<? LIMIT 1",
+                    (*self._key(timeline), barrier)).fetchone():
+                # A completed request may be replaced, an in-flight placement
+                # may not. Reissue unacknowledged IDs together with newly
+                # committed attention so an empty old lease cannot hide a gate.
                 self._abandon_locked(connection, str(existing["attention_lease_id"]))
                 existing = None
             if existing:
@@ -276,6 +285,19 @@ class AttentionService:
             values.append(item)
         return {"operations": values, "active_watch_count": watch_count}
 
+    def unacknowledged_critical(self, *, limit: int = 8) -> dict[str, Any]:
+        """Only committed, perspective-scoped critical attention can gate a turn."""
+        with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.world_store.committed_cursor(self.scope, self.timeline_id, connection)
+            rows = connection.execute(
+                "SELECT attention_id,attention_kind,status FROM attention_items WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND critical=1 "
+                "AND status NOT IN ('acknowledged','superseded') AND observation_cursor<=? "
+                "ORDER BY attention_sequence LIMIT ?", (*self._key(self.timeline_id), cap, limit+1),
+            ).fetchall()
+        return {"items": [dict(row) for row in rows[:limit]], "more": len(rows)>limit}
+
     def pending_summary(self) -> dict[str, Any]:
         with self.store._connect() as connection:
             connection.execute("BEGIN")
@@ -392,6 +414,10 @@ class AttentionService:
                 "attention_lease_items li ON li.attention_id=i.attention_id "
                 "WHERE li.attention_lease_id=? ORDER BY i.attention_sequence", (lease_id,),
             ).fetchall()
+            if not ids.issubset({str(row["attention_id"]) for row in rows}):
+                raise AttentionError("attention_ack_scope_mismatch")
+            if int(through_cursor) < 0 or int(through_cursor) > int(lease["through_cursor"]):
+                raise AttentionError("attention_ack_cursor_out_of_range")
             eligible = [str(row["attention_id"]) for row in rows
                         if int(row["attention_sequence"]) <= int(through_cursor)
                         or str(row["attention_id"]) in ids]
@@ -745,7 +771,23 @@ class AttentionService:
         for event in production:
             plan_refs = linked.get(str(event.get("base_ref") or ""), [])
             if event.get("event_kind") in {"production_queue_exhausted", "production_interrupted"} or plan_refs:
-                meaningful.append({**event, "linked_plan_refs": plan_refs[:8]})
+                notice = {**event, "linked_plan_refs": plan_refs[:8]}
+                if event.get("event_kind") == "production_queue_exhausted":
+                    notice["meaning"] = "Queued orders exhausted; this does not establish idle production."
+                    # Preserve the paired occurrence, not an assertion about the
+                    # current selection. Never join different bases or turns.
+                    selections = [candidate for candidate in production
+                                  if event.get("base_ref") and event.get("turn") is not None
+                                  and candidate.get("base_ref") == event.get("base_ref")
+                                  and candidate.get("turn") == event.get("turn")
+                                  and candidate.get("event_kind") in {
+                                      "production_repeat_selected", "production_fallback_selected"}]
+                    notice["selection_occurrences"] = [
+                        {key: candidate[key] for key in
+                         ("event_kind", "item_name", "turn", "occurrence_ref", "evidence_kind")
+                         if key in candidate} for candidate in selections[:2]]
+                    notice["selection_details_truncated"] = len(selections) > 2
+                meaningful.append(notice)
         if meaningful:
             self.enqueue("production_progress", {"events": meaningful[:8],
                          "event_count": len(meaningful), "details_truncated": len(meaningful) > 8},

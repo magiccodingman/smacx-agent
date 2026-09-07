@@ -20,6 +20,7 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener
 from smacx_generation import normalize_generation_settings, openai_extra_body
 from smacx_context_policy import (
     HERMES_COMPRESSION_TARGET_RATIO, HERMES_COMPRESSION_THRESHOLD_RATIO,
+    hermes_compression_trigger_tokens,
 )
 
 
@@ -43,6 +44,9 @@ COMMUNICATION_MCP_TOOLS = (
     "smac_notebook",
     "smac_investigate",
 )
+GAMEPLAY_MCP_TOOLS = (*COMMUNICATION_MCP_TOOLS,
+    "smac_decision", "smac_choices", "smac_execute_choice", "smac_wait",
+    "smac_report_capability_gap", "smac_match_briefing")
 
 
 class HermesAdapterError(RuntimeError):
@@ -198,6 +202,9 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "checkpoint_required": False,
             "progress_notices": False,
             "threshold": HERMES_COMPRESSION_THRESHOLD_RATIO,
+            # Hermes applies a 75% small-window floor even to an explicit
+            # ratio. Its supported absolute cap preserves our shared policy.
+            "threshold_tokens": hermes_compression_trigger_tokens(context_length or 65536),
             "target_ratio": HERMES_COMPRESSION_TARGET_RATIO,
             "protect_last_n": 20,
             "protect_first_n": 3,
@@ -207,8 +214,13 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
         "memory": {"memory_enabled": False, "user_profile_enabled": False},
         "terminal": {"backend": "local", "cwd": str(runtime_workspace)},
         "platform_toolsets": {"cli": ["smacx"]},
+        # The bounded 15-tool surface fits the reserved schema budget. Keep
+        # parameters present after episode GC instead of forcing rediscovery.
+        "tools": {"tool_search": {"enabled": "off"}},
         "mcp_servers": {
-            "smacx": {"url": mcp_url, "enabled": True},
+            "smacx": {"url": mcp_url, "enabled": True, "tools": {
+                "include": list(GAMEPLAY_MCP_TOOLS), "resources": False, "prompts": False,
+            }},
             "smacx-communication": {
                 "url": mcp_url, "enabled": True,
                 "tools": {

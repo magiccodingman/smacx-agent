@@ -44,7 +44,9 @@ PYTHONPATH=src python3 scripts/campaign_journal_test.py
 PYTHONPATH=src python3 scripts/ai_memory_checkpoint_test.py
 PYTHONPATH=src python3 scripts/opaque_choice_execution_test.py
 PYTHONPATH=src python3 scripts/semantic_progress_contract_test.py
+python3 scripts/owned_progress_digest_contract_test.py
 PYTHONPATH=src python3 scripts/world_model_contract_test.py
+PYTHONPATH=src python3 scripts/world_anchor_format_test.py
 PYTHONPATH=src python3 scripts/native_observation_contract_test.py
 PYTHONPATH=src python3 scripts/fair_play_world_test.py
 PYTHONPATH=src python3 scripts/strategic_world_fixtures_test.py
@@ -54,6 +56,7 @@ PYTHONPATH=src python3 scripts/movement_mechanics_contract_test.py
 PYTHONPATH=src python3 scripts/runtime_context_contract_test.py
 PYTHONPATH=src python3 scripts/notebook_scale_test.py
 PYTHONPATH=src python3 scripts/attention_communication_contract_test.py
+PYTHONPATH=src python3 scripts/attention_lease_expiry_test.py
 PYTHONPATH=src python3 scripts/spatial_scope_contract_test.py
 PYTHONPATH=src python3 scripts/spatial_scope_scale_test.py
 PYTHONPATH=src python3 scripts/milestone_contract_test.py
@@ -309,6 +312,31 @@ SMACX_TEST_HERMES_IMAGE=smacx-agent-harness:test \
   PYTHONPATH=src python3 scripts/control_worker_mcp_live_test.py
 ```
 
+If host Python lacks `mcp`, run the driver from the control image. Unlike the
+ordinary Python contracts, this driver also needs the Docker CLI/socket and host
+network access to its ephemeral loopback endpoints:
+
+```bash
+docker run --rm --no-healthcheck --user 0 --network host \
+  --entrypoint /opt/smacx/mcp-venv/bin/python \
+  -v /usr/bin/docker:/usr/bin/docker:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$PWD:/workspace:ro" -w /workspace -e PYTHONPATH=/workspace/src \
+  -e SMACX_TEST_GAME_SOURCE=/absolute/host/path/to/your/game \
+  -e SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+  -e SMACX_TEST_MCP_IMAGE=smacx-agent-control:test \
+  -e SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+  -e SMACX_TEST_HERMES_IMAGE=smacx-agent-harness:test \
+  smacx-agent-control:test scripts/control_worker_mcp_live_test.py
+```
+
+Validate packaged imports before launching: source-mounted contracts cannot prove
+that newly added modules were copied into the image. The control Dockerfile now
+imports the installed MCP/intent/export modules during its build. For failed-run
+inspection, `SMACX_TEST_KEEP_ON_FAILURE=1` retains test resources and pauses the
+test control service; preserve evidence and remove only that run's labeled
+resources after inspection. This flag does not pause every native container.
+
 To add the managed-provider gate, also set `SMACX_TEST_PROVIDER_URL` and
 `SMACX_TEST_PROVIDER_MODEL` through the local environment. The provider run is
 successful only after a journal-observed semantic revision changes; merely
@@ -496,3 +524,111 @@ Run `publication_visibility_test.py`, `cross_publication_episode_test.py`, `jour
 Use the container MCP Python environment for the integrated scripts. Run `native_event_time_contract_test.py` on the host for the compiled adapter. The native bridge cross-build remains a separate check. No fixture success is a running-game comparison.
 
 For exact active-scope tail acceptance, run `active_scope_collector_benchmark.py` five times sequentially with `SMACX_SCOPE_BENCH_WIDTH=320` and `SMACX_SCOPE_BENCH_HEIGHT=160` in the same container environment. Each run uses 25,600 squares, nine scopes, four watches and an observed crossing followed by loss. It prints the complete result before asserting the unchanged 30-second/500-ms gates, including failures. Keep initial collection and scope creation timings, and do not run other heavy tests concurrently. The probe is an independent Python thread, not the native game UI thread. Preserve prior distributions; see the [H-review ledger](benchmarks/2026-09-05-h-review.md) and JSON evidence for exact results.
+
+The installed Hermes MCP child-watcher race can be checked with `docker run --rm --entrypoint /opt/hermes/.venv/bin/python -v "$PWD:/workspace:ro" smacx-agent-harness:dev /workspace/scripts/hermes_mcp_watcher_test.py`. It verifies one RPC/watcher, cancellation and reconnect on child exit, synchronous stubs, and no orphan tasks/coroutines.
+
+Run `scripts/mcp_argument_validation_test.py` in the container MCP environment to verify that unknown top-level arguments are rejected before dispatch and recorded, while declared nested data/defaults still work. The specialist provider capture test additionally exercises rejection and recovery through actual Hermes and the frozen MCP instruments.
+
+`PYTHONPATH=src python3 scripts/ecology_attention_contract_test.py` replays inactive sunspot ticks, active countdown, start/end and other ecology changes through the collector and verifies both retained world state and critical-attention selection.
+
+The Hermes provider capture test also emits a truncated (`length`) response and enforces exclusive runtime episode ownership. It requires cancellation before the real Hermes continuation can obtain its context. Runtime context tests assert the current native session and action revision remain available for guarded cognition writes. See `benchmarks/gameplay-episode-lifecycle.json` for the live trigger and validation limits.
+
+For an authorized stopped-campaign deployment, authenticated `POST /api/v1/matches/{match_id}/recover` with `{"refresh_runtime":true}` selects the current prepared worker image and restores the verified native/AI checkpoint. Ordinary recovery retains the pinned image. The HTTP contract requires literal boolean true; strings do not opt in. Inspect the running worker/DLL and returned semantics after deployment rather than assuming an image tag update changed a pinned campaign.
+
+Direct-schema acceptance: `hermes_provider_capture_test.py` requires exactly 15 gameplay and 9 communication schemas on initial/resumed requests and executes a direct MCP call through its negative guard response. Run `harness_context_policy_test.py` in the built Hermes image with `SMACX_TEST_DIRECT_SERVER=smacx`, `smacx_communication`, and unset for retained legacy wrappers. All three must preserve typed receipts, request-only context, namespace isolation and bounded million-token GC. Direct mode explicitly disables MCP resource/prompt helpers.
+
+Native-source changes also require an explicit doctrine compatibility review. Inspect the complete diff from the prior registered build, validate it, then use `scripts/doctrine_engine_contract.py --register-reviewed`; the ordinary invocation checks that source and registration match. This is never an automatic runtime approval. Recompilation must continue rejecting unknown builds and unsupported rule overrides.
+
+### Semantic preflight and resume checkpoint
+
+The stopped turn-21 resume reported raw ~198,817-token preflight compression despite send-time semantic GC. Pinned Hermes preflight reads durable history before the sanitizer; its small-context floor also raised the configured 50% ratio to 75%. The managed adapter now estimates its copy-only semantic projection plus tool schemas and bounded runtime reserve without fetching runtime state or leasing attention. Profiles supply the supported absolute threshold cap. Irreducible durable history still fails closed.
+
+The real receiving-provider Hermes test resumes SQLite containing a deliberately oversized old tool result: exactly one resumed provider request, no summarization, original durable result preserved, disposable marker absent from wire. Existing direct-schema, runtime lease, generation and prompt-integrity cases pass. Installed-Hermes context tests cover no runtime fetch, input immutability, irreducible failure and effective 64K/256K caps. Live restore/deployment remains pending; the verified turn-21 checkpoint predates the unwanted compaction. See `docs/benchmarks/gameplay-semantic-preflight.json`.
+
+Deployed preflight acceptance: restored verified turn 21 and matching AI history into `timeline-restore-07b030faf15046d19cbd2ec3`; new run `run-548df7b0ff4248d09b0d0ebebca27001` has effective profile cap 131,072. Actual semantic preflight projected 412 durable rows to 62, estimated 55,150 including 32,768 runtime reserve, and did not fetch runtime context. Provider request `4d21ba0908a84f2885a0968ff95f21db` followed without the previous generic summarization. Portal unpaused; sustained gameplay acceptance continues.
+
+### Native collection transition race checkpoint
+
+Live turn-21 Auto Explore executed successfully, then request-time collection rejected mixed native revisions (`world_changed_during_collection`, event `ac98b9f1bf804b8499884edea446edca`). The snapshot guard is correct; treating this first transient rejection as a fatal Hermes context failure is brittle. The private handler now retries that exact condition at most three times, before runtime services or attention acquisition. No mixed snapshot is returned; other failures and exhausted retries still return 409. Deferred attempts remain visible in diagnostics and human traces.
+
+Actual HTTP handler tests verify two races followed by one context/lease, exhausted races with none, and immediate unrelated-error rejection. Collector crash-stage recovery and cold-readiness contracts pass. Native+AI checkpoint `checkpoint-4108d3755f6744e892a792fbdcb4c672` verifies turn 22 after the successful order. Live repaired retry remains pending, separately tracked in `benchmarks/gameplay-runtime-collection-retry.json`.
+
+### Recent diagnostics database window checkpoint
+
+The live unordered telemetry limit followed the category index: its 10,000 rows contained attention/collector data and none of the 2,730 runtime-context records. Capped state exports now explicitly select most-recent timestamps with deterministic ties and advertise retained counts/order/timestamp bounds. Older omitted records still produce a row-limit gap; raw stream capture policy is unchanged. Regression covers adversarial category/insertion ordering and a newer foreign-match row. A read-only export against the live database produces a valid ZIP with 10,000 recent records, including 975 runtime-context entries; this proves backend selection, not browser download. Evidence: `benchmarks/gameplay-diagnostics-recent-window.json`.
+
+Collection-race repair deployment: restored turn 22 into `timeline-restore-21dddfdc676747d789a229c9`; sovereign resumed and queried both production and citizens through managed choices. No repeated live revision-race has yet exercised the new retry, so that proof remains controlled-handler coverage.
+
+### Production quote delivery checkpoint
+
+The sovereign switched to Colony Pod at turn 22, then repeated production queries because hurry disappeared. Native already supplied current production and hurry metadata at catalog top level, but the managed frame omitted it. An operator native read verifies Colony Pod 30 minerals, 2 accumulated, +2 surplus; hurry legal but unaffordable at 95 credits versus 58 available. Managed production frames now retain an allowlisted bounded `production_context` with current/queue/hurry facts; missing values remain absent, and no action or legality changes. Native entity slot IDs in execution receipts are removed through the existing semantic translator after execution/journaling, preserving effect fields and opaque choice linkage.
+
+Managed entry-point adapter, opaque execution, staged paths, failure circuit and semantic binding tests pass. Native quote verification is separate from the adapter fixture; actual provider delivery remains pending. Verified native+AI turn-22 checkpoint `checkpoint-0d35c5d505a34342b5a31dd1fede56ba` retains the production switch. Evidence: `benchmarks/gameplay-production-context-delivery.json`.
+
+Live acceptance through turn 23: corrected end-turn receipt and sovereign handoff observed. Actual request `dc431aed58ee4f00a7e938c921d27ffa` contains three Scouts, two Auto Explore/one none, Colony Pod production, zero missing/noncurrent force fields, and explicit overlapping-capability/home-support qualifiers. Deployed authenticated backend archive `...8b8a64553b74474c8a79f42f77ae81cc.zip` is 15,225,068 bytes, ZIP-valid, with 897 recent runtime-context telemetry records in the bounded window. The first startup export returned HTTP409 without retained response body; cause is unknown, and the next request succeeded. Browser delivery is still unverified. See recent-window and force-summary live evidence files.
+
+### Diagnostic export error capture checkpoint
+
+The first live export attempt returned409, but authenticated GET artifact creation was outside the existing lifecycle error-capture scope. The endpoint now enables the same safe operation/code capture after authentication; no raw exception text, credentials or anonymous probes enter the archive. Actual HTTP regression verifies anonymous401/no new record and authenticated409/one scoped record. The original startup409 cause remains unknown; subsequent export succeeded. See `benchmarks/gameplay-export-error-capture.json`. This control-API-only change does not require native/MCP replacement.
+
+Live research acceptance: delivered owned technology count is 2 at turn24 (request `63dd9ddad64949198117772ac67f0634`) and 3 at25 (`abf6f0a23a414d13b72264d299724745`), with Social Psych present. The sovereign’s acquired-Build-tech statement is supported; it is not diagnosed from counters alone. Request `f46e2491892f4d9289336d8a1f5b4d0a` explicitly contains selected Build preference, category/target distinction, and hidden next target with null name/ID. Authenticated export-error capture is deployed on healthy control API; native/MCP were not restarted for that endpoint-only patch. Evidence files retain controlled versus live distinctions.
+
+Collector fault-origin regression: `PYTHONPATH=src python3 scripts/observation_failure_origin_test.py` verifies bounded original stack telemetry, unchanged exception/stage recovery, and exclusion of raw exception detail/locals. Pair with `scripts/observation_batch_recovery_test.py`; this is diagnostic coverage, not proof that the turn-25 native failure is repaired.
+
+`python3 scripts/native_request_exception_observer_test.py` compiles the actual bridge observer and exercises real Windows exception dispatch in an isolated worker Wine process. Set `SMACX_TEST_BRIDGE_BUILD_IMAGE` and `SMACX_TEST_WORKER_IMAGE` to locally built images. This verifies diagnostic behavior and pass-through, not gameplay recovery.
+
+`PYTHONPATH=src python3 scripts/recovery_observation_order_test.py` verifies solo and LAN recovery import every native identity capsule before starting any collector or advertising readiness, including import failure. Live acceptance must inspect the first post-restore publications for transient identity events.
+
+`python3 scripts/native_popup_lifetime_test.py` exercises production popup-lifetime helpers with test-owned native globals and a Windows PAGE_NOACCESS historical object. It covers inactive history, unrelated modal, current modal, exec ownership and closed exec. This complements, rather than substitutes for, the matched turn-25 native replay.
+
+The isolated full control/worker/MCP live regression passed on the popup-lifetime images: 15 managed tools, active gift/purchase/loan/Council dialogs, native production and counterfactual effects, typed intent reconciliation, repeated checkpoint recovery after timeline GC, native identity preservation and verified backups. Runtime attention delivery in this suite uses a simulated trusted response hook; it does not prove provider inference or autonomous completion. The acceptance match has been cleanly restored to22 for autonomous continuation.
+
+`PYTHONPATH=src python3 scripts/world_changes_budget_recovery_test.py` verifies that a standard/compact oversized historical row provides an executable deep retry without advancing the observation or sibling continuation, losing stale qualifiers, or modifying stored input.
+
+`observation_feed_alignment_test.py` (container MCP environment) reproduces a late non-contact event causing identity churn, verifies the same stationary ref after catch-up/restart, preserves actual loss/reappearance separation and checks bounded conservative behavior under continuous native change.
+
+The popup lifetime test also verifies TOPMENU’s live SetupWin source ownership, wrong-vtable rejection and expired-modal rejection; this guards the LAN startup seam in addition to passive technology notices.
+
+`memory_guard_discovery_test.py` (container MCP environment) copies a real production decision identity into the guarded memory tool, verifies synchronous journal state, rejects a stale native revision without a write, and checks the issued MCP schema maps the guard source explicitly. Native responses are controlled adapters; autonomous usage remains a separate gate.
+
+Live LAN acceptance now passes after the SetupWin correction: two isolated native workers host/join/start, execute managed energy/technology/Pact/social changes, save and recover the native campaign with journal and identity capsules, and preserve agreement effects. The strengthened test audits every new-timeline own-unit publication for both seats: no transient appeared/removed identities, with owned refs unchanged. This closes the separate live LAN recovery-order gate; it does not claim sovereign inference.
+
+`hermes_complementary_results_test.py` runs in the derived Hermes image and validates complementary choice answers, execution/handoff receipts, latest-batch protection, controlled HTTP serialization and explicit irreducible-budget failure. Run alongside `harness_context_policy_test.py` (legacy and direct transport), `cognition_delivery_contract_test.py` and the packaged `hermes_provider_capture_test.py`. These controlled tests do not establish autonomous use.
+
+`world_changes_pagination_test.py` exercises real committed SQLite batches beyond both storage limits through production queries, checks exact once-only traversal and epistemics, excludes unpublished future rows, and verifies an oversized temporal event receives a non-skipping deep retry. Run with the MCP container environment. `world_changes_budget_recovery_test.py`, `publication_visibility_test.py`, and `observation_batch_recovery_test.py` cover adjacent position and recovery contracts.
+
+`citizen_context_delivery_test.py` verifies native-shaped citizen catalog→managed evidence→two separately guarded opaque executions→journal calls, single-use rejection, conditional future targets, private selector exclusion and bounded human summary. It does not by itself prove live native allocation or autonomous choice.
+
+`movement_receipt_delivery_test.py` exercises the actual managed execution wrapper with native-shaped movement receipts: nondisplacement, reported target arrival, a different reported destination, missing evidence and pending/combat/consumption boundaries. It preserves source data and private entity slots, and verifies human trace visibility. Run with opaque choice, production-context and fair-play-world contracts. Actual provider delivery is a separate live gate.
+
+`diagnostic_summary_contract_test.py` also checks that a43-choice menu preserves late Hurry/Skip/End action families below the CLI preview limit while leaving the complete source response unchanged. Grouped samples are human diagnostics, not provider menus.
+
+`hermes_readonly_wal_checkpoint_test.py` runs in the MCP container as root to launch the real helper as uid10000 against an unwritable source. It covers closed/retained WAL, committed versus uncommitted data, source byte preservation, scoped filtering, integrity and fail-closed malformed schema. Run with `ai_memory_checkpoint_test.py` and host `checkpoint_helper_permissions_live_test.py`. Native deployment acceptance remains separate.
+
+`base_selector_feedback_test.py` verifies all three base-specific families reject missing public actors without a native call, retain valid selector binding, translate ownership-race errors into public recovery wording and permit bound preparation continuations. Run alongside staged managed-action, production/citizen and provider-schema budget tests.
+
+The owned-progress C++ regression requires host `g++` and compiles the production digest against controlled native rows. It checks real function behavior for production, allocation, movement, foreign changes and reordered slots; it does not claim running-game equivalence. The managed native acceptance suite separately compares digest values across actual production/citizen effects and repeated reads. Run that suite against the exact worker image being deployed.
+
+`python3 scripts/native_end_turn_refusal_test.py` executes the production end-turn callback with controlled native outcomes: returned refusal, accepted transition, advanced turn, nested observation, modal interruption and changed faction. The baseline remains pending on refusal; the repair rejects it without forcing native state. `managed_action_path_contract_test.py` also verifies that the rejected receipt terminates MCP polling and explains that movement was not renewed. These are callback/adapter contracts, not a reproduction of the original turn69 refusal cause; running-game acceptance is tracked separately.
+
+`native_end_turn_live_test.py` provisions a separate game with `SMACX_TEST_GAME_SOURCE` and `SMACX_TEST_WORKER_IMAGE`. It requires both `SMACX_AGENT_TEST_MODE=1` and `SMACX_ACCEPTANCE_MANAGED_ACTIONS=1`. The contained fixture enables pause at turn end, temporarily sets the native refusal gate, and then releases it. Actual guarded end-turn commands must first produce a rejected receipt with a returned callback and then advance the turn with a completed receipt. The test also reads the diagnostic fields from the real active-game snapshot. It does not reproduce or claim the original turn69 cause, and it never resumes the acceptance campaign.
+
+`native_support_live_test.py` uses the same isolated Docker/native setup and both test-mode gates as `native_end_turn_live_test.py`. It compares the production support estimate with the running support routine before and after one Scout is added, across SUPPORT−4 through+3 and populations1/4 with four existing supported units. It then invokes the real support checker under controlled shortage, inspects NOSUPPORT context, acknowledges through the guarded semantic choice, and verifies the subsequent unit-count reduction. These cases validate a conditional current-input estimate and native dialog processing; they do not prove future upkeep output, casualty selection, or autonomous prevention. `managed_action_path_contract_test.py` separately verifies bounded projection retention and information/opaque-choice delivery.
+
+The production/travel comparison now waits for the native move receipt to complete and the human turn to become actionable before the next checkpoint. Observing arrival does not replace that receipt. Only an issued reviewed information acknowledgement may be resolved during this wait; an unexpected interaction fails with its semantic frame.
+
+`plan_health_contract_test.py` distinguishes full enumeration from verification of narrative facts: an abstract unbound plan stays valid, creates no inferred assignments, and appears in bounded binding-coverage diagnostics. `diagnostic_summary_contract_test.py` verifies compact binding counts without dumping objective prose or changing provider results. `cognition_delivery_contract_test.py` runs in the Hermes virtualenv (it uses httpx and the real Hermes sanitizer), with PYTHONPATH including src, harness and /opt/hermes; the MCP-only virtualenv is insufficient for that transport test.
+
+Damage overlap regression: `scripts/damage_event_overlap_test.py` replays the observed turn86 7→4→1 chain against its7→1 snapshot interval, with partial, reordered, unrelated-contact/turn and malformed-HP controls. This proves semantic reconciliation, not a new native combat execution. See `docs/benchmarks/gameplay-combat-damage-turn86.json` for independent live effects and actual provider receipt delivery.
+
+`memory_status_feedback_test.py` checks shared claim/commitment/goal/plan statuses, rejection without cognition mutation, and explicit active→abandoned plan revision through journal/runtime. `cognition_delivery_contract_test.py` separately checks actual Hermes serialization, next request, handoff, GC, restart and ambiguous persistence failure.
+
+`contact_gap_snapshot_identity_test.py` reproduces turn97 same-square out-and-back sentinel movement, with/without post-gap damage, staging/frozen-publication failures and restart. It also migrates an old private episode checkpoint once, retaining owned lifecycle identities and not asserting foreign destruction. Pair with cross-publication, owned-transient, rollback and native/MCP recovery acceptance.
+
+`native_truce_offer_test.py` compiles the production unconditional-truce label and popup-row guards with a controlled adapter. It rejects conditional/lookalike labels, altered row IDs/counts and failed submission. `managed_action_path_contract_test.py` checks both opaque responses and preserves the unverified relationship-effect qualifier. `native_truce_replay_test.py` requires an operator-supplied diagnostic ZIP (`SMACX_TRUCE_REPLAY_BUNDLE`, optionally `SMACX_TRUCE_REPLAY_ENTRY`) plus the isolated worker image/game-source environment used by the native suite. It loads the save into separate disposable workers for accept/reject and compares native Spartan relationship flags once the original offer closes. A same-turn follow-on popup is allowed: this proves the relationship effect, not completion of later negotiations or the entire turn. The production campaign is never resumed by this test. See [turn103 evidence](benchmarks/gameplay-truce-offer-turn103.json).
+
+`native_energy_peace_replay_test.py` uses the same operator-provided ZIP and isolated Docker environment as the truce replay. It seeks ENERGYTRUCE and ENERGYTREATY in separate native negotiations, accepting/rejecting each and comparing the public quote to actual own treasury changes and native relationship flags. Native negotiation branches vary: missed targets are explicitly recorded and retried up to five attempts per case, never counted as successful coverage. All four observed cases must pass. Final-build evidence distinguishes same-turn effects from completion of later dialogs, and checks the receipt explicitly requires fresh treasury/diplomatic verification.
+
+The turn118 aircraft-state boundary regression is `PYTHONPATH=src python3 scripts/unit_air_state_visibility_test.py` (host g++ required). It compiles the production output helper, varies foreign/private and non-air work counters, and checks legacy provider/calculator sanitation without mutating original evidence. It proves adapter semantics, not a new live fuel-duration prediction. Run the existing fair-play, movement and counterfactual contracts alongside it; deployed recovery/output evidence is recorded separately in `benchmarks/gameplay-air-state-turn118.json`.
+
+`PYTHONPATH=src python3 scripts/former_task_visibility_test.py` compiles the owned task serializer and distinguishes automation/no-task/active-task/stale/foreign cases. Run `runtime_context_contract_test.py`, `fair_play_world_test.py`, and `managed_action_path_contract_test.py` for this information-only path. Work points are not elapsed turns, an ETA, or completion proof; use the separate live checkpoint/provider evidence in `benchmarks/gameplay-former-task-turn121.json`.

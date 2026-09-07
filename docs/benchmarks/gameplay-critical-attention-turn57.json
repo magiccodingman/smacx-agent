@@ -1,0 +1,57 @@
+{
+  "checkpoint": "turn57-critical-attention-and-combat-receipt",
+  "run_id": "run-30bfe72af8b34c0386c0711c83a44fc7",
+  "attention_id": "attention-11bcd13fb2ed47dab8d6c7a22723a408",
+  "observed_contact": {
+    "name": "Colony Pod",
+    "owner_ref": "faction-5",
+    "location_ref": "location-1776",
+    "observed_turn": 56,
+    "basis": "direct_sight",
+    "scope": "historical attention occurrence, not guaranteed current survival"
+  },
+  "actual_provider_delivery": [
+    "7d4f1d508d5043d3b0adbc12005923e8",
+    "d91a2a4fd7d04ff1881aa9211e25ebc7"
+  ],
+  "reconciliation": {
+    "blocked_call": "chatcmpl-tool-bbe835d800c81f5e",
+    "native_action_executed": false,
+    "decision_consumed": false,
+    "ack_call": "chatcmpl-tool-a745651d738d425f",
+    "ack_ok": true,
+    "reissued_call": "chatcmpl-tool-835ca6b8eb0958be",
+    "same_choice": "choice-b7adbe88b207471183259c18991e43bc"
+  },
+  "native_result": {
+    "action_id": 2,
+    "status": "completed",
+    "resolution": "native_combat_resolved",
+    "native_result": 0,
+    "origin": 1775,
+    "target": 1776,
+    "observed": 1775,
+    "independent_next_turn": 58,
+    "independently_observed_own_unit": "own-unit-12",
+    "location": 1775,
+    "hp": 6
+  },
+  "sovereign_interpretation": {
+    "emitted_rationale": "Receipt alone leaves Colony Pod survival ambiguous; obtain fresh decision and targeted world query.",
+    "query_call": "chatcmpl-tool-9cabfea0c5710bfc",
+    "query_kind": "area",
+    "locations": [
+      1776,
+      1775,
+      1777,
+      1736
+    ],
+    "next_request": "64b6c809ee5548368526db290b771f41"
+  },
+  "classification": "Actual sovereign attention delivery, explicit review/acknowledgement, guarded execution, independent native turn/unit state; no combat-victory inference from completion.",
+  "pending": [
+    "Separate sustained current-turn typed-intent deferral gate",
+    "Original turn55 stall cause",
+    "Full game"
+  ]
+}

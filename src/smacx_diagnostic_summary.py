@@ -1,0 +1,229 @@
+"""Human summaries preserve receipt semantics and label uncertain attribution."""
+from __future__ import annotations
+import json
+import re
+from collections import Counter
+
+
+def failure_code(error):
+    """Normalize known transport/dispatcher forms without guessing their cause."""
+    if isinstance(error, dict):
+        return str(error.get('code', 'structured_error'))[:160]
+    value = str(error or '')
+    # These are the pinned Hermes dispatcher's pre-invocation failures. Keep
+    # raw messages in the event, but do not use parameter/schema text as keys.
+    if re.match(r"^tool_call to '[^']+' is missing required argument\(s\):", value):
+        return 'schema_missing_required'
+    if re.match(r"^tool_call cannot invoke '[^']+' \(it is itself a bridge tool\)", value):
+        return 'bridge_tool_not_invocable'
+    if re.fullmatch(r'[a-z][a-z0-9_]{0,159}', value):
+        return value
+    return 'unclassified_error_text'
+
+
+def result_object(value):
+    for _ in range(5):
+        if isinstance(value, str):
+            try:value=json.loads(value)
+            except ValueError:
+                decoder=json.JSONDecoder()
+                found=None
+                offsets=(i for i,c in enumerate(value) if c=='{')
+                for _,offset in zip(range(32),offsets):
+                    try:candidate,_=decoder.raw_decode(value[offset:])
+                    except ValueError:continue
+                    if isinstance(candidate,dict) and any(k in candidate for k in ('ok','error','result','content')):
+                        found=candidate;break
+                if found is None:return {"text":value}
+                value=found
+        elif isinstance(value,dict) and 'ok' not in value and isinstance(value.get('result'),(str,dict)):
+            value=value['result']
+        elif isinstance(value,dict) and isinstance(value.get('error'),str):
+            # Hermes serializes MCP isError text inside an outer error string.
+            # Only unwrap a declared failure; an inner success cannot erase it.
+            try:nested=json.loads(value['error'])
+            except ValueError:break
+            if not isinstance(nested,dict) or nested.get('ok') is not False or not nested.get('error'):
+                break
+            value=nested
+        elif isinstance(value, dict) and isinstance(value.get('content'),list):
+            texts=[r.get('text') for r in value['content'] if isinstance(r,dict) and r.get('type')=='text']
+            if len(texts)!=1:return value
+            value=texts[0]
+        else:break
+    return value if isinstance(value,dict) else {"value":value}
+
+
+def brief_information(row):
+    result={k:(v[:237]+'...' if isinstance(v,str) and len(v)>240 else v)
+        for k,v in list(row.items())[:16] if isinstance(v,(str,int,float,bool)) or v is None}
+    terms=row.get('terms')
+    if isinstance(terms,dict):
+        result['terms']={party:{k:(v[:157]+'...' if isinstance(v,str) and len(v)>160 else v)
+            for k,v in detail.items() if k in {'kind','name','energy_credits'}
+            and isinstance(v,(str,int,float,bool))}
+            for party,detail in terms.items()
+            if party in {'player_gives','player_receives'} and isinstance(detail,dict)}
+    return result
+
+
+
+def choice_catalog_summary(rows):
+    """Group human menu previews so repeated moves cannot hide other actions.
+
+    This is diagnostic rendering only. The full issued choices, including every
+    opaque ID and constraint, remain in the structured event/provider response.
+    """
+    groups = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get('label') or 'unlabeled')[:120]
+        group = groups.setdefault(label, {'label': label, 'count': 0, 'samples': []})
+        group['count'] += 1
+        sample = {k: (row[k][:120] if isinstance(row[k], str) else row[k])
+                  for k in ('name', 'response', 'target_location_ref', 'energy_cost',
+                            'energy_credits', 'affordable', 'mineral_cost', 'may_close_turn')
+                  if k in row and isinstance(row[k], (str, int, float, bool))}
+        if sample and sample not in group['samples'] and len(group['samples']) < 2:
+            group['samples'].append(sample)
+    return {'total': len(rows), 'groups': list(groups.values())[:12],
+            'more_groups': max(0, len(groups) - 12),
+            'full_choices': 'structured diagnostic record'}
+
+
+def summary(event):
+    kind=event.get('kind','unknown');payload=event.get('payload') or {}
+    tool=payload.get('managed_name') or payload.get('tool') or ''
+    if kind=='retained_message':
+        return f"retained {payload.get('role','')} {payload.get('tool_name') or ''}: {payload.get('content') or ''}"
+    if kind=='sovereign_response':
+        message=payload.get('message') or {}
+        return str(message.get('content') or '') if isinstance(message,dict) else str(message)
+    if kind=='tool_validation_rejected':
+        return f"{tool} rejected before execution {json.dumps(payload,ensure_ascii=False,separators=(',',':'))}"
+    if kind in {'tool_requested','managed_tool_started'}:
+        arguments=payload.get('arguments') or {}
+        if isinstance(arguments,dict) and isinstance(arguments.get('arguments'),dict):arguments=arguments['arguments']
+        return f"{tool} request {json.dumps(arguments,ensure_ascii=False,separators=(',',':'))}"
+    if kind in {'tool_returned','managed_tool_returned','managed_tool_validation_rejected'}:
+        result=result_object(payload.get('result',payload.get('content')))
+        chosen={k:result[k] for k in ('ok','kind','error','phase','focus','executed_choice',
+            'native_action_executed','execution','execution_status','decision_consumed',
+            'completed','queued','action_id','gameplay','completion_semantics','effect_disposition','state_changed_during_enumeration',
+            'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','citizen_context','required_next','persistence','journal_event_id',
+            'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name','terraform_completion_verified','follow_up') if k in result}
+        health = result.get('plan_health')
+        if isinstance(health, dict):
+            chosen['plan_health'] = {k: health[k] for k in (
+                'active_plan_count', 'intent_coverage_complete', 'assessment_scope',
+                'plans_without_world_bindings_count', 'assigned_owned_unit_count',
+                'mechanically_ordered_unit_count', 'conflict_count',
+                'dependency_exception_count') if k in health}
+        record = result.get('record')
+        if isinstance(record, dict) and record.get('plan_id'):
+            chosen['plan_record'] = {k: record[k] for k in ('plan_id', 'status', 'plan_revision') if k in record}
+            for field in ('participants', 'target_refs', 'dependencies'):
+                if isinstance(record.get(field), list):
+                    chosen['plan_record'][field + '_count'] = len(record[field])
+        if isinstance(result.get('acknowledged_ids'), list):
+            chosen['acknowledged_count'] = len(result['acknowledged_ids'])
+            chosen['attention_cursor'] = result.get('attention_cursor')
+            chosen['attention_lease_id'] = result.get('attention_lease_id')
+        citizen=result.get('citizen_context')
+        if isinstance(citizen,dict):
+            tiles=citizen.get('tiles',[])
+            chosen['citizen_context']={k:citizen[k] for k in ('population','governor_manages_citizens') if k in citizen}
+            if isinstance(tiles,list):
+                chosen['citizen_context']['worked_tiles']=[r for r in tiles if isinstance(r,dict) and r.get('worked')][:3]
+                chosen['citizen_context']['currently_assignable_tiles']=sum(isinstance(r,dict) and r.get('assignable') is True for r in tiles)
+            workflow=citizen.get('tile_reassignment')
+            if isinstance(workflow,dict):
+                chosen['citizen_context']['reassignment']='Convert worker, then requery and assign temporary specialist to a fresh legal tile.'
+                chosen['citizen_context']['next_query']=workflow.get('next_query')
+        if isinstance(result.get('choices'),list):
+            chosen['choice_catalog'] = choice_catalog_summary(result['choices'])
+            if result.get('decision_id'):
+                chosen['decision_id'] = result['decision_id']
+            # Long instructional paragraphs otherwise consume the CLI limit
+            # before the menu. Their full text stays in the structured record.
+            focus = chosen.get('focus')
+            if isinstance(focus, dict):
+                chosen['focus'] = {k: focus[k] for k in ('kind', 'base_ref') if k in focus}
+                unit = focus.get('unit')
+                if isinstance(unit, dict):
+                    chosen['focus']['unit'] = {k: unit[k] for k in
+                        ('own_unit_ref', 'location_ref', 'name', 'hp', 'max_hp',
+                         'moves_remaining', 'movement_scale', 'order_name', 'ready','terraform_task') if k in unit}
+            scope = chosen.get('choice_scope')
+            if isinstance(scope, dict):
+                chosen['choice_scope'] = {k: scope[k] for k in
+                    ('family', 'all_management_actions_enumerated', 'other_management_queries') if k in scope}
+            next_step = chosen.get('required_next')
+            if isinstance(next_step, dict):
+                chosen['required_next'] = {k: v for k, v in next_step.items() if k != 'then'}
+        if isinstance(result.get('information'),list) and result['information']:
+            # Native terms are already semanticized by the managed surface.
+            # Retain a bounded scalar view; full nested terms stay in the trace.
+            chosen['information']=[brief_information(r)
+                for r in result['information'][:4] if isinstance(r,dict)]
+            chosen['more_information']=max(0,len(result['information'])-4)
+        if not chosen:chosen={'text':result.get('text',result)}
+        return f"{tool} -> {json.dumps(chosen,ensure_ascii=False,separators=(',',':'))}"
+    if kind=='choice_selected':
+        return f"selected {payload.get('label')} focus={json.dumps(payload.get('focus_before'))} choice={json.dumps(payload.get('choice'))}"
+    if kind=='journal_event':
+        event_type=payload.get('event_type','')
+        if event_type.startswith(('memory.','attention.','specialist.','game.action','checkpoint','recovery')):
+            return f"journal {event_type} turn={payload.get('turn')} {json.dumps(payload.get('payload',{}),ensure_ascii=False)}"
+    if kind in {'capture_gap','provider_transport_failed','managed_tool_exception','runtime_context_failed','runtime_context_deferred','semantic_preflight','tool_batch_finished','history_compaction','control_operation_failed','control_operation_deferred','worker_liveness_lost'}:
+        return kind+' '+json.dumps(payload,ensure_ascii=False)
+    return ''
+
+
+class Metrics:
+    def __init__(self):
+        self.events=Counter();self.tools=Counter();self.failures=Counter();self.actors=Counter()
+        self.streams_finished=0;self.streams_incomplete=0;self.latencies={}
+        self.requests=set();self.terminal_requests=set()
+    def add(self,event):
+        kind=event.get('kind','unknown');payload=event.get('payload') or {}
+        self.events[kind]+=1;self.actors[event.get('actor','unknown')]+=1
+        request_id=(event.get('correlation') or {}).get('request_id')
+        if request_id:
+            if kind=='provider_request_submitted':self.requests.add(request_id)
+            if kind in {'provider_response_body','provider_response_stream','provider_transport_failed'}:
+                self.terminal_requests.add(request_id)
+        if kind in {'tool_requested','tool_validation_rejected'}:self.tools[payload.get('managed_name','unknown')]+=1
+        if kind=='tool_validation_rejected':self.failures[kind+':unknown_tool_name']+=1
+        if kind=='control_operation_failed':self.failures[kind+':'+str(payload.get('error_code','unknown'))]+=1
+        if kind in {'tool_returned','managed_tool_returned','managed_tool_validation_rejected'}:
+            result=result_object(payload.get('result',payload.get('content')))
+            error=result.get('error')
+            if error:
+                self.failures[kind+':'+failure_code(error)]+=1
+            elif result.get('isError') or result.get('ok') is False:
+                self.failures[kind+':unclassified_failure']+=1
+        if kind in {'provider_transport_failed','managed_tool_exception','runtime_context_failed','capture_gap'}:
+            error=payload.get('error') or payload.get('reason')
+            code=failure_code(error) if error else str(payload.get('exception_type','unspecified'))
+            self.failures[kind+':'+code]+=1
+        if kind=='provider_response_stream':
+            if payload.get('done_marker_observed') and not payload.get('capture_truncated'):self.streams_finished+=1
+            else:self.streams_incomplete+=1
+        duration=payload.get('elapsed_ms')
+        if isinstance(duration,(int,float)):
+            key=kind+':'+str(payload.get('tool',''))
+            row=self.latencies.setdefault(key,{'count':0,'total_ms':0,'max_ms':0})
+            row['count']+=1;row['total_ms']+=duration;row['max_ms']=max(row['max_ms'],duration)
+    def as_dict(self):
+        pending=sorted(self.requests-self.terminal_requests)
+        return {'event_counts':dict(self.events),'actor_counts':dict(self.actors),
+            'provider_requests_without_terminal_capture':{'count':len(pending),
+                'request_ids':pending[:64],'more':max(0,len(pending)-64),
+                'meaning':'May be in flight, interrupted, or missing capture; not automatically a provider failure.'},
+            'sovereign_requested_tool_counts':dict(self.tools),'failure_observations_by_layer':dict(self.failures),
+            'failure_counts_are_not_deduplicated_incidents':True,
+            'provider_streams_with_done_marker':self.streams_finished,
+            'provider_streams_incomplete_or_truncated':self.streams_incomplete,'latency_by_layer':self.latencies,
+            'model_quality_or_causal_use_not_inferred':True}

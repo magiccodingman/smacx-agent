@@ -9,10 +9,12 @@ only objects carrying those labels.
 from __future__ import annotations
 
 import http.client
+import io
 import json
 from pathlib import Path
 import socket
 import time
+import tarfile
 from typing import Any, Mapping
 from urllib.parse import quote, urlencode
 
@@ -245,6 +247,27 @@ class DockerClient:
             "PUT", f"/containers/{quote(identifier, safe='')}/archive?{query}",
             raw_body=archive, content_type="application/x-tar", expected=(200,),
         )
+
+    def read_container_file(self, identifier: str, path: str, *, max_bytes: int = 65536) -> bytes:
+        """Read one bounded regular file without extracting a container archive."""
+        if not path.startswith("/") or ".." in Path(path).parts:
+            raise DockerError("invalid_container_file_path")
+        limit = min(max(int(max_bytes), 1), 1024 * 1024)
+        _, data = self._request(
+            "GET", f"/containers/{quote(identifier, safe='')}/archive?" + urlencode({"path": path}),
+            expected=(200,), timeout=5.0,
+        )
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as archive:
+            member = archive.next()
+            if member is None or not member.isfile() or member.size > limit:
+                raise DockerError("container_file_not_regular_or_too_large")
+            stream = archive.extractfile(member)
+            if stream is None:
+                raise DockerError("container_file_missing")
+            content = stream.read(limit + 1)
+            if len(content) > limit or archive.next() is not None:
+                raise DockerError("container_file_archive_invalid")
+            return content
 
     def wait_container(self, identifier: str, *, timeout: float = 120.0,
                        interval: float = 0.25) -> dict[str, Any]:

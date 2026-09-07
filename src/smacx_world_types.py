@@ -54,6 +54,46 @@ def provider_safe(value: Any) -> Any:
                     or lower in _PRIVATE_EXACT_KEYS:
                 continue
             result[key] = provider_safe(item)
+        # Legacy snapshots may contain a shared terraforming/fuel byte or
+        # foreign private aircraft state. Qualify the provider projection only;
+        # retained journal evidence must never be rewritten by this repair.
+        for key in ("air_fuel_turns_used", "air_safe_range", "air_full_safe_range",
+                    "air_origin_refuels"):
+            raw = result.get(key)
+            if not isinstance(raw, Mapping) or "source" not in raw:
+                continue
+            triad = result.get("triad")
+            triad = triad.get("value") if isinstance(triad, Mapping) else triad
+            if raw.get("source") != "owned_state" \
+                    or (key == "air_fuel_turns_used" and triad != "air") \
+                    or (triad is not None and triad != "air"):
+                result.pop(key, None)
+        task = result.get("terraform_task")
+        if isinstance(task, Mapping) and task.get("source") != "owned_state":
+            result.pop("terraform_task", None)
+        roles = result.get("roles")
+        if isinstance(roles, Mapping) and roles.get("source") != "owned_state" \
+                and isinstance(roles.get("value"), Mapping):
+            roles["value"].pop("airdrop_used", None)
+        if result.get("event_kind") in ("contact_moved", "unit_moved"):
+            endpoints = [result.get("from_location_ref"), result.get("to_location_ref")]
+            path = result.get("path")
+            for segment in path if isinstance(path, (list, tuple)) else ():
+                if isinstance(segment, Mapping):
+                    endpoints.extend((segment.get("from_location_ref"), segment.get("to_location_ref")))
+            if any(isinstance(ref, str) and re.fullmatch(r"location--[0-9]+", ref) for ref in endpoints):
+                # Old journal/cache records remain immutable diagnostic evidence.
+                # Their provider projection must not revive a sentinel endpoint
+                # as an exact route, including after checkpoint restoration.
+                result["reported_event_kind"] = result["event_kind"]
+                result["event_kind"] = "movement_observation_incomplete"
+                result.pop("path", None)
+                for key in ("from_location_ref", "to_location_ref"):
+                    ref = result.get(key)
+                    if isinstance(ref, str) and re.fullmatch(r"location--[0-9]+", ref):
+                        result[key] = None
+                result.update(reason="invalid_recorded_movement_endpoint", outcome="not_established",
+                              continuous_visibility=False, current_whereabouts="unknown")
         return result
     if isinstance(value, (list, tuple, set, frozenset)):
         return [provider_safe(item) for item in value]

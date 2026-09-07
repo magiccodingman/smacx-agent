@@ -1,0 +1,53 @@
+{
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "evidence": {
+    "turn12_provider_request": "758b832939f347b18be2c3fc59ccbfcb",
+    "delivered_governor": {
+      "active": false,
+      "permissions": {
+        "hurry_production": false
+      }
+    },
+    "sovereign_claim": "Cannot hurry production because permission is false",
+    "turn14_read_only_native_comparison": {
+      "population": 1,
+      "governor_hurry_permission": false,
+      "production_choices_include": [
+        "Colony Pod",
+        "Formers",
+        "Scout Patrol",
+        "hurry_production"
+      ],
+      "current_item": "Scout Patrol",
+      "hurry": {
+        "legal": true,
+        "affordable": true,
+        "minerals_added": 8,
+        "energy_cost": 19,
+        "available_energy": 63
+      }
+    }
+  },
+  "classification": "Governor automation flag misinterpreted as direct player legality; semantic scope clarification",
+  "change": "Add permission_scope and player_action_legality to native governor records; booleans and guarded action rules unchanged",
+  "validation": {
+    "native_cross_build": "pass",
+    "deployed_annotation": "pass: native list_bases and base_management current.governor",
+    "projected_annotation": "pass: current owned governor field, observation-60, turn14, world_revision2"
+  },
+  "limits": [
+    "Turn14 costs are not asserted as turn12 costs",
+    "No manual gameplay mutation performed in this comparison",
+    "No claim that all production or hurry actions are universally legal",
+    "Autonomous interpretation after annotation pending"
+  ],
+  "deployment": {
+    "checkpoint_id": "checkpoint-ecac773fc1474b2faeba740f65dcd5d2",
+    "turn": 14,
+    "refresh_runtime": true,
+    "prepared_image": "smacx-agent-prepared:31f20d357478-b829e813a01e-723c9e39c34a",
+    "running_bridge_sha256": "0cebabd860196c47e7ad64f1846cbd555858756250e191c67cecc2ca608111d5",
+    "control_mcp_image": "sha256:8a4ebb4d814018a0ccdfe368b776d1ae994e033c044573b53f703d8fb617a9b1",
+    "harness_image": "sha256:27d4f4e21e145ff8c51a6794971289769b835fae4646fafbd23920d130d6d5ea"
+  }
+}

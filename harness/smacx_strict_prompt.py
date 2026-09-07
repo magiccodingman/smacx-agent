@@ -46,15 +46,16 @@ _HANDOFF_SECTIONS = (
 _HANDOFF_MAX_WORDS = 120
 _HANDOFF_SECTION_WORDS = 19
 _STATE_TOOL_NAMES = frozenset({
-    "smac_decision", "smac_choices", "smac_wait",
-    "smac_execute_choice", "smac_match_briefing", "smac_snapshot", "smac_observe",
+    "smac_decision", "smac_wait", "smac_snapshot", "smac_observe",
 })
+_QUERY_TOOL_NAMES = frozenset({"smac_choices", "smac_world", "smac_investigate"})
 _DISPOSABLE_TOOL_NAMES = frozenset({
-    *_STATE_TOOL_NAMES, "smac_world", "smac_investigate", "smac_list",
+    *_STATE_TOOL_NAMES, *_QUERY_TOOL_NAMES, "smac_execute_choice", "smac_match_briefing", "smac_list",
     "smac_memory", "smac_memory_update", "smac_notebook",
 })
 _COGNITION_TOOL_NAMES = frozenset({"smac_memory_update", "smac_notebook"})
 _SMACX_MCP_PREFIX = "mcp__smacx__"
+_SMACX_MCP_PREFIXES = (_SMACX_MCP_PREFIX, "mcp__smacx_communication__")
 _RUNTIME_OPEN = '<SMACX_RUNTIME_CONTEXT schema="smacx.runtime-context.v1">'
 _RUNTIME_CLOSE = "</SMACX_RUNTIME_CONTEXT>"
 _RUNTIME_STATE = threading.local()
@@ -82,7 +83,10 @@ def _episode_id(messages) -> str:  # noqa: ANN001
     material = "\x1f".join((
         os.environ.get("SMACX_AGENT_MATCH_ID", ""),
         os.environ.get("SMACX_AGENT_ID", ""),
-        str(last_user[0]), str(last_user[1]),
+        # Tool-pair GC changes absolute row indices within one invocation.
+        # User-boundary ordinal remains stable under that wire-only cleanup.
+        str(sum(isinstance(message, dict) and message.get("role") == "user"
+                for message in messages)), str(last_user[1]),
     ))
     return "episode-" + hashlib.sha256(material.encode()).hexdigest()[:32]
 
@@ -248,12 +252,9 @@ def _compact_turn_handoff(content: str) -> str:
 def _managed_tool_name(call: object) -> str:
     """Return the semantic SMACX name from direct or Hermes-dispatched calls.
 
-    Hermes exposes MCP through one generic ``tool_call`` function. The actual
-    operation is a nested ``name`` argument such as
-    ``mcp__smacx__smac_decision``. Keeping direct-name support makes the hook
-    tolerant of upstream transport changes, while requiring the namespace on
-    dispatched calls prevents unrelated tools from being treated as game
-    state merely because an untrusted argument resembles a SMACX operation.
+    Current profiles expose direct schemas. Historical Hermes dispatch calls
+    still contain a nested namespaced operation. Both gameplay and the
+    restricted communication catalog use the same semantic GC policy.
     """
     if not isinstance(call, dict):
         return ""
@@ -263,8 +264,9 @@ def _managed_tool_name(call: object) -> str:
     outer_name = function.get("name")
     if not isinstance(outer_name, str):
         return ""
-    if outer_name.startswith(_SMACX_MCP_PREFIX):
-        return outer_name.removeprefix(_SMACX_MCP_PREFIX)
+    for prefix in _SMACX_MCP_PREFIXES:
+        if outer_name.startswith(prefix):
+            return outer_name.removeprefix(prefix)
     if outer_name != "tool_call":
         return outer_name
     arguments = function.get("arguments")
@@ -276,17 +278,18 @@ def _managed_tool_name(call: object) -> str:
     if not isinstance(arguments, dict):
         return ""
     dispatched_name = arguments.get("name")
-    if not isinstance(dispatched_name, str) \
-            or not dispatched_name.startswith(_SMACX_MCP_PREFIX):
-        return ""
-    return dispatched_name.removeprefix(_SMACX_MCP_PREFIX)
+    if isinstance(dispatched_name, str):
+        for prefix in _SMACX_MCP_PREFIXES:
+            if dispatched_name.startswith(prefix):
+                return dispatched_name.removeprefix(prefix)
+    return ""
 
 
 def _managed_tool_arguments(call: object) -> dict | None:
     if not isinstance(call, dict):
         return None
     function = call.get("function")
-    if not isinstance(function, dict) or function.get("name") != "tool_call":
+    if not isinstance(function, dict):
         return None
     outer = function.get("arguments")
     if isinstance(outer, str):
@@ -294,8 +297,10 @@ def _managed_tool_arguments(call: object) -> dict | None:
             outer = json.loads(outer)
         except json.JSONDecodeError:
             return None
-    if not isinstance(outer, dict) or not str(outer.get("name") or "").startswith(
-            _SMACX_MCP_PREFIX):
+    if str(function.get("name") or "").startswith(_SMACX_MCP_PREFIXES):
+        return outer if isinstance(outer, dict) else None
+    if function.get("name") != "tool_call" or not isinstance(outer, dict) \
+            or not str(outer.get("name") or "").startswith(_SMACX_MCP_PREFIXES):
         return None
     arguments = outer.get("arguments")
     if isinstance(arguments, str):
@@ -310,7 +315,13 @@ def _replace_managed_tool_arguments(call: object, arguments: dict) -> None:
     if not isinstance(call, dict):
         return
     function = call.get("function")
-    if not isinstance(function, dict) or function.get("name") != "tool_call":
+    if not isinstance(function, dict):
+        return
+    if str(function.get("name") or "").startswith(_SMACX_MCP_PREFIXES):
+        function["arguments"] = json.dumps(arguments, sort_keys=True, separators=(",", ":")) \
+            if isinstance(function.get("arguments"), str) else arguments
+        return
+    if function.get("name") != "tool_call":
         return
     outer = function.get("arguments")
     outer_was_text = isinstance(outer, str)
@@ -433,6 +444,16 @@ def _install() -> None:
     system_prompt.build_system_prompt_parts = build_parts
     system_prompt.build_system_prompt = build
 
+    def canonical_system(messages):  # noqa: ANN001
+        # Resume can reuse Hermes's persisted system prompt without invoking
+        # its builder. Enforce the approved, hash-validated prompt on every
+        # provider request as well. This changes the wire copy, not history.
+        value = load()
+        return [{"role": "system", "content": value}, *(
+            message for message in messages
+            if not isinstance(message, dict) or message.get("role") != "system"
+        )]
+
     # Specialists use the same Hermes runtime but must never receive the
     # sovereign request-tail context, attention lease, or semantic-GC hooks.
     # Their provider wire retains only the newest assistant reasoning segment:
@@ -448,6 +469,7 @@ def _install() -> None:
             sanitized = original_specialist_sanitize(copy.deepcopy(messages))
             if not isinstance(sanitized, list):
                 return sanitized
+            sanitized = canonical_system(sanitized)
             assistant_rows = [
                 index for index, message in enumerate(sanitized)
                 if isinstance(message, dict) and message.get("role") == "assistant"
@@ -476,16 +498,27 @@ def _install() -> None:
     # durable Hermes transcript.
     import run_agent  # type: ignore
 
+    if os.environ.get("SMACX_DIAGNOSTICS_ENABLED") == "1":
+        from smacx_diagnostics import DiagnosticWriter, install_hermes_capture, install_httpx_capture
+        diagnostic_writer = DiagnosticWriter(
+            Path(os.environ.get("SMACX_DIAGNOSTICS_ROOT", "/opt/data/diagnostics")),
+            os.environ["SMACX_AGENT_MATCH_ID"], "sovereign", compress=True, human_log=True,
+        )
+        install_hermes_capture(run_agent.AIAgent, diagnostic_writer)
+        import httpx
+        install_httpx_capture(httpx.Client, diagnostic_writer)
+
     original_sanitize = run_agent.AIAgent._sanitize_api_messages
     logger = logging.getLogger("smacx.context")
 
-    def compact_managed_context(messages):  # noqa: ANN001
+    def compact_managed_context(messages, *, include_runtime=True):  # noqa: ANN001
         # Hermes's sanitizer may return a shallow list whose message mappings
         # are still the durable transcript objects. All semantic GC and trusted
         # runtime augmentation are provider-wire transformations only.
         sanitized = original_sanitize(copy.deepcopy(messages))
         if not isinstance(sanitized, list):
             return sanitized
+        sanitized = canonical_system(sanitized)
         last_user = max(
             (index for index, message in enumerate(sanitized)
              if isinstance(message, dict) and message.get("role") == "user"),
@@ -493,16 +526,27 @@ def _install() -> None:
         )
         compacted_reasoning = compacted_think_blocks = 0
         compacted_frames = compacted_boundaries = 0
+        compacted_queries = evicted_queries = 0
         pruned_tool_calls = pruned_tool_results = 0
         tool_names: dict[str, str] = {}
         tool_signatures: dict[str, str] = {}
         tool_calls_by_id: dict[str, dict] = {}
         historical_tool_call_ids: set[str] = set()
+        pending_tool_ids: set[str] = set()
         state_rows: list[int] = []
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict):
                 continue
             if message.get("role") == "assistant":
+                if index >= last_user:
+                    # The latest assistant tool batch has not yet received a
+                    # following assistant response. Every one of its results
+                    # must reach the provider before it can be superseded or
+                    # evicted. A later ordinary response clears this protection.
+                    pending_tool_ids = {
+                        call["id"] for call in message.get("tool_calls") or []
+                        if isinstance(call, dict) and isinstance(call.get("id"), str)
+                    }
                 if index < last_user:
                     for field in ("reasoning", "reasoning_content", "reasoning_details"):
                         if field in message:
@@ -539,6 +583,8 @@ def _install() -> None:
                     compacted_boundaries += 1
         for index in state_rows[:-1]:
             message = sanitized[index]
+            if str(message.get("tool_call_id") or "") in pending_tool_ids:
+                continue
             message["content"] = json.dumps({
                 "ok": True,
                 "superseded_runtime_state": True,
@@ -546,23 +592,25 @@ def _install() -> None:
             }, separators=(",", ":"))
             compacted_frames += 1
         # Query evidence is retained within the current episode until it is
-        # actually superseded. Only earlier identical world/reference queries
+        # actually superseded. Choices for different families/subjects are
+        # complementary evidence, not interchangeable current-state frames.
+        # Only earlier identical choice/world/reference queries
         # are collapsed; provider-valid assistant/tool pairing remains intact.
         newest_query: dict[str, int] = {}
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict) or message.get("role") != "tool":
                 continue
             call_id = str(message.get("tool_call_id") or "")
-            if tool_names.get(call_id) not in {"smac_world", "smac_investigate"}:
+            if tool_names.get(call_id) not in _QUERY_TOOL_NAMES:
                 continue
             signature = tool_signatures.get(call_id, call_id)
             prior = newest_query.get(signature)
-            if prior is not None:
+            if prior is not None and str(sanitized[prior].get("tool_call_id") or "") not in pending_tool_ids:
                 sanitized[prior]["content"] = json.dumps({
                     "ok": True, "semantic_gc": "superseded_query_evidence",
                     "retention": "Use the later identical query result.",
                 }, separators=(",", ":"))
-                compacted_frames += 1
+                compacted_queries += 1
             newest_query[signature] = index
         # A managed user boundary is emitted only after the prior native-turn
         # episode has yielded its durable TURN HANDOFF. Retain that ordinary
@@ -607,6 +655,8 @@ def _install() -> None:
             ]
             for message in cognition_rows[:-4]:
                 call_id = str(message.get("tool_call_id") or "")
+                if call_id in pending_tool_ids:
+                    continue
                 call = tool_calls_by_id.get(call_id)
                 arguments = _managed_tool_arguments(call) if call else None
                 tool_name = tool_names.get(call_id)
@@ -642,13 +692,16 @@ def _install() -> None:
                 message for message in filtered
                 if isinstance(message, dict) and message.get("role") == "tool"
                 and tool_names.get(str(message.get("tool_call_id") or ""))
-                in {"smac_world", "smac_investigate"}
+                in _QUERY_TOOL_NAMES
             ]
             for message in query_tool_rows[:-1]:
+                if str(message.get("tool_call_id") or "") in pending_tool_ids:
+                    continue
                 message["content"] = json.dumps({
                     "ok": True, "semantic_gc": "context_pressure_query_eviction",
                     "retention": "Requery only if current consequential work still needs it.",
                 }, separators=(",", ":"))
+                evicted_queries += 1
             removed_indices = _collect_old_disposable_pairs(filtered, tool_names)
             removed_row_count = len(removed_indices)
             if removed_indices:
@@ -678,9 +731,43 @@ def _install() -> None:
             "before": predicted_tokens, "after": after_tokens,
             "removed_rows": removed_row_count,
         }
-        return _append_runtime_context(filtered)
+        from smacx_diagnostics import record
+        record("history_compaction", {**_RUNTIME_STATE.gc_metrics,
+            "reasoning_fields": compacted_reasoning, "think_blocks": compacted_think_blocks,
+            "state_frames": compacted_frames, "episode_boundaries": compacted_boundaries,
+            "query_results_superseded": compacted_queries,
+            "query_results_evicted_for_budget": evicted_queries,
+            "historical_tool_calls": pruned_tool_calls, "historical_tool_results": pruned_tool_results,
+            "protected_latest_batch_results": len(pending_tool_ids),
+        }, actor="runtime-context-builder", correlation={"episode_id": _episode_id(filtered)})
+        return _append_runtime_context(filtered) if include_runtime else filtered
 
     run_agent.AIAgent._sanitize_api_messages = staticmethod(compact_managed_context)
+
+    # Resume/idle preflight runs before the send-time sanitizer. Counting the
+    # durable transcript there triggers lossy generic summarization of state
+    # that semantic GC would remove from the wire. Reuse the same copy-only
+    # projection without acquiring an attention lease or fetching game state.
+    import agent.turn_context as turn_context  # type: ignore
+    from smacx_runtime_context import RUNTIME_BUDGETS
+
+    def managed_preflight_tokens(agent, messages, system_prompt):  # noqa: ANN001,ARG001
+        projected = compact_managed_context(messages, include_runtime=False)
+        context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
+        tier = "64k" if context_length < 131072 else "256k"
+        estimate = turn_context.estimate_request_tokens_rough(
+            projected, tools=getattr(agent, "tools", None) or None,
+        ) + RUNTIME_BUDGETS[tier]["total"]
+        from smacx_diagnostics import record
+        record("semantic_preflight", {
+            "estimated_request_tokens": estimate,
+            "runtime_token_reserve": RUNTIME_BUDGETS[tier]["total"],
+            "source_rows": len(messages), "wire_rows": len(projected),
+            "runtime_context_fetched": False,
+        }, actor="runtime-context-builder", correlation={"episode_id": _episode_id(projected)})
+        return estimate
+
+    turn_context._preflight_request_tokens = managed_preflight_tokens
 
     # The prompt is the primary policy. These two post-processing hooks are a
     # narrow deterministic backstop for the one durable response type whose
@@ -694,12 +781,21 @@ def _install() -> None:
 
     def bounded_build_assistant_message(self, assistant_message, finish_reason):  # noqa: ANN001
         message = original_build_assistant_message(self, assistant_message, finish_reason)
+        from smacx_diagnostics import record
+        record("sovereign_response", {"message": message, "finish_reason": finish_reason},
+               actor="sovereign", correlation={"episode_id": getattr(_RUNTIME_STATE, "episode_id", ""),
+                 "attention_lease_id": getattr(_RUNTIME_STATE, "attention_lease_id", "")})
         if isinstance(message, dict) and isinstance(message.get("content"), str):
             message["content"] = _compact_turn_handoff(message["content"])
         _mark_runtime_responded()
         if isinstance(message, dict) and not message.get("tool_calls") \
                 and finish_reason in {"stop", "end_turn"}:
             _end_runtime_episode(committed=True)
+        elif isinstance(message, dict) and not message.get("tool_calls") \
+                and finish_reason in {"length", "incomplete", "content_filter"}:
+            # Hermes may append a new user continuation after these responses.
+            # Release this invocation without claiming a completed handoff.
+            _end_runtime_episode(committed=False)
         return message
 
     run_agent.AIAgent._strip_think_blocks = bounded_strip_think_blocks

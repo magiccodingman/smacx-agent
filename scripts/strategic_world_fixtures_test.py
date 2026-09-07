@@ -301,7 +301,28 @@ def main() -> int:
     assert any(row["lod_level"] == "geographic"
                for row in anchor["physical_masses"])
     assert {row["kind"] for row in anchor["strategic_objects"]} >= {"project", "council_state"}
+    # Strategic base summaries retain food balance with its evidence; a ready
+    # unit focus must not make a known starvation deficit invisible.
+    food_base = item("food-base", "base", "quiet-plan", nutrient_surplus=-1)
+    food_base["fields"]["nutrient_surplus"]["epistemic_status"] = "stale"
+    food_summary = SemanticLodProjector._strategic_summary(food_base)
+    assert food_summary["fields"]["nutrient_surplus"] == food_base["fields"]["nutrient_surplus"]
+    results["base_food_balance_preserves_evidence"] = True
     results["multi_front_warfare"] = results["project_global_race"] = True
+    pressure_anchor = SemanticLodProjector(context_tier="64k", token_cap=2320).build(
+        projection(32, 16, busy, world_objects),
+        active_plan_refs=["quiet-plan-base"], recent_material_refs=["front-b"],
+    )
+    assert pressure_anchor["token_estimate"] <= 2320
+    assert pressure_anchor["lod"].get("frontier_details_demoted"), pressure_anchor["token_estimate"]
+    assert {row["frontier_ref"] for row in pressure_anchor["frontiers"]} == {
+        row["frontier_ref"] for row in anchor["frontiers"]}
+    for rich, compact in zip(anchor["frontiers"], pressure_anchor["frontiers"]):
+        for key in ("map_information", "may_connect_elsewhere", "nearby_resource_composition",
+                    "nearby_current_foreign_faction_refs", "nearby_stale_foreign_faction_refs"):
+            assert compact[key] == rich[key]
+    results["frontier_pressure_preserves_epistemics_and_refs"] = True
+
 
     # Expansion/base-site comparison supplies affordances without a universal ranking.
     site_objects = {**objects}

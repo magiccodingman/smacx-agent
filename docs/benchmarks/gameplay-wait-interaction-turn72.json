@@ -1,0 +1,131 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "wait-response affordance weakness; sovereign self-corrected before operator stop",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "session_id": "session-47965e5abd0f4d15a6433afc6f12a8db",
+  "observed_turn": 72,
+  "observed_popup": "BEGINPROJECT",
+  "wait_requests": [
+    {
+      "request_id": "db326b074a614646a0e2ebc228c8294a",
+      "seconds": 3
+    },
+    {
+      "request_id": "3d22beed064c41b7aa55a0e634b48631",
+      "seconds": 5
+    },
+    {
+      "request_id": "e11aa5c5bd8148cfbb5f2dcda623b810",
+      "seconds": 10,
+      "call_id": "chatcmpl-tool-a7cbbc116d259565"
+    }
+  ],
+  "returned_before": {
+    "changed": false,
+    "can_act": false,
+    "modal": true,
+    "semantic_popup_label_present": false,
+    "required_next_present": false
+  },
+  "subsequent_self_correction": {
+    "decision_request_id": "f08cb97df31b4977ae72906039ca2ae2",
+    "ack_request_id": "cf5b7425c574468997a0590e56081a28",
+    "turn73_handoff_request_id": "559e57df452147db9f21fba46bbcb2ea"
+  },
+  "repair": "Return qualified semantic phase and required next tool; actionable blocking modals return immediately instead of waiting the entire interval. Compact human trace retains gameplay state.",
+  "native_comparison": {
+    "classification": "read-only proposed adapter executed against preserved running native window",
+    "requested_wait_seconds": 30,
+    "observed_turn": 73,
+    "observed_interaction": "technology_presentation",
+    "elapsed_ms": 201.723,
+    "required_next": "smac_decision",
+    "native_mutation": false
+  },
+  "validation": {
+    "wait_adapter_contract": "pass",
+    "decision_frame_contract": "pass",
+    "compact_trace_preserves_phase_and_popup": "pass",
+    "deployed_provider_delivery": "pass at100 for actionable-turn response; actual blocking-dialog response remains unobserved"
+  },
+  "limits": [
+    "Not a new native deadlock",
+    "Do not equate modal=true with engine processing or with an automatically dismissible dialog"
+  ],
+  "deployment": {
+    "control_mcp_image_sha256": "9d72e0a2d7aecfb36e0168ea3c39271a96435dce352989862532d32d1d91a36b",
+    "harness_specialist_image_sha256": "eee1c4781d19fd8010b7f300262be0dd5392a658461a885d1b8afc482885c4de",
+    "native_session_preserved": "session-47965e5abd0f4d15a6433afc6f12a8db",
+    "native_turn_preserved": 73,
+    "native_rollback": false,
+    "run_id": "run-34317ab0d91f412fa32a11eef7460a32"
+  },
+  "live_turn100": {
+    "preceding_popup_ack_request_id": "929bafeeb8f44e6cbecaafc04edace12",
+    "wait_request_id": "552d4267ccad4f56be204d674fc17d11",
+    "wait_call_id": "chatcmpl-tool-87c49c342fca245f",
+    "returned_phase": "turn",
+    "returned_turn": 100,
+    "returned_required_action": "manage_strategy_or_end_turn",
+    "required_next_tool": "smac_decision",
+    "exact_next_provider_request_id": "6efa205f542c44a0a225b6a20f1afa45",
+    "next_selected_tool": "smac_decision",
+    "observed_wait_calls_in_sequence": 1,
+    "limitation": "The popup was acknowledged before the wait; this is not live proof of the blocking-dialog variant."
+  },
+  "live_turn103": {
+    "blocking_popup": "COMM",
+    "delivery": {
+      "request_id": "d750eabeb93f496ba050e5de22562473",
+      "call_id": "chatcmpl-tool-97476c0ad85444a3",
+      "receipt": {
+        "ok": true,
+        "changed": false,
+        "observation": {
+          "ok": true,
+          "observation": {
+            "screen": "game",
+            "turn": 103,
+            "faction": {
+              "id": 1,
+              "name": "Peacekeeping Forces",
+              "energy_credits": 105,
+              "bases": 2,
+              "units": 11
+            },
+            "ui": {
+              "current_vehicle_id": -1,
+              "can_act": false,
+              "modal": true
+            },
+            "fair_play": {
+              "perspective_faction": 1,
+              "hidden_engine_state_excluded": true
+            }
+          }
+        },
+        "gameplay": {
+          "turn": 103,
+          "phase": "interaction",
+          "interaction_kind": "popup",
+          "popup_label": "COMM",
+          "required_action": "resolve_interaction"
+        },
+        "required_next": {
+          "tool": "smac_decision",
+          "reason": "Obtain a fresh decision now. A blocking interaction or actionable turn requires a decision, not further waiting."
+        }
+      },
+      "next_exact_provider_request": "c2e4d2285cf8458996bdfb7b3cd2f853"
+    },
+    "next_actual_tool": "mcp__smacx__smac_decision",
+    "next_actual_arguments": {
+      "detail": "compact"
+    },
+    "subsequent_native_contact_accepted": {
+      "request_id": "d74275829cc04f918a9779dac8417510",
+      "observed_popup_after": "INTRO3"
+    },
+    "repeated_waits_in_sequence": false
+  }
+}

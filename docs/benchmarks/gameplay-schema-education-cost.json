@@ -1,0 +1,17 @@
+{
+  "schema": "smacx.prompt-cost.v1",
+  "scope": "operating contract, same fixture seat; excludes dynamic doctrine",
+  "measurements": [
+    {
+      "version": "before",
+      "exact_qwen_tokens": 1324,
+      "sha256": "dfde2168c80e5319ff0720bf36b2fbc82e4793f34c44abd5112a9b0688c9571a"
+    },
+    {
+      "version": "after",
+      "exact_qwen_tokens": 1349,
+      "sha256": "315523b6f923abb9366bf902c6aab202b71df1c23b93280a739b4bcad382cf51"
+    }
+  ],
+  "delta_tokens": 25
+}

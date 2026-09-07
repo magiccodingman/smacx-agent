@@ -1,0 +1,105 @@
+{
+  "classification": "confirmed managed representation omission and tool-affordance weakness; native two-step capability already exists",
+  "live_before": {
+    "provider_request_id": "2756d2be1a45472bbdb40f47603dba69",
+    "citizen_call_id": "chatcmpl-tool-b95c9c90d7d0b473",
+    "citizen_context_present": false,
+    "choices": 1,
+    "sovereign_conclusion": "only Doctor conversion is available; citizen allocation cannot fix growth",
+    "native_read": {
+      "population": 1,
+      "governor_manages_citizens": false,
+      "worked_nonbase_yields": {
+        "nutrients": 0,
+        "minerals": 3,
+        "energy": 0
+      },
+      "unworked_assignable_tiles": 19,
+      "higher_nutrient_tiles_present": true
+    }
+  },
+  "repair": "Bounded citizen context preserves native tile yields/allocation, specialist effects and the existing convert-worker\u2192fresh-query\u2192assign-specialist workflow. Choices identify their semantic allocation location/yields; native tile/citizen/specialist selectors stay private. Future availability is conditional; each step is an immediate guarded mutation.",
+  "tests": {
+    "actual_managed_choice_and_opaque_execution_with_native_shaped_adapter": true,
+    "both_steps_journaled": true,
+    "single_use_choices": true,
+    "no_added_native_commands": true,
+    "private_selectors_absent": true,
+    "missing_evidence_not_fabricated": true,
+    "human_trace_retains_workflow": true,
+    "opaque_execution_regression_pass": true,
+    "managed_staged_actions_contract_pass": true,
+    "diagnostic_summary_contract_pass": true,
+    "packaged_image_pass": true
+  },
+  "checkpoint": {
+    "id": "checkpoint-775f757c99c14b68b923fc7c22019436",
+    "turn": 34,
+    "verified": true
+  },
+  "live_after": "Expanded isolated native two-step reassignment and full control/MCP suite pass. Primary sovereign queries and performs both steps at40; actual provider delivery, native worked-state/yield effects and verified41 recovery pass.",
+  "deployment": {
+    "run_id": "run-22993042848845a1a649bd50cb238272",
+    "timeline": "timeline-restore-781ce24ffc064e138d9c5c41",
+    "session_id": "session-ec88fcb0cf9749a4b044b17800b67616",
+    "restored_turn": 34,
+    "native_units_restored": [
+      "Scout Patrol",
+      "Scout Patrol",
+      "Scout Patrol",
+      "Colony Pod"
+    ],
+    "control_and_harness_image": "diagnostics-citizen-context"
+  },
+  "isolated_native_acceptance": {
+    "full_control_worker_mcp_suite_pass": true,
+    "two_separately_issued_managed_choices_executed": true,
+    "different_tile_assigned": true,
+    "native_worked_flags_match_managed_projection": true,
+    "native_tile_yields_match_delivered_context": true,
+    "specialist_count_restored": true,
+    "repeated_checkpoint_and_identity_suite_pass": true,
+    "provider_inference": false,
+    "runtime_attention_hook": "controlled simulated response hook",
+    "airdrop_stress_max_probe_gap_ms": 300.074
+  },
+  "live_sovereign_acceptance": {
+    "turn": 40,
+    "run_id": "run-26667796a6114be9b126d6e0ed78037a",
+    "initial_context_request_id": "f4090b380fe94223ac8ae0ccd71b2ae1",
+    "conversion_receipt_request_id": "53c7db66f6c443479a5d8b5fd159132c",
+    "fresh_catalog_request_id": "39505a6c75f54bbb84840b7d9f1afc4b",
+    "assignment_receipt_request_id": "815bf8aac8c940179c9421b9efac26f5",
+    "conversion_call_id": "chatcmpl-tool-b7c08a520a0d3158",
+    "assignment_call_id": "chatcmpl-tool-83837c6464092edf",
+    "source_location_ref": "location-1053",
+    "target_location_ref": "location-1253",
+    "native_comparison": {
+      "worked_target_yields": {
+        "nutrients": 1,
+        "minerals": 1,
+        "energy": 2
+      },
+      "specialists": 0,
+      "base_nutrient_intake": 3,
+      "base_nutrient_surplus": 1,
+      "base_mineral_intake": 2
+    },
+    "sovereign_selected_workflow_and_target": true,
+    "earlier_operational_repair_notices_present": true,
+    "recovery_of_this_effect_pending": false,
+    "verified_recovery": {
+      "checkpoint_id": "checkpoint-102098706254449c9682b658d3fdf29d",
+      "turn": 41,
+      "timeline_id": "timeline-restore-a4ef4e1a7eb44e3ab1812001",
+      "worked_location_ref": "location-1253",
+      "native_yields": {
+        "nutrients": 1,
+        "minerals": 1,
+        "energy": 2
+      },
+      "nutrient_surplus": 1,
+      "specialists": 0
+    }
+  }
+}

@@ -152,6 +152,36 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _error(self, status: int, code: str, message: str | None = None) -> None:
+        # Capture authenticated match lifecycle failures before a native/MCP
+        # actor exists. Do not log bodies, credentials, query strings, or raw
+        # exception messages, and never let anonymous probes create archives.
+        if getattr(self, "_diagnostic_authorized", False):
+            path = urlsplit(self.path).path
+            scoped = (RECOVERY_PATH.fullmatch(path) or MATCH_PATH.fullmatch(path)
+                      or re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/(diagnostics)", path))
+            match_id = scoped.group(1) if scoped else getattr(self, "_diagnostic_match_id", None)
+            operation = scoped.group(2) if scoped else {
+                "/api/v1/harness-runs": "harness_start",
+                "/api/v1/harness-profiles/hermes": "harness_prepare",
+            }.get(path)
+            if match_id and operation:
+                try:
+                    self.server.control.get_match(match_id)
+                    from smacx_diagnostics import record
+                    category = str(code).split(":", 1)[0]
+                    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", category):
+                        category = "unclassified_control_error"
+                    event_kind = "control_operation_deferred" if (
+                        status == 409 and category == "checkpoint_waiting_for_quiescence"
+                    ) else "control_operation_failed"
+                    record(event_kind, {"operation": operation,
+                        "http_status": int(status), "error_code": category,
+                        "detail_omitted": "raw exception text may contain operational secrets",
+                        "native_effect": "not_inferred_from_http_failure"},
+                        actor="control-api", match_id=match_id)
+                except Exception:
+                    # Diagnostics must not alter the original HTTP outcome.
+                    print("control_error_diagnostic_capture_failed", file=sys.stderr, flush=True)
         self._json(status, {
             "ok": False,
             "error": {"code": code, "message": message or code.replace("_", " ")},
@@ -174,6 +204,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             raise InvalidRecord("invalid_json_body") from exc
         if not isinstance(value, dict):
             raise InvalidRecord("json_object_required")
+        if isinstance(value.get("match_id"), str):
+            self._diagnostic_match_id = value["match_id"]
         return value
 
     def _cookies(self) -> SimpleCookie[str]:
@@ -213,6 +245,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if not cookie or not csrf or cookie.value != csrf:
                 raise AuthenticationError("invalid_csrf_token")
             self.server.control.require_csrf(auth["auth_session_id"], csrf)
+        self._diagnostic_authorized = True
         return auth
 
     def _session_cookies(self, token: str, csrf_token: str, expires_unix: float) -> list[str]:
@@ -232,6 +265,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         ]
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+        self._diagnostic_authorized = False
+        self._diagnostic_match_id = None
         parts = urlsplit(self.path)
         path = parts.path
         try:
@@ -270,6 +305,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/matches":
                 self._authentication()
                 self._json(200, {"ok": True, "matches": self.server.control.list_matches()})
+                return
+            diagnostic_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/diagnostics", path)
+            if diagnostic_match:
+                self._authentication()
+                # This authenticated read creates a diagnostic artifact; retain
+                # a safe error code if creation fails, just as for lifecycle.
+                self._diagnostic_authorized = True
+                self._json(200, {"ok": True, "bundle": self._operations().campaign_diagnostics(diagnostic_match[1])})
                 return
             match_status = MATCH_STATUS_PATH.fullmatch(path)
             if match_status:
@@ -453,6 +496,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._handle_exception(exc)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+        self._diagnostic_authorized = False
+        self._diagnostic_match_id = None
         path = urlsplit(self.path).path
         try:
             if path == "/api/v1/setup/bootstrap":
@@ -1032,7 +1077,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         match_id, str(body.get("incident_id", "")),
                     )
                 else:
-                    result = manager.recover_match(match_id)
+                    result = manager.recover_match(
+                        match_id, refresh_runtime=body.get("refresh_runtime") is True,
+                    )
                 self.server.control.audit(
                     auth["admin_id"], f"match.{action}", "match", match_id,
                     "success", {"managed_recovery": True}, self.client_address[0],

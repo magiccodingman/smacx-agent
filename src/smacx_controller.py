@@ -17,7 +17,7 @@ import uuid
 
 from smacx_game_settings import game_settings_environment, normalize_game_settings
 from smacx_journal import CampaignJournal, JournalError
-from smacx_store import MemoryScope, SmacxStore, StoreError
+from smacx_store import MEMORY_STATUS_VALUES, MemoryScope, SmacxStore, StoreError
 from smacx_reference import read_reference as read_reference_store
 from smacx_attention import AttentionService
 from smacx_observation import ObservationCollector
@@ -755,6 +755,18 @@ def _guard_platform_observation(
     return scope, snapshot
 
 
+def current_turn_intents(match_id: str, session_id: str, *, agent_id: str = "",
+                         perspective_id: str = "", turn: int) -> dict[str, Any]:
+    from smacx_intent import pending_intents
+    scope = _scope_for_match(match_id, session_id=session_id,
+                            agent_id=agent_id, perspective_id=perspective_id)
+    if scope is None:
+        raise StoreError("unknown_or_invalid_match_id")
+    replayed = _journal().replay(scope, sections=("goals", "plans", "manifest"))
+    return {**pending_intents(replayed, turn),
+            "journal_head_hash": replayed["manifest"]["head_hash"]}
+
+
 def write_platform_memory(
     action: str,
     match_id: str,
@@ -766,6 +778,7 @@ def write_platform_memory(
     perspective_id: str = "",
 ) -> dict[str, Any]:
     """Write one typed memory projection behind a fresh fair-play observation guard."""
+    write_stage = "not_started"
     try:
         scope, snapshot = _guard_platform_observation(
             match_id,
@@ -777,6 +790,14 @@ def write_platform_memory(
         store = _store()
         turn = snapshot.get("turn")
         year = snapshot.get("year")
+        if action in {"goal", "plan"}:
+            from smacx_intent import validate_intent
+            record = dict(record)
+            metadata_field = "trigger" if action == "goal" else "timing"
+            metadata = record.get(metadata_field) or {}
+            if not isinstance(metadata, Mapping):
+                raise ValueError("invalid_intent_metadata")
+            record[metadata_field] = validate_intent(metadata, int(turn))
         encoded_record = json.dumps(record, ensure_ascii=False, sort_keys=True,
                                     separators=(",", ":"))
         mechanical_keys = {
@@ -817,7 +838,7 @@ def write_platform_memory(
         source_event_id = str(record.get("source_event_id") or "") or None
         if action == "claim":
             status = str(record.get("status") or "unverified")
-            if status not in {"unverified", "corroborated", "disputed", "false", "retracted"}:
+            if status not in MEMORY_STATUS_VALUES["claim"]:
                 raise StoreError("invalid_claim_status")
             stored = store.record_claim(
                 scope,
@@ -877,7 +898,7 @@ def write_platform_memory(
             )
         elif action == "commitment":
             status = str(record.get("status") or "proposed")
-            if status not in {"proposed", "accepted", "fulfilled", "broken", "expired", "cancelled"}:
+            if status not in MEMORY_STATUS_VALUES["commitment"]:
                 raise StoreError("invalid_commitment_status")
             parties_value = record.get("parties", [])
             if not isinstance(parties_value, list):
@@ -904,7 +925,7 @@ def write_platform_memory(
             )
         elif action == "goal":
             status = str(record.get("status") or "active")
-            if status not in {"active", "paused", "completed", "abandoned"}:
+            if status not in MEMORY_STATUS_VALUES["goal"]:
                 raise StoreError("invalid_goal_status")
             trigger = record.get("trigger")
             if trigger is not None and not isinstance(trigger, Mapping):
@@ -967,6 +988,7 @@ def write_platform_memory(
             )
         else:
             return {"ok": False, "error": "invalid_memory_update_action"}
+        write_stage = "sqlite_projection_written"
         journal = _journal()
         journal_event = journal.append(
             scope, f"memory.{action}", {
@@ -974,7 +996,9 @@ def write_platform_memory(
                 "record": stored, "observed_revision": observed_revision,
             }, session_id=session_id, turn=turn, year=year,
         )
+        write_stage = "journal_committed"
         journal.project_state(scope, _journal_working_state(scope))
+        write_stage = "runtime_projection_built"
         return {
             "ok": True,
             "identity": _platform_scope_identity(scope, session_id),
@@ -985,11 +1009,34 @@ def write_platform_memory(
             "observed_year": year,
             "journal_event_id": journal_event["event_id"],
             "cognition_hygiene": hygiene,
+            "persistence": {"stage": write_stage, "authority": "campaign_journal",
+                            "next_context_source": "fresh_journal_working_state"},
         }
     except BridgeUnavailable:
         return {"ok": False, "error": "game_not_connected"}
     except (StoreError, JournalError, TypeError, ValueError) as exc:
-        return {"ok": False, "error": str(exc)}
+        guidance = {}
+        if action in MEMORY_STATUS_VALUES and str(exc) == f"invalid_{action}_status":
+            guidance = {"validation": {
+                "field": "record_json.status",
+                "allowed_values": list(MEMORY_STATUS_VALUES[action]),
+                "message": "Choose the status matching your intent; preserve other record fields when revising. No status is substituted automatically.",
+            }}
+        retry_policy = "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
+        if write_stage == "not_started" and str(exc) in {
+                "stale_memory_observation", "missing_memory_observation_guard"}:
+            guidance = {
+                "memory_write_committed": False,
+                "required_next": {
+                    "tool": "smac_decision",
+                    "reason": "Obtain a fresh decision and reconsider the record against current world evidence. "
+                        "If still appropriate, retry the memory update using that decision's identity match_id, "
+                        "session_id and revision. Do not reuse a guard from before an executed action or turn transition.",
+                },
+            }
+            retry_policy = "No memory write started. Inspect fresh state before explicitly retrying; no automatic rebase or retry occurred."
+        return {"ok": False, "error": str(exc), **guidance, "persistence": {"stage": write_stage,
+            "authority": "campaign_journal", "retry_policy": retry_policy}}
 
 
 def campaign_notebook(
@@ -1110,10 +1157,36 @@ def read_platform_memory(
         store = _store()
         journal = _journal()
         identity = _platform_scope_identity(scope, session_id or None)
+
+        def provider_safe(value: Any, *, choice_parameters: bool = False) -> Any:
+            if isinstance(value, Mapping):
+                result = {}
+                for key, item in value.items():
+                    key = str(key)
+                    if key == "native_result" and isinstance(item, Mapping):
+                        # Preserve the historical action's bounded public
+                        # outcome without publishing its internal diagnostics.
+                        result["execution_receipt"] = {name: item[name] for name in (
+                            "command", "completed", "queued", "action_id", "turn", "year",
+                            "status", "resolution",
+                        ) if name in item and isinstance(item[name], (str, int, float, bool))}
+                        continue
+                    if key.startswith("native_") or key in {
+                        "engine_id", "hidden_id", "subject_a", "subject_b", "direction_id",
+                        "chassis_id", "weapon_id", "armor_id", "reactor_id", "ability_id_1", "ability_id_2",
+                    } or re.search(r"(?:^|_)(?:unit|base|tile|prototype)_ids?$", key) \
+                            or (choice_parameters and key == "id"):
+                        continue
+                    result[key] = provider_safe(item, choice_parameters=choice_parameters or key == "choice_parameters")
+                return result
+            if isinstance(value, list):
+                return [provider_safe(item, choice_parameters=choice_parameters) for item in value]
+            return value
+
         if action == "working_set":
             memory = _journal_working_state(scope)
             journal.project_state(scope, memory)
-            return {"ok": True, "identity": identity, "memory": memory,
+            return {"ok": True, "identity": identity, "memory": provider_safe(memory),
                     "authority": "campaign_journal", "sqlite_role": "query_projection"}
         try:
             offset = int(cursor.removeprefix("offset-")) if cursor else 0
@@ -1141,15 +1214,6 @@ def read_platform_memory(
                 "truncated": consumed < len(rows), "total_count": len(rows),
             }
 
-        def provider_safe(value: Any) -> Any:
-            if isinstance(value, Mapping):
-                return {str(key): provider_safe(item) for key, item in value.items()
-                        if not str(key).startswith("native_") and str(key) not in
-                        {"engine_id", "hidden_id", "subject_a", "subject_b"}}
-            if isinstance(value, list):
-                return [provider_safe(item) for item in value]
-            return value
-
         def safe_search_results(*, search_query: str,
                                 kinds: Sequence[str], search_limit: int) -> list[dict[str, Any]]:
             """Sanitize journal search bodies before any provider-visible rendering.
@@ -1161,7 +1225,7 @@ def read_platform_memory(
             results: list[dict[str, Any]] = []
             for item in journal.search(
                     scope, search_query, document_kinds=tuple(kinds),
-                    limit=min(max(int(search_limit), 1), 100)):
+                    limit=min(max(int(search_limit), 1), 100), record_transform=provider_safe):
                 try:
                     parsed = json.loads(str(item.get("body") or "{}"))
                 except json.JSONDecodeError:

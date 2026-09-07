@@ -1,0 +1,36 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "campaign": "AI - 4",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "deployed_control_commit": "09d6660",
+  "deployed_harness_commit": "b0826b1",
+  "harness_image_sha256": "499f7341c7aa41d969664d95ff5b7dcda3c8be118802f2bc754e884bcc5ff722",
+  "provider_system_sha256": "14991938f0e39728b81697c762b0bb499fbd0319d5073689cb9f6193766e7bdc",
+  "fresh_and_resumed_system_verified": true,
+  "native_turn_observed": 4,
+  "fresh_checkpoint": {
+    "turn": 3,
+    "verified": true,
+    "checkpoint_id": "checkpoint-8e2d3608f78b4ad8b71920389ef7428d"
+  },
+  "live_archive": {
+    "bytes": 855386,
+    "elapsed_seconds": 2.242,
+    "zip_integrity": true,
+    "provider_requests": 14,
+    "finished_streams": 13,
+    "inflight_requests_explicit": 1
+  },
+  "specialist_installed_image_contract": {
+    "captured_provider_calls": 13,
+    "iterative_world_and_reference": true,
+    "fresh_process_isolation": true,
+    "trace_derived_citations": true
+  },
+  "limitations": [
+    "Opening is not full-game acceptance.",
+    "Original worker loss cause remains undetermined.",
+    "Specialist contract does not prove spontaneous sovereign commissioning or use.",
+    "Browser file delivery remains unverified."
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "checkpoint": "turn55-native-outage-evidence",
+  "autonomous_effect": {
+    "turn54_hurry_call": "chatcmpl-tool-98ce98cafba3669f",
+    "minerals_before": 7,
+    "minerals_after": 30,
+    "credits_spent": 72,
+    "next_request_with_pending_native_processing": "30a2a9de9ca549fd90e6753357c5debb",
+    "independent_native_turn55_unit": "own-unit-19",
+    "unit_name": "Synthmetal Garrison",
+    "location_ref": "location-1134",
+    "provider_force_summary_request": "60c3dff2af9c4d7a8f78d6c8acef9b96"
+  },
+  "outage": {
+    "invocation_id": "1e0e9bdbb594479a9e76f12f732d78c8",
+    "action_id": 3,
+    "command": "move_unit",
+    "origin": "location-1134",
+    "target": "location-1214",
+    "last_status": "pending",
+    "subsequent_status_request": "bridge timeout after 8007.827 ms",
+    "worker_running": true,
+    "worker_oom_killed": false,
+    "cause": "undetermined",
+    "pre_recovery_capture": "a61085fd60794cf8a28a8969221dc177",
+    "capture_limit": "Health probe output empty; native exception file not retained before replacement."
+  },
+  "controlled_replay": {
+    "checkpoint": "checkpoint-4364bb05124f43c38156622c7ea68902",
+    "restored_turn": 55,
+    "commands": [
+      "auto_explore_unit own-unit-10",
+      "move_unit own-unit-19 to location-1214"
+    ],
+    "fresh_native_catalog_guards": true,
+    "move_completed": true,
+    "observed_target": 1214,
+    "subsequent_turn": 56,
+    "classification": "matched saved state/actions, outage NOT reproduced; restored UI history differs",
+    "coherent_checkpoint_restored_after_replay": true
+  },
+  "repair": {
+    "scope": "Preserve bounded native exception reports before replacement in administrator diagnostics",
+    "limits": "64 KiB per regular file; no archive extraction, links or multiple members; redaction retained",
+    "tests": [
+      "incident_recovery_test.py",
+      "container_file_evidence_test.py",
+      "docker_client_test.py"
+    ],
+    "deployment": {
+      "control_digest": "sha256:f4cff0f342e05f133af6b828ae804d937e9036a53f71a8b48b2297a59c985d90",
+      "packaged_recovery_test": "passed",
+      "run_id": "run-42cc68cd729f454596e2a97cc0f7e814",
+      "timeline_id": "timeline-restore-4eb83c085a054c8793c11654",
+      "native_checkpoint_restored": 55,
+      "active_sovereigns": 1
+    }
+  },
+  "pending": [
+    "Original native stall cause",
+    "Live native failure capture if recurrence",
+    "Full autonomous game"
+  ],
+  "turn59_recurrence": {
+    "incident_id": "incident-9e79a0f5a72f44688b2e3bf28e650174",
+    "invocation_id": "c619a91e17fe4fccb4ebe226606adbf9",
+    "action_id": 3,
+    "unit": "own-unit-12",
+    "origin": 1815,
+    "target": 1735,
+    "last_status": "pending",
+    "checkpoint": "checkpoint-121a593f3143406fa63b726a10dbd64d",
+    "capture_event": "6b728d5c08804279866804b08001ea91",
+    "native_exception_reports": [
+      {
+        "location": "prepared",
+        "status": "absent"
+      },
+      {
+        "location": "imported",
+        "status": "absent"
+      }
+    ],
+    "worker_running": true,
+    "oom_killed": false,
+    "automatic_recovery": "verified59 restored",
+    "matched_replay": "same guarded move after59 restore completed with native_combat_resolved; original outage not reproduced",
+    "manual_replay_discarded": "coherent59 recovery",
+    "next_diagnostic": "Operator watcher pauses recovery on first failed health probe to capture live native thread stacks; a failed probe alone is not a confirmed hang."
+  }
+}

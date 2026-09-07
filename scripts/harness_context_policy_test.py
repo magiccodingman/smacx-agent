@@ -13,6 +13,11 @@ import tempfile
 
 def dispatched_call(identifier: str, name: str, arguments: dict | None = None) -> dict:
     """Mirror Hermes's real generic MCP dispatcher envelope."""
+    direct_server = os.environ.get("SMACX_TEST_DIRECT_SERVER")
+    if direct_server:
+        return {"id": identifier, "type": "function", "function": {
+            "name": f"mcp__{direct_server}__{name}",
+            "arguments": json.dumps(arguments or {}, separators=(",", ":"))}}
     return {
         "id": identifier,
         "type": "function",
@@ -103,9 +108,11 @@ def main() -> int:
                        for item in wire if isinstance(item, dict)):
             raise AssertionError("completed historical tool protocol was retained")
         if "superseded_runtime_state" not in by_tool_call_id["new"]["content"] \
-                or "superseded_runtime_state" not in by_tool_call_id["execute"]["content"] \
+                or json.loads(by_tool_call_id["execute"]["content"]).get("executed") is not True \
                 or "latest_state" not in by_tool_call_id["latest"]["content"]:
-            raise AssertionError("state-frame compaction is incorrect")
+            # Execution is an outcome receipt, not an older state frame.
+            # A later decision must not erase evidence that it happened.
+            raise AssertionError("state-frame compaction or execution receipt retention is incorrect")
         # A realistic multi-turn transcript must stay bounded on the provider
         # wire even though Hermes preserves the full durable history in SQLite.
         long_history = [{"role": "user", "content": "opening episode"}]
@@ -156,6 +163,33 @@ def main() -> int:
                 or metrics["after"] >= generic_trigger:
             raise AssertionError("semantic GC did not precede the real Hermes 50% trigger")
 
+        from types import SimpleNamespace
+        from agent import turn_context
+        from smacx_runtime_context import RUNTIME_BUDGETS
+        durable_before = json.dumps(five_hundred)
+        def forbidden_runtime(messages):
+            raise AssertionError("preflight fetched runtime state or acquired a lease")
+        smacx_strict_prompt._fetch_runtime_context = forbidden_runtime
+        preflight = turn_context._preflight_request_tokens(
+            SimpleNamespace(tools=[]), five_hundred, "managed test prompt")
+        assert RUNTIME_BUDGETS["64k"]["total"] < preflight < generic_trigger
+        assert json.dumps(five_hundred) == durable_before
+        try:
+            turn_context._preflight_request_tokens(
+                SimpleNamespace(tools=[]),
+                [{"role": "user", "content": "irreplaceable " * 100000}], "")
+        except RuntimeError as exc:
+            assert "context_budget_exhausted:durable_provider_history" in str(exc)
+        else:
+            raise AssertionError("irreducible preflight history did not fail closed")
+        from agent.context_compressor import ContextCompressor
+        for window in (65536, 262144):
+            compressor = ContextCompressor(
+                model="managed-test", config_context_length=window,
+                threshold_percent=0.5, threshold_tokens_cap=window // 2)
+            assert compressor.threshold_tokens == window // 2
+        smacx_strict_prompt._fetch_runtime_context = fake_runtime
+
         note_heavy = [{"role": "user", "content": "one note-heavy native turn"}]
         for index in range(500):
             identifier = f"note-{index}"
@@ -192,6 +226,7 @@ def main() -> int:
                    for item in bounded_notes if isinstance(item, dict)):
             raise AssertionError("committed cognition did not retain a typed receipt")
         untrusted_dispatch = dispatched_call("foreign", "smac_decision")
+        untrusted_dispatch["function"]["name"] = "tool_call"
         untrusted_dispatch["function"]["arguments"] = json.dumps({
             "name": "smac_decision", "arguments": {},
         })
@@ -251,12 +286,15 @@ def main() -> int:
             "historical_tool_protocol_pruned": True,
             "current_tool_chain_reasoning_retained": True,
             "superseded_state_compacted": True,
-            "superseded_execution_result_compacted": True,
+            "execution_outcome_receipt_retained": True,
             "latest_state_retained": True,
             "real_hermes_dispatcher_compacted": True,
+            "call_transport": os.environ.get("SMACX_TEST_DIRECT_SERVER", "legacy_dispatcher"),
             "provider_wire_growth_bounded": True,
             "five_hundred_action_turn_bounded": True,
             "semantic_gc_precedes_real_half_window_compression": True,
+            "preflight_is_copy_only_and_has_no_runtime_fetch": True,
+            "effective_compression_caps_and_irreducible_failure": True,
             "five_hundred_cognition_notebook_turn_bounded": True,
             "durable_cognition_receipts": True,
             "unscoped_dispatcher_rejected": True,

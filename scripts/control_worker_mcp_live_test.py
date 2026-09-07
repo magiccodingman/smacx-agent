@@ -1186,6 +1186,23 @@ def main() -> int:
             lambda lease_id: runtime_attention_responded(recovered_sidecar, lease_id),
             intent_evidence["milestone_watch_id"], "episode-intent-attention-" + suffix)
         print(json.dumps({"event": "intent_attention_delivery", "payload": intent_delivery}), flush=True)
+        from diagnostics_checkpoint_live_test import exercise_diagnostics_checkpoint
+        diagnostics_episode = "episode-diagnostic-boundary-" + suffix
+        def diagnostics_next_episode():
+            ended = runtime_context(recovered_sidecar, diagnostics_episode, end=True)
+            assert ended.get("ok"), ended
+            # Keep the two explicit episode identities stable for cleanup.
+            resumed = runtime_context(recovered_sidecar, diagnostics_episode + "-next")
+            assert resumed.get("ok"), resumed
+        diagnostics_evidence = exercise_diagnostics_checkpoint(
+            lambda name, arguments: asyncio.run(mcp_tool(recovered_endpoint, name, arguments)),
+            lambda operation, **arguments: bridge_operation(recovered_sidecar, operation, **arguments),
+            lambda: runtime_context(recovered_sidecar, diagnostics_episode),
+            lambda lease_id: runtime_attention_responded(recovered_sidecar, lease_id),
+            diagnostics_next_episode)
+        print(json.dumps({"event": "diagnostics_checkpoint", "payload": diagnostics_evidence}), flush=True)
+        runtime_context(recovered_sidecar, diagnostics_episode, end=True)
+        runtime_context(recovered_sidecar, diagnostics_episode + "-next", end=True)
         print(json.dumps({"event": "managed_action_paths", "payload": managed_evidence}), flush=True)
         # Stress runs after gameplay assertions; its native restore check covers
         # the temporary rows, visibility and yield-calculation scratch state.
@@ -1243,6 +1260,13 @@ def main() -> int:
                               {}, csrf, 900)
         if not intent_restored.get("ok") or not intent_restored.get("memory_restore", {}).get("journal_forks"):
             raise AssertionError({"intent_managed_recovery": intent_restored})
+        first_restored_timeline = intent_restored["memory_restore"]["timeline_id"]
+        # No intervening checkpoint: old-timeline GC must retain the exact
+        # advertised checkpoint accelerator for a second recovery.
+        intent_restored = api(opener, base_url, "POST", f"/api/v1/matches/{created['match']['match_id']}/recover",
+                              {}, csrf, 900)
+        if not intent_restored.get("ok") or intent_restored["memory_restore"]["timeline_id"] == first_restored_timeline:
+            raise AssertionError({"repeated_checkpoint_recovery": intent_restored})
         current_worker = next(item for item in api(opener, base_url, "GET", "/api/v1/workers")["workers"]
                               if item["instance_id"] == worker["instance_id"])
         current_sidecar = current_worker["network"]["mcp_container_name"]
@@ -1267,6 +1291,7 @@ def main() -> int:
             raise AssertionError("old-session counterfactual choice was accepted after recovery")
         print(json.dumps({"event": "intent_recovery", "payload": {
             "native_completed_units_preserved": True, "journaled_plan_preserved": True,
+            "same_checkpoint_recovered_twice_after_timeline_gc": True,
             "journaled_conflict_and_stationary_assignment_preserved": True,
             "ephemeral_old_timeline_watch_discarded": True,
             "old_session_counterfactual_choice_rejected": True}}), flush=True)

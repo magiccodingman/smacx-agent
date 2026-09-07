@@ -1,0 +1,68 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 68,
+  "base_ref": "base-location-1134",
+  "selection_attribution": "Sovereign initiated citizen management; operator repair notice requested only failed history-query retry, not tile choice or management.",
+  "before_actual_provider": {
+    "request_id": "ce340bdb089f49e582f1e1775189cbcf",
+    "observation_cursor": 340,
+    "epistemic_status": "current",
+    "worked_location_refs": [
+      "location-1134",
+      "location-1053",
+      "location-1172"
+    ],
+    "nutrients": {
+      "intake": 3,
+      "consumption": 4,
+      "surplus": -1
+    },
+    "minerals": {
+      "intake": 5,
+      "consumption": 2,
+      "surplus": 3
+    }
+  },
+  "steps": [
+    {
+      "call_id": "chatcmpl-tool-93467b487f12c5a4",
+      "choice_id": "choice-2d5f8cc5fa8f48cb9ce659284d762fa5",
+      "action": "Convert worker to specialist",
+      "receiving_request_id": "498161e7783a433e8032ac8cbef280d8",
+      "exact_receipt_retained": true
+    },
+    {
+      "call_id": "chatcmpl-tool-837f959d8c23305e",
+      "choice_id": "choice-7eeb1214b62147b2a1a6464800bf2eb7",
+      "action": "Assign specialist to tile",
+      "receiving_request_id": "b8bbbfd198db42639a83f1e4bab739e3",
+      "exact_receipt_retained": true
+    }
+  ],
+  "independent_native_after": {
+    "revision": "17456446927707253489",
+    "worked_location_refs": [
+      "location-1134",
+      "location-1093",
+      "location-1172"
+    ],
+    "specialists": [],
+    "nutrients": {
+      "intake": 4,
+      "consumption": 4,
+      "surplus": 0
+    },
+    "minerals": {
+      "intake": 3,
+      "consumption": 2,
+      "surplus": 1
+    }
+  },
+  "acceptance": {
+    "before_final_ready_unit_action": true,
+    "effect_verified": true,
+    "specific_post_effect_recovery": "Not established: checkpoint predates this action; attention-repair recovery restored the prior state.",
+    "broad_strategy_quality": "not inferred"
+  }
+}

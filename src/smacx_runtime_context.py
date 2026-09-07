@@ -44,6 +44,68 @@ def _field(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
     return value.get("value", default) if isinstance(value, Mapping) else default
 
 
+def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
+    """Count current owned evidence, never infer assignments from capabilities."""
+    roles, orders, production, designs, home_bases = {}, {}, {}, {}, {}
+    former_tasks, former_without_task, former_task_unknown = {}, 0, 0
+    unknown = {"roles": 0, "orders": 0, "production": 0, "design": 0, "home_base": 0}
+    units = 0
+    for item in projection.get("objects", ()):
+        if item.get("status") != "active":
+            continue
+        kind = item.get("kind")
+        fields = item.get("fields", {})
+        def current(name):
+            value = fields.get(name, {})
+            return value.get("value") if value.get("epistemic_status") == "current" else None
+        if kind == "own_unit":
+            units += 1
+            design = current("name")
+            if isinstance(design, str): designs[design] = designs.get(design, 0) + 1
+            else: unknown["design"] += 1
+            home = current("home_base_ref")
+            if isinstance(home, str): home_bases[home] = home_bases.get(home, 0) + 1
+            elif fields.get("home_base_ref", {}).get("epistemic_status") == "current":
+                home_bases["no_home_base"] = home_bases.get("no_home_base", 0) + 1
+            else: unknown["home_base"] += 1
+            capabilities = current("roles")
+            if isinstance(capabilities, Mapping):
+                for role, enabled in capabilities.items():
+                    if enabled is True: roles[str(role)] = roles.get(str(role), 0) + 1
+            else: unknown["roles"] += 1
+            if isinstance(capabilities, Mapping) and capabilities.get("former") is True:
+                task = current("terraform_task")
+                if isinstance(task, Mapping) and task.get("state") == "active_terraform_order" \
+                        and isinstance(task.get("name"), str):
+                    name = task["name"]
+                    former_tasks[name] = former_tasks.get(name, 0) + 1
+                elif isinstance(task, Mapping) and task.get("state") == "no_active_terraform_order":
+                    former_without_task += 1
+                else:
+                    former_task_unknown += 1
+            order = current("order_name")
+            if isinstance(order, str): orders[order] = orders.get(order, 0) + 1
+            else: unknown["orders"] += 1
+        elif kind == "base" and fields.get("owner_ref", {}).get("source") == "owned_state":
+            name = current("production_name")
+            if isinstance(name, str): production[name] = production.get(name, 0) + 1
+            else: unknown["production"] += 1
+    def bounded(values):
+        rows = sorted(values.items(), key=lambda row: (-row[1], row[0]))
+        return {"counts": dict(rows[:24]), "omitted_categories": len(rows[24:]),
+                "omitted_count": sum(count for _, count in rows[24:])}
+    return {"scope": "active owned projection objects; current fields only",
+            "world_revision": projection.get("world_revision"), "owned_unit_count": units,
+            "capability_roles_overlap_not_assignments": bounded(roles),
+            "observed_orders": bounded(orders), "current_production": bounded(production),
+            "former_tasks": {"active_task_names": bounded(former_tasks),
+                             "no_active_terraform_order": former_without_task,
+                             "missing_or_noncurrent_task": former_task_unknown,
+                             "scope": "current owned Former roles and task evidence; orders do not prove completion or ETA"},
+            "unit_names": bounded(designs), "support_home_base_not_defense_assignment": bounded(home_bases),
+            "missing_or_noncurrent_fields": unknown}
+
+
 def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     protocol = snapshot.get("protocol") if isinstance(snapshot.get("protocol"), Mapping) else {}
     phase = str(protocol.get("phase") or "unknown")
@@ -75,6 +137,7 @@ def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "focus_id": "focus-unit-" + own_unit_ref,
             "kind": "ready_unit", "mandatory": False,
+            "other_actions": "smac_choices exposes base/research/strategic management while units are ready, subject to native legality.",
             "unit": {key: unit.get(key) for key in
                      ("own_unit_ref", "name", "location_ref", "roles")
                      if unit.get(key) is not None},
@@ -97,6 +160,28 @@ def _compact_cognition_record(item: Mapping[str, Any], *, text_limit: int = 1200
             result[field] = value[:text_limit - 3] + "..."
             result[f"{field}_truncated"] = True
     return result
+
+
+def cognition_selection_audit(working: Mapping[str, Any], selected: Mapping[str, Any]) -> dict[str, Any]:
+    """Explain runtime selection without claiming unobserved journal inventory."""
+    sections = working.get("sections", {})
+    audit = {}
+    for kind in ("goals", "plans", "commitments", "relationships", "beliefs"):
+        source = [row for row in sections.get(kind, ()) if isinstance(row, Mapping)]
+        included = list(selected.get(kind, ()))
+        def identity(row):
+            return next((str(row[key]) for key in ("goal_id", "plan_id", "commitment_id",
+                "belief_id", "relationship_id", "goal_key", "plan_key", "commitment_key")
+                if row.get(key)), hashlib.sha256(canonical_json(_compact_cognition_record(row)).encode()).hexdigest())
+        selected_ids = {identity(row) for row in included}
+        allowed = {"goals": {"active", "paused"}, "plans": {"proposed", "active", "paused"},
+                   "commitments": {"proposed", "accepted"}}.get(kind)
+        audit[kind] = {"source_count": len(source), "included_ids": sorted(selected_ids),
+            "omitted": [{"id": identity(row), "reason":
+                "status_filter" if allowed and str(row.get("status") or ("proposed" if kind == "commitments" else "active")) not in allowed
+                else "section_count_or_token_budget"} for row in source if identity(row) not in selected_ids]}
+    return {"inventory_scope": "journal_working_set_before_runtime_selection",
+            "upstream_working_set_limits_not_reconstructed": True, "sections": audit}
 
 
 def _cognition(working: Mapping[str, Any], *, token_budget: int,
@@ -189,6 +274,12 @@ def _operation_context(operations: list[dict[str, Any]], *, token_budget: int) -
 
 def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+    removal_note = {}
+    if item.get("attention_kind") in {"world_change", "world_changes"}:
+        changes = [payload.get("delta", {})] if "delta" in payload else payload.get("deltas", ())
+        if any(isinstance(delta, Mapping) and delta.get("change") == "removed" for delta in changes):
+            removal_note = {"removal_semantics": "Removed from the current projection; this alone does not prove destruction. Query temporal events for confirmed destruction or loss of observation."}
+            payload = {**payload, **removal_note}
     if item.get("attention_kind") == "world_change":
         delta = payload.get("delta") if isinstance(payload.get("delta"), Mapping) else {}
         current = delta.get("current") if isinstance(delta.get("current"), Mapping) else {}
@@ -198,7 +289,7 @@ def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
             if name in {"name", "owner_ref", "threatened", "relations", "state",
                         "population", "production_name", "hp", "max_hp"}
         }
-        return {"delta": {
+        return {**removal_note, "delta": {
             "object_ref": delta.get("object_ref"), "change": delta.get("change"),
             "kind": current.get("kind"), "location_ref": current.get("location_ref"),
             "fields": compact_fields,
@@ -225,10 +316,12 @@ def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
                 "detail": "Inspect the watch and its referenced world objects for qualified detail."}
     if item.get("attention_kind") == "production_progress":
         return {"event_count": payload.get("event_count"), "details_truncated": True,
-                "events": [{key: event.get(key) for key in ("event_kind", "base_ref", "item_name", "turn")}
+                "events": [{key: event.get(key) for key in ("event_kind", "base_ref", "item_name", "turn",
+                                                                          "meaning", "selection_occurrences",
+                                                                          "selection_details_truncated")}
                            for event in list(payload.get("events") or ())[:4]
                            if isinstance(event, Mapping)]}
-    return {"payload_hash": content_hash(payload), "keys": sorted(payload)[:24],
+    return {**removal_note, "payload_hash": content_hash(payload), "keys": sorted(payload)[:24],
             "detail": "Use smac_world/semantic chat recall for bounded detail."}
 
 
@@ -260,6 +353,7 @@ class RuntimeContextAssembler:
         snapshot: Callable[[], Mapping[str, Any]],
         working_state: Callable[[], Mapping[str, Any]],
         interpretive_recall: Callable[[str], Mapping[str, Any]] | None = None,
+        intent_review: Callable[[int], Mapping[str, Any]] | None = None,
     ) -> None:
         self.scope = scope
         self.world = world
@@ -267,6 +361,7 @@ class RuntimeContextAssembler:
         self.snapshot = snapshot
         self.working_state = working_state
         self.interpretive_recall = interpretive_recall
+        self.intent_review = intent_review
 
     def build(self, *, episode_id: str, episode_mode: str,
               context_length: int) -> dict[str, Any]:
@@ -322,8 +417,9 @@ class RuntimeContextAssembler:
             focus_ref = str(focus_unit["own_unit_ref"])
         tier = "64k" if context_length < 131072 else "256k"
         budgets = RUNTIME_BUDGETS[tier]
+        working = self.working_state()
         cognition = _cognition(
-            self.working_state(), token_budget=budgets["cognition"],
+            working, token_budget=budgets["cognition"],
             current_turn=int(turn) if turn is not None else None,
             current_year=int(snapshot["year"]) if snapshot.get("year") is not None else None,
         )
@@ -369,6 +465,8 @@ class RuntimeContextAssembler:
                     "facts": recalled["facts"][:8],
                     "authority": "fallible_history_not_current_mechanical_truth",
                 }
+        intent_review = dict(self.intent_review(int(turn))) if self.intent_review and turn is not None else {}
+        intent_review.pop("resolution_options", None)
         # Reserve all non-anchor mandatory/current cognition first.  Semantic
         # LOD receives only the remaining coherent envelope budget.
         payload = {
@@ -380,10 +478,13 @@ class RuntimeContextAssembler:
                 "world_revision": int(projection["world_revision"]),
                 "observation_cursor": int(projection["observation_cursor"]),
                 "action_revision": snapshot.get("revision"),
+                "session_id": snapshot.get("session_id"),
                 "continuity": projection.get("continuity", "incomplete"),
             },
             "world": {},
             "focus": focus,
+            "force_summary": _force_summary(projection),
+            **({"current_turn_intent_review": intent_review} if intent_review.get("total_pending") else {}),
             "attention": attention_context,
             "working_cognition": cognition,
             "operations": operations,
@@ -416,6 +517,7 @@ class RuntimeContextAssembler:
             "anchor_observation_cursor": anchor["anchor_observation_cursor"],
             "anchor": anchor["payload"],
             "net_deltas": anchor.get("net_deltas", []),
+            "delta_semantics": "appeared/changed describe known representation, not physical creation/growth. Feature and landmark counts are known extent; increases may be discovery. Use qualified temporal events for observed changes; no event is not proof of no physical change.",
             "net_deltas_truncated": bool(anchor.get("net_deltas_truncated")),
         }
         # The authoritative anchor/focus, binding commitments, and critical
@@ -457,6 +559,8 @@ class RuntimeContextAssembler:
             "anchor": estimate_tokens(payload["world"]["anchor"]),
             "deltas": estimate_tokens(payload["world"]["net_deltas"]),
             "focus": estimate_tokens(payload["focus"]),
+            "force_summary": estimate_tokens(payload["force_summary"]),
+            "intent_review": estimate_tokens(payload.get("current_turn_intent_review", {})),
             "attention": estimate_tokens(payload["attention"]),
             "cognition": estimate_tokens(cognition),
             "operations": estimate_tokens(payload["operations"]),
@@ -478,6 +582,18 @@ class RuntimeContextAssembler:
         payload["token_estimate"] = actual_tokens
         if actual_tokens > runtime_cap:
             raise RuntimeError("context_budget_exhausted:runtime_metadata")
+        from smacx_diagnostics import record
+        record("runtime_selection", {
+            "identity": payload["identity"],
+            "cognition": cognition_selection_audit(working, cognition),
+            "operation_source_count": len(active["operations"]),
+            "operation_selected_count": len(payload["operations"]),
+            "attention_source_count": original_lease_count,
+            "attention_selected_ids": [item["attention_id"] for item in payload["attention"].get("items", ())],
+            "attention_requeued_ids": placement["requeued_ids"],
+            "budget": payload["budget"], "token_composition": payload["token_composition"],
+        }, actor="runtime-context-builder", correlation={"episode_id": episode_id,
+            "attention_lease_id": str(payload["attention"]["attention_lease_id"])})
         for component, value in payload["token_composition"].items():
             self.world.store.telemetry(
                 "runtime_context", f"tokens_{component}", value, scope=self.scope,

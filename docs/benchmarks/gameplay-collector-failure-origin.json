@@ -1,0 +1,53 @@
+{
+  "checkpoint": "collector-failure-origin",
+  "controlled_validation": {
+    "original_exception_rethrown": true,
+    "stage_restore_preserved": true,
+    "last_eight_source_frames_only": true,
+    "raw_exception_text_and_locals_excluded": true,
+    "batch_recovery_windows": [
+      "before_commit",
+      "during_commit",
+      "after_commit"
+    ]
+  },
+  "live_incident": {
+    "incident_id": "incident-0def74e153274f11a66ea9b7884fe006",
+    "turn": 25,
+    "gap_id": "gap-bce845b017e0421aabd07125b8ec1c78",
+    "preserved_bundle_sha256": "0b4ea06c8533fc07b6ccc74e47c6a29fb8eb0f38b9ec485859b4ce8d763ec20f",
+    "worker_and_collector_paused": true,
+    "latest_verified_checkpoint": "checkpoint-0d35c5d505a34342b5a31dd1fede56ba",
+    "frozen_dispatch": {
+      "request_in_progress": true,
+      "request_pending": true,
+      "modal_service_depth": 1,
+      "handler_hits": 2,
+      "getmessage_hits": 1,
+      "pending_sequence": 1297,
+      "last_response_sequence": 1282,
+      "pending_operation": "semantic_snapshot",
+      "current_modal_depth": 0,
+      "current_modal_object_present": false,
+      "main_windows_stack": [
+        "ModPeekMessage",
+        "native wait_task",
+        "native Console_human_turn",
+        "control_turn",
+        "control_game"
+      ],
+      "guard_reset_attempted": false
+    },
+    "symbol_rebuild_text_sha256": "e0cdfee86c7ab955a4eee127df0b151283a2493d503650eb719157055354a597",
+    "symbol_rebuild_matches_preserved_native_text": true
+  },
+  "pending": [
+    "original invalid_tile_id cause; origin telemetry deployed, no recurrence reproduced",
+    "sustained full-game acceptance"
+  ],
+  "deployment": {
+    "control_api": "diagnostics-history-final-cut",
+    "mcp": "diagnostics-history-final-cut",
+    "native_hang_repair_evidence": "gameplay-popup-lifetime-repair.json"
+  }
+}

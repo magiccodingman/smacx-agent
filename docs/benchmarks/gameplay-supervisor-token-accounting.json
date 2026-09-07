@@ -1,0 +1,37 @@
+{
+  "classification": "confirmed reasoning detail double counted as additional output",
+  "installed_authority": "Hermes agent/usage_pricing.py CanonicalUsage.total_tokens and normalize_usage; conversation_loop persists canonical output and reasoning separately",
+  "incident_id": "incident-ae8a009faa9e445a92cc289a8fa0dc93",
+  "baseline": {
+    "output_tokens": 346299,
+    "reasoning_tokens": 283067,
+    "api_calls": 358
+  },
+  "latest": {
+    "output_tokens": 361155,
+    "reasoning_tokens": 296825,
+    "api_calls": 364
+  },
+  "historical_reported_generated": 28614,
+  "correct_output_delta": 14856,
+  "reasoning_detail_delta": 13758,
+  "explains_missing_native_production_observation": false,
+  "thresholds_changed": false,
+  "tests": {
+    "2500_output_with_2000_reasoning_and_one_call": "does not trigger token threshold",
+    "4096_output_with_reasoning_and_one_call": "stops and reports4096",
+    "previous_calculation": "new boundary regression fails as expected",
+    "existing_continuation_outage_and_stall_contracts": "pass"
+  },
+  "deployment": {
+    "status": "deployed",
+    "control_image": "sha256:8b76e53f39e6de06f212a1f7087e50c91f56ca50d6c879935a3b328cdec217dc",
+    "harness_image": "sha256:93f9ae78ca2d067e0f60821d81ecb12dcb4d48b98324712bcb37e6be3bfaba90",
+    "checkpoint_id": "checkpoint-b50d5f9785c14343bc9840f5cf942c76",
+    "turn": 50,
+    "native_session_unchanged": "session-657a47941ec14830966f3d95619e8377",
+    "native_rollback": false,
+    "run_id": "run-6687fc8163bf4cd4a42a4221960cc74b",
+    "packaged_regression": "passed"
+  }
+}

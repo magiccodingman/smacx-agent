@@ -1,0 +1,107 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "observed_turn": 118,
+  "classification": "native shared counter mislabeled as air fuel; foreign private aircraft state exposed in visible-contact page",
+  "observed_owned_former": {
+    "object_ref": "own-unit-13",
+    "location_ref": "location-1135",
+    "triad": "land",
+    "order_name": "auto_former_improve_home_base",
+    "air_fuel_turns_used": 4
+  },
+  "source_evidence": {
+    "shared_storage": "VEH.movement_turns",
+    "terraform_meaning": "Accumulated work contribution; not elapsed fuel turns or a remaining-turn prediction.",
+    "foreign_air_safe_range": "Uses private veh.moves_spent and movement_turns; now omitted for non-owned units.",
+    "foreign_airdrop_used": "Private per-turn state omitted from visible-contact roles."
+  },
+  "repair": {
+    "native": "One owned-aircraft output helper used by legacy list_units and semantic unit page. Non-air fuel fields omitted; range-zero/missile fuel counter is -1 (not applicable).",
+    "adapter": "Old native bundles filter non-air and foreign air state before evidence wrapping.",
+    "recovery": "Old world-object calculation inputs and provider evidence are sanitized without modifying retained journal/checkpoint originals.",
+    "cache": "Calculator version advanced to v6-air-state-visibility.",
+    "native_actions_changed": false
+  },
+  "tests": {
+    "compiled_production_helper_and_projection": "pass",
+    "fair_play_differential": "pass",
+    "movement_mechanics": "pass",
+    "counterfactual_contract": "pass",
+    "geographic_semantics": "pass",
+    "native_cross_build": "pass; thinker.dll and thinker.exe linked",
+    "full_native_mcp_recovery": "pass",
+    "observation_publication_contract": "pass",
+    "contact_gap_checkpoint_contract": "pass"
+  },
+  "maintenance_checkpoint": "checkpoint-5a668fb8e8d14677b2d91064da87e151",
+  "engine_source_sha256": "f215821fb2c03667159d1b3f90c36baa8f8a3ea152fa7a94aef39f6c94ad291b",
+  "limits": [
+    "Adapter fixtures do not assert new native aircraft fuel prediction accuracy.",
+    "Former orders observed as road/sensor and later reset; exact terrain completion not independently proven by this checkpoint.",
+    "Full game unfinished.",
+    "Actual sovereign delivery of corrected unit detail remains unobserved; live foreign page had one contact, not a controlled foreign-aircraft fuel comparison."
+  ],
+  "separate_compact_history_response": {
+    "request_id": "b8a7e87bbf7d4f01a1090a673ac8038d",
+    "mode": "changes",
+    "since_cursor": 610,
+    "detail": "compact",
+    "code": "single_world_item_exceeds_budget",
+    "ceiling": 512,
+    "required_next": "Retry same position with deep detail; no changes returned or skipped.",
+    "classification": "Explicit bounded retry; sovereign follow-through not yet observed before operator maintenance stop."
+  },
+  "predeployment_provider_facade": {
+    "operator_query_only": true,
+    "mode": "forces",
+    "subject_refs": [
+      "own-unit-13"
+    ],
+    "detail": "deep",
+    "ok": true,
+    "air_fuel_turns_used": {
+      "value": 4,
+      "epistemic_status": "current",
+      "source": "owned_state",
+      "provenance_ref": "observation-616"
+    },
+    "actual_sovereign_delivery": "not asserted"
+  },
+  "images": {
+    "worker": "sha256:2c0c5add75911c43ce61b84322f0b46bedcd3803587649f030e0dc542cb90518",
+    "control": "sha256:ff38f17526f47f4e73b98a0ad0f44a7efbf1b6494f6f4187d369d2bcd5cb2e28",
+    "harness": "sha256:781e7ed48e9385b77a6dc9b214c972c288cbe94071aa29274b5de71c3e62ec06"
+  },
+  "full_native_suite": {
+    "log": "/tmp/smacx-air-state-full-native.log",
+    "mcp_tool_count": 15,
+    "same_checkpoint_recovered_twice_after_timeline_gc": true,
+    "owned_units_journaled_plan_reservations_preserved": true,
+    "old_session_choices_rejected": true,
+    "base_site_probe_gap_ms": 255.685,
+    "counterfactual_site_probe_gap_ms": 243.69,
+    "airdrop_max_page_ms": 247.409,
+    "optional_live_provider_and_hermes": "not configured / not run"
+  },
+  "deployment": {
+    "recovery_api": "recover(refresh_runtime=true)",
+    "turn": 118,
+    "session_id": "session-a33a6c447f1c4a1b9c527deda1f03fa3",
+    "native_worker_id": "5b842356c207",
+    "units": 12,
+    "bases": 2,
+    "credits": 179,
+    "retained_plan_id": "plan-7bc6c5d5e1d04052b6a40db56a8c3b8d",
+    "retained_plan_revision": 9,
+    "same_forces_query_has_no_former_fuel": true,
+    "legacy_native_formers_without_fuel_fields": 4,
+    "native_page_rows": 13,
+    "visible_foreign_rows_without_private_air_state": 1,
+    "operator_queries_not_provider_delivery": true,
+    "run_id": "run-97f695f16fd94e8883a456cc09d734d1",
+    "sovereign_status": "running",
+    "heartbeat": "active every 10 minutes",
+    "failure_watcher": "armed on current native worker"
+  }
+}

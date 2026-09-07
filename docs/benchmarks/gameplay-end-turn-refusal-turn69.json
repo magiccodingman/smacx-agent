@@ -1,0 +1,245 @@
+{
+  "classification": "captured campaign stall plus controlled native refusal/retry; autonomous acceptance pending",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "session_id": "session-d70b7913eb8945f28866ed4153d0dc4d",
+  "turn": 69,
+  "action_id": 1,
+  "observed": {
+    "action": "end_turn",
+    "status": "pending",
+    "native_turn": 69,
+    "native_current_faction": 1,
+    "deferred_source_turn": 69,
+    "deferred_faction": 1,
+    "timer_id": 0,
+    "pending_confirmation": false,
+    "game_state_hex": "0x00100000",
+    "ui_thread": "sampled native human-turn message loop; callback not visible in sample",
+    "base_window_visible": true,
+    "worker_healthy": true,
+    "native_human_turn_input_active": true
+  },
+  "causal_limits": [
+    "Original reason native command did not request transition is not established.",
+    "Visible base window is an observation, not established cause.",
+    "This responsive stall is distinct from the unresolved turn55/59 worker outages.",
+    "A sampled stack without the callback does not prove normal return or exclude nonlocal unwinding."
+  ],
+  "repair": {
+    "returned_unaccepted_transition": "explicit rejection native_turn_transition_not_accepted",
+    "native_state_forced": false,
+    "nested_poll_cannot_reject_inflight_call": true,
+    "instrumentation": "active-game snapshot reports turn-complete flag, human-input gate and callback/timer/latch markers; excluded from progress fingerprint"
+  },
+  "validation": {
+    "production_callback_contract": "passed",
+    "cross_build": "passed, current input-gate implementation",
+    "controlled_native_comparison": {
+      "passed": true,
+      "classification": "isolated guarded native end-turn acceptance",
+      "source_turn": 1,
+      "observed_turn": 2,
+      "receipt": {
+        "action_id": 2,
+        "command": "end_turn",
+        "status": "completed",
+        "native_result": 1,
+        "native_call_attempted": true,
+        "resolution": "native_turn_advanced"
+      },
+      "engine_state": {
+        "end_turn_timer_queued": false,
+        "end_turn_native_returned": true,
+        "end_turn_receipt_pending": false
+      },
+      "controlled_native_refusal_verified": true,
+      "original_turn69_refusal_reproduced": false
+    },
+    "deployed": "yes",
+    "baseline_callback_contract": "fails because refusal remains pending",
+    "managed_rejection_receipt": "passed; one poll and explicit no movement renewal guidance",
+    "native_attempts": [
+      {
+        "package": "initial refusal callback, before additional diagnostic markers",
+        "result": "full managed native suite passed",
+        "checks": [
+          "15-tool paths",
+          "native action and counterfactual effects",
+          "current-turn intent guard",
+          "automatic handoff",
+          "repeated checkpoint recovery",
+          "bounded native probes"
+        ]
+      },
+      {
+        "package": "subsequent packaged build",
+        "result": "fixture-isolation recovery failed bridge_start_timeout; stopped after error was captured",
+        "stage": "reload fixture_restore before pact-port tests",
+        "cause": "undetermined",
+        "evidence": "retained private startup thread sample and worker error; not a pass"
+      },
+      {
+        "package": "repeat packaged native suite",
+        "result": "managed, counterfactual, intent and automatic-turn checks passed; responsiveness gate failed",
+        "base_site_wall_ms": 366.641,
+        "maximum_probe_gap_ms": 523.047,
+        "required_maximum_ms": 500,
+        "qualification": "Concurrent builds/tests were running; cause not established. Threshold unchanged; serial rerun required."
+      }
+    ],
+    "runtime_context_contract": "passed: 64K4994,256K8363,Huge25840 tokens",
+    "diagnostic_churn_progress_contract": "passed; toggling every new marker does not count as owned progress",
+    "controlled_native_discovery": "Native turn-complete bit may already be set before explicit end turn. Acceptance clears MapWin field_23BE8; corrected predicate uses remaining human input, not the pre-existing bit.",
+    "controlled_native_log_sha256": "27e648c36dbb936f387f25ad402bd8fb62aa3e6ba9fe3ab2b7a53d6231c768ef",
+    "refused_native_receipt": {
+      "action_id": 1,
+      "command": "end_turn",
+      "status": "rejected",
+      "native_result": 0,
+      "native_call_attempted": true,
+      "resolution": "native_turn_transition_not_accepted"
+    },
+    "serial_native_suite": {
+      "diagnostics_checkpoint": {
+        "current_turn_intent_in_next_runtime": true,
+        "last_ready_native_unit_blocked_without_effect": true,
+        "explicit_deferral_releases_native_skip": true,
+        "automatic_turn_preference_enabled": true,
+        "turn_before": 1,
+        "turn_after_receipt": 2,
+        "auto_transition_observed": true,
+        "next_turn_actionable": true,
+        "turn_handoff_before_next_turn_interactions": true,
+        "native_execution_status": "accepted"
+      },
+      "base_site_stress": {
+        "owned_base_count": 512,
+        "candidate_count": 32,
+        "radius_squares": 21,
+        "wall_ms": 253.401,
+        "probe_gap_ms": 227.261,
+        "receipt_bytes": 170205,
+        "native_elapsed_ms": 3
+      },
+      "counterfactual_site_stress": {
+        "owned_base_input_rows": 511,
+        "nominated_sites": 4,
+        "wall_ms": 245.194,
+        "probe_gap_ms": 224.625,
+        "receipt_bytes": 52378,
+        "native_elapsed_ms": 2
+      },
+      "intent_recovery": {
+        "native_completed_units_preserved": true,
+        "journaled_plan_preserved": true,
+        "same_checkpoint_recovered_twice_after_timeline_gc": true,
+        "journaled_conflict_and_stationary_assignment_preserved": true,
+        "ephemeral_old_timeline_watch_discarded": true,
+        "old_session_counterfactual_choice_rejected": true
+      },
+      "pass": {
+        "authenticated_control_lifecycle": true,
+        "managed_action_failure_containment": false,
+        "dedicated_mcp_sidecar": true,
+        "mcp_tool_count": 15,
+        "mcp_bound_to_exact_match": true,
+        "native_unity_governor_entitlements": true,
+        "native_no_timer": true,
+        "native_orbital_project_global_adapter": true,
+        "native_base_geography_and_unit_traits": true,
+        "native_airdrop_diplomacy_and_anti_drop_guards": true,
+        "native_pact_port_amphibious_sequence": true,
+        "native_airdrop_collection_stress": {
+          "ready_drop_units": 129,
+          "maximum_page_latency_ms": 229.435,
+          "maximum_page_bytes": 139522,
+          "map_tiles": 8192,
+          "demand_receipt_matches_actions": true,
+          "enumeration_target_count": 3696,
+          "enumeration_native_ms": 0.0,
+          "enumeration_wall_ms": 220.387,
+          "enumeration_probe_gap_ms": 252.939,
+          "enumeration_payload_bytes": 8671,
+          "exact_native_ms": 0.0,
+          "exact_wall_ms": 237.905,
+          "exact_probe_gap_ms": 228.414,
+          "exact_payload_bytes": 289,
+          "outside_first_128_semantic_choice_executed": true,
+          "provider_model_supplied_raw_tile_id": false,
+          "revision_cache_hit": true
+        },
+        "native_global_projection_world_runtime_path": true,
+        "managed_lifecycle_blocked": true,
+        "bridge_verified_checkpoint": true,
+        "live_worker_volume_backup_verified": true,
+        "native_crash_recovered_without_ui": true,
+        "semantic_vehicle_identity_survived_native_restart": true,
+        "recovered_checkpoint_turn": 1,
+        "sidecar_removed_on_park": true,
+        "hermes_semantic_turn": false,
+        "hermes_low_reasoning": false,
+        "hermes_native_revision_advanced": false,
+        "hermes_managed_container": false,
+        "hermes_session_backup_verified": false,
+        "hermes_usage": null,
+        "specialist": null
+      }
+    },
+    "serial_native_log_sha256": "45d8594a945bb6b85495fb1624aa2fcbbccae735a58f12f36e3629a276ad05b1"
+  },
+  "acceptance": "open",
+  "reviewed_engine_source_sha256": "6ac10a95793a8161de016651db5ac49f282ab1fb5476a6bf0116075705626c8a",
+  "validated_images": {
+    "worker": "sha256:3911843bff304ff983f236cbab1d8761288f3d86dce0a775515d73ed786faaf9",
+    "control": "sha256:eb93e3ac52fe379e6cec1c8f9bed4916ecc6546b0b22349f50a2c9fa1432746d",
+    "harness": "sha256:aa6515c593a68344f350b71fbc8531a101188c355c019f898d8fd6a801df9597"
+  },
+  "deployment": {
+    "checkpoint_id": "checkpoint-997b03ee1a3748b0bc010c2e46a6fc9b",
+    "verified_turn": 69,
+    "recovery_api_success": true,
+    "restored_session_id": "session-f7791626f0e84163ad9c782f2048b71f",
+    "run_id": "run-f9947d007ffc42829258997ea4561f7a",
+    "active_run_count": 1,
+    "native_engine_source_matches_reviewed": true,
+    "initial_interaction": "turn",
+    "initial_pending_receipt": false,
+    "native_failure_capture_rearmed": true,
+    "autonomous_post_repair_turn_advance": {
+      "from": 69,
+      "through": 71,
+      "independent_native_read_at70": {
+        "action_id": 1,
+        "status": "completed",
+        "resolution": "native_turn_advanced",
+        "pending_latch": false
+      },
+      "actual_provider_delivery": [
+        {
+          "call_id": "chatcmpl-tool-b5773e0a6eda90c6",
+          "command": "end_turn",
+          "receipt": "pending during native confirmation",
+          "next_request_id": "c9ff5fe9a8e646e896192188d58a5746",
+          "exact_receipt": true
+        },
+        {
+          "call_id": "chatcmpl-tool-8cca9506dbce2ab2",
+          "command": "respond_to_end_turn_confirmation",
+          "response": "proceed",
+          "next_request_id": "a314b107b2294fdcad84470d277b9174",
+          "exact_receipt": true
+        },
+        {
+          "call_id": "chatcmpl-tool-9a722f29b47e0161",
+          "command": "end_turn",
+          "source_turn": 70,
+          "next_turn": 71,
+          "receipt": "completed native_turn_advanced",
+          "next_request_id": "56ba45be3c8a4204a5c374986b3b9ae1",
+          "exact_receipt": true
+        }
+      ],
+      "original_refusal_cause_proved": false
+    }
+  }
+}

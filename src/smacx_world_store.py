@@ -396,73 +396,49 @@ class WorldStore:
         cursor = payload.get("observation_cursor", payload.get("observation_sequence", 0))
         return int(cursor or 0) <= committed_cursor
 
-    def changes_since(self, scope: MemoryScope, timeline_id: str, since_cursor: int,
-                      *, limit: int = 512, through_cursor: int | None = None) -> list[dict[str, Any]]:
-        row_limit = min(max(int(limit), 1), 2048)
+    def _history_since(self, scope: MemoryScope, timeline_id: str, since_cursor: int,
+                       *, kinds: tuple[str, str], batch_key: str, result_key: str,
+                       limit: int, offset: int, through_cursor: int | None) -> list[dict[str, Any]]:
+        # Expand batch siblings before applying LIMIT/OFFSET. A storage-row
+        # limit cannot page within a large publication and silently loses its
+        # tail. JSON expansion remains inside the committed SQLite read cut;
+        # only the bounded requested page crosses into Python.
         with self.store._connect() as connection:
             connection.execute("BEGIN")
             cap = self.committed_cursor(scope, timeline_id, connection)
-            if through_cursor is not None: cap = min(cap, int(through_cursor))
+            if through_cursor is not None:
+                cap = min(cap, int(through_cursor))
             rows = connection.execute(
-                "SELECT observation_sequence,journal_event_id,turn,payload_json,continuity "
-                "FROM world_observation_projection WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND observation_kind IN "
-                "('world_object','world_batch') "
-                "AND observation_sequence>? AND observation_sequence<=? ORDER BY observation_sequence,rowid LIMIT ?",
-                (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)), cap,
-                 row_limit),
+                "SELECT p.observation_sequence,p.journal_event_id,p.turn,p.continuity,"
+                "element.value AS value_json FROM world_observation_projection AS p "
+                "CROSS JOIN json_each(CASE WHEN json_type(p.payload_json,?)='array' "
+                "THEN json_extract(p.payload_json,?) ELSE json_array(json(p.payload_json)) END) AS element "
+                "WHERE p.match_id=? AND p.agent_id=? AND p.perspective_id=? AND p.timeline_id=? "
+                "AND p.observation_kind IN (?,?) AND p.observation_sequence>? "
+                "AND p.observation_sequence<=? AND element.type='object' "
+                "ORDER BY p.observation_sequence,p.rowid,CAST(element.key AS INTEGER) LIMIT ? OFFSET ?",
+                (f"$.{batch_key}", f"$.{batch_key}", *self._scope_tuple(scope, timeline_id),
+                 *kinds, max(0, int(since_cursor)), cap, limit, max(0, int(offset))),
             ).fetchall()
-        result: list[dict[str, Any]] = []
-        for row in rows:
-            payload = json.loads(row["payload_json"])
-            deltas = payload.get("deltas") if isinstance(payload, Mapping) else None
-            values = deltas if isinstance(deltas, list) else [payload]
-            for delta in values:
-                if not isinstance(delta, Mapping):
-                    continue
-                result.append({
-                    "observation_cursor": int(row["observation_sequence"]),
-                    "journal_event_id": str(row["journal_event_id"]),
-                    "turn": row["turn"], "continuity": str(row["continuity"]),
-                    "delta": dict(delta),
-                })
-                if len(result) >= row_limit:
-                    return result
-        return result
+        return [{"observation_cursor": int(row["observation_sequence"]),
+                 "journal_event_id": str(row["journal_event_id"]), "turn": row["turn"],
+                 "continuity": str(row["continuity"]), result_key: json.loads(row["value_json"])}
+                for row in rows]
+
+    def changes_since(self, scope: MemoryScope, timeline_id: str, since_cursor: int,
+                      *, limit: int = 512, through_cursor: int | None = None,
+                      offset: int = 0) -> list[dict[str, Any]]:
+        return self._history_since(scope, timeline_id, since_cursor,
+            kinds=("world_object", "world_batch"), batch_key="deltas", result_key="delta",
+            limit=min(max(int(limit), 1), 2048), offset=offset, through_cursor=through_cursor)
 
     def temporal_events_since(self, scope: MemoryScope, timeline_id: str,
-                              since_cursor: int, *, limit: int = 256, through_cursor: int | None = None) -> list[dict[str, Any]]:
+                              since_cursor: int, *, limit: int = 256,
+                              through_cursor: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
         """Return bounded provider-safe semantic history, never native feed rows."""
-        row_limit = min(max(int(limit), 1), 1024)
-        with self.store._connect() as connection:
-            connection.execute("BEGIN")
-            cap = self.committed_cursor(scope, timeline_id, connection)
-            if through_cursor is not None: cap = min(cap, int(through_cursor))
-            rows = connection.execute(
-                "SELECT observation_sequence,journal_event_id,turn,payload_json,continuity "
-                "FROM world_observation_projection WHERE match_id=? AND agent_id=? "
-                "AND perspective_id=? AND timeline_id=? AND observation_kind IN "
-                "('semantic_event','semantic_batch') "
-                "AND observation_sequence>? AND observation_sequence<=? ORDER BY observation_sequence,rowid LIMIT ?",
-                (*self._scope_tuple(scope, timeline_id), max(0, int(since_cursor)), cap,
-                 row_limit),
-            ).fetchall()
-        result: list[dict[str, Any]] = []
-        for row in rows:
-            payload = json.loads(row["payload_json"])
-            events = payload.get("events") if isinstance(payload, Mapping) else None
-            values = events if isinstance(events, list) else [payload]
-            for event in values:
-                if not isinstance(event, Mapping):
-                    continue
-                result.append({
-                    "observation_cursor": int(row["observation_sequence"]),
-                    "journal_event_id": str(row["journal_event_id"]), "turn": row["turn"],
-                    "continuity": str(row["continuity"]), "event": dict(event),
-                })
-                if len(result) >= row_limit:
-                    return result
-        return result
+        return self._history_since(scope, timeline_id, since_cursor,
+            kinds=("semantic_event", "semantic_batch"), batch_key="events", result_key="event",
+            limit=min(max(int(limit), 1), 1024), offset=offset, through_cursor=through_cursor)
 
     def current_anchor(self, scope: MemoryScope, timeline_id: str, context_tier: str) -> dict[str, Any] | None:
         with self.store._connect() as connection:
@@ -837,6 +813,25 @@ class WorldStore:
                 (snapshot_id, owner_kind, owner_id),
             )
         self.gc_snapshot_if_unpinned(snapshot_id)
+
+    def release_obsolete_checkpoint_pins(self, match_id: str, keep_checkpoint_id: str) -> int:
+        """Release old checkpoint ownership only after its replacement is published."""
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT p.snapshot_id,p.owner_id FROM world_snapshot_pins p "
+                "JOIN world_snapshots s ON s.snapshot_id=p.snapshot_id "
+                "WHERE s.match_id=? AND p.owner_kind='checkpoint' AND p.owner_id<>?",
+                (match_id, keep_checkpoint_id),
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    "DELETE FROM world_snapshot_pins WHERE snapshot_id=? "
+                    "AND owner_kind='checkpoint' AND owner_id=?",
+                    (row["snapshot_id"], row["owner_id"]),
+                )
+        for snapshot_id in {str(row["snapshot_id"]) for row in rows}:
+            self.gc_snapshot_if_unpinned(snapshot_id)
+        return len(rows)
 
     def gc_snapshot_if_unpinned(self, snapshot_id: str) -> bool:
         """Delete a derived snapshot only after its final owner releases it."""

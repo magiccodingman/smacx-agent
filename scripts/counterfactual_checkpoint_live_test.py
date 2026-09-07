@@ -71,6 +71,9 @@ def exercise_counterfactual_checkpoint(call, native, site_tanks_center_delta):
     hurry = choose(production, "Hurry production")
     predicted = preview(production, hurry)
     executed = execute(production, hurry)
+    assert executed["production_name"] == fixture["facility_name"], executed
+    assert executed["production_switched"] is False and executed["completion_verified"] is False
+    assert executed["minerals_accumulated"] == predicted["resulting_progress"]
     assert executed["energy_cost"] == predicted["energy_cost"]
     assert fields("base", fixture["base_ref"])["minerals_accumulated"] == predicted["resulting_progress"]
     assert predicted["estimated_production_turns"] == 1
@@ -135,9 +138,45 @@ def exercise_counterfactual_checkpoint(call, native, site_tanks_center_delta):
     after_center = next(row["yields"] for row in radius if row["location_ref"] == center_ref)
     assert {key: after_center[key] - before_center[key] for key in before_center} == site_tanks_center_delta
     record("site_facility_delta_matches_managed_build_and_actual_native_completion")
+    research = native("semantic_snapshot")["snapshot"].get("research", {})
+    if research.get("blind"):
+        frame = choices("research")
+        explore = next(row for row in frame["choices"] if row.get("name") == "Explore")
+        execute(frame, explore)
+        research = native("semantic_snapshot")["snapshot"]["research"]
+        assert research["selected_priorities"] == ["Explore"] and research["priority"] == 0, research
+        assert research["target_visibility"] == "hidden_by_blind_research"
+        record("blind_research_explore_native_flags_and_named_snapshot")
     evidence["production_and_travel_timing"] = exercise_native_production_timing(
         call, native, fixture["destination_base_ref"])
     return evidence
+
+
+def settle_native_move(call, native, execution):
+    """Arrival alone does not prove a queued move's native continuation returned."""
+    action_id = execution.get("action_id") or execution.get("execution", {}).get("action_id")
+    assert action_id is not None, execution
+    notices = []
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        snapshot = native("semantic_snapshot")["snapshot"]
+        receipt = native("action_status", action_id=action_id)["action"]
+        assert receipt.get("status") not in {"rejected", "failed"}, receipt
+        interaction = snapshot.get("interaction", {})
+        if receipt.get("status") == "completed" and interaction.get("kind") == "turn":
+            return {"receipt": receipt, "acknowledged_notices": notices}
+        if interaction.get("kind") not in {"turn", "wait"}:
+            frame = call("smac_choices", {"kind": "interaction"})
+            assert frame.get("ok"), {"snapshot": snapshot, "frame": frame}
+            acknowledge = next((row for row in frame.get("choices", [])
+                                if row.get("label") == "Acknowledge popup"), None)
+            assert acknowledge is not None, {"unexpected_move_interaction": interaction, "frame": frame}
+            result = call("smac_execute_choice", {"decision_id": frame["decision_id"],
+                                                  "choice_id": acknowledge["choice_id"]})
+            assert result.get("ok"), result
+            notices.append(interaction.get("popup_label"))
+        time.sleep(.1)
+    raise AssertionError({"move_did_not_finish_native_processing": receipt, "interaction": interaction})
 
 
 def exercise_native_production_timing(call, native, base_ref):
@@ -186,10 +225,11 @@ def exercise_native_production_timing(call, native, base_ref):
             continue
         executed = call("smac_execute_choice", {"decision_id": frame["decision_id"], "choice_id": choice["choice_id"]})
         assert executed.get("ok"), executed
+        settled = settle_native_move(call, native, executed)
         world = call("smac_world", {"mode": "forces", "subject_refs": [actor_ref], "detail": "deep"})
         assert any(row.get("object_ref") == actor_ref and row.get("location_ref") == target
                    for row in world.get("items", [])), world
         return {"actual_native_production_upkeeps": expected, "production_timing_matches": True,
-                "one_phase_native_move_matches": True,
+                "one_phase_native_move_matches": True, "native_move_completion": settled,
                 "fixed_surplus_controlled_upkeeps_not_full_campaign_turns": True}
     raise AssertionError("No single-phase native movement comparison was available")

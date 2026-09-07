@@ -1,0 +1,68 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "restored_turn68_provider_request": "61a1ba31b13745c8837ea7a1d2937a15",
+  "actual_request_base_view": {
+    "path": "world.anchor.strategic_objects[20]",
+    "field_keys": [
+      "drone_riots",
+      "eco_damage",
+      "mineral_surplus",
+      "name",
+      "owner_ref",
+      "population",
+      "production_name"
+    ],
+    "active_detail_base_absent": true,
+    "nutrient_surplus_absent": true
+  },
+  "prior_checkpoint_state": {
+    "population": 2,
+    "nutrient_surplus": -1,
+    "evidence": "Verified68 recovery predates the subsequently verified citizen reassignment"
+  },
+  "native_after_transition": {
+    "turn": 69,
+    "session_id": "session-d70b7913eb8945f28866ed4153d0dc4d",
+    "population": 1,
+    "nutrient_surplus": 2,
+    "mineral_surplus": 0,
+    "last_started_popup_label": "STARVE"
+  },
+  "classification": "semantic representation weakness; not proof that the sovereign ignored a displayed food warning",
+  "repair": "Include the existing nutrient_surplus epistemic field alongside mineral_surplus in strategic base summaries. No automatic action or inferred current value. Persisted anchor format and overview/changes cache fingerprints are versioned so deployment invalidates old representations without a native mutation.",
+  "validation": {
+    "strategic_world_fixtures_test": "pass including exact stale field retention and Huge fixtures",
+    "runtime_context_contract_test": "pass: 64K/256K and Huge budgets",
+    "world_anchor_format_test": "pass: old format replaced at same observation cursor; overview cache invalidated; current format reused"
+  },
+  "acceptance": {
+    "deployed": true,
+    "actual_repaired_provider_delivery": "pass: format2, owned-state food balance and epistemic fields in actual request",
+    "behavior_under_new_food_deficit": "pending"
+  },
+  "first_deployment": {
+    "control_mcp_sha256": "f70ee1c8f5d1af1b3e14d68b247b3befc1bc673b4f6c802428ef6c4f50079665",
+    "harness_sha256": "072a212d40a8534842efed2ce8406fa8536fdbd466d585b5f6889f3f6d336cb6",
+    "request_id": "21c9c41ecc9845c6a23d9aed6a01c95e",
+    "field_delivered": false,
+    "reason": "Persisted anchor representation reused because material world dependencies did not change"
+  },
+  "final_deployment": {
+    "run_id": "run-8ca1c024fd734eac83cffa0b300cf78c",
+    "control_mcp_sha256": "70135d0bb376538b2b7de49555e7e053b401825db775d8bd2a8312959429694b",
+    "harness_sha256": "3a0731e11dde6c6bb2c55eaf941ebded46f076315b806773a586d7cea6a9c76b",
+    "request_id": "fdfad8ffc8d84caca2dd95c3a74d37a8",
+    "projector_version": 2,
+    "headquarters_nutrient_surplus": {
+      "value": 2,
+      "epistemic_status": "current",
+      "source": "owned_state",
+      "provenance_ref": "observation-350",
+      "last_verified_turn": 69
+    },
+    "other_owned_base_surplus": 1,
+    "foreign_base_food_not_inferred": true,
+    "native_worker_retained": true
+  }
+}
