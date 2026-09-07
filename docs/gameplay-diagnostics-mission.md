@@ -658,3 +658,5 @@ Specialist metrics deployment: packaged export contract passes; control image `b
 ### Compressed specialist trace export
 
 The `.jsonl.zst` export branch copied raw traces and skipped derived transcript/metrics. Bounded decoding now retains the raw source while rendering specialist identity, calls, emitted output and explicit process-exit observations. Production trace-writer→ZIP tests verify separate actor attribution, existing timestamp use, decode-byte limits and corrupt-tail preservation. A missing decoder is an explicit capture gap. The control image includes the decoder. Deployment remains pending; this does not establish autonomous specialist commissioning or use. See `benchmarks/gameplay-specialist-compressed-traces.json`.
+
+Compressed specialist trace deployment: final packaged export passes, source SHA matches the reviewed file, and control image `fc057fdafc02` is healthy. One sovereign resumes in the retained native session at214, currently in treaty dialogue with no active incident. Portal supervision and failure capture remain active.

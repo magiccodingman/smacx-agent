@@ -18,5 +18,14 @@
     "Missing timestamps remain zero/unknown.",
     "64MiB decoded limit can leave a partial derived summary; original compressed trace remains in archive."
   ],
-  "deployment": "pending"
+  "deployment": {
+    "status": "deployed",
+    "packaged_export_contract": "pass",
+    "reviewed_and_packaged_export_source_sha256": "265115b5d4b8383e74c0823d9f4cff584cdf517201a7845522e46fb2d0de5ea7",
+    "control_image": "sha256:fc057fdafc02211b5ea9411b4edeb1c3893df6033437265931c75a52846e45a0",
+    "run_id": "run-e1b4ea08561b4d52b8cbda9231976508",
+    "native_session_retained": "session-2831ce6571ac422a9e755b5807d49f93",
+    "observed_turn": 214,
+    "active_incidents": []
+  }
 }
