@@ -233,6 +233,28 @@ def main() -> int:
                for row in frontier_anchor["frontiers"])
     assert any(row["nearby_resource_composition"]
                for row in frontier_anchor["frontiers"])
+    # A multi-tile named landmark does not multiply collectible pods.
+    wreckage_objects = [
+        obj(square.location_ref, "location", None, terrain=square.terrain,
+            landmarks=[{"natural_name": "U.N.S. Unity Wreckage"}],
+            features=["supply_pod"] if square.location_ref == "location-21" else [])
+        for square in frontier_squares
+    ]
+    wreckage_anchor = SemanticLodProjector(context_tier="64k").build(
+        projection(frontier_squares, wreckage_objects),
+    )
+    assert any(row["nearby_landmarks"] for row in wreckage_anchor["frontiers"])
+    for row in wreckage_anchor["frontiers"]:
+        if row["nearby_landmarks"]:
+            assert "not a count of collectible pods" in row["detail"]
+        for resource in row["nearby_resource_composition"]:
+            if resource["feature"] == "supply_pod":
+                assert resource["current_count"] == 1
+                assert resource["representative_refs"] == ["location-21"]
+    assert all("collectible pods" not in row["detail"]
+               for row in frontier_anchor["frontiers"])
+    results["landmark_tiles_distinct_from_collectible_pods"] = True
+
     with tempfile.TemporaryDirectory(prefix="smacx-geo-") as temporary:
         store, scope, world_store = initialized(Path(temporary))
         frontier_native = {

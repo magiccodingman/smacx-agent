@@ -96,7 +96,11 @@ class Frontier:
             "nearby_landmark_refs": list(self.nearby_landmark_refs),
             "nearby_landmarks": [dict(value) for value in self.nearby_landmarks],
             "adjacent_ocean_mass_refs": list(self.adjacent_ocean_mass_refs),
-            "detail": "bounded_anchor_summary; scout ETA is query-scoped",
+            "detail": "bounded_anchor_summary; scout ETA is query-scoped" + (
+                "; landmark tiles are not a count of collectible pods; "
+                "supply_pod observations are separate and retain their freshness"
+                if self.nearby_landmarks else ""
+            ),
         }
 
 
