@@ -1,0 +1,74 @@
+{
+  "status": "investigation open; no new strategy intervention deployed",
+  "classification": "weak observed strategic outcome; causal attribution mixed and incomplete",
+  "native_observation": {
+    "turn": 221,
+    "year": 2321,
+    "owned_bases": [
+      {
+        "name": "U.N. Headquarters",
+        "population": 4,
+        "net_minerals": 2,
+        "production": "Synthmetal Garrison"
+      },
+      {
+        "name": "U.N. Commerce Committee",
+        "population": 5,
+        "net_minerals": 7,
+        "production": "Recon Rover Battery"
+      }
+    ],
+    "credits": 869,
+    "owned_force": {
+      "Synthmetal Garrison": 7,
+      "Formers": 3
+    },
+    "current_base_ownership_counts": {
+      "Peacekeeping Forces": 2,
+      "Human Hive": 34,
+      "University of Planet": 30,
+      "Morgan Industries": 12,
+      "The Free Drones": 28,
+      "The Data Angels": 19
+    },
+    "scope": "current perspective bridge ownership, not lifetime founding history",
+    "hostile_current_contacts": "seven University contacts near locations1094,1055,1414,1375"
+  },
+  "actual_provider_evidence": {
+    "requests": [
+      "6fae781897c84a5e8d6abc3965b9b086",
+      "da04ba92028248c6990167824db54a43",
+      "abba3feb07e34404b1c46726e1f29383"
+    ],
+    "typed_intent_instruction_present": true,
+    "last_ready_unit_boundary_instruction_present": true,
+    "expansion_doctrine_present": true,
+    "management_tool_mentioned": true,
+    "management_choice_enumeration_this_episode": "not observed in sampled calls; mention alone does not prove each concrete workflow",
+    "working_plan_revision": 15,
+    "last_confirmation_turn": 216,
+    "handoff_recognizes_confirmed_deaths": true,
+    "handoff_promises_revision16": true,
+    "successful_revision16_write": "not observed in sample"
+  },
+  "live_guard_sequence": {
+    "rejected_request": "ef86e2b1ded245a28c20419ca2ebda28",
+    "code": "critical_attention_requires_review",
+    "native_dispatch": false,
+    "acknowledgement_request": "3586e7683fee42fb98e5fc36d17d71e4",
+    "fresh_decision_request": "6838579febbb40a1a3370e69a65df040",
+    "accepted_former_order_request": "5fdcca7baf3a40078320c61c851f00ad"
+  },
+  "limits": [
+    "Earlier repairs and rollbacks confound a clean model benchmark.",
+    "Stale strategic prose is dated; delivery is not certification of its truth.",
+    "No claim that only two bases were ever founded.",
+    "No inference of an attacker solely from confirmed destruction.",
+    "No forced expansion or automatically inferred typed intention added."
+  ],
+  "next_checks": [
+    "Trace successful or rejected plan update through next episode.",
+    "Inspect concrete management enumeration and choices before attributing expansion failure to the model.",
+    "Continue campaign diagnostics and later use a fresh stable run for cleaner strategic evaluation."
+  ]
+}
