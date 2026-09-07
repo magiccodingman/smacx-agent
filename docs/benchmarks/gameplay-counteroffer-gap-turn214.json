@@ -1,0 +1,31 @@
+{
+  "classification": "Actual sovereign/native capability gap; native state preserved",
+  "incident_id": "incident-ae798cd7665649b5b31600d2eb28b522",
+  "gap_id": "gap-423657bb3f0f4ec78de289d92c42381f",
+  "run_id": "run-e1b4ea08561b4d52b8cbda9231976508",
+  "turn": 214,
+  "revision": "9171161540471225590",
+  "native_popup": "COUNTER0",
+  "observed": {
+    "choices": [],
+    "modal": true,
+    "tracked_popup_visible": true,
+    "last_started_popup_label": "COUNTER0",
+    "current_faction_id": 4,
+    "owned_units": 18,
+    "bases": 2,
+    "credits": 799
+  },
+  "sovereign": "Requested a semantic response; bounded wait did not resolve it; reported capability gap.",
+  "bundle": {
+    "sha256": "ae83f1be7aa899b98f832078e66b3fcf0dfa440a13ec12d2a5257e8b0ca6d21d",
+    "bytes": 192162,
+    "raw_bundle_committed": false
+  },
+  "source_findings": [
+    "Native menu renderer and semantic option resolver recognize COUNTER1 but not COUNTER0.",
+    "Installed Script COUNTER0 asks what is offered in return; COUNTERMENU has negotiation options. This is not evidence that an unguarded acknowledgement is correct."
+  ],
+  "status": "Paused; native semantics and controlled end-to-end counteroffer validation required before recovery.",
+  "maintenance_note": "Unrelated cognition provenance code was installed after quarantine. Start attempts failed closed with game_worker_not_healthy. No unpause or native recovery occurred; actual new provenance capture remains pending."
+}
