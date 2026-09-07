@@ -245,6 +245,15 @@
       "worker": "86d3e9d7ac4fe4e18d62a5b1eb84ce30b7675ecc76b18ef03368ddc947fc4240",
       "control": "39d8426d950d885e869ea6842d54175e8800d336215501362569017ac67ed7bc",
       "harness": "b104f9393f5be32b88365cda1ef3a0076612d78e493d7571c1f750be054ccc21"
+    },
+    "live_continuation": {
+      "turn": 104,
+      "owned_units": 11,
+      "energy_credits": 109,
+      "end_turn_status": "completed",
+      "end_turn_resolution": "native_turn_advanced",
+      "active_incidents": 0,
+      "full_game_finished": false
     }
   },
   "unrelated_decision_error": {
