@@ -1,0 +1,61 @@
+{
+  "date": "2026-09-07",
+  "observed": {
+    "turn": 1,
+    "baseline_api_calls": 4,
+    "completed_calls_at_last_native_effect": 6,
+    "latest_completed_api_calls": 7,
+    "reported_calls_without_progress": 3,
+    "actual_completed_calls_since_effect": 1,
+    "stall_seconds": 362.595,
+    "generated_tokens_reported": 2488,
+    "cause": "Progress sampled every30seconds but cached usage refreshed every60seconds. Native progress reset baseline using pre-effect usage, charging two completed pre-effect calls to the new window."
+  },
+  "repair": "Refresh usage immediately on progress or missing/pending baseline. Only establish baseline from successful fresh telemetry. Retry failed baseline reads and expose supervisor_usage_baseline_pending as unknown in operator health. Thresholds unchanged.",
+  "validation": [
+    "Recorded-count regression establishes6-call baseline despite recently cached4-call sample;7 does not stop,8 retains original stop behavior.",
+    "Telemetry failure retains pending status and cannot fabricate no-progress work; successful retry establishes baseline.",
+    "Continuation, exact briefing supervision, and operator contracts pass.",
+    "Installed control image continuation and briefing supervision contracts pass."
+  ],
+  "deployment": "Isolated control updated; supported capability recovery completed5/5 steps for the same campaign.",
+  "limits": [
+    "Does not infer provider queue time from elapsed response duration.",
+    "Live post-recovery accounting and full-game acceptance remain pending."
+  ],
+  "live_recovery": {
+    "turn": 1,
+    "sovereign_processes": 1,
+    "incidents": [],
+    "timeline": "timeline-restore-8a8b8cfde299408fa1bac168",
+    "counts": [
+      {
+        "base": 1,
+        "ecology_state": 1,
+        "economy_state": 1,
+        "faction": 1,
+        "game_settings": 1,
+        "governor_state": 1,
+        "intelligence_entitlement_state": 1,
+        "location": 21,
+        "map_state": 1,
+        "movement_rules": 1,
+        "orbital_state": 1,
+        "own_unit": 1,
+        "planetary_state": 1,
+        "project_race_state": 1,
+        "project_state": 1,
+        "repair_rules": 1,
+        "research_state": 1,
+        "scenario_rules": 1,
+        "social_state": 1,
+        "technology_state": 1,
+        "turn_state": 1,
+        "victory_posture": 1,
+        "victory_state": 1
+      }
+    ],
+    "checkpoint_id": "checkpoint-13ccf2c04e2940e6a0c0675d09593e94",
+    "operation": "maintenance-954359da3c0a4a178b1c80bf56f197a6"
+  }
+}

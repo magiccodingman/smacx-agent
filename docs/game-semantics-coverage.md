@@ -551,3 +551,33 @@ Operator tooling checkpoint: browser-free CLI uses the portal's existing lifecyc
 Startup cancellation checkpoint (2026-09-07): accepted lobby startup retains portal worker association after the initiating client disconnects. Real Identity/TestServer/SQLite regression fails on the original controller and passes with the repair; portal suite 82/82. Separate-installation warm native launch passes provisioning; full-game acceptance remains ongoing. Server-process loss and already-orphaned association repair are not claimed. [Evidence](benchmarks/astra-startup-disconnect.json).
 
 Parallel-installation cookie isolation: custom prefixes separate session, CSRF and auxiliary Identity cookie names; default names remain compatible. Actual authenticated HTTP fixture verifies custom login and CSRF names and usable session; full portal suite 83/83. Separate Docker resources remain an operator deployment responsibility.
+
+Graphiti liveness checkpoint (2026-09-07): same-loop heartbeat remains fresh across asynchronous provider waits while projection counters/timestamps remain unchanged; blocked event-loop fixture becomes stale. Worker/projection contracts and installed-image health checks pass. Isolated deployment shows a fresh heartbeat and one projected event; provider progress and full-game acceptance are not inferred. [Evidence](benchmarks/astra-graphiti-liveness.json).
+
+Fresh Astra baseline: one observed base and Scout; first live Qwen response and briefing/decision tool receipts captured on the isolated stack. Provider latency347s for625 completion tokens during acknowledged overload; no queue/generation attribution or native action acceptance claimed. [Baseline and limits](benchmarks/astra-fresh-game-baseline.json).
+
+Opening-watchdog correction: live slow-provider run acknowledged the mandatory briefing, but native-only progress detection quarantined it36seconds later. Supervisor now credits the exact durable session acknowledgement once; unchanged/repeated acknowledgements still stall, with thresholds unchanged. SQLite+supervisor and installed-image regression plus briefing/continuation contracts pass. Old run has no checkpoint and was retired through lifecycle; replacement-game acceptance pending. [Evidence](benchmarks/astra-briefing-watchdog.json).
+
+Briefing supervision live follow-up: replacement run exposes the durable acknowledgement in supervisor progress, advances PLANETFALL→FIRSTBASE, and accepts first-base naming with post-action turn1. No opening quarantine recurs. This is opening-path evidence, not a replay of the exact overloaded timing or full-game acceptance; see the briefing-watchdog evidence above.
+
+Fresh-run recovery availability: turn1 reports a bridge-verified checkpoint, generation3 (`checkpoint-13ccf2c04e2940e6a0c0675d09593e94`), completed at1788822110.719692. Current campaign remains running without incident. Checkpoint availability is verified; an actual restore of this fresh campaign has not been exercised.
+
+Stall-accounting checkpoint: a fresh native effect previously reset usage baseline from a stale60-second sample, counting2 pre-effect calls as later work. Immediate fresh baseline sampling fixes the recorded4→6→7 sequence without changing thresholds; failed refresh is explicitly unknown/pending. Continuation, briefing supervision, operator, and installed-image contracts pass. Same-campaign native recovery and subsequent live accounting pending. [Evidence](benchmarks/astra-stall-baseline.json).
+
+Fresh campaign restore verified: supported capability recovery completed5/5 steps from the turn1 checkpoint into a new restore timeline, with1 sovereign process,1 base,1 own unit and no active incident. This establishes an actual recovery of this campaign; post-repair stall-budget behavior remains under live observation. See `astra-stall-baseline.json`.
+
+### Isolated acceptance: landmark tiles versus collectible pods
+
+Captured turn-1 provider context separately represented four Unity Wreckage tiles and one current supply pod. The sovereign conflated them in its persisted exploration plan. Frontier summaries containing landmarks now explicitly distinguish landmark tiles from collectible-pod counts and preserve observation freshness. The geographic contract verifies separate resource counts through the provider anchor and absence of the extra note on landmark-free summaries. Native map-generation source independently establishes that the landmark area exceeds its pod locations. Evidence: `docs/benchmarks/astra-landmark-pods.json`. Live model uptake remains pending; this is response clarification, not verified strategic correction or predicted reward mechanics.
+
+### Isolated acceptance: dormant reconciliation during recovery
+
+A successful operator recovery was followed by a portal park request. Dormant reconciliation now supplies its observed status and recovery generation; the control handler checks both under the lifecycle lock before stopping any sovereign. A stale request is skipped, and the portal leaves seat state for a fresh reconciliation. Explicit owner park remains effective. The authenticated HTTP regression queues a request behind simulated recovery and proves no stop/park side effects; all 83 portal tests pass. Evidence: `docs/benchmarks/astra-recovery-park-guard.json`. Live deployed recovery remains pending; fixtures do not establish native recovery acceptance.
+
+Post-deployment readback: the same isolated campaign recovered at turn 2 on a new timeline; Graphiti rebuild completed, health became `observed_active`, exactly one sovereign was verified live, and no incident remained. The concurrency interleaving is covered by the HTTP fixture; this live readback does not claim completion of the game.
+
+Landmark clarification deployment: the turn-2 diagnostic runtime-context stream contains the conditional note in three generated contexts, and the sovereign resumed decision and management queries. This proves context generation after deployment, not corrected interpretation by the model.
+
+### Isolated acceptance: empty interaction catalog guidance
+
+The turn-2 stall trace showed a successful deep-detail world retry followed by an empty interaction query. The empty frame incorrectly required execution. Empty unprepared catalogs now request a fresh decision, and interaction guidance distinguishes active dialogs from tile exploration. Managed-action adapter tests pass, including existing staged preparation and nonempty families. Evidence: `docs/benchmarks/astra-empty-interaction.json`. Deployment and model uptake remain pending; no watchdog threshold changed.

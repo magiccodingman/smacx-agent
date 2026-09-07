@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-07",
+  "observed_failure": {
+    "turn": 0,
+    "native_state": "PLANETFALL blocking interaction unchanged",
+    "provider_responses": 2,
+    "generated_tokens": 834,
+    "stall_seconds": 604.449,
+    "acknowledgement": "Exact mandatory briefing acknowledgement succeeded36seconds before containment, unlocking gameplay mutations.",
+    "incident": "Watchdog compared only native state and did not credit the required prerequisite transition.",
+    "containment": "Sovereign stopped and native/MCP paused; no verified recovery checkpoint. Diagnostics retained; campaign retired via normal lifecycle."
+  },
+  "repair": "Supervisor progress includes latest durable exact-session briefing acknowledgement hash alongside native fingerprint. Repeated acknowledgement of the same hash has no effect. No stall thresholds changed.",
+  "validation": [
+    "Real SQLite acknowledgement with mocked native snapshot changes supervisor progress once.",
+    "Repeated acknowledgement retains the marker; other instance or session cannot contribute acknowledgement.",
+    "Harness reconciliation credits transition, then unchanged repeated activity still reaches quarantine.",
+    "Existing continuation and briefing gate contracts pass.",
+    "Installed control image passes new supervision regression without mounting host source."
+  ],
+  "limits": [
+    "Fresh native game following deployment remains necessary to validate this opening boundary live.",
+    "This does not exempt arbitrary cognition writes or observation calls from stall detection.",
+    "Provider latency remains expected; no full-game success claimed."
+  ],
+  "live_followup": {
+    "match": "Astra - Acceptance 4",
+    "acknowledgement_visible_in_supervisor": true,
+    "native_transition": "PLANETFALL acknowledged, next provider context identifies FIRSTBASE; first-base naming action returned observed_after_turn1.",
+    "quarantine_recurred": false,
+    "limits": "This validates the live opening path; it does not replay the prior ten-minute provider timing or prove a complete game.",
+    "first_checkpoint": {
+      "turn": 1,
+      "portal_has_verified_recovery_checkpoint": true,
+      "checkpoint_id": "checkpoint-13ccf2c04e2940e6a0c0675d09593e94",
+      "generation": 3,
+      "completed_unix": 1788822110.719692,
+      "restore_exercised": false
+    }
+  }
+}

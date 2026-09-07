@@ -1,0 +1,35 @@
+{
+  "checkpoint": "landmark-versus-pod response clarification",
+  "observed": {
+    "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+    "turn": 1,
+    "context_landmark_tiles": [
+      875,
+      876,
+      915,
+      916
+    ],
+    "context_supply_pod_refs": [
+      916
+    ],
+    "model_plan": "Incorrectly described all four landmark tiles as pods",
+    "diagnostics_sha256": "ee6fe21385c4ed9ba5b4f2d194131d28b94e720a2238e0cdd6a4c0020fc0d582"
+  },
+  "native_source": "bridge/src/mapgen.cpp mod_world_unity sets LM_UNITY for area and BIT_SUPPLY_POD only at selected offsets",
+  "repair": "Conditional frontier summary clarification; no altered observations, strategy, or freshness",
+  "validation": [
+    "geographic_semantics_contract_test.py passed including multi-tile landmark and one pod fixture"
+  ],
+  "limits": [
+    "Not a native reward prediction test",
+    "Live uptake of clarification remains pending",
+    "No claim that model strategy is corrected"
+  ],
+  "live_deployment": {
+    "turn": 2,
+    "runtime_context_stream": "runtime-context-builder-d92660513def485ca3dd8749555b75e5",
+    "clarification_occurrences": 3,
+    "sovereign": "Fresh decision and management queries observed",
+    "limitation": "Corrected model interpretation not yet demonstrated"
+  }
+}

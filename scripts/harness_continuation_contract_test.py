@@ -143,8 +143,56 @@ def reasoning_detail_is_not_extra_output() -> None:
             assert not control.incidents and not worker.quarantines
 
 
+
+def fresh_progress_uses_fresh_usage_baseline() -> None:
+    control, worker = FakeControl(), FakeWorkerManager()
+    manager = ContractHarnessManager(control, worker)
+    manager.observed_running = True
+    control.run["metadata"] = {
+        "semantic_sample_unix": time.time() - 31,
+        "semantic_fingerprint": "turn-1",
+        "semantic_progress_unix": time.time() - 400,
+        "semantic_telemetry_unix": time.time(),
+        "semantic_telemetry": {"api_calls": 4, "output_tokens": 1260},
+        "semantic_baseline_telemetry": {"api_calls": 4, "output_tokens": 1260},
+    }
+    manager.telemetry = lambda _: {"telemetry": {"api_calls": 6, "output_tokens": 2000}}
+    assert manager.reconcile_once()["operator_required"] == 0
+    assert control.run["metadata"]["semantic_baseline_telemetry"]["api_calls"] == 6
+    for calls, expected in ((7, 0), (8, 1)):
+        control.run["metadata"].update(semantic_sample_unix=time.time()-61,
+            semantic_telemetry_unix=time.time()-61, semantic_progress_unix=time.time()-400)
+        manager.telemetry = lambda _: {"telemetry": {"api_calls": calls, "output_tokens": 3748}}
+        assert manager.reconcile_once()["operator_required"] == expected
+
+    control, worker = FakeControl(), FakeWorkerManager()
+    manager = ContractHarnessManager(control, worker)
+    manager.observed_running = True
+    control.run["metadata"] = {
+        "semantic_sample_unix": time.time()-61, "semantic_fingerprint": "turn-1",
+        "semantic_progress_unix": time.time()-400,
+        "semantic_telemetry": {"api_calls": 20, "output_tokens": 9000},
+        "semantic_baseline_telemetry": {"api_calls": 1, "output_tokens": 1},
+    }
+    def unavailable(_):
+        raise ValueError("fixture unavailable")
+    manager.telemetry = unavailable
+    assert manager.reconcile_once()["operator_required"] == 0
+    assert control.run["metadata"]["semantic_baseline_pending"]
+    control.run["metadata"].update(semantic_sample_unix=time.time()-61,
+        semantic_progress_unix=time.time()-400)
+    assert manager.reconcile_once()["operator_required"] == 0
+    assert control.run["metadata"]["semantic_baseline_pending"]
+    control.run["metadata"]["semantic_sample_unix"] = time.time()-61
+    manager.telemetry = lambda _: {"telemetry": {"api_calls": 22, "output_tokens": 10000}}
+    assert manager.reconcile_once()["operator_required"] == 0
+    assert not control.run["metadata"]["semantic_baseline_pending"]
+    assert control.run["metadata"]["semantic_baseline_telemetry"]["api_calls"] == 22
+
+
 def main() -> int:
     reasoning_detail_is_not_extra_output()
+    fresh_progress_uses_fresh_usage_baseline()
     control = FakeControl()
     worker = FakeWorkerManager()
     manager = ContractHarnessManager(control, worker)

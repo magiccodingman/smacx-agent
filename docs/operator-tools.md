@@ -81,3 +81,5 @@ GitHub issue automation, storage policy changes, recurring agent scheduling and 
 Accepted startup continues provisioning if the initiating HTTP client disconnects. The CLI may still report a timeout; inspect `status` before another mutation. For cold native preparation use `--timeout 900 start MATCH_ID --wait 300`. This shields caller cancellation, not server process loss; existing bounded control-service timeouts remain.
 
 For two installations on the same hostname, assign different `SMACX_PORTAL_COOKIE_PREFIX` values as well as separate ports, Compose projects, networks, volumes, worker/MCP/harness image references, control-data volume references, and operator cookie files. Cookies are not port-scoped. The default prefix preserves existing login cookies; a custom prefix also separates auxiliary Identity cookies. Changing a prefix requires logging in again.
+
+Graphiti runtime heartbeat reports event-loop liveness independently of batch completion. Read `metadata.phase`, `projected_events`, `failed_events`, and `last_projection_unix` to distinguish a pending projection from completed work. A healthy container alone does not establish provider progress.
