@@ -29,7 +29,7 @@
   },
   "limits": [
     "Live events are separately observed; temporal proximity is not an exact same-input join.",
-    "Explicit working-head attribution is implemented and tested; deployed actual capture remains pending.",
+    "Exact lease/episode links the deployed runtime-selection event to this actual provider request; this does not infer model use.",
     "The controlled test does not prove semantic usefulness or sovereign follow-through."
   ],
   "repair": {
@@ -42,6 +42,15 @@
     ],
     "authority": "Metadata copied from the exact working object used by the runtime selector; diagnostic only.",
     "tests": "two-stage audit and full runtime context contract pass",
-    "deployment": "pending"
+    "deployment": {
+      "status": "deployed_actual_capture_verified",
+      "event_id": "71ace5a9dc6547dd851d730a0eddf31d",
+      "working_journal_head": "62a9d475c36deb49bf5ebb00a6962fd2fe7371beb69e3ada38f165242837f3e3",
+      "episode_id": "episode-4fbb2f01f0f11126ff59fd7b375da75e",
+      "attention_lease_id": "attention-lease-3fdfb57d51254408b738d7d7d3f2a2f5",
+      "actual_provider_request_id": "eb2d51d45bd145acb4dcb938628a2d15",
+      "actual_provider_same_lease_episode_and_plan_revision": 14,
+      "selected_plan_token_estimate": 665
+    }
   }
 }

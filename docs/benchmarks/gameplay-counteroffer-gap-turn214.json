@@ -26,7 +26,7 @@
     "Native menu renderer and semantic option resolver recognize COUNTER1 but not COUNTER0.",
     "Installed Script COUNTER0 asks what is offered in return; COUNTERMENU has negotiation options. This is not evidence that an unguarded acknowledgement is correct."
   ],
-  "status": "Paused; native semantics and controlled end-to-end counteroffer validation required before recovery.",
+  "status": "Deployed; verified turn214 checkpoint recovered and one sovereign resumed. Actual COUNTER0 sovereign use remains pending.",
   "maintenance_note": "Unrelated cognition provenance code was installed after quarantine. Start attempts failed closed with game_worker_not_healthy. No unpause or native recovery occurred; actual new provenance capture remains pending.",
   "reviewed_native_binary_sha256": "573fd44cf18392da7cd048e2d8c24a8e130034364f374647e34e79a6c621d6f4",
   "native_menu_audit": {
@@ -127,7 +127,24 @@
       "duplicate_rejected": true,
       "classification": "Actual stock menu and native return values; downstream negotiated deal effects separate"
     },
-    "deployment": "not deployed; campaign remains preserved and paused",
+    "deployment": {
+      "status": "deployed",
+      "checkpoint_id": "checkpoint-d8cd3c93dcc8411c880193c155dca936",
+      "checkpoint_turn": 214,
+      "native_save_sha256": "f203128505b9a0ed743e7b0e3bd4ae8acec9364b84a8fc07af14e937dbbfabdf",
+      "native_session": "session-5574b92c635847ca8172f8fc265f7035",
+      "engine_source_sha256": "737fc9e3e38fa9821c96b73b33dc646eb51b07528b96d24fe2b0e71299ff7f20",
+      "owned_units": 19,
+      "bases": 2,
+      "credits": 799,
+      "active_plan_revision": 14,
+      "plan_last_confirmation_turn": 192,
+      "run_id": "run-1354926507bd4b75bba5e45d5d0fe562",
+      "first_provider_request_id": "eb2d51d45bd145acb4dcb938628a2d15",
+      "restored_plan_on_actual_provider_wire": true,
+      "operator_attention_cleared": true,
+      "native_failure_capture_armed": true
+    },
     "integrated_native_mcp": {
       "exit_code": 0,
       "evidence": {
