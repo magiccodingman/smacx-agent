@@ -8,5 +8,13 @@
     "No evidence yet that model confusion is resolved",
     "No change to watchdog thresholds",
     "No claim of native reward prediction"
-  ]
+  ],
+  "deployment": {
+    "recovery": "completed",
+    "turn": 2,
+    "live_sovereigns": 1,
+    "active_incidents": 0,
+    "first_tool": "smac_decision returned fresh unit_actions frame",
+    "model_uptake": "not yet demonstrated"
+  }
 }
