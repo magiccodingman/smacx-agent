@@ -90,7 +90,7 @@
     "feed_alignment": "pass",
     "runtime_context": "pass",
     "live_deployment": "pass",
-    "next_actual_provider_delivery": "pending",
+    "next_actual_provider_delivery": "pass for qualified combat receipt at turn86; see gameplay-combat-damage-turn86.json",
     "sovereign_correction": "pending",
     "captured_historical_movement_projection": {
       "invalid_records": 2,

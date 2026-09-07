@@ -1,0 +1,74 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 86,
+  "classification": "verified native combat outcome and overlapping damage interval reporting repair",
+  "contact_ref": "contact-episode-ac5713b1f66853a301084f7a327ddbde",
+  "attacker_ref": "own-unit-10",
+  "receipt": {
+    "request_id": "cc8177ef55f94a10a929182e8c643742",
+    "call_id": "chatcmpl-tool-9b6b6bd92d7aa2bb",
+    "next_provider_request_id": "808b7f89e0bd4ed1bf4d690fa24ac822",
+    "exact_complete_receipt_delivered": true,
+    "completion_does_not_prove_casualties_qualifier_delivered": true,
+    "origin": 1574,
+    "target": 1614,
+    "observed": 1574,
+    "resolution": "native_combat_resolved"
+  },
+  "independent_effect": {
+    "attacker_at_turn87": {
+      "active": true,
+      "location": 1574,
+      "hp": 8,
+      "max_hp": 10
+    },
+    "enemy_destroyed_event_cursor": 435,
+    "enemy_destroyed_event_turn": 86,
+    "enemy_destroyed_location": 1614,
+    "provenance": "direct_observation"
+  },
+  "overlap": {
+    "cursor": 433,
+    "native_damage_steps": [
+      [
+        7,
+        4
+      ],
+      [
+        4,
+        1
+      ]
+    ],
+    "additional_snapshot_interval": [
+      7,
+      1
+    ],
+    "problem": "same event kind and no interval qualifier made overlapping evidence appear additive"
+  },
+  "repair": {
+    "complete_ordered_same_contact_same_turn_chain": "omit redundant snapshot interval only when every native step connects prior HP to current HP",
+    "partial_or_unrelated_chain": "retain snapshot interval with explicit nonadditive overlap semantics",
+    "journal_originals": "unchanged",
+    "native_actions": "unchanged"
+  },
+  "acceptance": {
+    "recorded_shape_overlap_regression": "pass",
+    "partial_reordered_other_contact_other_turn_invalid_hp_cases": "pass",
+    "contact_loss_restart": "pass",
+    "feed_alignment": "pass",
+    "cross_publication_episode": "pass",
+    "deployment": "pending",
+    "new_actual_damage_provider_delivery": "pending"
+  },
+  "sovereign_interpretation": {
+    "initial_handoff": "incorrectly described arrival at target despite delivered observed origin",
+    "fresh_frame": "corrected position to1574 and HP8/10; planned sentry",
+    "attribution": "receipt was correct; no arrival at1614 or completed retreat is claimed"
+  },
+  "limits": [
+    "This Probe Team destruction does not establish the fate of the older turn71 Colony Pod",
+    "Full game acceptance remains open",
+    "No current spontaneous specialist or support-query acceptance claim"
+  ]
+}

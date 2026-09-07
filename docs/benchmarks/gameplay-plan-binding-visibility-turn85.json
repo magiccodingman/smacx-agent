@@ -73,7 +73,9 @@
     "submitted_choice_id": "choice-0795706ae9be49b083331eb7a923913",
     "result": "invalid_choice; fetched fresh frame and continued",
     "second_rejection_request_id": "e7894049711546ba88b7a9bb485e4528",
-    "second_rejection_attribution": "not yet inspected"
+    "second_rejection_attribution": "submitted opaque ID differs from issued ID; binding guard correctly rejected",
+    "second_issued_choice_id": "choice-854d39c1ef2f457594e8e58aad8a398f",
+    "second_submitted_choice_id": "choice-854d39c1ef2f457594e58e58aad8a398f"
   },
   "tested_images": {
     "control": "sha256:b7f6b7a16cf245c39341c53ac49a7ce8b284ef42080c7a3af679eafeb44fa2a4",

@@ -150,8 +150,28 @@ def _provider_safe_temporal_events(
             prior_hp, current_hp = _field_value(previous, "hp"), _field_value(current, "hp")
             if isinstance(prior_hp, (int, float)) and isinstance(current_hp, (int, float)) \
                     and current_hp < prior_hp:
+                # A snapshot interval can cover several native damage steps.
+                # Do not present its net change as another occurrence when the
+                # ordered native evidence already accounts for the whole interval.
+                steps = [event for event in projected
+                         if isinstance(event, Mapping)
+                         and event.get("event_kind") == "contact_damaged"
+                         and event.get("contact_ref") == object_ref
+                         and event.get("turn") == turn]
+                hp = prior_hp
+                complete_chain = bool(steps)
+                for step in steps:
+                    before, after = step.get("observed_hp_before"), step.get("observed_hp_after")
+                    if before != hp or type(after) not in (int, float) or after >= hp:
+                        complete_chain = False
+                        break
+                    hp = after
+                if complete_chain and hp == current_hp:
+                    continue
                 events.append({
                     "event_kind": "contact_damaged", "contact_ref": object_ref,
+                    "evidence_kind": "snapshot_interval_change",
+                    "aggregation_semantics": "Net observed HP change across this snapshot interval; may overlap native damage occurrences and must not be added to them.",
                     "location_ref": current.get("location_ref"),
                     "observed_hp_before": prior_hp, "observed_hp_after": current_hp,
                     "turn": turn,
