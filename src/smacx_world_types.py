@@ -68,6 +68,9 @@ def provider_safe(value: Any) -> Any:
                     or (key == "air_fuel_turns_used" and triad != "air") \
                     or (triad is not None and triad != "air"):
                 result.pop(key, None)
+        task = result.get("terraform_task")
+        if isinstance(task, Mapping) and task.get("source") != "owned_state":
+            result.pop("terraform_task", None)
         roles = result.get("roles")
         if isinstance(roles, Mapping) and roles.get("source") != "owned_state" \
                 and isinstance(roles.get("value"), Mapping):

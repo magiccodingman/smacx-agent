@@ -112,7 +112,7 @@ def summary(event):
             'native_action_executed','execution','execution_status','decision_consumed',
             'completed','queued','action_id','gameplay','completion_semantics','effect_disposition','state_changed_during_enumeration',
             'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','citizen_context','required_next','persistence','journal_event_id',
-            'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
+            'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name','terraform_completion_verified','follow_up') if k in result}
         health = result.get('plan_health')
         if isinstance(health, dict):
             chosen['plan_health'] = {k: health[k] for k in (
@@ -154,7 +154,7 @@ def summary(event):
                 if isinstance(unit, dict):
                     chosen['focus']['unit'] = {k: unit[k] for k in
                         ('own_unit_ref', 'location_ref', 'name', 'hp', 'max_hp',
-                         'moves_remaining', 'movement_scale', 'order_name', 'ready') if k in unit}
+                         'moves_remaining', 'movement_scale', 'order_name', 'ready','terraform_task') if k in unit}
             scope = chosen.get('choice_scope')
             if isinstance(scope, dict):
                 chosen['choice_scope'] = {k: scope[k] for k in

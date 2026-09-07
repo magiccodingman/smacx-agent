@@ -447,6 +447,8 @@ class PerspectiveProjector:
                 for name in ("air_fuel_turns_used", "air_safe_range", "air_full_safe_range",
                              "air_origin_refuels"):
                     unit.pop(name, None)
+            if not owned:
+                unit.pop("terraform_task", None)
             if not owned and isinstance(unit.get("roles"), Mapping):
                 unit["roles"] = dict(unit["roles"])
                 unit["roles"].pop("airdrop_used", None)

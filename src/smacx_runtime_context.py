@@ -47,6 +47,7 @@ def _field(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
 def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
     """Count current owned evidence, never infer assignments from capabilities."""
     roles, orders, production, designs, home_bases = {}, {}, {}, {}, {}
+    former_tasks, former_without_task, former_task_unknown = {}, 0, 0
     unknown = {"roles": 0, "orders": 0, "production": 0, "design": 0, "home_base": 0}
     units = 0
     for item in projection.get("objects", ()):
@@ -72,6 +73,16 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
                 for role, enabled in capabilities.items():
                     if enabled is True: roles[str(role)] = roles.get(str(role), 0) + 1
             else: unknown["roles"] += 1
+            if isinstance(capabilities, Mapping) and capabilities.get("former") is True:
+                task = current("terraform_task")
+                if isinstance(task, Mapping) and task.get("state") == "active_terraform_order" \
+                        and isinstance(task.get("name"), str):
+                    name = task["name"]
+                    former_tasks[name] = former_tasks.get(name, 0) + 1
+                elif isinstance(task, Mapping) and task.get("state") == "no_active_terraform_order":
+                    former_without_task += 1
+                else:
+                    former_task_unknown += 1
             order = current("order_name")
             if isinstance(order, str): orders[order] = orders.get(order, 0) + 1
             else: unknown["orders"] += 1
@@ -87,6 +98,10 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
             "world_revision": projection.get("world_revision"), "owned_unit_count": units,
             "capability_roles_overlap_not_assignments": bounded(roles),
             "observed_orders": bounded(orders), "current_production": bounded(production),
+            "former_tasks": {"active_task_names": bounded(former_tasks),
+                             "no_active_terraform_order": former_without_task,
+                             "missing_or_noncurrent_task": former_task_unknown,
+                             "scope": "current owned Former roles and task evidence; orders do not prove completion or ETA"},
             "unit_names": bounded(designs), "support_home_base_not_defense_assignment": bounded(home_bases),
             "missing_or_noncurrent_fields": unknown}
 

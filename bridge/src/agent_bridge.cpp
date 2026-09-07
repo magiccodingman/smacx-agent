@@ -3582,6 +3582,24 @@ const char* semantic_unit_order_name(const VEH& veh) {
     return unit_order_name(veh.order);
 }
 
+// Automation policy and the currently selected terraforming task are distinct.
+// Only owned Formers expose this shared native work counter; no ETA is inferred.
+std::string semantic_owned_terraform_task(int faction_id, VEH& veh) {
+    if (veh.faction_id != faction_id || !veh.is_former()) return "";
+    const bool active = veh.order >= VehOrderFormerFirst && veh.order <= VehOrderFormerLast;
+    std::ostringstream out;
+    out << ",\"terraform_task\":{\"state\":"
+        << json_string(active ? "active_terraform_order" : "no_active_terraform_order")
+        << ",\"automation_active\":" << (semantic_native_automation_active(veh) ? "true" : "false")
+        << ",\"order_kind\":" << json_string(unit_order_name(veh.order));
+    if (active) {
+        out << ",\"name\":" << json_string(Terraform[veh.order - VehOrderFormerFirst].name)
+            << ",\"accumulated_work_points\":" << static_cast<int>(veh.movement_turns);
+    }
+    out << ",\"completion_verified\":false}";
+    return out.str();
+}
+
 int former_automation_mode_id(const std::string& mode) {
     if (mode == "full") return ORDERA_TERRA_AUTO_FULL;
     if (mode == "roads") return ORDERA_TERRA_AUTO_ROAD;
@@ -7840,6 +7858,7 @@ std::string units_response() {
             out << '}'
                 << ",\"order\":" << static_cast<int>(veh.order)
                 << ",\"order_name\":" << json_string(semantic_unit_order_name(veh))
+                << semantic_owned_terraform_task(faction_id, veh)
                 << ",\"order_auto_type\":" << static_cast<int>(veh.order_auto_type)
                 << ",\"moves_spent\":" << static_cast<int>(veh.moves_spent)
                 << ",\"home_base_id\":" << veh.home_base_id
@@ -10295,7 +10314,8 @@ std::string perspective_world_page_response(const std::string& request) {
                         << semantic_tile_id(Bases[veh.home_base_id].x, Bases[veh.home_base_id].y)
                         << "\"";
                 } else out << "null";
-                out << ",\"order_name\":" << json_string(semantic_unit_order_name(veh));
+                out << ",\"order_name\":" << json_string(semantic_unit_order_name(veh))
+                << semantic_owned_terraform_task(faction_id, veh);
             }
             out << '}';
         }
@@ -10618,6 +10638,7 @@ std::string semantic_snapshot_response() {
             << ",\"moves_remaining\":"
             << std::max(0, veh_speed(veh_id, 0) - static_cast<int>(veh.moves_spent))
             << ",\"order_name\":" << json_string(semantic_unit_order_name(veh))
+                << semantic_owned_terraform_task(faction_id, veh)
             << ",\"ready\":true"
             << ",\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
             << ",\"former\":" << (veh.is_former() ? "true" : "false")
@@ -11653,7 +11674,8 @@ int target_tile_id = -1, int target_unit_id = -1) {
         << ((veh.state & VSTATE_DESIGNATE_DEFENDER) ? "true" : "false")
         << "},\"order\":{\"id\":"
         << static_cast<int>(veh.order) << ",\"name\":"
-        << json_string(semantic_unit_order_name(veh)) << "},\"choices\":[";
+        << json_string(semantic_unit_order_name(veh)) << '}'
+        << semantic_owned_terraform_task(faction_id, veh) << ",\"choices\":[";
     bool comma = false;
     if (semantic_carrier_capacity(veh_id) > 0
     && semantic_carrier_dependency_count(veh_id) > 0) {
@@ -17637,7 +17659,8 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"automate_former\",\"unit_id\":")
             + std::to_string(veh_id) + ",\"automation_mode\":" + json_string(mode.c_str())
             + ",\"native_mode_id\":" + std::to_string(mode_id)
-            + ",\"persistent\":true,\"ready\":false}";
+            + ",\"persistent\":true,\"ready\":false,\"terraform_completion_verified\":false,"
+            "\"follow_up\":\"Inspect current terraform_task after native processing; assignment alone does not establish work or completion.\"}";
     }
     if (command == "auto_explore_unit") {
         if (!veh.is_combat_unit() || veh.state & VSTATE_EXPLORE) {
