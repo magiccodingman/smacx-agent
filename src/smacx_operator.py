@@ -32,6 +32,8 @@ def classify_health(match, runs, workers, incidents, now):
     for run in runs:
         if run.get('status') not in ACTIVE: continue
         metadata = run.get('metadata', {})
+        if metadata.get('semantic_baseline_pending'):
+            reasons.append('supervisor_usage_baseline_pending')
         sample = metadata.get('semantic_sample_unix')
         if not sample or now - float(sample) > 120:
             reasons.append('supervisor_sample_stale')
@@ -118,7 +120,7 @@ class OperatorService:
             metadata = run.get('metadata', {})
             safe_runs.append({**{k: run.get(k) for k in ('run_id','status','desired_status','instance_id')},
                 'observation': {k: metadata.get(k) for k in ('semantic_sample_unix','semantic_progress_unix',
-                    'semantic_progress','semantic_telemetry_unix','semantic_unavailable_reason',
+                    'semantic_progress','semantic_telemetry_unix','semantic_baseline_pending','semantic_unavailable_reason',
                     'semantic_unavailable_samples','consecutive_clean_yields_without_progress')}})
         return redact({'schema': 'smacx.operator-health.v1', 'match_id': match_id,
             'sampled_unix': now, 'state': state, 'reasons': reasons,
