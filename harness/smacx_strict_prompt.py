@@ -60,6 +60,11 @@ _SMACX_MCP_PREFIXES = (_SMACX_MCP_PREFIX, "mcp__smacx_communication__")
 _RUNTIME_OPEN = '<SMACX_RUNTIME_CONTEXT schema="smacx.runtime-context.v1">'
 _RUNTIME_CLOSE = "</SMACX_RUNTIME_CONTEXT>"
 _RUNTIME_STATE = threading.local()
+# Fresh native collection can take ~24 seconds on the validated Huge fixture;
+# the server retries up to three rejected revision cuts before assembling.
+# Keep the original provider history while waiting for that bounded operation.
+# Exhaustion still fails closed; no cached context or new episode is substituted.
+_RUNTIME_CONTEXT_TIMEOUT_SECONDS = 120
 
 
 def _runtime_token() -> str:
@@ -111,7 +116,7 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
     })
     started = time.monotonic()
     try:
-        with urlopen(request, timeout=10) as response:
+        with urlopen(request, timeout=_RUNTIME_CONTEXT_TIMEOUT_SECONDS) as response:
             value = json.loads(response.read(4_000_001))
     except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         # This failure happens before provider submission, so the HTTPX
@@ -128,6 +133,7 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
                 "exception_type": type(exc).__name__,
                 "http_status": exc.code if isinstance(exc, HTTPError) else None,
                 "elapsed_ms": (time.monotonic() - started) * 1000,
+                "timeout_seconds": _RUNTIME_CONTEXT_TIMEOUT_SECONDS,
                 "provider_context_issued": False,
             }, actor="sovereign", correlation={"episode_id": episode_id})
         except Exception:

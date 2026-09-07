@@ -262,16 +262,17 @@ def _refresh_request_world(episode_id: str) -> dict:
     """Retry a rejected collection cut, never publish a mixed native snapshot.
 
     The collector restores its private staging state on failure. Retry only its
-    explicit revision-race receipt, before acquiring any request attention.
+    explicit revision-race receipts, before acquiring any request attention.
     """
+    transient = {"world_changed_during_collection", "world_changed_during_pagination"}
     for attempt in range(1, 4):
         result = _refresh_managed_world()
-        if result.get("ok") or result.get("error") != "world_changed_during_collection":
+        if result.get("ok") or result.get("error") not in transient:
             return result
         if attempt == 3:
             return result
         diagnostic_record("runtime_context_deferred", {
-            "reason": "world_changed_during_collection", "attempt": attempt,
+            "reason": result["error"], "attempt": attempt,
             "retry_limit": 3, "context_issued": False,
         }, actor="runtime-context-builder", correlation={"episode_id": episode_id})
         time.sleep(0.1 * attempt)

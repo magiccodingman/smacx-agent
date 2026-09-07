@@ -1,0 +1,64 @@
+{
+  "turn": 216,
+  "run_id": "run-697af0b2797c4512ba5db9de6913eb1d",
+  "classification": "confirmed request-context boundary bugs after successful checkpoint repair",
+  "observed": {
+    "automatic_checkpoint_216": "checkpoint-792d245be6a3448eb8246355c9fae17f",
+    "slot": "ckpt_6e5cbc45860b9447_a",
+    "native_turn": 216,
+    "units": 18,
+    "bases": 2,
+    "credits": 819,
+    "client_failures": [
+      {
+        "episode_id": "episode-77d1f71da46354754f4965581717fc7c",
+        "status": 409,
+        "elapsed_ms": 5173.393,
+        "server_error": "world_changed_during_pagination",
+        "client_event_id": "6849435267e24a438909e5dd49db3336",
+        "server_event_id": "65887d70b15d4e949be5292c965a1a99"
+      },
+      {
+        "episode_id": "episode-7b1d34b7f854adf75cb1ac6b7561129f",
+        "error": "runtime_context_timeout",
+        "elapsed_ms": 10002.532,
+        "client_event_id": "0758f8d81ee44a4695acf5815bf40dbf",
+        "client_failure_unix": 1788803256.2634492,
+        "later_server_built_unix": 1788803257.862452
+      }
+    ],
+    "final_receipt_absent_from_immediate_next_provider": [
+      {
+        "tool_request": "19441f8116484fee992c92e872282716",
+        "call_id": "chatcmpl-tool-96ae1d1356ffd82e",
+        "next_request": "9d63901a4329459d977e1abd1f53096e"
+      },
+      {
+        "tool_request": "5b5cd5a6e7c9474885794ff04ef3364d",
+        "call_id": "chatcmpl-tool-b9e0da71bf75f056",
+        "next_request": "69a803d210c54630ba135d99edcd3547"
+      }
+    ]
+  },
+  "repairs": {
+    "revision_race": "Retry both collection and pagination revision races, at most three attempts, before issuing context or attention. Other failures remain terminal.",
+    "context_deadline": "120-second bounded client read accommodates fresh collection (~24 seconds validated Huge fixture), up to three rejected cuts and assembly; retains same provider history and episode while waiting. No cached fallback."
+  },
+  "validation": {
+    "actual_http_retry": "PASS mixed pagination/collection then success, both exhaustion cases and unrelated error; no lease/build before successful cut; lost restart fence still rejected",
+    "actual_slow_http": "PASS 10.512-second real response, same episode and original pending tool receipt preserved with new context appended",
+    "failure_contract": "PASS four fail-closed/diagnostic/secret-exclusion cases",
+    "strict_prompt": "PASS unchanged exact prompt and integrity contract",
+    "runtime_contract": "PASS64K/256K truth, critical attention/durable commitment, cognition selection, Huge chaotic25998 tokens",
+    "packaged": "PASS installed control retry/fence checks and installed harness10.509-second HTTP response preserving same episode/receipt"
+  },
+  "deployment": "not yet deployed; portal paused and zero active sovereign runs",
+  "pending": [
+    "Deployed fresh checkpoint/recovery and actual post-action provider delivery",
+    "Full-game and remaining autonomous-use gates"
+  ],
+  "images": {
+    "control": "sha256:66877e786875638094e0b2771cf5564b974b796ea7762585b50de3739add6438",
+    "harness": "sha256:8e2b3236ea4acce95b6858b2642a22cf168d2f0415a54bc0f1fdff517c1b2043"
+  }
+}
