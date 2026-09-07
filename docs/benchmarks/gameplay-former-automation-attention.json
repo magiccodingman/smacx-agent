@@ -34,5 +34,6 @@
     "Movement, active work or tile change resolves this attempt; later cancellation after observed progress is outside this initial no-progress notice.",
     "No database rebuild or migration needed: additive journal payloads and existing attention schema."
   ],
-  "deployment": "not deployed; original campaign and monitoring remain paused"
+  "deployment": "not deployed; original campaign and monitoring remain paused",
+  "packaged_validation": "Passed in smacx-agent-control:operator-tools without source mount; not deployed."
 }

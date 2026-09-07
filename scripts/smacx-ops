@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+from smacx_ops import main, OpsError
+try:
+    raise SystemExit(main())
+except KeyboardInterrupt:
+    raise SystemExit(130)
+except (OpsError, OSError, ValueError) as error:
+    import json
+    print(json.dumps({'ok': False, 'error': str(error)}), file=sys.stderr)
+    raise SystemExit(1)

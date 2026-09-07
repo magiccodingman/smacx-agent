@@ -158,7 +158,8 @@ public sealed record CreateLobbyRequest(
     int CloudCover = 1,
     IReadOnlyDictionary<string, bool>? RuleOptions = null,
     string? ScenarioId = null,
-    string? ResumeSlot = null);
+    string? ResumeSlot = null,
+    string? RequestId = null);
 
 public sealed record JoinLobbyRequest(int SeatIndex, string JoinMode = "browser");
 

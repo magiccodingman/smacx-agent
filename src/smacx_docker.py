@@ -121,6 +121,16 @@ class DockerClient:
             raise DockerError("invalid_docker_version_response")
         return value
 
+    def list_owned_containers(self, installation_id: str, purpose: str) -> list[dict[str, Any]]:
+        filters = {"label": [f"{INSTALLATION_LABEL}={installation_id}", f"{PURPOSE_LABEL}={purpose}"]}
+        value = self._json("GET", "/containers/json?" + urlencode({"all": "true", "filters": json.dumps(filters)}),
+                           expected=(200,))
+        if not isinstance(value, list):
+            raise DockerError("invalid_docker_container_list")
+        for item in value:
+            self.require_owned(item, installation_id, purpose=purpose)
+        return value
+
     def inspect_image(self, image_ref: str) -> dict[str, Any]:
         value = self._json("GET", f"/images/{quote(image_ref, safe='')}/json", expected=(200,))
         if not isinstance(value, dict):
@@ -190,10 +200,11 @@ class DockerClient:
         self._request("POST", f"/containers/{quote(identifier, safe='')}/start", expected=(204, 304))
 
     def stop_container(self, identifier: str, *, timeout: int = 20) -> None:
-        query = urlencode({"t": min(max(int(timeout), 1), 60)})
+        grace = min(max(int(timeout), 1), 60)
+        query = urlencode({"t": grace})
         self._request(
             "POST", f"/containers/{quote(identifier, safe='')}/stop?{query}",
-            expected=(204, 304),
+            expected=(204, 304), timeout=max(self.timeout, grace + 10),
         )
 
     def pause_container(self, identifier: str) -> None:

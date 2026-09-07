@@ -3818,7 +3818,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         finally:
             self._unpause_harnesses(paused_harnesses)
 
-    def quarantine_match(self, match_id: str) -> dict[str, Any]:
+    def quarantine_match(self, match_id: str, *, stop_collectors: bool = False) -> dict[str, Any]:
         """Freeze native execution and collectors while retaining incident RAM.
 
         This is deliberately not a recovery checkpoint or a resume operation.
@@ -3842,9 +3842,17 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         continue
                     state = container.get("State", {})
                     if state.get("Running"):
-                        if not state.get("Paused"):
-                            self.docker.pause_container(str(name))
-                        paused.append(str(name))
+                        if purpose == "mcp-sidecar" and stop_collectors:
+                            # A frozen SQLite writer can retain its lock while
+                            # the operator tries to persist containment receipts.
+                            # Stop collectors, retaining their durable volumes.
+                            if state.get("Paused"):
+                                self.docker.unpause_container(str(name))
+                            self.docker.stop_container(str(name), timeout=5)
+                        else:
+                            if not state.get("Paused"):
+                                self.docker.pause_container(str(name))
+                            paused.append(str(name))
             stopped = self._stop_match_harnesses_for_restore(match_id, reason="incident")
             for scope in self.store.scopes_for_match(match_id):
                 AttentionService(self.store, self.journal, scope).cancel_active_sovereign(
@@ -4492,11 +4500,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             container = self.docker.inspect_container(spec["container_name"])
             self.docker.require_owned(container, self.installation_id, purpose="game-worker")
         except DockerNotFound:
-            return {"ok": True, "instance_id": instance_id, "container_present": False,
-                    "observed_status": spec["observed_status"]}
+            container = {}
         state = container.get("State", {})
         result = {
-            "ok": True, "instance_id": instance_id, "container_present": True,
+            "ok": True, "instance_id": instance_id, "container_present": bool(container),
+            "image_id": container.get("Image"), "image_ref": spec.get("image_ref"),
             "running": bool(state.get("Running")),
             "paused": bool(state.get("Paused")),
             "health": state.get("Health", {}).get("Status"),
@@ -4521,6 +4529,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 result["mcp"] = {
                     "container_present": True,
                     "running": bool(sidecar.get("State", {}).get("Running")),
+                    "paused": bool(sidecar.get("State", {}).get("Paused")),
                     "health": sidecar.get("State", {}).get("Health", {}).get("Status"),
                     "url": spec["network"].get("mcp_url"),
                 }

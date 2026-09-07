@@ -46,6 +46,27 @@ public sealed class PortalFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task OperatorRoutesRequireAuthenticationAndCreationRetriesAreIdempotent()
+    {
+        using var anonymous = await client!.GetAsync("api/operator/matches/match-test/health");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var token = (await File.ReadAllTextAsync(Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        await PostAsync<PortalSession>("api/auth/bootstrap", new BootstrapRequest(token, "StrongP1", "StrongP1"), csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var request = new CreateLobbyRequest("Operator fixture", "source-test", "runtime-test", "alien-crossfire",
+            "standard", "standard", "librarian", true, false, true, false, true, RequestId: "operator-retry-001");
+        var first = await PostAsync<LobbyDetails>("api/lobbies", request, csrf.Token);
+        var retry = await PostAsync<LobbyDetails>("api/lobbies", request, csrf.Token);
+        Assert.Equal(first.Payload!.Data!.MatchId, retry.Payload!.Data!.MatchId);
+        var conflict = await PostAsync<LobbyDetails>("api/lobbies", request with { DisplayName = "Different" }, csrf.Token);
+        Assert.Equal(HttpStatusCode.Conflict, conflict.Response.StatusCode);
+        Assert.Equal("request_id_conflict", conflict.Payload!.Error!.Code);
+        using var noCsrf = await client.PostAsJsonAsync("api/operator/matches/match-test/pause", new { });
+        Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+    }
+
+    [Fact]
     public async Task ProtectedPagesUseOwnedLoginAndLegacyIdentityRoutesAreAbsent()
     {
         using var challenge = await client!.GetAsync("/lobbies/new");

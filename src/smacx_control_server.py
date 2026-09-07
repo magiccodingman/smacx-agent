@@ -306,6 +306,16 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, {"ok": True, "matches": self.server.control.list_matches()})
                 return
+            operator_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/operator/(health|events|inspect)", path)
+            if operator_match:
+                self._authentication()
+                from smacx_operator import OperatorService
+                service = OperatorService(self.server.control, self._manager())
+                match_id, action = operator_match.groups()
+                query = parse_qs(parts.query)
+                result = service.events(match_id, query.get("cursor", [""])[0]) if action == "events" else service.inspect(match_id, query.get("object_ref", [""])[0]) if action == "inspect" else service.health(match_id)
+                self._json(200, {"ok": True, "report": result})
+                return
             diagnostic_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/diagnostics", path)
             if diagnostic_match:
                 self._authentication()
@@ -1061,6 +1071,19 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     "success", {"size_bytes": verified["size_bytes"]}, self.client_address[0],
                 )
                 self._json(200, verified)
+                return
+            operator_pause = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/operator/(pause|resume)", path)
+            if operator_pause:
+                auth = self._authorize_mutation()
+                body = self._body()
+                from smacx_operator import OperatorService
+                match_id = operator_pause[1]
+                service = OperatorService(self.server.control, self._manager())
+                operation = operator_pause[2]
+                result = service.pause(match_id) if operation == 'pause' else service.resume(match_id, str(body.get('incident_id', '')))
+                self.server.control.audit(auth["admin_id"], f"operator.{operation}", "match", match_id,
+                    "success" if operation == "resume" or result["containment_verified"] else "incomplete", {}, self.client_address[0])
+                self._json(200, {"ok": True, "report": result})
                 return
             recovery_match = RECOVERY_PATH.fullmatch(path)
             if recovery_match:
