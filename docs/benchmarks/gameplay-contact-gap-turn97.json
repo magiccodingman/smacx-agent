@@ -73,11 +73,13 @@
     "rollback_world": "pass",
     "recovery_observation_order": "pass",
     "full_native_mcp_suite": "pass on identity-migration images before the final quiet-revision scheduling addition",
-    "live_deployment": "pending",
+    "live_deployment": "pass",
     "new_gap_actual_provider_delivery": "pending",
     "current_format_snapshot_restore_without_stage": "pass; no unnecessary identity reset",
     "explicit_noncontinuous_same_square": "pass",
-    "quiet_revision_migration": "pass; reused collector upgrades without a native action and does not repeat"
+    "quiet_revision_migration": "pass; reused collector upgrades without a native action and does not repeat",
+    "live_mcp_restart_identity_stability": "pass",
+    "quiet_revision_publication_crash_windows": "pass"
   },
   "limits": [
     "Native combat engine unchanged",
@@ -110,5 +112,26 @@
     "counterfactual_site_probe_gap_ms": 268.955,
     "airdrop_max_page_ms": 229.823,
     "provider_inference_supplied": false
+  },
+  "deployment": {
+    "commit": "a8317c4",
+    "turn": 98,
+    "session_id": "session-b9e3bd44786c476c868c5c2dc6312ef3",
+    "run_id": "run-3606c6d5e9284917a10f6efc0e3964bf",
+    "control_image": "sha256:fc1e3a41c382d6abb520560a1b641ee823e5cfd151b31d9a8beef543f9846d8c",
+    "harness_image": "sha256:07204e46f0ee14acbb347a8bd44a77b417ce5e4a20555cdcc6034a832745fa6c",
+    "native_worker_replaced": false,
+    "owned_units_unchanged": 11,
+    "old_foreign_refs": [
+      "contact-episode-5f07ec3a1ed1b1af30fc5c72bccef69e",
+      "contact-episode-e0b4ee0f0da919d74171d999a3078263"
+    ],
+    "new_foreign_refs": [
+      "contact-541c6e9e719ea48b89742d09f8802363",
+      "contact-ae1c8f3060a5d56a27070f4554f296b8"
+    ],
+    "foreign_names_locations_owners_hp_unchanged": true,
+    "mcp_restart_preserves_all_current_identity_and_attributes": true,
+    "active_sovereigns": 1
   }
 }
