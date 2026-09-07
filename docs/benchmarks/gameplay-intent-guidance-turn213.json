@@ -27,9 +27,17 @@
   "limits": [
     "No native or journal guard changed.",
     "No claim that prompt wording guarantees sovereign compliance.",
-    "Actual revised provider prompt delivery and sustained successful intent maintenance remain pending."
+    "Actual revised guidance reaches the provider; sustained successful intent maintenance remains pending."
   ],
   "deployment": {
-    "status": "pending"
+    "status": "deployed",
+    "run_id": "run-a3a09d98963c46fca04e5be8a328d714",
+    "native_session_unchanged": "session-2831ce6571ac422a9e755b5807d49f93",
+    "observed_turn": 214,
+    "active_incidents": [],
+    "provider_request_id": "0d58b82387254ba08ed3aaf4079c050d",
+    "actual_system_rows": 1,
+    "actual_system_sha256": "d1330bf8a10dd9c7b9e10e40d540f54014fa666e7c393ce4de319e431be58f46",
+    "actual_final_unit_stale_retry_and_horizon_guidance_delivered": true
   }
 }
