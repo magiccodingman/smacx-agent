@@ -58,7 +58,7 @@
     "contact_loss_restart": "pass",
     "feed_alignment": "pass",
     "cross_publication_episode": "pass",
-    "deployment": "pending",
+    "deployment": "pass; active MCP imports repaired projector",
     "new_actual_damage_provider_delivery": "pending"
   },
   "sovereign_interpretation": {
@@ -70,5 +70,15 @@
     "This Probe Team destruction does not establish the fate of the older turn71 Colony Pod",
     "Full game acceptance remains open",
     "No current spontaneous specialist or support-query acceptance claim"
-  ]
+  ],
+  "deployment": {
+    "commit": "2dbae8c",
+    "control_image": "sha256:7eaf864f60912848bee3c6b87c97682d43720aae71d636ccbf9a62dc73fcfc50",
+    "harness_image": "sha256:da35c37046f0da8e71d56d9e7115b16700b14db5bc7f201fcde63e60789f9ce2",
+    "session_id": "session-b9e3bd44786c476c868c5c2dc6312ef3",
+    "native_replaced": false,
+    "run_id": "run-e2170a6aa05e4402a142a2f1e6f9f82c",
+    "resumed_turn": 90,
+    "active_sovereigns": 1
+  }
 }
