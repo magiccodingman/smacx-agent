@@ -35,7 +35,7 @@ def run(count, mode):
         fixture.units = []
         fixture.revision += 1
         capture = attention.capture_confirmed_unit_losses
-        if mode == 'upgrade':
+        if mode in {'upgrade', 'upgrade_acknowledged'}:
             attention.capture_confirmed_unit_losses = lambda *args, **kwargs: None
         elif mode == 'crash':
             def crash(*args, **kwargs):
@@ -46,6 +46,11 @@ def run(count, mode):
             assert mode != 'crash'
         except RuntimeError as error:
             assert mode == 'crash' and str(error) == 'injected_loss_capture_failure'
+        if mode == 'upgrade_acknowledged':
+            old = attention.lease('episode-old')
+            attention.placed(old['attention_lease_id'])
+            attention.responded(old['attention_lease_id'])
+            attention.acknowledge(old['attention_lease_id'], through_cursor=old['through_cursor'])
         attention.capture_confirmed_unit_losses = capture
         if mode == 'crash':
             collector().collect_once()
@@ -78,4 +83,4 @@ def run(count, mode):
 
 
 if __name__ == '__main__':
-    print(json.dumps({'passed': True, 'cases': [run(5, 'normal'), run(5, 'upgrade'), run(5, 'crash'), run(64, 'normal')]}))
+    print(json.dumps({'passed': True, 'cases': [run(5, 'normal'), run(5, 'upgrade'), run(5, 'upgrade_acknowledged'), run(5, 'crash'), run(64, 'normal')]}))

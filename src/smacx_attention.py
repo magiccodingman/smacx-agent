@@ -755,7 +755,7 @@ class AttentionService:
                                       *, session_id: str | None = None) -> None:
         """Promote confirmed deaths; never turn an ambiguous removal into one.
 
-        Pending removal notices allow an existing database to adopt this
+        Recent removal notices allow an existing database to adopt this
         projection on upgrade without rewriting its journal or requiring a new
         game. New publications pass their exact committed cursor directly.
         """
@@ -766,7 +766,7 @@ class AttentionService:
                     "SELECT observation_cursor,payload_json FROM attention_items "
                     "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
                     "AND attention_kind IN ('world_change','world_changes') "
-                    "AND status IN ('queued','leased','responded') "
+                    "AND status IN ('queued','leased','responded','acknowledged') "
                     "ORDER BY captured_unix DESC LIMIT 32", self._key(self.timeline_id),
                 ).fetchall()
             for row in rows:
