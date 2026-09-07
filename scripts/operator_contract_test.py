@@ -103,6 +103,34 @@ with tempfile.TemporaryDirectory() as tmp:
         run['metadata'].pop('semantic_baseline_pending')
         run['metadata']['semantic_sample_unix']=now-121
         assert classify_health({},[run],[{'running':True,'health':'healthy'}],[],now)[0]=='unknown'
+        # Exercise the actual park HTTP handler with a queued stale request.
+        effects = []
+        current = {"match_id": "match-operator", "status": "starting",
+                   "metadata": {"last_recovered_unix": 1}}
+        control.get_match = lambda _: dict(current)
+        control.list_harness_runs = lambda: [{"match_id": "match-operator",
+            "status": "running", "run_id": "run-fixture"}]
+        server.harness_manager = SimpleNamespace(stop_run=lambda _: effects.append("stop"))
+        manager.park_match = lambda _: effects.append("park") or {"ok": True}
+        def park(expected):
+            request = Request(f'http://127.0.0.1:{server.server_port}/api/v1/matches/match-operator/park',
+                method='POST', headers={'Content-Type':'application/json',
+                    'X-SMACX-Service-Token':'operator-fixture'},
+                data=json.dumps(expected).encode())
+            with urlopen(request, timeout=10) as response: return json.load(response)
+        replies = []
+        with manager._lifecycle_lock:
+            pending = threading.Thread(target=lambda: replies.append(park({
+                "expected_observation": {"status": "starting", "runtime_generation": 1}})))
+            pending.start()
+            time.sleep(.1)
+            assert not effects, "stale park stopped sovereign outside recovery lock"
+            current.update(status="running", metadata={"last_recovered_unix": 2})
+        pending.join(10)
+        assert not pending.is_alive() and replies[0]["skipped"] is True
+        assert not effects, "stale reconciliation touched recovered runtime"
+        assert park({})["ok"] is True
+        assert effects == ["stop", "park"], "explicit park must remain effective"
         print(json.dumps({'passed':True,'http_authorization':True,'cursor_replay':True,
             'native_shaped_inspection':True,'pause_readback_and_fence':True,'checkpoint_not_invented':True,
             'slow_turn_not_deadlock':True,'journal_verified':True}))

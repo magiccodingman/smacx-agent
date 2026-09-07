@@ -294,7 +294,22 @@ public sealed class PortalMatchSupervisor(
                     if (status != "parked" && status != "completed")
                     {
                         using var parked = await control.PostRawAsync(
-                            $"api/v1/matches/{match.MatchId}/park", new { }, cancellationToken);
+                            $"api/v1/matches/{match.MatchId}/park", new
+                            {
+                                expected_observation = new
+                                {
+                                    status = observed.Match.Status,
+                                    runtime_generation = observed.Match.RuntimeGeneration,
+                                },
+                            }, cancellationToken);
+                        if (parked.RootElement.TryGetProperty("skipped", out var skipped) &&
+                            skipped.ValueKind == JsonValueKind.True)
+                        {
+                            // A newer recovery won. Do not retire its seats from
+                            // this stale observation; reconcile it on the next pass.
+                            processed++;
+                            continue;
+                        }
                         status = "parked";
                     }
                     if (match.Status == "completed" && status != "completed")
