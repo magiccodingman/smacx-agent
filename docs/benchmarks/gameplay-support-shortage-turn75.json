@@ -457,6 +457,60 @@
         "exceeds_output": false
       }
     },
-    "actual_sovereign_new_support_query": "pending; first decision and end-turn request observed"
+    "actual_sovereign_new_support_query": "pass at94; both exact results delivered, completion observed95 and support compared96"
+  },
+  "live_turn94_96": {
+    "query_request_id": "96db5163888043b6af95da86ca4fedc9",
+    "query_call_ids": [
+      "chatcmpl-tool-ad97193a629d9f51",
+      "chatcmpl-tool-b4f560d8ad1505f4"
+    ],
+    "exact_next_provider_request_id": "e1da9549687340288135e4848f95a3f4",
+    "conditional_qualifier_and_all_assumptions_retained": true,
+    "predicted_support_after_one_completion": [
+      4,
+      4
+    ],
+    "hurry_requests": [
+      "e1da9549687340288135e4848f95a3f4",
+      "dd044241eeef4171bd7717a6a27d38cb"
+    ],
+    "energy_costs": [
+      11,
+      41
+    ],
+    "minerals_before": [
+      15,
+      5
+    ],
+    "minerals_after": [
+      20,
+      20
+    ],
+    "hurry_receipts_completion_verified": false,
+    "native_turn95_owned_units": 12,
+    "native_turn96_new_unit_refs": [
+      "own-unit-35",
+      "own-unit-36"
+    ],
+    "native_turn96_bases": [
+      {
+        "location": 1134,
+        "population": 2,
+        "mineral_intake": 5,
+        "consumption": 4,
+        "unit_support_cost": 4,
+        "surplus": 1
+      },
+      {
+        "location": 1334,
+        "population": 2,
+        "mineral_intake": 4,
+        "consumption": 4,
+        "unit_support_cost": 4,
+        "surplus": 0
+      }
+    ],
+    "comparison": "observed post-completion support matches conditional prediction for this unchanged-input interval; not a universal unconditional forecast"
   }
 }
