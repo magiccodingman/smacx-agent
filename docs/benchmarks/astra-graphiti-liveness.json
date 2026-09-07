@@ -1,0 +1,15 @@
+{
+  "date": "2026-09-07",
+  "observed": "An overloaded-provider extraction left the projector heartbeat stale and Docker unhealthy because heartbeat writes occurred only after whole batches. Native/MCP and sovereign process remained live.",
+  "change": "Heartbeat runs on the same asyncio event loop every 30 seconds. Projection phase is separate metadata; counters and last projection time change only through projection results. An actually blocked event loop still becomes stale.",
+  "validation": {
+    "worker_contract": "passes: pending await refreshes liveness without changing projection counters/time; blocked event loop becomes unhealthy; stopping ends heartbeats",
+    "projection_contract": "passes: scope isolation, failure does not advance cursor, resume, stable episode IDs, rebuild isolation",
+    "packaged_image": "same pending-await/blocked-loop health checks pass with installed smacx-astra-graphiti image",
+    "deployment": "Only Astra derivative projector replaced; native/MCP/sovereign left running. Fresh heartbeat observed, one projected event, zero failed events at sample."
+  },
+  "limits": [
+    "A fresh heartbeat is event-loop liveness, not proof the provider is making progress.",
+    "Full-game acceptance and sustained Graphiti recall usefulness remain ongoing."
+  ]
+}
