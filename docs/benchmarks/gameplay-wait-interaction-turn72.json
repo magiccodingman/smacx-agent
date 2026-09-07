@@ -46,12 +46,11 @@
     "wait_adapter_contract": "pass",
     "decision_frame_contract": "pass",
     "compact_trace_preserves_phase_and_popup": "pass",
-    "deployed_provider_delivery": "pending"
+    "deployed_provider_delivery": "pass at100 for actionable-turn response; actual blocking-dialog response remains unobserved"
   },
   "limits": [
     "Not a new native deadlock",
-    "Do not equate modal=true with engine processing or with an automatically dismissible dialog",
-    "SOCIETY native replay remains pending"
+    "Do not equate modal=true with engine processing or with an automatically dismissible dialog"
   ],
   "deployment": {
     "control_mcp_image_sha256": "9d72e0a2d7aecfb36e0168ea3c39271a96435dce352989862532d32d1d91a36b",
@@ -60,5 +59,18 @@
     "native_turn_preserved": 73,
     "native_rollback": false,
     "run_id": "run-34317ab0d91f412fa32a11eef7460a32"
+  },
+  "live_turn100": {
+    "preceding_popup_ack_request_id": "929bafeeb8f44e6cbecaafc04edace12",
+    "wait_request_id": "552d4267ccad4f56be204d674fc17d11",
+    "wait_call_id": "chatcmpl-tool-87c49c342fca245f",
+    "returned_phase": "turn",
+    "returned_turn": 100,
+    "returned_required_action": "manage_strategy_or_end_turn",
+    "required_next_tool": "smac_decision",
+    "exact_next_provider_request_id": "6efa205f542c44a0a225b6a20f1afa45",
+    "next_selected_tool": "smac_decision",
+    "observed_wait_calls_in_sequence": 1,
+    "limitation": "The popup was acknowledged before the wait; this is not live proof of the blocking-dialog variant."
   }
 }
