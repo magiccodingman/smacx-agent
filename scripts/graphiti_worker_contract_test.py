@@ -8,12 +8,13 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 
 from smacx_control import ControlPlane
 from smacx_graphiti import (
     _environment_secret, graphiti_generation_parameters, load_runtime_config,
 )
-from smacx_graphiti_worker import RecallBroker, _enabled, _scopes, _state
+from smacx_graphiti_worker import RecallBroker, _enabled, _scopes, _state, _heartbeat, health
 from smacx_store import ScopeViolation, SmacxStore
 
 
@@ -57,6 +58,34 @@ def main() -> int:
         runtime = control.graphiti_status()["runtime"]
         if runtime["status"] != "degraded" or runtime["failed_events"] != 1:
             raise AssertionError("projector failure was not observable")
+
+        async def stalled_projection_liveness():
+            # A provider await yields the event loop; it must not fabricate
+            # projection success or leave process liveness stale.
+            _state(store, "ready", active_scopes=1, phase="projecting")
+            before = control.graphiti_status()["runtime"]
+            stopping = asyncio.Event()
+            heartbeat = asyncio.create_task(_heartbeat(store, stopping, interval=.01))
+            try:
+                await asyncio.sleep(.08)
+                pending = control.graphiti_status()["runtime"]
+                assert pending["last_heartbeat_unix"] > before["last_heartbeat_unix"]
+                assert pending["metadata"]["phase"] == "projecting"
+                assert pending["projected_events"] == before["projected_events"]
+                assert pending["last_projection_unix"] == before["last_projection_unix"]
+                assert health(root / "smacx.sqlite3", .1) == 0
+                # Unlike a separate thread, a heartbeat on the same loop
+                # cannot mask an actually blocked event loop.
+                time.sleep(.15)
+                assert health(root / "smacx.sqlite3", .1) == 1
+            finally:
+                stopping.set()
+                await heartbeat
+            stopped = control.graphiti_status()["runtime"]["last_heartbeat_unix"]
+            await asyncio.sleep(.03)
+            assert control.graphiti_status()["runtime"]["last_heartbeat_unix"] == stopped
+
+        asyncio.run(stalled_projection_liveness())
 
         secret = root / "key"
         secret.write_text("not-exposed-in-env\n", encoding="utf-8")

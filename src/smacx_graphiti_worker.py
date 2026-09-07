@@ -129,13 +129,13 @@ def _scopes(store: SmacxStore) -> list[MemoryScope]:
 
 def _state(store: SmacxStore, status: str, *, active_scopes: int = 0,
            projected: int = 0, failed: int = 0, error: str | None = None,
-           projection: bool = False) -> None:
+           projection: bool = False, phase: str | None = None) -> None:
     now = time.time()
     with store.transaction() as connection:
         connection.execute(
             "INSERT INTO graphiti_runtime_state(singleton, status, backend, projected_events, failed_events, "
             "active_scopes, last_heartbeat_unix, last_projection_unix, last_error, metadata_json, "
-            "updated_unix) VALUES (1, ?, 'falkordb', ?, ?, ?, ?, ?, ?, '{}', ?) "
+            "updated_unix) VALUES (1, ?, 'falkordb', ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(singleton) DO UPDATE SET status=excluded.status, "
             "backend=excluded.backend, "
             "projected_events=graphiti_runtime_state.projected_events+excluded.projected_events, "
@@ -143,10 +143,25 @@ def _state(store: SmacxStore, status: str, *, active_scopes: int = 0,
             "active_scopes=excluded.active_scopes, last_heartbeat_unix=excluded.last_heartbeat_unix, "
             "last_projection_unix=CASE WHEN ? THEN excluded.last_projection_unix "
             "ELSE graphiti_runtime_state.last_projection_unix END, last_error=excluded.last_error, "
-            "updated_unix=excluded.updated_unix",
+            "metadata_json=excluded.metadata_json, updated_unix=excluded.updated_unix",
             (status, projected, failed, active_scopes, now, now if projection else None,
-             error[:2000] if error else None, now, 1 if projection else 0),
+             error[:2000] if error else None, json.dumps({"phase": phase or status}), now, 1 if projection else 0),
         )
+
+
+
+async def _heartbeat(store: SmacxStore, stopping: asyncio.Event, *, interval: float = 30) -> None:
+    """Report event-loop liveness independently of provider/projection progress."""
+    while not stopping.is_set():
+        with store.transaction() as connection:
+            connection.execute(
+                "UPDATE graphiti_runtime_state SET last_heartbeat_unix=? WHERE singleton=1",
+                (time.time(),),
+            )
+        try:
+            await asyncio.wait_for(stopping.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            pass
 
 
 def _claim_rebuild(store: SmacxStore) -> dict[str, Any] | None:
@@ -191,6 +206,7 @@ async def run(database: Path, *, interval: float, limit: int) -> int:
     sink = None
     sink_fingerprint = None
     _state(store, "starting")
+    heartbeat = asyncio.create_task(_heartbeat(store, stopping))
     try:
         while not stopping.is_set():
             if not _enabled(store):
@@ -203,6 +219,7 @@ async def run(database: Path, *, interval: float, limit: int) -> int:
             else:
                 scopes = _scopes(store)
                 try:
+                    _state(store, "ready", active_scopes=len(scopes), phase="projecting")
                     config = load_runtime_config(store)
                     if sink is None or sink_fingerprint != config.fingerprint:
                         broker.sink = None
@@ -272,6 +289,8 @@ async def run(database: Path, *, interval: float, limit: int) -> int:
             except asyncio.TimeoutError:
                 pass
     finally:
+        stopping.set()
+        await heartbeat
         broker.sink = None
         recall_server.shutdown()
         recall_server.server_close()
