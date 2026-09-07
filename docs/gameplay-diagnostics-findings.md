@@ -401,3 +401,6 @@ Incident incident-d6473d696aa54abb937e0f553390c40b quarantines worker/MCP. The c
 
 
 Council repair predeployment checks: compiled classifier and compact-gap allowlist tests pass. Isolated AI-called native council passes notice acknowledgement, duplicate rejection, separate-window ballot scheduling and observed failed vote result. This is controlled native evidence, not actual campaign recovery. Integrated first invocation exited1 with no captured output and is not counted as a pass; unbuffered repeat is running. Production remains quarantined.
+
+
+Storage incident during council integration: disposable match provisioning returned HTTP500 while the filesystem reached zero available bytes. Unused build cache and66 obsolete prepared-worker images were removed; current container references and two newest prepared versions for installations with containers were retained. Databases, saves and diagnostic volumes were preserved. Approximately128GB was recovered by prepared-image cleanup, leaving135GB free at that checkpoint. The next integration run passed provisioning and is exercising native managed actions. Maintenance now checks disk headroom before large builds/tests and removes obsolete owned test images after completion; failed runs are not treated as gameplay acceptance.
