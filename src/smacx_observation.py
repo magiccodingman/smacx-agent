@@ -1272,7 +1272,12 @@ class ObservationCollector:
         })
         action_revision = str(feed.get("action_revision") or "")
         current = self.world_store.load(self.scope, self.timeline_id)
-        should_reconcile = action_revision != self._last_action_revision \
+        from smacx_temporal_episodes import episode_schema_upgrade_required
+        needs_identity_upgrade = bool(current) and episode_schema_upgrade_required(
+            WorldIdentity(**current["identity"]), current.get("objects", ()),
+            stage.get("episode_state", {}),
+        )
+        should_reconcile = needs_identity_upgrade or action_revision != self._last_action_revision \
             or feed.get("reconciliation_required") is True \
             or int(feed.get("drained_event_count") or 0) > 0 \
             or bool(self._pending_native_events) or current is None

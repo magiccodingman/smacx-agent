@@ -72,11 +72,12 @@
     "owned_transient_lifecycles": "pass",
     "rollback_world": "pass",
     "recovery_observation_order": "pass",
-    "full_native_mcp_suite": "running",
+    "full_native_mcp_suite": "pass on identity-migration images before the final quiet-revision scheduling addition",
     "live_deployment": "pending",
     "new_gap_actual_provider_delivery": "pending",
     "current_format_snapshot_restore_without_stage": "pass; no unnecessary identity reset",
-    "explicit_noncontinuous_same_square": "pass"
+    "explicit_noncontinuous_same_square": "pass",
+    "quiet_revision_migration": "pass; reused collector upgrades without a native action and does not repeat"
   },
   "limits": [
     "Native combat engine unchanged",
@@ -92,8 +93,22 @@
     },
     {
       "attempt": "final full native suite",
-      "outcome": "running on final rebuilt images",
+      "outcome": "pass",
       "preserved_log": "/tmp/smacx-contact-gap-full-native-final.log"
     }
-  ]
+  ],
+  "native_suite": {
+    "control_image": "sha256:f3c1efc692fb9b58f055617b22493fefb25f9961595ab2dd8bbfd42daf40330c",
+    "harness_image": "sha256:54cbc4e92eaa7ac7356b513354e97544481bec742265eb338586768d9260fd67",
+    "managed_tools": 15,
+    "repeated_same_checkpoint_restore_after_timeline_gc": true,
+    "owned_identity_after_native_restart": true,
+    "native_crash_recovery": true,
+    "site_stress_wall_ms": 278.882,
+    "site_stress_probe_gap_ms": 250.287,
+    "counterfactual_site_wall_ms": 275.965,
+    "counterfactual_site_probe_gap_ms": 268.955,
+    "airdrop_max_page_ms": 229.823,
+    "provider_inference_supplied": false
+  }
 }

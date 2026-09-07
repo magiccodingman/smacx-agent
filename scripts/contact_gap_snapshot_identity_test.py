@@ -70,6 +70,17 @@ for failure in ('none','frozen'):
   restart(f);native.revision+=1;collect().collect_once();assert active(f)==new,'migration repeated'
   assert not any(e.get('contact_ref')==old and e['event_kind']=='contact_destroyed' for e in history(f))
   assert f.journal.verify(f.scope)['ok']
+# Finishing an older frozen publication can leave an unchanged native revision.
+# The next collector pass must still upgrade, without waiting for a game action.
+with tempfile.TemporaryDirectory() as tmp:
+ f,native,collect,_=setup(Path(tmp));foreign(native,5);native.revision+=1
+ c=collect();c.collect_once();old=active(f)
+ path=f.worlds._native_stage_path(f.scope,f.attention.timeline_id)
+ stage=json.loads(path.read_text());stage['episode_state'].pop('schema_version',None)
+ path.write_text(json.dumps(stage))
+ c.collect_once();assert active(f)!=old,'quiet revision skipped legacy migration'
+ new=active(f);c.collect_once();assert active(f)==new
+
 # New-timeline recovery may import current projection without a temporal stage.
 # Its version marker must preserve checkpoint identities, unlike legacy data.
 with tempfile.TemporaryDirectory() as tmp:
