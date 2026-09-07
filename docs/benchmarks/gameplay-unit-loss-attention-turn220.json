@@ -94,5 +94,34 @@
       "packaged_five_case_contract_passed": true,
       "active_incidents": 0
     }
-  ]
+  ],
+  "live_followup_221": {
+    "new_loss_delivery_request": "174caebfd49c4a75a80abaa5b33b2310",
+    "new_losses": [
+      {
+        "unit_ref": "own-unit-97",
+        "location_ref": "location-1334",
+        "cursor": 1479,
+        "journal_event_id": "journal-7fb482a4c7bb47b5a360acd7ed6d7a16"
+      },
+      {
+        "unit_ref": "own-unit-63",
+        "location_ref": "location-1134",
+        "cursor": 1480,
+        "journal_event_id": "journal-a4a58a6267fb4a64be8a003c0eb8696c"
+      }
+    ],
+    "next_episode_request": "b88e318100664faf9bfd59571ddb633e",
+    "next_episode_id": "episode-61e40606a0a76aa6eeea2ddaecea3805",
+    "same_attention_ids_redelivered": true,
+    "terminal_order_exact_next_provider": true,
+    "handoff_exact_next_provider": true,
+    "checkpoint_id": "checkpoint-4d5c38e3deb44c768a6b1c836c17ada4",
+    "checkpoint_turn": 221,
+    "checkpoint_verified": true,
+    "native_save_sha256": "bffc777b41ab816bc307aab0dd8795d2f338df38cbfd5765a44834e8afcad5d2",
+    "active_runs": 1,
+    "active_incidents": 0,
+    "tool_or_context_fetch_errors_in_sample": 0
+  }
 }
