@@ -4423,6 +4423,11 @@ std::string interaction_kind(int faction_id) {
                 ? "waiting_for_engine" : "endgame_presentation";
         }
         if (semantic_popup_label()[0]) return "popup";
+        // The stock Council window is not a BasePop and has no popup label.
+        // Route only a validated active ballot to the existing guarded choices.
+        if (!*MultiplayerActive && active_council_window_proposal() >= 0) {
+            return "council_vote";
+        }
         if (Factions[faction_id].tech_research_id < 0) {
             if (*MultiplayerActive) return "waiting_for_engine";
             return (*GameRules & RULES_BLIND_RESEARCH) ? "research_priority" : "research_choice";

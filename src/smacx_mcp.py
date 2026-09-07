@@ -2732,6 +2732,12 @@ def smac_decision(
                 "ok": True, "kind": "decision_frame", "identity": identity,
                 "turn": snapshot.get("turn"), "year": snapshot.get("year"),
                 "phase": "capability_gap", "state": _compact_decision_state(snapshot),
+                "blocking_interaction": {
+                    "kind": snapshot.get("interaction", {}).get("kind"),
+                    "popup_label": snapshot.get("interaction", {}).get("popup_label", ""),
+                    "last_started_popup_label": snapshot.get("interaction", {}).get("engine_state", {}).get("last_started_popup_label", ""),
+                    "qualification": "Observed interaction blocking the managed action path. An earlier popup label is context, not proof of the current modal's identity. Do not infer a unit-order failure from absent choices.",
+                },
                 "required_next": {
                     "tool": "smac_report_capability_gap",
                     "reason": protocol.get("required_action"), "stop_after": True,

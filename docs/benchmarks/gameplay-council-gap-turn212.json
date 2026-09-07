@@ -67,5 +67,21 @@
     "finding": "active_council_window_proposal is used by interaction choice enumeration and cast_council_vote but absent from interaction_kind. An unlabeled council modal can therefore route to unsupported_modal before the managed decision reaches existing ballot choices.",
     "qualification": "Source routing gap confirmed; preserved modal identity, safe classifier repair, regression and native acceptance remain pending.",
     "compact_frame": "capability_gap branch omits snapshot.interaction even though the preserved native snapshot includes unsupported_modal and last_started_popup_label CALLSCOUNCIL."
+  },
+  "validation": {
+    "compiled_classifier": "passed: council route, unknown modal, multiplayer exclusion, popup priority and pending-action priority",
+    "compact_gap": "passed: production managed decision exposes bounded blocking context without private engine fields",
+    "native_incoming_council": {
+      "passed": true,
+      "notice_acknowledged_once": true,
+      "duplicate_rejected": "stale_state",
+      "separate_window_ballot": true,
+      "proposal_id": 0,
+      "candidate_faction_id": 4,
+      "observed_result": "failed",
+      "ui_input_used": false
+    },
+    "integrated": "First invocation exited 1 with empty captured output; no pass claimed. Repeat running with unbuffered output.",
+    "deployment": "pending; production remains quarantined"
   }
 }

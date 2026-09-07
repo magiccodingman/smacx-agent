@@ -398,3 +398,6 @@ Live138 memory follow-through: request2283b2f04ccc4d8197d78b3ade1103da supplies 
 ## Turn212: unsupported modal after CALLSCOUNCIL
 
 Incident incident-d6473d696aa54abb937e0f553390c40b quarantines worker/MCP. The captured native snapshot reports unsupported_modal after CALLSCOUNCIL, while the compact capability-gap frame omits that interaction detail. The sovereign attributes the absence of choices to idle Formers; that attribution is not established. The earlier probe movement completed with native_combat_resolved. Preserve the frozen state and inspect the modal before recovery. Portal supervision is paused, no code repair or resumed-play acceptance is claimed. [Evidence](benchmarks/gameplay-council-gap-turn212.json).
+
+
+Council repair predeployment checks: compiled classifier and compact-gap allowlist tests pass. Isolated AI-called native council passes notice acknowledgement, duplicate rejection, separate-window ballot scheduling and observed failed vote result. This is controlled native evidence, not actual campaign recovery. Integrated first invocation exited1 with no captured output and is not counted as a pass; unbuffered repeat is running. Production remains quarantined.
