@@ -410,3 +410,5 @@ Council integrated acceptance passes after storage cleanup:15 managed tools, nat
 
 
 Council deployment passes: supported retry-after-update clears the incident and restores verified212 into session2831ce6571ac422a9e755b5807d49f93 on reviewed c3f7634c engine.20 units,2 bases,783 credits and journal-backed plan are present; checkpoint precedes later212 probe losses. One sovereign runcc14d894ca294984b072084838b7b5de starts before portal supervision resumes; native failure capture is rearmed. Actual repaired council ballot delivery and full-game acceptance remain open.
+
+Turn215 deployment passes: fresh checkpointda4a8085 restores into sessionf413f990 with19 units,2 bases,809 credits; the clean-yield incident clears only after verified recovery. One sovereign run697af0b2 resumes before portal unpause. Actual requesta41eb0ea contains restored plan revision14 with last confirmation192; this is delivery evidence, not current-truth certification of its narrative. A successful Former order follows without error. Native failure capture and10-minute monitoring continue; next-turn checkpoint and full-game acceptance remain open.

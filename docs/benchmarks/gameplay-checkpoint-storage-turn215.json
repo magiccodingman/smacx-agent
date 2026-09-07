@@ -33,10 +33,10 @@
     "packaged_compressed_digest": "PASS installed final control module: plain/compressed native-byte identity, corrupt archive and missing save fail closed"
   },
   "pending": [
-    "Actual deployed checkpoint and continued provider request proof",
-    "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair"
+    "Next-turn automatic checkpoint and subsequent fresh-episode provider timing",
+    "Full-game completion and sustained sovereign intent/specialist acceptance"
   ],
-  "deployment": "not deployed; portal paused and zero sovereign runs",
+  "deployment": "PASS fresh215 native+AI checkpoint, supported refresh-runtime recovery, incident cleared, one sovereign started before portal unpause; native failure watcher and ten-minute heartbeat active",
   "integrated_checkpoint_image": {
     "control_image": "sha256:cd98bb891ee13eef17c6e1996cae1716c41db2f777e3ba47c96ea607441b251f",
     "exit_code": 0,
@@ -229,5 +229,36 @@
         }
       }
     ]
+  },
+  "production_checkpoint": {
+    "checkpoint_id": "checkpoint-da4a808551c24b409ef74c5df1605682",
+    "turn": 215,
+    "native_save_slot": "ckpt_6e5cbc45860b9447_a",
+    "native_save_sha256": "5f19c1b7997968fc65ac4dcc97d9ea32d8d27bca71cee576442a03574aba5627",
+    "native_save_bytes": 354632,
+    "verified": true
+  },
+  "production_recovery": {
+    "session_id": "session-f413f990aaec489c91a8ff9d57040adb",
+    "run_id": "run-697af0b2797c4512ba5db9de6913eb1d",
+    "turn": 215,
+    "units": 19,
+    "bases": 2,
+    "credits": 809,
+    "incident_status": "recovered",
+    "active_incidents": 0,
+    "native_worker_id": "39b2e56bf13e844fd227b93b7dfce8c369eaef8fd48ee2bb692333c44bffe126",
+    "prepared_image": "sha256:81b2a11aae4d834d875fd33a2c703278c532f84bf53d11c1c9ad7c1e4248a0af"
+  },
+  "actual_provider_delivery": {
+    "request_id": "a41eb0eae3de4ece9f68c9faf8d43533",
+    "episode_id": "episode-77d1f71da46354754f4965581717fc7c",
+    "plan_id": "plan-92f8d665ad8a44df91f34b4c5aa3aee5",
+    "plan_revision": 14,
+    "last_confirmation_turn": 192,
+    "claim": "Actual submitted provider body contains recovered plan; historical narrative is not certified current truth.",
+    "subsequent_requests_observed": 4,
+    "successful_managed_order": "Automate former",
+    "execution_status": "order_assigned"
   }
 }
