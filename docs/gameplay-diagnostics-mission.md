@@ -652,3 +652,5 @@ Deployment acceptance: control/harness rebuilt, packaged memory guard contract p
 ### Background specialist failure accounting
 
 Audit found that `specialist.mission_failed` was retained in journal/transcript but absent from failure metrics. Aggregate export now counts its explicit normalized outcome under a journal layer, preserving the qualification that observations across layers are not unique incidents. The committed journal→locked snapshot→ZIP contract proves the failure appears in metrics and gameplay transcript; a completion-event negative case prevents outcome inference from payload alone. Deployment is pending. This is export correctness, not proof of spontaneous sovereign commissioning.
+
+Specialist metrics deployment: packaged export contract passes; control image `bb2b14d1cbcd` is running and healthy. One sovereign resumes at214 on unchanged native session `session-2831ce6571ac422a9e755b5807d49f93`, with no active incident. No native recovery or memory rewrite was needed.
