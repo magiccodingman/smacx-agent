@@ -44,7 +44,18 @@
     "explicit_fresh_retry_journal_and_projection": "pass",
     "real_Hermes_transport_handoff_GC_restart_and_ambiguous_postcommit_failure": "pass",
     "native_changes": false,
-    "deployment": "pending",
+    "deployment": {
+      "passed": true,
+      "turn": 111,
+      "native_worker_retained": "074e7ab9963d",
+      "session_id": "session-62f94f97a32d4a8a8dcc88a57910a815",
+      "feedback_loaded_in_active_mcp": true,
+      "control_image": "1fd8988449b4050ceb2e248b45ee0012981828f9e433611955382cbbc9de3073",
+      "harness_image": "5b46e0c8b6d4e3a3f190a999392b40fd447bbc937283bb08e77e20af71fb9f8f",
+      "run_id": "run-68ea0ee1bf81447fb69c757d58315bd2",
+      "one_sovereign_resumed": true,
+      "portal_and_heartbeat_restored": true
+    },
     "actual_new_guidance_delivery": "unobserved"
   }
 }
