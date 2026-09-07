@@ -1,6 +1,6 @@
 {
   "checkpoint": "confirmed owned-unit loss attention at turn 220",
-  "status": "deployed; actual provider delivery verified; sovereign response and full-game acceptance under observation",
+  "status": "deployed; live provider delivery and sovereign acknowledgement verified; full-game acceptance open",
   "observed": {
     "match_id": "match-85285536ea844e87b51e5fd081ac555e",
     "turn": 219,
@@ -59,9 +59,9 @@
     "represented": true,
     "calculated": "exact count over committed observed events",
     "provider_queryable": "actual provider request990c01adc96a422cb1a69c83eb54465e contains all five confirmed219 losses and journal source",
-    "sovereign_expressible": "existing attention acknowledgement surface; fixture passes",
+    "sovereign_expressible": "actual smac_attention_ack after request990c01adc96a422cb1a69c83eb54465e succeeds through cursor49 including both confirmed-loss IDs",
     "executable": "no native action added",
-    "effect_verified": "actual native events -> committed history -> critical attention -> actual provider delivery verified; sovereign acknowledgement/response still under observation",
+    "effect_verified": "actual native events -> committed history -> critical attention -> actual provider delivery -> managed acknowledgement verified; strategic response quality remains under observation",
     "recovery_safe": "publication interruption and acknowledgement deduplication fixtures pass",
     "full_game_complete": false
   },
