@@ -1,0 +1,83 @@
+{
+  "classification": "reporting and tool-guidance gap; not a demonstrated lost journal write",
+  "observed_turn": 85,
+  "source_provider_request_id": "326a5eb7d5c0406a9296d52951dff1b4",
+  "actual_provider_health": {
+    "active_plan_count": 3,
+    "intent_coverage_complete": true,
+    "assigned_owned_unit_count": 0,
+    "mechanically_ordered_unit_count": 8,
+    "conflict_count": 0,
+    "dependency_exception_count": 0
+  },
+  "displayed_plan_records": [
+    {
+      "plan_id": "plan-945d17ccc7d446bdb827bafc4d5d381c",
+      "participants": [],
+      "target_refs": [],
+      "dependencies": []
+    },
+    {
+      "plan_id": "plan-feca790ad13e44edac27a73d092275ac",
+      "participants": [],
+      "target_refs": [],
+      "dependencies": []
+    }
+  ],
+  "scope_note": "Two plan records were displayed in this captured working context; the aggregate health covered three active journal plans. Replay of the displayed subset identifies two unbound plans, not all three.",
+  "finding": "Enumeration completeness was not accompanied by an explicit statement that objective prose is unverified and creates no mechanical assignments. The objective retained an older garrison-position claim with no declared actor bindings.",
+  "repair": [
+    "Clarify the scope of health checks while preserving intent_coverage_complete and abstract plans.",
+    "Report bounded unbound-plan references and count.",
+    "Describe participant shape at the memory-writing tool.",
+    "Expose binding counts in compact CLI plan-write and plan-health summaries."
+  ],
+  "acceptance": {
+    "abstract_plan_not_rejected": true,
+    "no_assignment_inferred_from_prose": true,
+    "bounded_reference_details": true,
+    "managed_query_refresh": true,
+    "runtime_64k_tokens": 5090,
+    "runtime_256k_tokens": 8460,
+    "huge_chaotic_runtime_256k_tokens": 25935,
+    "exact_qwen_operating_prompt_tokens": 1338,
+    "exact_qwen_tool_schema_tokens": 4641,
+    "managed_tools": 15,
+    "actual_repaired_provider_delivery": false,
+    "guarded_writer_next_request_handoff_gc_journal_restart": true,
+    "controlled_http_serialization": true
+  },
+  "gameplay_before_pause": {
+    "turns_observed_since_support_deploy": [
+      75,
+      76,
+      77,
+      79,
+      80,
+      81,
+      82,
+      84,
+      85
+    ],
+    "bases": 2,
+    "units": 8,
+    "new_garrison": "own-unit-28 at base-location-1334",
+    "hq_growth_observed": 2,
+    "hq_net_minerals_after_growth": 3,
+    "former_native_orders": "auto_former_improve_home_base; observed changed locations",
+    "active_supervision_incidents": 0
+  },
+  "guard_observation": {
+    "request_id": "903b7ce174ab4dda8172b760f1ce7329",
+    "issued_choice_id": "choice-0795706ae9be49b0833331eb7a923913",
+    "submitted_choice_id": "choice-0795706ae9be49b083331eb7a923913",
+    "result": "invalid_choice; fetched fresh frame and continued",
+    "second_rejection_request_id": "e7894049711546ba88b7a9bb485e4528",
+    "second_rejection_attribution": "not yet inspected"
+  },
+  "tested_images": {
+    "control": "sha256:b7f6b7a16cf245c39341c53ac49a7ce8b284ef42080c7a3af679eafeb44fa2a4",
+    "harness": "sha256:c5c926e8ec5f6bb0feaaebe4f403faf29c3f401f1eea194a7029c0b8d356cc5c",
+    "native": "unchanged support repair"
+  }
+}

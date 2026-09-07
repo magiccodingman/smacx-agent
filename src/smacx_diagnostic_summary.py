@@ -113,6 +113,19 @@ def summary(event):
             'completed','queued','action_id','gameplay','completion_semantics','effect_disposition','state_changed_during_enumeration',
             'turn_handoff_required','turn_boundary_notice','choice_scope','production_context','citizen_context','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name') if k in result}
+        health = result.get('plan_health')
+        if isinstance(health, dict):
+            chosen['plan_health'] = {k: health[k] for k in (
+                'active_plan_count', 'intent_coverage_complete', 'assessment_scope',
+                'plans_without_world_bindings_count', 'assigned_owned_unit_count',
+                'mechanically_ordered_unit_count', 'conflict_count',
+                'dependency_exception_count') if k in health}
+        record = result.get('record')
+        if isinstance(record, dict) and record.get('plan_id'):
+            chosen['plan_record'] = {k: record[k] for k in ('plan_id', 'status', 'plan_revision') if k in record}
+            for field in ('participants', 'target_refs', 'dependencies'):
+                if isinstance(record.get(field), list):
+                    chosen['plan_record'][field + '_count'] = len(record[field])
         if isinstance(result.get('acknowledged_ids'), list):
             chosen['acknowledged_count'] = len(result['acknowledged_ids'])
             chosen['attention_cursor'] = result.get('attention_cursor')

@@ -97,3 +97,17 @@ print(json.dumps({'compact_menu_passed': True, 'rendered_characters': len(text),
 empty_ack = summary({'kind':'tool_returned','payload':{'managed_name':'smac_attention_ack',
     'result':{'ok':True,'acknowledged_ids':[],'attention_cursor':28,'attention_lease_id':'lease-empty'}}})
 assert '"acknowledged_count":0' in empty_ack and '"attention_cursor":28' in empty_ack
+
+# Operators must see whether a successful plan write contains mechanical bindings.
+plan_result={'ok':True,'record':{'plan_id':'plan-example','status':'active','plan_revision':2,
+    'objective':'unverified narrative '*1000,'participants':[],'target_refs':[],'dependencies':[]}}
+plan_before=json.dumps(plan_result,sort_keys=True)
+rendered=summary({'kind':'tool_returned','payload':{'managed_name':'smac_memory_update','result':plan_result}})
+assert '"participants_count":0' in rendered and '"target_refs_count":0' in rendered
+assert 'unverified narrative' not in rendered and len(rendered)<500
+assert json.dumps(plan_result,sort_keys=True)==plan_before
+health={'active_plan_count':1,'intent_coverage_complete':True,'plans_without_world_bindings_count':1,
+    'assessment_scope':'Objective prose is not interpreted or verified.','assigned_owned_unit_count':0}
+rendered=summary({'kind':'tool_returned','payload':{'managed_name':'smac_cognition','result':{'ok':True,'plan_health':health}}})
+assert '"plans_without_world_bindings_count":1' in rendered and 'not interpreted or verified' in rendered
+print(json.dumps({'plan_binding_counts_visible':True,'narrative_not_dumped_or_promoted':True}))
