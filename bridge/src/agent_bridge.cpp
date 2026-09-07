@@ -780,10 +780,16 @@ bool unconditional_truce_offer_label(const std::string& label) {
         || label == "MUSTTRUCE";
 }
 
+bool energy_peace_offer_label(const std::string& label) {
+    // Public quote: the counterpart pays us in exchange for peace.
+    return label == "ENERGYTRUCE" || label == "ENERGYTREATY";
+}
+
 bool relationship_offer_label(const std::string& label) {
     return label == "FACTIONTREATY" || label == "FACTIONTRUCE"
         || label == "ALIENFACTIONTREATY" || label == "ALIENFACTIONTRUCE"
-        || label == "SWEARAPACT" || unconditional_truce_offer_label(label);
+        || label == "SWEARAPACT" || unconditional_truce_offer_label(label)
+        || energy_peace_offer_label(label);
 }
 
 bool attack_demand_label(const std::string& label) {
@@ -5214,6 +5220,19 @@ bool reviewed_unconditional_truce_popup(BasePop* popup, const std::string& label
 bool submit_unconditional_truce_response(BasePop* popup, const std::string& label,
     const std::string& response) {
     if (!reviewed_unconditional_truce_popup(popup, label)
+    || (response != "accept" && response != "reject")) return false;
+    return submit_popup_choice_id(popup, response == "accept" ? 0 : 1);
+}
+
+bool reviewed_energy_peace_popup(BasePop* popup, const std::string& label, int quote) {
+    return popup && energy_peace_offer_label(label) && quote > 0
+        && popup_choice_count(popup) == 2
+        && popup_has_choice_id(popup, 0) && popup_has_choice_id(popup, 1);
+}
+
+bool submit_energy_peace_response(BasePop* popup, const std::string& label,
+    const std::string& response, int quote, int accepted_quote) {
+    if (!reviewed_energy_peace_popup(popup, label, quote) || quote != accepted_quote
     || (response != "accept" && response != "reject")) return false;
     return submit_popup_choice_id(popup, response == "accept" ? 0 : 1);
 }
@@ -13889,6 +13908,33 @@ std::string semantic_choices_response(const std::string& request) {
                 << json_string(!strcmp(label, "DEMANDTECHAGAIN1") ? "energy" : "technology");
             append_demand_technology_context(out, faction_id, label);
             out << '}';
+        } else if (energy_peace_offer_label(label)) {
+            int quote = ParseNumTable[0];
+            bool treaty = !strcmp(label, "ENERGYTREATY");
+            if (*MultiplayerActive || !reviewed_energy_peace_popup(active_default_popup(), label, quote)) {
+                out << "{\"kind\":\"capability_status\",\"supported\":false,"
+                    "\"meaning\":\"The reviewed single-player energy-for-peace quote is unavailable.\"}";
+            } else {
+                for (int accept = 1; accept >= 0; --accept) {
+                    if (!accept) out << ',';
+                    out << "{\"command\":\"respond_to_diplomatic_offer\",\"response\":"
+                        << json_string(accept ? "accept" : "reject") << ",\"amount\":" << quote
+                        << ",\"offer_type\":" << json_string(treaty ? "treaty" : "truce")
+                        << ",\"incoming_energy_credits\":" << quote
+                        << ",\"payment_direction\":\"counterpart_to_self\",\"meaning\":"
+                        << json_string(accept
+                            ? (treaty ? "Accept the offered credits and Treaty of Friendship."
+                                : "Accept the offered credits and Blood Truce.")
+                            : "Decline this energy-for-peace offer.") << '}';
+                }
+                int other = *diplo_second_faction;
+                out << ",{\"kind\":\"information\",\"offer_type\":"
+                    << json_string(treaty ? "treaty" : "truce")
+                    << ",\"incoming_energy_credits\":" << quote
+                    << ",\"payment_direction\":\"counterpart_to_self\",\"counterpart_faction_id\":" << other
+                    << ",\"counterpart_faction_name\":" << json_string(other >= 1 && other < MaxPlayerNum
+                        ? MFactions[other].formal_name_faction : "Unknown") << '}';
+            }
         } else if (unconditional_truce_offer_label(label)
         && (*MultiplayerActive || !reviewed_unconditional_truce_popup(active_default_popup(), label))) {
             out << "{\"id\":\"diplomatic_relation:unavailable\","
@@ -14591,6 +14637,7 @@ std::string semantic_command_response(const std::string& request) {
         command == "respond_to_diplomatic_offer"
         && field_string(request, "response") == "reject"
         && !unconditional_truce_offer_label(active_label)
+        && !energy_peace_offer_label(active_label)
         && (technology_trade_label(active_label)
             || technology_demand_label(active_label)
             || relationship_offer_label(active_label))
@@ -16118,7 +16165,13 @@ std::string semantic_command_response(const std::string& request) {
             : loan_offer ? (response == "reject" ? 0 : response == "accept" ? 1 : 2)
             : tech_demand_counter ? (field_string(request, "payment") == "energy" ? 2 : 3)
             : counter ? 2 : (response == "accept" ? 1 : 0);
-        if (unconditional_truce_offer_label(label)) {
+        if (energy_peace_offer_label(label)) {
+            if (!submit_energy_peace_response(active, label, response,
+                ParseNumTable[0], field_int(request, "amount", -1))) {
+                return error_response("energy_peace_offer_changed",
+                    "The reviewed energy-for-peace quote changed; obtain fresh diplomatic choices.");
+            }
+        } else if (unconditional_truce_offer_label(label)) {
             if (!submit_unconditional_truce_response(active, label, response)) {
                 return error_response("truce_offer_changed",
                     "The reviewed two-choice truce offer changed; obtain fresh diplomatic choices.");
@@ -16150,9 +16203,12 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"respond_to_diplomatic_offer\",\"response\":")
             + json_string(response.c_str()) + ",\"offer_type\":"
             + json_string(offer_type)
-            + (unconditional_truce_offer_label(label)
-                ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta.\""
-                : "") + '}';
+            + (energy_peace_offer_label(label) ? ",\"energy_change_verified\":false" : "")
+            + (energy_peace_offer_label(label)
+                ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects.\""
+                : unconditional_truce_offer_label(label)
+                    ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta.\""
+                    : "") + '}';
     }
     if (command == "respond_to_design_offer") {
         std::string label = agent_popup_label();

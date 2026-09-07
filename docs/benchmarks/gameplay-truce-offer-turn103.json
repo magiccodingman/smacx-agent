@@ -1,6 +1,6 @@
 {
   "schema": "smacx.acceptance-evidence.v1",
-  "classification": "confirmed managed interaction gap; matched-save native accept/reject effects verified, deployment pending",
+  "classification": "confirmed managed interaction gap repaired; native comparisons and deployed recovery verified; actual new-variant sovereign delivery remains unobserved",
   "match_id": "match-85285536ea844e87b51e5fd081ac555e",
   "turn": 103,
   "incident_id": "incident-b5fbbd429841491a895519062e25d01b",
@@ -254,6 +254,22 @@
       "end_turn_resolution": "native_turn_advanced",
       "active_incidents": 0,
       "full_game_finished": false
+    },
+    "post_war_plan_delivery": {
+      "request_id": "991421b0f85e45269ea99399c422858e",
+      "next_exact_provider_request": "405a7752e9764ceb8f775262f8e7ac71",
+      "plan_id": "plan-151c1c24852144aaa3ab523850db9447",
+      "plan_key": "t70-two-front-war-posture",
+      "plan_revision": 8,
+      "status": "active",
+      "persistence": {
+        "stage": "runtime_projection_built",
+        "authority": "campaign_journal",
+        "next_context_source": "fresh_journal_working_state"
+      },
+      "records_spartan_treaty": true,
+      "structured_participants": [],
+      "limits": "Successful persistence does not establish strategic quality or mechanically verify objective prose."
     }
   },
   "unrelated_decision_error": {

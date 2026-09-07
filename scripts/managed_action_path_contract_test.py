@@ -190,6 +190,22 @@ def main():
             assert result["ok"] and result["relationship_change_verified"] is False, result
             assert result["completion_semantics"] == injected_receipt["completion_semantics"], result
             assert effects.pop()["response"] == response
+        for offer in ("truce", "treaty"):
+            for response in ("accept", "reject"):
+                injected_catalog = [{"command": "respond_to_diplomatic_offer", "response": response,
+                                     "amount": 25, "offer_type": offer, "incoming_energy_credits": 25,
+                                     "payment_direction": "counterpart_to_self"}]
+                injected_receipt = {"ok": True, "response": response, "offer_type": offer,
+                                    "energy_change_verified": False, "relationship_change_verified": False}
+                frame = mcp.smac_choices(kind="interaction")
+                assert frame["choices"][0]["incoming_energy_credits"] == 25, frame
+                result = mcp.smac_execute_choice(frame["decision_id"], frame["choices"][0]["choice_id"])
+                assert result["ok"] and result["energy_change_verified"] is False, result
+                assert result["relationship_change_verified"] is False, result
+                effect = effects.pop()
+                assert effect["amount"] == 25 and effect["response"] == response, effect
+                changed = {**injected_catalog[0], "amount": 30, "incoming_energy_credits": 30}
+                assert mcp._choice_semantic_key(injected_catalog[0]) != mcp._choice_semantic_key(changed)
         injected_receipt = None
 
         for ballot, expected in (
