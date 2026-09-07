@@ -1,0 +1,15 @@
+{
+  "classification": "Controlled diagnostic export and canonical journal evidence; not spontaneous sovereign commissioning",
+  "problem": "Terminal background specialist failures are journaled and rendered, but absent from aggregate failure observations unless separately seen through a tool.",
+  "change": "Count explicit specialist.mission_failed journal outcomes by normalized failure code. Preserve layer labels and existing non-deduplicated-observation qualification.",
+  "validation": {
+    "diagnostic_summary_contract": "pass: terminal failure counted; completion excluded; arbitrary reason text not a metric key",
+    "campaign_diagnostics_contract": "pass: committed mission failure through locked journal snapshot into ZIP metrics and human transcript; existing scope isolation and damaged-tail checks pass"
+  },
+  "limits": [
+    "Does not infer failure from missing results or classify arbitrary exception prose.",
+    "Does not claim unique-incident counts across journal and tool layers.",
+    "Does not prove sovereign commissioning or use."
+  ],
+  "deployment": "pending"
+}

@@ -35,6 +35,13 @@ assert metrics.as_dict()['provider_requests_without_terminal_capture']['count']=
 metrics.add({'kind':'provider_transport_failed','correlation':{'request_id':'request-open'}})
 assert metrics.as_dict()['provider_requests_without_terminal_capture']['count']==0
 taxonomy=Metrics()
+background=Metrics()
+for event_type in ('specialist.mission_failed','specialist.mission_completed'):
+    background.add({'kind':'journal_event','payload':{'event_type':event_type,
+        'payload':{'failure':'provider_failed','reason':'arbitrary private exception text'}}})
+assert background.as_dict()['failure_observations_by_layer']=={
+    'journal_event:specialist.mission_failed:provider_failed':1}
+assert background.as_dict()['failure_counts_are_not_deduplicated_incidents'] is True
 for name, fields in [('smac_attention_ack','attention_lease_id, through_cursor'),
                      ('smac_choices','kind')]:
     error=f"tool_call to 'mcp__smacx__{name}' is missing required argument(s): {fields}. The tool was NOT invoked. Parameters schema: {{}}"

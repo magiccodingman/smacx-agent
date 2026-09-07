@@ -23,6 +23,9 @@ with tempfile.TemporaryDirectory() as tmp:
     journal=CampaignJournal(root/"campaigns")
     scope=MemoryScope("match-export-test","agent-test","perspective-test")
     event=journal.append(scope,"memory.goal",{"record":{"goal_key":"goal-test","title":"Saved goal"}})
+    journal.append(scope,"specialist.mission_failed",{
+        "mission_id":"mission-expired", "failure":"timed_out",
+        "reason":"mission_deadline_expired"})
     snapshot_journals(root/"campaigns",writer.directory/"journal",scope.match_id)
     # An index groups category before time; unordered LIMIT silently starves
     # the later category. Timestamp order must win over category/insertion.
@@ -59,6 +62,8 @@ with tempfile.TemporaryDirectory() as tmp:
         assert "Saved goal" in archive.read("gameplay.txt").decode()
         metrics=json.loads(archive.read("metrics.json"))
         assert metrics["failure_observations_by_layer"]["managed_tool_returned:native_rejected"]==1
+        assert metrics["failure_observations_by_layer"]["journal_event:specialist.mission_failed:timed_out"]==1
+        assert "mission-expired" in archive.read("gameplay.txt").decode()
         assert any(name.endswith(".jsonl.gz") for name in archive.namelist())
     # A damaged compressed member must remain downloadable as evidence rather
     # than turning the entire campaign export into an HTTP failure.

@@ -197,6 +197,12 @@ class Metrics:
         if kind in {'tool_requested','tool_validation_rejected'}:self.tools[payload.get('managed_name','unknown')]+=1
         if kind=='tool_validation_rejected':self.failures[kind+':unknown_tool_name']+=1
         if kind=='control_operation_failed':self.failures[kind+':'+str(payload.get('error_code','unknown'))]+=1
+        if kind=='journal_event' and payload.get('event_type')=='specialist.mission_failed':
+            # Background terminal failures need not produce a sovereign tool
+            # result. Count the explicit journal outcome, not free-form reason
+            # text or an inference from a mission's absence.
+            outcome=(payload.get('payload') or {}).get('failure')
+            self.failures['journal_event:specialist.mission_failed:'+failure_code(outcome)]+=1
         if kind in {'tool_returned','managed_tool_returned','managed_tool_validation_rejected'}:
             result=result_object(payload.get('result',payload.get('content')))
             error=result.get('error')
