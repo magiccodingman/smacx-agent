@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-07",
+  "base": "47d5afb13770a910299a96f813f79ed6f3aa8a3e",
+  "observed_failure": "Cold native preparation exceeded the operator client deadline. Request cancellation abandoned portal association while control provisioning completed. Retrying the waiting lobby returned IntegrityError. No native gameplay ran in the orphaned match.",
+  "repair": "Once authorized startup is accepted, materialization and assigned-player bookkeeping finish independently of caller cancellation. Existing bounded control HTTP timeout remains.",
+  "validation": {
+    "regression": "AcceptedStartupPersistsProvisionAfterClientDisconnect fails on original controller with lost provisioned worker association; passes on repaired controller. Real Identity, TestServer cancellation, SQLite, delayed simulated control response.",
+    "portal_suite": "83/83 passed including custom session/CSRF cookie integration",
+    "isolated_deployment": "Own smacx-astra project and image tags; separate volumes/network; native worker launched and in health starting at capture.",
+    "warm_start": "Completed before one-second client deadline; this is NOT a live disconnect proof."
+  },
+  "limits": [
+    "Does not claim recovery from server termination or an upstream timeout after control commit.",
+    "Does not retroactively repair previously orphaned portal associations.",
+    "Full native game and strategic competence acceptance remain ongoing."
+  ],
+  "parallel_installation": "Configurable portal cookie prefix avoids same-host cross-port cookie collisions; default names preserved."
+}

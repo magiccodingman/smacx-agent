@@ -77,3 +77,7 @@ The archive uses the existing authorized diagnostic export. A packet adds health
 - Existing native checkpoint recovery remains the authority. A fresh full native-game acceptance run has not been performed for these additions; the original campaign remains paused.
 
 GitHub issue automation, storage policy changes, recurring agent scheduling and the knowledge-transfer prompt are a subsequent phase. These tools do not create issues, launch monitoring agents, merge PRs or resume games on their own.
+
+Accepted startup continues provisioning if the initiating HTTP client disconnects. The CLI may still report a timeout; inspect `status` before another mutation. For cold native preparation use `--timeout 900 start MATCH_ID --wait 300`. This shields caller cancellation, not server process loss; existing bounded control-service timeouts remain.
+
+For two installations on the same hostname, assign different `SMACX_PORTAL_COOKIE_PREFIX` values as well as separate ports, Compose projects, networks, volumes, worker/MCP/harness image references, control-data volume references, and operator cookie files. Cookies are not port-scoped. The default prefix preserves existing login cookies; a custom prefix also separates auxiliary Identity cookies. Changing a prefix requires logging in again.

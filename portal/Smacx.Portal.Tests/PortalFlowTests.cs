@@ -22,6 +22,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
     {
         Directory.CreateDirectory(dataRoot);
         Environment.SetEnvironmentVariable("SMACX_PORTAL_DATA", dataRoot);
+        Environment.SetEnvironmentVariable("SMACX_PORTAL_COOKIE_PREFIX", "smacx.fixture");
         factory = new PortalFactory(dataRoot);
         client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -43,6 +44,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
             Directory.Delete(dataRoot, recursive: true);
         }
         Environment.SetEnvironmentVariable("SMACX_PORTAL_DATA", null);
+        Environment.SetEnvironmentVariable("SMACX_PORTAL_COOKIE_PREFIX", null);
     }
 
     [Fact]
@@ -64,6 +66,84 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal("request_id_conflict", conflict.Payload!.Error!.Code);
         using var noCsrf = await client.PostAsJsonAsync("api/operator/matches/match-test/pause", new { });
         Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+    }
+
+    [Fact]
+    public async Task InstallationCookiePrefixSeparatesLoginAndCsrfCookies()
+    {
+        using var response = await client!.GetAsync("api/auth/csrf");
+        Assert.Contains(response.Headers.GetValues("Set-Cookie"), value => value.StartsWith("smacx.fixture.csrf="));
+        var csrf = (await response.Content.ReadFromJsonAsync<ApiResponse<CsrfTokenResponse>>())!.Data!;
+        var token = (await File.ReadAllTextAsync(Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        var signedIn = await PostAsync<PortalSession>("api/auth/bootstrap", new BootstrapRequest(token, "StrongP1", "StrongP1"), csrf.Token);
+        Assert.Contains(signedIn.Response.Headers.GetValues("Set-Cookie"), value => value.StartsWith("smacx.fixture.session="));
+        Assert.True((await GetDataAsync<PortalSession>("api/auth/session")).Authenticated);
+    }
+
+    [Fact]
+    public async Task AcceptedStartupPersistsProvisionAfterClientDisconnect()
+    {
+        var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var token = (await File.ReadAllTextAsync(Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        await PostAsync<PortalSession>("api/auth/bootstrap", new BootstrapRequest(token, "StrongP1", "StrongP1"), csrf.Token);
+        csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");
+        var created = await PostAsync<LobbyDetails>("api/lobbies", new CreateLobbyRequest(
+            "Disconnect fixture", "source-test", "runtime-test", "alien-crossfire",
+            "standard", "standard", "librarian", true, false, true, false, true), csrf.Token);
+        var matchId = created.Payload.Data!.MatchId;
+        // Fixture a managed seat; the real request still traverses Identity,
+        // authorization, startup tracking, materialization and SQLite writes.
+        await using (var scope = factory!.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var seat = await db.PortalLobbySeats.SingleAsync(x => x.MatchId == matchId && x.SeatIndex == 0);
+            seat.ControllerKind = "human";
+            seat.PlayerHandle = "Fixture player";
+            seat.JoinMode = "browser";
+            seat.Status = "assigned";
+            await db.SaveChangesAsync();
+        }
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        factory!.ControlOverride = async (request, cancellationToken) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/matches/solo")
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.Created) { Content = JsonContent.Create(new
+                {
+                    ok = true, worker = new { instance_id = "instance-disconnect-fixture" }
+                }) };
+            }
+            return new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = JsonContent.Create(new
+            {
+                ok = false, error = new { code = "fixture_unavailable", message = "No native game in this test" }
+            }) };
+        };
+        await File.WriteAllTextAsync(Path.Combine(dataRoot, "portal-service-token"), "fixture-token");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/lobbies/{matchId}/start")
+        { Content = JsonContent.Create(new { }) };
+        request.Headers.Add("X-CSRF-TOKEN", csrf.Token);
+        using var abort = new CancellationTokenSource();
+        var pending = client!.SendAsync(request, abort.Token);
+        var first = await Task.WhenAny(entered.Task, pending);
+        if (first == pending) Assert.Fail(await (await pending).Content.ReadAsStringAsync());
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        abort.Cancel();
+        release.TrySetResult();
+        try { using var response = await pending; } catch (OperationCanceledException) { }
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var seat = await db.PortalLobbySeats.AsNoTracking().SingleAsync(x => x.MatchId == matchId && x.SeatIndex == 0);
+            var match = await db.PortalMatches.AsNoTracking().SingleAsync(x => x.MatchId == matchId);
+            if (seat.ControlInstanceId == "instance-disconnect-fixture" && match.Status == "provisioning") break;
+            Assert.True(DateTime.UtcNow < deadline, "Disconnected startup lost its provisioned worker association.");
+            await Task.Delay(25);
+        }
     }
 
     [Fact]
@@ -690,9 +770,22 @@ public sealed class PortalFlowTests : IAsyncLifetime
 
     private sealed class PortalFactory(string dataRoot) : WebApplicationFactory<Program>
     {
+        public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>? ControlOverride { get; set; }
+        private sealed class OverrideHandler(PortalFactory owner) : DelegatingHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+                owner.ControlOverride is { } handler ? handler(request, token) : base.SendAsync(request, token);
+        }
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
+            builder.ConfigureServices(services =>
+            {
+                services.PostConfigure<Smacx.Portal.Services.ControlPlaneOptions>(options =>
+                    options.ServiceTokenFile = Path.Combine(dataRoot, "portal-service-token"));
+                services.AddHttpClient<Smacx.Portal.Services.ControlPlaneClient>()
+                    .AddHttpMessageHandler(() => new OverrideHandler(this));
+            });
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
