@@ -28,6 +28,14 @@
     "acknowledgement_visible_in_supervisor": true,
     "native_transition": "PLANETFALL acknowledged, next provider context identifies FIRSTBASE; first-base naming action returned observed_after_turn1.",
     "quarantine_recurred": false,
-    "limits": "This validates the live opening path; it does not replay the prior ten-minute provider timing or prove a complete game."
+    "limits": "This validates the live opening path; it does not replay the prior ten-minute provider timing or prove a complete game.",
+    "first_checkpoint": {
+      "turn": 1,
+      "portal_has_verified_recovery_checkpoint": true,
+      "checkpoint_id": "checkpoint-13ccf2c04e2940e6a0c0675d09593e94",
+      "generation": 3,
+      "completed_unix": 1788822110.719692,
+      "restore_exercised": false
+    }
   }
 }
