@@ -165,6 +165,14 @@ def main() -> int:
     if stopped.get("operator_required") != 1 or control.run["status"] != "error" \
             or control.run["desired_status"] != "stopped" or not control.incidents:
         raise AssertionError(f"no-progress circuit breaker failed: {stopped}")
+    assert control.run["metadata"]["operator_attention_required"] is True
+    assert control.match_state["status"] == "error"
+    assert worker.quarantines == ["match-continuation"]
+    assert control.match_state["metadata"]["incident_quarantine"]["native_and_collectors_frozen"]
+    start_count = manager.start_count
+    manager.reconcile_once()
+    assert manager.start_count == start_count, "operator stop restarted the sovereign"
+    worker.quarantines.clear()
 
     control.run.update({
         "desired_status": "running", "status": "running", "restart_count": 0,

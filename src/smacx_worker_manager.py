@@ -67,7 +67,11 @@ target=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ[
 source=pathlib.Path(os.environ.get("SMACX_SOURCE_ROOT","/source"))/"profiles"/profile/"state.db"
 present=source.is_file()
 session_ids=[]
-with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+# Database copies, rollback journals and VACUUM scratch can exceed the
+# helper's small /tmp tmpfs in a long campaign. Keep private staging beside
+# the already-scoped archive on the control volume and remove it on exit.
+with tempfile.TemporaryDirectory(dir=target.parent,prefix=".hermes-checkpoint-") as temporary:
+    os.environ["SQLITE_TMPDIR"]=temporary
     stable=pathlib.Path(temporary)/"state.db"
     if present:
         # The checkpoint manager has frozen/stopped the match-bound writer.
@@ -88,6 +92,7 @@ with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
         destination=sqlite3.connect(stable)
         try: origin.backup(destination)
         finally: destination.close();origin.close()
+        shutil.rmtree(staging)
         copied=sqlite3.connect(stable)
         try:
             session_ids=[str(row[0]) for row in copied.execute("SELECT id FROM sessions WHERE title=?",(match_id,))]
@@ -128,7 +133,8 @@ match_id=os.environ["SMACX_MATCH_ID"]
 archive_path=pathlib.Path(os.environ.get("SMACX_CONTROL_ROOT","/control"))/os.environ["SMACX_CHECKPOINT_RELATIVE"]
 profile_root=pathlib.Path(os.environ.get("SMACX_TARGET_ROOT","/target"))/"profiles"/profile
 profile_root.mkdir(parents=True,exist_ok=True)
-with tempfile.TemporaryDirectory(dir="/tmp") as work:
+with tempfile.TemporaryDirectory(dir=profile_root,prefix=".hermes-restore-") as work:
+    os.environ["SQLITE_TMPDIR"]=work
     checkpoint=pathlib.Path(work)/"state.db"
     with tarfile.open(archive_path,"r:gz") as archive:
         members=archive.getmembers()
@@ -3556,6 +3562,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         match = self.control.get_match(match_id)
         if match["status"] != "running":
             raise WorkerManagerError("checkpoint_requires_running_match")
+        # Stage into the inactive member of a bounded pair. A failed AI
+        # archive must never overwrite the native half of the last verified
+        # checkpoint. Keep the caller's logical slot stable in public metadata.
+        previous_checkpoint = match.get("metadata", {}).get("recovery_checkpoint") or {}
+        previous_slot = str(previous_checkpoint.get("native_save_slot")
+                            or previous_checkpoint.get("slot") or "")
+        slot_prefix = "ckpt_" + hashlib.sha256(slot.encode()).hexdigest()[:16]
+        native_slot = slot_prefix + ("_b" if previous_slot == slot_prefix + "_a" else "_a")
         seats = self.control.list_seats(match_id)
         # A browser-managed human host is just as recoverable as an agent:
         # both have an isolated worker and authenticated native bridge. Only a
@@ -3683,17 +3697,18 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if not choice:
                 raise WorkerManagerError("native_checkpoint_not_currently_legal")
             saved = self._native_request(
-                host_instance_id, "semantic_command", command="save_game", slot=slot,
+                host_instance_id, "semantic_command", command="save_game", slot=native_slot,
                 match_id=choices.get("match_id"), session_id=choices.get("session_id"),
                 expected_revision=choices.get("revision"), timeout=30.0,
             )
             if not saved.get("ok"):
                 raise WorkerManagerError("native_checkpoint_failed")
-            save_digest = self._checkpoint_save_digest(host_instance_id, slot)
+            save_digest = self._checkpoint_save_digest(host_instance_id, native_slot)
             checkpoint_id = _new_id("checkpoint")
             checkpoint = {
                 "checkpoint_id": checkpoint_id,
-                "slot": slot, "verified": True, "created_unix": time.time(),
+                "slot": slot, "native_save_slot": native_slot,
+                "verified": True, "created_unix": time.time(),
                 "host_instance_id": host_instance_id,
                 "turn": saved.get("turn"), "year": saved.get("year"),
                 "path": saved.get("relative_path") or saved.get("path"),
@@ -4076,8 +4091,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
         if not isinstance(checkpoint, Mapping) or checkpoint.get("verified") is not True:
             raise WorkerManagerError("verified_recovery_checkpoint_required")
-        slot = str(checkpoint.get("slot") or "")
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
+        logical_slot = str(checkpoint.get("slot") or "")
+        slot = str(checkpoint.get("native_save_slot") or logical_slot)
+        if not all(re.fullmatch(r"[A-Za-z0-9_-]{1,32}", value)
+                   for value in (logical_slot, slot)):
             raise WorkerManagerError("invalid_recovery_checkpoint")
         seats = self.control.list_seats(match_id)
         host_index = int(match.get("metadata", {}).get("managed_host_seat_index", 0))
@@ -4131,7 +4148,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             running = self.control.update_match_lifecycle(
                 match_id, "starting", host_instance_id=instance_id,
                 metadata={"recovery_required": True, "last_recovered_unix": time.time(),
-                          "last_recovered_slot": slot},
+                          "last_recovered_slot": logical_slot},
             )
             result = {"ok": True, "match": running, "worker": started,
                       "loaded_checkpoint": loaded}
@@ -4186,7 +4203,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             match_id, "running", metadata={"recovery_required": False,
                                            "incident_quarantine": {},
                                            "last_recovered_unix": time.time(),
-                                           "last_recovered_slot": slot},
+                                           "last_recovered_slot": logical_slot},
         )
         if refresh_runtime:
             result["runtime_refresh"] = runtime_refresh

@@ -1,0 +1,32 @@
+{
+  "turn": 215,
+  "incident_id": "incident-8e58164cb4164d65a55298aa7a243abe",
+  "failed_run": "run-1354926507bd4b75bba5e45d5d0fe562",
+  "replacement_run_stopped": "run-dbf66ec365f8421988738b3f682f00ae",
+  "observed": [
+    "Hermes runtime-context HTTP requests time out at10 seconds before provider submission; later server-built records do not establish delivery.",
+    "Supervisor records three clean exits without native progress and stops only the run; portal creates a replacement.",
+    "Checkpoint API409 identifies hermes_checkpoint_session_filter_failed from SQLite VACUUM database or disk is full.",
+    "Checkpoint helper /tmp tmpfs is capped at128MiB; source database is37031936 bytes. Host has122GiB available.",
+    "Native feed repeatedly emits perspective_changed while collector material_deltas remain zero during checkpoint retries.",
+    "After portal pause and sovereign stop, an operator recovery-mode context request completes in2.033 seconds; its episode is explicitly released."
+  ],
+  "repairs": {
+    "temporary_storage": "Checkpoint and restore use private scoped volume staging, SQLite scratch redirected there, source staging removed after backup, cleanup on exit.",
+    "checkpoint_atomicity": "Alternating bounded native save pair preserves last verified native slot until AI archive and metadata publication succeed. Logical slot unchanged; legacy metadata falls back to slot.",
+    "containment": "No-progress clean-exit threshold latches run and match and quarantines native/collectors."
+  },
+  "tests": {
+    "large_helper": "PASS actual checkpoint/restore with136MiB retained payload under128MiB tmpfs, integrity/source hash/scope/staging checks",
+    "readonly_wal": "PASS closed and retained WAL, uncommitted exclusion, source unchanged, invalid schema fail closed",
+    "ai_memory": "PASS scoped checkpoint/restore and post-checkpoint memory exclusion",
+    "slot_atomicity": "PASS manager failure injection; repeated failures preserve prior native bytes/metadata, bounded pair, logical slot stable",
+    "harness_continuation": "PASS clean-yield containment plus existing live stall/outage/restart contracts"
+  },
+  "pending": [
+    "Final-image native/MCP checkpoint/recovery regression",
+    "Actual deployed checkpoint and continued provider request proof",
+    "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair"
+  ],
+  "deployment": "not deployed; portal paused and zero sovereign runs"
+}
