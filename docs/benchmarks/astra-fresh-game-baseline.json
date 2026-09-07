@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-07",
+  "installation": "isolated Astra",
+  "match": "Astra - Fresh Acceptance",
+  "source_head": "f6c4619",
+  "native_observed_baseline": {
+    "turn": 0,
+    "bases": 1,
+    "units": 1,
+    "base": "U.N. Headquarters",
+    "population": 1,
+    "mineral_surplus": 1,
+    "nutrient_surplus": 2,
+    "unit": "Scout Patrol",
+    "moves_remaining_native_quanta": 3
+  },
+  "provider_first_response": {
+    "elapsed_ms": 347172.150966,
+    "prompt_tokens": 34946,
+    "completion_tokens": 625,
+    "reasoning_tokens": 564,
+    "finish_reason": "tool_calls",
+    "tool_calls": [
+      "smac_match_briefing(read)",
+      "smac_decision"
+    ],
+    "results": "Both calls succeeded. Decision gate returned match_briefing_required; no native gameplay action claimed."
+  },
+  "limits": [
+    "Low mineral surplus is observed, not an attribution of poor strategy.",
+    "Two unassigned slots become random native factions under the current seven-slot standalone default. The five named factions are configured, but this is not five total factions.",
+    "First response and tool receipts prove provider integration only; briefing acknowledgement, native action effects, expansion, recovery and full-game competence remain pending.",
+    "Long first response occurred during acknowledged provider overload; available evidence does not separate queue time from generation time."
+  ]
+}
