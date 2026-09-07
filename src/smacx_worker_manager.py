@@ -4557,6 +4557,25 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if isinstance(snapshot.get("protocol"), Mapping) else {}
         outcome = snapshot.get("outcome") \
             if isinstance(snapshot.get("outcome"), Mapping) else {}
+        # The mandatory briefing acknowledgement unlocks native actions but
+        # does not mutate the native snapshot. Credit only its durable,
+        # exact-session transition, never reads or repeated acknowledgements.
+        acknowledgement = None
+        session = self.store.get_session(str(snapshot.get("session_id") or ""))
+        if session and session.get("instance_id") == instance_id and session.get("match_id") == snapshot.get("match_id"):
+            with self.store.transaction() as connection:
+                row = connection.execute(
+                    "SELECT briefing_hash FROM match_briefing_acknowledgements "
+                    "WHERE match_id=? AND agent_id=? AND perspective_id=? AND session_id=? "
+                    "ORDER BY acknowledged_unix DESC, briefing_hash DESC LIMIT 1",
+                    (session["match_id"], session["agent_id"], session["perspective_id"], session["session_id"]),
+                ).fetchone()
+            acknowledgement = row["briefing_hash"] if row else None
+        native_fingerprint = _semantic_progress_fingerprint(snapshot)
+        progress_fingerprint = hashlib.sha256(json.dumps(
+            {"native": native_fingerprint, "briefing_acknowledgement": acknowledgement},
+            sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
         return {
             "available": True,
             "match_id": snapshot.get("match_id"),
@@ -4567,7 +4586,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             "phase": protocol.get("phase"),
             "game_completed": outcome.get("game_completed") is True,
             "final_score_completed": outcome.get("final_score_completed") is True,
-            "meaningful_fingerprint": _semantic_progress_fingerprint(snapshot),
+            "native_fingerprint": native_fingerprint,
+            "briefing_acknowledgement": acknowledgement,
+            "meaningful_fingerprint": progress_fingerprint,
         }
 
     def spectator_access(
