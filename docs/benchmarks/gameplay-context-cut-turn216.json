@@ -52,9 +52,27 @@
     "runtime_contract": "PASS64K/256K truth, critical attention/durable commitment, cognition selection, Huge chaotic25998 tokens",
     "packaged": "PASS installed control retry/fence checks and installed harness10.509-second HTTP response preserving same episode/receipt"
   },
-  "deployment": "not yet deployed; portal paused and zero active sovereign runs",
+  "deployment": {
+    "status": "verified recovery and actual provider continuation",
+    "checkpoint_id": "checkpoint-70d7f22ddb8b49db803b709b0b028062",
+    "session_id": "session-8021511caf17445388b52e7cb51d5cc4",
+    "run_id": "run-9c820b6144ff44de86b333a7870379ef",
+    "turn": 216,
+    "units": 18,
+    "bases": 2,
+    "credits": 819,
+    "active_incidents": 0,
+    "first_actual_request": "5dc1ba4305754a478acdd60489301434",
+    "episode_id": "episode-d289d49b532fbf2c87950884e1f58e1b",
+    "restored_plan_id": "plan-0ba2e8a3fcf64423952907216ea18048",
+    "plan_revision": 15,
+    "plan_confirmation_turn": 216,
+    "portal_supervision": "active",
+    "native_failure_capture": "armed",
+    "periodic_monitor": "10 minutes"
+  },
   "pending": [
-    "Deployed fresh checkpoint/recovery and actual post-action provider delivery",
+    "Actual next turn-boundary receipt and fresh provider request without context failure",
     "Full-game and remaining autonomous-use gates"
   ],
   "images": {
