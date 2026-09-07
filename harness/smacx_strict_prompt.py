@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -108,10 +109,29 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
     request = Request(url + "?" + query, headers={
         "Authorization": "Bearer " + _runtime_token(), "Accept": "application/json",
     })
+    started = time.monotonic()
     try:
         with urlopen(request, timeout=10) as response:
             value = json.loads(response.read(4_000_001))
     except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        # This failure happens before provider submission, so the HTTPX
+        # provider hook cannot observe it. Never include the private endpoint,
+        # authorization header or an exception message that might echo them.
+        try:
+            from smacx_diagnostics import record
+            timed_out = isinstance(exc, TimeoutError) or (
+                isinstance(exc, URLError) and isinstance(exc.reason, TimeoutError))
+            record("runtime_context_fetch_failed", {
+                "error": {"code": "runtime_context_timeout" if timed_out
+                          else "runtime_context_http_error" if isinstance(exc, HTTPError)
+                          else "runtime_context_fetch_error"},
+                "exception_type": type(exc).__name__,
+                "http_status": exc.code if isinstance(exc, HTTPError) else None,
+                "elapsed_ms": (time.monotonic() - started) * 1000,
+                "provider_context_issued": False,
+            }, actor="sovereign", correlation={"episode_id": episode_id})
+        except Exception:
+            logging.getLogger(__name__).warning("Runtime-context failure capture unavailable")
         raise RuntimeError("smacx_runtime_context_unavailable") from exc
     payload = value.get("runtime_context") if isinstance(value, dict) else None
     if not value.get("ok") or not isinstance(payload, dict):

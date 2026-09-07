@@ -15,7 +15,8 @@
     "temporary_storage": "Checkpoint and restore use private scoped volume staging, SQLite scratch redirected there, source staging removed after backup, cleanup on exit.",
     "checkpoint_atomicity": "Alternating bounded native save pair preserves last verified native slot until AI archive and metadata publication succeed. Logical slot unchanged; legacy metadata falls back to slot.",
     "containment": "No-progress clean-exit threshold latches run and match and quarantines native/collectors.",
-    "standalone_incident_recovery": "Normal verified recovery clears only clean-yield incidents after native identity, AI memory and collectors succeed; capability retry still retains its own gate."
+    "standalone_incident_recovery": "Normal verified recovery clears only clean-yield incidents after native identity, AI memory and collectors succeed; capability retry still retains its own gate.",
+    "client_failure_trace": "Runtime context fetch timeout/HTTP/transport failure records episode, elapsed time and normalized reason before re-raising; no endpoint or token recorded. Human transcript and aggregate failures include it."
   },
   "tests": {
     "large_helper": "PASS actual checkpoint/restore with136MiB retained payload under128MiB tmpfs, integrity/source hash/scope/staging checks",
@@ -23,7 +24,8 @@
     "ai_memory": "PASS scoped checkpoint/restore and post-checkpoint memory exclusion",
     "slot_atomicity": "PASS manager failure injection; repeated failures preserve prior native bytes/metadata, bounded pair, logical slot stable",
     "harness_continuation": "PASS clean-yield containment plus existing live stall/outage/restart contracts",
-    "recovery_orchestration": "PASS eight controlled cases: solo/LAN, legacy/staged slots, identity success/failure; failure never clears incident; internal load slot and public logical slot verified."
+    "recovery_orchestration": "PASS eight controlled cases: solo/LAN, legacy/staged slots, identity success/failure; failure never clears incident; internal load slot and public logical slot verified.",
+    "context_fetch_failure": "PASS four client exceptions; fail-closed cause preserved, one episode-linked event, summary/metrics and secret exclusion verified."
   },
   "pending": [
     "Final-image native/MCP checkpoint/recovery regression",

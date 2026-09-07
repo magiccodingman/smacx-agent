@@ -183,7 +183,7 @@ def summary(event):
         event_type=payload.get('event_type','')
         if event_type.startswith(('memory.','attention.','specialist.','game.action','checkpoint','recovery')):
             return f"journal {event_type} turn={payload.get('turn')} {json.dumps(payload.get('payload',{}),ensure_ascii=False)}"
-    if kind in {'capture_gap','provider_transport_failed','managed_tool_exception','runtime_context_failed','runtime_context_deferred','semantic_preflight','tool_batch_finished','history_compaction','control_operation_failed','control_operation_deferred','worker_liveness_lost'}:
+    if kind in {'capture_gap','provider_transport_failed','managed_tool_exception','runtime_context_failed','runtime_context_fetch_failed','runtime_context_deferred','semantic_preflight','tool_batch_finished','history_compaction','control_operation_failed','control_operation_deferred','worker_liveness_lost'}:
         return kind+' '+json.dumps(payload,ensure_ascii=False)
     return ''
 
@@ -222,7 +222,7 @@ class Metrics:
                 self.failures[kind+':'+failure_code(error)]+=1
             elif result.get('isError') or result.get('ok') is False:
                 self.failures[kind+':unclassified_failure']+=1
-        if kind in {'provider_transport_failed','managed_tool_exception','runtime_context_failed','capture_gap'}:
+        if kind in {'provider_transport_failed','managed_tool_exception','runtime_context_failed','runtime_context_fetch_failed','capture_gap'}:
             error=payload.get('error') or payload.get('reason')
             code=failure_code(error) if error else str(payload.get('exception_type','unspecified'))
             self.failures[kind+':'+code]+=1
