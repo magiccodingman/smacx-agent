@@ -240,16 +240,31 @@ if database.exists():
     finally: db.close()
 print(json.dumps({"ok":True,"profile_id":profile,"match_id":match_id,"removed_sessions":removed},separators=(",",":")))'''
 
-SAVE_DIGEST_SCRIPT = r'''import hashlib,json,os,pathlib
+SAVE_DIGEST_SCRIPT = r'''import hashlib,json,os,pathlib,subprocess
 slot=os.environ["SMACX_SAVE_SLOT"].casefold()
 root=pathlib.Path(os.environ.get("SMACX_STATE_ROOT","/state"))/"game"/"saves"
-candidates=[p for p in root.rglob("*") if p.is_file() and p.name.casefold()==slot+".sav"]
+candidates=[p for p in root.rglob("*") if p.is_file() and p.name.casefold() in (slot+".sav",slot+".sav.zst")]
 if not candidates: raise RuntimeError("checkpoint_save_file_missing")
 path=max(candidates,key=lambda p:p.stat().st_mtime_ns)
 digest=hashlib.sha256()
-with path.open("rb") as stream:
-    for block in iter(lambda:stream.read(1024*1024),b""): digest.update(block)
-print(json.dumps({"ok":True,"sha256":digest.hexdigest(),"bytes":path.stat().st_size},separators=(",",":")))'''
+size=0
+process=None
+try:
+    if path.suffix.casefold()==".zst":
+        process=subprocess.Popen(["zstd","-q","-d","-c","--memory=64MB",str(path)],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+        stream=process.stdout
+    else: stream=path.open("rb")
+    with stream:
+        for block in iter(lambda:stream.read(1024*1024),b""):
+            size+=len(block)
+            if size>512*1024*1024: raise RuntimeError("checkpoint_save_size_limit")
+            digest.update(block)
+    if process is not None and process.wait()!=0: raise RuntimeError("checkpoint_save_decompression_failed")
+finally:
+    if process is not None and process.poll() is None:
+        process.kill()
+        process.wait()
+print(json.dumps({"ok":True,"sha256":digest.hexdigest(),"bytes":size},separators=(",",":")))'''
 
 
 def stream_bitrate_kbps(width: int, height: int) -> int:

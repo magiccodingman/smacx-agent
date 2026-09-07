@@ -24,6 +24,7 @@ def main() -> int:
         os.chmod(state, 0o777)
         os.chmod(saves, 0o777)
         os.chmod(control, 0o777)
+        worker_image = os.environ.get("SMACX_TEST_WORKER_IMAGE", "smacx-agent-worker:dev")
         baseline = time.time() - 1000
         expected_final = b"checkpoint-40\n" * 256
         for number in range(1, 41):
@@ -33,6 +34,13 @@ def main() -> int:
         recovery = saves / "control_recovery.sav"
         recovery.write_bytes(b"verified-recovery\n" * 256)
         os.utime(recovery, (baseline + 20.5, baseline + 20.5))
+
+        protected_slots = []
+        for suffix in ("a", "b"):
+            checkpoint = saves / f"ckpt_0123456789abcdef_{suffix}.sav"
+            checkpoint.write_bytes(f"verified-{suffix}".encode())
+            os.utime(checkpoint, (baseline - 10, baseline - 10))
+            protected_slots.append(checkpoint.with_suffix(".sav.zst"))
 
         completed = subprocess.run([
             "docker", "run", "--rm", "--network", "none", "--read-only",
@@ -45,7 +53,7 @@ def main() -> int:
             "-e", "SMACX_COMPLETED_MATCH=1",
             "--mount", f"type=bind,src={state},dst=/state",
             "--mount", f"type=bind,src={control},dst=/control",
-            "--entrypoint", "python3", "smacx-agent-worker:dev",
+            "--entrypoint", "python3", worker_image,
             "/opt/smacx/compact_saves.py",
         ], check=True, capture_output=True, text=True)
         result = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -63,12 +71,12 @@ def main() -> int:
         subprocess.run([
             "docker", "run", "--rm", "--network", "none", "--user", "0:0",
             "--mount", f"type=bind,src={root},dst=/cleanup",
-            "--entrypoint", "chown", "smacx-agent-worker:dev",
+            "--entrypoint", "chown", worker_image,
             "-R", f"{os.getuid()}:{os.getgid()}", "/cleanup",
         ], check=True, capture_output=True)
-        if result.get("ok") is not True or len(archives) != 12 or raw \
+        if result.get("ok") is not True or len(archives) != 14 or raw \
                 or not final.is_file() or not metadata.is_file() \
-                or restored != expected_final:
+                or restored != expected_final or not all(p.is_file() for p in protected_slots):
             raise AssertionError({
                 "result": result, "archives": len(archives),
                 "raw": [item.name for item in raw], "final": final.is_file(),
@@ -77,7 +85,7 @@ def main() -> int:
         print(json.dumps({
             "event": "pass", "payload": {
                 "recent_retained": 10, "milestone_retained": 1,
-                "verified_recovery_retained": True, "raw_saves": 0,
+                "verified_recovery_retained": True, "both_managed_slots_retained": True, "raw_saves": 0,
                 "zstd_archives": len(archives), "one_final_save": True,
                 "latest_checkpoint_is_final": True,
             },

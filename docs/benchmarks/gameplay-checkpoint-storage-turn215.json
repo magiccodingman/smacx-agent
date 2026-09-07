@@ -17,7 +17,8 @@
     "containment": "No-progress clean-exit threshold latches run and match and quarantines native/collectors.",
     "standalone_incident_recovery": "Normal verified recovery clears only clean-yield incidents after native identity, AI memory and collectors succeed; capability retry still retains its own gate.",
     "client_failure_trace": "Runtime context fetch timeout/HTTP/transport failure records episode, elapsed time and normalized reason before re-raising; no endpoint or token recorded. Human transcript and aggregate failures include it.",
-    "native_digest_preflight": "After stopping/parking, verify native file SHA256 and byte count against the checkpoint before any journal fork, Hermes restore or worker restart."
+    "native_digest_preflight": "After stopping/parking, verify native file SHA256 and byte count against the checkpoint before any journal fork, Hermes restore or worker restart.",
+    "compressed_native_digest": "Hash decoded bytes from bounded zstd stream without extraction; corrupt archives fail closed. Both internal checkpoint slots protected from save pruning."
   },
   "tests": {
     "large_helper": "PASS actual checkpoint/restore with136MiB retained payload under128MiB tmpfs, integrity/source hash/scope/staging checks",
@@ -26,13 +27,14 @@
     "slot_atomicity": "PASS manager failure injection; repeated failures preserve prior native bytes/metadata, bounded pair, logical slot stable",
     "harness_continuation": "PASS clean-yield containment plus existing live stall/outage/restart contracts",
     "recovery_orchestration": "PASS twelve controlled solo/LAN cases across legacy/staged slots, successful recovery, identity failure and native digest mismatch; mismatch precedes all memory restoration.",
-    "context_fetch_failure": "PASS four client exceptions; fail-closed cause preserved, one episode-linked event, summary/metrics and secret exclusion verified."
+    "context_fetch_failure": "PASS four client exceptions; fail-closed cause preserved, one episode-linked event, summary/metrics and secret exclusion verified.",
+    "compressed_digest": "PASS plain and compressed identity, truncated archive rejection and missing save rejection",
+    "save_retention": "PASS final worker image: both older managed slots retained alongside legacy recovery, ten recent saves, milestone and final export"
   },
   "pending": [
-    "Final-image native/MCP checkpoint/recovery regression",
+    "Final compressed-save image native/MCP checkpoint/recovery regression (running)",
     "Actual deployed checkpoint and continued provider request proof",
-    "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair",
-    "Final native digest preflight added after current integration image; requires validation before deployment"
+    "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair"
   ],
   "deployment": "not deployed; portal paused and zero sovereign runs",
   "integrated_checkpoint_image": {
@@ -135,6 +137,6 @@
   },
   "digest_preflight_image": {
     "control": "sha256:1db6e43ff39ff4e1f6619df4273aab2162ea1057a1d947daf66ee10324ef633a",
-    "integration": "running"
+    "integration": "FAIL exit1: parked save compressed to .sav.zst; digest helper searched only .sav; automatic recovery failed closed before AI memory restore."
   }
 }
