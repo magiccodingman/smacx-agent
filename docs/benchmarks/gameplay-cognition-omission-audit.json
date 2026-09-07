@@ -1,0 +1,35 @@
+{
+  "classification": "Production journal/runtime selection contract plus bounded live diagnostic inspection",
+  "contract": {
+    "source_goals": 131,
+    "working_count_limit": 100,
+    "runtime_count_limit": 12,
+    "status_and_count_budget_omissions_accounted": true,
+    "small_token_budget_omissions_accounted": true,
+    "journal_unchanged_after_projection_and_reopen": true
+  },
+  "live": {
+    "run_id": "run-e1b4ea08561b4d52b8cbda9231976508",
+    "journal_selection_events": 13,
+    "runtime_selection_events": 10,
+    "latest_observed_journal_head": "bee605618e1d377a9f1a4a4759873352062312502d6324d90cc8920cc79fb06d",
+    "journal_plan_source_count": 3,
+    "journal_selected_plan_ids": [
+      "plan-92f8d665ad8a44df91f34b4c5aa3aee5"
+    ],
+    "journal_excluded_by_status": [
+      "plan-c9463d17637a43758ad0e7a01945320b",
+      "plan-90675bc75cea442893e80707a19668cd"
+    ],
+    "runtime_plan_source_count": 1,
+    "runtime_selected_plan_ids": [
+      "plan-92f8d665ad8a44df91f34b4c5aa3aee5"
+    ],
+    "runtime_plan_omissions": []
+  },
+  "limits": [
+    "Live events are separately observed; temporal proximity is not an exact same-input join.",
+    "Runtime selection currently lacks explicit working journal-head provenance; repair remains open.",
+    "The controlled test does not prove semantic usefulness or sovereign follow-through."
+  ]
+}
