@@ -680,3 +680,7 @@ The authenticated live lobby at214 exposes Download diagnostics and remains IN P
 ### Actual guarded-error recovery after deployment
 
 At214, unknown_decision and consumed_decision receipts each explicitly report no native action. Both entire results reach the chronologically next provider request with the same call ID. Each next request produces a successful fresh smac_decision; subsequent actions continue. This proves these two feedback/recovery chains, not all failure recovery or use of the repaired COUNTER0 branch. Coverage row14 and `benchmarks/gameplay-counteroffer-gap-turn214.json` retain that scope.
+
+### First post-recovery turn boundary context
+
+At215, actual request324d690e93b74d06aa3b57a6b9566c82 belongs to new episode2ccb1f09405ac99b0f398140aa34aee8 and retains restored plan14 with its original turn192 confirmation. It includes the restored native session/timeline, revision17 force composition/production/orders, explicit no-active-task Former counts and nonmandatory ready-unit focus with other-management guidance. Plan-health text explicitly limits assessment to declared bindings and does not verify narrative currency. Plan objective truncation is flagged. The sample proves delivery, not updated intent or competent strategic use; native snapshots and world projection counts remain separately scoped. Evidence and coverage rows3/4 are updated in `benchmarks/gameplay-cognition-omission-audit.json`.
