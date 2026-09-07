@@ -18,9 +18,44 @@
     "Continuation, exact briefing supervision, and operator contracts pass.",
     "Installed control image continuation and briefing supervision contracts pass."
   ],
-  "deployment": "Prepared isolated control image; same-campaign verified recovery to follow.",
+  "deployment": "Isolated control updated; supported capability recovery completed5/5 steps for the same campaign.",
   "limits": [
     "Does not infer provider queue time from elapsed response duration.",
     "Live post-recovery accounting and full-game acceptance remain pending."
-  ]
+  ],
+  "live_recovery": {
+    "turn": 1,
+    "sovereign_processes": 1,
+    "incidents": [],
+    "timeline": "timeline-restore-8a8b8cfde299408fa1bac168",
+    "counts": [
+      {
+        "base": 1,
+        "ecology_state": 1,
+        "economy_state": 1,
+        "faction": 1,
+        "game_settings": 1,
+        "governor_state": 1,
+        "intelligence_entitlement_state": 1,
+        "location": 21,
+        "map_state": 1,
+        "movement_rules": 1,
+        "orbital_state": 1,
+        "own_unit": 1,
+        "planetary_state": 1,
+        "project_race_state": 1,
+        "project_state": 1,
+        "repair_rules": 1,
+        "research_state": 1,
+        "scenario_rules": 1,
+        "social_state": 1,
+        "technology_state": 1,
+        "turn_state": 1,
+        "victory_posture": 1,
+        "victory_state": 1
+      }
+    ],
+    "checkpoint_id": "checkpoint-13ccf2c04e2940e6a0c0675d09593e94",
+    "operation": "maintenance-954359da3c0a4a178b1c80bf56f197a6"
+  }
 }
