@@ -29,7 +29,19 @@
   },
   "limits": [
     "Live events are separately observed; temporal proximity is not an exact same-input join.",
-    "Runtime selection currently lacks explicit working journal-head provenance; repair remains open.",
+    "Explicit working-head attribution is implemented and tested; deployed actual capture remains pending.",
     "The controlled test does not prove semantic usefulness or sovereign follow-through."
-  ]
+  ],
+  "repair": {
+    "runtime_selection_working_projection": [
+      "journal_head_hash",
+      "scope",
+      "token_budgets",
+      "source_token_estimates",
+      "selected_token_estimates"
+    ],
+    "authority": "Metadata copied from the exact working object used by the runtime selector; diagnostic only.",
+    "tests": "two-stage audit and full runtime context contract pass",
+    "deployment": "pending"
+  }
 }

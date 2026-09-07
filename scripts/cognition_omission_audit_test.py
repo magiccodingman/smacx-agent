@@ -31,7 +31,12 @@ with tempfile.TemporaryDirectory() as temporary:
     assert set(omissions.values())=={'status_filter','section_count_or_token_budget'}
     assert audit[2]['correlation']['journal_head_hash']==working['journal_head_hash']==before['manifest']['head_hash']
     selected=_cognition(working,token_budget=1_000_000,current_turn=1)
-    downstream=cognition_selection_audit(working,selected)['sections']['goals']
+    runtime_audit=cognition_selection_audit(working,selected)
+    assert runtime_audit['working_projection']['journal_head_hash']==audit[2]['correlation']['journal_head_hash']
+    assert runtime_audit['working_projection']['scope']==working['scope']
+    assert runtime_audit['working_projection']['token_budgets']=={'goals':1_000_000}
+    assert runtime_audit['working_projection']['selected_token_estimates']==working['token_estimates']
+    downstream=runtime_audit['sections']['goals']
     assert downstream['source_count']==100 and len(downstream['included_ids'])==12
     assert len(downstream['omitted'])==88
     assert all(row['reason']=='section_count_or_token_budget' for row in downstream['omitted'])

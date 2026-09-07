@@ -181,6 +181,13 @@ def cognition_selection_audit(working: Mapping[str, Any], selected: Mapping[str,
                 "status_filter" if allowed and str(row.get("status") or ("proposed" if kind == "commitments" else "active")) not in allowed
                 else "section_count_or_token_budget"} for row in source if identity(row) not in selected_ids]}
     return {"inventory_scope": "journal_working_set_before_runtime_selection",
+            "working_projection": {
+                "journal_head_hash": working.get("journal_head_hash"),
+                "scope": dict(working.get("scope") or {}),
+                "token_budgets": dict(working.get("token_budgets") or {}),
+                "source_token_estimates": dict(working.get("source_token_estimates") or {}),
+                "selected_token_estimates": dict(working.get("token_estimates") or {}),
+            },
             "upstream_working_set_limits_not_reconstructed": True, "sections": audit}
 
 
