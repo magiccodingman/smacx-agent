@@ -577,3 +577,7 @@ A successful operator recovery was followed by a portal park request. Dormant re
 Post-deployment readback: the same isolated campaign recovered at turn 2 on a new timeline; Graphiti rebuild completed, health became `observed_active`, exactly one sovereign was verified live, and no incident remained. The concurrency interleaving is covered by the HTTP fixture; this live readback does not claim completion of the game.
 
 Landmark clarification deployment: the turn-2 diagnostic runtime-context stream contains the conditional note in three generated contexts, and the sovereign resumed decision and management queries. This proves context generation after deployment, not corrected interpretation by the model.
+
+### Isolated acceptance: empty interaction catalog guidance
+
+The turn-2 stall trace showed a successful deep-detail world retry followed by an empty interaction query. The empty frame incorrectly required execution. Empty unprepared catalogs now request a fresh decision, and interaction guidance distinguishes active dialogs from tile exploration. Managed-action adapter tests pass, including existing staged preparation and nonempty families. Evidence: `docs/benchmarks/astra-empty-interaction.json`. Deployment and model uptake remain pending; no watchdog threshold changed.

@@ -1,0 +1,12 @@
+{
+  "incident_id": "incident-7f7f75288cd14d5cba78286e2c095c47",
+  "turn": 2,
+  "observed": "Model retried world changes with deep detail successfully, then queried interaction at its tile. Empty choices returned required_next smac_execute_choice.",
+  "repair": "Empty unprepared choice catalogs require a fresh decision; empty interaction catalogs explain active-dialog scope. Nonempty and staged catalogs preserve execution/preparation behavior.",
+  "validation": "managed_action_path_contract_test.py passes including actual managed empty interaction frame and existing staged families",
+  "limits": [
+    "No evidence yet that model confusion is resolved",
+    "No change to watchdog thresholds",
+    "No claim of native reward prediction"
+  ]
+}

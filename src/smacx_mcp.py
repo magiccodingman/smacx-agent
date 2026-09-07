@@ -3088,6 +3088,18 @@ def _smac_choices_once(
             if not choices:
                 frame["required_next"] = {"tool": "smac_choices", "kind": kind,
                                           "use_returned_preparation": True}
+    if not choices and not frame.get("preparations"):
+        frame["required_next"] = {
+            "tool": "smac_decision",
+            "reason": "No executable choices are available in this catalog at this revision. "
+                      "Do not execute this empty frame; obtain the current decision.",
+        }
+        if kind == "interaction":
+            frame["catalog_note"] = (
+                "Interaction choices answer a currently active native dialog; "
+                "this is not a tile exploration or open-pod command. "
+                "Use the current decision's legal unit actions for movement."
+            )
     advisories = _decision_advisories(
         result.get("choices", []), semantic_context=semantic_context,
     )

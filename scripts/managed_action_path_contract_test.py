@@ -242,6 +242,12 @@ def main():
         prepared = mcp.smac_choices(kind="interaction", preparation_ref=frame["preparations"][0]["preparation_ref"], amount=37)
         assert mcp.smac_execute_choice(prepared["decision_id"], prepared["choices"][0]["choice_id"])["ok"]
         assert effects.pop()["amount"] == 37
+        injected_catalog = []
+        empty = mcp.smac_choices(kind="interaction")
+        assert empty["ok"] and not empty["choices"]
+        assert empty["required_next"]["tool"] == "smac_decision"
+        assert "not a tile exploration" in empty["catalog_note"]
+        assert "execute_at_most" not in empty["required_next"]
         injected_catalog = None
 
         frame = mcp.smac_choices(kind="energy_allocation")
