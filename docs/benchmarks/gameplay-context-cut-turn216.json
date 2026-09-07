@@ -72,11 +72,34 @@
     "periodic_monitor": "10 minutes"
   },
   "pending": [
-    "Actual next turn-boundary receipt and fresh provider request without context failure",
-    "Full-game and remaining autonomous-use gates"
+    "Sustained context/recovery monitoring and full-game completion",
+    "Remaining autonomous intent/specialist/reference-use gates"
   ],
   "images": {
     "control": "sha256:66877e786875638094e0b2771cf5564b974b796ea7762585b50de3739add6438",
     "harness": "sha256:8e2b3236ea4acce95b6858b2642a22cf168d2f0415a54bc0f1fdff517c1b2043"
+  },
+  "live_boundary": {
+    "completed_turn": 216,
+    "next_turn": 217,
+    "handoff_request": "19f9e2377105477184a8ea29dbc3534f",
+    "handoff_call_id": "chatcmpl-tool-80a83f57ae73f4f8",
+    "immediate_next_request": "95c0413a91884b7380c82fb62a25826e",
+    "exact_handoff_delivered": true,
+    "pre_boundary_popup_receipt_exact": true,
+    "new_episode": "episode-9edfa54ed8d63bccd96b7dd848d6cfaf",
+    "actual_new_episode_request": "04bbfc8081c34e0f8fce237195b0c763",
+    "automatic_checkpoint": "checkpoint-c986bf96467b4840bf1112c48ab5a678",
+    "checkpoint_turn": 217,
+    "slot": "ckpt_6e5cbc45860b9447_a",
+    "context_fetch_failures_in_sample": 0,
+    "provider_requests_observed": 20,
+    "guarded_error_recovery": {
+      "error_request": "fb939f76dadd4de292c67e450d5062fa",
+      "error": "unknown_decision",
+      "native_dispatch": false,
+      "error_exact_next_request": "99b08eeb45f445d092a8a51d3b1c4736",
+      "fresh_decision_followed_by_successful_action_request": "426fe98ee25449aba7fc2f4193d84fc6"
+    }
   }
 }
