@@ -391,5 +391,217 @@
       }
     ],
     "scope": "Actual working_cognition inside submitted provider requests, not only SQL records; plan objectives are sovereign intent rather than verified mechanical achievement."
+  },
+  "live_progress_turn134": {
+    "control": {
+      "created_unix": 1788762911.8985841,
+      "status": "running",
+      "active_incidents": []
+    },
+    "native": {
+      "turn": 134,
+      "session_id": "session-a45a088000ce44548499673de56b69c9",
+      "faction": {
+        "id": 1,
+        "name": "Peacekeeping Forces",
+        "energy_credits": 229,
+        "bases": 2,
+        "units": 13,
+        "ready_units": 0
+      },
+      "interaction": "popup",
+      "popup": "BEGINPROJECT",
+      "action": {
+        "action_id": 1,
+        "command": "end_turn",
+        "status": "completed",
+        "native_result": 1,
+        "native_call_attempted": true,
+        "resolution": "native_turn_advanced"
+      }
+    },
+    "recent_delivery": [
+      {
+        "request_id": "957ae455eb0245feb030d5eed12ead2f",
+        "episode_id": "episode-03cf56fe8f1bae64ed28e0e2ea6834a3",
+        "call_id": "chatcmpl-tool-be2d366dde746bc0",
+        "kind": "decision_frame",
+        "turn": 132,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "08a9260e7b7042248856a86aecb7bf93",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "08a9260e7b7042248856a86aecb7bf93",
+        "episode_id": "episode-03cf56fe8f1bae64ed28e0e2ea6834a3",
+        "call_id": "chatcmpl-tool-aaceb66b19bb9647",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 132,
+          "observed_after_turn": 132,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "7154c08773ae4edea8aacc9f9699cd4f",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "7154c08773ae4edea8aacc9f9699cd4f",
+        "episode_id": "episode-03cf56fe8f1bae64ed28e0e2ea6834a3",
+        "call_id": "chatcmpl-tool-90a81ce7d662a637",
+        "kind": "turn_handoff_required",
+        "turn": 133,
+        "turn_provenance": null,
+        "handoff": {
+          "required": true,
+          "completed_turns": "132",
+          "next_turn": 133,
+          "instruction": "Native control passed. Make no more tool calls in this episode. Return the concise TURN HANDOFF required by your system contract now.",
+          "sections": [
+            "Outcome",
+            "Rationale",
+            "Changed conclusions",
+            "Next intent",
+            "Uncertainty"
+          ],
+          "target_words": 85,
+          "maximum_words": 120
+        },
+        "next_provider_request": "68f3b836278a45e88b85c1c71c7376cf",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "0d1699cfdac1407c906456d11582f234",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-9406094115b49c7c",
+        "kind": "decision_frame",
+        "turn": 133,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "a243d24bbcc64264a8972dfb52b3cc55",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "a243d24bbcc64264a8972dfb52b3cc55",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-80d8506497dc8521",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 133,
+          "observed_after_turn": 133,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "0ce59d26604f4ad9bed4c8657a04d417",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "0ce59d26604f4ad9bed4c8657a04d417",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-b6f6dc97bcbdb5ff",
+        "kind": "decision_frame",
+        "turn": 133,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "17cf2adcb32a4649a87cc468e1ae675a",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "17cf2adcb32a4649a87cc468e1ae675a",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-83bdd16dbf963791",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 133,
+          "observed_after_turn": 133,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "31f161269aef4d6f96ea7931cd9f556c",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "91a9f167ba0a40d2a3540efc01c88435",
+        "episode_id": "episode-f763e0222fbaeddb6adc12e9d7e27b4f",
+        "call_id": "chatcmpl-tool-a58921b20751fe66",
+        "kind": "turn_handoff_required",
+        "turn": 134,
+        "turn_provenance": null,
+        "handoff": {
+          "required": true,
+          "completed_turns": "133",
+          "next_turn": 134,
+          "instruction": "Native control passed. Make no more tool calls in this episode. Return the concise TURN HANDOFF required by your system contract now.",
+          "sections": [
+            "Outcome",
+            "Rationale",
+            "Changed conclusions",
+            "Next intent",
+            "Uncertainty"
+          ],
+          "target_words": 85,
+          "maximum_words": 120
+        },
+        "next_provider_request": "80ace1c82326447d9df59100db38d1c0",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "032b5e1d633448c595643e8d62de6d55",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-ae40e23c9bfe2e78",
+        "kind": "decision_frame",
+        "turn": 134,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "c8dcec0c08f040cd8acb3f0edc953659",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "c8dcec0c08f040cd8acb3f0edc953659",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-8f18eac36760e4f8",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 134,
+          "observed_after_turn": 134,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "e79cc9ec24984228a09a86a3651bc8a0",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "e79cc9ec24984228a09a86a3651bc8a0",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-a49822613cb32d73",
+        "kind": "decision_frame",
+        "turn": 134,
+        "turn_provenance": null,
+        "handoff": null,
+        "next_provider_request": "0dc7d0b4af6b49e78e13f158577a4b89",
+        "next_provider_contains_exact_result": true
+      },
+      {
+        "request_id": "0dc7d0b4af6b49e78e13f158577a4b89",
+        "episode_id": "episode-14aab616f912f6c3d616318596853729",
+        "call_id": "chatcmpl-tool-b06a8f2874f56106",
+        "kind": null,
+        "turn": null,
+        "turn_provenance": {
+          "selected_turn": 134,
+          "observed_after_turn": 134,
+          "scope": "native choice selection and post-action observation; neither proves completion"
+        },
+        "handoff": null,
+        "next_provider_request": "29c8a977e916437ea04a6c2c18e89a85",
+        "next_provider_contains_exact_result": true
+      }
+    ],
+    "qualification": "Observed progression and exact immediate-next-provider receipt delivery; not full-game completion or proof of strategic quality. Additional stale memory writes were rejected before commitment; successful retry of those later writes is not established by this sample. Attention acknowledgements continue and no active incident is reported."
   }
 }
