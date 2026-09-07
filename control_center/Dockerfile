@@ -33,7 +33,7 @@ RUN apt-get -o Acquire::Retries=3 update \
 FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv tini \
+    && apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv tini zstd \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin smacx \
     && install -d -o smacx -g smacx /var/lib/smacx /opt/smacx/src /opt/smacx/control_center/static

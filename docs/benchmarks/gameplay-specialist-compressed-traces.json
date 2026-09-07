@@ -1,0 +1,22 @@
+{
+  "classification": "Production specialist trace writer through campaign ZIP export; controlled trace content",
+  "problem": "Zstandard specialist traces were retained as opaque ZIP members but skipped by gameplay transcript and metrics.",
+  "repair": [
+    "Decode captured compressed prefix with 64MiB decoded-byte and decoder-memory limits.",
+    "Keep original compressed bytes and source watermark.",
+    "Report corrupt/omitted decode tails explicitly.",
+    "Render specialist mission/attempt identity, emitted stdout and MCP calls under specialist actor.",
+    "Count explicit nonzero process exits as observations, not inferred root causes or unique incidents.",
+    "Use existing specialist timestamp_unix when present; do not invent timestamps."
+  ],
+  "validation": {
+    "campaign_diagnostics_contract": "pass: production SpecialistTraceStore compression, journal snapshot, ZIP transcript and actor/failure metrics; decoded limit and corrupt zstd/gzip evidence retention; match isolation",
+    "diagnostic_summary_contract": "pass"
+  },
+  "limits": [
+    "Controlled trace rows do not prove a live specialist was commissioned or its conclusions used.",
+    "Missing timestamps remain zero/unknown.",
+    "64MiB decoded limit can leave a partial derived summary; original compressed trace remains in archive."
+  ],
+  "deployment": "pending"
+}

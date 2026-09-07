@@ -95,6 +95,13 @@ def choice_catalog_summary(rows):
 def summary(event):
     kind=event.get('kind','unknown');payload=event.get('payload') or {}
     tool=payload.get('managed_name') or payload.get('tool') or ''
+    if str(event.get('actor','')).endswith('-specialist'):
+        identity=f"mission={event.get('mission_id')} attempt={event.get('attempt_id')}"
+        if kind=='mcp_call':
+            return f"specialist call {identity} {json.dumps(payload,ensure_ascii=False)}"
+        if kind in {'mission_envelope','attempt_outcome','validated_result','trace_warning'}:
+            fields={key:event[key] for key in ('mission','returncode','stdout','stderr','usage','result','error') if key in event}
+            return f"specialist {kind} {identity} {json.dumps(fields,ensure_ascii=False)}"
     if kind=='retained_message':
         return f"retained {payload.get('role','')} {payload.get('tool_name') or ''}: {payload.get('content') or ''}"
     if kind=='sovereign_response':
@@ -197,6 +204,11 @@ class Metrics:
         if kind in {'tool_requested','tool_validation_rejected'}:self.tools[payload.get('managed_name','unknown')]+=1
         if kind=='tool_validation_rejected':self.failures[kind+':unknown_tool_name']+=1
         if kind=='control_operation_failed':self.failures[kind+':'+str(payload.get('error_code','unknown'))]+=1
+        if str(event.get('actor','')).endswith('-specialist'):
+            if kind=='attempt_outcome' and type(event.get('returncode')) is int and event['returncode'] != 0:
+                self.failures['specialist_attempt:nonzero_exit']+=1
+            if kind=='trace_warning':
+                self.failures['specialist_trace:'+failure_code(event.get('error'))]+=1
         if kind=='journal_event' and payload.get('event_type')=='specialist.mission_failed':
             # Background terminal failures need not produce a sovereign tool
             # result. Count the explicit journal outcome, not free-form reason

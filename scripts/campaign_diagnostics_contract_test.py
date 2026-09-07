@@ -6,7 +6,8 @@ import tempfile
 import zipfile
 from smacx_store import SmacxStore
 from smacx_diagnostics import DiagnosticWriter
-from smacx_campaign_diagnostics import build_bundle, snapshot_journals
+from smacx_campaign_diagnostics import build_bundle, snapshot_journals, zstd_lines
+from smacx_specialists import SpecialistTraceStore
 from smacx_journal import CampaignJournal
 from smacx_store import MemoryScope
 
@@ -27,6 +28,17 @@ with tempfile.TemporaryDirectory() as tmp:
         "mission_id":"mission-expired", "failure":"timed_out",
         "reason":"mission_deadline_expired"})
     snapshot_journals(root/"campaigns",writer.directory/"journal",scope.match_id)
+    trace=SpecialistTraceStore(writer.directory/'specialists').write(
+        {'match_id':scope.match_id,'timeline_id':'timeline-test','mission_id':'mission-trace','faculty':'reference'},
+        'attempt-test', [{'kind':'mcp_call','timestamp_unix':123,
+            'payload':{'instrument':'reference_query','query':'Artifact'}},
+            {'kind':'attempt_outcome','returncode':1,'stdout':'Emitted specialist explanation','stderr':'test error'}],
+        outcome='provider_failed',generation=1)
+    try:
+        list(zstd_lines(Path(trace['content_path']).read_bytes(),max_bytes=16))
+    except ValueError as exc:
+        assert str(exc)=='decoded_trace_byte_limit'
+    else:raise AssertionError('decoded trace limit not enforced')
     # An index groups category before time; unordered LIMIT silently starves
     # the later category. Timestamp order must win over category/insertion.
     with store.transaction() as connection:
@@ -56,6 +68,7 @@ with tempfile.TemporaryDirectory() as tmp:
         for name in archive.namelist():
             data=archive.read(name)
             if name.endswith(".gz"):data=gzip.decompress(data)
+            if name.endswith('.zst'):data=b''.join(zstd_lines(data))
             assert "foreign secret" not in data.decode()
         assert json.loads(archive.read("state/matches.json"))[0]["match_id"]=="match-export-test"
         assert "smac_decision" in archive.read("gameplay.txt").decode()
@@ -64,16 +77,26 @@ with tempfile.TemporaryDirectory() as tmp:
         assert metrics["failure_observations_by_layer"]["managed_tool_returned:native_rejected"]==1
         assert metrics["failure_observations_by_layer"]["journal_event:specialist.mission_failed:timed_out"]==1
         assert "mission-expired" in archive.read("gameplay.txt").decode()
+        transcript=archive.read('gameplay.txt').decode()
+        assert '[reference-specialist]' in transcript and 'Emitted specialist explanation' in transcript
+        assert '123.0 [reference-specialist]' in transcript
+        assert metrics['failure_observations_by_layer']['specialist_attempt:nonzero_exit']==1
+        assert metrics['actor_counts']['reference-specialist']==2
         assert any(name.endswith(".jsonl.gz") for name in archive.namelist())
     # A damaged compressed member must remain downloadable as evidence rather
     # than turning the entire campaign export into an HTTP failure.
     damaged=writer.directory/"damaged.jsonl.gz"
     damaged.write_bytes(bytes.fromhex("1f8b08000000000000ff")+b"\xff"*24)
+    damaged_zstd=writer.directory/'damaged.jsonl.zst'
+    damaged_zstd.write_bytes(b'not a zstd stream')
     damaged_result=build_bundle(store,"match-export-test",root/"diagnostics",[writer.directory])
     with zipfile.ZipFile(root/"diagnostics"/damaged_result["file_name"]) as archive:
         damaged_manifest=json.loads(archive.read("manifest.json"))
         assert any(row.get("file")==damaged.name and row["reason"]=="partial_compressed_tail"
                    for row in damaged_manifest["gaps"])
         assert any(name.endswith("damaged.jsonl.gz") for name in archive.namelist())
+        assert any(row.get('file')==damaged_zstd.name and row['reason']=='invalid_zstd_trace'
+                   for row in damaged_manifest['gaps'])
+        assert any(name.endswith('damaged.jsonl.zst') for name in archive.namelist())
     print(json.dumps({"event":"pass","payload":{"match_scope_isolated":True,
         "partial_tail_reported":True,"manifest_honest":True,"bundle_readable":True}}))

@@ -11,7 +11,35 @@ import uuid
 import zipfile
 import sqlite3
 import os
+import subprocess
+import tempfile
 from smacx_diagnostics import redact
+
+
+def zstd_lines(data: bytes, *, max_bytes: int = 64 * 1024 * 1024):
+    """Read a captured compressed prefix with a bounded decoded byte budget."""
+    with tempfile.TemporaryFile() as source:
+        source.write(data)
+        source.seek(0)
+        process = subprocess.Popen(['zstd', '-q', '-d', '-c', '--memory=64MB'],
+            stdin=source, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            remaining = max_bytes
+            while True:
+                line = process.stdout.readline(remaining + 1)
+                if not line:
+                    break
+                if len(line) > remaining:
+                    raise ValueError('decoded_trace_byte_limit')
+                remaining -= len(line)
+                yield line
+            if process.wait(timeout=10) != 0:
+                raise ValueError('invalid_zstd_trace')
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            process.stdout.close()
 
 TABLES = ("matches", "harness_runs", "supervision_incidents", "attention_items",
           "attention_leases", "world_watches", "world_observation_projection",
@@ -138,25 +166,28 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
                 if size > max_bytes-total:
                     manifest["gaps"].append({"file": path.name, "reason": "export_byte_limit"});continue
                 with path.open("rb") as source: data = source.read(size)
-                if path.name.endswith(".jsonl.zst"):
-                    write(archive, f"streams/{index}/{path.relative_to(root).as_posix()}", data)
-                    manifest["files"][-1]["source_byte_watermark"] = len(data)
-                    continue
+                zstandard = path.name.endswith(".jsonl.zst")
                 compressed = path.name.endswith(".gz")
-                end = len(data) if compressed else data.rfind(b"\n")+1
+                end = len(data) if compressed or zstandard else data.rfind(b"\n")+1
                 if end != len(data): manifest["gaps"].append({"file": path.name,"reason":"partial_final_record"})
                 data = data[:end]
                 write(archive, f"streams/{index}/{path.relative_to(root).as_posix()}", data)
                 manifest["files"][-1]["source_byte_watermark"] = end
                 def lines():
                     try:
-                        if compressed:
+                        if zstandard:
+                            yield from zstd_lines(data)
+                        elif compressed:
                             with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
                                 for line in stream: yield line
                         else:
                             yield from data.splitlines()
+                    except FileNotFoundError:
+                        manifest["gaps"].append({"file":path.name,"reason":"trace_decoder_unavailable"})
                     except (EOFError, OSError, zlib.error):
                         manifest["gaps"].append({"file":path.name,"reason":"partial_compressed_tail"})
+                    except (ValueError, subprocess.TimeoutExpired) as exc:
+                        manifest["gaps"].append({"file":path.name,"reason":str(exc) if isinstance(exc,ValueError) else "trace_decoder_timeout"})
                 for line in lines():
                     try: event=json.loads(line)
                     except ValueError:
@@ -167,7 +198,7 @@ def build_bundle(store, match_id: str, output: Path, roots: list[Path], *,
                     metrics.add(event)
                     rendered = summary(event)
                     if rendered:
-                        timestamp=event.get("recorded_unix") or 0
+                        timestamp=event.get("recorded_unix") or event.get("timestamp_unix") or 0
                         try: timestamp=float(timestamp)
                         except (TypeError,ValueError): timestamp=0
                         if len(rendered)>6000:rendered=rendered[:6000]+" [truncated; see structured stream]"
