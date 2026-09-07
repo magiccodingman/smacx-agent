@@ -393,3 +393,8 @@ Live134 monitoring: native126→134 progresses without an active incident, retai
 
 
 Live138 memory follow-through: request2283b2f04ccc4d8197d78b3ade1103da supplies a shortened agent ID and is rejected by the managed scope guard. Its exact receipt reaches c65a431a2e484594a11b496945a212f4, where the sovereign corrects the request and commits plan revision11. The successful receipt reaches the immediate next provider request4a3457a0930242a18340f5337c89107c exactly. This closes the observed scope-error recovery sequence, not every earlier rejected write or the truth of strategic prose. Native138 has13 units,2 bases,257 credits and no active incident. Monitoring continues.
+
+
+## Turn212: unsupported modal after CALLSCOUNCIL
+
+Incident incident-d6473d696aa54abb937e0f553390c40b quarantines worker/MCP. The captured native snapshot reports unsupported_modal after CALLSCOUNCIL, while the compact capability-gap frame omits that interaction detail. The sovereign attributes the absence of choices to idle Formers; that attribution is not established. The earlier probe movement completed with native_combat_resolved. Preserve the frozen state and inspect the modal before recovery. Portal supervision is paused, no code repair or resumed-play acceptance is claimed. [Evidence](benchmarks/gameplay-council-gap-turn212.json).
