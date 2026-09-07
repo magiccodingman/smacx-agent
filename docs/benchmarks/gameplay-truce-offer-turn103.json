@@ -182,7 +182,21 @@
         "specialist": null
       }
     },
-    "deployed_recovery": "pending",
+    "deployed_recovery": {
+      "passed": true,
+      "api": "retry-after-update",
+      "incident_cleared": true,
+      "turn": 103,
+      "session_id": "session-e63dd53fbbd9452a9dfb38ec66b039c0",
+      "worker_id": "f26ac1730d63",
+      "owned_units": 11,
+      "bases": 2,
+      "energy_credits": 105,
+      "run_id": "run-96c4b33255fc4c389a78ee3f279de6f8",
+      "watcher_rearmed": true,
+      "portal_unpaused": true,
+      "native_prepared_image_base_sha256": "86d3e9d7ac4fe4e18d62a5b1eb84ce30b7675ecc76b18ef03368ddc947fc4240"
+    },
     "actual_sovereign_choice_and_provider_delivery": "pending",
     "incomplete_attempts": [
       "Disposable root ownership setup failed; retained log.",
