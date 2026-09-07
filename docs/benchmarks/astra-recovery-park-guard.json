@@ -8,7 +8,15 @@
     "diff_check": "passed"
   },
   "limits": [
-    "Live post-deployment recovery pending",
-    "HTTP test uses fixture native processes, not actual game recovery"
-  ]
+    "Concurrent stale-request regression uses fixture native processes",
+    "Live recovery readback establishes running native/MCP and one sovereign, not completed gameplay"
+  ],
+  "live_readback": {
+    "turn": 2,
+    "health": "observed_active",
+    "live_sovereigns": 1,
+    "active_incidents": 0,
+    "graphiti_restore": "completed",
+    "timeline": "timeline-restore-7603dda34c1d40df9a242e84"
+  }
 }
