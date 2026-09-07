@@ -29,10 +29,10 @@
     "recovery_orchestration": "PASS twelve controlled solo/LAN cases across legacy/staged slots, successful recovery, identity failure and native digest mismatch; mismatch precedes all memory restoration.",
     "context_fetch_failure": "PASS four client exceptions; fail-closed cause preserved, one episode-linked event, summary/metrics and secret exclusion verified.",
     "compressed_digest": "PASS plain and compressed identity, truncated archive rejection and missing save rejection",
-    "save_retention": "PASS final worker image: both older managed slots retained alongside legacy recovery, ten recent saves, milestone and final export"
+    "save_retention": "PASS final worker image: both older managed slots retained alongside legacy recovery, ten recent saves, milestone and final export",
+    "packaged_compressed_digest": "PASS installed final control module: plain/compressed native-byte identity, corrupt archive and missing save fail closed"
   },
   "pending": [
-    "Final compressed-save image native/MCP checkpoint/recovery regression (running)",
     "Actual deployed checkpoint and continued provider request proof",
     "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair"
   ],
@@ -138,5 +138,96 @@
   "digest_preflight_image": {
     "control": "sha256:1db6e43ff39ff4e1f6619df4273aab2162ea1057a1d947daf66ee10324ef633a",
     "integration": "FAIL exit1: parked save compressed to .sav.zst; digest helper searched only .sav; automatic recovery failed closed before AI memory restore."
+  },
+  "compressed_images": {
+    "control": "sha256:b2591c0981d924025858eb17fabdb0b4fd62b59ff96ceb92a1eddbd2919f5220",
+    "worker": "sha256:c647c56855d5b2701300c9e4bd2e1386a4daec4a39c26a39ce97fdb7228fb314",
+    "integration": "PASS exit0, full native/MCP suite with compressed native digest preflight",
+    "events": [
+      {
+        "event": "base_site_stress",
+        "payload": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 287.329,
+          "probe_gap_ms": 259.73,
+          "receipt_bytes": 169309,
+          "native_elapsed_ms": 0
+        }
+      },
+      {
+        "event": "counterfactual_site_stress",
+        "payload": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 297.15,
+          "probe_gap_ms": 259.679,
+          "receipt_bytes": 52345,
+          "native_elapsed_ms": 2
+        }
+      },
+      {
+        "event": "intent_recovery",
+        "payload": {
+          "native_completed_units_preserved": true,
+          "journaled_plan_preserved": true,
+          "same_checkpoint_recovered_twice_after_timeline_gc": true,
+          "journaled_conflict_and_stationary_assignment_preserved": true,
+          "ephemeral_old_timeline_watch_discarded": true,
+          "old_session_counterfactual_choice_rejected": true
+        }
+      },
+      {
+        "event": "pass",
+        "payload": {
+          "authenticated_control_lifecycle": true,
+          "managed_action_failure_containment": false,
+          "dedicated_mcp_sidecar": true,
+          "mcp_tool_count": 15,
+          "mcp_bound_to_exact_match": true,
+          "native_unity_governor_entitlements": true,
+          "native_no_timer": true,
+          "native_orbital_project_global_adapter": true,
+          "native_base_geography_and_unit_traits": true,
+          "native_airdrop_diplomacy_and_anti_drop_guards": true,
+          "native_pact_port_amphibious_sequence": true,
+          "native_airdrop_collection_stress": {
+            "ready_drop_units": 129,
+            "maximum_page_latency_ms": 242.029,
+            "maximum_page_bytes": 127205,
+            "map_tiles": 8192,
+            "demand_receipt_matches_actions": true,
+            "enumeration_target_count": 4721,
+            "enumeration_native_ms": 0.0,
+            "enumeration_wall_ms": 243.309,
+            "enumeration_probe_gap_ms": 257.018,
+            "enumeration_payload_bytes": 8671,
+            "exact_native_ms": 0.0,
+            "exact_wall_ms": 251.616,
+            "exact_probe_gap_ms": 237.065,
+            "exact_payload_bytes": 289,
+            "outside_first_128_semantic_choice_executed": true,
+            "provider_model_supplied_raw_tile_id": false,
+            "revision_cache_hit": true
+          },
+          "native_global_projection_world_runtime_path": true,
+          "managed_lifecycle_blocked": true,
+          "bridge_verified_checkpoint": true,
+          "live_worker_volume_backup_verified": true,
+          "native_crash_recovered_without_ui": true,
+          "semantic_vehicle_identity_survived_native_restart": true,
+          "recovered_checkpoint_turn": 1,
+          "sidecar_removed_on_park": true,
+          "hermes_semantic_turn": false,
+          "hermes_low_reasoning": false,
+          "hermes_native_revision_advanced": false,
+          "hermes_managed_container": false,
+          "hermes_session_backup_verified": false,
+          "hermes_usage": null,
+          "specialist": null
+        }
+      }
+    ]
   }
 }

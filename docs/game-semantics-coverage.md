@@ -523,3 +523,5 @@ Live138 memory follow-through: request2283b2f04ccc4d8197d78b3ade1103da supplies 
 
 
 Council deployment passes: supported retry-after-update clears the incident and restores verified212 into session2831ce6571ac422a9e755b5807d49f93 on reviewed c3f7634c engine.20 units,2 bases,783 credits and journal-backed plan are present; checkpoint precedes later212 probe losses. One sovereign runcc14d894ca294984b072084838b7b5de starts before portal supervision resumes; native failure capture is rearmed. Actual repaired council ballot delivery and full-game acceptance remain open.
+
+Turn215 corrected-image acceptance passes: native crash recovery, two same-checkpoint restores after timeline GC, owned identity and journaled intent preserved. Compressed native digest preflight is exercised; base/counterfactual probe gaps259.73/259.679ms remain below500ms. Optional provider inference was not configured. Deployment and actual continued provider proof remain pending; see `benchmarks/gameplay-checkpoint-storage-turn215.json`.
