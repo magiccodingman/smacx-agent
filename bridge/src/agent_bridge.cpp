@@ -1398,6 +1398,11 @@ int test_council_bargain_other_id = -1;
 bool test_energy_gift_fixture_initialized = false;
 int test_energy_gift_fixture_stage = -1;
 int test_energy_gift_other_id = -1;
+int test_counter_menu_stage = -1;
+int test_counter_menu_other_id = -1;
+int test_counter_menu_result = -1;
+int test_counter_menu_selected_proposal = -1;
+int test_counter_menu_selected_counter = -1;
 bool test_unit_gift_fixture_initialized = false;
 bool test_proposal_guard_fixture_initialized = false;
 int test_proposal_guard_fixture_stage = -1;
@@ -5496,10 +5501,9 @@ const NamedDiplomacyOption GiftMenuOptions[] = {
     {6, "loan_payments", "Offer a native schedule of loan payments."},
     {1, "goodwill", "Offer goodwill and friendship."},
     {2, "name_price", "Ask the counterpart to name a price."},
-    {3, "threaten", "Threaten the counterpart instead of giving a gift."},
-    {7, "cancel_pact", "Threaten to cancel the current Pact."},
+    {3, "threaten", "Threaten the counterpart with attack or cancellation of an existing Pact."},
     {4, "research_data", "Offer one item of research data."},
-    {9, "all_research_data", "Offer all owned research data."},
+    {7, "all_research_data", "Offer all owned research data."},
     {5, "energy_payment", "Offer a chosen amount of energy credits."},
     {8, "give_base", "Offer control of one eligible base."},
 };
@@ -5514,7 +5518,7 @@ const std::string& name) {
     } else if (label == "PROPOSAL") {
         options = ProposalMenuOptions;
         count = sizeof(ProposalMenuOptions) / sizeof(ProposalMenuOptions[0]);
-    } else if (label == "COUNTER1") {
+    } else if (label == "COUNTER0" || label == "COUNTER1") {
         options = GiftMenuOptions;
         count = sizeof(GiftMenuOptions) / sizeof(GiftMenuOptions[0]);
     }
@@ -5554,7 +5558,12 @@ const std::string& label) {
         out << "{\"id\":\"diplomacy:" << options[i].name
             << "\",\"command\":\"choose_diplomacy_option\",\"option\":"
             << json_string(options[i].name) << ",\"native_option_id\":"
-            << options[i].id << ",\"meaning\":" << json_string(options[i].meaning) << '}';
+            << options[i].id << ",\"meaning\":"
+            << json_string(label == "COUNTER0" && options[i].id == 0
+                ? "Withdraw this proposal without offering consideration."
+                : label == "COUNTER0" && options[i].id == DiploCounterEnergyPayment
+                    ? "Offer energy as consideration for this proposal. Continue the native negotiation; this selection alone transfers no energy."
+                    : options[i].meaning) << '}';
     }
     if (!comma) {
         out << "{\"id\":\"diplomacy:no_native_options\",\"kind\":\"capability_status\","
@@ -13615,7 +13624,7 @@ std::string semantic_choices_response(const std::string& request) {
                     << ",\"leader_name\":" << json_string(MFactions[other].name_leader) << '}';
             }
         } else if (!strcmp(label, "DIPLO") || !strcmp(label, "PROPOSAL")
-        || !strcmp(label, "COUNTER1")) {
+        || !strcmp(label, "COUNTER0") || !strcmp(label, "COUNTER1")) {
             BasePop* active = active_default_popup();
             if (active) append_diplomacy_popup_choices(out, active, label);
         } else if (!strcmp(label, "PROPOSECOMMLINK")
@@ -19186,6 +19195,33 @@ std::string execute_request(const std::string& request) {
     if (op == "list_units") return units_response();
     if (op == "list_factions") return factions_response();
     if (op == "list_technologies") return technologies_response();
+    if (op == "test_counter_menu_start" || op == "test_counter_menu_status") {
+        char enabled[8] = {};
+        if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", enabled, sizeof(enabled))
+        || strcmp(enabled, "1")) return error_response("test_mode_disabled", "Native counter menu test is disabled.");
+        if (op == "test_counter_menu_start") {
+            int faction = game_active() ? *CurrentPlayerFaction : -1;
+            if (faction < 1 || !human_turn_actionable(faction) || test_counter_menu_stage == 0
+            || test_counter_menu_stage == 1) return error_response("test_counter_menu_not_ready", "Resolve the active interaction first.");
+            int other = -1;
+            for (int candidate = 1; candidate < MaxPlayerNum; ++candidate) {
+                if (candidate != faction && is_alive(candidate) && !is_human(candidate)) { other = candidate; break; }
+            }
+            if (other < 1) return error_response("test_counter_menu_no_counterpart", "No native counterpart exists.");
+            treaty_on(faction, other, DIPLO_COMMLINK);
+            treaty_on(faction, other, DIPLO_TREATY);
+            Factions[faction].energy_credits = 500;
+            Factions[other].energy_credits = 1000;
+            test_counter_menu_other_id = other;
+            test_counter_menu_stage = 0;
+            test_counter_menu_result = test_counter_menu_selected_proposal = test_counter_menu_selected_counter = -1;
+            PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0);
+        }
+        return std::string("{\"ok\":true,\"stage\":") + std::to_string(test_counter_menu_stage)
+            + ",\"native_result\":" + std::to_string(test_counter_menu_result)
+            + ",\"proposal_id\":" + std::to_string(test_counter_menu_selected_proposal)
+            + ",\"counter_id\":" + std::to_string(test_counter_menu_selected_counter) + '}';
+    }
     if (op == "test_technology_demand_status") {
         return test_technology_demand_status_response();
     }
@@ -19939,6 +19975,14 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
                     popp(ScriptFile, "GAMEOVERMAN", 0, "stars_sm.pcx", 0);
                 }
             }
+            return true;
+        }
+        if (test_counter_menu_stage == 0) {
+            test_counter_menu_stage = 1;
+            test_counter_menu_result = proposal_menu(*CurrentPlayerFaction, test_counter_menu_other_id);
+            test_counter_menu_selected_proposal = *diplo_current_proposal_id;
+            test_counter_menu_selected_counter = *diplo_counter_proposal_id;
+            test_counter_menu_stage = 2;
             return true;
         }
         if (test_energy_gift_fixture_stage == 0) {

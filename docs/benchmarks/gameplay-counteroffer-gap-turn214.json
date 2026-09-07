@@ -27,5 +27,33 @@
     "Installed Script COUNTER0 asks what is offered in return; COUNTERMENU has negotiation options. This is not evidence that an unguarded acknowledgement is correct."
   ],
   "status": "Paused; native semantics and controlled end-to-end counteroffer validation required before recovery.",
-  "maintenance_note": "Unrelated cognition provenance code was installed after quarantine. Start attempts failed closed with game_worker_not_healthy. No unpause or native recovery occurred; actual new provenance capture remains pending."
+  "maintenance_note": "Unrelated cognition provenance code was installed after quarantine. Start attempts failed closed with game_worker_not_healthy. No unpause or native recovery occurred; actual new provenance capture remains pending.",
+  "reviewed_native_binary_sha256": "573fd44cf18392da7cd048e2d8c24a8e130034364f374647e34e79a6c621d6f4",
+  "native_menu_audit": {
+    "function": "proposal_menu at0x54dcf0",
+    "label_selection": "0x54ea96..0x54eab9 builds COUNTER plus (proposal==1), so ordinary consideration uses COUNTER0 and gifts use COUNTER1",
+    "menu_source": "COUNTERMENU loaded at0x54eb0e",
+    "native_ids": {
+      "cancel": "0 at0x54ebed",
+      "goodwill": "1 at0x54ec5f",
+      "name_price": "2 at0x54ec98",
+      "threat_or_pact_threat": "3 at0x54ecde/0x54ed24",
+      "research_data": "4 at0x54ed60",
+      "all_research_data": "7 at0x54ed9a",
+      "energy_payment": "5 at0x54edd5",
+      "base_transfer": "8 at0x54ee37"
+    },
+    "return": "0x54ee5d stores native result in diplo_counter_proposal_id; cancellation clears proposal at0x54efea",
+    "energy_boundary": "COUNTER0 selection must return to its suspended native proposal caller; separate COUNTER1 gift routine cancels selector then invokes make_gift and is not reused."
+  },
+  "repair_checkpoint": {
+    "changes": [
+      "Recognize COUNTER0 through existing guarded semantic option surface.",
+      "Correct all_research_data7 and remove misidentified cancel_pact7; native threat3 covers conditional Pact threat.",
+      "Preserve counteroffer energy selection distinct from chosen-amount gift transfer."
+    ],
+    "compiled_production_contract": "pass: option IDs, unknown label rejection, native row filtering, counter/gift energy separation",
+    "native_fixture": "Added isolated actual stock proposal_menu cases; execution pending worker build",
+    "deployment": "not deployed; campaign remains preserved and paused"
+  }
 }
