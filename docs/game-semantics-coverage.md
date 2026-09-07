@@ -573,3 +573,5 @@ Captured turn-1 provider context separately represented four Unity Wreckage tile
 ### Isolated acceptance: dormant reconciliation during recovery
 
 A successful operator recovery was followed by a portal park request. Dormant reconciliation now supplies its observed status and recovery generation; the control handler checks both under the lifecycle lock before stopping any sovereign. A stale request is skipped, and the portal leaves seat state for a fresh reconciliation. Explicit owner park remains effective. The authenticated HTTP regression queues a request behind simulated recovery and proves no stop/park side effects; all 83 portal tests pass. Evidence: `docs/benchmarks/astra-recovery-park-guard.json`. Live deployed recovery remains pending; fixtures do not establish native recovery acceptance.
+
+Post-deployment readback: the same isolated campaign recovered at turn 2 on a new timeline; Graphiti rebuild completed, health became `observed_active`, exactly one sovereign was verified live, and no incident remained. The concurrency interleaving is covered by the HTTP fixture; this live readback does not claim completion of the game.
