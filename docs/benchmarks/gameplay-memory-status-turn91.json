@@ -29,13 +29,25 @@
     "managed_tools": 15,
     "exact_operating_prompt_tokens": 1338,
     "exact_tool_schema_tokens": 4706,
-    "deployment": "pending",
-    "actual_repaired_provider_description": "pending",
+    "deployment": "pass",
+    "actual_repaired_provider_description": "pass",
     "autonomous_retirement_retry": "pending"
   },
   "limits": [
     "Controlled writer test uses a mocked native guard, not a new native action",
     "No plan is retired automatically; sovereign owns status choice",
     "Full game acceptance remains open"
-  ]
+  ],
+  "deployment": {
+    "commit": "db37a6a",
+    "run_id": "run-6ba0a5e139e14ad69747bfe4820c27f2",
+    "resumed_turn": 93,
+    "native_replaced": false,
+    "session_id": "session-b9e3bd44786c476c868c5c2dc6312ef3",
+    "control_image": "sha256:845f04d15d4b8dc5d5796f11839bba29adfccf914c5dcf9bdd6e1099e546a691",
+    "harness_image": "sha256:c131129e516c2482d9d60ca888aebeeb9e5f2b16cebec508e86a6ba85b9d58b8",
+    "actual_provider_request_id": "1f606ce86db7433aa03381fb3089efc4",
+    "all_four_status_lists_delivered": true,
+    "active_sovereigns": 1
+  }
 }
