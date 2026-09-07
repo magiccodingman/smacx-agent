@@ -1022,9 +1022,21 @@ def write_platform_memory(
                 "allowed_values": list(MEMORY_STATUS_VALUES[action]),
                 "message": "Choose the status matching your intent; preserve other record fields when revising. No status is substituted automatically.",
             }}
+        retry_policy = "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
+        if write_stage == "not_started" and str(exc) in {
+                "stale_memory_observation", "missing_memory_observation_guard"}:
+            guidance = {
+                "memory_write_committed": False,
+                "required_next": {
+                    "tool": "smac_decision",
+                    "reason": "Obtain a fresh decision and reconsider the record against current world evidence. "
+                        "If still appropriate, retry the memory update using that decision's identity match_id, "
+                        "session_id and revision. Do not reuse a guard from before an executed action or turn transition.",
+                },
+            }
+            retry_policy = "No memory write started. Inspect fresh state before explicitly retrying; no automatic rebase or retry occurred."
         return {"ok": False, "error": str(exc), **guidance, "persistence": {"stage": write_stage,
-            "authority": "campaign_journal",
-            "retry_policy": "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."}}
+            "authority": "campaign_journal", "retry_policy": retry_policy}}
 
 
 def campaign_notebook(

@@ -1,0 +1,50 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "stale guard selection despite current context; later sovereign self-correction verified; response affordance improvement",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "observed_turn": 109,
+  "request_id": "3748022a204f456e87481f1cfbcfff37",
+  "submitted_revision": "11431975549688416910",
+  "delivered_runtime_action_revision": "18380813457838866940",
+  "original_error_delivery": {
+    "request_id": "3748022a204f456e87481f1cfbcfff37",
+    "call_id": "chatcmpl-tool-a581640e5ffa81d9",
+    "receipt": {
+      "ok": false,
+      "error": "stale_memory_observation",
+      "persistence": {
+        "stage": "not_started",
+        "authority": "campaign_journal",
+        "retry_policy": "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
+      }
+    },
+    "next_exact_provider_request": "2dabc711ca074876803c0b4b53b48b05"
+  },
+  "later_self_correction": {
+    "request_id": "262f1605f5d14e7c8a9436c34000e1b2",
+    "next_exact_provider_request": "9a8047dd61994f9f953abe91a9aa63af",
+    "observed_turn": 110,
+    "plan_id": "plan-7bc6c5d5e1d04052b6a40db56a8c3b8d",
+    "plan_revision": 9,
+    "journal_event_id": "journal-f67438620e1948b397297e2e9ba02f9c",
+    "persistence": {
+      "stage": "runtime_projection_built",
+      "authority": "campaign_journal",
+      "next_context_source": "fresh_journal_working_state"
+    }
+  },
+  "repair": {
+    "scope": "Only missing/stale observation guard responses before any memory write.",
+    "guidance": "Fetch a fresh decision, reconsider the record against current evidence, explicitly retry with its guard if still appropriate.",
+    "no_automatic_rebase_or_write": true,
+    "ambiguous_postcommit_failures": "unchanged"
+  },
+  "validation": {
+    "real_guard_rejects_without_cognition_mutation": "pass",
+    "explicit_fresh_retry_journal_and_projection": "pass",
+    "real_Hermes_transport_handoff_GC_restart_and_ambiguous_postcommit_failure": "pass",
+    "native_changes": false,
+    "deployment": "pending",
+    "actual_new_guidance_delivery": "unobserved"
+  }
+}

@@ -35,6 +35,24 @@ with tempfile.TemporaryDirectory() as tmp:
     worlds.replace_projection(scope,identity,projected['objects'],observation_cursor=4,
         action_revision='r4',continuity='complete',journal_head_hash='0'*64)
     snapshot={'turn':4,'year':2104,'revision':'r4','ready_unit_refs':[]}
+    # Exercise the real native revision guard, not a fixture that bypasses it.
+    native_snapshot={**snapshot,'match_id':scope.match_id,'session_id':'session-delivery'}
+    with patch.object(c,'_store',return_value=store), patch.object(c,'_journal',side_effect=lambda:journal), \
+         patch.object(c,'bridge_request',return_value={'ok':True,'snapshot':native_snapshot}), \
+         patch.object(c,'_scope_for_match',return_value=scope):
+        before=c._journal_working_state(scope)
+        for guard,error in (('r3','stale_memory_observation'),('','missing_memory_observation_guard')):
+            failed=c.write_platform_memory('plan',scope.match_id,'session-delivery',guard,
+                {'plan_key':'fresh-guard','title':'Fresh guard','objective':'Retain explicit intent','status':'active'})
+            assert failed['error']==error and failed['memory_write_committed'] is False,failed
+            assert failed['persistence']['stage']=='not_started',failed
+            assert failed['required_next']['tool']=='smac_decision',failed
+            assert 'current world evidence' in failed['required_next']['reason'],failed
+            assert c._journal_working_state(scope)==before,'stale guard wrote or rebased memory'
+        fresh=c.write_platform_memory('plan',scope.match_id,'session-delivery','r4',
+            {'plan_key':'fresh-guard','title':'Fresh guard','objective':'Retain explicit intent','status':'active'})
+        assert fresh['ok'] and fresh['persistence']['stage']=='runtime_projection_built',fresh
+        assert 'memory_write_committed' not in fresh and 'required_next' not in fresh,fresh
     with patch.object(c,'_store',return_value=store), patch.object(c,'_journal',side_effect=lambda:journal), \
          patch.object(c,'_guard_platform_observation',return_value=(scope,snapshot)):
         records={
@@ -70,5 +88,5 @@ with tempfile.TemporaryDirectory() as tmp:
         for action,values in MEMORY_STATUS_VALUES.items():
             assert action+'='+'|'.join(values) in desc
 print(json.dumps({'passed':True,'classification':'guarded writer with controlled native snapshot',
- 'invalid_status_does_not_write':True,'status_guidance_matches_validation':True,
+ 'real_stale_guard_does_not_write_or_rebase':True,'explicit_fresh_retry_commits':True,'invalid_status_does_not_write':True,'status_guidance_matches_validation':True,
  'explicit_plan_retirement_journaled_and_projected':True}))
