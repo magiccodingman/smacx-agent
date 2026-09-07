@@ -404,3 +404,6 @@ Council repair predeployment checks: compiled classifier and compact-gap allowli
 
 
 Storage incident during council integration: disposable match provisioning returned HTTP500 while the filesystem reached zero available bytes. Unused build cache and66 obsolete prepared-worker images were removed; current container references and two newest prepared versions for installations with containers were retained. Databases, saves and diagnostic volumes were preserved. Approximately128GB was recovered by prepared-image cleanup, leaving135GB free at that checkpoint. The next integration run passed provisioning and is exercising native managed actions. Maintenance now checks disk headroom before large builds/tests and removes obsolete owned test images after completion; failed runs are not treated as gameplay acceptance.
+
+
+Council integrated acceptance passes after storage cleanup:15 managed tools, native council/mechanical comparisons,243.507/242.626ms site probe gaps, crash recovery and two restores of the same checkpoint preserving journaled intent/owned identities. Optional provider inference was not enabled. Deployment and actual campaign ballot delivery remain separate pending gates.
