@@ -258,6 +258,25 @@ def _remember_episode_boundary(boundary: dict, active: dict | None) -> None:
             }
 
 
+def _former_attempt_baseline(choice, identity, decision):
+    former_attempt = None
+    if MANAGED_ATTACHED and choice.get("command") == "automate_former":
+        from smacx_former_attention import former_state
+        _, tracking = _runtime_services()
+        projection = tracking.world_store.load(tracking.scope, tracking.timeline_id)
+        if projection and str(projection.get("action_revision")) == str(identity.get("revision")):
+            unit = next((item for item in projection.get("objects", ())
+                         if item.get("kind") == "own_unit" and
+                         item.get("metadata", {}).get("native_id") == choice.get("unit_id")), None)
+            baseline = former_state(projection, unit["object_ref"]) if unit else None
+            if baseline:
+                former_attempt = {"before": baseline, "mode": choice.get("automation_mode"),
+                                  "turn": decision.get("turn"),
+                                  "world_epoch": projection["identity"]["world_epoch"],
+                                  "observation_cursor": projection.get("observation_cursor")}
+    return former_attempt
+
+
 def _refresh_request_world(episode_id: str) -> dict:
     """Retry a rejected collection cut, never publish a mixed native snapshot.
 
@@ -3713,6 +3732,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                 "capability_gap": gap.get("gap") if isinstance(gap, dict) else None,
             }
 
+    former_attempt = _former_attempt_baseline(choice, identity, decision)
     result = smac_command(**_command_payload(choice, identity))
     error = result.get("error") if isinstance(result, dict) else None
     error_code = error.get("code") if isinstance(error, dict) else error
@@ -3736,6 +3756,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                 {
                     "decision_id": decision_id, "choice_id": choice_id,
                     "selected_action": choice.get("command"),
+                    **({"former_automation_attempt": former_attempt} if former_attempt else {}),
                     "choice_parameters": {
                         key: value for key, value in choice.items()
                         if key not in {"confirm_destructive", "confirm_nerve_gas", "confirm_obliteration"}
@@ -3818,6 +3839,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                 "session_id": fresh.get("session_id", identity.get("session_id", "")),
                 "revision": fresh.get("revision", ""),
             }
+            rebased_former_attempt = _former_attempt_baseline(replacement, refreshed_identity, fresh)
             rebased = smac_command(**_command_payload(replacement, refreshed_identity))
             if rebased.get("ok"):
                 response = {
@@ -3841,6 +3863,11 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                     {
                         "decision_id": decision_id, "choice_id": choice_id,
                         "selected_action": choice.get("command"), "guard_revalidated": True,
+                        **({"former_automation_attempt": rebased_former_attempt} if rebased_former_attempt else {}),
+                        "choice_parameters": {
+                            key: value for key, value in replacement.items()
+                            if key not in {"confirm_destructive", "confirm_nerve_gas", "confirm_obliteration"}
+                        },
                         "before": {"turn": decision.get("turn"), "year": decision.get("year")},
                         "after": {"turn": after_turn,
                                   "year": snapshot.get("year") if isinstance(snapshot, dict) else None},

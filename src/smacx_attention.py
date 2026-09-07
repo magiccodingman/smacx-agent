@@ -122,6 +122,7 @@ class AttentionService:
     def lease(self, episode_id: str, *, limit: int = 32, ttl_seconds: int = 300, committed_cursor: int | None = None) -> dict[str, Any]:
         require_ref(episode_id, "episode_id")
         self.capture_confirmed_unit_losses()
+        self.capture_former_automation()
         timeline = self.timeline_id
         now = time.time()
         lease_id = "attention-lease-" + uuid.uuid4().hex
@@ -750,6 +751,83 @@ class AttentionService:
         if current != prior:
             self.journal.append(self.scope, "attention.plan_dependency_state", {"states": current},
                 idempotency_key="plan-dependency-state:" + content_hash({"prior": prior, "current": current}))
+
+    def capture_former_automation(self) -> None:
+        from smacx_former_attention import former_state, classify_attempt
+        events = self.journal.latest_events(self.scope, timeline_id=self.timeline_id, limit=500)
+        checked = {event.get("payload", {}).get("source_action_event_id") for event in events
+                   if event.get("event_type") == "attention.former_automation_checked"}
+        attempts = [event for event in events if event.get("event_type") == "game.action"
+                    and event.get("payload", {}).get("former_automation_attempt")
+                    and event.get("event_id") not in checked][:32]
+        if not attempts:
+            return
+        projection = self.world_store.load(self.scope, self.timeline_id)
+        if not projection:
+            return
+        for event in reversed(attempts):
+            source = event["event_id"]
+            if source in checked:
+                continue
+            attempt = event["payload"]["former_automation_attempt"]
+            if attempt.get("world_epoch") != projection["identity"]["world_epoch"]:
+                continue
+            if int(projection.get("observation_cursor") or 0) <= int(attempt.get("observation_cursor") or 0):
+                continue
+            before = attempt["before"]
+            after = former_state(projection, before["unit_ref"])
+            outcome = classify_attempt(before, after)
+            # A later accepted unit command supersedes this assignment. Never
+            # attribute an intentional replacement to native cancellation.
+            unit_id = event.get("payload", {}).get("choice_parameters", {}).get("unit_id")
+            if unit_id is not None and any(
+                e.get("event_type") == "game.action" and e.get("sequence", 0) > event["sequence"]
+                and e.get("payload", {}).get("choice_parameters", {}).get("unit_id") == unit_id
+                for e in events):
+                outcome = "superseded"
+            if projection["observation_cursor"] - int(attempt.get("observation_cursor") or 0) > 64:
+                outcome = "observation_gap_unknown"
+            if outcome == "pending":
+                continue
+            repeated = 0
+            fingerprint = content_hash({"unit": before["unit_ref"], "mode": attempt.get("mode"),
+                                        "location": before.get("location_ref"), "features": before.get("features_hash")})
+            previous = next((e["payload"] for e in events
+                             if e.get("event_type") == "attention.former_automation_checked"
+                             and e.get("payload", {}).get("unit_ref") == before["unit_ref"]), {})
+            qualified = outcome == "stopped" and before.get("features_hash") and after.get("features_hash")
+            if qualified:
+                repeated = 1
+                if (previous.get("fingerprint") == fingerprint and previous.get("outcome") == "stopped"
+                        and previous.get("world_epoch") == attempt.get("world_epoch")
+                        and 0 < int(previous.get("observation_cursor") or 0)
+                        <= int(attempt.get("observation_cursor") or 0)):
+                    repeated += int(previous.get("repeated_observations") or 0)
+            if outcome == "stopped":
+                payload = {"unit_ref": before["unit_ref"], "automation_mode": attempt.get("mode"),
+                    "location_ref": after["location_ref"], "source_action_event_id": source,
+                    "assignment_turn": attempt.get("turn"), "observation_cursor": projection["observation_cursor"],
+                    "current_order": "no active automation or terraform task",
+                    "repeated_observations": repeated,
+                    "progress_evidence": "No movement, active task or tile-feature change observed between qualified endpoints; intervening work is not established." if qualified else "Progress unknown: tile evidence is incomplete.",
+                    "cause": "unknown", "guidance": "Inspect available terraforming actions or reconsider the automation policy before repeating it. Native cancellation does not prove no useful work is available."}
+                # Stable action identity prevents re-raising after acknowledgement or restart.
+                with self.store._connect() as connection:
+                    exists = connection.execute("SELECT 1 FROM attention_items WHERE match_id=? AND agent_id=? "
+                        "AND perspective_id=? AND timeline_id=? AND attention_kind='former_automation' "
+                        "AND json_extract(payload_json,'$.source_action_event_id')=? LIMIT 1",
+                        (*self._key(self.timeline_id), source)).fetchone()
+                if not exists:
+                    self.enqueue("former_automation", payload, observation_cursor=projection["observation_cursor"],
+                                 priority=80 if repeated >= 2 else 55, critical=False,
+                                 turn=attempt.get("turn"), dedupe_key=source)
+            record = {"source_action_event_id": source, "unit_ref": before["unit_ref"],
+                      "outcome": outcome, "fingerprint": fingerprint, "repeated_observations": repeated,
+                      "world_epoch": attempt.get("world_epoch"),
+                      "observation_cursor": projection["observation_cursor"]}
+            written = self.journal.append(self.scope, "attention.former_automation_checked", record,
+                                         idempotency_key="former-automation-checked:" + source)
+            events.insert(0, {**written, "event_type": "attention.former_automation_checked", "payload": record})
 
     def capture_confirmed_unit_losses(self, observation_cursor: int | None = None,
                                       *, session_id: str | None = None) -> None:
