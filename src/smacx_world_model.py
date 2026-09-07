@@ -414,6 +414,8 @@ class PerspectiveProjector:
                     self.contacts.states[native_key].contact_ref = ref
                 kind = "foreign_contact"
                 metadata = {"native_observation_key": native_key}
+                if bundle.get("_native_temporal_authority"):
+                    metadata["native_episode_schema_version"] = bundle.get("_native_episode_schema_version")
                 safe_path = [
                     {"from_location_ref": str(step.get("from")),
                      "to_location_ref": str(step.get("to")),

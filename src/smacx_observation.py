@@ -308,7 +308,11 @@ class ObservationCollector:
             "_broken_contact_handles": sorted({
                 f"vehicle-handle-{item['subject_a']}"
                 for item in self._pending_native_events
-                if item.get("native_kind") == "visible_unit_lost"
+                if (item.get("native_kind") == "visible_unit_lost"
+                    or (item.get("native_kind") == "visible_unit_moved"
+                        and (item.get("continuous_visibility") is not True
+                             or any(type(item.get(field)) is not int or item[field] < 0
+                                    for field in ("from_tile_id", "to_tile_id")))))
                 and isinstance(item.get("subject_a"), int)
             }),
             "_confirmed_destroyed_handles": sorted({
@@ -1335,7 +1339,8 @@ class ObservationCollector:
         world_epoch = self._world_epoch(bundle, current)
         identity = WorldIdentity(self.scope.match_id, self.scope.perspective_id,
                                  self.timeline_id, world_epoch)
-        from smacx_temporal_episodes import advance_episodes
+        from smacx_temporal_episodes import (EPISODE_STATE_SCHEMA_VERSION, advance_episodes,
+                                             episode_schema_upgrade_required)
         prior_objects = current.get("objects", ()) if current else ()
         gaps = list(stage.get("continuity_gaps") or [])
         if not gaps and stage.get("continuity_gap"):
@@ -1349,6 +1354,11 @@ class ObservationCollector:
         # The final non-consuming probe above proves whether this snapshot and
         # all staged temporal events share a cut. Unread future events still
         # invalidate identity binding exactly as before.
+        if episode_schema_upgrade_required(identity, prior_objects, stage.get("episode_state", {})):
+            bundle["_contact_identity_reset"] = True
+            bundle["_continuous_visible_contact_moves"] = {}
+            self._collection_metrics["foreign_identity_schema_revalidation"] = EPISODE_STATE_SCHEMA_VERSION
+        bundle["_native_episode_schema_version"] = EPISODE_STATE_SCHEMA_VERSION
         bundle["_native_temporal_authority"] = True
         bundle["_temporal_contact_refs"] = {}
         if not stable_cut:

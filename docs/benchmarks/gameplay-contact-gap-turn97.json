@@ -1,0 +1,99 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "classification": "confirmed snapshot resurrection of a closed foreign visibility episode",
+  "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+  "turn": 97,
+  "observed": {
+    "cursor": 487,
+    "old_contact": "contact-episode-e0b4ee0f0da919d74171d999a3078263",
+    "incomplete_movements": [
+      [
+        1654,
+        null
+      ],
+      [
+        null,
+        1654
+      ]
+    ],
+    "post_gap_native_damage_ref": "contact-episode-f95ff481a1d265c3892b77cd9288c7c5",
+    "post_gap_native_damage": [
+      10,
+      8
+    ],
+    "snapshot_damage_ref": "contact-episode-e0b4ee0f0da919d74171d999a3078263",
+    "subsequent_damage_cursor": 488,
+    "subsequent_damage_old_ref_reused": true,
+    "still_active_in_native_shaped_projection_at98": true
+  },
+  "separate_owned_loss": {
+    "unit_ref": "own-unit-10",
+    "location": 1574,
+    "hp_steps": [
+      [
+        8,
+        7
+      ],
+      [
+        7,
+        4
+      ],
+      [
+        4,
+        1
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "destruction_cursor": 490,
+    "turn": 97,
+    "owned_count_after": 11,
+    "classification": "observed damage and destruction; not a native outage or support disband"
+  },
+  "root_cause": [
+    "Temporal episodes closed on invalid movement, but snapshot registry retirement only considered lost/destroyed events",
+    "Damage after a gap received a new episode assignment without retaining that episode for the matching snapshot"
+  ],
+  "repair": [
+    "Retire snapshot registry entries at noncontinuous or invalid-endpoint movement boundaries",
+    "Known-location damage after a gap opens a fresh episode shared by later evidence and matching snapshot",
+    "Private episode schema2 revalidates pre-upgrade foreign continuity once, preserving owned lifecycle identities and journal originals"
+  ],
+  "acceptance": {
+    "pre_fix_recorded_shape_regression": "fails with snapshot resurrected closed identity",
+    "same_square_out_and_back_with_and_without_damage": "pass",
+    "staged_frozen_and_subsequent_restart": "pass",
+    "old_schema_one_time_migration_and_owned_identity": "pass",
+    "cross_publication_episode": "pass",
+    "feed_alignment": "pass",
+    "contact_loss_epistemic": "pass",
+    "owned_transient_lifecycles": "pass",
+    "rollback_world": "pass",
+    "recovery_observation_order": "pass",
+    "full_native_mcp_suite": "running",
+    "live_deployment": "pending",
+    "new_gap_actual_provider_delivery": "pending",
+    "current_format_snapshot_restore_without_stage": "pass; no unnecessary identity reset",
+    "explicit_noncontinuous_same_square": "pass"
+  },
+  "limits": [
+    "Native combat engine unchanged",
+    "Newly assigned contact identity does not assert another physical unit or enemy destruction",
+    "Historical journal records are preserved; unsupported old continuity is not retroactively promoted to proof",
+    "Full game acceptance remains open"
+  ],
+  "validation_history": [
+    {
+      "attempt": "first full native suite",
+      "outcome": "operator interrupted disposable runner after review identified current-format checkpoint bootstrap preservation requirement; not counted as final pass",
+      "preserved_log": "/tmp/smacx-contact-gap-full-native.log"
+    },
+    {
+      "attempt": "final full native suite",
+      "outcome": "running on final rebuilt images",
+      "preserved_log": "/tmp/smacx-contact-gap-full-native-final.log"
+    }
+  ]
+}
