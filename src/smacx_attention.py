@@ -121,6 +121,7 @@ class AttentionService:
 
     def lease(self, episode_id: str, *, limit: int = 32, ttl_seconds: int = 300, committed_cursor: int | None = None) -> dict[str, Any]:
         require_ref(episode_id, "episode_id")
+        self.capture_confirmed_unit_losses()
         timeline = self.timeline_id
         now = time.time()
         lease_id = "attention-lease-" + uuid.uuid4().hex
@@ -749,6 +750,39 @@ class AttentionService:
         if current != prior:
             self.journal.append(self.scope, "attention.plan_dependency_state", {"states": current},
                 idempotency_key="plan-dependency-state:" + content_hash({"prior": prior, "current": current}))
+
+    def capture_confirmed_unit_losses(self, observation_cursor: int | None = None,
+                                      *, session_id: str | None = None) -> None:
+        """Promote confirmed deaths; never turn an ambiguous removal into one.
+
+        Pending removal notices allow an existing database to adopt this
+        projection on upgrade without rewriting its journal or requiring a new
+        game. New publications pass their exact committed cursor directly.
+        """
+        cursors = {observation_cursor} if observation_cursor is not None else set()
+        if observation_cursor is None:
+            with self.store._connect() as connection:
+                rows = connection.execute(
+                    "SELECT observation_cursor,payload_json FROM attention_items "
+                    "WHERE match_id=? AND agent_id=? AND perspective_id=? AND timeline_id=? "
+                    "AND attention_kind IN ('world_change','world_changes') "
+                    "AND status IN ('queued','leased','responded') "
+                    "ORDER BY captured_unix DESC LIMIT 32", self._key(self.timeline_id),
+                ).fetchall()
+            for row in rows:
+                payload = json.loads(row["payload_json"])
+                deltas = [payload["delta"]] if "delta" in payload else payload.get("deltas", ())
+                if any(isinstance(delta, Mapping) and delta.get("change") == "removed"
+                       and str(delta.get("object_ref", "")).startswith("own-unit-") for delta in deltas):
+                    cursors.add(int(row["observation_cursor"]))
+        for cursor in sorted(cursors):
+            payload = self.world_store.confirmed_unit_losses_at(self.scope, self.timeline_id, int(cursor))
+            if not payload["event_count"]:
+                continue
+            turns = [event["turn"] for event in payload["events"] if isinstance(event.get("turn"), int)]
+            self.enqueue("unit_losses", payload, observation_cursor=int(cursor),
+                         priority=100, critical=True, turn=max(turns) if turns else None,
+                         session_id=session_id, dedupe_key=f"confirmed-unit-losses:{cursor}")
 
     def capture_production_attention(self, events: Iterable[Mapping[str, Any]], *,
                                      observation_cursor: int, turn: int | None,

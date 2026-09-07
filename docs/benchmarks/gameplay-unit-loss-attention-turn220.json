@@ -1,0 +1,67 @@
+{
+  "checkpoint": "confirmed owned-unit loss attention at turn 220",
+  "status": "contracts passed; deployment and actual provider delivery pending",
+  "observed": {
+    "match_id": "match-85285536ea844e87b51e5fd081ac555e",
+    "turn": 219,
+    "native_event_sequences": [
+      1070,
+      1093,
+      1094,
+      1095,
+      1096
+    ],
+    "unit_refs": [
+      "own-unit-64",
+      "own-unit-61",
+      "own-unit-52",
+      "own-unit-51",
+      "own-unit-47"
+    ],
+    "location_ref": "location-1334",
+    "owned_unit_count_before": 16,
+    "owned_unit_count_after": 11,
+    "provider_request_id": "efc3283c83984e92919b92b723fc0b95",
+    "gap": "Confirmed destruction existed in temporal history while default attention carried only priority-45 projection removals and unverified-fate guidance. Attacker and current threat resolution are not established."
+  },
+  "repair": {
+    "attention_kind": "unit_losses",
+    "priority": 100,
+    "critical": true,
+    "source": "committed perspective-scoped temporal events only",
+    "bounded_details": 8,
+    "exact_count": true,
+    "upgrade": "Backfill from latest 32 pending removal notices without journal rewriting; new publications capture directly.",
+    "recovery": "Frozen publication retries capture after installed head before acknowledgement; acknowledged notices deduplicate."
+  },
+  "validation": {
+    "classification": "native-shaped production collector and real journal/store/attention contracts, not new live native mechanics comparison",
+    "focused_cases": [
+      "five confirmed deaths; foreign and ambiguous losses excluded",
+      "existing-database backfill",
+      "post-head interruption and retry",
+      "64 deaths with bounded details and exact count",
+      "acknowledgement and restart deduplication",
+      "future cursor and other timeline excluded"
+    ],
+    "contracts_passed": [
+      "confirmed_unit_loss_attention_test",
+      "observation_batch_recovery_test",
+      "publication_visibility_test",
+      "publication_transaction_test",
+      "native_observation_contract_test",
+      "runtime_context_contract_test"
+    ]
+  },
+  "acceptance": {
+    "observed": true,
+    "represented": true,
+    "calculated": "exact count over committed observed events",
+    "provider_queryable": "fixture runtime payload; actual deployment pending",
+    "sovereign_expressible": "existing attention acknowledgement surface; fixture passes",
+    "executable": "no native action added",
+    "effect_verified": "native feed confirms original losses; live attention delivery pending",
+    "recovery_safe": "publication interruption and acknowledgement deduplication fixtures pass",
+    "full_game_complete": false
+  }
+}

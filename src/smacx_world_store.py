@@ -440,6 +440,40 @@ class WorldStore:
             kinds=("semantic_event", "semantic_batch"), batch_key="events", result_key="event",
             limit=min(max(int(limit), 1), 1024), offset=offset, through_cursor=through_cursor)
 
+    def confirmed_unit_losses_at(self, scope: MemoryScope, timeline_id: str,
+                                 observation_cursor: int) -> dict[str, Any]:
+        """Bounded exact-count view of committed, observed owned-unit deaths."""
+        with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.committed_cursor(scope, timeline_id, connection)
+            if not 0 < observation_cursor <= cap:
+                return {"events": [], "event_count": 0}
+            rows = connection.execute(
+                "SELECT p.journal_event_id,p.turn,element.value AS value_json,"
+                "COUNT(*) OVER () AS event_count FROM world_observation_projection AS p "
+                "CROSS JOIN json_each(CASE WHEN json_type(p.payload_json,'$.events')='array' "
+                "THEN json_extract(p.payload_json,'$.events') ELSE json_array(json(p.payload_json)) END) AS element "
+                "WHERE p.match_id=? AND p.agent_id=? AND p.perspective_id=? AND p.timeline_id=? "
+                "AND p.observation_sequence=? AND p.observation_kind IN ('semantic_event','semantic_batch') "
+                "AND element.type='object' AND json_extract(element.value,'$.event_kind')='unit_destroyed' "
+                "AND json_type(element.value,'$.unit_ref')='text' "
+                "ORDER BY json_extract(element.value,'$.unit_ref'),p.rowid,CAST(element.key AS INTEGER) LIMIT 8",
+                (*self._scope_tuple(scope, timeline_id), observation_cursor),
+            ).fetchall()
+        events = []
+        for row in rows:
+            raw = json.loads(row["value_json"])
+            events.append({"event_kind": "unit_destroyed", "unit_ref": raw["unit_ref"],
+                           "location_ref": raw.get("location_ref"),
+                           "turn": raw.get("turn", row["turn"])})
+        count = int(rows[0]["event_count"]) if rows else 0
+        return {"events": events, "event_count": count,
+                "details_truncated": count > len(events),
+                "observation_cursor": observation_cursor,
+                "source_journal_event_ids": sorted({str(row["journal_event_id"]) for row in rows}),
+                "evidence_kind": "confirmed_owned_unit_destruction",
+                "meaning": "Observed destruction, not inferred from projection removal. Historical occurrence; do not infer the attacker or current threat resolution."}
+
     def current_anchor(self, scope: MemoryScope, timeline_id: str, context_tier: str) -> dict[str, Any] | None:
         with self.store._connect() as connection:
             row = connection.execute(

@@ -1133,6 +1133,7 @@ class ObservationCollector:
             # projection. Keep the frozen package until its transition notice
             # is durable, so a crash can retry without losing the wakeup.
             self.attention.capture_current_plan_dependencies()
+            self.attention.capture_confirmed_unit_losses(cursor, session_id=self.session_id)
         self.world_store.acknowledge_native_observation_publication(
             self.scope, self.timeline_id, cursor,
         )
@@ -1244,6 +1245,7 @@ class ObservationCollector:
                 raise ObservationCollectorError("pending_publication_head_identity_mismatch")
             if self.attention is not None:
                 self.attention.capture_current_plan_dependencies()
+                self.attention.capture_confirmed_unit_losses(int(publication_cursor), session_id=self.session_id)
             self.world_store.acknowledge_native_observation_publication(
                 self.scope, self.timeline_id, int(publication_cursor))
             self._restore_native_stage()
