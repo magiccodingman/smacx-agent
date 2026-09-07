@@ -5,7 +5,7 @@
   "repair": "Once authorized startup is accepted, materialization and assigned-player bookkeeping finish independently of caller cancellation. Existing bounded control HTTP timeout remains.",
   "validation": {
     "regression": "AcceptedStartupPersistsProvisionAfterClientDisconnect fails on original controller with lost provisioned worker association; passes on repaired controller. Real Identity, TestServer cancellation, SQLite, delayed simulated control response.",
-    "portal_suite": "82/82 passed",
+    "portal_suite": "83/83 passed including custom session/CSRF cookie integration",
     "isolated_deployment": "Own smacx-astra project and image tags; separate volumes/network; native worker launched and in health starting at capture.",
     "warm_start": "Completed before one-second client deadline; this is NOT a live disconnect proof."
   },
@@ -13,5 +13,6 @@
     "Does not claim recovery from server termination or an upstream timeout after control commit.",
     "Does not retroactively repair previously orphaned portal associations.",
     "Full native game and strategic competence acceptance remain ongoing."
-  ]
+  ],
+  "parallel_installation": "Configurable portal cookie prefix avoids same-host cross-port cookie collisions; default names preserved."
 }

@@ -50,10 +50,14 @@ builder.Services.AddMudServices();
 builder.Services.AddMemoryCache();
 builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
+var portalCookiePrefix = Environment.GetEnvironmentVariable("SMACX_PORTAL_COOKIE_PREFIX") ?? "smacx.portal";
+if (portalCookiePrefix.Length is < 1 or > 80 ||
+    portalCookiePrefix.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('.' or '_' or '-')))
+    throw new InvalidOperationException("SMACX_PORTAL_COOKIE_PREFIX must contain 1-80 ASCII letters, digits, dots, underscores or hyphens.");
 builder.Services.AddAntiforgery(options =>
 {
     options.HeaderName = "X-CSRF-TOKEN";
-    options.Cookie.Name = "smacx.portal.csrf";
+    options.Cookie.Name = $"{portalCookiePrefix}.csrf";
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Strict;
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
@@ -133,11 +137,17 @@ builder.Services.AddAuthentication(options =>
     })
     .AddIdentityCookies(options =>
     {
+        if (portalCookiePrefix != "smacx.portal")
+        {
+            options.ExternalCookie!.Configure(cookie => cookie.Cookie.Name = $"{portalCookiePrefix}.external");
+            options.TwoFactorRememberMeCookie!.Configure(cookie => cookie.Cookie.Name = $"{portalCookiePrefix}.twofactor-remember");
+            options.TwoFactorUserIdCookie!.Configure(cookie => cookie.Cookie.Name = $"{portalCookiePrefix}.twofactor-user");
+        }
         options.ApplicationCookie!.Configure(cookie =>
         {
             cookie.LoginPath = "/login";
             cookie.AccessDeniedPath = "/access-denied";
-            cookie.Cookie.Name = "smacx.portal.session";
+            cookie.Cookie.Name = $"{portalCookiePrefix}.session";
             cookie.Cookie.HttpOnly = true;
             cookie.Cookie.SameSite = SameSiteMode.Strict;
             cookie.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;

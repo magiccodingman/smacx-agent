@@ -22,6 +22,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
     {
         Directory.CreateDirectory(dataRoot);
         Environment.SetEnvironmentVariable("SMACX_PORTAL_DATA", dataRoot);
+        Environment.SetEnvironmentVariable("SMACX_PORTAL_COOKIE_PREFIX", "smacx.fixture");
         factory = new PortalFactory(dataRoot);
         client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -43,6 +44,7 @@ public sealed class PortalFlowTests : IAsyncLifetime
             Directory.Delete(dataRoot, recursive: true);
         }
         Environment.SetEnvironmentVariable("SMACX_PORTAL_DATA", null);
+        Environment.SetEnvironmentVariable("SMACX_PORTAL_COOKIE_PREFIX", null);
     }
 
     [Fact]
@@ -64,6 +66,18 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal("request_id_conflict", conflict.Payload!.Error!.Code);
         using var noCsrf = await client.PostAsJsonAsync("api/operator/matches/match-test/pause", new { });
         Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+    }
+
+    [Fact]
+    public async Task InstallationCookiePrefixSeparatesLoginAndCsrfCookies()
+    {
+        using var response = await client!.GetAsync("api/auth/csrf");
+        Assert.Contains(response.Headers.GetValues("Set-Cookie"), value => value.StartsWith("smacx.fixture.csrf="));
+        var csrf = (await response.Content.ReadFromJsonAsync<ApiResponse<CsrfTokenResponse>>())!.Data!;
+        var token = (await File.ReadAllTextAsync(Path.Combine(dataRoot, "secrets", "bootstrap-token"))).Trim();
+        var signedIn = await PostAsync<PortalSession>("api/auth/bootstrap", new BootstrapRequest(token, "StrongP1", "StrongP1"), csrf.Token);
+        Assert.Contains(signedIn.Response.Headers.GetValues("Set-Cookie"), value => value.StartsWith("smacx.fixture.session="));
+        Assert.True((await GetDataAsync<PortalSession>("api/auth/session")).Authenticated);
     }
 
     [Fact]
