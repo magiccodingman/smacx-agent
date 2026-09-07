@@ -53,7 +53,82 @@
       "Preserve counteroffer energy selection distinct from chosen-amount gift transfer."
     ],
     "compiled_production_contract": "pass: option IDs, unknown label rejection, native row filtering, counter/gift energy separation",
-    "native_fixture": "Added isolated actual stock proposal_menu cases; execution pending worker build",
-    "deployment": "not deployed; campaign remains preserved and paused"
+    "native_fixture": {
+      "passed": true,
+      "stock_native_proposal_menu_cases": [
+        {
+          "menu": "COUNTER0",
+          "option": "cancel",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 0,
+            "proposal_id": 0,
+            "counter_id": 0
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "goodwill",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 1
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "name_price",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 2
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "threaten",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 3
+          }
+        },
+        {
+          "menu": "COUNTER0",
+          "option": "energy_payment",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 2,
+            "proposal_id": 2,
+            "counter_id": 5
+          }
+        },
+        {
+          "menu": "COUNTER1",
+          "option": "all_research_data",
+          "native_return": {
+            "ok": true,
+            "stage": 2,
+            "native_result": 1,
+            "proposal_id": 1,
+            "counter_id": 7
+          }
+        }
+      ],
+      "energy_not_transferred_by_selector": true,
+      "duplicate_rejected": true,
+      "classification": "Actual stock menu and native return values; downstream negotiated deal effects separate"
+    },
+    "deployment": "not deployed; campaign remains preserved and paused",
+    "integrated_native_mcp": "running; no result claimed",
+    "cleanup": "Isolated worker/volumes cleaned by test; its unreferenced owned prepared image removed after successful completion."
   }
 }
