@@ -9,7 +9,8 @@ from urllib.error import HTTPError, URLError
 
 from smacx_diagnostic_summary import Metrics, summary
 
-path = Path(__file__).resolve().parents[1]/'harness/smacx_strict_prompt.py'
+path = Path(os.environ.get('SMACX_TEST_STRICT_PROMPT_PATH',
+    str(Path(__file__).resolve().parents[1]/'harness/smacx_strict_prompt.py')))
 spec = importlib.util.spec_from_file_location('strict_fetch_contract', path)
 module = importlib.util.module_from_spec(spec)
 with patch.dict(os.environ, {'SMACX_STRICT_SYSTEM_PROMPT':'0', 'SMACX_SPECIALIST_STRICT_PROMPT':'0'}):

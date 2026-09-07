@@ -32,5 +32,102 @@
     "Actual deployed checkpoint and continued provider request proof",
     "Runtime-context timing/capture-failure classification follow-up if reproduced after checkpoint repair"
   ],
-  "deployment": "not deployed; portal paused and zero sovereign runs"
+  "deployment": "not deployed; portal paused and zero sovereign runs",
+  "integrated_checkpoint_image": {
+    "control_image": "sha256:cd98bb891ee13eef17c6e1996cae1716c41db2f777e3ba47c96ea607441b251f",
+    "exit_code": 0,
+    "events": [
+      {
+        "event": "base_site_stress",
+        "payload": {
+          "owned_base_count": 512,
+          "candidate_count": 32,
+          "radius_squares": 21,
+          "wall_ms": 216.066,
+          "probe_gap_ms": 228.519,
+          "receipt_bytes": 170793,
+          "native_elapsed_ms": 0
+        }
+      },
+      {
+        "event": "counterfactual_site_stress",
+        "payload": {
+          "owned_base_input_rows": 511,
+          "nominated_sites": 4,
+          "wall_ms": 237.759,
+          "probe_gap_ms": 231.57,
+          "receipt_bytes": 52085,
+          "native_elapsed_ms": 0
+        }
+      },
+      {
+        "event": "intent_recovery",
+        "payload": {
+          "native_completed_units_preserved": true,
+          "journaled_plan_preserved": true,
+          "same_checkpoint_recovered_twice_after_timeline_gc": true,
+          "journaled_conflict_and_stationary_assignment_preserved": true,
+          "ephemeral_old_timeline_watch_discarded": true,
+          "old_session_counterfactual_choice_rejected": true
+        }
+      },
+      {
+        "event": "pass",
+        "payload": {
+          "authenticated_control_lifecycle": true,
+          "managed_action_failure_containment": false,
+          "dedicated_mcp_sidecar": true,
+          "mcp_tool_count": 15,
+          "mcp_bound_to_exact_match": true,
+          "native_unity_governor_entitlements": true,
+          "native_no_timer": true,
+          "native_orbital_project_global_adapter": true,
+          "native_base_geography_and_unit_traits": true,
+          "native_airdrop_diplomacy_and_anti_drop_guards": true,
+          "native_pact_port_amphibious_sequence": true,
+          "native_airdrop_collection_stress": {
+            "ready_drop_units": 129,
+            "maximum_page_latency_ms": 208.981,
+            "maximum_page_bytes": 127212,
+            "map_tiles": 8192,
+            "demand_receipt_matches_actions": true,
+            "enumeration_target_count": 4586,
+            "enumeration_native_ms": 0.0,
+            "enumeration_wall_ms": 234.19,
+            "enumeration_probe_gap_ms": 215.641,
+            "enumeration_payload_bytes": 8670,
+            "exact_native_ms": 0.0,
+            "exact_wall_ms": 214.198,
+            "exact_probe_gap_ms": 218.697,
+            "exact_payload_bytes": 288,
+            "outside_first_128_semantic_choice_executed": true,
+            "provider_model_supplied_raw_tile_id": false,
+            "revision_cache_hit": true
+          },
+          "native_global_projection_world_runtime_path": true,
+          "managed_lifecycle_blocked": true,
+          "bridge_verified_checkpoint": true,
+          "live_worker_volume_backup_verified": true,
+          "native_crash_recovered_without_ui": true,
+          "semantic_vehicle_identity_survived_native_restart": true,
+          "recovered_checkpoint_turn": 1,
+          "sidecar_removed_on_park": true,
+          "hermes_semantic_turn": false,
+          "hermes_low_reasoning": false,
+          "hermes_native_revision_advanced": false,
+          "hermes_managed_container": false,
+          "hermes_session_backup_verified": false,
+          "hermes_usage": null,
+          "specialist": null
+        }
+      }
+    ],
+    "scope": "Checkpoint staging, bounded save slots and native/AI recovery. Subsequent incident-clearance and client-failure tracing changes are tested separately and final-image integration is running."
+  },
+  "final_images": {
+    "control": "sha256:cdb8b73729e38e8de877fbb9a9f10a5a45b9d981c12fe8480f0cd59f42f5f194",
+    "harness": "sha256:d41c106b05af1b3cd2bcf12cf6d85d0421ea0eb1c6201a68ba823d60d5af6068",
+    "integration": "running",
+    "packaged_client_failure_test": "PASS four cases using installed strict-prompt module"
+  }
 }
