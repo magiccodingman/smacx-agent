@@ -32,6 +32,17 @@ strategic ownership are unchanged; the operational text grows by 258 bytes.
   explicit recompilation guard and context headroom remain intact. Fixture
   composed prompt is 46,131 bytes.
 
-Deployment checks are recorded after rollout. New profiles receive the new
+## Deployment
+
+Main control and specialist supervisor were redeployed with the
+`citizen-reference` control/harness images. The control environment selects those
+same MCP/harness images for future runs. The installed-image citizen test passed;
+deployed read-back confirms both clarifications are present. The worker/control
+fingerprint check passes, control/portal are healthy and localhost health returns
+200. Existing portal/activity and HTTPS images were preserved. No active campaign
+was listed at rollout. The local Compose invocation appends
+`runtime/astra/main-citizen-reference.override.yaml` after the previous overrides.
+
+New profiles receive the new
 operational guidance; saved profiles retain their frozen prompt and require
 explicit recompilation to change it. No campaign is resumed or started here.

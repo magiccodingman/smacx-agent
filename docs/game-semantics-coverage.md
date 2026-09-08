@@ -1118,3 +1118,6 @@ native-shaped delivery test retains guarded execution and post-action allocation
 checks. Focused-reference guidance passes exact provider-prompt composition
 tests; improved model behavior is not yet claimed. See
 [acceptance evidence](benchmarks/citizen-reference-guidance.md).
+Installed-image citizen delivery and deployed source checks pass. Main control
+and harness image selection is updated; worker compatibility and service health
+are verified. No new provider-behavior or native-mechanics claim is made.
