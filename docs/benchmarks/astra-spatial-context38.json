@@ -9,11 +9,12 @@
     "runtime_context_contract_test": "pass",
     "runtime_tokens_64k": 5473,
     "runtime_tokens_256k": 8843,
-    "huge_chaotic_runtime_tokens_256k": 26727
+    "huge_chaotic_runtime_tokens_256k": 26727,
+    "installed_image_test": "pass: smacx-astra-control:dev, scripts-only mount; no source override"
   },
   "limits": [
     "Projection fixtures prove deterministic context behavior, not native movement mechanics.",
-    "Installed image, actual provider delivery and improved sovereign behavior pending.",
+    "Actual provider delivery and improved sovereign behavior pending; guarded recovery requested.",
     "Watchdog limits remain unchanged; a trustworthy complete game remains unverified."
   ]
 }
