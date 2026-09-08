@@ -27,5 +27,20 @@
       "strict_prompt_contract_test.py passed"
     ],
     "live_delivery_and_effect": "pending"
+  },
+  "deployment": {
+    "isolated_images": [
+      "smacx-astra-control:dev",
+      "smacx-astra-harness:dev"
+    ],
+    "supported_incident_retry": true,
+    "restored_turn": 56,
+    "graphiti_rebuild": "completed",
+    "profile_recompile_http_status": 200,
+    "health": "observed_active",
+    "active_sovereign_runs": 1,
+    "live_sovereign_processes": 1,
+    "active_incidents": 0,
+    "sampled_unix": 1788879652.8981035
   }
 }
