@@ -52,7 +52,10 @@
       "scope": "native-shaped adapter/publication/attention; not running-game comparison"
     },
     "compiled_hook": "passed ownership exclusion, invalid base/faction and inactive guards",
-    "native_cross_build": "passed"
+    "native_cross_build": "passed",
+    "installed_control_image": true,
+    "worker_dll_sha256": "cb58b9776fdb33f89b9aba4f804f045c1672997bd6b934c471de04fee440bc2c",
+    "worker_dll_matches_native_replay": true
   },
   "pending": [
     "deployment and live provider receipt",
