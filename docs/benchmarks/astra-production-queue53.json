@@ -9,5 +9,12 @@
     "production_context_delivery_test passed"
   ],
   "limits": "Does not prove entire stall resolved; live provider delivery and subsequent gameplay pending. No stall-policy relaxation.",
-  "archive_sha256": "1df771c7b9a3f13320199e935bf4a777b338950ed5f5d9ffb97077222f584f3f"
+  "archive_sha256": "1df771c7b9a3f13320199e935bf4a777b338950ed5f5d9ffb97077222f584f3f",
+  "deployment": {
+    "installed_image_test": "passed",
+    "retry_after_update": "completed",
+    "health": "observed_active",
+    "turn": 53,
+    "active_sovereign_runs": 1
+  }
 }

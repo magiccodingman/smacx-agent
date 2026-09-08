@@ -963,3 +963,5 @@ Support-cause repair checkpoint: exact native support kill path scopes attributi
 Support-cause deployment: explicit runtime-refresh recovery installed prepared worker a02bead31132 and explicit doctrine recompile succeeded. One sovereign resumed on restored53; no active incident. Existing historical removal remains unattributed in old events; future actual provider cause delivery remains pending.
 
 Turn53 queue-meaning checkpoint: stalled sovereign trace explicitly counted current production separately from queue entry0. Native source counts current in entries. Managed context now states includes_current_item and items_after_current; missing/invalid counts remain unknown. Queue and existing production-delivery regressions pass. Live delivery/stall recovery pending; no action or stall-policy change. Evidence: `docs/benchmarks/astra-production-queue53.json`.
+
+Queue clarification deployed: installed-image test passes; supported retry-after-update completed and native/MCP recovered healthy at53 with incident cleared. Live provider consumption and sustained strategic progress remain pending.
