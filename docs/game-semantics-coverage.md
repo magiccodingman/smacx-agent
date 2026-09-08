@@ -673,3 +673,5 @@ Turn-24 native support comparison: after the sovereign hurried the fifth Scout, 
 Actual provider requests issued attention cursor 14 alongside world observation cursor 152; the sovereign submitted 152 and validation correctly rejected it. Tool and rejection guidance now name `attention.through_cursor` explicitly and distinguish the world counter. Canonical lease validation is unchanged. Evidence: `docs/benchmarks/astra-attention-cursor25.json`; deployment and corrected live acknowledgement remain pending.
 
 Attention cursor guidance is deployed: installed MCP source verified, operator recovery restored turn 25, and one sovereign process resumed with no health reasons. Corrected live acknowledgement remains pending.
+
+Turn-26 attention acceptance: actual provider request issued cursor 2 for sequences 1 and 2; the sovereign submitted cursor 2 for that exact lease, and the guarded service acknowledged those two IDs. The prior cursor confusion has a verified successful post-deployment case, without claiming universal future model compliance.
