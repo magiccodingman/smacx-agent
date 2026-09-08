@@ -19,12 +19,51 @@
   "repair": "Bounded persistent production_constraints in request-only force_summary; current owned evidence only, positive mineral cost and incomplete accumulation required; no exact ETA or mandatory strategy",
   "validation": {
     "production_constraint_context_test": "passed",
-    "runtime_context_contract_test": "passed including 64K/256K and Huge chaotic runtime budget"
+    "runtime_context_contract_test": "passed including 64K/256K and Huge chaotic runtime budget",
+    "installed_image_test": "passed"
   },
   "pending": [
-    "installed deployment",
-    "actual provider delivery",
     "sovereign management response and native effect",
-    "recovery acceptance"
-  ]
+    "sustained/full-game acceptance"
+  ],
+  "deployment": {
+    "recovered_turn": 27,
+    "native_session": "session-c0ec3f4ddd77495aa48fb3d2d42b13ec",
+    "live_sovereign_processes": 1,
+    "incidents": []
+  },
+  "provider_delivery": {
+    "request_unix": 1788841551.9544601,
+    "constraints": {
+      "bases": [
+        {
+          "base_ref": "base-location-795",
+          "epistemic_status": "current",
+          "last_verified_turn": 27,
+          "mineral_surplus": 0,
+          "minerals_accumulated": 1,
+          "production_cost": 10,
+          "production_name": "Scout Patrol",
+          "provenance_ref": "observation-168"
+        }
+      ],
+      "details_truncated": false,
+      "meaning": "Incomplete mineral production has no positive passive progress at the observed surplus. Future inputs, hurry and other mineral transfers can change this; completion timing is not predicted.",
+      "missing_or_noncurrent_evidence_count": 0,
+      "no_positive_mineral_surplus_count": 1,
+      "review": "Use smac_choices kind=base_citizens or production with base_ref to review workforce and production options. Unit focus does not prevent base management; review before the final ready unit ends the turn."
+    },
+    "identity": {
+      "action_revision": "15401997593886821026",
+      "continuity": "complete",
+      "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+      "observation_cursor": 170,
+      "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+      "session_id": "session-c0ec3f4ddd77495aa48fb3d2d42b13ec",
+      "timeline_id": "timeline-restore-edf4bdfc80654a4392d95595",
+      "world_epoch": "world-1913022c9fe47da1057d630a747c06ee",
+      "world_revision": 1
+    }
+  },
+  "deployed_packet_sha256": "1c66cc54073abe94f63418397b7fcefae10396ceb348bd519c68014efffee0b7"
 }
