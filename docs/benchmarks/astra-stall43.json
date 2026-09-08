@@ -1,0 +1,26 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "incident_id": "incident-549965cefd42470a9668b215a8458c7b",
+  "gap_id": "gap-ec7387040e1e4f828a8f4b1cdb09a931",
+  "turn": 43,
+  "containment": "native and collectors frozen; sovereign stopped",
+  "provider_request_id": "8fe6c080896d442f9a542d7ab47b1328",
+  "request_unix": 1788858578.4863498,
+  "response_unix": 1788858777.5508802,
+  "response_reasoning_characters": 34316,
+  "decision_ttl_seconds": 180,
+  "rejection": "expired_decision before native dispatch",
+  "next_action": "fresh smac_decision returned at 1788858789.8040183",
+  "guard": {
+    "api_calls_without_progress": 3,
+    "generated_tokens_without_progress": 14471,
+    "stall_seconds": 363.8584704399109
+  },
+  "attribution": {
+    "verified": "Provider response itself exceeded the decision lease. Sovereign deliberated repeatedly and later misattributed expiry to revision changes. No native action attempted by expired submission.",
+    "unverified": "Provider overload contribution versus generation time; effective remedy for repeated deliberation.",
+    "next_review": "Precise lease-expiry feedback and bounded deliberation support without relaxing freshness or stall guards."
+  },
+  "status": "unresolved; match remains paused",
+  "private_archive": "runtime/astra/evidence-stall43/diagnostics.zip"
+}

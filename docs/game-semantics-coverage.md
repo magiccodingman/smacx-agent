@@ -865,3 +865,7 @@ Turn-42 provider reasoning exposed ambiguity across repeated Return to base rece
 Receipt checkpoint deployment: rebuilt installed control-image regression passed with a scripts-only mount. Isolated worker/MCP recovered healthy; Graphiti rebuild completed and one sovereign restarted. Actual provider receipt consumption remains the next live acceptance gate.
 
 Receipt live gate verified: actual provider request `e3fe69582bd84ad3be0e07da9f9e680e` contains the tool result selecting Sentry with `own_unit_ref=own-unit-2`. Native decision confirms recovered turn 43. Sovereign also queried a route to headquarters; its result preserves stochastic fungus ETA uncertainty, followed by the Sentry selection. This proves provider delivery of the scoped receipt, not defensive adequacy or actual route arrival. Sanitized evidence: `docs/benchmarks/astra-choice-subject43.json`.
+
+### Turn-43 no-progress incident: unresolved
+
+The supervisor contained `incident-549965cefd42470a9668b215a8458c7b` after 3 provider calls/14,471 generated tokens without native progress. One response took about 199 seconds, exceeding the 180-second decision lease; expiry rejected dispatch, and the sovereign fetched a fresh frame but incorrectly attributed expiry to revision change. Capture proves repeated deliberation; provider overload contribution is not isolated. Preserve paused state while reviewing precise expiry feedback and bounded deliberation support. No freshness/watchdog relaxation or successful-recovery claim. Evidence: `docs/benchmarks/astra-stall43.json`.
