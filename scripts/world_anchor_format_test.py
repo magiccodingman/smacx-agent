@@ -14,6 +14,7 @@ with tempfile.TemporaryDirectory() as tmp:
     identity = WorldIdentity(scope.match_id, scope.perspective_id, journal.timeline_id(scope), 'world-format')
     observed = bundle()
     observed['bases'][0]['nutrient_surplus'] = -1
+    observed['tiles'][0]['features'] = ['vehicle']
     projection = PerspectiveProjector(identity).project(observed, observation_sequence=9)
     world.replace_projection(scope, identity, projection['objects'], observation_cursor=9,
                              action_revision='r9', continuity='complete', journal_head_hash='0'*64)
@@ -33,6 +34,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert old['world_anchor_id'] != new['world_anchor_id']
     assert old['anchor_observation_cursor'] == new['anchor_observation_cursor'] == 9
     assert new['payload']['projector_version'] == SemanticLodProjector.FORMAT_VERSION
+    assert 'including your own unit' in new['payload']['tile_feature_meanings']['vehicle']
     base = next(row for row in new['payload']['strategic_objects'] if row.get('kind') == 'base')
     assert base['fields']['nutrient_surplus']['value'] == -1
     assert base['fields']['nutrient_surplus']['epistemic_status'] == 'current'

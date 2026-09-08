@@ -1,0 +1,15 @@
+{
+  "classification": "semantic representation weakness with observed sovereign misinterpretation",
+  "observed_turn": 8,
+  "evidence": "Actual provider-emitted rationale interprets vehicle bits colocated with own scouts as neutral derelicts; direct reference called but inconclusive; belief write attempted.",
+  "repair": "Conditional tile_feature_meanings in bounded world anchor; unchanged native features, no hidden occupancy inference.",
+  "validation": {
+    "serializer_and_visibility_contract": "pass",
+    "geographic_contract": "pass",
+    "persisted_anchor_format_refresh": "pass"
+  },
+  "pending": [
+    "actual provider delivery",
+    "sovereign interpretation after delivery"
+  ]
+}
