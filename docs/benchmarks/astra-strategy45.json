@@ -1,0 +1,20 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "turn": 45,
+  "base_economy": {
+    "population": 2,
+    "production": "Scout Patrol",
+    "accumulated_minerals": 2,
+    "mineral_surplus": 1,
+    "nutrient_surplus": 0
+  },
+  "effect": "Previous turn44 accumulated minerals1 -> turn45 minerals2 after reassignment",
+  "actual_provider": {
+    "request_id": "e0e9db9e69aa4471be993fa790b1c50c",
+    "runtime_context_sha256": "39420e0de5c884fa6df18c0b2de1c1c0100eca2be0f1d09346266771fdf95898",
+    "delivered_plan": "frontier-sweep revision5: map remaining boundary tiles, then first Colony Pod and containment",
+    "end_turn": 45
+  },
+  "archive_sha256": "6855e7856e4b191600fefc5f59cd59315b9f9f78618b56df8679ae576a90b456",
+  "limits": "Archive plan rows include history outside current recovered provider context. Production remains Scout; no first expansion established. Return-to-base order assignment is not arrival proof."
+}
