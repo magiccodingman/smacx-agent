@@ -933,3 +933,5 @@ Session admission reporting checkpoint: explicit pinned Hermes wait/admitted ins
 Admission deployment checkpoint: campaign reached native turn45, parked with verified checkpoint and no active sovereign, then resumed with rebuilt control/harness images and healthy worker/MCP. Patched run_agent.py also compiles in the installed image. Graphiti rebuild is running without a reported error; live wait/admitted signal remains pending.
 
 Live admission waiting chain verified at turn45: run-98692ca07c6f44c8bec18017011ec92f emitted its real wait callback; the operator API reports waiting with hermes_session_lease_wait after normal supervisor telemetry sampling. Exactly one live sovereign process is reported. No forced lease release or competing telemetry helper. Post-admission clearing remains pending.
+
+Admission reporting live gate closed: previous lease expired normally; Hermes resumed smac_decision at turn45 and emitted session_admitted at1788866521.222302. The normal supervisor sample propagated this matching-run transition to observed_active. Both waiting and clearing are verified; no forced lease operation. Health is sampled rather than instantaneous.

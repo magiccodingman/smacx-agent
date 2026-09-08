@@ -7,7 +7,7 @@
     "operator_contract_test.py passed including fresh wait/stale/other-run/admitted",
     "control and pinned Hermes image build passed"
   ],
-  "limits": "Live wait callback \u2192 durable diagnostic \u2192 supervisor telemetry \u2192 operator waiting is verified. Post-admission clearing remains pending. No lease or stall-policy changes.",
+  "limits": "Live wait and automatic admission transitions verified through operator health. Reporting remains sampled, not instantaneous. No lease or stall-policy changes; full-game acceptance remains open.",
   "deployment": {
     "park": "turn45 verified checkpoint; zero active sovereign runs",
     "resume": "successful; worker and MCP healthy",
@@ -26,5 +26,15 @@
       "run_id": "run-98692ca07c6f44c8bec18017011ec92f"
     },
     "live_sovereign_processes": 1
+  },
+  "live_admitted_chain": {
+    "sampled_unix": 1788866558.4767818,
+    "state": "observed_active",
+    "session_admission": {
+      "observed_unix": 1788866521.222302,
+      "phase": "session_admitted",
+      "run_id": "run-98692ca07c6f44c8bec18017011ec92f"
+    },
+    "turn": 45
   }
 }
