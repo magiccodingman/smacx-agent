@@ -818,3 +818,5 @@ The isolated Astra campaign remains the live acceptance target; the original AI 
 Full-game completion, competent expansion, spontaneous specialist-child use, autonomous canonical-evidence claim writing, historical actor fallback, and remaining live recovery/semantic gates are still open. A successful read, prompt delivery, or acknowledgement cannot close these gates. Continue observing actual decisions and native effects; retain the existing no-progress stop bound while evaluating the prompt repair.
 
 Turn57 checkpoint: `benchmarks/astra-followthrough57.json` verifies sovereign expiry-feedback recovery through fresh guarded native turn advance, corrected plan publication in actual provider context, and current/current Sensor feature completion at836. These two live gates supersede their pending entries above; strategic expansion and economic benefit remain open.
+
+Turn62 Farm acceptance: `benchmarks/astra-farm-effect62.json` verifies task continuation through physical Farm completion and observed food surplus1→2. This supersedes the pending Farm-completion/economic-benefit entries; expansion, mineral recovery and full-game outcome remain open.
