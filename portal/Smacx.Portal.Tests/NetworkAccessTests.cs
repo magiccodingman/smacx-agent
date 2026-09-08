@@ -120,6 +120,22 @@ public sealed class NetworkAccessTests
         Assert.True(await service.CanSpectateAsync(match, "observer", true));
     }
 
+    [Fact]
+    public async Task FinishedAiTranscriptRetainsAccessButNeverForParticipants()
+    {
+        await using var database = await DatabaseAsync();
+        var match = await database.PortalMatches.SingleAsync();
+        match.Status = "completed"; match.AllowSpectators = false;
+        await database.SaveChangesAsync();
+        var service = new MatchAccessService(database);
+        Assert.True(await service.CanReadAiActivityAsync(match, "observer", false));
+        Assert.False(await service.CanReadAiActivityAsync(match, "participant", true));
+        Assert.False(await service.CanReadAiActivityAsync(match, null, true));
+        database.PortalLobbySeats.Add(new PortalLobbySeat { MatchId=match.MatchId, SeatIndex=0, ControllerKind="human", UserId="owner" });
+        await database.SaveChangesAsync();
+        Assert.False(await service.CanReadAiActivityAsync(match, "observer", false));
+    }
+
     private static async Task<ApplicationDbContext> DatabaseAsync()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

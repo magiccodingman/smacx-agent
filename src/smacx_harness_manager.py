@@ -607,6 +607,49 @@ class HarnessManager:
                 pass
         return {"ok": True, "run": run, "observed": observed}
 
+    def activity(self, match_id: str, agent_id: str, cursor: str = '') -> dict[str, Any]:
+        """Read only the selected seat's activity via an owned, isolated helper."""
+        runs = [r for r in self.control.list_harness_runs()
+                if r['match_id'] == match_id and r['agent_id'] == agent_id]
+        profiles = sorted({r['harness_profile_id'] for r in runs})
+        try:
+            positions = json.loads(cursor) if cursor else {}
+            if not isinstance(positions, dict) or len(cursor) > 16000: raise ValueError()
+            if any(not isinstance(v, str) for v in positions.values()): raise ValueError()
+        except (ValueError, TypeError): raise InvalidRecord('invalid_activity_cursor')
+        events, gaps, more = [], [], False
+        for profile in profiles:
+            runtime = self.control.get_harness_runtime_spec(profile)
+            volume = self.docker.inspect_volume(runtime['data_volume'])
+            self.docker.require_owned(volume, self.installation_id, purpose='harness-data')
+            query = ('import json; from smacx_activity import read_page; '
+                     f'print(json.dumps(read_page("/data/diagnostics",{match_id!r},{positions.get(profile, "")!r})))')
+            identifier = self.docker.create_container(self._name('activity', uuid.uuid4().hex), {
+                'Image': self.worker_manager.mcp_image, 'Entrypoint': ['python3','-c'], 'Cmd': [query],
+                'User': '10000:10000', 'Labels': self._labels('harness-activity'),
+                'HostConfig': {'NetworkMode': 'none', 'ReadonlyRootfs': True,
+                    'CapDrop': ['ALL'], 'SecurityOpt': ['no-new-privileges'],
+                    'Mounts': [{'Type':'volume','Source':runtime['data_volume'],'Target':'/data','ReadOnly':True}]}})
+            try:
+                self.docker.start_container(identifier)
+                state = self.docker.wait_container(identifier, timeout=15)
+                if state.get('State',{}).get('ExitCode') != 0: raise HarnessManagerError('activity_read_failed')
+                logs = self.docker.container_logs(identifier, tail=1)
+                value = json.loads(logs[logs.index('{'):])
+                positions[profile] = value['cursor']
+                events.extend(value['events']); gaps.extend(value['gaps'])
+                if not value['available']: gaps.append('activity_not_captured_for_profile_use_diagnostic_zip')
+                more |= value['has_more']
+            finally:
+                self.docker.remove_container(identifier)
+            if len(events) >= 150 or len(json.dumps(events)) >= 1024 * 1024:
+                more |= profile != profiles[-1]
+                break
+        return {'schema':'smacx.ai-activity.v1','match_id':match_id,'agent_id':agent_id,
+                'events':events,'cursor':json.dumps(positions,separators=(',',':')),
+                'has_more':more,'gaps':sorted(set(gaps)), 'available':bool(profiles),
+                'status': next((r['status'] for r in runs if r['status']=='running'), 'idle')}
+
     def telemetry(self, run_id: str) -> dict[str, Any]:
         """Read aggregate Hermes usage from its private durable state.
 

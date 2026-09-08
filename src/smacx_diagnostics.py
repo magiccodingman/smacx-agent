@@ -155,6 +155,24 @@ class DiagnosticWriter:
 
     def emit(self, kind: str, payload: Mapping[str, Any], *,
              correlation: Mapping[str, str] | None = None) -> dict[str, Any]:
+        receipt = self._emit(kind, payload, correlation=correlation)
+        if self.actor == 'sovereign':
+            try:
+                from smacx_activity import project
+                projected = project(kind, payload)
+                if projected is not None:
+                    if not hasattr(self, '_activity_writer'):
+                        self._activity_writer = DiagnosticWriter(self.directory.parent,
+                            self.match_id, 'activity', max_event_bytes=240000,
+                            max_bytes=self.max_bytes, max_match_bytes=self.max_match_bytes)
+                    self._activity_writer._emit('activity', projected, correlation={
+                        **(correlation or {}), 'run_id': os.environ.get('SMACX_HARNESS_RUN_ID', '')})
+            except Exception:
+                logging.getLogger(__name__).exception('Activity projection unavailable')
+        return receipt
+
+    def _emit(self, kind: str, payload: Mapping[str, Any], *,
+              correlation: Mapping[str, str] | None = None) -> dict[str, Any]:
         if not _SAFE.fullmatch(kind):
             raise ValueError("invalid_diagnostic_event_kind")
         clean = redact(payload)
@@ -438,6 +456,14 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
                     self.finished = False
                     self.recorded = False
                     self.digest = hashlib.sha256()
+                    self.activity = []
+                    self.activity_bytes = 0
+                    self.last_activity = time.monotonic() - 1
+                def flush_activity(self):
+                    if self.activity:
+                        emit('provider_activity_delta', {'chunks': self.activity}, request_id)
+                        self.activity = []; self.activity_bytes = 0
+                        self.last_activity = time.monotonic()
                 def line(self, line):
                     if not line.startswith(b"data:"): return
                     data = line[5:].strip()
@@ -445,12 +471,17 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
                     try: value = json.loads(data)
                     except ValueError: self.omitted = True; return
                     _remember_provider_calls(value, correlation)
+                    self.activity.append(value)
+                    self.activity_bytes += len(data)
+                    if self.activity_bytes >= 16000 or time.monotonic() - self.last_activity >= 0.5:
+                        self.flush_activity()
                     if self.size + len(data) <= writer.max_event_bytes // 2:
                         self.chunks.append(value); self.size += len(data)
                     else: self.omitted = True
                 def receipt(self):
                     if self.recorded: return
                     self.recorded = True
+                    self.flush_activity()
                     record_provider_phase(request_id, "completed" if self.finished else "closed_incomplete", started_unix)
                     emit("provider_response_stream", {"chunks": self.chunks,
                         "stream_exhausted": self.finished, "done_marker_observed": self.done,
