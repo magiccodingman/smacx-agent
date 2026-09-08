@@ -744,3 +744,7 @@ Roster deployment evidence: installed-image regression passed with scripts-only 
 Roster provider delivery verified: request `d87e310d64a74007905328fc9a1b4029` includes the roster enum and force-composition guidance in the actual tool schema. Native decision confirms restored turn 43. Autonomous roster querying and resulting gameplay decisions remain pending.
 
 Roster live query gate verified: sovereign requested `forces`/`roster`; all five owned units returned in one 1,434-token page without continuation, and actual provider request `b640629f16174b8f99a6223624afd1f4` contains that result. This closes roster query/delivery acceptance, not strategic adequacy, production completion or full-game acceptance. Evidence: `docs/benchmarks/astra-force-roster43.json`.
+
+### Live hurry/support comparison at turn 44
+
+Sovereign hurried Scout Patrol for 13 credits (receipt: 145 credits, 10 stored minerals). Next committed owned observation 353 at turn 44 counts six units and headquarters mineral surplus 0, population 2, stored minerals 1, still producing Scout Patrol. This matches the earlier conditional +1 support/zero net-surplus warning in this scenario; no general mechanics-equivalence or strategic-adequacy claim. Individual production event/new-unit identity not independently captured here. See `docs/benchmarks/astra-hurry43-effect44.json`.

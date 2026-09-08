@@ -1,0 +1,31 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "checkpoint": "Turn 43 hurry and turn 44 production constraint",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "hurry_receipt": {
+    "choice_id": "choice-4cc146291a4d4b929ac1bb8fcc7f8cf7",
+    "decision_id": "decision-55527ab9aa47439e8123b81f33ba8f35",
+    "production_name": "Scout Patrol",
+    "energy_cost": 13,
+    "energy_credits_after": 145,
+    "minerals_added": 6,
+    "minerals_accumulated_after": 10
+  },
+  "observed_turn44": {
+    "observation_ref": "observation-353",
+    "owned_unit_count": 6,
+    "base_ref": "base-location-795",
+    "population": 2,
+    "mineral_surplus": 0,
+    "minerals_accumulated": 1,
+    "production_name": "Scout Patrol",
+    "epistemic_status": "current",
+    "source": "owned_state"
+  },
+  "comparison": "Pre-action conditional support forecast said one more supported unit at unchanged inputs would reduce net surplus from 1 to 0. Post-turn owned state has six units and zero surplus; this is one matching live scenario, not general mechanics equivalence.",
+  "limits": [
+    "Individual new unit identity and production temporal event not captured in this checkpoint.",
+    "Does not prove the hurry was strategically appropriate or that the sovereign will repair production.",
+    "Full-game acceptance remains open."
+  ]
+}
