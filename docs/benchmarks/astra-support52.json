@@ -1,0 +1,18 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "turn": 52,
+  "inspection_sha256": "7647cb88c57165eeb4bfc62e263cf95fac2a2ac5d70562375c7643317401c29c",
+  "observed": {
+    "new_former": "own-unit-12",
+    "unit_count": 8,
+    "base_intake": 4,
+    "support": 5,
+    "surplus": -1,
+    "former11_location": "location-836",
+    "former11_automation_active": true,
+    "former11_task": "no_active_terraform_order",
+    "former11_moves_remaining": 0
+  },
+  "comparison": "Agrees with turn51 conditional support-after-completion forecast. Hurry receipt recorded56 credits spent and20 accumulated minerals.",
+  "limits": "No inference that a current no-task sample proves no work occurred between observations. Tile836 currently has road; earlier feature baseline/completion events must be compared before diagnosing automation. No automatic support casualty observed at this sample."
+}
