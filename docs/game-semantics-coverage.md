@@ -989,3 +989,7 @@ Automation digest controlled acceptance: isolated running-native regression pass
 Automation digest deployment: supported paired recovery installed native c8036ab3a8bc; worker/MCP healthy, Graphiti restore completed, profile recompile200 and one sovereign process present without incidents. Live supervisor reset on a subsequent automation transition remains pending.
 
 Turn54 acceptance: native end-turn53→54 verified. Sovereign-authored typed monitor plan revision4 and goal revision2 appear in actual provider context. Former12 moved875→836 and has active Sensor Array work2; completion and mineral benefit remain unverified. Evidence: `astra-monitor-plan54.json`.
+
+Growth observation gap: actual provider requestf506fbb164b24fccab8e5f4686d6fe00 includes nutrient stock/surplus and social growth but omits native growth threshold/gates. Sovereign assumes8/7 and imminent growth. Repair must expose native threshold with conditional timing and inhibition/cap/boom semantics; comparison pending. Evidence: `astra-growth-gap55.json`.
+
+Growth receipt validation: native39/39 build and installed epistemic storage test pass. Controlled native threshold sequencing, −3 inhibition, population boom and habitat-cap comparisons pass. Receipt reports current native inputs without a promised growth date; deployment and actual provider delivery pending. Evidence: `astra-growth-gap55.json`.

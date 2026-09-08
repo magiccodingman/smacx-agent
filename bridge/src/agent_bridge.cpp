@@ -7648,6 +7648,30 @@ bool semantic_ignores_rough_movement(VEH& veh) {
             || has_abil(veh.unit_id, ABL_ANTIGRAV_STRUTS));
 }
 
+// Called only for an owned base after set_base/base_compute on the UI thread.
+void append_owned_growth(std::ostream& out, int base_id) {
+    const BASE& base = Bases[base_id];
+    const int faction = base.faction_id;
+    const int threshold = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+    const bool complex = has_fac_built(FAC_HAB_COMPLEX, base_id);
+    const bool dome = has_fac_built(FAC_HABITATION_DOME, base_id);
+    const int modifier = (has_project(FAC_ASCETIC_VIRTUES, faction) ? 2 : 0)
+        - MFactions[faction].rule_population;
+    const int limit = (complex ? Rules->pop_limit_wo_hab_dome : Rules->pop_limit_wo_hab_complex) + modifier;
+    const bool room = (base.pop_size < limit || dome) && base.pop_size < MaxBasePopSize;
+    const bool boom = (*BaseGrowthRate >= GrowthPopBoom || has_project(FAC_CLONING_VATS, faction))
+        && Rules->nutrient_intake_req_citizen && base.nutrient_surplus >= Rules->nutrient_intake_req_citizen;
+    out << ",\"growth\":{\"nutrient_threshold\":" << threshold
+        << ",\"growth_rating\":" << *BaseGrowthRate
+        << ",\"habitat_limit\":" << limit
+        << ",\"habitation_dome\":" << (dome ? "true" : "false")
+        << ",\"population_room\":" << (room ? "true" : "false")
+        << ",\"ordinary_growth_inhibited\":" << (*BaseGrowthRate <= -3 ? "true" : "false")
+        << ",\"population_boom_conditions_met\":" << (boom ? "true" : "false")
+        << ",\"negative_nutrient_stock\":" << (base.nutrients_accumulated < 0 ? "true" : "false")
+        << ",\"timing_semantics\":\"Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs.\"}";
+}
+
 std::string bases_response() {
     if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
     ensure_test_base_action_fixture();
@@ -7689,7 +7713,9 @@ std::string bases_response() {
         out << "]},\"nutrients\":{\"intake\":" << base.nutrient_intake_2
             << ",\"consumption\":" << base.nutrient_consumption
             << ",\"surplus\":" << base.nutrient_surplus
-            << ",\"accumulated\":" << base.nutrients_accumulated << '}'
+            << ",\"accumulated\":" << base.nutrients_accumulated << '}';
+        append_owned_growth(out, i);
+        out
             << ",\"minerals\":{\"intake\":" << base.mineral_intake_2
             << ",\"consumption\":" << base.mineral_consumption
             << ",\"unit_support_cost\":" << *BaseForcesMaintCost
@@ -9686,6 +9712,65 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
+    if (phase == "diagnostics_growth_comparison") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Isolated single-player growth comparison only.");
+        BASE& base = Bases[base_id];
+        base.pop_size = 2;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = 0;
+        const int threshold = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+        base.nutrient_surplus = 1;
+        base.nutrients_accumulated = threshold - 1;
+        std::ostringstream out;
+        out << "{\"ok\":true,\"before\":{\"population\":2";
+        append_owned_growth(out, base_id);
+        out << "},\"threshold\":" << threshold;
+        mod_base_growth();
+        out << ",\"first_population\":" << static_cast<int>(base.pop_size)
+            << ",\"first_stock\":" << base.nutrients_accumulated;
+        mod_base_growth();
+        out << ",\"second_population\":" << static_cast<int>(base.pop_size);
+        base.pop_size = 2;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = -3;
+        base.nutrient_surplus = 1;
+        base.nutrients_accumulated = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+        out << ",\"inhibited_before\":{\"population\":2";
+        append_owned_growth(out, base_id);
+        out << '}';
+        mod_base_growth();
+        out << ",\"inhibited_population\":" << static_cast<int>(base.pop_size);
+        base.pop_size = 2;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = GrowthPopBoom;
+        base.nutrients_accumulated = 0;
+        base.nutrient_surplus = Rules->nutrient_intake_req_citizen;
+        out << ",\"boom_before\":{\"population\":2";
+        append_owned_growth(out, base_id);
+        out << '}';
+        mod_base_growth();
+        out << ",\"boom_population\":" << static_cast<int>(base.pop_size);
+        set_fac(FAC_HAB_COMPLEX, base_id, false);
+        set_fac(FAC_HABITATION_DOME, base_id, false);
+        const int cap = Rules->pop_limit_wo_hab_complex
+            + (has_project(FAC_ASCETIC_VIRTUES, faction) ? 2 : 0)
+            - MFactions[faction].rule_population;
+        base.pop_size = cap;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = 0;
+        base.nutrient_surplus = 1;
+        base.nutrients_accumulated = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+        out << ",\"cap_before\":{\"population\":" << cap;
+        append_owned_growth(out, base_id);
+        out << '}';
+        mod_base_growth();
+        out << ",\"capped_population\":" << static_cast<int>(base.pop_size) << '}';
+        return out.str();
+    }
     if (phase == "diagnostics_disband") {
         if (*MultiplayerActive || interaction_kind(faction) != "turn")
             return error_response("fixture_unavailable", "Isolated disband fixture requires an idle turn.");

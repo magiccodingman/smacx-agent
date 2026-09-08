@@ -1,0 +1,79 @@
+{
+  "finding": "Actual provider runtime contains stored nutrients, surplus and social growth rating but no native nutrient threshold or growth gates. Sovereign describes unsupported8/7 and imminent growth as mineral solution.",
+  "request_id": "f506fbb164b24fccab8e5f4686d6fe00",
+  "runtime_context_sha256": "987c63458ead35c2366b2c736a129325053d56cf46c940f2d8c8617e01cb85b3",
+  "archive_sha256": "aa1577cda33ff0a88706cd810fee8e6039ebb1b0899aed17d76e92e1eb4f0224",
+  "native_source": "mod_base_growth: threshold=(pop_size+1)*mod_cost_factor; habitat/growth inhibition and population-boom rules also govern growth. Threshold checked before adding ordinary surplus.",
+  "status": "Repair validated; deployment and actual provider receipt pending.",
+  "implementation": "Owned native base receipt now exposes threshold, rating, population room/habitat/dome, ordinary inhibition and boom prerequisites; timing text explicitly avoids a promised date.",
+  "validation": "Native cross-build39/39, installed current/stale/unknown storage regression, and controlled native ordinary sequencing/inhibition/boom/habitat-cap comparisons pass.",
+  "native_comparison": {
+    "passed": true,
+    "native_comparison": {
+      "ok": true,
+      "before": {
+        "population": 2,
+        "growth": {
+          "nutrient_threshold": 27,
+          "growth_rating": 0,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": true,
+          "ordinary_growth_inhibited": false,
+          "population_boom_conditions_met": false,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "threshold": 27,
+      "first_population": 2,
+      "first_stock": 27,
+      "second_population": 3,
+      "inhibited_before": {
+        "population": 2,
+        "growth": {
+          "nutrient_threshold": 27,
+          "growth_rating": -3,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": true,
+          "ordinary_growth_inhibited": true,
+          "population_boom_conditions_met": false,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "inhibited_population": 2,
+      "boom_before": {
+        "population": 2,
+        "growth": {
+          "nutrient_threshold": 27,
+          "growth_rating": 6,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": true,
+          "ordinary_growth_inhibited": false,
+          "population_boom_conditions_met": true,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "boom_population": 3,
+      "cap_before": {
+        "population": 7,
+        "growth": {
+          "nutrient_threshold": 72,
+          "growth_rating": 0,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": false,
+          "ordinary_growth_inhibited": false,
+          "population_boom_conditions_met": false,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "capped_population": 7
+    }
+  }
+}
