@@ -1,0 +1,36 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "checkpoint": "Live turn-42 context and strategic attribution audit",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "source_head": "12f6ade",
+  "provider_request_id": "706488db609f4f0cb3fb8357e22b0476",
+  "provider_recorded_unix": 1788857539.4266765,
+  "runtime_context_sha256": "cf55be07de71e251a972610313390891634dce558a8cd7724927e59c96c99419",
+  "observed": {
+    "world_anchor_turn": 42,
+    "world_anchor_year": null,
+    "owned_units": 5,
+    "combat_role_count": 5,
+    "production": {
+      "Scout Patrol": 1
+    },
+    "mind_worm_location": "location-955",
+    "mind_worm_hp": 10,
+    "contact_attention_id": "attention-a01077b4713546faa3fb39b75386c2ce",
+    "attention_acknowledged_unix": 1788857562.4834046,
+    "native_handoff_turn": 42,
+    "native_handoff_year": 2142,
+    "handoff_recorded_unix": 1788857563.214366
+  },
+  "assessment": {
+    "turn_year_mismatch": "Not reproduced: runtime anchor supplied null year, not 2141; sovereign supplied 2141 in reasoning. Subsequent native decision supplied 2142.",
+    "threat_delivery": "Current contact reached actual provider context and was acknowledged; does not prove an adequate defensive response.",
+    "strategy": "One base, five Scouts, continued Scout production. Sovereign still reasons from location-reference suffixes and makes unsupported friendly-stacking assumptions. Strategic competence and expansion acceptance remain open.",
+    "handoff": "Native boundary returned stop-after instruction and sovereign returned TURN HANDOFF without another managed call in the captured segment."
+  },
+  "limits": [
+    "No claim that all gameplay or strategic acceptance requirements are complete.",
+    "No native stacking rule verification performed by this checkpoint.",
+    "Diagnostic archive retained privately in runtime/astra/evidence-strategy42; no raw reasoning committed."
+  ]
+}

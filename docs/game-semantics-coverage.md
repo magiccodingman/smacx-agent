@@ -849,3 +849,11 @@ Actual provider request `27e60337efe54112ac1d7692ec974bfa` at `1788856971.537100
 Turn40 numeric-guidance autonomous acceptance: the sovereign writes the observed Spartan relationship with confidence0.8; journal receipt `journal-388aa98502be4a8fb8d775c4b5d15d47` succeeds. Actual next provider request `7f7120df48124c53ba6f777abaf0996c` at `1788857100.7134762` includes relationship revision2 with confidence0.8 and the durable actor mapping. This closes the corrected-write and next-context gates, not factual validation of the relationship's prose reasons or full-game acceptance.
 
 Turn40 attention acknowledgement is persisted for both raid notices and Scout3's cleared-order notice at `1788857022.447917`. Independent current owned observations326 at41 confirm Scouts4/5 at headquarters795 with10HP each, proving actual reinforcement arrivals beyond accepted return orders. These are separate evidence chains; acknowledgement is not asserted to have caused the arrivals. The sovereign's optimistic economic assessment remains interpretive, not acceptance evidence of strategic competence.
+
+#### Live turn-42 acceptance update
+
+| Capability | Observed acceptance evidence | Remaining limit |
+| --- | --- | --- |
+| Nearby hostile contact attention | Current Mind Worm at location-955 represented in actual provider request and attention acknowledged; `docs/benchmarks/astra-strategy42.json` | Adequacy of defense remains sovereign strategy, not proven by acknowledgement |
+| Turn boundary and context attribution | Native handoff turn 42/year 2142, followed by TURN HANDOFF; runtime year was null, not the sovereign-inferred 2141 | Broader modal acceptance remains open |
+| Expansion and spatial reasoning | Live trace exposes one base/five Scouts/continued Scout production and unsupported ID-based reasoning | Strategic competence remains unverified; no completion claim |
