@@ -1,0 +1,30 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "scope": "Persistent current-state production constraint visibility; no claim of strategic improvement or game completion",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "turn": 27,
+  "observed": {
+    "base_ref": "base-location-795",
+    "production_name": "Scout Patrol",
+    "mineral_surplus": 0,
+    "minerals_accumulated": 1,
+    "production_cost": 10,
+    "first_known_turn": 24,
+    "last_verified_turn": 27,
+    "provider_request_unix": 1788841212.6882439,
+    "raw_current_fields_delivered": true,
+    "attention_items": 0
+  },
+  "packet_sha256": "179ddb77cd218e3b4781b6cbf6fedc39756c6c95cc24e2a3778840d97a892b80",
+  "repair": "Bounded persistent production_constraints in request-only force_summary; current owned evidence only, positive mineral cost and incomplete accumulation required; no exact ETA or mandatory strategy",
+  "validation": {
+    "production_constraint_context_test": "passed",
+    "runtime_context_contract_test": "passed including 64K/256K and Huge chaotic runtime budget"
+  },
+  "pending": [
+    "installed deployment",
+    "actual provider delivery",
+    "sovereign management response and native effect",
+    "recovery acceptance"
+  ]
+}

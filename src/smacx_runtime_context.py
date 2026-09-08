@@ -50,6 +50,8 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
     former_tasks, former_without_task, former_task_unknown = {}, 0, 0
     unknown = {"roles": 0, "orders": 0, "production": 0, "design": 0, "home_base": 0}
     units = 0
+    constrained_bases = []
+    production_evidence_unknown = 0
     for item in projection.get("objects", ()):
         if item.get("status") != "active":
             continue
@@ -90,6 +92,19 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
             name = current("production_name")
             if isinstance(name, str): production[name] = production.get(name, 0) + 1
             else: unknown["production"] += 1
+            surplus = current("mineral_surplus")
+            cost = current("production_cost")
+            accumulated = current("minerals_accumulated")
+            if not all(type(value) is int for value in (surplus, cost, accumulated)):
+                production_evidence_unknown += 1
+            elif cost > 0 and accumulated < cost and surplus <= 0:
+                constrained_bases.append({
+                    "base_ref": item.get("object_ref"), "production_name": name,
+                    "mineral_surplus": surplus, "minerals_accumulated": accumulated,
+                    "production_cost": cost, "epistemic_status": "current",
+                    "provenance_ref": fields["mineral_surplus"].get("provenance_ref"),
+                    "last_verified_turn": fields["mineral_surplus"].get("last_verified_turn"),
+                })
     def bounded(values):
         rows = sorted(values.items(), key=lambda row: (-row[1], row[0]))
         return {"counts": dict(rows[:24]), "omitted_categories": len(rows[24:]),
@@ -98,6 +113,14 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
             "world_revision": projection.get("world_revision"), "owned_unit_count": units,
             "capability_roles_overlap_not_assignments": bounded(roles),
             "observed_orders": bounded(orders), "current_production": bounded(production),
+            "production_constraints": {
+                "no_positive_mineral_surplus_count": len(constrained_bases),
+                "bases": sorted(constrained_bases, key=lambda item: str(item["base_ref"]))[:8],
+                "details_truncated": len(constrained_bases) > 8,
+                "missing_or_noncurrent_evidence_count": production_evidence_unknown,
+                "meaning": "Incomplete mineral production has no positive passive progress at the observed surplus. Future inputs, hurry and other mineral transfers can change this; completion timing is not predicted.",
+                "review": "Use smac_choices kind=base_citizens or production with base_ref to review workforce and production options. Unit focus does not prevent base management; review before the final ready unit ends the turn.",
+            },
             "former_tasks": {"active_task_names": bounded(former_tasks),
                              "no_active_terraform_order": former_without_task,
                              "missing_or_noncurrent_task": former_task_unknown,
