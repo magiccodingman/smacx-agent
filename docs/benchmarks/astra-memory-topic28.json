@@ -4,8 +4,14 @@
   "repair": "Advertise claim/belief topic key syntax; return validator pattern and example for rejected topic before persistence, without substitution",
   "validation": "memory_status_feedback_test passed including claim/belief invalid-topic no-write checks and existing guarded memory/status/retirement contracts",
   "pending": [
-    "deployment",
-    "provider guidance delivery",
+    "actual provider guidance delivery",
     "sovereign successful write and persistence"
-  ]
+  ],
+  "deployment": {
+    "installed_memory_contract": "passed",
+    "running_mcp_advertises_topic_syntax": true,
+    "turn": 28,
+    "live_sovereign_processes": 1,
+    "incidents": []
+  }
 }
