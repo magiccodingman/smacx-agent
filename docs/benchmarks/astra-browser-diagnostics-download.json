@@ -21,5 +21,15 @@
       "details": "See gameplay diagnostics coverage matrix; absence of errors is not completeness."
     }
   ],
-  "limits": "Live owner/admin browser delivery; no claim of unauthorized access or archive-lobby UI coverage."
+  "limits": "Live and ended campaign admin browser delivery verified; full-game and content coverage remain separate.",
+  "archive": {
+    "lifecycle_status": "completed (ended test campaign, not victory evidence)",
+    "normal_incident_dismissal": true,
+    "download_completed": true,
+    "zip_integrity": "pass",
+    "bytes": 324755,
+    "sha256": "211c2ce9864aa774be91f0dfbbc63b1593f48c65404dbb5a6d0d736adaad37d1",
+    "match_scope_verified": true,
+    "bundle_complete": false
+  }
 }
