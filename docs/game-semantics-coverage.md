@@ -835,3 +835,5 @@ Turn-39 post-deployment action effect: the sovereign selected Skip for Scout1 fr
 ### Turn-39 memory numeric guidance
 
 A live relationship write used confidence80; the existing confidence range is0..1, unlike the integer relationship metrics. The provider schema and validation errors now state the ranges explicitly, without coercion or clamping. Guarded writer regressions prove rejected claim/belief/observed-faction relationship confidence and relationship metrics leave canonical memory unchanged, and explicit0.8 retries succeed. Installed/schema-budget/deployment/live correction gates remain pending. Evidence: `docs/benchmarks/astra-confidence39.json`. Campaign paused for the repair.
+
+Numeric-guidance packaged acceptance: both memory contracts pass against the rebuilt installed control image with scripts-only mounts; schema budget passes (15 tools, world660, total7688 conservative tokens). The game reached40 before operator containment. MCP termination was a clean exit143 after passing health checks. Guarded resume is in progress; live schema/error delivery and autonomous correction are still pending.

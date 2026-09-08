@@ -4,7 +4,9 @@
   "repair": "Provider schema specifies confidence 0..1 and relationship integer scales; rejected confidence and relationship metrics return field/range guidance without coercion.",
   "validation": {
     "memory_status_feedback_test": "pass: rejected claim/belief confidence leaves canonical state unchanged; explicit 0.8 retry succeeds",
-    "memory_faction_reference_test": "pass: observed-faction relationship confidence80 and trust101 rejected without canonical mutation; corrected confidence0.8 succeeds"
+    "memory_faction_reference_test": "pass: observed-faction relationship confidence80 and trust101 rejected without canonical mutation; corrected confidence0.8 succeeds",
+    "installed_control": "both memory contracts pass with scripts-only mounts",
+    "schema_budget": "15 tools, world660, total7688 conservative tokens"
   },
-  "limits": "Controlled guarded writer tests; installed validation, schema budget, deployment and autonomous correction remain pending."
+  "limits": "Deployment/recovery in progress; actual schema/error delivery and autonomous correction remain pending."
 }
