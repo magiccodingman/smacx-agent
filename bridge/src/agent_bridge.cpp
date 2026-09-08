@@ -11302,6 +11302,7 @@ std::string production_choices_response(int faction_id, int base_id) {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"kind\":\"production\",\"base_id\":" << base_id
         << ",\"base_name\":" << json_string(base.name)
+        << ",\"population\":" << base.pop_size
         << ",\"current\":{\"item_id\":" << base.queue_items[0]
         << ",\"name\":" << json_string(production_name(base.queue_items[0]).c_str())
         << ",\"mineral_cost\":" << current_item_cost
@@ -11328,6 +11329,12 @@ std::string production_choices_response(int faction_id, int base_id) {
             << ",\"kind\":\"unit\",\"name\":" << json_string(Units[unit_id].name)
             << ",\"mineral_cost\":" << mineral_cost(base_id, unit_id);
         append_production_switch_effect(out, base_id, unit_id);
+        if (Units[unit_id].plan == PLAN_COLONY) {
+            out << ",\"population_effect\":{\"epistemic_status\":\"conditional\","
+                "\"population_at_query\":" << base.pop_size
+                << ",\"population_change_on_selection\":0,\"population_cost_on_completion\":1,"
+                "\"meaning\":\"Selecting this Colony Pod starts or changes production and does not itself remove population. Native completion normally consumes one population; if completion occurs at population one, native rules may delay completion or require an abandon-base decision. Recheck at completion.\"}";
+        }
         out << '}';
     }
     for (int facility_id = Fac_ID_First; facility_id <= SP_ID_Last; ++facility_id) {
@@ -11351,7 +11358,10 @@ std::string production_choices_response(int faction_id, int base_id) {
             << ",\"energy_cost\":" << full_hurry_cost
             << ",\"minerals_added\":" << hurry_minerals
             << ",\"production_name\":" << json_string(production_name(Bases[base_id].queue_items[0]).c_str())
-            << ",\"meaning\":\"Pay the quoted native cost to add minerals to the named current item. This does not switch production; actual completion must be observed.\"}";
+            << ",\"quote_scope\":{\"single_execution\":true,\"revision\":"
+            << json_string(semantic_revision().c_str())
+            << ",\"invalidated_by\":[\"production switch\",\"mineral change\",\"energy change\",\"turn processing\"]}"
+            << ",\"meaning\":\"Pay this state-specific quoted native cost once to add the quoted minerals to the named current item. It is not a reusable energy-to-mineral rate. This does not switch production; actual completion must be observed.\"}";
     }
     out << "]}";
     return out.str();
@@ -11894,7 +11904,16 @@ int target_tile_id = -1, int target_unit_id = -1) {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"kind\":\"unit_actions\",\"unit_id\":" << veh_id
         << ",\"unit_name\":" << json_string(veh.name()) << ",\"at\":{\"tile_id\":"
-        << semantic_tile_id(veh.x, veh.y) << "},\"roles\":{\"colony\":"
+        << semantic_tile_id(veh.x, veh.y) << "},\"movement_budget\":{\"movement_points\":"
+        << veh_speed(veh_id, 0) << ",\"movement_scale\":" << Rules->move_rate_roads
+        << ",\"moves_remaining\":"
+        << std::max(0, veh_speed(veh_id, 0) - static_cast<int>(veh.moves_spent))
+        << ",\"meaning\":\"Movement points are native movement ticks, not a tile count. Divide by movement_scale only for a nominal road-free movement-unit comparison; terrain, roads, fungus, damage, abilities, zones of control and transports determine legal travel.\"}"
+        << ",\"lifecycle\":{\"strategic_purpose_complete\":null,\"meaning\":"
+        << json_string(veh.plan() == PLAN_ARTIFACT
+            ? "This unit is an Alien Artifact. Arrival, movement exhaustion, or a restricted action catalog does not prove that an Artifact benefit was consumed. Verify an explicit native effect before recording completion."
+            : "Current readiness and orders do not prove that this unit's strategic purpose is complete.")
+        << "},\"roles\":{\"colony\":"
         << (veh.is_colony() ? "true" : "false") << ",\"former\":"
         << (veh.is_former() ? "true" : "false") << ",\"combat\":"
         << (veh.is_combat_unit() ? "true" : "false") << ",\"probe\":"
@@ -11908,6 +11927,7 @@ int target_tile_id = -1, int target_unit_id = -1) {
         << (semantic_air_defense_eligible(veh) ? "true" : "false")
         << ",\"carrier\":"
         << (semantic_carrier_capacity(veh_id) > 0 ? "true" : "false")
+        << ",\"artifact\":" << (veh.plan() == PLAN_ARTIFACT ? "true" : "false")
         << ",\"airdrop_capable\":" << (has_abil(veh.unit_id, ABL_DROP_POD) ? "true" : "false")
         << ",\"boarded\":" << (boarded_transport_id >= 0 ? "true" : "false")
         << ",\"designated_defender\":"
@@ -12083,7 +12103,12 @@ int target_tile_id = -1, int target_unit_id = -1) {
             out << "{\"id\":\"disband:" << veh_id
                 << "\",\"command\":\"disband_unit\",\"unit_id\":" << veh_id
                 << ",\"requires\":{\"confirm_disband\":1},\"destructive\":true,"
-                "\"meaning\":\"Open native disband confirmation for this spent or ordered unit. Verify recycling and unit removal afterward.\"}";
+                << "\"target_kind\":"
+                << json_string(veh.plan() == PLAN_ARTIFACT ? "alien_artifact" : "unit")
+                << ",\"meaning\":" << json_string(veh.plan() == PLAN_ARTIFACT
+                    ? "Open native confirmation to permanently remove this Alien Artifact and apply any currently eligible base recycling. Movement exhaustion does not prove the Artifact has been consumed or has no remaining strategic use."
+                    : "Open native confirmation to permanently remove this unit and apply any currently eligible base recycling. Its current lack of movement or persistent order does not mean its strategic purpose is complete.")
+                << '}';
         }
         out << "],\"ready\":false,\"reason\":"
             << json_string(boarded_transport_id >= 0 ? "boarded_transport"
@@ -13708,13 +13733,19 @@ std::string semantic_choices_response(const std::string& request) {
                     ? MFactions[counterpart].formal_name_faction : "Unknown") << '}';
         } else if (!strcmp(label, "TECHRANDOM")) {
             const char* names[] = {"Explore", "Discover", "Build", "Conquer"};
+            const char* meanings[] = {
+                "Bias blind technology selection toward technologies categorized Explore. This research preference does not move units or reveal map tiles.",
+                "Bias blind technology selection toward technologies categorized Discover. The exact technology remains hidden until developed.",
+                "Bias blind technology selection toward technologies categorized Build. The exact technology remains hidden until developed.",
+                "Bias blind technology selection toward technologies categorized Conquer. The exact technology remains hidden until developed.",
+            };
             for (int priority = 0; priority < 4; ++priority) {
                 if (priority) out << ',';
                 out << "{\"id\":\"research_priority:" << priority
                     << "\",\"command\":\"choose_research_priority\",\"priority\":"
                     << priority << ",\"name\":" << json_string(names[priority])
                     << ",\"focus_mode\":\"single_area\",\"meaning\":"
-                    << json_string("Replace the current blind-research focus with exactly this one area; the native multiplayer synchronization packet is sent after confirmation.")
+                    << json_string(meanings[priority])
                     << '}';
             }
         } else if (!strcmp(label, "SOCIETY")) {

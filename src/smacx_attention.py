@@ -183,6 +183,13 @@ class AttentionService:
                 return {
                     "attention_lease_id": str(existing["attention_lease_id"]),
                     "through_cursor": int(existing["through_cursor"]),
+                    "acknowledgement": {
+                        "receipt": str(existing["attention_lease_id"]),
+                        "action": "acknowledge_all_delivered",
+                        "tool_arguments": {
+                            "attention_lease_id": str(existing["attention_lease_id"]),
+                        },
+                    },
                     "items": items, "status": str(existing["status"]), "reused": True,
                 }
             rows = connection.execute(
@@ -220,7 +227,13 @@ class AttentionService:
             "attention", "lease_size", len(items), scope=self.scope, timeline_id=timeline,
             dimensions={"redeliveries": redeliveries},
         )
-        return {"attention_lease_id": lease_id, "through_cursor": through, "items": items}
+        return {"attention_lease_id": lease_id, "through_cursor": through,
+                "acknowledgement": {
+                    "receipt": lease_id,
+                    "action": "acknowledge_all_delivered",
+                    "tool_arguments": {"attention_lease_id": lease_id},
+                },
+                "items": items}
 
     def runtime_state(self, *, current_world_revision: int | None = None,
                       current_world_epoch: str | None = None,
@@ -399,7 +412,7 @@ class AttentionService:
             if changed != 1:
                 raise AttentionError("invalid_attention_lease_transition")
 
-    def acknowledge(self, lease_id: str, *, through_cursor: int,
+    def acknowledge(self, lease_id: str, *, through_cursor: int | None = None,
                     acknowledged_ids: Iterable[str] = ()) -> dict[str, Any]:
         ids = set(str(value) for value in acknowledged_ids)
         now = time.time()
@@ -419,6 +432,11 @@ class AttentionService:
             ).fetchall()
             if not ids.issubset({str(row["attention_id"]) for row in rows}):
                 raise AttentionError("attention_ack_scope_mismatch")
+            if through_cursor is None:
+                # The random, perspective-scoped lease ID is the receipt for
+                # exactly the delivered batch. Omit counter arithmetic for a
+                # full-batch acknowledgement; explicit IDs retain partial ack.
+                through_cursor = 0 if ids else int(lease["through_cursor"])
             if int(through_cursor) < 0 or int(through_cursor) > int(lease["through_cursor"]):
                 raise AttentionError("attention_ack_cursor_out_of_range")
             eligible = [str(row["attention_id"]) for row in rows

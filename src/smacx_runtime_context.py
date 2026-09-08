@@ -332,6 +332,13 @@ def _cognition(working: Mapping[str, Any], *, token_budget: int,
 
     commitments.sort(key=commitment_salience)
     result = {
+        "evidence_semantics": {
+            "authority": "sovereign_interpretation_and_intent_not_current_mechanical_truth",
+            "beliefs": "Confidence-scored hypotheses; repetition or persistence does not promote them to observed fact.",
+            "plans": "Objectives and confirmation prose express intent. Only explicit structured dependencies are mechanically checked.",
+            "completion": "An arrival or accepted order does not prove consumption, completion, or effect. Require an observed effect or qualified uncertainty.",
+            "current_state": "Resolve present mechanics from current world, decision, choice, and execution evidence before relying on saved prose.",
+        },
         "goals": goals[:12],
         "plans": plans[:12],
         "commitments": commitments[:12],

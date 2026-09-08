@@ -65,7 +65,12 @@ def main() -> int:
                         "next_cursor": None}
             return {
                 "ok": True, "match_id": "match-test", "session_id": "session-test",
-                "revision": "r1", "choices": [{"command": "skip_unit", "unit_id": 7}],
+                "revision": "r1", "unit_name": "Scout Patrol", "ready": False,
+                "reason": "unit_not_ready", "roles": {"artifact": False},
+                "movement_budget": {"movement_points": 3, "movement_scale": 3,
+                                    "moves_remaining": 0},
+                "lifecycle": {"strategic_purpose_complete": None},
+                "choices": [{"command": "skip_unit", "unit_id": 7}],
             }
 
         smacx_mcp._call = turn_call
@@ -83,6 +88,11 @@ def main() -> int:
         if frame.get("choice_scope", {}).get("family") != "unit_actions" \
                 or frame["choice_scope"].get("all_management_actions_enumerated") is not False:
             raise AssertionError("ready-unit frame implied exhaustive management choices")
+        unit_context = frame.get("unit_action_context", {})
+        assert unit_context.get("reason") == "unit_not_ready", unit_context
+        assert unit_context.get("ready") is False, unit_context
+        assert unit_context.get("lifecycle", {}).get("strategic_purpose_complete") is None
+        assert "strategic purpose completion" in unit_context["catalog_scope"]["not_evidence_of"]
 
         unavailable = smacx_mcp.smac_decision(own_unit_ref="own-unit-spent")
         assert unavailable["error"]["code"] == "unit_not_ready_in_decision_frame"

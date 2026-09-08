@@ -38,6 +38,8 @@ with tempfile.TemporaryDirectory() as tmp:
     attention.responded(renewed['attention_lease_id'])
     refreshed = attention.lease('episode-long')
     assert {r['attention_id'] for r in refreshed['items']} == {first['attention_id'], second['attention_id']}
+    assert refreshed['acknowledgement']['tool_arguments'] == {
+        'attention_lease_id': refreshed['attention_lease_id']}
     attention.placed(refreshed['attention_lease_id'])
     attention.responded(refreshed['attention_lease_id'])
     for cursor, ids, code in [
@@ -50,7 +52,7 @@ with tempfile.TemporaryDirectory() as tmp:
         except AttentionError as exc:
             assert str(exc) == code
         assert len(attention.unacknowledged_critical()['items']) == 2
-    acknowledged = attention.acknowledge(refreshed['attention_lease_id'], through_cursor=refreshed['through_cursor'])
+    acknowledged = attention.acknowledge(refreshed['attention_lease_id'])
     assert len(acknowledged['acknowledged_ids']) == 2
     assert not attention.unacknowledged_critical()['items']
     empty = attention.lease('episode-long')
@@ -63,7 +65,7 @@ with tempfile.TemporaryDirectory() as tmp:
 print(json.dumps({'pass': True, 'expired_responded_redelivery': True,
                   'inflight_placement_immutable': True, 'new_critical_after_response_delivered': True,
                   'empty_lease_does_not_hide_critical': True, 'invalid_ack_no_effect': True,
-                  'reviewed_valid_ack_clears_gate': True}))
+                  'opaque_full_batch_receipt_clears_gate': True}))
 
 # The managed tool must expose a refresh path, not another apparently successful no-op.
 import smacx_mcp
@@ -76,3 +78,17 @@ with patch.object(smacx_mcp, '_managed_scope_identity', return_value=('m','s','a
 assert result['ok'] is False and result['acknowledged_ids'] == []
 assert result['required_next']['tool'] == 'smac_decision'
 print(json.dumps({'managed_refresh_guidance': True}))
+
+captured = {}
+class ReceiptAcknowledgement:
+    def acknowledge(self, lease_id, **kwargs):
+        captured.update({'lease_id': lease_id, **kwargs})
+        return {'ok': True, 'attention_lease_id': lease_id}
+with patch.object(smacx_mcp, '_managed_scope_identity', return_value=('m','s','a','p')), \
+     patch.object(smacx_mcp, 'controller_world_service',
+                  return_value=(None,None,ReceiptAcknowledgement())):
+    result = smacx_mcp.smac_attention_ack('attention-lease-receipt')
+assert result['ok'] is True
+assert captured == {'lease_id': 'attention-lease-receipt',
+                    'through_cursor': None, 'acknowledged_ids': ()}
+print(json.dumps({'managed_opaque_receipt_without_cursor': True}))

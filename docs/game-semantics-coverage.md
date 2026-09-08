@@ -1121,3 +1121,39 @@ tests; improved model behavior is not yet claimed. See
 Installed-image citizen delivery and deployed source checks pass. Main control
 and harness image selection is updated; worker compatibility and service health
 are verified. No new provider-behavior or native-mechanics claim is made.
+
+## Semantic action evidence checkpoint 1 (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Restricted unit actions | Native-shaped readiness/reason/lifecycle → managed decision context is covered in source and installed control images. A missing current action is explicitly separated from strategic completion or permanent impossibility. Full MinGW bridge compilation passes; corrected model interpretation in a fresh campaign remains unproven. |
+| Artifact identity and disband | Positive Artifact role and Artifact-specific permanent-removal text are implemented at the native catalog. Exact choice binding and native confirmation are unchanged. Controlled native Artifact eligibility/effect cases remain pending; arrival is not labeled consumption. |
+| Movement units | Raw movement points, scale and remainder are delivered with the restriction reason and explicitly are not tile counts. Terrain-specific route accuracy remains a separate route-query/native acceptance claim. |
+
+See [checkpoint evidence](benchmarks/semantic-action-evidence.md).
+
+## Semantic action evidence checkpoint 2 (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Colony Pod production | Current owned base population → native legal production choice → conditional selection/completion distinction → provider-queryable managed response passes. Population is unchanged on selection; normal completion cost and population-one native decision are represented without predicting their outcome. Controlled live completion remains pending. |
+| State-dependent quotes | Hurry quote carries current item, exact quoted amount, native revision, single-use scope and invalidators through the managed response. The prior Scout quote cannot establish a future Colony Pod price. Actual execution/effect verification remains guarded by the existing choice receipt. |
+| Blind research categories | Native TECHRANDOM choices distinguish category bias from map exploration and preserve hidden target semantics. Build compilation passes; controlled popup/provider delivery remains pending. |
+
+## Semantic action evidence checkpoint 3 (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Attention acknowledgement | Delivered perspective-scoped lease → explicit sovereign review → opaque full-batch receipt → durable acknowledgement is covered without model counter arithmetic. Wrong legacy counters still fail without effect; expiry, replacement, redelivery and scope guards remain. Installed control-image forwarding passes; fresh live sovereign use remains pending. |
+| Partial attention | Explicit `acknowledged_ids` remain available and are restricted to the current lease. Omitted cursor means full batch only when no explicit IDs are supplied. No auto-acknowledgement or cursor clamping was added. |
+| Cognition authority | Canonical journal → bounded working cognition labels beliefs/hypotheses, plan intent and completion evidence boundaries. Structured dependency health remains the only mechanically checked plan subset; narrative truth is not promoted. Controlled HTTP provider delivery passes across normal, resume, semantic-GC and journal-reopen paths; behavioral compliance remains pending. |
+
+## Semantic action evidence checkpoint 4 (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Installed delivery | Rebuilt installed control image → managed decision/production/attention responses passes. Canonical journal → request-only runtime context → Hermes sanitizer → controlled HTTP payload carries cognition evidence semantics without mutating durable history. |
+| Doctrine compatibility | Reviewed engine fingerprint → stock public rules receipt on an isolated running native UI thread → confirmed context → repeated identical adapter result → compiled doctrine passes. Modified public rules are rejected rather than silently accepted. |
+| Release boundary | Complete bridge/worker/control builds and 87 portal tests pass. Exact Artifact benefit execution, population-one Colony Pod completion, blind-research popup behavior and improved sovereign decisions require a fresh controlled or live campaign and are not marked complete. |
+
+See [integrated checkpoint evidence](benchmarks/semantic-action-evidence.md).
