@@ -15,8 +15,7 @@
     "harness_continuation_contract_test": "passed; advancing successor not charged prior episode, nonadvancing baseline retained, existing stall/quarantine/error-restart contracts pass"
   },
   "pending": [
-    "live successor episode progression",
-    "sustained/full-game acceptance"
+    "sustained successor effects and full-game acceptance"
   ],
   "recovery28": {
     "supported_retry_after_update": true,
@@ -36,5 +35,16 @@
       },
       "world_revision": 10
     }
+  },
+  "live_successor29": {
+    "run_id": "run-78ee2ef553c14a85980f83e532820b15",
+    "invocation_count": 2,
+    "last_clean_yield_advanced": true,
+    "last_clean_yield_unix": 1788845127.122112,
+    "attempt_started_unix": 1788845127.8805664,
+    "semantic_progress_unix": 1788845127.1221135,
+    "semantic_baseline_pending": false,
+    "playable_decision_turn": 29,
+    "interpretation": "Live advancing clean yield resets timer at the boundary and successor obtains a fresh baseline and playable decision. Sustained successor effects remain under monitoring."
   }
 }
