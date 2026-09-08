@@ -945,3 +945,5 @@ Turn46→47 production follow-through: sovereign queried production/support then
 Turn50 Former completion verified: own-unit-11 Formers at headquarters; current base support4/intake4/surplus0 agrees with turn49 conditional next-unit projection. Scout5 back-and-forth is native-successful; trace shows reconsideration and erroneous distance reasoning before correct route use, not a demonstrated movement defect. Terrain work and expansion remain open. Evidence: `docs/benchmarks/astra-former-completion50.json`.
 
 Turn51 intent feedback checkpoint: real sovereign string-valued trigger rejection now has structured field/type/horizon guidance. Guarded writer regression proves rejection leaves cognition unchanged and explicit corrected goal/plan writes succeed. No automatic coercion or weakened journal guard. Live delivery/retry remains pending. Former automation moved to836 but active terrain work is not yet verified. Evidence: `docs/benchmarks/astra-intent-feedback51.json`.
+
+Intent-feedback deployment: installed-image writer regression passed; verified park and resume completed at51 after isolated control/harness rebuild. Live sovereign consumption remains pending.
