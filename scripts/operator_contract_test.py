@@ -87,6 +87,7 @@ with tempfile.TemporaryDirectory() as tmp:
         assert control.get_supervision_incident(incident_id)['status'] == 'operator_required'
         recovered_calls = []
         def recover(*args, **kwargs):
+            assert kwargs.get("operator_pause_incident_id") == incident_id
             recovered_calls.append(args)
             control.update_match_lifecycle(scope.match_id, 'running')
             return {'ok': True}

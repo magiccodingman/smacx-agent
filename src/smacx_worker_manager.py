@@ -4143,8 +4143,19 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             })
         return refreshed
 
-    def recover_match(self, match_id: str, *, refresh_runtime: bool = False) -> dict[str, Any]:
+    def recover_match(self, match_id: str, *, refresh_runtime: bool = False,
+                      operator_pause_incident_id: str | None = None) -> dict[str, Any]:
         with self._lifecycle_lock:
+            # Check after acquiring the lock: a queued automatic recovery may
+            # have observed a failed worker before an operator froze it.
+            pauses = [row for row in self.control.list_supervision_incidents(
+                match_id=match_id, active_only=True)
+                if row.get("incident_kind") == "operator_pause"]
+            if pauses and (not operator_pause_incident_id or any(
+                    row.get("incident_id") != operator_pause_incident_id for row in pauses)):
+                raise WorkerManagerError("operator_pause_blocks_automatic_recovery")
+            if operator_pause_incident_id and not pauses:
+                raise WorkerManagerError("active_operator_pause_incident_required")
             return self._recover_match_locked(match_id, refresh_runtime=refresh_runtime)
 
     def _recover_match_locked(self, match_id: str, *, refresh_runtime: bool = False) -> dict[str, Any]:

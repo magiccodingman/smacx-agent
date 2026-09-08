@@ -233,7 +233,8 @@ class OperatorService:
             active = self.control.list_supervision_incidents(match_id=match_id, active_only=True)
             if any(row['incident_kind'] != 'operator_pause' for row in active):
                 raise InvalidRecord('unresolved_incident_blocks_operator_resume')
-            recovered = self.manager.recover_match(match_id, refresh_runtime=True)
+            recovered = self.manager.recover_match(
+                match_id, refresh_runtime=True, operator_pause_incident_id=incident_id)
             if not recovered.get('ok'):
                 raise InvalidRecord('operator_recovery_not_verified')
             self.control.recover_supervision_incidents(match_id, kinds=('operator_pause',))
