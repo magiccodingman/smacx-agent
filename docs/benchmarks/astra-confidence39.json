@@ -8,7 +8,7 @@
     "installed_control": "both memory contracts pass with scripts-only mounts",
     "schema_budget": "15 tools, world660, total7688 conservative tokens"
   },
-  "limits": "Actual schema delivery verified; autonomous corrected relationship write and future validation-error delivery remain pending.",
+  "limits": "Corrected autonomous relationship write and next-provider context verified. Relationship reasons remain sovereign assertions, not mechanically verified facts; broader recovery and full-game gates remain open.",
   "provider_delivery": {
     "time": 1788856519.601065,
     "correlation": {
@@ -26,5 +26,47 @@
     "control_reported_turn_at_recovery": 40,
     "fresh_native_restored_turn": 39,
     "turn_reporting_limit": "Control metadata initially retained40; fresh native decision and subsequent health establish restored checkpoint39."
+  },
+  "autonomous_correction": {
+    "journal_event_id": "journal-388aa98502be4a8fb8d775c4b5d15d47",
+    "submitted_faction_ref": "faction-5",
+    "confidence": 0.8,
+    "provider_context": {
+      "time": 1788857100.7134762,
+      "correlation": {
+        "attention_lease_id": "attention-lease-968a78d9d6284f4fb8c85b2b1d80dac4",
+        "episode_id": "episode-1d908f754f53323e5cb4e1b0f3ceb154",
+        "request_id": "7f7120df48124c53ba6f777abaf0996c",
+        "runtime_context_sha256": "a1e62b1a342dee669bda9b672114d89a738ab1a23040aee7fda616e2799a30a3"
+      },
+      "relationships": [
+        {
+          "actor_id": "actor-776cd052c66526d13bc51f81a950976b",
+          "affinity": 20,
+          "agent_id": "agent-seat-23342da8f26ca5dc8ae9b3d4",
+          "confidence": 0.8,
+          "created_unix": 1788857100.3327005,
+          "grievance": 0,
+          "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+          "obligation": 0,
+          "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+          "reasons": [
+            "Spartan Federation (Santiago) entered Truce and Treaty with us around turn 38; commlink held",
+            "No hostile contact observed",
+            "Base location still unknown; 5 Spartan-owned ocean tiles seen on the eastern sea"
+          ],
+          "reasons_json": "[\"Spartan Federation (Santiago) entered Truce and Treaty with us around turn 38; commlink held\",\"No hostile contact observed\",\"Base location still unknown; 5 Spartan-owned ocean tiles seen on the eastern sea\"]",
+          "relationship_id": "relationship-dc2904e973f04f8db8b70e9c207a4d25",
+          "relationship_revision": 2,
+          "respect": 25,
+          "source_event_id": null,
+          "status": "current",
+          "superseded_by_relationship_id": null,
+          "supersedes_relationship_id": "relationship-2ffea1c2add04e3983f908caa5f4b81f",
+          "threat": 15,
+          "trust": 30
+        }
+      ]
+    }
   }
 }
