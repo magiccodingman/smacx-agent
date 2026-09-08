@@ -252,8 +252,9 @@ def main() -> int:
             seat_meta["gameplay_context"] = doctrine_fixtures()["stock-blind"]
             connection.execute("UPDATE seat_assignments SET metadata_json=? WHERE match_id=? AND agent_id=?", (json.dumps(seat_meta),scope.match_id,scope.agent_id))
         descriptor = control.prepare_hermes_profile(
-            scope.match_id, provider["provider_id"], reasoning_effort="low",
+            scope.match_id, provider["provider_id"],
         )
+        assert descriptor["reasoning_effort"] == "low"
         if descriptor["instance_id"] != instance["instance_id"] \
                 or descriptor["mcp_url"] != "http://127.0.0.1:48125/mcp" \
                 or descriptor["provider_requires_api_key"] is not False:
@@ -264,6 +265,13 @@ def main() -> int:
         restarted = ControlPlane(SmacxStore(store.path), control.vault.root)
         repeated = restarted.prepare_hermes_profile(scope.match_id, provider["provider_id"], reasoning_effort="low")
         repeated_profile = restarted.get_harness_profile(repeated["harness_profile_id"])
+        # Maintenance assembly preserves an omitted selection, including a
+        # non-default value; an explicit change remains authoritative.
+        restarted.prepare_hermes_profile(scope.match_id, provider["provider_id"], reasoning_effort="high")
+        preserved = restarted.prepare_hermes_profile(scope.match_id, provider["provider_id"])
+        assert restarted.get_harness_profile(preserved["harness_profile_id"])["reasoning_effort"] == "high"
+        selected = restarted.prepare_hermes_profile(scope.match_id, provider["provider_id"], reasoning_effort="low")
+        assert restarted.get_harness_profile(selected["harness_profile_id"])["reasoning_effort"] == "low"
         assert repeated_profile["system_prompt"].encode() == managed_prompt.encode()
         assert repeated_profile["metadata"]["gameplay_doctrine"] == managed_profile["metadata"]["gameplay_doctrine"]
         if descriptor.get("system_prompt_schema") != "smacx.player-gameplay.v1" \

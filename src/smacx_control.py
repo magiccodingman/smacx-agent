@@ -2121,7 +2121,7 @@ class ControlPlane:
 
     def prepare_hermes_profile(self, match_id: str, provider_id: str, *,
                                agent_id: str | None = None,
-                               reasoning_effort: str = "low",
+                               reasoning_effort: str | None = None,
                                model_id: str | None = None,
                                context_length: int | None = None,
                                generation_settings: Mapping[str, Any] | None = None,
@@ -2255,8 +2255,10 @@ class ControlPlane:
         from smacx_doctrine import compose_managed_prompt, DoctrineError
         context = seat_metadata.get("gameplay_context")
         with self.store.transaction() as connection:
-            existing = connection.execute("SELECT system_prompt,metadata_json FROM harness_profiles WHERE agent_id=? AND provider_id=? AND external_profile_id=?",
+            existing = connection.execute("SELECT system_prompt,metadata_json,reasoning_effort FROM harness_profiles WHERE agent_id=? AND provider_id=? AND external_profile_id=?",
                 (seat["agent_id"],provider_id,external_profile_id)).fetchone()
+        if reasoning_effort is None:
+            reasoning_effort = str(existing["reasoning_effort"]) if existing else "low"
         previous = {"system_prompt":existing["system_prompt"],"metadata":json.loads(existing["metadata_json"])} if existing else None
         public_agent_name = str(seat_metadata.get("player_name") or seat["agent_name"])
         system_prompt, doctrine_metadata = compose_managed_prompt(

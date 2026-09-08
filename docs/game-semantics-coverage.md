@@ -1051,3 +1051,12 @@ Live request-state chain verified62: current sovereign marker (headers phase) pr
 Live automation-digest gate62: sovereign Activate unit clears Former automation (owned observation468), native and meaningful fingerprints change in the same session/turn, and normal supervisor progress timestamp advances2751→2903. This closes the pending live cancellation/progress-reset gate from turn53. Subsequent direct-control utility and provider drain activation remain pending. See `benchmarks/astra-automation-live62.json`.
 
 Live drain outcome62: matching pending request completed after ordinary deadline; subsequent plan write did not establish native progress, and a new provider request could not renew grace. Supervisor quarantined with both request IDs and fixed deadlines recorded. Live activation/nonrenewal is proven; strategic follow-through is not. Unsupported mechanics/arithmetic persisted as sovereign intent remain unverified assertions, not native evidence. Further timeout relaxation is not justified by this outcome.
+# Unattended readiness checkpoint (2026-09-08)
+
+See [acceptance evidence](benchmarks/unattended-readiness.md). Sampled-progress
+provider drain and omitted reasoning preservation now have production-path
+regressions. Expansion/support epistemics, staged actions, order bookkeeping,
+canonical journal evidence, diagnostic export and recovery contracts passed the
+bounded readiness audit. These are contract/adapter checks, not new live native
+mechanics proof. Strategic expansion, natural specialist/memory use and full-game
+completion remain open. Main port 8080 deployment is healthy; no game was started.

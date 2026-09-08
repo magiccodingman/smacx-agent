@@ -858,8 +858,10 @@ print(json.dumps(result,separators=(',',':')))
                     and previous_fingerprint and fingerprint != previous_fingerprint
                 )
                 progress_since = float(metadata.get("semantic_progress_unix") or now)
+                progress_observed_after = metadata.get("semantic_progress_observed_after_unix", progress_since)
                 if progress_changed or not previous_fingerprint:
                     progress_since = now
+                    progress_observed_after = float(metadata.get("semantic_sample_unix") or now)
                 telemetry = metadata.get("semantic_telemetry") \
                     if isinstance(metadata.get("semantic_telemetry"), dict) else {}
                 last_telemetry = float(metadata.get("semantic_telemetry_unix") or 0)
@@ -900,6 +902,7 @@ print(json.dumps(result,separators=(',',':')))
                     "semantic_sample_unix": now,
                     "semantic_fingerprint": fingerprint or previous_fingerprint,
                     "semantic_progress_unix": progress_since,
+                    "semantic_progress_observed_after_unix": progress_observed_after,
                     "semantic_progress": progress,
                     "semantic_telemetry": telemetry,
                     "semantic_telemetry_unix": last_telemetry,
@@ -924,6 +927,7 @@ print(json.dumps(result,separators=(',',':')))
                     draining, drain = provider_drain_window(
                         run_id=str(run["run_id"]), now=now, progress_since=progress_since,
                         stall_seconds=stall_seconds, request=telemetry.get("provider_request"),
+                        progress_observed_after=progress_observed_after,
                         previous=drain,
                     )
                     if draining:
