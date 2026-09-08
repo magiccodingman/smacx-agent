@@ -100,7 +100,9 @@ MATCH_BRIEFING_RESUME_NOTICES: set[tuple[str, str]] = set()
 MATCH_BRIEFING_LOCK = threading.Lock()
 DECISION_CACHE: dict[str, dict] = {}
 DECISION_LOCK = threading.Lock()
-DECISION_TTL_SECONDS = 180.0
+# A measured provider response took 181.4 seconds. Allow bounded reasoning
+# latency; execution still requires the original native revision and guards.
+DECISION_TTL_SECONDS = 300.0
 CHOICE_PREPARATIONS = ChoicePreparations(ttl=DECISION_TTL_SECONDS)
 AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
 AIRDROP_RECEIPT_LOCK = threading.Lock()

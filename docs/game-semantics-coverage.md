@@ -973,3 +973,5 @@ Production-switch consequence checkpoint: native catalog and counterfactual shar
 Switch-consequence deployment: installed adapter and guarded preview contracts pass; refreshed native recovery and explicit doctrine recompile completed. Actual sovereign delivery remains pending; full-game acceptance remains open.
 
 Switch-consequence live delivery verified: actual provider requeste762286e6e8d42099f0ccfbc71216279 contains switch_effect in production tool history. This closes provider delivery; comprehension and improved decisions are not inferred. Updated `docs/benchmarks/astra-production-switch53.json`.
+
+Decision lease checkpoint: observed provider latency181.4s exceeded the180s lease, preventing native dispatch before the turn53 stall. Finite lease increased to300s; original revision, single-use, stale rebase, and preview guards retained. Delayed-choice/expiry/preview/stale-rebase contracts pass. Installed/live recovery pending; no claim of full-game completion. Evidence: `docs/benchmarks/astra-decision-lease53.json`.

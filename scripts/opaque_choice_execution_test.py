@@ -106,6 +106,18 @@ def main() -> int:
         assert "No native action was attempted" in invalid["error"]["message"]
         assert "movement legality was not tested" in invalid["error"]["message"]
 
+        # Slow inference may exceed the former 180-second lease. It must still
+        # send the original native revision and remain single-use.
+        slow_id, slow_choices = smacx_mcp._cache_decision_choices(
+            {"match_id": "slow-test", "session_id": "session-test", "revision": "r1"},
+            [{"command": "end_turn"}], choice_kind="game_management", choice_arguments={},
+        )
+        smacx_mcp.DECISION_CACHE[slow_id]["created_monotonic"] -= 182
+        slow = smacx_mcp.smac_execute_choice(slow_id, slow_choices[0]["choice_id"])
+        assert slow.get("ok"), slow
+        assert calls[-2][1]["expected_revision"] == "r1", calls[-2]
+        assert smacx_mcp.smac_execute_choice(slow_id, slow_choices[0]["choice_id"])["error"]["code"] == "consumed_decision"
+
         expired_id, expired_choices = smacx_mcp._cache_decision_choices(
             {"match_id": "expiry-test", "session_id": "session-test", "revision": "r2"},
             [{"command": "end_turn"}], choice_kind="game_management", choice_arguments={},

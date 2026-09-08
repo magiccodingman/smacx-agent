@@ -1,0 +1,14 @@
+{
+  "turn": 53,
+  "incident_id": "incident-c86e768593f7469bbcc3c66737dcce82",
+  "observed_provider_latency_seconds": 181.3706183,
+  "previous_lease_seconds": 180,
+  "lease_seconds": 300,
+  "repair": "Finite lease adjustment; original revision and execution guards retained. No automatic expired-action execution or stall-policy relaxation.",
+  "validation": [
+    "opaque_choice_execution_test: 182-second delayed choice forwards original revision, replay rejected, beyond-lease execution rejected without dispatch",
+    "counterfactual_choice_contract_test: scope/revision/TTL/consumption pass",
+    "stale_opaque_rebase_test: pass"
+  ],
+  "acceptance": "Source contracts verified; installed image and live recovery pending. Full-game acceptance remains open."
+}
