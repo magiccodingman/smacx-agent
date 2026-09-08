@@ -661,3 +661,5 @@ Support-surplus deployment acceptance: installed-image regression passes and sup
 ### Turn-19 movement/read reentrancy checkpoint (in progress)
 
 A controlled native replay reproduced the live access violation in `mod_base_support` when `list_bases` ran inside movement's message loop. The repaired dispatch barrier passes the same move plus immediate base read, verifies the resulting destination, and retains bridge liveness. Evidence: `docs/benchmarks/astra-native-move-read-barrier.json`; regression: `scripts/native_move_read_barrier_test.py`. Native effect verification is proven for this fixture; live deployment/recovery, broader modal checks, and full-game acceptance remain pending. This does not mark the overall capability complete.
+
+Deployment evidence for the movement barrier: verified operator recovery returned HTTP 200 at turn 19; worker and MCP are healthy, the live DLL matches the controlled test SHA-256, and doctrine recompilation succeeded. Autonomous post-recovery action acceptance remains pending.

@@ -1,5 +1,5 @@
 {
-  "status": "controlled_native_regression_passed_deployment_pending",
+  "status": "deployed_live_gameplay_acceptance_pending",
   "turn": 19,
   "failure": {
     "operation": "list_bases immediately after queued move_unit",
@@ -20,7 +20,7 @@
     "dll_sha256": "27508b96d4fc7e1d6e7e7767f0bfdef446e63b7a77e681aa2cccb1e164b5efd5"
   },
   "limitations": [
-    "Live campaign recovery not yet verified",
+    "Autonomous post-recovery movement acceptance pending",
     "Additional native modal regression checks pending",
     "Full-game acceptance incomplete"
   ],
@@ -29,5 +29,15 @@
     "transport_liveness": "idle, partial, trickle and fragmented frames passed on repaired DLL",
     "doctrine_integration": "native-shaped adapter and persisted-profile contract passed",
     "reviewed_engine_source_sha256": "4b7006b2c95a573cf1407d4d4a54c80e6f6e47dddc6f1f5d7c7a5637afd6ae0f"
+  },
+  "deployment": {
+    "resume_http_status": 200,
+    "recompile_http_status": 200,
+    "restored_turn": 19,
+    "live_dll_sha256": "27508b96d4fc7e1d6e7e7767f0bfdef446e63b7a77e681aa2cccb1e164b5efd5",
+    "matches_tested_dll": true,
+    "worker_health": "healthy",
+    "mcp_health": "healthy",
+    "portal_restored": true
   }
 }
