@@ -1,0 +1,20 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "turn": 50,
+  "observed_unit": {
+    "ref": "own-unit-11",
+    "name": "Formers",
+    "location": "location-795"
+  },
+  "observed_base": {
+    "provenance": "observation-399",
+    "mineral_intake": 4,
+    "support": 4,
+    "surplus": 0,
+    "accumulated": 1
+  },
+  "comparison": "Turn49 production query conditionally predicted support4 and surplus0 after one supported unit; observed turn50 agrees.",
+  "strategy_audit": "Scout5 moved HQ\u2192755 at47, back48, out49. Trace contains repeated reconsideration and incorrect distance estimates, then correct queried route. Not evidence of failed movement.",
+  "archive_sha256": "1fe3bbe51e1dbf47bba36e9ace381325e484030fcc7ee326a815025fb8bc185e",
+  "limits": "Single live support comparison; no broad mechanics equivalence. Former construction proven, terrain work and expansion pending."
+}
