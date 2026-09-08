@@ -1031,3 +1031,5 @@ Scope-error feedback repair: repeated turn58 truncated-session writes motivated 
 Scope-feedback deployment: installed-image test passes; supported park/resume restored59, native/MCP healthy, Graphiti rebuild completed and profile compile returned200. Live scope-error consumption of the revised receipt remains pending; no invalid write is induced for acceptance.
 
 Turn60 Former continuation: owned observation450 reports active Farm work (2 points), following Sensor completion57 and no active task58. This proves renewed task selection, not Farm completion or improved food/mineral yields. Sovereign saved plan revision6 and guarded End Turn advanced59→60 without a scope error. No error occurred, so improved rejection-feedback consumption is still pending. See `benchmarks/astra-former-continuation60.json`.
+
+Farm continuation follow-up61: current owned observation454 reports 6 work points versus recorded2 at60. Sustained native work is verified; Farm completion and yield change are not. Sovereign also acknowledged the perihelion popup and advanced60→61 without an incident.

@@ -20,5 +20,25 @@
   "preceding_evidence": "astra-followthrough57.json verifies completed Sensor; astra-scope-recovery58.json records automation enabled with no active task at58.",
   "assessment": "Current owned state now exposes active Farm work, demonstrating automation selected another task after Sensor completion. No Farm completion or changed yields is claimed.",
   "sovereign_plan_journal": "journal-6cb0c25340eb470baba9840db3b02fa8",
-  "turn_advance_choice": "choice-e3db193ebc7b4ac0acaf289177d056b4"
+  "turn_advance_choice": "choice-e3db193ebc7b4ac0acaf289177d056b4",
+  "follow_up_turn61": {
+    "source_sha256": "06579ab2bc6ff635e658ab6c08731093d1674437bea329e98a1891e6bfaea91c",
+    "task": {
+      "epistemic_status": "current",
+      "first_known_turn": 61,
+      "last_verified_turn": 61,
+      "provenance_ref": "observation-454",
+      "source": "owned_state",
+      "value": {
+        "accumulated_work_points": 6,
+        "automation_active": true,
+        "completion_verified": false,
+        "name": "Farm",
+        "order_kind": "terraform",
+        "state": "active_terraform_order"
+      },
+      "world_revision": 4
+    },
+    "assessment": "Active Farm work increased from recorded2 to6. Completion and tile yield effects remain pending."
+  }
 }
