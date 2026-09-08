@@ -108,6 +108,90 @@ class HarnessManager:
             if scope.agent_id == str(run.get("agent_id") or ""):
                 AttentionService(self.store, journal, scope).cancel_active_sovereign(reason)
 
+    def _chat_wake_cursor(self, run: Mapping[str, Any]) -> int:
+        # Only published, perspective-scoped incoming chat can wake a sovereign.
+        journal = CampaignJournal(self.store.path.parent / "campaigns",
+                                  timeline_resolver=self.store.active_timeline_id)
+        for scope in self.store.scopes_for_match(str(run["match_id"])):
+            if scope.agent_id == run.get("agent_id") and scope.perspective_id == run.get("perspective_id"):
+                attention = AttentionService(self.store, journal, scope)
+                return attention.pending_chat_cursor()
+        return 0
+
+    def _waiting_match_stalled(self, run: Mapping[str, Any], progress: Mapping[str, Any]) -> bool:
+        """Only a managed turn owner can be charged to this wait watchdog.
+
+        Peer markers stay operator-only; they must never enter provider context.
+        Reads and chat do not renew the native progress deadline.
+        """
+        peers = [r for r in self.control.list_harness_runs()
+                 if r["match_id"] == run["match_id"] and r["desired_status"] == "running"
+                 and r["status"] in {"running", "restarting", "starting", "queued"}]
+        samples = {r["instance_id"]: (dict(progress) if r["instance_id"] == run["instance_id"]
+                   else self.worker_manager.semantic_progress(r["instance_id"])) for r in peers}
+        owner = progress.get("current_faction_id")
+        managed_owner = owner is not None and any(v.get("faction_id") == owner for v in samples.values())
+        # A human/unmanaged turn has no autonomous time limit. Missing samples
+        # are an availability concern, never evidence of a healthy frozen match.
+        eligible = managed_owner and bool(samples) and all(v.get("available") for v in samples.values())
+        markers = {key: [v.get("session_id"), v.get("native_fingerprint"), v.get("phase")]
+                   for key, v in sorted(samples.items())}
+        old = (run.get("metadata") or {}).get("waiting_match") or {}
+        now = time.time()
+        since = old.get("since_unix", now) if eligible and old.get("markers") == markers else now
+        self.control.update_harness_run(str(run["run_id"]), metadata_update={
+            "waiting_match": {"markers": markers, "since_unix": since, "eligible": eligible}})
+        deadline = min(max(int(run["restart_policy"].get("semantic_stall_seconds", 360)), 120), 1800)
+        # Active peers retain the existing provider-aware bounded drain policy.
+        all_wait = all(v.get("phase") == "wait" for v in samples.values())
+        if not eligible or not all_wait or now - since < deadline:
+            return False
+        detail = {"summary": "Managed replicas remained waiting without native progress.",
+                  "seconds_without_progress": now - since, "samples": samples}
+        self.control.record_supervision_incident(str(run["instance_id"]),
+            "managed_turn_wait_stalled", "operator_required", detail)
+        self.control.update_match_lifecycle(str(run["match_id"]), "error", metadata={
+            "recovery_required": True, "recovery_reason": "managed_turn_wait_stalled"})
+        quarantine = self.worker_manager.quarantine_match(str(run["match_id"]))
+        self.control.update_match_lifecycle(str(run["match_id"]), "error", metadata={
+            "incident_quarantine": quarantine})
+        return True
+
+    def _sleep_until_event(self, run: Mapping[str, Any], progress: Mapping[str, Any]) -> bool:
+        """Persist a provider-free wait. False means an actionable wake exists."""
+        metadata = run.get("metadata") or {}
+        sleeping = metadata.get("sleep") or {}
+        chat = self._chat_wake_cursor(run)
+        wake = None
+        if progress.get("phase") != "wait" or progress.get("interaction_kind") != "waiting_for_turn":
+            wake = "native_phase_changed"
+        elif sleeping and sleeping.get("session_id") != progress.get("session_id"):
+            wake = "session_changed"
+        elif chat > int(metadata.get("chat_wake_cursor") or 0):
+            wake = "new_chat"
+        now = time.time()
+        if wake:
+            if sleeping:
+                self._journal_run_event(run, "agent.woken", {"reason": wake},
+                                        commit_reason="Wake sovereign")
+            self.control.update_harness_run(str(run["run_id"]), metadata_update={
+                "sleep": None, "wake_reason": wake, "chat_wake_cursor": chat,
+                "semantic_sample_unix": now, "semantic_progress": dict(progress),
+                "semantic_progress_unix": now, "semantic_baseline_pending": True})
+            return False
+        if self._waiting_match_stalled(run, progress):
+            return True
+        if not sleeping:
+            self._cancel_sovereign_after_process_stop(run, "waiting_for_turn")
+            sleeping = {"since_unix": now, "session_id": progress.get("session_id"),
+                        "reason": "waiting_for_turn"}
+            self._journal_run_event(run, "agent.sleeping", sleeping,
+                                    commit_reason="Suspend sovereign until an event")
+        self.control.update_harness_run(str(run["run_id"]), status="restarting", heartbeat=True,
+            metadata_update={"sleep": sleeping, "semantic_sample_unix": now,
+                             "semantic_progress": dict(progress), "semantic_baseline_pending": False})
+        return True
+
     def _episode_mode(self, run: Mapping[str, Any], progress: Mapping[str, Any]) -> str:
         phase = str(progress.get("phase") or "")
         if phase in {"turn", "interaction", "handoff"}:
@@ -548,6 +632,8 @@ class HarnessManager:
                 "attempt_started_progress": progress,
                 "attempt_started_unix": time.time(),
                 "episode_mode": episode_mode,
+                "sleep": None,
+                "chat_wake_cursor": self._chat_wake_cursor(run),
             },
         )
         identifier = self.docker.create_container(
@@ -654,7 +740,9 @@ class HarnessManager:
         return {'schema':'smacx.ai-activity.v1','match_id':match_id,'agent_id':agent_id,
                 'events':events,'cursor':json.dumps(positions,separators=(',',':')),
                 'has_more':more,'gaps':sorted(set(gaps)), 'available':bool(profiles),
-                'status': next((r['status'] for r in runs if r['status']=='running'), 'idle')}
+                 'status': next(('sleeping' if r.get('metadata', {}).get('sleep') else
+                    'communicating' if r.get('metadata', {}).get('episode_mode') == 'communication' else 'running'
+                    for r in runs if r['status'] in {'running', 'restarting'}), 'idle')}
 
     def telemetry(self, run_id: str) -> dict[str, Any]:
         """Read aggregate Hermes usage from its private durable state.
@@ -964,8 +1052,22 @@ print(json.dumps(result,separators=(',',':')))
                 stall_seconds = min(max(int(
                     run["restart_policy"].get("semantic_stall_seconds", 360)
                 ), 120), 1800)
+                if (progress.get("interaction_kind") == "waiting_for_turn"
+                        and not baseline_pending and previous_fingerprint
+                        and now - progress_since >= stall_seconds
+                        and (generated >= 4096 or calls >= 2)):
+                    # A model ignoring the yield directive must not spend tokens
+                    # forever, nor quarantine peers that are playing normally.
+                    self.stop_run(str(run["run_id"]))
+                    self.control.update_harness_run(str(run["run_id"]),
+                        desired_status="running", status="restarting", last_error="")
+                    fresh_run = self.control.get_harness_run(str(run["run_id"]))
+                    if not self._sleep_until_event(fresh_run, progress):
+                        self.start_run(str(run["run_id"]))
+                    continue
                 stalled = bool(
                     progress.get("available") and previous_fingerprint
+                    and progress.get("interaction_kind") != "waiting_for_turn"
                     and not baseline_pending
                     and fingerprint == previous_fingerprint
                     and now - progress_since >= stall_seconds
@@ -1055,6 +1157,15 @@ print(json.dumps(result,separators=(',',':')))
                     if self._observe_bridge_unavailable(run, metadata, progress, time.time()):
                         errors += 1
                         operator_required += 1
+                    continue
+                if progress.get("interaction_kind") == "waiting_for_turn" or metadata.get("sleep"):
+                    if self._sleep_until_event(run, progress):
+                        continue
+                    # A wake is a fresh episode baseline, not a clean-yield loop.
+                    self.control.update_harness_run(str(run["run_id"]),
+                        metadata_update={"consecutive_clean_yields_without_progress": 0})
+                    self.start_run(str(run["run_id"]))
+                    continued += 1
                     continue
                 started = metadata.get("attempt_started_progress") \
                     if isinstance(metadata.get("attempt_started_progress"), dict) else {}

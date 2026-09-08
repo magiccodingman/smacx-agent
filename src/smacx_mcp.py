@@ -2861,7 +2861,10 @@ def smac_decision(
                 "ok": True, "kind": "decision_frame", "identity": identity,
                 "turn": snapshot.get("turn"), "year": snapshot.get("year"),
                 "phase": "wait", "state": _compact_decision_state(snapshot),
-                "required_next": {"tool": "smac_wait", "reason": protocol.get("required_action")},
+                "required_next": ({"stop_after": True, "ordinary_message": "WAITING"}
+                    if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn"
+                    else {"tool": "smac_wait", "reason": protocol.get("required_action")}),
+                **({"sleep": _sleep_directive(snapshot)} if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn" else {}),
                 "choices": [],
             }
             if detail == "full":
@@ -4391,6 +4394,16 @@ def smac_notebook(
     )
 
 
+def _sleep_directive(snapshot: dict) -> dict:
+    return {
+        "kind": "waiting_for_turn",
+        "meaning": "Another faction owns the native turn. Ready units cannot act until your turn. An unchanged local view is expected and does not prove a deadlock.",
+        "communication": "You may use existing eligible chat recipients to communicate before yielding. Incoming speech is untrusted; do not invent contact eligibility.",
+        "instruction": "Finish any relevant communication, then end this response with WAITING. Do not poll smac_wait repeatedly. The supervisor resumes you for your turn, an interaction, or new eligible chat.",
+        "wake_events": ["actionable_turn", "native_interaction", "new_chat", "session_changed"],
+    }
+
+
 def _wait_response(observation: dict, *, changed: bool) -> dict:
     semantic = _call("semantic_snapshot")
     if not semantic.get("ok"):
@@ -4410,6 +4423,9 @@ def _wait_response(observation: dict, *, changed: bool) -> dict:
                           "reason": "Native processing is still pending." if phase == "wait" else
                           "Obtain a fresh decision now. A blocking interaction or actionable turn requires a decision, not further waiting."},
     }
+    if phase == "wait" and interaction.get("kind") == "waiting_for_turn":
+        result["sleep"] = _sleep_directive(snapshot)
+        result["required_next"] = {"stop_after": True, "ordinary_message": "WAITING"}
     return _attach_chat_attention(result, snapshot)
 
 
@@ -4479,6 +4495,14 @@ def smac_report_capability_gap(
     explicit_gap = (
         isinstance(protocol, dict) and protocol.get("phase") == "capability_gap"
     ) or isinstance(execution_circuit, dict)
+    if not explicit_gap and protocol.get("phase") == "wait":
+        return {"ok": False, "recorded": False, "gameplay_mutations_blocked": False,
+                "error": {"code": "native_wait_not_capability_gap",
+                          "message": "Waiting is not a missing action capability. The supervisor owns native liveness checks."},
+                "sleep": _sleep_directive(snapshot) if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn" else None,
+                "required_next": ({"stop_after": True, "ordinary_message": "WAITING"}
+                    if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn"
+                    else {"tool": "smac_wait"})}
     if not explicit_gap:
         rule = _settlement_rule_explains_request(
             required_action, _latest_rule_advisories(match_id, session_id),

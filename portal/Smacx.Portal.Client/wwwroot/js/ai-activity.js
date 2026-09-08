@@ -120,7 +120,9 @@ export function create(root, match, seat) {
             for (const e of data.events) applyEvent(state, e);
             if (data.events.length) render();
             status.textContent = data.gaps.length ? `Capture gap: ${data.gaps.join(', ')}` :
-                state.items.size ? (data.status === 'running' ? 'Live · following this AI seat' : 'Session idle · retained activity') :
+                data.status === 'sleeping' ? 'Sleeping · wakes for its turn or a message' :
+                data.status === 'communicating' ? 'Live · processing communication' :
+                state.items.size ? (data.status === 'running' ? 'Live · following this AI seat' : 'AI stopped · retained activity') :
                 'No activity captured yet. Older runs may only have the diagnostic ZIP.';
             if (state.trimmed) status.textContent += ' · Latest 200 replies; download for older history.';
             if (data.has_more) delay = 100;

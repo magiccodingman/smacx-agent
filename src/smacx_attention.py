@@ -314,6 +314,20 @@ class AttentionService:
             ).fetchall()
         return {"items": [dict(row) for row in rows[:limit]], "more": len(rows)>limit}
 
+    def pending_chat_cursor(self) -> int:
+        """Highest published queued chat sequence; reads do not acknowledge it."""
+        with self.store._connect() as connection:
+            connection.execute("BEGIN")
+            cap = self.world_store.committed_cursor(self.scope, self.timeline_id, connection)
+            barrier = connection.execute("SELECT MIN(attention_sequence) FROM attention_items WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND observation_cursor>?",
+                (*self._key(self.timeline_id), cap)).fetchone()[0]
+            row = connection.execute("SELECT MAX(attention_sequence) FROM attention_items WHERE match_id=? "
+                "AND agent_id=? AND perspective_id=? AND timeline_id=? AND status='queued' "
+                "AND attention_kind='chat' AND attention_sequence<?",
+                (*self._key(self.timeline_id), barrier if barrier is not None else 9223372036854775807)).fetchone()
+            return int(row[0] or 0)
+
     def pending_summary(self) -> dict[str, Any]:
         with self.store._connect() as connection:
             connection.execute("BEGIN")
