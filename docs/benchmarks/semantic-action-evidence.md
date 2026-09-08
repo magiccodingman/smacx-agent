@@ -64,3 +64,34 @@ present alongside the bounded canonical journal projection.
 These are deterministic storage/runtime tests. Exact provider delivery is part
 of the integrated checkpoint; no automatic strategy validator or hidden-state
 inference was introduced.
+
+## Checkpoint 4 — integrated acceptance and compatibility
+
+The rebuilt control image passes the decision-frame, production-flow and
+attention suites using its installed MCP environment rather than host source.
+The controlled provider contract carries the new cognition evidence boundary
+through the canonical journal, runtime assembly, semantic GC, Hermes request
+sanitizer and serialized HTTP request on a normal request, handoff resume,
+post-GC request and journal reopen. Durable history remains unchanged by the
+request-only runtime context.
+
+The doctrine engine fingerprint was reviewed and registered as
+`334e89bfef2fb5aa77b42291736d0b1295d3415bc55ef607e2f8d3e65107d9fe`.
+Content goldens, persisted-profile integration and the normal compatibility
+check pass. A production-style isolated WorkerManager run then loaded the stock
+public rules, returned that exact engine fingerprint on the native UI thread,
+confirmed the context twice and compiled the doctrine. A deliberately modified
+`alphax.txt` source was rejected by the same adapter and was not added to the
+rules allowlist.
+
+The complete MinGW bridge build, worker image and control image build pass.
+The 87-test portal suite also remains green. The isolated workers and volumes
+were removed after validation, and the parked campaign and shared deployment
+were not resumed or modified.
+
+This checkpoint proves installed adapter delivery, request-only cognition
+delivery and native doctrine compatibility. It does not claim that a model will
+always interpret the added evidence correctly. Controlled population-one Colony
+Pod completion, a fresh live Artifact eligibility/effect comparison, blind
+research popup delivery and improved full-game strategy remain explicit
+follow-up evidence for the next campaign.
