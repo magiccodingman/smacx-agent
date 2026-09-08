@@ -74,7 +74,7 @@ The archive uses the existing authorized diagnostic export. A packet adds health
 - CLI HTTP roster, retry, cookie and packet tests: `scripts/operator_cli_test.py`.
 - Authenticated control HTTP, projection/journal, pause/recovery-fence tests: `scripts/operator_contract_test.py` in the MCP Python environment.
 - Real isolated Docker process containment: `scripts/operator_docker_containment_test.py` with the Docker socket and `smacx-agent-control:operator-tools` image. This tests process containment, not native game mechanics.
-- Existing native checkpoint recovery remains the authority. A fresh full native-game acceptance run has not been performed for these additions; the original campaign remains paused.
+- Existing native checkpoint recovery remains the authority. Two fresh native startup checks have passed for the guided operator path, including packet export and verified parking. Full-game acceptance remains unproven; see [the evidence](benchmarks/operator-readiness.json).
 
 GitHub issue automation, storage policy changes, recurring agent scheduling and the knowledge-transfer prompt are a subsequent phase. These tools do not create issues, launch monitoring agents, merge PRs or resume games on their own.
 

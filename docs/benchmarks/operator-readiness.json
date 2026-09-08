@@ -16,7 +16,8 @@
       "native_game": false
     },
     "source_drift_guard": "Real authenticated preflight rejected a changed checkout before any mutation.",
-    "offline_diagnostics": "Authenticated operator health retains persisted startup evidence when worker Docker inspection raises an error."
+    "offline_diagnostics": "Authenticated operator health retains persisted startup evidence when worker Docker inspection raises an error.",
+    "packaged_final_image": "CLI, deployment, startup failure, authenticated operator HTTP and lifecycle serialization contracts pass using installed modules without a source mount."
   },
   "native_startup": {
     "source_commit": "b1e24e6",
@@ -47,7 +48,8 @@
   "limits": [
     "Fixture sidecar state is not a native-game comparison.",
     "No full-game completion claimed.",
-    "No scheduled monitoring job created by these tools."
+    "No scheduled monitoring job created by these tools.",
+    "The historical sidecar failure lacks retained exit/log evidence; successful fresh launches do not establish its original cause."
   ],
   "scheduler": {
     "installed_cli_syntax_checked": true,
@@ -55,5 +57,27 @@
     "active_jobs": 0,
     "job_created": false,
     "reason": "This task validates tooling; it does not restart the ongoing monitoring mission."
+  },
+  "final_integrated_startup": {
+    "source_commit": "2b93f00",
+    "includes_main_pr": 60,
+    "match_id": "match-279c9a2a58d3389cd1829e2c41bd4efe",
+    "phase": "native_ready",
+    "elapsed_seconds": 139.0,
+    "native_worker_healthy": true,
+    "mcp_healthy": true,
+    "live_sovereign_processes": 1,
+    "committed_world_heads": 1,
+    "active_incidents": 0,
+    "health_classification_at_startup": "unknown",
+    "health_limit": "Native readiness does not replace cached supervisor health; initial health stayed unknown until its sampling caught up.",
+    "parked": true,
+    "verified_checkpoint": true,
+    "image_ids": {
+      "worker": "sha256:87ebe550c395d14b9b7a3631679135f777082a0d218b2b5c9daa5beabce5df0c",
+      "mcp": "sha256:a2eeaf9b4464d7eaace388ba45158fb16e7ac6973afdf276ab81ea7279c4581f",
+      "harness": "sha256:ee5f6ed55f1eeb786856703135216522a75439cd4c148bef0b704bb6a910c327"
+    },
+    "packet_sha256": "d18c8d6cb6b4ca2458ce987a18babf5433207a5814d9ef861629a4ad36d9b7ab"
   }
 }
