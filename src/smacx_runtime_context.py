@@ -309,6 +309,11 @@ def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "required_action": protocol.get("required_action"),
             "action_revision": snapshot.get("revision"),
         }
+    if phase == "wait":
+        return {"focus_id": "focus-wait", "kind": "wait", "mandatory": True,
+                "interaction_kind": snapshot.get("interaction", {}).get("kind"),
+                "required_action": "If waiting_for_turn, communicate if useful through eligible chat, then yield WAITING. The supervisor wakes you; unchanged local state is expected. Engine processing is distinct from missing capabilities.",
+                "action_revision": snapshot.get("revision")}
     ready = snapshot.get("ready_unit_refs") if isinstance(snapshot.get("ready_unit_refs"), list) else []
     if ready:
         unit = ready[0] if isinstance(ready[0], Mapping) else {}

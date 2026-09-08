@@ -65,6 +65,9 @@ def main() -> int:
             observation_cursor=41, priority=85, critical=True,
             dedupe_key="chat-mid-provider",
         )
+        wake_cursor = attention.pending_chat_cursor()
+        assert wake_cursor > 0
+        assert attention.pending_chat_cursor() == wake_cursor  # read is not acknowledgement
         reused = attention.lease("episode-gameplay")
         assert [item["attention_id"] for item in reused["items"]] == [first["attention_id"]]
 
@@ -87,6 +90,7 @@ def main() -> int:
         previous = restarted.sovereign_state(include_inactive=True)
         assert previous['episode_id'] == 'episode-gameplay' and previous['status'] == 'cancelled'
         assert not any('token' in key for key in previous)
+        assert restarted.pending_chat_cursor() == wake_cursor
         communication = restarted.acquire_sovereign("episode-communication", "communication")
         redelivered = restarted.lease("episode-communication")
         ids = [item["attention_id"] for item in redelivered["items"]]

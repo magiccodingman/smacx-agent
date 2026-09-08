@@ -58,7 +58,10 @@ def classify_health(match, runs, workers, incidents, now):
             if type(observed) not in (int, float) or not 0 <= now - observed <= 120:
                 return 'unknown', ['session_admission_sample_stale']
             return 'waiting', ['hermes_session_lease_wait']
-    if any(r.get('status') in ACTIVE for r in runs): return 'observed_active', []
+    active = [r for r in runs if r.get('status') in ACTIVE]
+    if active and all(r.get('metadata', {}).get('sleep') for r in active):
+        return 'waiting', ['sovereigns_sleeping_until_event']
+    if active: return 'observed_active', []
     return 'idle', ['no_active_sovereign_run']
 
 
@@ -172,7 +175,7 @@ class OperatorService:
             safe_runs.append({**{k: run.get(k) for k in ('run_id','status','desired_status','instance_id')},
                 'session_admission': metadata.get('semantic_telemetry', {}).get('session_admission'),
                 'observation': {k: metadata.get(k) for k in ('semantic_sample_unix','semantic_progress_unix',
-                    'semantic_progress','semantic_telemetry_unix','semantic_baseline_pending','semantic_unavailable_reason',
+                    'sleep','wake_reason','episode_mode','semantic_progress','semantic_telemetry_unix','semantic_baseline_pending','semantic_unavailable_reason',
                     'semantic_unavailable_samples','consecutive_clean_yields_without_progress')}})
         return redact({'schema': 'smacx.operator-health.v1', 'match_id': match_id,
             'installation_id': self.manager.installation_id,
