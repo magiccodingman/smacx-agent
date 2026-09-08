@@ -1022,6 +1022,13 @@ def write_platform_memory(
                 "allowed_values": list(MEMORY_STATUS_VALUES[action]),
                 "message": "Choose the status matching your intent; preserve other record fields when revising. No status is substituted automatically.",
             }}
+        if write_stage == "not_started" and str(exc) in {"invalid_claim_topic", "invalid_belief_topic"}:
+            guidance = {"validation": {
+                "field": "record_json.topic",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "example": "native-threat-873",
+                "message": "Use a machine key without spaces; put descriptive prose in content. No key is substituted automatically.",
+            }}
         retry_policy = "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
         if write_stage == "not_started" and str(exc) in {
                 "stale_memory_observation", "missing_memory_observation_guard"}:

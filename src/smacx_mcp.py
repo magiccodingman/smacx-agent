@@ -4165,6 +4165,8 @@ def smac_investigate(
         "This is the native snapshot guard, not a memory/database revision or journal hash. After state changes, obtain a fresh decision. "
         "record_json schemas: claim={topic,content,asserted_by_actor_id?,about_actor_id?,confidence?,status?,source_event_id?}; "
         "belief={topic,content,confidence,evidence?:[{event_id,stance,weight}]}; "
+        "Claim and belief topic is a machine key: 1-128 ASCII letters/digits or _ . : -, "
+        "starting with a letter/digit, with no spaces (example: native-threat-873). Put descriptive prose in content. "
         "relationship={actor_id,affinity,trust,respect,threat,grievance,obligation,confidence,reasons:[...],source_event_id?}; "
         "commitment={commitment_key,title,terms,status,parties?:[{actor_id,role}],due_turn?,due_year?,source_event_id?,resolution_event_id?}; "
         "goal={goal_key?,title,description,priority,status,due_turn?,due_year?,trigger?,parent_goal_id?,source_event_id?}; "

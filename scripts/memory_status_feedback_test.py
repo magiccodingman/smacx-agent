@@ -69,6 +69,13 @@ with tempfile.TemporaryDirectory() as tmp:
             assert result['validation']['allowed_values']==list(MEMORY_STATUS_VALUES[action])
             assert result['persistence']['stage']=='not_started'
             assert c._journal_working_state(scope)==before,'rejected status wrote cognition'
+        for action in ('claim', 'belief'):
+            result=c.write_platform_memory(action,scope.match_id,'session-delivery','r4',
+                {'topic':'Mind Worms at 873','content':'Observed threat','confidence':0.5})
+            assert result['error']==f'invalid_{action}_topic',result
+            assert result['validation']['field']=='record_json.topic'
+            assert result['persistence']['stage']=='not_started'
+            assert c._journal_working_state(scope)==before
         record=records['plan']
         active=c.write_platform_memory('plan',scope.match_id,'session-delivery','r4',
             {**record,'status':'active'})
