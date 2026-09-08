@@ -19564,6 +19564,16 @@ int category, int veh_id) {
         prod_name(production_id));
 }
 
+void agent_observe_native_raid_effect(int base_id, const char* effect, int before, int after) {
+    if (!lock_initialized || !game_active() || base_id < 0 || base_id >= *BaseCount
+    || *CurrentPlayerFaction < 1 || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("owned_native_raid_effect", *CurrentTurn,
+        base_id, -1, tile_id, tile_id, before, after, true, effect);
+}
+
 void agent_observe_project_interrupted(int base_id, int production_id) {
     if (!lock_initialized || !game_active() || base_id < 0
     || base_id >= *BaseCount || *CurrentPlayerFaction < 1

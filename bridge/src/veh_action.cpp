@@ -2936,6 +2936,7 @@ MOV_NAVAL:
                     continue;
                 }
                 set_fac((FacilityId)rnd_id, base_id, 0);
+                agent_observe_native_raid_effect(base_id, Facility[rnd_id].name, 1, 0);
                 parse_says(1, Facility[rnd_id].name, -1, -1);
             }
             parse_says(2, Vehs[veh_id].name(), -1, -1);
@@ -2968,15 +2969,20 @@ MOV_NAVAL:
                     }
                 }
             }
+            const int population_before_raid = Bases[base_id].pop_size;
             if (*CurrentTurn >= 10) {
                 --Bases[base_id].pop_size;
                 if (is_objective(base_id)) {
                     Bases[base_id].pop_size = max(1, (int)Bases[base_id].pop_size);
                 }
             }
+            agent_observe_native_raid_effect(base_id, "population",
+                population_before_raid, Bases[base_id].pop_size);
             if (*CurrentTurn < 10 || Bases[base_id].pop_size > 0) {
                 if (iter_val >= 100) {
+                    const int minerals_before_raid = Bases[base_id].minerals_accumulated;
                     Bases[base_id].minerals_accumulated = 0;
+                    agent_observe_native_raid_effect(base_id, "stored_minerals", minerals_before_raid, 0);
                 }
                 draw_tile(Bases[base_id].x, Bases[base_id].y, 2);
                 BaseWin_check_base(BaseWin, base_id);

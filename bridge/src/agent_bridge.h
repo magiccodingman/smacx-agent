@@ -31,6 +31,8 @@ void agent_observe_production_completed(int base_id, int production_id,
 void agent_observe_production_queue(int base_id, bool advanced);
 void agent_observe_production_selection(int base_id, bool repeat);
 void agent_observe_project_interrupted(int base_id, int production_id);
+void agent_observe_native_raid_effect(int base_id, const char* effect,
+    int before, int after);
 
 // Fallback request service at the two stock DirectPlay await loops used by
 // paired human diplomacy. Engine access remains on the game thread.

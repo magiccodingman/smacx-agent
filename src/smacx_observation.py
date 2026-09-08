@@ -867,6 +867,16 @@ class ObservationCollector:
                     event.update({"observed_hp_before": raw.get("value_before"),
                                   "observed_hp_after": raw.get("value_after")})
                 events.append(event)
+            elif kind == "owned_native_raid_effect" and location:
+                effect = str(raw.get("item_name") or "")[:64]
+                events.append({"event_kind": "native_raid_effect",
+                    "base_ref": f"base-{location}", "location_ref": location,
+                    "effect": effect, "observed_before": raw.get("value_before"),
+                    "observed_after": raw.get("value_after"),
+                    "turn": raw.get("turn", turn),
+                    "meaning": "Native life raid damage at the owned base; not production completion or a production switch.",
+                    "occurrence_ref": "raid-" + content_hash({"session": self.session_id, "timeline": self.timeline_id,
+                        "sequence": raw.get("native_sequence"), "effect": effect})[:24]})
             elif kind in {"owned_production_completed", "owned_queue_advanced", "owned_queue_exhausted",
                           "owned_production_repeat", "owned_production_fallback", "owned_project_interrupted"} and location:
                 event = {
@@ -1107,6 +1117,10 @@ class ObservationCollector:
         if self.attention is not None and (deltas or temporal_events):
             self.attention.capture_production_attention(
                 temporal_events, observation_cursor=cursor, turn=turn, session_id=self.session_id)
+            for raid in (event for event in temporal_events if event.get("event_kind") == "native_raid_effect"):
+                self.attention.enqueue("native_raid", raid, observation_cursor=cursor,
+                    priority=90, critical=True, turn=raid.get("turn"), session_id=self.session_id,
+                    dedupe_key=str(raid["occurrence_ref"]))
             self.attention.evaluate_watches(
                 [{**delta, **({"previous": prior_by_ref[str(delta["object_ref"])]}
                               if str(delta["object_ref"]) in prior_by_ref else {})}
