@@ -1174,6 +1174,11 @@ See [acceptance evidence](benchmarks/active-roster-and-threat-evidence.md).
 | --- | --- |
 | Lobby authority | Waiting lobby assignments → exact active-faction mask → portal startup request → worker environment → native setup passes. Open seats remain open in durable portal state and no longer become implicit stock bots. |
 | Native effect | Isolated real Tiny/Librarian launch with seven stable selector slots and active mask `62` produces living mask `62`: exactly factions 1–5 live and slots 6–7 inactive. The test uses native bridge state under an acceptance-only flag and no pixels/UI input. |
-| Recovery | Inactive factions have no initial units/bases and native save loading already reconstructs living state from saved owned assets. A fresh deployed five-participant campaign and checkpoint/restore comparison remain pending; no existing seven-faction save is rewritten. |
+| Recovery | Inactive factions have no initial units/bases and native save loading already reconstructs living state from saved owned assets. PR 74 images are deployed in place on the shared 8080/443 stack with existing data volumes preserved. A fresh five-participant campaign and checkpoint/restore comparison remain pending; no existing seven-faction save is rewritten. |
+
+Packaged deployment verification: worker/control doctrine fingerprints match;
+installed-image active-mask and bounded base-defense contracts pass; control and
+portal are healthy; the specialist supervisor is running; control names the PR
+74 worker, MCP and sovereign images. No campaign was started for this checkpoint.
 
 See [acceptance evidence](benchmarks/active-roster-and-threat-evidence.md).

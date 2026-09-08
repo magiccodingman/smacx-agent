@@ -40,10 +40,26 @@ fixture passed; control-plane and mask validation passed; portal passed 87/87;
 native worker completed 39/39 build steps; isolated native five-faction launch
 passed with no UI input.
 
+## Packaged deployment
+
+The release images `smacx-agent-worker:pr74`, `smacx-agent-control:pr74`,
+`smacx-agent-harness:pr74` and `smacx-portal:pr74` were built from commit
+`702a2ae`. The worker/control doctrine deployment check passed with approved
+engine fingerprint
+`3312c2f61d1b232c8b11b3d33b48f4ad87eeedfaf82fd32db14ac6d6bbea0ed3`.
+Installed-image active-mask and nearby-defense contracts passed.
+
+The existing `smacx-agent` Compose project was updated in place on the shared
+8080/443 deployment. Control and portal report healthy, the specialist
+supervisor is running, and control reports the PR 74 worker, MCP and Hermes
+image names. Existing control, portal, knowledge and Graphiti volumes were
+preserved. No campaign was started as part of deployment.
+
 ## Limits
 
 The defense panel is mechanical assistance, not a recommendation or an estimate
 of unseen forces. Visible contacts are a lower bound. Foreign movement ZOC does
 not establish war or intent. Shared era does not establish economic or military
 parity. The active-roster proof covers a fresh single-player native launch;
-deployed five-faction recovery and full-game behavior remain for the next run.
+the packaged stack is deployed, while fresh five-faction checkpoint recovery
+and full-game behavior remain for the next run.
