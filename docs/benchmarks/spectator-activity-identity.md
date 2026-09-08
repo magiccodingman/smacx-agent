@@ -17,5 +17,13 @@ profile/runtime IDs and another runtime AI seat, verifies live read and two-page
 export target the selected gameplay identity, rejects a missing mapping without
 fallback, and verifies participant denial performs no control requests.
 
+Live rollout exposed a second seam the small fixture missed: Docker fragments
+large stdout writes, so a one-line log tail truncated the JSON activity page.
+The reader now collects the bounded page's fragments; malformed output becomes
+an explicit activity error. The portal error envelope now uses nullable object
+data rather than an undefined JsonElement, which previously caused a secondary
+HTTP 500 during serialization. The real-Docker fixture now includes 40,000
+characters and verifies complete retrieval, cursor resume and seat isolation.
+
 Deployed real-match/browser verification is recorded after rollout. This repair
 does not change inference settings, native gameplay, or diagnostics storage.

@@ -634,8 +634,14 @@ class HarnessManager:
                 self.docker.start_container(identifier)
                 state = self.docker.wait_container(identifier, timeout=15)
                 if state.get('State',{}).get('ExitCode') != 0: raise HarnessManagerError('activity_read_failed')
-                logs = self.docker.container_logs(identifier, tail=1)
-                value = json.loads(logs[logs.index('{'):])
+                # Docker splits large stdout writes into log fragments. A
+                # one-line tail can return only the last fragment of this
+                # bounded page, even though the helper printed one JSON line.
+                logs = self.docker.container_logs(identifier, tail=1000)
+                try:
+                    value = json.loads(logs[logs.index('{'):])
+                except (ValueError, TypeError) as exc:
+                    raise HarnessManagerError('activity_read_failed') from exc
                 positions[profile] = value['cursor']
                 events.extend(value['events']); gaps.extend(value['gaps'])
                 if not value['available']: gaps.append('activity_not_captured_for_profile_use_diagnostic_zip')

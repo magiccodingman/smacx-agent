@@ -47,7 +47,8 @@ public sealed class AiActivityTests
         Assert.Equal(2,exported.RootElement.GetProperty("seats")[0].GetProperty("events").GetArrayLength());
         Assert.Equal(2,handler.Calls);
         handler.MissingRuntimeSeat = true;
-        Assert.IsType<ConflictObjectResult>((await controller.Read("match-export",0)).Result);
+        var missing = Assert.IsType<ConflictObjectResult>((await controller.Read("match-export",0)).Result);
+        Assert.Contains("activity_runtime_agent_unavailable",JsonSerializer.Serialize(missing.Value));
         Assert.Equal(2,handler.Calls); // Never falls back to the profile identity.
         var requests = handler.Requests;
         db.PortalMatchParticipants.Add(new PortalMatchParticipant { MatchId="match-export",UserId="viewer",FirstSeatIndex=1 });

@@ -84,7 +84,7 @@ public sealed class AiActivityController(ApplicationDbContext database,
         {
             var runtimeAgentId = await RuntimeAgentAsync(matchId, seatIndex, HttpContext.RequestAborted);
             if (runtimeAgentId is null)
-                return Conflict(ApiResponse<JsonElement>.Failure("activity_runtime_agent_unavailable",
+                return Conflict(ApiResponse<object>.Failure("activity_runtime_agent_unavailable",
                     "The selected seat has no confirmed gameplay agent."));
             using var data = await control.GetRawAsync(
                 $"api/v1/matches/{Uri.EscapeDataString(matchId)}/activity/{Uri.EscapeDataString(runtimeAgentId)}?cursor={Uri.EscapeDataString(cursor ?? "")}",
@@ -93,7 +93,7 @@ public sealed class AiActivityController(ApplicationDbContext database,
         }
         catch (ControlPlaneException error)
         {
-            return StatusCode(error.StatusCode ?? 502, ApiResponse<JsonElement>.Failure(error.Code, error.Message));
+            return StatusCode(error.StatusCode ?? 502, ApiResponse<object>.Failure(error.Code, error.Message));
         }
     }
 
