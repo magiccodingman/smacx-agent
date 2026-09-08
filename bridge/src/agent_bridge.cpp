@@ -12726,10 +12726,12 @@ int target_tile_id = -1, int target_unit_id = -1) {
             out << "]}";
         }
     }
+    if (!(veh.flags & VFLAG_IS_OBJECTIVE)) {
     out << ",{\"id\":\"disband:" << veh_id
         << "\",\"command\":\"disband_unit\",\"unit_id\":" << veh_id
         << ",\"requires\":{\"confirm_disband\":1},"
         << "\"destructive\":true,\"meaning\":\"Permanently disband this unit. Unit ids may shift afterward; observe again.\"}";
+    }
     out << "]}";
     return out.str();
 }
@@ -18302,6 +18304,10 @@ std::string semantic_command_response(const std::string& request) {
             + ",\"ids_may_have_shifted\":true}";
     }
     if (command == "disband_unit") {
+        if (veh.flags & VFLAG_IS_OBJECTIVE) {
+            return error_response("objective_unit_disband_forbidden",
+                "Scenario objective units cannot be disbanded.");
+        }
         if (field_int(request, "confirm_disband", 0) != 1) {
             return error_response("disband_confirmation_required",
                 "Set confirm_disband to 1 after selecting the destructive choice.");

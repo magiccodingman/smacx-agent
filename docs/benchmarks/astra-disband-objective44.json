@@ -1,0 +1,15 @@
+{
+  "status": "guard_implemented_cross_build_passed_live_pending",
+  "native_evidence": "Console_disband at 0x4d2ac0 checks VEH.flags VFLAG_IS_OBJECTIVE and emits DISBANDOBJ; bridge previously directly deleted without that check.",
+  "repair": "Omit disband choice for objective units and reject dispatch before deletion. Scenario editing is not a sovereign gameplay capability.",
+  "tests": [
+    "native_disband_objective_test.py: actual C++ dispatch block compiled and passed objective rejection, confirmation rejection, ordinary confirmed deletion",
+    "Docker worker/Dockerfile bridge-build target completed successfully"
+  ],
+  "remaining": [
+    "Native confirmation and recycling dispatch",
+    "Spent-unit eligibility controlled native comparison",
+    "Installed and live gameplay acceptance"
+  ],
+  "deployment": "No runtime replacement; acceptance game remains frozen."
+}
