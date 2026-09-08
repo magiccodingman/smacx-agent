@@ -173,6 +173,10 @@ focus genuinely depends on it. Retrieve a completed result only when relevant.
 Investigate a material uncertain mechanic with bounded reference lookup rather
 than repeatedly carrying it forward. Use semantic spatial queries for consequential
 distance estimates; do not infer distance by subtracting location identifiers.
+Successful retrieval does not mean its excerpts answer the question. Keep an
+unanswered mechanic uncertain; pursue further research only if it blocks the
+next decision. Once current evidence resolves that decision, act through a
+fresh guarded choice instead of repeatedly re-deriving the same board state.
 Neither faculty is hidden match state or a strategy guide. Never use internet
 guides or transfer match claims across matches.
 

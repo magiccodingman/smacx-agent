@@ -1011,3 +1011,5 @@ Reference56 checkpoint: spontaneous direct-reference Colony Pod population query
 ### Turn 56 deliberation incident and Sensor receipt consumption
 
 Actual sovereign output corrected its Sensor/mineral and hurry-affordability assumptions after receipt delivery, then queried the Former action path. This closes observed consumption of the Sensor-purpose clarification, not terrain completion or strategic success. The aggregate 360-second no-progress guard stopped the next provider request after two completed calls and 15,052 generated tokens; no native action had yet been dispatched. Native/journal state remains quarantined. See `benchmarks/astra-deliberation56.json`. Bounded deliberation versus repeated-action detection and in-flight handling remain under review; thresholds are unchanged.
+
+A bounded prompt repair now distinguishes retrieval success from answer sufficiency and asks for guarded action once decision evidence suffices. Strict prompt contract passes; native no-progress thresholds and sovereignty are unchanged. Live delivery and behavioral benefit are pending, not claimed complete.

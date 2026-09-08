@@ -19,5 +19,13 @@
     "generated_tokens_without_progress": 15052
   },
   "assessment": "The supervisor enforced its existing aggregate six-minute no-native-progress budget during a subsequent provider request. The preceding responses corrected stale strategic assumptions and queried a relevant unit action; no repeated rejected action loop was observed in this episode. This establishes a deliberation-budget incident, not a native execution failure. Whether policy should distinguish bounded useful investigation from repeated no-op actions remains open; do not merely increase thresholds or count reads as native progress.",
-  "next_gate": "Audit bounded deliberation and in-flight request handling before retrying; preserve native/journal pairing and deterministic loop safeguards."
+  "next_gate": "Audit bounded deliberation and in-flight request handling before retrying; preserve native/journal pairing and deterministic loop safeguards.",
+  "repair": {
+    "scope": "Concise sovereign contract guidance: retrieval success is not answer sufficiency; further research depends on the next decision; act when evidence suffices instead of repeatedly re-deriving state.",
+    "watchdog_thresholds_changed": false,
+    "validation": [
+      "strict_prompt_contract_test.py passed"
+    ],
+    "live_delivery_and_effect": "pending"
+  }
 }
