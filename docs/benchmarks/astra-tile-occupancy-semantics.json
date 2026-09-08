@@ -9,7 +9,19 @@
     "persisted_anchor_format_refresh": "pass"
   },
   "pending": [
-    "actual provider delivery",
-    "sovereign interpretation after delivery"
-  ]
+    "Sustained interpretation and durable belief/plan correction",
+    "Full-game acceptance"
+  ],
+  "provider_delivery": {
+    "recorded_unix": 1788829989.8659692,
+    "legend_present": true,
+    "turn": 9
+  },
+  "behavior": {
+    "recorded_unix": 1788830056.471443,
+    "occupancy_corrected": true,
+    "landmark_pod_conflation_corrected": true,
+    "action": "own-unit-1 moved location-996 to location-916",
+    "limits": "Direction was guessed from opaque IDs despite available spatial guidance; actual route optimality and persistent belief correction not established."
+  }
 }
