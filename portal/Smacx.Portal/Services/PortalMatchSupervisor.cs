@@ -859,7 +859,7 @@ public sealed class PortalMatchSupervisor(
                     run_budget_seconds = 86_400,
                     max_turns = 5_000,
                     restart_limit = 1_000,
-                    initial_prompt = "[SMACX_EPISODE_BOUNDARY kind=start] Re-anchor with the authoritative smac_decision state, then continue autonomous play.",
+                    // Use the control service default so exposed tool names stay consistent.
                 }, cancellationToken);
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {

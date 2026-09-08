@@ -5,6 +5,9 @@
   "limits": [
     "No alias execution added",
     "No claim that model will never invent tool names",
-    "Live future-episode uptake pending"
-  ]
+    "Live future-episode uptake pending",
+    "Existing running episode retains its original prompt; future startup verification pending"
+  ],
+  "portal_followup": "Live startup still had old wording because portal supplied initial_prompt. Removed duplicate override so control default governs new runs.",
+  "portal_validation": "83 portal tests passed"
 }

@@ -587,3 +587,5 @@ Empty-choice repair deployment: supported capability recovery completed at turn 
 ### Episode tool-name guidance
 
 Repeated live episode starts used unqualified `smac_decision`, which the dispatcher correctly rejected before execution. Episode messages now name the exposed `mcp__smacx__smac_decision` tool. Continuation contracts pass; dispatch validation remains unchanged. Evidence: `docs/benchmarks/astra-episode-tool-name.json`. Live uptake in a future episode remains pending.
+
+Episode-name follow-up: live readback exposed a portal `initial_prompt` override retaining the old name. The portal now omits that override and uses the control default. All 83 portal tests pass. Existing episodes retain their input; future startup wording still requires live verification.
