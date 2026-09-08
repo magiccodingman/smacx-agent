@@ -120,7 +120,8 @@ class WorldService:
                 str(_value(item, "terrain") or "unknown"),
                 str(item.get("fields", {}).get("terrain", {}).get("epistemic_status")) == "current",
                 frozenset(str(value) for value in (_value(item, "features", []) or [])),
-                _value(item, "owner_ref"), bool(_value(item, "hostile_zoc", False)),
+                _value(item, "owner_ref"), bool(_value(
+                    item, "foreign_movement_zoc", _value(item, "hostile_zoc", False))),
                 bool(_value(item, "blocking_contact_occupied", False)),
                 int(_value(item, "altitude")) if _value(item, "altitude") is not None else None,
             ))
@@ -477,7 +478,7 @@ class WorldService:
                     str(_value(item, "terrain") or "unknown"),
                     item.get("fields", {}).get("terrain", {}).get("epistemic_status") == "current",
                     frozenset(_value(item, "features", []) or []), _value(item, "owner_ref"),
-                    bool(_value(item, "hostile_zoc", False)),
+                    bool(_value(item, "foreign_movement_zoc", _value(item, "hostile_zoc", False))),
                     bool(_value(item, "blocking_contact_occupied", False)),
                 ))
             model_projection = {
@@ -695,7 +696,7 @@ class WorldService:
             # when many units contribute response/support detail. Keep scalar
             # summaries and qualify omission; deep subject queries recover it.
             row = body[0]
-            for field in ("friendly_response", "visible_hostile_response", "supported_unit_refs", "garrison_refs"):
+            for field in ("friendly_response", "visible_foreign_response", "supported_unit_refs", "garrison_refs"):
                 values = row.get(field) if isinstance(row, dict) else None
                 while isinstance(values, list) and values and WorldService._seal_token_estimate(result) > budget:
                     values.pop()
@@ -933,6 +934,7 @@ class WorldService:
                 "condition": "listed dependency_refs retain dependency_hash",
             },
             "epistemic_note": "Unknown and stale evidence remain explicit; absence is not negative evidence.",
+            "movement_zoc_semantics": "foreign_movement_zoc is a current non-Pact movement constraint. It does not establish Vendetta, hostile intent, or an attack plan.",
             "truncated": False,
         }
         if airdrop_evidence or runtime_base_site_receipts or runtime_counterfactual_receipt:

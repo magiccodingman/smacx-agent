@@ -1278,6 +1278,8 @@ public sealed class LobbiesController(
         {
             return (400, "invalid_participant_count", "Assign between one and seven players before starting.");
         }
+        var activeFactionMask = assigned.Aggregate(
+            0, (mask, seat) => mask | (1 << (seat.SeatIndex + 1)));
         var agents = assigned.Where(seat => seat.ControllerKind == "agent")
             .ToArray();
         var humans = assigned.Where(seat => seat.ControllerKind == "human").ToArray();
@@ -1352,6 +1354,7 @@ public sealed class LobbiesController(
                             ? WorldSizeId(world) : 1,
                         faction_id = only.SeatIndex + 1,
                         faction_roster = factionRoster.Select(item => item.NativeChoiceId).ToArray(),
+                        active_faction_mask = activeFactionMask,
                         blind_research = true,
                         initial_research_priority = 0,
                         narrative_ui = false,
@@ -1364,12 +1367,6 @@ public sealed class LobbiesController(
                 only.ControlInstanceId = created.RootElement.GetProperty("worker")
                     .GetProperty("instance_id").GetString();
                 only.Status = "provisioned";
-                foreach (var openSeat in seats.Where(seat => seat.ControllerKind == "open"))
-                {
-                    openSeat.ControllerKind = "native";
-                    openSeat.PlayerHandle = $"Native bot {openSeat.SeatIndex + 1}";
-                    openSeat.Status = "assigned";
-                }
                 profile.Mode = "singleplayer";
                 profile.Status = "provisioning";
                 profile.UpdatedAt = DateTimeOffset.UtcNow;
@@ -1385,13 +1382,6 @@ public sealed class LobbiesController(
         {
             return (400, "lan_requires_two_network_players",
                 "A LAN match needs at least two human or AI seats; unused factions are controlled by the game.");
-        }
-        foreach (var openSeat in seats.Where(seat => seat.ControllerKind == "open"))
-        {
-            openSeat.ControllerKind = "native";
-            openSeat.PlayerHandle = $"Native bot {openSeat.SeatIndex + 1}";
-            openSeat.Status = "assigned";
-            openSeat.UpdatedAt = DateTimeOffset.UtcNow;
         }
         var hostKind = agents.Length > 0 ? "agent" : "human";
         var humanHost = hostKind == "human" ? hostSeat : null;
@@ -1439,6 +1429,7 @@ public sealed class LobbiesController(
                     }).ToArray(),
                 faction_roster_choice_ids = factionRoster
                     .Select(item => item.NativeChoiceId).ToArray(),
+                active_faction_mask = activeFactionMask,
                 human_seat_preferences = humans
                     .Select(seat => new
                     {

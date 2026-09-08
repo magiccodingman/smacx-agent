@@ -1092,6 +1092,9 @@ void __cdecl alien_start() {
         if (!MFactions[player_id].is_alien()) {
             if (_stricmp(MFactions[player_id].filename, "FUNGBOY")) {
                 for (int faction_id = 1; faction_id < MaxPlayerNum; ++faction_id) {
+                    if (!managed_faction_active(faction_id)) {
+                        continue;
+                    }
                     if (is_human(faction_id)) {
                         continue;
                     }
@@ -1887,7 +1890,10 @@ void __cdecl setup_game(int flag) {
     cs->dword_9A64B8 = 0;
     cs->dword_9A64BC = 0;
     *CurrentTurn = 0;
-    FactionStatus[1] = 0xFF;
+    // Keep all seven stable roster slots for native selector/file identity,
+    // while spawning only factions assigned by the managed lobby. Bit zero
+    // remains Planet's native life.
+    FactionStatus[1] = 1 | managed_active_faction_mask();
     *BaseCount = 0;
     cs->dword_9A64D0 = 0;
     clear_all_offers();

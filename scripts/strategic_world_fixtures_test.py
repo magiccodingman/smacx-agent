@@ -100,8 +100,8 @@ def main() -> int:
     mobility_squares = [
         KnownSquare("m0", 0, 0, "land", features=frozenset({"road", "magtube"})),
         KnownSquare("m1", 2, 0, "land", features=frozenset({"road", "magtube"})),
-        KnownSquare("m2", 4, 0, "land", features=frozenset({"fungus"}), hostile_zoc=True),
-        KnownSquare("m3", 6, 0, "rocky", hostile_zoc=True),
+        KnownSquare("m2", 4, 0, "land", features=frozenset({"fungus"}), foreign_movement_zoc=True),
+        KnownSquare("m3", 6, 0, "rocky", foreign_movement_zoc=True),
         KnownSquare("r0", 1, 1, "land", features=frozenset({"road"})),
         KnownSquare("r1", 3, 1, "land", features=frozenset({"road"})),
     ]
@@ -150,10 +150,9 @@ def main() -> int:
     results["roads_magtubes_fungus_zoc_airdrop_connections"] = True
 
     # Relationship and movement authority are deliberately distinct. Native
-    # land ZOC applies to non-Pact combat units, while only Vendetta contacts
-    # enter hostile threat summaries. Identical geometry therefore yields a
-    # threat for Vendetta, no threat for Treaty/unknown/Pact, and movement ZOC
-    # for every non-Pact relationship.
+    # land ZOC applies to non-Pact combat units. Base-defense evidence includes
+    # every visible foreign combat contact while preserving formal relations,
+    # so a movement constraint never silently becomes a hostile-intent claim.
     def relationship_projection(relation: str) -> tuple[dict, dict]:
         relation_bundle = {
             "turn": 50, "year": 2250,
@@ -200,14 +199,23 @@ def main() -> int:
 
     relation_results = {name: relationship_projection(name)
                         for name in ("hostile", "allied", "neutral", "unknown")}
-    assert relation_results["hostile"][1]["bases"][0]["visible_hostile_response"]
-    assert all(not relation_results[name][1]["bases"][0]["visible_hostile_response"]
-               for name in ("allied", "neutral", "unknown"))
+    for name in ("hostile", "allied", "neutral", "unknown"):
+        visible = relation_results[name][1]["bases"][0]["visible_foreign_response"]
+        assert len(visible) == 1 and visible[0]["inferred_intent"] == \
+            "unknown_not_mechanically_observed"
+    assert relation_results["hostile"][1]["bases"][0]["visible_foreign_response"][0][
+        "formal_relationship"]["vendetta"] is True
+    assert relation_results["neutral"][1]["bases"][0]["visible_foreign_response"][0][
+        "formal_relationship"]["treaty"] is True
+    assert relation_results["allied"][1]["bases"][0]["visible_foreign_response"][0][
+        "formal_relationship"]["pact"] is True
+    assert relation_results["unknown"][1]["bases"][0]["visible_foreign_response"][0][
+        "relationship_class"] == "unknown"
     assert not relation_results["hostile"][1]["route"].reachable
     assert not relation_results["neutral"][1]["route"].reachable
     assert not relation_results["unknown"][1]["route"].reachable
     assert relation_results["allied"][1]["route"].reachable
-    results["relation_aware_threat_and_native_zoc"] = True
+    results["formal_relation_foreign_force_and_native_zoc_separated"] = True
 
     # Peninsula defense: a single known connector is mechanical, not a verdict.
     shape = MapShape(16, 8, False)

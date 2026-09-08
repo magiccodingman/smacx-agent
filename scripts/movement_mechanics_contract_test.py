@@ -711,8 +711,8 @@ def main() -> int:
     # exact; a foreign subject receives an explicit conditional minimum and is
     # not falsely blocked by our perspective's enemy map.
     zoc_topology = PerspectiveTopology(MapShape(8, 2, False), [
-        KnownSquare("z0", 0, 0, "land", hostile_zoc=True),
-        KnownSquare("z1", 2, 0, "land", hostile_zoc=True,
+        KnownSquare("z0", 0, 0, "land", foreign_movement_zoc=True),
+        KnownSquare("z1", 2, 0, "land", foreign_movement_zoc=True,
                     blocking_contact_occupied=True),
         KnownSquare("z2", 4, 0, "land"),
     ])
@@ -770,7 +770,7 @@ def main() -> int:
     foreign_drop_topology = PerspectiveTopology(MapShape(24, 2, False), [
         KnownSquare(
             ref, index * 2, 0, "land",
-            hostile_zoc=ref == "fd-sovereign-zoc",
+            foreign_movement_zoc=ref == "fd-sovereign-zoc",
             blocking_contact_occupied=ref in {
                 "fd-sovereign-zoc", "fd-unknown-unit",
             },

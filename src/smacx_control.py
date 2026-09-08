@@ -1648,6 +1648,7 @@ class ControlPlane:
                          managed_human_player_names: list[str] | None = None,
                          human_seat_preferences: list[Mapping[str, Any]] | None = None,
                          faction_roster_choice_ids: list[int] | None = None,
+                         active_faction_mask: int = 0xFE,
                          host_controller_kind: str = "agent",
                          human_host_name: str | None = None,
                          human_host_managed: bool = False,
@@ -1659,6 +1660,9 @@ class ControlPlane:
         managed_human_player_names = list(managed_human_player_names or [])
         human_seat_preferences = list(human_seat_preferences or [])
         faction_roster_choice_ids = list(faction_roster_choice_ids or [])
+        if isinstance(active_faction_mask, bool) or not isinstance(active_faction_mask, int) \
+                or active_faction_mask < 0x02 or active_faction_mask > 0xFE:
+            raise InvalidRecord("invalid_lan_active_faction_mask")
         agent_seats = list(agent_seats or [])
         if agent_seats:
             parsed_agent_ids = [str(item.get("agent_id") or "") for item in agent_seats]
@@ -1749,6 +1753,13 @@ class ControlPlane:
         if faction_roster_choice_ids and not set(requested_choices).issubset(
                 set(faction_roster_choice_ids)):
             raise InvalidRecord("lan_faction_reservation_outside_roster")
+        if faction_roster_choice_ids:
+            active_choices = {
+                choice for index, choice in enumerate(faction_roster_choice_ids, start=1)
+                if active_faction_mask & (1 << index)
+            }
+            if not set(requested_choices).issubset(active_choices):
+                raise InvalidRecord("lan_managed_seat_inactive")
         if not 2 <= len(agent_ids) + len(all_human_names) <= 7:
             raise InvalidRecord("lan_requires_two_to_seven_total_seats")
         normalized_human_names = {name.casefold() for name in all_human_names}
@@ -1781,6 +1792,7 @@ class ControlPlane:
         match_metadata["host_controller_kind"] = host_controller_kind
         if faction_roster_choice_ids:
             match_metadata["faction_roster_choice_ids"] = faction_roster_choice_ids
+            match_metadata["active_faction_mask"] = active_faction_mask
         match = self.store.create_match(
             match_id=match_id, display_name=display_name, mode="lan",
             ruleset_id=ruleset_id, metadata=match_metadata,

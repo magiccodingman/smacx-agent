@@ -80,7 +80,10 @@ def main() -> int:
     exposed_ids = [int(item.get("tech_id", -1)) for item in (terms or {}).get("player_gives", [])]
     if not terms or not accept or not reject or not terms.get("context_complete") \
             or int(terms.get("demanded_count", -1)) != 4 \
-            or exposed_ids != demanded_ids or distractor in exposed_ids:
+            or exposed_ids != demanded_ids or distractor in exposed_ids \
+            or accept.get("technology_transfer") != \
+                "counterpart_acquires_every_listed_player_gives_technology;player_retains_each_technology" \
+            or reject.get("technology_transfer") != "none":
         emit("failure", {
             "stage": "exact_bundle", "fixture": fixture, "terms": terms,
             "accept": accept, "reject": reject,

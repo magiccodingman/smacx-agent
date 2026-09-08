@@ -1157,3 +1157,28 @@ See [checkpoint evidence](benchmarks/semantic-action-evidence.md).
 | Release boundary | Complete bridge/worker/control builds and 87 portal tests pass. Exact Artifact benefit execution, population-one Colony Pod completion, blind-research popup behavior and improved sovereign decisions require a fresh controlled or live campaign and are not marked complete. |
 
 See [integrated checkpoint evidence](benchmarks/semantic-action-evidence.md).
+
+## Foreign-force evidence checkpoint (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Movement ZOC semantics | Current visible non-Pact contact → derived `foreign_movement_zoc` → route calculation → provider-queryable world result passes. The field and result annotation explicitly deny Vendetta or intent inference; old stored `hostile_zoc` rows remain read-compatible without being re-exposed. Native route behavior is unchanged. |
+| Base-defense context | Current foreign combat contact within geometric range 3 of a current owned base → represented contact/faction evidence → bounded garrison, friendly response ETA and visible-contact lower-bound ETA calculation → request-only `nearby_base_defense` passes. Pact, Treaty, Truce and Vendetta remain separate current flags; inferred intent remains unknown. Improved sovereign threat calibration remains pending. |
+| Technology demands | Native dialog terms → exact listed technologies → managed accept/reject/counter choices now state conditional transfer direction, retention and consideration. Existing live native bundle test verifies the counterpart acquires only the demanded technologies while the player retains them. Provider behavioral use remains pending. |
+
+See [acceptance evidence](benchmarks/active-roster-and-threat-evidence.md).
+
+## Selected participant roster checkpoint (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Lobby authority | Waiting lobby assignments → exact active-faction mask → portal startup request → worker environment → native setup passes. Open seats remain open in durable portal state and no longer become implicit stock bots. |
+| Native effect | Isolated real Tiny/Librarian launch with seven stable selector slots and active mask `62` produces living mask `62`: exactly factions 1–5 live and slots 6–7 inactive. The test uses native bridge state under an acceptance-only flag and no pixels/UI input. |
+| Recovery | Inactive factions have no initial units/bases and native save loading already reconstructs living state from saved owned assets. PR 74 images are deployed in place on the shared 8080/443 stack with existing data volumes preserved. A fresh five-participant campaign and checkpoint/restore comparison remain pending; no existing seven-faction save is rewritten. |
+
+Packaged deployment verification: worker/control doctrine fingerprints match;
+installed-image active-mask and bounded base-defense contracts pass; control and
+portal are healthy; the specialist supervisor is running; control names the PR
+74 worker, MCP and sovereign images. No campaign was started for this checkpoint.
+
+See [acceptance evidence](benchmarks/active-roster-and-threat-evidence.md).

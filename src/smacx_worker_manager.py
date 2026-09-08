@@ -1450,6 +1450,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                            for choice in faction_roster):
                 raise InvalidRecord("invalid_worker_faction_roster")
             result["faction_roster"] = list(faction_roster)
+        active_faction_mask = supplied.get("active_faction_mask")
+        if active_faction_mask is not None:
+            if isinstance(active_faction_mask, bool) or not isinstance(active_faction_mask, int) \
+                    or active_faction_mask < 0x02 or active_faction_mask > 0xFE:
+                raise InvalidRecord("invalid_worker_active_faction_mask")
+            result["active_faction_mask"] = active_faction_mask
+            if result["enabled"] and not active_faction_mask & (1 << result["faction_id"]):
+                raise InvalidRecord("worker_faction_inactive")
         startup_save = supplied.get("startup_save")
         scenario_id = supplied.get("scenario_id")
         lan_scenario_id = supplied.get("lan_scenario_id")
@@ -1589,6 +1597,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 and os.environ.get("SMACX_ACCEPTANCE_PACT_PORT") == "1":
             values["SMACX_AGENT_TEST_MODE"] = "1"
             values["SMACX_ACCEPTANCE_PACT_PORT"] = "1"
+        if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" \
+                and os.environ.get("SMACX_ACCEPTANCE_ACTIVE_ROSTER") == "1":
+            values["SMACX_AGENT_TEST_MODE"] = "1"
+            values["SMACX_ACCEPTANCE_ACTIVE_ROSTER"] = "1"
         if os.environ.get("SMACX_AGENT_TEST_MODE") == "1" and os.environ.get("SMACX_ACCEPTANCE_BASE_SITE") == "1":
             values["SMACX_AGENT_TEST_MODE"] = "1"
             values["SMACX_ACCEPTANCE_BASE_SITE"] = "1"
@@ -1606,6 +1618,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             values["SMACX_AGENT_ALLOWED_FACTION_MASK"] = str(sum(
                 1 << int(choice) for choice in faction_roster
             ))
+        active_faction_mask = autostart.get("active_faction_mask")
+        if isinstance(active_faction_mask, int):
+            values["SMACX_AGENT_ACTIVE_FACTION_MASK"] = str(active_faction_mask)
         values.update(game_settings_environment(autostart["game_settings"]))
         return [f"{key}={value}" for key, value in values.items()]
 

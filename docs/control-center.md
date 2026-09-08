@@ -325,7 +325,8 @@ send notifications. A matching existing or future local account receives the
 exclusive **Claim seat** action; the reconnect timer begins only after that
 explicit claim. Reserving stock computer opponents is also optional: it
 prevents those seats being claimed while a lobby waits. Every seat still open
-at launch becomes a stock game-controlled faction automatically.
+at launch remains inactive. Only explicitly assigned human, AI, and stock
+computer seats participate in the native game.
 
 Lobby Comms exists before any managed AI process is launched, so staging-room
 messages remain a human coordination channel and are not retroactively inserted

@@ -20,7 +20,7 @@ from smacx_world_types import (
 
 
 WORLD_MODEL_VERSION = "smacx.world-model.v1"
-CALCULATOR_VERSION = "smacx.calculators.v6-air-state-visibility"
+CALCULATOR_VERSION = "smacx.calculators.v7-foreign-force-evidence"
 
 ENTITLEMENT_EVIDENCE_SOURCES = {
     "unity_survey": EvidenceSource.SURVEY,
@@ -284,7 +284,7 @@ class PerspectiveProjector:
             square = KnownSquare(ref, int(tile["x"]), int(tile["y"]), terrain,
                                  current, features, str(tile.get("owner_ref"))
                                  if tile.get("owner_ref") else None,
-                                 bool(tile.get("hostile_zoc", False)), False,
+                                 bool(tile.get("foreign_movement_zoc", False)), False,
                                  int(tile["altitude"]) if tile.get("altitude") is not None else None)
             squares.append(square)
             fields = {
@@ -524,23 +524,30 @@ class PerspectiveProjector:
             if item.kind == "foreign_contact" and item.status == "active"
             and item.fields.get("relationship") is not None
             and item.fields["relationship"].value != "allied"
+            and item.fields.get("triad") is not None
+            and item.fields["triad"].status is EpistemicStatus.CURRENT
+            and item.fields["triad"].value == "land"
+            and item.fields.get("roles") is not None
+            and item.fields["roles"].status is EpistemicStatus.CURRENT
+            and isinstance(item.fields["roles"].value, Mapping)
+            and item.fields["roles"].value.get("combat") is True
             and item.location_ref
         }
-        hostile_positions = {
+        foreign_zoc_positions = {
             (square.x, square.y) for square in squares
             if square.location_ref in zoc_unit_locations and not square.ocean
         }
-        if hostile_positions:
-            squares = [replace(square, hostile_zoc=any(
-                neighbor in hostile_positions
+        if foreign_zoc_positions:
+            squares = [replace(square, foreign_movement_zoc=any(
+                neighbor in foreign_zoc_positions
                 for neighbor in shape.neighbors((square.x, square.y)).values()
-            ), blocking_contact_occupied=(square.x, square.y) in hostile_positions)
+            ), blocking_contact_occupied=(square.x, square.y) in foreign_zoc_positions)
                        for square in squares]
         # Persist the derived, perspective-legitimate ZOC field on current
         # locations.  Calculators reconstruct topology from stored objects;
         # keeping this only on the transient KnownSquare list made production
         # routes silently ignore ZOC while synthetic fixtures passed.
-        zoc_by_ref = {square.location_ref: square.hostile_zoc for square in squares}
+        zoc_by_ref = {square.location_ref: square.foreign_movement_zoc for square in squares}
         occupied_by_ref = {
             square.location_ref: square.blocking_contact_occupied for square in squares
         }
@@ -552,7 +559,7 @@ class PerspectiveProjector:
             current = item.fields.get("terrain") is not None \
                 and item.fields["terrain"].status is EpistemicStatus.CURRENT
             fields = dict(item.fields)
-            fields["hostile_zoc"] = EpistemicValue(
+            fields["foreign_movement_zoc"] = EpistemicValue(
                 bool(zoc_by_ref.get(item.object_ref, False)) if current else None,
                 EpistemicStatus.DERIVED if current else EpistemicStatus.UNKNOWN,
                 EvidenceSource.DIRECT_SIGHT if current else EvidenceSource.STALE_MAP,

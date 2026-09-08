@@ -1,7 +1,8 @@
 """Bounded scoped spatial context: seam, stale, unknown, and omission contracts."""
 import copy
 import json
-from smacx_runtime_context import _spatial_context
+from smacx_runtime_context import _nearby_base_defense, _spatial_context
+from smacx_world import WorldService
 from smacx_world_model import estimate_tokens
 
 
@@ -52,5 +53,56 @@ r = _spatial_context(large, focus)
 assert len(r['relations']) == 10
 assert r['contact_sample']['omitted'] == 9997
 assert estimate_tokens(r) < 2600
+
+def fields_entity(ref, kind, location_ref, fields):
+    return {'object_ref': ref, 'kind': kind, 'location_ref': location_ref,
+            'status': 'active', 'fields': fields}
+
+def terrain_location(ref, x, y):
+    return {'object_ref': ref, 'kind': 'location', 'status': 'active',
+            'metadata': {'native_x': x, 'native_y': y},
+            'fields': {'terrain': evidence('land'), 'features': evidence([])}}
+
+defense_projection = {'world_revision': 8, 'map_shape': {
+    'width': 12, 'height': 4, 'horizontal_wrap': False}, 'objects': [
+    terrain_location('location-home', 2, 2),
+    terrain_location('location-reserve', 0, 2),
+    terrain_location('location-contact', 4, 2),
+    fields_entity('base-home', 'base', 'location-home', {
+        'owner_ref': evidence('faction-1'), 'production_cost': evidence(20),
+        'minerals_accumulated': evidence(4), 'mineral_surplus': evidence(2)}),
+    fields_entity('own-unit-garrison', 'own_unit', 'location-home', {
+        'roles': evidence({'combat': True}), 'triad': evidence('land'),
+        'movement_points': evidence(1), 'moves_remaining': evidence(1)}),
+    fields_entity('own-unit-reserve', 'own_unit', 'location-reserve', {
+        'roles': evidence({'combat': True}), 'triad': evidence('land'),
+        'movement_points': evidence(1), 'moves_remaining': evidence(1)}),
+    fields_entity('foreign-contact', 'foreign_contact', 'location-contact', {
+        'owner_ref': evidence('faction-2'), 'roles': evidence({'combat': True}),
+        'triad': evidence('land'), 'movement_points': evidence(1),
+        'relationship': evidence('neutral')}),
+    fields_entity('faction-2', 'faction', '', {
+        'relations': evidence({'pact': False, 'treaty': True, 'truce': False,
+                               'vendetta': False})}),
+]}
+
+class ProjectedWorld:
+    _objects = staticmethod(WorldService._objects)
+    _topology = staticmethod(WorldService._topology)
+
+defense = _nearby_base_defense(ProjectedWorld(), defense_projection,
+                                turn=15, year=2135)
+assert len(defense['bases']) == 1
+base = defense['bases'][0]
+assert base['observed_defender_count'] == 1 and base['friendly_response']
+foreign = base['visible_foreign_response'][0]
+assert foreign['formal_relationship'] == {
+    'epistemic_status': 'current', 'pact': False, 'treaty': True,
+    'truce': False, 'vendetta': False}
+assert foreign['foreign_movement_zoc_constraint'] is True
+assert foreign['inferred_intent'] == 'unknown_not_mechanically_observed'
+assert defense['evidence_boundaries']['visible_forces'] == 'lower_bound_only'
+assert 'do not prove equal resources' in defense['shared_era_context']['meaning']
 print(json.dumps({'ok': True, 'large_relations': len(r['relations']), 'large_tokens': estimate_tokens(r),
+                  'nearby_defense_surfaced': True,
                   'scope': 'projection/context behavior; live provider delivery and improved decisions not yet verified'}))
