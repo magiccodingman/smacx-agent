@@ -1060,3 +1060,12 @@ canonical journal evidence, diagnostic export and recovery contracts passed the
 bounded readiness audit. These are contract/adapter checks, not new live native
 mechanics proof. Strategic expansion, natural specialist/memory use and full-game
 completion remain open. Main port 8080 deployment is healthy; no game was started.
+
+## Spectator activity checkpoint (2026-09-08)
+
+Live emitted reasoning/output and tool results now have a bounded spectator
+projection and cursor-based display, plus streamed match JSON export. Permission,
+transport, cursor, deduplication, Docker isolation and responsive fullscreen UI
+checks are recorded in [acceptance evidence](benchmarks/spectator-ai-activity.md).
+Evidence is controlled transport/browser data, not a new live sovereign run.
+The UI is not deployed yet; original gameplay acceptance gaps remain open.

@@ -1,0 +1,27 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+<aside @ref="root" class="ai-activity-panel" aria-label="AI activity" hidden="@(!Visible)">
+    <header class="activity-heading"><div><span class="panel-kicker">AI ACTIVITY</span><h3>@SeatName</h3></div><MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="OnClose" aria-label="Minimize AI activity" /></header>
+    <div class="activity-status" role="status">Connecting to activity…</div>
+    <div class="activity-feed" tabindex="0" aria-label="AI transcript"></div>
+    <button class="activity-new" hidden>New activity ↓</button>
+    <footer><a class="activity-download" href="@($"/api/lobbies/{Uri.EscapeDataString(MatchId)}/ai-activity/download")" download>Download match JSON</a><span>Thinking and tools expand on click</span></footer>
+</aside>
+@code {
+    [Parameter] public string MatchId { get; set; } = "";
+    [Parameter] public int SeatIndex { get; set; }
+    [Parameter] public string SeatName { get; set; } = "AI player";
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private ElementReference root;
+    private IJSObjectReference? module, feed;
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (!firstRender) return;
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/ai-activity.js");
+        feed = await module.InvokeAsync<IJSObjectReference>("create", root, MatchId, SeatIndex);
+    }
+    public async ValueTask DisposeAsync() {
+        try { if (feed is not null) { await feed.InvokeVoidAsync("dispose"); await feed.DisposeAsync(); } if (module is not null) await module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}

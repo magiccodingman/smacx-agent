@@ -42,6 +42,18 @@ public sealed class MatchAccessService(ApplicationDbContext database)
                 item.ControllerKind == "human", cancellationToken);
     }
 
+    public async Task<bool> CanReadAiActivityAsync(PortalMatchProfile match, string? userId,
+        bool administrator, CancellationToken cancellationToken = default)
+    {
+        if (userId is null || await IsParticipantAsync(match.MatchId, userId, cancellationToken)) return false;
+        if (await CanSpectateAsync(match, userId, administrator, cancellationToken)) return true;
+        // Keep the transcript accessible after an AI-only run stops. Participation
+        // exclusion still applies, even to administrators and former players.
+        return match.Status is "paused" or "parked" or "completed" or "closed" or "recovering"
+            && !await database.PortalLobbySeats.AsNoTracking().AnyAsync(
+                s => s.MatchId == match.MatchId && s.ControllerKind == "human", cancellationToken);
+    }
+
     public async Task RecordAssignedPlayersAsync(
         string matchId,
         CancellationToken cancellationToken = default)

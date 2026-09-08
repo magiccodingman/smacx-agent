@@ -322,6 +322,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 result = service.events(match_id, query.get("cursor", [""])[0]) if action == "events" else service.inspect(match_id, query.get("object_ref", [""])[0]) if action == "inspect" else service.health(match_id)
                 self._json(200, {"ok": True, "report": result})
                 return
+            activity_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/activity/([A-Za-z0-9_-]{8,96})", path)
+            if activity_match:
+                self._authentication()
+                query = parse_qs(parts.query)
+                self._json(200, {'ok':True, 'report':self._harness_manager().activity(
+                    activity_match[1], activity_match[2], query.get('cursor',[''])[0])})
+                return
             diagnostic_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/diagnostics", path)
             if diagnostic_match:
                 self._authentication()
