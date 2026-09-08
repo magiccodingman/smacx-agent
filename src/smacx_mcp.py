@@ -1079,6 +1079,13 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
                       for key in keys
                       if isinstance((value := catalog[section].get(key)), (str, int, float, bool))}
             for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}
+    if type(catalog.get("population")) is int:
+        result["population"] = int(catalog["population"])
+    result["selection_completion_boundary"] = (
+        "A returned Set production choice is legal to select now. Selection does not prove or "
+        "apply eventual completion effects; use the choice's conditional effects and verify the "
+        "native state when production completes."
+    )
     queue = result.get("queue")
     if queue is not None:
         entries = queue.get("entries")

@@ -1131,3 +1131,11 @@ are verified. No new provider-behavior or native-mechanics claim is made.
 | Movement units | Raw movement points, scale and remainder are delivered with the restriction reason and explicitly are not tile counts. Terrain-specific route accuracy remains a separate route-query/native acceptance claim. |
 
 See [checkpoint evidence](benchmarks/semantic-action-evidence.md).
+
+## Semantic action evidence checkpoint 2 (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Colony Pod production | Current owned base population → native legal production choice → conditional selection/completion distinction → provider-queryable managed response passes. Population is unchanged on selection; normal completion cost and population-one native decision are represented without predicting their outcome. Controlled live completion remains pending. |
+| State-dependent quotes | Hurry quote carries current item, exact quoted amount, native revision, single-use scope and invalidators through the managed response. The prior Scout quote cannot establish a future Colony Pod price. Actual execution/effect verification remains guarded by the existing choice receipt. |
+| Blind research categories | Native TECHRANDOM choices distinguish category bias from map exploration and preserve hidden target semantics. Build compilation passes; controlled popup/provider delivery remains pending. |

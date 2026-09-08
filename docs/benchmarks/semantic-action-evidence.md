@@ -20,3 +20,23 @@ passes in Docker (`smacx-astra-bridge-semantic-evidence:dev`). Installed
 provider-delivery validation remains required before this checkpoint is called
 deployed. No strategy is prescribed and destructive execution remains behind
 the existing exact choice and native confirmation.
+
+## Checkpoint 2 — mechanical planning facts
+
+The production catalog now separates legal selection from eventual completion.
+Colony Pod choices state that selection removes no population, while normal
+completion has a conditional one-population cost and a population-one native
+decision boundary. This corrects the trace's repeated claim that population two
+was required before production could begin without prescribing when to expand.
+
+Hurry quotes are explicitly single-use and bound to the current production,
+revision and resource state. A model cannot correctly treat one Scout quote as
+a reusable exchange rate after switching to a Colony Pod. Blind research choices
+now describe category bias and state that Explore research does not itself move
+units or reveal tiles.
+
+`production_flow_context_test.py` proves the population boundary and quote scope
+survive the managed adapter while retaining conditional epistemic state. The
+same complete MinGW build covers the native additions. Controlled native
+comparison for population-one completion and installed provider delivery remain
+open; no exact completion timing is claimed.
