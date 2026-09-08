@@ -4,7 +4,7 @@
   "runtime_context_sha256": "987c63458ead35c2366b2c736a129325053d56cf46c940f2d8c8617e01cb85b3",
   "archive_sha256": "aa1577cda33ff0a88706cd810fee8e6039ebb1b0899aed17d76e92e1eb4f0224",
   "native_source": "mod_base_growth: threshold=(pop_size+1)*mod_cost_factor; habitat/growth inhibition and population-boom rules also govern growth. Threshold checked before adding ordinary surplus.",
-  "status": "Repair validated; deployment and actual provider receipt pending.",
+  "status": "Deployed paired recovery verified; native current threshold30/stock9 disproves earlier7 denominator. Actual provider delivery pending.",
   "implementation": "Owned native base receipt now exposes threshold, rating, population room/habitat/dome, ordinary inhibition and boom prerequisites; timing text explicitly avoids a promised date.",
   "validation": "Native cross-build39/39, installed current/stale/unknown storage regression, and controlled native ordinary sequencing/inhibition/boom/habitat-cap comparisons pass.",
   "native_comparison": {
@@ -75,5 +75,15 @@
       },
       "capped_population": 7
     }
+  },
+  "deployment": {
+    "restored_turn": 56,
+    "stored_nutrients": 9,
+    "native_threshold": 30,
+    "surplus": 1,
+    "growth_rating": 0,
+    "habitat_limit": 9,
+    "profile_recompile_http": 200,
+    "live_sovereign_processes": 0
   }
 }

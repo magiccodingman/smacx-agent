@@ -993,3 +993,5 @@ Turn54 acceptance: native end-turn53→54 verified. Sovereign-authored typed mon
 Growth observation gap: actual provider requestf506fbb164b24fccab8e5f4686d6fe00 includes nutrient stock/surplus and social growth but omits native growth threshold/gates. Sovereign assumes8/7 and imminent growth. Repair must expose native threshold with conditional timing and inhibition/cap/boom semantics; comparison pending. Evidence: `astra-growth-gap55.json`.
 
 Growth receipt validation: native39/39 build and installed epistemic storage test pass. Controlled native threshold sequencing, −3 inhibition, population boom and habitat-cap comparisons pass. Receipt reports current native inputs without a promised growth date; deployment and actual provider delivery pending. Evidence: `astra-growth-gap55.json`.
+
+Growth deployment: paired recovery restored56 with current receipt threshold30, stock9, surplus1, rating0, habitat limit9. Profile recompile200; actual provider delivery pending. The earlier sovereign7 denominator is contradicted by native observation.
