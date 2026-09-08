@@ -1,0 +1,14 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "status": "confirmed_gap_repair_pending",
+  "archive_sha256": "756693c6fe4850a16c7b019fa1c4bc69b0a0a576f7e2381d4f9f3f57955f7cfb",
+  "requests_missing_cause": [
+    "ddaa868d70b546649962f67216adaeac",
+    "6bd78af9943143aa9f5a82379e9801d8",
+    "58e2754a42ae4d40aaa8e6c7a90a2ebe"
+  ],
+  "finding": "Later actual wire requests lack unit_support_shortage/forced_disband explanation; general unit_destroyed semantic event and loss summary retain no removal cause. Native popup previously exposed support shortage.",
+  "source": "bridge/src/base.cpp support shortage calls kill(best_veh); generic veh removal hook emits visible_unit_destroyed without cause.",
+  "next": "Preserve exact native support-loss cause with owned-unit identity at removal; carry through committed observation and provider loss summary. Verify controlled native case plus recovery/provider delivery. Do not infer cause from coincident deficits or unit names.",
+  "containment": "Own campaign parked with verified recovery checkpoint at turn53."
+}
