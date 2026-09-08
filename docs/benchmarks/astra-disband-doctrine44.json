@@ -1,0 +1,14 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "checkpoint": "disband doctrine compatibility",
+  "failure": "doctrine_unreviewed_engine_build",
+  "reviewed_delta": "122 lines in agent_bridge.cpp since 34b059b: guarded deferred native disband, choices, confirmation, isolated fixture; no fixed public rules changes",
+  "engine_source_sha256": "3950661b7fb837ac13f1d4a07dd5ec6791d630858f5094e2c1f4d37cdf1cdad0",
+  "native_evidence": "astra-native-disband44.json",
+  "checks": [
+    "doctrine_engine_contract.py",
+    "doctrine_integration_contract_test.py"
+  ],
+  "deployment": "pending",
+  "limits": "Adapter compatibility evidence; live doctrine reassembly and sovereign continuation still pending."
+}
