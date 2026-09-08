@@ -13,5 +13,14 @@
   ],
   "deployment": "Installed-image tests passed; operator recovery succeeded; fresh native turn18 catalog through installed managed formatter exposes conditional surplus0 and zero-surplus state.",
   "native_post_completion_comparison": "pending",
-  "scope": "Derived arithmetic under existing native caveats; no new exact mechanics claim"
+  "scope": "Derived arithmetic under existing native caveats; no new exact mechanics claim",
+  "actual_provider_delivery": [
+    {
+      "tool_return_unix": 1788837921.716235,
+      "next_provider_unix": 1788837921.9317386,
+      "full_receipt_present": true
+    }
+  ],
+  "turn19_choice": "Retained Scout production and declined hurry; saving credits rationale does not establish recognition of future zero surplus.",
+  "packet_sha256": "85d8f086c074be0d820108f6dce7ed78eb83f059a39d7b9c57554d2a34e3e3b2"
 }
