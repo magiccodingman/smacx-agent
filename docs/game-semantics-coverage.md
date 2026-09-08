@@ -594,8 +594,8 @@ Episode-name follow-up: live readback exposed a portal `initial_prompt` override
 
 | Capability | Evidence chain | Acceptance / remaining proof |
 | --- | --- | --- |
-| MCP startup failure | Docker inspection/logs → bounded sanitized receipt → worker metadata before cleanup + diagnostic event → administrator health/packet | Actual error-path fixture preserves exit/OOM/health distinction, redacts credentials, exposes missing logs. Native launch validation pending. |
-| Bound startup | Authenticated preflight → installation and image receipt checks → preset/agent read-back → durable match ID → one bounded startup POST → process/world readiness | CLI HTTP contracts cover identity mismatch, durable retry and ambiguous-submission refusal; portal 83/83. Fresh native launch pending. |
+| MCP startup failure | Docker inspection/logs → bounded sanitized receipt → worker metadata before cleanup + diagnostic event → administrator health/packet | Actual error-path fixture preserves exit/OOM/health distinction, redacts credentials, exposes missing logs. Real Docker process exit/log capture also passes; fresh native launch reached worker/MCP/sovereign readiness. |
+| Bound startup | Authenticated preflight → installation and image receipt checks → preset/agent read-back → durable match ID → one bounded startup POST → process/world readiness | CLI HTTP contracts cover identity mismatch, durable retry and ambiguous-submission refusal; portal 83/83. Fresh native launch passed: 13 managed tool returns and opening execution receipts; packet export and verified park completed. |
 | Deployment verification | Explicit Compose project → actual service image IDs + child image/network/volume settings → image receipt → preflight checks | Host orchestration rejects stale images, wrong project, mismatched settings and stopped containers. Does not infer gameplay health from image presence. |
 | Hermes operation | Concrete CLI/schema recipe + tool-wrapper format + native scheduler commands | Installed Hermes syntax inspected; no scheduler/wakeup claim until a real job attempt is verified. |
 

@@ -10,7 +10,8 @@ from pathlib import Path
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
+import threading
 import fcntl
 import subprocess
 from urllib.error import HTTPError, URLError
@@ -242,6 +243,8 @@ def bootstrap(client, args):
         match = quote(state['match_id'], safe='')
         lobby_path, health_path = f'api/lobbies/{match}', f'api/operator/matches/{match}/health'
         lobby = client.request(lobby_path)
+        if lobby['status'] not in ('waiting', 'starting', 'running'):
+            raise OpsError('Bootstrap cannot resume this lifecycle state; inspect status and use supported recovery.')
         should_start = lobby['status'] == 'waiting' and not lobby.get('startupRequestedAt')
         if should_start and state.get('start_submitted'):
             raise OpsError('Previous start outcome is unresolved. Inspect status/health; bootstrap will not resubmit it.')
@@ -252,39 +255,49 @@ def bootstrap(client, args):
         # POST runs concurrently with read-only progress, without mutation retries.
         deadline = time.monotonic() + args.wait
         start_client = Client(client.url, client.path, timeout=max(client.timeout, args.wait))
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(start_client.request, lobby_path + '/start', 'POST') if should_start else None
-            while True:
-                if future and future.done():
-                    try: future.result()
-                    except OpsError as error: state['submission_notice'] = str(error)
-                    future = None
-                try:
-                    lobby = client.request(lobby_path)
-                    health = client.request(health_path) if lobby['status'] != 'waiting' else None
-                    if health and health.get('installation_id') != args.expect_installation:
-                        raise OpsError('Installation changed during startup.')
-                    state.update({'lobby_status': lobby['status'], 'health': health, 'updated_unix': time.time()})
-                    ready = bool(health and health['live_sovereign_processes'] == 1
-                        and health['world_heads'] and health['workers']
-                        and all(w.get('running') and not w.get('paused') and w.get('health') == 'healthy'
-                            and w.get('mcp', {}).get('running') and w.get('mcp', {}).get('health') == 'healthy'
-                            for w in health['workers']) and not health['incidents'])
-                    failed = bool(lobby.get('needsAttention') or lobby.get('lastError') or
-                                  health and (health['incidents'] or health['match_status'] == 'error'))
-                    ready = ready and not failed and lobby['status'] == 'running'
-                    state['phase'] = 'native_ready' if ready else 'needs_attention' if failed else 'starting'
-                except OpsError as error:
-                    state.update({'phase': 'observation_unavailable', 'observation_error': str(error)})
-                    ready = failed = False
-                timed_out = time.monotonic() >= deadline
-                if timed_out and not (ready or failed): state['phase'] = 'startup_unverified'
-                write_state(path, state)
-                emit({'schema': state['schema'], 'phase': state['phase'], 'match_id': state['match_id'],
-                      'lobby_status': state.get('lobby_status'), 'state_file': str(path),
-                      'sampled_unix': state['updated_unix']}, True)
-                if ready or failed or timed_out: return 0 if ready else 2
-                time.sleep(min(5, max(0, deadline-time.monotonic())))
+        future = Future() if should_start else None
+        if future:
+            submitted = future
+            def post():
+                try: submitted.set_result(start_client.request(lobby_path + '/start', 'POST'))
+                except Exception as error: submitted.set_exception(error)
+            # An accepted server-side operation survives a disconnected caller.
+            # Do not make timeout/Ctrl-C wait for executor shutdown.
+            threading.Thread(target=post, daemon=True).start()
+        while True:
+            if future and future.done():
+                try: future.result()
+                except Exception as error:
+                    state['submission_notice'] = str(error) if isinstance(error, OpsError) else 'Start request failed: ' + type(error).__name__
+                future = None
+            try:
+                lobby = client.request(lobby_path)
+                health = client.request(health_path) if lobby['status'] != 'waiting' else None
+                if health and health.get('installation_id') != args.expect_installation:
+                    raise OpsError('Installation changed during startup.')
+                state.update({'lobby_status': lobby['status'], 'health': health, 'updated_unix': time.time()})
+                ready = bool(health and health['live_sovereign_processes'] == 1
+                    and health['world_heads'] and health['workers']
+                    and all(w.get('running') and not w.get('paused') and w.get('health') == 'healthy'
+                        and w.get('mcp', {}).get('running') and w.get('mcp', {}).get('health') == 'healthy'
+                        for w in health['workers']) and not health['incidents'])
+                failed = bool(lobby.get('needsAttention') or lobby.get('lastError') or
+                              health and (health['incidents'] or health['match_status'] == 'error'))
+                ready = ready and not failed and lobby['status'] == 'running'
+                state['phase'] = 'native_ready' if ready else 'needs_attention' if failed else 'starting'
+            except OpsError as error:
+                state.update({'phase': 'observation_unavailable', 'observation_error': str(error)})
+                ready = failed = False
+            submission_unverified = bool(state.get('submission_notice') and lobby['status'] == 'waiting'
+                and not lobby.get('startupRequestedAt'))
+            timed_out = time.monotonic() >= deadline or submission_unverified
+            if timed_out and not (ready or failed): state['phase'] = 'startup_unverified'
+            write_state(path, state)
+            emit({'schema': state['schema'], 'phase': state['phase'], 'match_id': state['match_id'],
+                  'lobby_status': state.get('lobby_status'), 'state_file': str(path),
+                  'sampled_unix': state['updated_unix'], 'notice': state.get('submission_notice') or state.get('observation_error')}, True)
+            if ready or failed or timed_out: return 0 if ready else 2
+            time.sleep(min(5, max(0, deadline-time.monotonic())))
 
 
 def main(argv=None):

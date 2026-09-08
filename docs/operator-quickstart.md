@@ -92,7 +92,7 @@ one sovereign process exists, committed world observations exist and no incident
 is active. It does not mean a tool action was successful, strategy is good, a
 checkpoint exists or the game is won. `needs_attention`/`startup_unverified` exits
 2. The state file retains the health report; collect a packet before investigating.
-A timed-out POST may still complete server-side. Never create a replacement lobby
+The CLI does not wait for a background POST when its observation deadline expires. A timed-out POST may still complete server-side. Never create a replacement lobby
 merely because the CLI timed out.
 
 ## Observe and investigate

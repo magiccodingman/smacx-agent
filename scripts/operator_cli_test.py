@@ -3,6 +3,7 @@
 import io
 import json
 import tempfile
+import time
 import threading
 import zipfile
 from contextlib import redirect_stdout
@@ -41,7 +42,10 @@ with tempfile.TemporaryDirectory() as tmp:
                         'requestedFactionId':body['factionId'],'requestedPersonalityId':body['personalityId']}
                     value=state['lobby']
                 elif path.endswith('/start'):
-                    state['starts']+=1;state['lobby']['status']='running';value=state['lobby']
+                    state['starts']+=1
+                    if state.get('start_gate'): state['start_gate'].wait(10)
+                    state['lobby']['status']='running';value=state['lobby']
+                    if state.get('start_done'):state['start_done'].set()
                 elif path.endswith('/diagnostics'):
                     archive=io.BytesIO()
                     with zipfile.ZipFile(archive,'w') as z:z.writestr('manifest.json','{}')
@@ -92,6 +96,22 @@ with tempfile.TemporaryDirectory() as tmp:
         else: raise AssertionError('ambiguous start retried')
         assert state['starts']==1
         state['lobby']['status']='running'
+        state['lobby']['status']='waiting';state['start_gate']=threading.Event();state['start_done']=threading.Event()
+        slow=list(boot);slow[slow.index('--state-file')+1]=str(root/'slow.json');slow[-1]='0.05'
+        out=io.StringIO();ended=threading.Event();codes=[]
+        def run_slow():
+            try:
+                with redirect_stdout(out):codes.append(main(args+slow))
+            finally:ended.set()
+        caller=threading.Thread(target=run_slow);caller.start()
+        try: assert ended.wait(5), 'deadline waited for background POST'
+        finally:state['start_gate'].set();caller.join(5)
+        assert codes==[2]
+        assert json.loads(out.getvalue().splitlines()[-1])['phase']=='startup_unverified'
+        assert state['start_done'].wait(5)
+        state.pop('start_gate');state.pop('start_done')
+        assert command(*slow)['phase']=='native_ready'
+        assert state['starts']==2, 'ambiguous start was duplicated'
         packet=command('packet','match-cli-test','--output',str(root/'packet'))
         assert packet['complete'] and len(packet['files'])==4
         assert zipfile.is_zipfile(root/'packet/diagnostics.zip')
