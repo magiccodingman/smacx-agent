@@ -1,0 +1,13 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "incident_id": "incident-5e675c2e0f25436a8fed3840e06001af",
+  "classification": "production queue representation ambiguity observed in sovereign trace",
+  "native_contract": "production current reads base.queue_items[0]; queue.entries is base.queue_size+1",
+  "repair": "Managed queue explicitly includes current item and counts only remaining entries as items_after_current. Missing/invalid count remains unknown.",
+  "tests": [
+    "production_queue_context_test passed",
+    "production_context_delivery_test passed"
+  ],
+  "limits": "Does not prove entire stall resolved; live provider delivery and subsequent gameplay pending. No stall-policy relaxation.",
+  "archive_sha256": "1df771c7b9a3f13320199e935bf4a777b338950ed5f5d9ffb97077222f584f3f"
+}

@@ -1077,6 +1077,17 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
                       for key in keys
                       if isinstance((value := catalog[section].get(key)), (str, int, float, bool))}
             for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}
+    queue = result.get("queue")
+    if queue is not None:
+        entries = queue.get("entries")
+        # Native production_choices counts queue_items[0] (current production)
+        # in queue_size + 1. Do not count that item again as pending output.
+        if type(entries) is int and 1 <= entries <= 10:
+            queue["includes_current_item"] = True
+            queue["items_after_current"] = entries - 1
+            queue["meaning"] = (
+                "Entry 0 is current production, not an additional item. "
+                "A one-entry queue contains only the item being built.")
     current = result.get("current")
     if current:
         current["progress_state"] = production_flow_state(
