@@ -14,8 +14,17 @@
     "installed image request-budget regression passed"
   ],
   "pending": [
-    "live recovery",
-    "underlying daemon startup delay cause"
+    "underlying daemon startup delay cause",
+    "full-game acceptance"
   ],
-  "other_stack_attribution": "Not established"
+  "other_stack_attribution": "Not established",
+  "recovery": {
+    "turn": 31,
+    "worker": "healthy",
+    "mcp": "healthy",
+    "sovereign_container": "running",
+    "graphiti_rebuild_id": "rebuild-58c51f621b6d4d6d8d255b739663c29a",
+    "graphiti_completed_unix": 1788847289.4127586,
+    "interpretation": "Controlled retry succeeded. Memory restore gate withheld sovereign until rebuild completed. This does not prove the retry required more than the old 15-second startup timeout."
+  }
 }
