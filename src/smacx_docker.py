@@ -197,7 +197,10 @@ class DockerClient:
         return value
 
     def start_container(self, identifier: str) -> None:
-        self._request("POST", f"/containers/{quote(identifier, safe='')}/start", expected=(204, 304))
+        # Engine startup can block on network/runtime setup beyond the ordinary
+        # read timeout. A timed-out start may still complete; do not retry it.
+        self._request("POST", f"/containers/{quote(identifier, safe='')}/start",
+                      expected=(204, 304), timeout=max(self.timeout, 90.0))
 
     def stop_container(self, identifier: str, *, timeout: int = 20) -> None:
         grace = min(max(int(timeout), 1), 60)

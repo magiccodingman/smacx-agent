@@ -1,0 +1,21 @@
+{
+  "scope": "Docker container-start timeout distinct from MCP health failure",
+  "observed": {
+    "failure_capture_unix": 1788847075.5580761,
+    "failure": "DockerUnavailable",
+    "inspection_capture": "DockerUnavailable",
+    "docker_start_event_unix": 1788847090,
+    "cleanup_destroy_event_unix": 1788847091,
+    "daemon_evidence": "Container inspection request cancelled by client with broken pipe at 05:58:10 UTC; container start completed after failure capture."
+  },
+  "repair": "Use max(configured client timeout, 90 seconds) for container start only. No automatic mutation retry; health verification remains required.",
+  "validation": [
+    "host request-budget regression passed",
+    "installed image request-budget regression passed"
+  ],
+  "pending": [
+    "live recovery",
+    "underlying daemon startup delay cause"
+  ],
+  "other_stack_attribution": "Not established"
+}
