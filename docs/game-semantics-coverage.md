@@ -780,3 +780,9 @@ test scripts mounted; recovered native/MCP services are healthy at turn37 and th
 MCP controller hash matches source. Graphiti completed at1788851940.638363 before
 sovereign restart. All15 schemas pass at7,612 conservative tokens (not an exact
 tokenizer measurement). Live autonomous faction-linked memory write remains open.
+
+Turn37 provider-schema delivery: submitted requestab3de60c in episode1c836aec
+contains all15 tools and the repaired memory schema, including canonical journal
+citation and observed faction-reference guidance. Both repair evidence files
+retain request/context IDs and the schema digest. This closes schema delivery,
+not autonomous memory-write/effect acceptance.

@@ -36,5 +36,20 @@
       "conservative_tokens": 7612,
       "exact_tokenizer": false
     }
+  },
+  "provider_schema_delivery": {
+    "recorded_unix": 1788852185.4748616,
+    "correlation": {
+      "attention_lease_id": "attention-lease-e6e5c53e442443e4a39f3775fd852baf",
+      "episode_id": "episode-1c836aec0ec27d75080881028d579198",
+      "request_id": "ab3de60cb1f4432cb1d432e5332a6a4a",
+      "runtime_context_sha256": "0531609d763939e37666cacb5b7fe836e8890fea6cac49dfa8b01bb4a7d21861"
+    },
+    "managed_tools_offered": 15,
+    "memory_update_schema_sha256": "fab8fcc0dab99292bc9e4ebdd454192416e3d832823371f3db26446b40b7d1d2",
+    "canonical_journal_citation_guidance_present": true,
+    "observed_faction_reference_guidance_present": true,
+    "scope": "actual provider_request_submitted body.tools, not schema inventory alone",
+    "autonomous_write_proven": false
   }
 }
