@@ -55,7 +55,8 @@
     "native_cross_build": "passed",
     "installed_control_image": true,
     "worker_dll_sha256": "cb58b9776fdb33f89b9aba4f804f045c1672997bd6b934c471de04fee440bc2c",
-    "worker_dll_matches_native_replay": true
+    "worker_dll_matches_native_replay": true,
+    "installed_raid_enqueue_interruption": "Passed: injected failure after first raid enqueue; fresh collector resumes publication, leases exactly three distinct effects, and acknowledged recollection duplicates none."
   },
   "pending": [
     "deployment and live provider receipt",

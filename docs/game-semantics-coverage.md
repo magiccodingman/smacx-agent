@@ -711,3 +711,5 @@ Raid deployment validation: installed control image passes event/publication/att
 Raid deployment recovered turn32 with a replay-matched prepared game DLL. The doctrine gate correctly withheld startup for the changed source hash; observation-only native changes were reviewed, the manifest registered, adapter contracts passed and explicit profile recompilation returned200. Sovereign provider delivery remains pending.
 
 Live turn33 failed-arrival feedback: the unchanged-location native move receipt reached the immediate next provider request exactly, including requested_target_reported=false and unknown failure reason. This verifies delivery, not arrival or native rejection cause. Evidence: `docs/benchmarks/astra-move-feedback33.json`.
+
+Raid publication recovery: an installed-image test now interrupts after the first raid attention enqueue, then resumes through a fresh collector. Exactly three distinct effects reach the lease and acknowledged recollection creates no duplicates. This covers the partial-publication window, not a future live raid occurrence.

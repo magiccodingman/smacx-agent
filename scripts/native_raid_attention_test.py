@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 from publication_transaction_test import setup
 from smacx_runtime_context import _attention_payload
 
@@ -13,6 +14,21 @@ with tempfile.TemporaryDirectory() as tmp:
         value_before=before, value_after=after, item_name=effect)
         for i, (effect, before, after) in enumerate((('population',3,2),('stored_minerals',9,0),('Recreation Commons',1,0)),1)]
     native.revision += 1
+    enqueue = f.attention.enqueue
+    interrupted = [False]
+    def fail_after_enqueue(kind, *args, **kwargs):
+        result = enqueue(kind, *args, **kwargs)
+        if kind == 'native_raid' and not interrupted[0]:
+            interrupted[0] = True
+            raise RuntimeError('injected_after_raid_enqueue')
+        return result
+    with patch.object(f.attention, 'enqueue', side_effect=fail_after_enqueue):
+        try:
+            collect().collect_once()
+        except RuntimeError as error:
+            assert str(error) == 'injected_after_raid_enqueue'
+        else:
+            raise AssertionError('raid interruption window not exercised')
     collect().collect_once()
     lease = f.attention.lease('episode-raid')
     rows = [i for i in lease['items'] if i['attention_kind']=='native_raid']
