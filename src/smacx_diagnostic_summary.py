@@ -148,6 +148,8 @@ def summary(event):
         if isinstance(citizen,dict):
             tiles=citizen.get('tiles',[])
             chosen['citizen_context']={k:citizen[k] for k in ('population','governor_manages_citizens') if k in citizen}
+            if isinstance(citizen.get('citizen_roles'),dict):
+                chosen['citizen_context']['citizen_roles']=citizen['citizen_roles']
             if isinstance(tiles,list):
                 chosen['citizen_context']['worked_tiles']=[r for r in tiles if isinstance(r,dict) and r.get('worked')][:3]
                 chosen['citizen_context']['currently_assignable_tiles']=sum(isinstance(r,dict) and r.get('assignable') is True for r in tiles)

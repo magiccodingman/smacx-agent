@@ -73,6 +73,8 @@ def main() -> int:
         ruleset_id="smacx", seat_index=2,
         match_policy={"ranking_mode": "unranked"},
     )
+    assert 'use a focused rules lookup before\nsearching unrelated action families' in prompt
+    assert 'reference knowledge does not establish present legality' in prompt
     if prompt != compose_player_system_prompt(
         agent_name="Strict Contract Player", agent_id="agent-strict-contract",
         match_id="match-strict-contract", match_name="Strict prompt contract",
