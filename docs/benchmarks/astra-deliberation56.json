@@ -42,5 +42,30 @@
     "live_sovereign_processes": 1,
     "active_incidents": 0,
     "sampled_unix": 1788879652.8981035
+  },
+  "actual_provider_delivery": {
+    "archive_sha256": "00e481bc89c3505966ca67b0040da5ed94a8b089b75322a48b8c5ac4902bb72b",
+    "requests": [
+      {
+        "recorded_unix": 1788879629.5348074,
+        "correlation": {
+          "attention_lease_id": "attention-lease-0b62d194ed05490299e07c3481319861",
+          "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+          "request_id": "178e9e451b084631991ac49d07f69990",
+          "runtime_context_sha256": "efd4e998fc96593468065e000cbd9ad9eb38fa16b9820e2877a5176d99dab1e1"
+        },
+        "system_sha256": "e35b61427e71e3e26eb833f9bd02fc49bca3d654fe28db71241ed9d58531a07e"
+      },
+      {
+        "recorded_unix": 1788879692.3049817,
+        "correlation": {
+          "attention_lease_id": "attention-lease-0b62d194ed05490299e07c3481319861",
+          "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+          "request_id": "54bea3a64fa64e1d9577754a4ed6e7b8",
+          "runtime_context_sha256": "cf2c300004d17e313d087ad8420bbcf5b64ac4a0ea2fc8322a09d847a1d2ebcf"
+        },
+        "system_sha256": "e35b61427e71e3e26eb833f9bd02fc49bca3d654fe28db71241ed9d58531a07e"
+      }
+    ]
   }
 }

@@ -802,3 +802,17 @@ Turn46 acceptance: three Scouts observed at headquarters after return orders; re
 Turn46→47 production follow-through: sovereign queried production/support then selected Set production; current owned observation384 at47 confirms Formers and minerals4. This is a concrete production change away from repeated Scouts, not completed Former work or expansion. Conditional next-unit support warning remains relevant. Evidence: `docs/benchmarks/astra-former-production47.json`.
 
 Turn50 Former completion verified: own-unit-11 Formers at headquarters; current base support4/intake4/surplus0 agrees with turn49 conditional next-unit projection. Scout5 back-and-forth is native-successful; trace shows reconsideration and erroneous distance reasoning before correct route use, not a demonstrated movement defect. Terrain work and expansion remain open. Evidence: `docs/benchmarks/astra-former-completion50.json`.
+
+## Current acceptance checkpoint: turn 56
+
+The isolated Astra campaign remains the live acceptance target; the original AI - 3 baseline and other operator installation are unchanged. PR #64 remains unmerged. Recent evidence is indexed here to distinguish historical partial entries above from later verification:
+
+- `benchmarks/astra-decision-lease53.json`: actual 258-second guarded activation accepted under the reviewed 300-second lease; expired choices remain nondispatchable.
+- `benchmarks/astra-automation-progress53.json`: controlled native cancellation changes the owned progress digest; live supervisor observation of a subsequent cancellation remains pending.
+- `benchmarks/astra-monitor-plan54.json`: sovereign-authored typed monitor intent in actual provider context, with native turn advance and active Sensor work.
+- `benchmarks/astra-growth-gap55.json`: controlled native growth boundaries, current receipt delivery, and sovereign correction of an unsupported growth timeline. This is not an exact future-date prediction.
+- `benchmarks/astra-sensor-purpose56.json`: current native task-purpose receipt delivered and used; completed terrain and economic benefit remain unverified.
+- `benchmarks/astra-reference56.json`: spontaneous bounded reference lookup delivered but excerpts insufficient for Colony Pod population timing. It is not a specialist-child acceptance.
+- `benchmarks/astra-deliberation56.json`: native no-progress guard stopped deliberation before action dispatch. Concise research/decision guidance is deployed and verified in actual provider system messages. Recovery, Graphiti completion and one live sovereign are verified; behavioral benefit remains pending.
+
+Full-game completion, competent expansion, spontaneous specialist-child use, autonomous canonical-evidence claim writing, historical actor fallback, and remaining live recovery/semantic gates are still open. A successful read, prompt delivery, or acknowledgement cannot close these gates. Continue observing actual decisions and native effects; retain the existing no-progress stop bound while evaluating the prompt repair.

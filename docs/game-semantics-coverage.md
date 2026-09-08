@@ -1015,3 +1015,5 @@ Actual sovereign output corrected its Sensor/mineral and hurry-affordability ass
 A bounded prompt repair now distinguishes retrieval success from answer sufficiency and asks for guarded action once decision evidence suffices. Strict prompt contract passes; native no-progress thresholds and sovereignty are unchanged. Live delivery and behavioral benefit are pending, not claimed complete.
 
 Deployment checkpoint: isolated control/harness images rebuilt; supported incident retry restored turn 56; Graphiti rebuild completed; profile compilation returned 200. Authoritative health confirms one live sovereign, one active run and no active incidents. Actual provider delivery and subsequent decision benefit remain pending.
+
+Actual wire-delivery checkpoint: two provider requests contain the bounded research/decision guidance in their system message (correlations and system hash in `benchmarks/astra-deliberation56.json`). No behavioral improvement is inferred from delivery. The mission document now indexes the later turn-53–56 evidence and remaining gates.
