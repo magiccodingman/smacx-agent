@@ -589,3 +589,9 @@ Empty-choice repair deployment: supported capability recovery completed at turn 
 Repeated live episode starts used unqualified `smac_decision`, which the dispatcher correctly rejected before execution. Episode messages now name the exposed `mcp__smacx__smac_decision` tool. Continuation contracts pass; dispatch validation remains unchanged. Evidence: `docs/benchmarks/astra-episode-tool-name.json`. Live uptake in a future episode remains pending.
 
 Episode-name follow-up: live readback exposed a portal `initial_prompt` override retaining the old name. The portal now omits that override and uses the control default. All 83 portal tests pass. Existing episodes retain their input; future startup wording still requires live verification.
+
+### Supply-pod observation repair (deployment pending)
+
+Current visible tile and movement exports consult native `goody_at` instead of treating the raw pod bit as collectible availability. Fog retains prior observed features and their verification turn as stale, including observed pod absence. Hidden squares never trigger a live pod query.
+
+Evidence: `docs/benchmarks/astra-supply-pod-observation.json`; seven compiled serializer cases, six projector transitions, the geographic contract, native cross-build, and five controlled running-game comparisons pass. Removed-pod and monolith cases agree with native availability. Generated-pod and no-scattering rule comparisons remain unproven in the running game. Provider readback, deployment, and resumed gameplay remain pending; this capability is not marked complete.
