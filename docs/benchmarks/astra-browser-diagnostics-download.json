@@ -1,0 +1,25 @@
+{
+  "browser": "Chrome headless, isolated authenticated context",
+  "trigger": "Lobby Download diagnostics link click",
+  "download_completed": true,
+  "zip_integrity": "pass",
+  "bytes": 10687849,
+  "sha256": "a00c998979af06827664f39dd4a14119cfc47eeb5ff932569de4105db5b87f37",
+  "match_scope_verified": true,
+  "bundle_complete": false,
+  "gaps": [
+    {
+      "table": "world_telemetry",
+      "reason": "row_limit"
+    },
+    {
+      "source": 1,
+      "reason": "source_missing"
+    },
+    {
+      "reason": "acceptance_coverage_in_progress",
+      "details": "See gameplay diagnostics coverage matrix; absence of errors is not completeness."
+    }
+  ],
+  "limits": "Live owner/admin browser delivery; no claim of unauthorized access or archive-lobby UI coverage."
+}
