@@ -1,0 +1,27 @@
+{
+  "status": "investigation_open_match_frozen",
+  "incident_id": "incident-d621f72829b940398e73e20e0b8f3193",
+  "turn": 44,
+  "stall_seconds": 364.359251499176,
+  "generated_tokens_without_progress": 13522,
+  "api_calls_without_progress": 5,
+  "findings": [
+    {
+      "classification": "confirmed_interface_restriction",
+      "detail": "smac_decision only selects ready units; native unit choices and execution independently gate most actions on veh_unmoved. Disbanding a spent unit is not presently expressible through this path."
+    },
+    {
+      "classification": "mechanical_fidelity_unverified",
+      "detail": "Bridge disband_unit directly calls veh_kill; Console_disband native binding exists. Compare legal readiness and mineral recycling before exposing new actions."
+    },
+    {
+      "classification": "stall_policy_limitation",
+      "detail": "Current guard observes unchanged native fingerprint and generated activity. Successful memory writes and distinct management queries do not reset it. Latest sequence included those activities plus lengthy repeated production reasoning; not proved a deadlock or purely slow provider."
+    }
+  ],
+  "next_steps": [
+    "Controlled native disband semantics comparison, including spent unit and in-base recycling",
+    "Assess bounded productive-investigation accounting without unbounded query reset",
+    "Preserve native/journal guards; no blind resume"
+  ]
+}
