@@ -21,7 +21,8 @@
       "managed_tools": 15,
       "total_schema_conservative_tokens": 7553,
       "exact_tokenizer_used": false
-    }
+    },
+    "installed_reference_field_extension": "passed: guarded goal/plan source, commitment resolution, summary through-event, and successful inherited-prefix claim write"
   },
   "limits": [
     "Guarded writer tests use controlled native snapshot.",

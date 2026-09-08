@@ -37,6 +37,14 @@ with tempfile.TemporaryDirectory() as tmp:
                               'evidence':[{'event_id':eid,'stance':'supports','weight':0.4}]})
         assert belief['ok'],belief
         assert journal.replay(scope)['claims']
+        for action,entry,field in (
+            ('goal',{'title':'Investigate','description':'Check the outcome'},'source_event_id'),
+            ('plan',{'plan_key':'check','title':'Check','objective':'Inspect outcome'},'source_event_id'),
+            ('commitment',{'commitment_key':'promise','title':'Promise','terms':'Review outcome'},'resolution_event_id'),
+            ('summary',{'section':'recent_events','content':'A move was attempted'},'through_event_id'),
+        ):
+            linked=write(action,{**entry,field:eid})
+            assert linked['ok'] and linked['record'][field]==eid,(action,linked)
         # Restart the reader: canonical reference survives independently of object caches.
         journal=CampaignJournal(root/'campaigns')
         with patch.object(c,'_journal',return_value=journal):
@@ -58,6 +66,8 @@ with tempfile.TemporaryDirectory() as tmp:
             later=journal.append(scope,'game.action',{})['event_id']
             with patch.dict('os.environ',{'SMACX_TIMELINE_ID':'timeline-child'}):
                 assert journal.evidence_event(scope,eid)['event_id']==eid
+                inherited=write('claim',record)
+                assert inherited['ok'] and inherited['record']['source_event_id']==eid,inherited
                 rejected=write('claim',{**record,'source_event_id':later})
                 assert rejected['error']=='evidence_event_scope_mismatch',rejected
             # Loss of the query cache does not lose the citation or require a DB reset.

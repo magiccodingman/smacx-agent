@@ -743,3 +743,8 @@ Post-deployment schema validation for the journal citation guidance passes: 15
 managed tools, 7,553 conservative schema tokens. No exact tokenizer measurement
 is claimed. The turn35 sovereign has resumed guarded movement and refreshed its
 decision after a native rejection; a new cited memory write remains pending.
+
+Installed citation regression extended to guarded goal/plan source references,
+commitment resolution references and summary through-event references. Recovery
+now proves a successful claim write using an inherited pre-fork citation, beyond
+the earlier lookup check. All pass; no additional live acceptance is inferred.
