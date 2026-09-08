@@ -997,3 +997,5 @@ Growth receipt validation: native39/39 build and installed epistemic storage tes
 Growth deployment: paired recovery restored56 with current receipt threshold30, stock9, surplus1, rating0, habitat limit9. Profile recompile200; actual provider delivery pending. The earlier sovereign7 denominator is contradicted by native observation.
 
 Growth provider delivery verified: request574b239bef38436aa0e5330aa0fe93b3 carries current native growth threshold30 and gates in active base detail, including conditional timing semantics. This closes delivery, not strategic use. Updated `astra-growth-gap55.json`.
+
+Growth comprehension follow-up: sovereign explicitly corrected9/30 timing from1–2 turns to roughly20–21 and persisted revised plan/goal via journal. This is observed use of the receipt, not proof of exact ETA or sound terraforming strategy; it still assumes Sensor Array work improves minerals. Updated `astra-growth-gap55.json`.

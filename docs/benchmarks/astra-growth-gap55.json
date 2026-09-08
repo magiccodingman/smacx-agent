@@ -115,5 +115,13 @@
       }
     }
   ],
-  "delivery_archive_sha256": "ac306d9a5db77d43edbd46fb092243630560046a0d7a659963897d6237260dad"
+  "delivery_archive_sha256": "ac306d9a5db77d43edbd46fb092243630560046a0d7a659963897d6237260dad",
+  "sovereign_use": {
+    "turn": 56,
+    "plan_journal": "journal-4a7ddad06e6c4270aa0a1092223f5dcb",
+    "goal_journal": "journal-3949bc2c4e07432990792ba07ddce67a",
+    "observed_correction": "Explicitly revised9/30 growth estimate from1-2 turns to roughly20-21 turns and reprioritized terraforming.",
+    "limits": "Approximate estimate not exact timing; Sensor Array mineral-yield assumption remains unsupported.",
+    "archive_sha256": "c5dd97b62e9ecf8c7c57581d0a341481f9a3d2c050ce799b0020e013621a2691"
+  }
 }
