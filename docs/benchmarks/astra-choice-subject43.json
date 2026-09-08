@@ -10,12 +10,46 @@
   "validation": {
     "opaque_choice_execution_test": "passed with mounted source; explicit scoped unit reference, unmapped-selector omission, unchanged dispatch and single-use contracts",
     "installed_image": "passed: scripts-only mount into rebuilt smacx-astra-control:dev; no source override",
-    "live_provider_delivery": "pending",
+    "live_provider_delivery": {
+      "request": {
+        "attention_lease_id": "attention-lease-7f6f895606824d0e84cdf9fb2328bd52",
+        "episode_id": "episode-694b6aace689abcc1bccfae3c792428e",
+        "request_id": "e3fe69582bd84ad3be0e07da9f9e680e",
+        "runtime_context_sha256": "de37d0631c668c83755f1888471f895e8226b83f1190d2b7a9734523e95469c4"
+      },
+      "recorded_unix": 1788858396.43964,
+      "executed_choice": {
+        "choice_id": "choice-8690e1edbdcd49cfa474ed011f6a2640",
+        "label": "Sentry unit",
+        "own_unit_ref": "own-unit-2"
+      }
+    },
     "deployment": "control healthy; worker/MCP recovered healthy; Graphiti rebuild completed at 1788858192.45781; one sovereign container running",
-    "recovered_session": "session-fde28ecd41b84da8a034eb3c68d08514"
+    "recovered_session": "session-fde28ecd41b84da8a034eb3c68d08514",
+    "native_turn_verified": 43
   },
   "limits": [
     "Receipt identifies selection, not completed arrival or current unit state.",
     "No causal claim that this resolves all sovereign confusion or strategic weakness."
-  ]
+  ],
+  "additional_live_observation": {
+    "route_query": {
+      "mode": "route",
+      "origin_ref": "own-unit-2",
+      "target_ref": "location-795"
+    },
+    "route_result_unix": 1788858305.246212,
+    "path": [
+      "location-917",
+      "location-837",
+      "location-796",
+      "location-795"
+    ],
+    "eta_kind": "stochastic_earliest",
+    "turns": 3,
+    "latest_turns": null,
+    "uncertainty": "Fungus native random movement check can fail; no finite guaranteed upper bound.",
+    "subsequent_selected_action": "Sentry unit",
+    "limits": "Query and subsequent action observed; no claim that the selected defense is strategically sufficient or that predicted arrival was validated live."
+  }
 }
