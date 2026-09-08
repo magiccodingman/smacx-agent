@@ -123,6 +123,7 @@ class AttentionService:
         require_ref(episode_id, "episode_id")
         self.capture_confirmed_unit_losses()
         self.capture_former_automation()
+        self.capture_persistent_orders()
         timeline = self.timeline_id
         now = time.time()
         lease_id = "attention-lease-" + uuid.uuid4().hex
@@ -751,6 +752,64 @@ class AttentionService:
         if current != prior:
             self.journal.append(self.scope, "attention.plan_dependency_state", {"states": current},
                 idempotency_key="plan-dependency-state:" + content_hash({"prior": prior, "current": current}))
+
+    def capture_persistent_orders(self) -> None:
+        from smacx_order_attention import unit_state, classify_attempt
+        events = self.journal.latest_events(self.scope, timeline_id=self.timeline_id, limit=500)
+        checked = {e.get("payload", {}).get("source_action_event_id") for e in events
+                   if e.get("event_type") == "attention.persistent_order_checked"}
+        attempts = [e for e in events if e.get("event_type") == "game.action"
+                    and e.get("payload", {}).get("persistent_order_attempt")
+                    and e.get("event_id") not in checked][:32]
+        if not attempts:
+            return
+        projection = self.world_store.load(self.scope, self.timeline_id)
+        if not projection:
+            return
+        cursor = int(projection.get("observation_cursor") or 0)
+        for event in reversed(attempts):
+            source = event["event_id"]
+            attempt = event["payload"]["persistent_order_attempt"]
+            if attempt.get("world_epoch") != projection["identity"]["world_epoch"]:
+                continue
+            prior_cursor = int(attempt.get("observation_cursor") or 0)
+            if cursor <= prior_cursor:
+                continue
+            before = attempt["before"]
+            after = unit_state(projection, before["unit_ref"])
+            outcome = classify_attempt(before, after)
+            unit_id = event["payload"].get("choice_parameters", {}).get("unit_id")
+            if unit_id is not None and any(
+                e.get("event_type") == "game.action" and e.get("sequence", 0) > event["sequence"]
+                and e.get("payload", {}).get("choice_parameters", {}).get("unit_id") == unit_id
+                for e in events):
+                outcome = "superseded"
+            if cursor - prior_cursor > 64:
+                outcome = "observation_gap_unknown"
+            if outcome == "pending":
+                continue
+            if outcome == "cleared":
+                payload = {"unit_ref": before["unit_ref"], "assigned_command": attempt.get("mode"),
+                    "source_action_event_id": source, "assignment_turn": attempt.get("turn"),
+                    "observation_cursor": cursor, "location_ref": after["location_ref"],
+                    "current_order": after["order_name"], "ready": after["ready"],
+                    "location_changed": before["location_ref"] != after["location_ref"],
+                    "movement_spent_changed": before["moves_spent"] != after["moves_spent"],
+                    "cause": "unknown", "arrival_verified": False,
+                    "guidance": "The assigned order is no longer active and the unit is ready. Inspect current state and route options before repeating it. Assignment did not prove sustained movement or arrival; endpoint evidence does not establish why the order cleared."}
+                with self.store._connect() as connection:
+                    exists = connection.execute("SELECT 1 FROM attention_items WHERE match_id=? AND agent_id=? "
+                        "AND perspective_id=? AND timeline_id=? AND attention_kind='persistent_order' "
+                        "AND json_extract(payload_json,'$.source_action_event_id')=? LIMIT 1",
+                        (*self._key(self.timeline_id), source)).fetchone()
+                if not exists:
+                    self.enqueue("persistent_order", payload, observation_cursor=cursor,
+                                 priority=65, critical=False, turn=attempt.get("turn"), dedupe_key=source)
+            self.journal.append(self.scope, "attention.persistent_order_checked",
+                {"source_action_event_id": source, "unit_ref": before["unit_ref"],
+                 "outcome": outcome, "observation_cursor": cursor,
+                 "world_epoch": attempt.get("world_epoch")},
+                idempotency_key="persistent-order-checked:" + source)
 
     def capture_former_automation(self) -> None:
         from smacx_former_attention import former_state, classify_attempt

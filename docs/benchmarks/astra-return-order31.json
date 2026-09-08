@@ -96,5 +96,84 @@
   ],
   "explicit_managed_cancellation_of_unit13_observed": false,
   "pause_incident": "incident-975d0c0595354c63a7e1eb7dbd1b22d6",
-  "acceptance_status": "investigation_open"
+  "acceptance_status": "investigation_open",
+  "repair": {
+    "implementation": "Accepted managed persistent orders record revision-qualified owned baselines in the campaign journal. Later current ready/no-order observations enqueue bounded attention with cause unknown; explicit replacement commands, epoch changes and observation gaps do not imply native cancellation.",
+    "tests": {
+      "persistent_order_attention_test": {
+        "passed": [
+          "cleared",
+          "pending",
+          "spent",
+          "movement",
+          "superseded",
+          "epoch",
+          "crash"
+        ]
+      },
+      "former_automation_attention_test": {
+        "passed": true,
+        "cases": [
+          {
+            "mode": "stopped",
+            "notices": 1
+          },
+          {
+            "mode": "repeated",
+            "notices": 2
+          },
+          {
+            "mode": "active",
+            "notices": 0
+          },
+          {
+            "mode": "pending",
+            "notices": 0
+          },
+          {
+            "mode": "movement",
+            "notices": 0
+          },
+          {
+            "mode": "replacement",
+            "notices": 0
+          },
+          {
+            "mode": "superseded",
+            "notices": 0
+          },
+          {
+            "mode": "overlap",
+            "notices": 1
+          },
+          {
+            "mode": "epoch",
+            "notices": 0
+          },
+          {
+            "mode": "crash",
+            "notices": 1
+          },
+          {
+            "mode": "rejected",
+            "notices": 0
+          },
+          {
+            "mode": "tile_change",
+            "notices": 0
+          },
+          {
+            "mode": "unknown",
+            "notices": 0
+          }
+        ]
+      }
+    },
+    "pending": [
+      "installed-image validation",
+      "live provider delivery",
+      "native cancellation cause",
+      "full-game acceptance"
+    ]
+  }
 }
