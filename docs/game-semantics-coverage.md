@@ -861,3 +861,5 @@ Turn40 attention acknowledgement is persisted for both raid notices and Scout3's
 ### Selected-subject receipt repair at turn 43
 
 Turn-42 provider reasoning exposed ambiguity across repeated Return to base receipts: selected unit references were absent from the execution summary. Cache only scoped semantic subject/target references and repeat them in execution receipts; preserve native authority, single-use choices and outcome semantics. The regression proves catalog-level selector binding and unmapped native-selector omission. Installed-image and actual provider delivery remain pending in `docs/benchmarks/astra-choice-subject43.json`; selection does not prove arrival. Own match paused with verified containment before deployment.
+
+Receipt checkpoint deployment: rebuilt installed control-image regression passed with a scripts-only mount. Isolated worker/MCP recovered healthy; Graphiti rebuild completed and one sovereign restarted. Actual provider receipt consumption remains the next live acceptance gate.

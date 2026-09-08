@@ -9,8 +9,10 @@
   "repair": "Cache bounded public unit/base/target references after binding catalog-level selectors; include in execution receipts for initial, rebased and conflict paths. No native selectors or arbitrary command arguments exposed.",
   "validation": {
     "opaque_choice_execution_test": "passed with mounted source; explicit scoped unit reference, unmapped-selector omission, unchanged dispatch and single-use contracts",
-    "installed_image": "pending",
-    "live_provider_delivery": "pending"
+    "installed_image": "passed: scripts-only mount into rebuilt smacx-astra-control:dev; no source override",
+    "live_provider_delivery": "pending",
+    "deployment": "control healthy; worker/MCP recovered healthy; Graphiti rebuild completed at 1788858192.45781; one sovereign container running",
+    "recovered_session": "session-fde28ecd41b84da8a034eb3c68d08514"
   },
   "limits": [
     "Receipt identifies selection, not completed arrival or current unit state.",
