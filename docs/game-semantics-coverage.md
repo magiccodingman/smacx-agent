@@ -713,3 +713,5 @@ Raid deployment recovered turn32 with a replay-matched prepared game DLL. The do
 Live turn33 failed-arrival feedback: the unchanged-location native move receipt reached the immediate next provider request exactly, including requested_target_reported=false and unknown failure reason. This verifies delivery, not arrival or native rejection cause. Evidence: `docs/benchmarks/astra-move-feedback33.json`.
 
 Raid publication recovery: an installed-image test now interrupts after the first raid attention enqueue, then resumes through a fresh collector. Exactly three distinct effects reach the lease and acknowledged recollection creates no duplicates. This covers the partial-publication window, not a future live raid occurrence.
+
+Live plan continuity at35: frontier-sweep revision2 committed synchronously, appeared in the immediate next runtime context, and appeared again in the first provider request of the distinct successor episode after handoff. This closes delivery for this write/handoff sample, not plan truth, execution, or crash recovery of this revision. Evidence: `docs/benchmarks/astra-plan-continuity35.json`.
