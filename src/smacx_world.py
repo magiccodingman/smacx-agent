@@ -417,6 +417,12 @@ class WorldService:
                     })
         turn = next((_value(item, "turn") for item in projection.get("objects", ())
                      if item.get("kind") == "turn_state"), None)
+        calendar = next((item.get("fields", {}).get("year", {})
+                         for item in projection.get("objects", ())
+                         if item.get("kind") == "turn_state"), {})
+        # Calendar labels come from current native evidence, never turn arithmetic.
+        year = calendar.get("value") if calendar.get("epistemic_status") == "current" \
+            and type(calendar.get("value")) is int else None
         recent_material_refs = tuple(dict.fromkeys((
             *recent_material_refs,
             *self.store.recent_material_refs(
@@ -437,6 +443,7 @@ class WorldService:
         regenerate = current is None or current["world_epoch"] != identity.world_epoch \
             or current["payload"].get("projector_version") != SemanticLodProjector.FORMAT_VERSION \
             or current["payload"].get("turn") != turn \
+            or current["payload"].get("year") != year \
             or int(current.get("token_estimate") or estimate_tokens(current["payload"])) \
                 > effective_token_cap \
             or int(projection["observation_cursor"]) - int(
@@ -476,7 +483,7 @@ class WorldService:
             model_projection = {
                 **projection, "known_squares": squares,
                 "map_shape": projection.get("map_shape") or self._topology(projection).shape.__dict__,
-                "turn": turn,
+                "turn": turn, "year": year,
             }
             previous_regions = [
                 *self.store.load_regions(self.scope, identity.timeline_id,

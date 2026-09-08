@@ -1,0 +1,11 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "defect": "Stored world projection omitted top-level year when constructing the anchor despite world-turn current evidence.",
+  "repair": "Read current integer year from scoped turn_state evidence and invalidate cached anchors when that calendar value changes. Never infer from turn.",
+  "tests": [
+    "world_anchor_calendar_test.py: stored projection, current/stale/unknown/invalid, same-turn cache, service restart",
+    "world_model_contract_test.py: pass"
+  ],
+  "deployment": "pending",
+  "provider_delivery": "pending"
+}
