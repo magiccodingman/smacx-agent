@@ -1091,6 +1091,17 @@ def write_platform_memory(
                 "allowed_values": list(MEMORY_STATUS_VALUES[action]),
                 "message": "Choose the status matching your intent; preserve other record fields when revising. No status is substituted automatically.",
             }}
+        if write_stage == "not_started" and str(exc) == "invalid_confidence":
+            guidance = {"validation": {
+                "field": "record_json.confidence", "minimum": 0.0, "maximum": 1.0,
+                "message": "Confidence is a number from 0 to 1, not a percentage: 80% is 0.8. No value is converted automatically.",
+            }}
+        if write_stage == "not_started" and str(exc) == "invalid_relationship_metric":
+            guidance = {"validation": {
+                "field": "record_json relationship metrics",
+                "ranges": {"affinity,trust,respect,threat,obligation": [-100, 100], "grievance": [0, 100]},
+                "message": "Relationship metrics use integer scales; confidence separately uses 0 to 1. No value is clamped automatically.",
+            }}
         if write_stage == "not_started" and str(exc) in {"invalid_claim_topic", "invalid_belief_topic"}:
             guidance = {"validation": {
                 "field": "record_json.topic",

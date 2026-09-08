@@ -38,6 +38,15 @@ with tempfile.TemporaryDirectory() as tmp:
         result=write('claim',record);assert result['ok'],result
         mapping=result['actor_references'];assert result['record']['about_actor_id']==mapping['faction-7']
         assert result['record']['status']=='unverified' and 'Hidden Name' not in json.dumps(result)
+        before=c._journal_working_state(scope)
+        bad=write('relationship',{'actor_id':'faction-7','trust':40,'confidence':80})
+        assert bad['error']=='invalid_confidence' and bad['validation']['maximum']==1.0,bad
+        assert bad['persistence']['stage']=='not_started'
+        assert c._journal_working_state(scope)==before
+        bad=write('relationship',{'actor_id':'faction-7','trust':101,'confidence':0.8})
+        assert bad['error']=='invalid_relationship_metric' and 'ranges' in bad['validation'],bad
+        assert c._journal_working_state(scope)==before
+        assert write('relationship',{'actor_id':'faction-7','trust':40,'confidence':0.8})['ok']
         assert write('relationship',{'actor_id':'faction-7','trust':-10})['ok']
         assert write('commitment',{'commitment_key':'test','title':'Proposed','terms':'Untrusted terms',
           'parties':[{'actor_id':'faction-7','role':'counterparty'}]})['ok']

@@ -76,6 +76,16 @@ with tempfile.TemporaryDirectory() as tmp:
             assert result['validation']['field']=='record_json.topic'
             assert result['persistence']['stage']=='not_started'
             assert c._journal_working_state(scope)==before
+        for action in ('claim', 'belief'):
+            result=c.write_platform_memory(action,scope.match_id,'session-delivery','r4',
+                {'topic':'confidence-scale', 'content':'Test', 'confidence':80})
+            assert result['error']=='invalid_confidence', result
+            assert result['validation']['minimum']==0.0 and result['validation']['maximum']==1.0
+            assert result['persistence']['stage']=='not_started'
+            assert c._journal_working_state(scope)==before
+        corrected=c.write_platform_memory('claim',scope.match_id,'session-delivery','r4',
+            {'topic':'confidence-scale','content':'Test','confidence':0.8})
+        assert corrected['ok'],corrected
         record=records['plan']
         active=c.write_platform_memory('plan',scope.match_id,'session-delivery','r4',
             {**record,'status':'active'})

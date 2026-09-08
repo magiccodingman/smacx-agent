@@ -1,0 +1,10 @@
+{
+  "turn": 39,
+  "observed": "Autonomous relationship write supplied confidence=80 alongside integer relationship metrics; invalid_confidence lacked range guidance.",
+  "repair": "Provider schema specifies confidence 0..1 and relationship integer scales; rejected confidence and relationship metrics return field/range guidance without coercion.",
+  "validation": {
+    "memory_status_feedback_test": "pass: rejected claim/belief confidence leaves canonical state unchanged; explicit 0.8 retry succeeds",
+    "memory_faction_reference_test": "pass: observed-faction relationship confidence80 and trust101 rejected without canonical mutation; corrected confidence0.8 succeeds"
+  },
+  "limits": "Controlled guarded writer tests; installed validation, schema budget, deployment and autonomous correction remain pending."
+}

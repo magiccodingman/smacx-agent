@@ -831,3 +831,7 @@ Turn-39 response-boundary deployment: all three focused contracts pass against i
 Turn-39 corrected-label delivery is verified in actual provider request `b70704ea86e14cfbbf56d408ac2d1b73` at `1788855820.6701803`: messages contain the self-destruct-only explanation, and the world tool schema explicitly excludes combat odds/arrival from movement action previews. Graphiti completed before the single sovereign resumed. This verifies delivery, not corrected reasoning or future error/preview receipt use.
 
 Turn-39 post-deployment action effect: the sovereign selected Skip for Scout1 from decision `decision-818452d11f584442a9bb122bf7987692`. Current owned observation315 independently reports movement0 and ready=false at the same location; later focus reaches Scout3. This verifies the live Skip effect and renewed progression after repair. It does not establish that wording alone caused better strategy or close full-game acceptance.
+
+### Turn-39 memory numeric guidance
+
+A live relationship write used confidence80; the existing confidence range is0..1, unlike the integer relationship metrics. The provider schema and validation errors now state the ranges explicitly, without coercion or clamping. Guarded writer regressions prove rejected claim/belief/observed-faction relationship confidence and relationship metrics leave canonical memory unchanged, and explicit0.8 retries succeed. Installed/schema-budget/deployment/live correction gates remain pending. Evidence: `docs/benchmarks/astra-confidence39.json`. Campaign paused for the repair.

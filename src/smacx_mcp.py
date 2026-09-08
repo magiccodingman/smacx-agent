@@ -4212,7 +4212,7 @@ def smac_investigate(
         "summary={section,content,through_event_id?}, where section is situation, relationships, goals, plans, commitments, recent_events, or chat. "
         "Goal trigger / plan timing may include intent_horizon: this_turn_required, this_turn_preferred, next_opportunity, persistent_goal, monitor or backlog. "
         "Current-turn intent is reviewed before possible turn closure; intentional deferral/blocking uses reconciliation={turn,disposition:deferred|blocked,reason}. Preserve other fields when revising. "
-        "Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
+        "Confidence is always 0..1 (80%=0.8). Relationship affinity/trust/respect/threat/obligation are integers -100..100; grievance is 0..100. Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
         "Event evidence may use journal_event_id from a scoped action receipt or event_id from campaign history. "
         "Cite only events that support the assertion; accepted citations do not verify its truth. "
         "Actor fields also accept observed world faction references (for example faction-1); "
