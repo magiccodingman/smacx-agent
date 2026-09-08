@@ -707,3 +707,5 @@ Owned native-life raid observability: current native mutation sites now capture 
 Controlled running-native raid replay passes from the retained turn31 autosave in a network-none disposable worker: captured population2→1 and minerals9→0, followed by turn32 population2/minerals1. This proves event-time values are necessary to explain the apparently unchanged population and missing production. Deployment/provider delivery remain pending; evidence `docs/benchmarks/astra-native-raid32.json`.
 
 Raid deployment validation: installed control image passes event/publication/attention tests without mounted host source. Worker DLL SHA256 cb58b9776fdb33f89b9aba4f804f045c1672997bd6b934c471de04fee440bc2c matches the controlled native replay exactly. Supported checkpoint recovery is in progress; provider receipt remains unverified.
+
+Raid deployment recovered turn32 with a replay-matched prepared game DLL. The doctrine gate correctly withheld startup for the changed source hash; observation-only native changes were reviewed, the manifest registered, adapter contracts passed and explicit profile recompilation returned200. Sovereign provider delivery remains pending.
