@@ -9,6 +9,9 @@
     "doctrine_engine_contract.py",
     "doctrine_integration_contract_test.py"
   ],
-  "deployment": "pending",
-  "limits": "Adapter compatibility evidence; live doctrine reassembly and sovereign continuation still pending."
+  "deployment": "own control and harness rebuilt; profile explicitly recompiled successfully",
+  "limits": "Native worker/MCP healthy and sovereign run started. Autonomous disband and further turn progress not yet verified.",
+  "run_id": "run-8d3e4974514240bfb43b9f66e8233607",
+  "native_session": "session-78bdca3367794c949da614844b5db0d4",
+  "observed_turn": 44
 }

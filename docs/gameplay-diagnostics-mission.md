@@ -772,3 +772,5 @@ Disband deployment regression follow-up: stale_opaque_rebase_test used catalog r
 ### Disband build doctrine registration
 
 Recovery correctly failed closed with `doctrine_unreviewed_engine_build`: the reviewed native disband build was not registered. Reviewed the complete native delta since `34b059b`; fixed public rules remain unchanged. Registered the exact source fingerprint; engine-contract and doctrine integration checks pass, including rejection of unknown builds and explicit recompilation. Controlled native disband evidence remains in `docs/benchmarks/astra-native-disband44.json`. Live reassembly/continuation remains pending; see `docs/benchmarks/astra-disband-doctrine44.json`.
+
+Disband doctrine deployment follow-up: explicit profile reassembly succeeded after isolated control/harness rebuild; sovereign run `run-8d3e4974514240bfb43b9f66e8233607` started on healthy recovered native session at turn 44. This closes the assembly blocker, not autonomous disband or full-game acceptance.
