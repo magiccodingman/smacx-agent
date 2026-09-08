@@ -2319,7 +2319,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
         "social|terraform|action with decision_id and choice_id from a current final choice; "
         "deployment with capability (combat|colony|former|transport|probe|supply), target_ref, "
         "and optional choice_refs:[{decision_id,choice_id}] for up to four build, hurry or upgrade options. "
-        "Put kind in scenario_json; target_ref is a tool argument. Action/deployment movement previews cover support and garrison consequences, not combat odds or arrival. Previews are conditional and never execute."
+        "Put kind in scenario_json; target_ref is a tool argument. Movement action previews cover support and garrison consequences, not combat odds or arrival. Previews are conditional and never execute."
     )
 )
 def smac_world(

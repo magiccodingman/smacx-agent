@@ -9,13 +9,14 @@
   "repairs": [
     "Invalid-choice message explicitly states exact ID mismatch, no native attempt and no movement legality test.",
     "Self-destruct information retains public applies_to_action and explicit blast-only meaning after private ID removal.",
-    "Movement action/deployment previews state conditional support/garrison scope and explicitly exclude combat odds, damage/survival and arrival.",
+    "Movement action previews state conditional support/garrison scope and explicitly exclude combat odds, damage/survival and arrival.",
     "Provider world schema declares the movement-preview boundary."
   ],
   "validation": {
     "opaque_choice_execution_test": "pass",
     "counterfactual_choice_contract_test": "pass, including information labeling, stable reprocessing and ordinary diplomacy preservation",
-    "provider_schema_budget_test": "pass: 15 tools; world 663 and total 7647 conservative tokens"
+    "provider_schema_budget_test": "pass: 15 tools; world 663 and total 7647 conservative tokens",
+    "movement_preview_scope_test": "pass: actual managed facade with native-shaped receipt/query sink; conditional scope retained, no execution/consumption, movement deployment rejected"
   },
-  "remaining": "Full preview response-path regression, installed validation, deployment and live provider/behavior verification pending. No combat calculator or watchdog change."
+  "remaining": "Installed validation, deployment and live provider/behavior verification pending. No combat calculator or watchdog change."
 }
