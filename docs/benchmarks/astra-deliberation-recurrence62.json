@@ -112,5 +112,26 @@
     },
     "drain": null,
     "assessment": "Actual sovereign marker propagated through normal supervisor telemetry with matching run/request. Drain activation and outcome still pending."
+  },
+  "live_drain_outcome": {
+    "archive_sha256": "fb1d3b7803ef2b1485d3298d76279c5afab0fb8a158d43f16b845d0b944cf617",
+    "incident_id": "incident-1b6a6e7e4e944d9597eb0fc5232654ac",
+    "drain": {
+      "base_deadline": 1788883263.4175708,
+      "hard_deadline": 1788883443.4175708,
+      "request_id": "97d2135c71c14db2a93a1c20ced04ee8",
+      "started_unix": 1788883213.6236842
+    },
+    "provider_request_at_stop": {
+      "observed_unix": 1788883328.3358495,
+      "phase": "headers",
+      "request_id": "aca82e6c679047fe8c1e904274fcf614",
+      "run_id": "run-699333ad896e4a28949f067de28e73fc",
+      "started_unix": 1788883328.2422287
+    },
+    "reported_unix": 1788883329.993349,
+    "assessment": "Grace activated for matching pending request97d2135c; response completed and sovereign saved a plan. A new requestaca82e6c did not renew grace and supervisor quarantined without native progress. Verifies live activation/nonrenewal, not improved strategy or progress-to-action. No further timeout extension justified.",
+    "plan_journal": "journal-75b9c1c7823a49249344ac9e05663d05",
+    "reasoning_limit": "Plan contains unsupported worked-tile/mining constraints and inconsistent arithmetic; journal acceptance does not validate strategy."
   }
 }
