@@ -10,6 +10,9 @@ from pathlib import Path
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+import fcntl
+import subprocess
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, build_opener, HTTPCookieProcessor, HTTPRedirectHandler
@@ -126,13 +129,162 @@ def create_match(client, args):
     seats = sorted(lobby['seats'], key=lambda seat: seat['seatIndex'])
     if len(seats) != 7 or any(seat['controllerKind'] != ('agent' if i == 0 else 'native' if i < 5 else 'open')
             or (i < 5 and seat['requestedFactionId'] != ROSTER[i])
-            or (i == 0 and seat['requestedPersonalityId'] != 'none') for i, seat in enumerate(seats)):
+            or (i == 0 and (seat['requestedPersonalityId'] != 'none' or seat.get('agentId') != agent)) for i, seat in enumerate(seats)):
         raise OpsError(f'Roster verification failed for {match_id}; lobby was not started.')
     return {'match_id': match_id, 'roster_verified': True, 'lobby': lobby}
 
 
 def emit(value, compact=False):
     print(json.dumps(value, ensure_ascii=False, indent=None if compact else 2), flush=True)
+
+
+def preflight(client, expected=None, verify_checkout=False, images_file=None):
+    report = client.request('api/operator/preflight')
+    if expected and report['installation_id'] != expected:
+        raise OpsError('Installation mismatch; no mutation submitted.')
+    if verify_checkout:
+        for name in ('smacx_operator.py', 'smacx_ops.py', 'smacx_worker_manager.py', 'smacx_control_server.py', 'smacx_mcp.py'):
+            if report.get('operator_code_sha256', {}).get(name) != hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest():
+                raise OpsError(f'Deployed operator code differs from this checkout: {name}. No mutation submitted.')
+    if images_file:
+        expected_images = json.loads(Path(images_file).read_text())
+        for role in ('worker', 'mcp', 'harness'):
+            if not expected_images.get(role) or report['images'][role]['id'] != expected_images[role]:
+                raise OpsError(f'Deployed {role} image differs from release receipt. No mutation submitted.')
+    catalog = client.request('api/catalog/lobby')
+    report['catalog'] = catalog
+    report['prerequisites_ready'] = report['prerequisites_ready'] and bool(
+        catalog.get('controlAvailable', True) and all(catalog.get(k) for k in ('gameSources', 'runtimes', 'agents')))
+    return report
+
+
+def write_state(path, value):
+    fd, temporary = tempfile.mkstemp(dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(value, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
+
+
+def deployment(args):
+    """Host-only read-back; no secrets, builds, tagging or lifecycle mutations."""
+    def docker(*parts):
+        try: result = subprocess.run(['docker', *parts], capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired: raise OpsError('Docker inspection timed out; deployment remains unverified.') from None
+        if result.returncode: raise OpsError('Docker deployment inspection failed; verify Compose path, project and Docker access.')
+        return result.stdout
+    compose = ['compose', '-f', str(Path(args.compose).resolve()), '-p', args.project]
+    config = json.loads(docker(*compose, 'config', '--format', 'json'))
+    if not all(name in config.get('services', {}) for name in ('control-api', 'control-center')):
+        raise OpsError('Compose must contain control-api and control-center services.')
+    checks = []
+    for service in ('control-api', 'control-center', 'specialist-supervisor', 'knowledge-service', 'graphiti-projector', 'graphiti-db'):
+        if service not in config['services']: continue
+        names = docker(*compose, 'ps', '-a', '-q', service).split()
+        desired = config['services'][service]['image']
+        image = json.loads(docker('image', 'inspect', desired))[0]['Id']
+        actual = json.loads(docker('inspect', names[0]))[0] if len(names) == 1 else {}
+        status = actual.get('State', {})
+        labels = actual.get('Config', {}).get('Labels', {})
+        checks.append({'service': service, 'expected_image_id': image, 'running_image_id': actual.get('Image'),
+            'ok': bool(actual.get('Image') == image and status.get('Running') and not status.get('Paused')
+                and status.get('Health', {}).get('Status', 'healthy') == 'healthy'
+                and labels.get('com.docker.compose.project') == args.project),
+            'health': status.get('Health', {}).get('Status')})
+        if service == 'control-api':
+            expected_env = config['services'][service].get('environment', {})
+            actual_env = dict(v.split('=', 1) for v in actual.get('Config', {}).get('Env', []) if '=' in v)
+            for name in ('SMACX_WORKER_IMAGE', 'SMACX_MCP_IMAGE', 'SMACX_HERMES_IMAGE', 'SMACX_DOCKER_NETWORK', 'SMACX_CONTROL_DATA_VOLUME'):
+                checks.append({'setting': name, 'ok': bool(expected_env.get(name) and expected_env[name] == actual_env.get(name))})
+    env = config['services']['control-api']['environment']
+    images = {role: json.loads(docker('image', 'inspect', env[key]))[0]['Id'] for role, key in
+              [('worker', 'SMACX_WORKER_IMAGE'), ('mcp', 'SMACX_MCP_IMAGE'), ('harness', 'SMACX_HERMES_IMAGE')]}
+    report = {'schema': 'smacx.operator-deployment.v1', 'project': args.project,
+              'sampled_unix': time.time(), 'verified': bool(checks) and all(c['ok'] for c in checks),
+              'checks': checks, 'images': images}
+    if args.output and report['verified']:
+        output = Path(args.output).resolve()
+        output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if output.exists(): raise OpsError('Image receipt already exists; use a new filename.')
+        with output.open('x') as stream: json.dump(images, stream, indent=2)
+    emit(report, True)
+    return 0 if report['verified'] else 2
+
+
+def bootstrap(client, args):
+    """Explicit preset startup with durable identity and streamed JSON progress."""
+    path = Path(args.state_file).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with path.with_suffix(path.suffix + '.lock').open('a') as lock:
+        try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError: raise OpsError('Another bootstrap owns this state file.') from None
+        state = json.loads(path.read_text()) if path.exists() else {}
+        identity = {'url': client.url, 'installation_id': args.expect_installation,
+                    'request_id': args.request_id, 'name': args.name,
+                    'source': args.source, 'runtime': args.runtime, 'agent': args.agent}
+        if state and state['identity'] != identity:
+            raise OpsError('Saved startup identity differs; use its original arguments or a new state file.')
+        report = preflight(client, args.expect_installation, args.verify_checkout, args.images_file)
+        if not report['prerequisites_ready']:
+            emit({'phase': 'preflight_failed', 'report': report}, True)
+            return 2
+        state.update({'schema': 'smacx.operator-mission.v1', 'identity': identity,
+                      'preflight': report, 'updated_unix': time.time()})
+        write_state(path, state)
+        if not state.get('match_id'):
+            created = create_match(client, args)
+            state.update({'match_id': created['match_id'], 'phase': 'created'})
+            write_state(path, state)  # Before any startup mutation.
+        match = quote(state['match_id'], safe='')
+        lobby_path, health_path = f'api/lobbies/{match}', f'api/operator/matches/{match}/health'
+        lobby = client.request(lobby_path)
+        should_start = lobby['status'] == 'waiting' and not lobby.get('startupRequestedAt')
+        if should_start and state.get('start_submitted'):
+            raise OpsError('Previous start outcome is unresolved. Inspect status/health; bootstrap will not resubmit it.')
+        if should_start:
+            state['start_submitted'] = True
+            write_state(path, state)
+        # A cold native prepare may outlast a normal read deadline. One bounded
+        # POST runs concurrently with read-only progress, without mutation retries.
+        deadline = time.monotonic() + args.wait
+        start_client = Client(client.url, client.path, timeout=max(client.timeout, args.wait))
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(start_client.request, lobby_path + '/start', 'POST') if should_start else None
+            while True:
+                if future and future.done():
+                    try: future.result()
+                    except OpsError as error: state['submission_notice'] = str(error)
+                    future = None
+                try:
+                    lobby = client.request(lobby_path)
+                    health = client.request(health_path) if lobby['status'] != 'waiting' else None
+                    if health and health.get('installation_id') != args.expect_installation:
+                        raise OpsError('Installation changed during startup.')
+                    state.update({'lobby_status': lobby['status'], 'health': health, 'updated_unix': time.time()})
+                    ready = bool(health and health['live_sovereign_processes'] == 1
+                        and health['world_heads'] and health['workers']
+                        and all(w.get('running') and not w.get('paused') and w.get('health') == 'healthy'
+                            and w.get('mcp', {}).get('running') and w.get('mcp', {}).get('health') == 'healthy'
+                            for w in health['workers']) and not health['incidents'])
+                    failed = bool(lobby.get('needsAttention') or lobby.get('lastError') or
+                                  health and (health['incidents'] or health['match_status'] == 'error'))
+                    ready = ready and not failed and lobby['status'] == 'running'
+                    state['phase'] = 'native_ready' if ready else 'needs_attention' if failed else 'starting'
+                except OpsError as error:
+                    state.update({'phase': 'observation_unavailable', 'observation_error': str(error)})
+                    ready = failed = False
+                timed_out = time.monotonic() >= deadline
+                if timed_out and not (ready or failed): state['phase'] = 'startup_unverified'
+                write_state(path, state)
+                emit({'schema': state['schema'], 'phase': state['phase'], 'match_id': state['match_id'],
+                      'lobby_status': state.get('lobby_status'), 'state_file': str(path),
+                      'sampled_unix': state['updated_unix']}, True)
+                if ready or failed or timed_out: return 0 if ready else 2
+                time.sleep(min(5, max(0, deadline-time.monotonic())))
 
 
 def main(argv=None):
@@ -144,6 +296,21 @@ def main(argv=None):
     subs = parser.add_subparsers(dest='command', required=True)
     login = subs.add_parser('login'); login.add_argument('--username', default='admin'); login.add_argument('--password-stdin', action='store_true')
     subs.add_parser('catalog'); subs.add_parser('lobbies')
+    deploy = subs.add_parser('deployment', help='Host-only read-back of Compose images/settings; never deploys')
+    deploy.add_argument('--compose', required=True); deploy.add_argument('--project', required=True)
+    deploy.add_argument('--output', help='Write verified worker/mcp/harness image IDs for preflight')
+    doctor = subs.add_parser('preflight', help='Read-only installation identity, image availability and catalog')
+    doctor.add_argument('--expect-installation')
+    doctor.add_argument('--verify-checkout', action='store_true')
+    doctor.add_argument('--images-file', help='Release receipt JSON with worker/mcp/harness image IDs')
+    boot = subs.add_parser('bootstrap', help='Create and start the acceptance preset; save identity and stream startup progress')
+    boot.add_argument('--expect-installation', required=True)
+    boot.add_argument('--state-file', required=True)
+    boot.add_argument('--verify-checkout', action='store_true')
+    boot.add_argument('--images-file')
+    boot.add_argument('--name', required=True); boot.add_argument('--request-id', required=True)
+    boot.add_argument('--wait', type=float, default=900)
+    for flag in ('source', 'runtime', 'agent'): boot.add_argument('--'+flag, required=True)
     create = subs.add_parser('create', help='Create the Peacekeepers + four native bots acceptance preset; does not start it')
     create.add_argument('--name', required=True); create.add_argument('--request-id', required=True)
     for flag in ('source','runtime','agent'): create.add_argument('--'+flag)
@@ -157,6 +324,7 @@ def main(argv=None):
         if command in ('diagnostics','packet'): sub.add_argument('--output', required=True)
         if command in ('start','park'): sub.add_argument('--wait', type=float, default=0, help='Seconds to poll for completion')
     args = parser.parse_args(argv)
+    if args.command == 'deployment': return deployment(args)
     client = Client(args.url, args.session_file, args.timeout)
     if args.command == 'login':
         password = sys.stdin.readline().rstrip('\r\n') if args.password_stdin else getpass.getpass('Password: ')
@@ -164,6 +332,13 @@ def main(argv=None):
     elif args.command == 'catalog': result = client.request('api/catalog/lobby')
     elif args.command == 'lobbies': result = client.request('api/lobbies')
     elif args.command == 'create': result = create_match(client, args)
+    elif args.command == 'preflight':
+        result = preflight(client, args.expect_installation, args.verify_checkout, args.images_file)
+        emit(result, args.json)
+        return 0 if result['prerequisites_ready'] else 2
+    elif args.command == 'bootstrap':
+        if args.wait <= 0 or args.wait > 1800: raise OpsError('--wait must be between 0 and 1800 seconds.')
+        return bootstrap(client, args)
     else:
         match = quote(args.match_id, safe='')
         lobby = f'api/lobbies/{match}'

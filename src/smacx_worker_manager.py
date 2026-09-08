@@ -1014,6 +1014,45 @@ class WorkerManager:
         except DockerNotFound:
             return
 
+    def _capture_startup_failure(self, identifier, error):
+        """Capture before removal; never infer a crash from a failed probe alone."""
+        report = {'schema': 'smacx.startup-failure.v1', 'captured_unix': time.time(),
+                  'reason': type(error).__name__, 'capture_errors': []}
+        secrets = []
+        try:
+            inspected = self.docker.inspect_container(identifier)
+            # Never export Config, mounts, commands or environment wholesale.
+            for entry in inspected.get('Config', {}).get('Env', []):
+                key, _, value = entry.partition('=')
+                if re.search(r'password|secret|token|api.?key|authorization', key, re.I) and value:
+                    secrets.append(value)
+            state = inspected.get('State', {})
+            report.update({'image_id': inspected.get('Image'),
+                'image_ref': inspected.get('Config', {}).get('Image'),
+                'state': {k: state.get(k) for k in
+                    ('Status', 'Running', 'ExitCode', 'OOMKilled', 'StartedAt', 'FinishedAt')},
+                'health_status': state.get('Health', {}).get('Status')})
+            health_log = state.get('Health', {}).get('Log', [])[-5:]
+        except Exception as capture_error:
+            report['capture_errors'].append({'part': 'inspect', 'error': type(capture_error).__name__})
+            health_log = []
+        def clean(value):
+            value = _clean_log(str(value))
+            for secret in sorted(secrets, key=len, reverse=True):
+                value = value.replace(secret, '[redacted]')
+            # Raw traceback lines can contain credentials, even outside JSON.
+            value = re.sub(r'(?im)^.*(?:authorization|bearer\s|password|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|secret).*$','[credential-bearing line omitted]', value)
+            value = re.sub(r'(https?://)[^\s/@]+:[^\s/@]+@', r'\1[redacted]@', value)
+            return value[-8192:]
+        report['health_checks'] = [{k: clean(item.get(k, '')) if k == 'Output' else item.get(k)
+            for k in ('Start', 'End', 'ExitCode', 'Output')} for item in health_log]
+        try:
+            report['log_tail'] = clean(self.docker.container_logs(identifier, tail=80))
+        except Exception as capture_error:
+            report['capture_errors'].append({'part': 'logs', 'error': type(capture_error).__name__})
+        report['capture_complete'] = not report['capture_errors']
+        return report
+
     def validate_game_source(self, host_path: str, *, display_name: str = "Alien Crossfire",
                              game_source_id: str | None = None) -> dict[str, Any]:
         host_path = _host_path(host_path, "game_source_host_path")
@@ -4457,13 +4496,28 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "ok": True, "status": "running", "container_name": container_name,
                 "host_port": host_port, "url": network["mcp_url"],
             }
-        except Exception:
+        except Exception as error:
+            failure = self._capture_startup_failure(identifier, error) if identifier else {
+                'schema': 'smacx.startup-failure.v1', 'captured_unix': time.time(),
+                'reason': type(error).__name__, 'capture_complete': False,
+                'capture_errors': [{'part': 'container', 'error': 'not_created'}]}
+            # Persist before destructive cleanup. This is diagnostic metadata,
+            # not journal authority or a recovery checkpoint.
+            network = dict(spec['network'])
+            network['mcp_startup_failure'] = failure
+            try:
+                self.control.update_worker_network(instance_id, network)
+            except Exception as persistence_error:
+                failure['capture_complete'] = False
+                failure['capture_errors'].append({'part': 'persistence', 'error': type(persistence_error).__name__})
+            from smacx_diagnostics import record
+            record('mcp_startup_failed', failure, actor='control-worker',
+                   match_id=spec['match_id'], correlation={'instance_id': instance_id})
             if identifier:
                 try:
                     self._cleanup_container(identifier, "mcp-sidecar")
                 except Exception:
                     pass
-            network = dict(spec["network"])
             network.update({
                 "mcp_container_name": container_name,
                 "mcp_status": "error",

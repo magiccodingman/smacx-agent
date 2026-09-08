@@ -589,3 +589,14 @@ Empty-choice repair deployment: supported capability recovery completed at turn 
 Repeated live episode starts used unqualified `smac_decision`, which the dispatcher correctly rejected before execution. Episode messages now name the exposed `mcp__smacx__smac_decision` tool. Continuation contracts pass; dispatch validation remains unchanged. Evidence: `docs/benchmarks/astra-episode-tool-name.json`. Live uptake in a future episode remains pending.
 
 Episode-name follow-up: live readback exposed a portal `initial_prompt` override retaining the old name. The portal now omits that override and uses the control default. All 83 portal tests pass. Existing episodes retain their input; future startup wording still requires live verification.
+
+### Operator startup reliability checkpoint (2026-09-07)
+
+| Capability | Evidence chain | Acceptance / remaining proof |
+| --- | --- | --- |
+| MCP startup failure | Docker inspection/logs → bounded sanitized receipt → worker metadata before cleanup + diagnostic event → administrator health/packet | Actual error-path fixture preserves exit/OOM/health distinction, redacts credentials, exposes missing logs. Native launch validation pending. |
+| Bound startup | Authenticated preflight → installation and image receipt checks → preset/agent read-back → durable match ID → one bounded startup POST → process/world readiness | CLI HTTP contracts cover identity mismatch, durable retry and ambiguous-submission refusal; portal 83/83. Fresh native launch pending. |
+| Deployment verification | Explicit Compose project → actual service image IDs + child image/network/volume settings → image receipt → preflight checks | Host orchestration rejects stale images, wrong project, mismatched settings and stopped containers. Does not infer gameplay health from image presence. |
+| Hermes operation | Concrete CLI/schema recipe + tool-wrapper format + native scheduler commands | Installed Hermes syntax inspected; no scheduler/wakeup claim until a real job attempt is verified. |
+
+[Acceptance evidence](benchmarks/operator-readiness.json) and [operator quickstart](operator-quickstart.md).

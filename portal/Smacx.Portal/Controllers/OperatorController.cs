@@ -13,6 +13,20 @@ namespace Smacx.Portal.Controllers;
 [Authorize(Roles = "Administrator")]
 public sealed class OperatorController(ControlPlaneClient control) : ControllerBase
 {
+    [HttpGet("/api/operator/preflight")]
+    public async Task<ActionResult<ApiResponse<JsonElement>>> Preflight()
+    {
+        try
+        {
+            using var response = await control.GetRawAsync("api/v1/operator/preflight", HttpContext.RequestAborted);
+            return ApiResponse<JsonElement>.Success(response.RootElement.GetProperty("report").Clone());
+        }
+        catch (ControlPlaneException error)
+        {
+            return StatusCode(error.StatusCode ?? 502, ApiResponse<JsonElement>.Failure(error.Code, error.Message));
+        }
+    }
+
     [HttpGet("{reportKind:regex(^(health|events|inspect)$)}")]
     public async Task<ActionResult<ApiResponse<JsonElement>>> Read(string matchId, string reportKind, [FromQuery] string? cursor = null, [FromQuery] string? objectRef = null)
     {

@@ -1,0 +1,17 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "checkpoint": "operator startup reliability and handoff",
+  "validation": {
+    "portal": "83/83",
+    "http_operator": "passed including authenticated preflight",
+    "cli": "passed; binding, roster, durable identity, unresolved-start refusal",
+    "startup_failure": "actual sidecar error-path fixture passed: persist before cleanup, redact, missing logs explicit",
+    "deployment": "stale images, settings, project and stopped containers rejected"
+  },
+  "native_startup": "pending isolated launch; no native readiness claim yet",
+  "limits": [
+    "Fixture sidecar state is not a native-game comparison.",
+    "No full-game completion claimed.",
+    "No scheduled monitoring job created by these tools."
+  ]
+}
