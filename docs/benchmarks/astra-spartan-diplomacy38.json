@@ -1,0 +1,34 @@
+{
+  "checkpoint": "turn38-to39-Spartan-diplomacy",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "timeline_id": "timeline-restore-31c643268b7049e19e92a06b",
+  "offer_decision_id": "decision-d5918af9be8c4a6d962d1e63b6ee4e40",
+  "response_choice_id": "choice-94db0271fe7b4dbc8358640b25813719",
+  "following_menu_decision_id": "decision-f58b58c5b0c540ae858772c092b1ee2d",
+  "observed_relationship": {
+    "epistemic_status": "current",
+    "first_known_turn": 38,
+    "last_verified_turn": 39,
+    "provenance_ref": "observation-309",
+    "source": "public_report",
+    "value": {
+      "commlink": true,
+      "infiltrated": false,
+      "pact": false,
+      "treaty": true,
+      "truce": true,
+      "vendetta": false
+    },
+    "world_revision": 10
+  },
+  "last_spoke_turn": {
+    "epistemic_status": "current",
+    "first_known_turn": 38,
+    "last_verified_turn": 39,
+    "provenance_ref": "observation-309",
+    "source": "public_report",
+    "value": 38,
+    "world_revision": 10
+  },
+  "scope": "Live accepted response, subsequent popup acknowledgement and fresh diplomacy menu; current faction projection at turn39 shows treaty=true. Not exhaustive modal regression or proof of strategic quality."
+}

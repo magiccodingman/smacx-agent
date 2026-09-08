@@ -815,3 +815,7 @@ The retry-hint follow-up passes installed control (scripts-only mount) and insta
 ### Turn-38 specialist integration revalidation
 
 The current isolated Hermes image passes `specialist_provider_capture_test.py`: 16 deterministic provider calls through real Hermes loops, iterative world/reference queries, exactly one specialist instrument, no sovereign state leakage, trace-derived citations, sequential child isolation, stable child prefixes, compressed trajectories, and failed lookups excluded as evidence. Current source is mounted read-only by this test, so this is not an installed-source-only proof. Controlled commission → provider → queries → traced result is verified; spontaneous live sovereign commission and strategic use remain open. Evidence: `docs/benchmarks/astra-specialist-capture38.json`.
+
+### Live Spartan diplomacy and turn-39 transition
+
+The recovered campaign passed the Spartan introduction, treaty accept/reject decision, accepted response, popup acknowledgement and fresh diplomacy menu. The subsequent committed faction observation at turn39 reports `treaty=true`, `vendetta=false`, last spoken turn38, all current with `observation-309` provenance. This establishes one live modal sequence plus its observed relationship result and continued turn progression, not exhaustive modal safety or strategic quality. Evidence: `docs/benchmarks/astra-spartan-diplomacy38.json`.
