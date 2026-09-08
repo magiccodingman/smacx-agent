@@ -863,6 +863,9 @@ class ObservationCollector:
                 event = {"event_kind": semantic_kind,
                          ("unit_ref" if own else "contact_ref"): unit_ref,
                          "location_ref": location, "turn": raw.get("turn", turn)}
+                if kind == "visible_unit_destroyed" and own and raw.get("item_name") == "support_shortage":
+                    event.update({"removal_cause": "support_shortage",
+                                  "cause_source": "native_support_disband_call"})
                 if kind == "visible_unit_damaged":
                     event.update({"observed_hp_before": raw.get("value_before"),
                                   "observed_hp_after": raw.get("value_after")})

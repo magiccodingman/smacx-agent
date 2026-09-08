@@ -19,6 +19,8 @@ void agent_doctrine_rules_loading(const char* alpha_path, bool complete);
 // periodic observer remains the reconciliation fallback for mutations outside
 // these patched sites.
 void agent_observe_unit_destroyed(int veh_id);
+// Runs the unchanged native kill path with scoped support-loss attribution.
+void agent_kill_unsupported_unit(int veh_id);
 void agent_observe_base_founded(int base_id);
 void agent_observe_base_destroyed(int base_id);
 void agent_observe_base_captured(int base_id, int old_faction_id,

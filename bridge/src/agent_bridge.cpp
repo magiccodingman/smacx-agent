@@ -19586,6 +19586,25 @@ void agent_doctrine_rules_loading(const char* alpha_path, bool complete) {
     }
 }
 
+namespace {
+int support_loss_handle = -1;
+}
+
+void agent_kill_unsupported_unit(int veh_id) {
+    // Native callers already run on the UI thread. Bind only this vehicle's
+    // stable identity; collateral cargo removals must not inherit its cause.
+    struct CauseScope {
+        int previous;
+        ~CauseScope() { support_loss_handle = previous; }
+    } scope{support_loss_handle};
+    support_loss_handle = -1;
+    if (lock_initialized && game_active() && veh_id >= 0 && veh_id < *VehCount) {
+        ensure_semantic_vehicle_handles();
+        support_loss_handle = semantic_vehicle_handle(veh_id);
+    }
+    kill(veh_id);
+}
+
 void agent_observe_unit_destroyed(int veh_id) {
     if (!lock_initialized || !game_active() || veh_id < 0
     || veh_id >= *VehCount) return;
@@ -19603,7 +19622,9 @@ void agent_observe_unit_destroyed(int veh_id) {
         const int tile_id = semantic_tile_id(veh.x, veh.y);
         append_observation_event("visible_unit_destroyed", *CurrentTurn,
             stable_handle, veh.faction_id, tile_id, tile_id,
-            veh.cur_hitpoints(), 0, true);
+            veh.cur_hitpoints(), 0, true,
+            veh.faction_id == perspective && stable_handle == support_loss_handle
+                ? "support_shortage" : nullptr);
     }
     // Mirror the native memmove that immediately follows this hook. Surviving
     // semantic handles and observation shadows retain their exact identity.

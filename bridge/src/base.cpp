@@ -1604,7 +1604,7 @@ void __cdecl mod_base_check_support() {
             break;
         }
         *BaseForcesMaintCost -= sup_cost;
-        kill(best_veh);
+        agent_kill_unsupported_unit(best_veh);
     }
 
     if (!is_human(faction_id)

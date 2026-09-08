@@ -31,7 +31,8 @@ def run(count, mode):
                 kind='visible_unit_lost' if index == len(fixture.units) - 1 else 'visible_unit_destroyed',
                 turn=50, subject_a=int(unit['native_observation_key'].split('-')[-1]),
                 subject_b=1 if unit['owned'] else 2, from_tile_id=unit['tile_id'],
-                to_tile_id=unit['tile_id'], continuous_visibility=True))
+                to_tile_id=unit['tile_id'], continuous_visibility=True,
+                item_name='support_shortage' if index % 2 == 0 else 'unreviewed_cause'))
         fixture.units = []
         fixture.revision += 1
         capture = attention.capture_confirmed_unit_losses
@@ -71,6 +72,16 @@ def run(count, mode):
         assert worlds.confirmed_unit_losses_at(scope, 'timeline-other', payload['observation_cursor'])['event_count'] == 0
         compact = _attention_payload({**row, 'payload': payload})
         assert compact['event_count'] == count and compact['events']
+        for event in compact['events']:
+            handle = int(event['unit_ref'].split('-')[-1])
+            original_index = next(i for i, raw in enumerate(fixture.events) if raw['subject_a'] == handle)
+            if original_index % 2 == 0:
+                assert event['removal_cause'] == 'support_shortage', event
+                assert event['cause_source'] == 'native_support_disband_call', event
+                assert 'not a combat loss' in event['meaning']
+            else:
+                assert 'removal_cause' not in event, event
+
         assert lease['items'][0]['attention_kind'] == 'unit_losses'
         attention.placed(lease['attention_lease_id'])
         attention.responded(lease['attention_lease_id'])
