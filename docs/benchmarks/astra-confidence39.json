@@ -8,5 +8,21 @@
     "installed_control": "both memory contracts pass with scripts-only mounts",
     "schema_budget": "15 tools, world660, total7688 conservative tokens"
   },
-  "limits": "Deployment/recovery in progress; actual schema/error delivery and autonomous correction remain pending."
+  "limits": "Actual schema delivery verified; autonomous corrected relationship write and future validation-error delivery remain pending.",
+  "provider_delivery": {
+    "time": 1788856519.601065,
+    "correlation": {
+      "attention_lease_id": "attention-lease-282bf80c2c344e778f2602d066efd5a7",
+      "episode_id": "episode-db2dd5338dfaf1f3458adecfdec5814a",
+      "request_id": "c5d37648fcb94a619c9883729efc1fbe",
+      "runtime_context_sha256": "64d3cea8f0935714790040bce92e61b17714764efe846bd97265ade3f305e586"
+    },
+    "numeric_schema_delivered": true
+  },
+  "deployment": {
+    "recovered_turn": 40,
+    "graphiti_completed_unix": 1788856479.6098814,
+    "running_source_matches_tested": true,
+    "initial_resume_failure": "Connection refused during control startup; no recovery request reached control. Retried after healthy verification."
+  }
 }
