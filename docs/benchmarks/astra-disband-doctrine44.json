@@ -13,5 +13,10 @@
   "limits": "Native worker/MCP healthy and sovereign run started. Autonomous disband and further turn progress not yet verified.",
   "run_id": "run-8d3e4974514240bfb43b9f66e8233607",
   "native_session": "session-78bdca3367794c949da614844b5db0d4",
-  "observed_turn": 44
+  "observed_turn": 44,
+  "build_preflight": {
+    "control_image": "BuildKit read-only source mount runs existing engine contract checker; never registers",
+    "positive": "control image build passed",
+    "negative": "isolated source copy with altered agent_bridge.cpp rejected as unreviewed"
+  }
 }

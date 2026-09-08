@@ -48,6 +48,10 @@ RUN ln -sf libsqlite3.so.3.53.4 /usr/local/lib/libsqlite3.so.0 \
 RUN python3 -m venv /opt/smacx/mcp-venv \
     && /opt/smacx/mcp-venv/bin/pip install --no-cache-dir "mcp==2.0.0"
 
+# Reject an unreviewed native source delta before publishing the control image.
+# This only checks the committed registration; it never approves a new build.
+RUN --mount=type=bind,target=/review python3 /review/scripts/doctrine_engine_contract.py
+
 COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_docker.py src/smacx_worker_manager.py src/smacx_operations.py \
     src/smacx_harness_manager.py src/smacx_hermes.py src/smacx_controller.py \
