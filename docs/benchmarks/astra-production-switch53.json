@@ -42,5 +42,11 @@
     "health": "observed_active",
     "turn": 53,
     "active_sovereign_runs": 1
+  },
+  "live_delivery": {
+    "request_id": "e762286e6e8d42099f0ccfbc71216279",
+    "runtime_context_sha256": "0bd4ac5c09f7b01e55ee71cf1026789c752854157e94b353abf617fc758cfa57",
+    "archive_sha256": "e77a42035695e8d2bba83553e7725ba4b67ab12df1af85b3088d5095f552af35",
+    "proof": "Actual provider tool history contains switch_effect. Comprehension and subsequent action benefit not inferred."
   }
 }
