@@ -3,6 +3,7 @@
 import io
 import json
 import tempfile
+import time
 import threading
 import zipfile
 from contextlib import redirect_stdout
@@ -13,7 +14,7 @@ from smacx_ops import Client, main, OpsError
 
 with tempfile.TemporaryDirectory() as tmp:
     root=Path(tmp)
-    state={'lobby':None,'starts':0,'creates':0}
+    state={'lobby':None,'starts':0,'creates':0, 'ready':True}
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args): pass
         def do_GET(self): self.handle_request('GET')
@@ -28,7 +29,8 @@ with tempfile.TemporaryDirectory() as tmp:
                 assert body['password']=='test-only-password';value={'authenticated':True}
             else:
                 assert 'operator-session=authenticated' in self.headers.get('Cookie','')
-                if path=='/api/catalog/lobby': value={k:[{'id':i}] for k,i in [('gameSources','source-test'),('runtimes','runtime-test'),('agents','agent-test')]}
+                if path=='/api/operator/preflight': value={'schema':'smacx.operator-preflight.v1','installation_id':'installation-test','prerequisites_ready':state['ready']}
+                elif path=='/api/catalog/lobby': value={'controlConnected':True, **{k:[{'id':i}] for k,i in [('gameSources','source-test'),('runtimes','runtime-test'),('agents','agent-test')]}}
                 elif path=='/api/lobbies' and method=='POST':
                     assert body['worldSize']=='standard' and body['difficulty']=='librarian' and body['allowSpectators']
                     if not state['lobby']:
@@ -40,11 +42,15 @@ with tempfile.TemporaryDirectory() as tmp:
                         'requestedFactionId':body['factionId'],'requestedPersonalityId':body['personalityId']}
                     value=state['lobby']
                 elif path.endswith('/start'):
-                    state['starts']+=1;state['lobby']['status']='running';value=state['lobby']
+                    state['starts']+=1
+                    if state.get('start_gate'): state['start_gate'].wait(10)
+                    state['lobby']['status']='running';value=state['lobby']
+                    if state.get('start_done'):state['start_done'].set()
                 elif path.endswith('/diagnostics'):
                     archive=io.BytesIO()
                     with zipfile.ZipFile(archive,'w') as z:z.writestr('manifest.json','{}')
                     self.send_response(200);self.send_header('Content-Type','application/zip');self.end_headers();self.wfile.write(archive.getvalue());return
+                elif path.endswith('/health'):value={'installation_id':'installation-test','match_status':'running','live_sovereign_processes':1,'world_heads':[{}],'workers':[{'running':True,'health':'healthy','mcp':{'running':True,'health':'healthy'}}],'incidents':[]}
                 elif '/operator/' in path:value={'schema':'fixture','events':[],'next_cursor':'cursor-fixture'}
                 else:value=state['lobby']
             self.send_response(200);self.send_header('Content-Type','application/json')
@@ -70,6 +76,42 @@ with tempfile.TemporaryDirectory() as tmp:
         assert [s['requestedFactionId'] for s in state['lobby']['seats'][:5]]==['peacekeepers','hive','university','morgan','spartans']
         for _ in range(2):assert command('start','match-cli-test')['completed']
         assert state['starts']==1
+        assert command('preflight','--expect-installation','installation-test')['prerequisites_ready']
+        try: command('preflight','--expect-installation','installation-wrong')
+        except OpsError: pass
+        else: raise AssertionError('wrong installation accepted')
+        boot=['bootstrap','--expect-installation','installation-test','--state-file',str(root/'mission.json'),
+              '--name','Test','--request-id','cli-retry-001','--source','source-test','--runtime','runtime-test','--agent','agent-test','--wait','2']
+        assert command(*boot)['phase']=='native_ready'
+        assert command(*boot)['phase']=='native_ready'
+        assert state['starts']==1
+        saved=json.loads((root/'mission.json').read_text())
+        assert saved['match_id']=='match-cli-test'
+        assert (root/'mission.json').stat().st_mode & 0o077 == 0
+        state['lobby']['status']='waiting'
+        saved['start_submitted']=True
+        (root/'mission.json').write_text(json.dumps(saved))
+        try: command(*boot)
+        except OpsError as e: assert 'unresolved' in str(e)
+        else: raise AssertionError('ambiguous start retried')
+        assert state['starts']==1
+        state['lobby']['status']='running'
+        state['lobby']['status']='waiting';state['start_gate']=threading.Event();state['start_done']=threading.Event()
+        slow=list(boot);slow[slow.index('--state-file')+1]=str(root/'slow.json');slow[-1]='0.05'
+        out=io.StringIO();ended=threading.Event();codes=[]
+        def run_slow():
+            try:
+                with redirect_stdout(out):codes.append(main(args+slow))
+            finally:ended.set()
+        caller=threading.Thread(target=run_slow);caller.start()
+        try: assert ended.wait(5), 'deadline waited for background POST'
+        finally:state['start_gate'].set();caller.join(5)
+        assert codes==[2]
+        assert json.loads(out.getvalue().splitlines()[-1])['phase']=='startup_unverified'
+        assert state['start_done'].wait(5)
+        state.pop('start_gate');state.pop('start_done')
+        assert command(*slow)['phase']=='native_ready'
+        assert state['starts']==2, 'ambiguous start was duplicated'
         packet=command('packet','match-cli-test','--output',str(root/'packet'))
         assert packet['complete'] and len(packet['files'])==4
         assert zipfile.is_zipfile(root/'packet/diagnostics.zip')

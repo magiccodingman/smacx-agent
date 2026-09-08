@@ -23,12 +23,17 @@ def classify_health(match, runs, workers, incidents, now):
         return 'starting', ['startup_completion_not_verified']
     if match.get('status') in {'completed', 'closed'}:
         return 'completed', []
+    if any(w.get('mcp_status') == 'error' for w in workers):
+        return 'needs_attention', ['mcp_startup_failed']
     if workers and all(not w.get('running') or w.get('paused') for w in workers if not w.get('error')) \
             and not any(w.get('error') for w in workers) and not any(r.get('status') in ACTIVE for r in runs):
         return 'paused', ['native_not_advancing']
     if any(w.get('error') for w in workers): reasons.append('worker_state_unavailable')
     if any(w.get('running') and not w.get('paused') and w.get('health') != 'healthy' for w in workers):
         reasons.append('worker_health_not_ready')
+    if any(w.get('running') and not w.get('paused') and w.get('mcp_status') == 'running'
+           and (not w.get('mcp', {}).get('running') or w.get('mcp', {}).get('health') != 'healthy') for w in workers):
+        reasons.append('mcp_health_not_ready')
     for run in runs:
         if run.get('status') not in ACTIVE: continue
         metadata = run.get('metadata', {})
@@ -52,6 +57,37 @@ class OperatorService:
         self.journal = CampaignJournal(self.store.path.parent / 'campaigns',
                                       timeline_resolver=self.store.active_timeline_id)
 
+    def preflight(self, harness):
+        """Read-only installation identity and prerequisites; no gameplay claim."""
+        checks, images = [], {}
+        def check(name, operation):
+            try:
+                value = operation()
+                checks.append({'name': name, 'ok': bool(value)})
+                return value
+            except Exception as error:
+                checks.append({'name': name, 'ok': False, 'error': type(error).__name__})
+        check('docker', self.manager.docker.ping)
+        check('network', lambda: self.manager.docker.inspect_network(self.manager.network_name))
+        check('control_volume', lambda: self.manager.docker.inspect_volume(self.manager.control_data_volume))
+        for kind, ref in [('worker', self.manager.worker_image), ('mcp', self.manager.mcp_image),
+                          ('harness', harness.image_ref)]:
+            value = check(kind + '_image', lambda ref=ref: self.manager.docker.inspect_image(ref))
+            images[kind] = {'reference': ref, 'id': value.get('Id') if value else None,
+                'revision': (value.get('Config', {}).get('Labels') or {}).get('org.opencontainers.image.revision') if value else None}
+        import shutil
+        from pathlib import Path
+        usage = shutil.disk_usage(self.store.path.parent)
+        code = {name: hashlib.sha256((Path(__file__).parent / name).read_bytes()).hexdigest()
+                for name in ('smacx_operator.py', 'smacx_ops.py', 'smacx_worker_manager.py',
+                             'smacx_control_server.py', 'smacx_mcp.py')}
+        return {'schema': 'smacx.operator-preflight.v1', 'sampled_unix': time.time(),
+                'installation_id': self.manager.installation_id,
+                'prerequisites_ready': all(c['ok'] for c in checks), 'checks': checks,
+                'images': images, 'operator_code_sha256': code, 'control_storage_free_bytes': usage.free,
+                'limitations': ['Image availability does not prove a fresh native startup.',
+                    'Provider availability in the lobby catalog is cached; startup remains the live check.']}
+
     def health(self, match_id):
         match = self.control.get_match(match_id)
         now = time.time()
@@ -61,15 +97,19 @@ class OperatorService:
         for spec in self.control.list_worker_specs():
             if spec['match_id'] != match_id: continue
             if worker_error:
-                workers.append({'instance_id': spec['instance_id'], 'error': 'not_checked_after_worker_error'})
+                workers.append({'instance_id': spec['instance_id'], 'error': 'not_checked_after_worker_error',
+                    'startup_failure': spec.get('network', {}).get('mcp_startup_failure')})
                 continue
             try:
                 worker = self.manager.worker_status(spec['instance_id'])
                 workers.append({k: worker.get(k) for k in
                     ('instance_id', 'container_present', 'running', 'paused', 'health', 'session_id', 'mcp', 'image_id', 'image_ref')})
+                workers[-1]['startup_failure'] = spec.get('network', {}).get('mcp_startup_failure')
+                workers[-1]['mcp_status'] = spec.get('network', {}).get('mcp_status')
             except Exception as error:
                 worker_error = True
-                workers.append({'instance_id': spec['instance_id'], 'error': type(error).__name__})
+                workers.append({'instance_id': spec['instance_id'], 'error': type(error).__name__,
+                    'startup_failure': spec.get('network', {}).get('mcp_startup_failure')})
         incidents = self.control.list_supervision_incidents(match_id=match_id, active_only=True)
         with self.store._connect() as connection:
             missions = [dict(r) for r in connection.execute(
@@ -123,6 +163,7 @@ class OperatorService:
                     'semantic_progress','semantic_telemetry_unix','semantic_baseline_pending','semantic_unavailable_reason',
                     'semantic_unavailable_samples','consecutive_clean_yields_without_progress')}})
         return redact({'schema': 'smacx.operator-health.v1', 'match_id': match_id,
+            'installation_id': self.manager.installation_id,
             'sampled_unix': now, 'state': state, 'reasons': reasons,
             'match_status': match.get('status'), 'turn': match.get('last_turn'), 'year': match.get('last_year'),
             'workers': workers, 'runs': safe_runs, 'world_heads': heads,

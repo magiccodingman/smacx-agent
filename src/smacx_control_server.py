@@ -306,6 +306,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 self._authentication()
                 self._json(200, {"ok": True, "matches": self.server.control.list_matches()})
                 return
+            if path == "/api/v1/operator/preflight":
+                self._authentication()
+                from smacx_operator import OperatorService
+                report = OperatorService(self.server.control, self._manager()).preflight(self._harness_manager())
+                self._json(200, {"ok": True, "report": report})
+                return
             operator_match = re.fullmatch(r"/api/v1/matches/([A-Za-z0-9_-]{8,96})/operator/(health|events|inspect)", path)
             if operator_match:
                 self._authentication()

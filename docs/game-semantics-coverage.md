@@ -590,6 +590,16 @@ Repeated live episode starts used unqualified `smac_decision`, which the dispatc
 
 Episode-name follow-up: live readback exposed a portal `initial_prompt` override retaining the old name. The portal now omits that override and uses the control default. All 83 portal tests pass. Existing episodes retain their input; future startup wording still requires live verification.
 
+### Operator startup reliability checkpoint (2026-09-07)
+
+| Capability | Evidence chain | Acceptance / remaining proof |
+| --- | --- | --- |
+| MCP startup failure | Docker inspection/logs → bounded sanitized receipt → worker metadata before cleanup + diagnostic event → administrator health/packet | Actual error-path fixture preserves exit/OOM/health distinction, redacts credentials, exposes missing logs. Real Docker process exit/log capture also passes; fresh native launch reached worker/MCP/sovereign readiness. |
+| Bound startup | Authenticated preflight → installation and image receipt checks → preset/agent read-back → durable match ID → one bounded startup POST → process/world readiness | CLI HTTP contracts cover identity mismatch, durable retry and ambiguous-submission refusal; portal 83/83. Fresh native launch passed: 13 managed tool returns and opening execution receipts; packet export and verified park completed. |
+| Deployment verification | Explicit Compose project → actual service image IDs + child image/network/volume settings → image receipt → preflight checks | Host orchestration rejects stale images, wrong project, mismatched settings and stopped containers. Does not infer gameplay health from image presence. |
+| Hermes operation | Concrete CLI/schema recipe + tool-wrapper format + native scheduler commands | Installed Hermes syntax inspected; no scheduler/wakeup claim until a real job attempt is verified. |
+
+[Acceptance evidence](benchmarks/operator-readiness.json) and [operator quickstart](operator-quickstart.md).
 ### Supply-pod observation repair (deployment pending)
 
 Current visible tile and movement exports consult native `goody_at` instead of treating the raw pod bit as collectible availability. Fog retains prior observed features and their verification turn as stale, including observed pod absence. Hidden squares never trigger a live pod query.
@@ -605,6 +615,8 @@ Live rollback from turn 7 to 6 exposed duplicate `(MatchId, AgentId, Turn)` inse
 Portal replay deployment: recovery now passes the duplicate-metric seam and reaches profile preparation. The engine-compatibility guard then correctly rejected the newly built bridge because its reviewed-source manifest had not been updated. Reviewed changes affect observation serialization and an explicitly gated fixture, not game rules; the manifest is updated explicitly. Doctrine integration contracts pass, including rejected unreviewed engines and explicit recompilation. Runtime registration/recompilation is still pending.
 
 Supply-pod/recovery checkpoint: the refreshed worker and MCP are healthy, Graphiti restore completed, explicit reviewed doctrine recompilation returned HTTP 200, and the portal restarted one sovereign without active incidents. Its first qualified decision call succeeded. The captured provider request at 1788828649.4469302 contains current location-916 features `["vehicle"]` and separate Unity landmark evidence. Thus observed → represented → provider-delivered is verified for this consumed pod. Sovereign adaptation and full-game acceptance remain pending; no victory or strategic-quality claim follows from restart.
+
+Operator final-integration check: main PR #60 retained; all 84 portal tests pass. Authenticated health preserves stored startup receipts even while Docker inspection is unavailable. Final integrated images also passed a second fresh native startup via the same bound CLI (worker/MCP healthy, one sovereign, committed world state, no incident), packet export and verified park. Installed-module contracts pass without source mounts. Initial supervisor health remained explicitly unknown while its sampling caught up; native readiness does not erase that uncertainty.
 
 ### Tile occupancy semantics (deployment pending)
 

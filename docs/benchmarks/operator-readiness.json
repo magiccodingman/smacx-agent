@@ -1,0 +1,95 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "checkpoint": "operator startup reliability and handoff",
+  "validation": {
+    "portal": "84/84 after integrating main PR #60",
+    "http_operator": "passed including authenticated preflight",
+    "cli": "passed; binding, roster, durable identity, unresolved-start refusal; gated HTTP regression returns before pending POST completes and re-entry does not duplicate startup",
+    "startup_failure": "actual sidecar error-path fixture passed: persist before cleanup, redact, missing logs explicit",
+    "deployment": "stale images, settings, project and stopped containers rejected",
+    "real_portal_catalog": "Fresh isolated Identity login, provider discovery, profile creation and authenticated preflight pass. CLI uses actual controlConnected field.",
+    "real_docker_failure_capture": {
+      "passed": true,
+      "exit_code": 23,
+      "oom_killed": false,
+      "logs_preserved": true,
+      "native_game": false
+    },
+    "source_drift_guard": "Real authenticated preflight rejected a changed checkout before any mutation.",
+    "offline_diagnostics": "Authenticated operator health retains persisted startup evidence when worker Docker inspection raises an error.",
+    "packaged_final_image": "CLI, deployment, startup failure, authenticated operator HTTP and lifecycle serialization contracts pass using installed modules without a source mount."
+  },
+  "native_startup": {
+    "source_commit": "b1e24e6",
+    "installation_id": "installation-96cd102f7da94834b602397fd1da6442",
+    "match_id": "match-5bd6efa06d13f41d415d539d2b6c6b11",
+    "phase": "native_ready",
+    "elapsed_seconds": 153.7,
+    "workers_healthy": true,
+    "mcp_healthy": true,
+    "live_sovereign_processes": 1,
+    "world_heads": 1,
+    "incidents": 0,
+    "managed_tool_returns": 13,
+    "opening_execution_receipts": [
+      "Acknowledge popup: accepted",
+      "Set first base name: accepted",
+      "Auto explore unit: order_assigned (not sustained-work proof)"
+    ],
+    "packet_sha256": "342ca954347af9907afe9a2cd07624f920607e81df9a9bd95d9e8effd3c5f759",
+    "parked": true,
+    "verified_checkpoint": true,
+    "image_ids": {
+      "worker": "sha256:c647c56855d5b2701300c9e4bd2e1386a4daec4a39c26a39ce97fdb7228fb314",
+      "mcp": "sha256:990833266f821be0fd25308b9a81e902f1d1b03b847a7c178c07ffc6d43ec918",
+      "harness": "sha256:7d16488d0ebb0ebe0ceae46724370321d272c3890ac8a1a5bc424107ea35c1df"
+    }
+  },
+  "limits": [
+    "Fixture sidecar state is not a native-game comparison.",
+    "No full-game completion claimed.",
+    "No scheduled monitoring job created by these tools.",
+    "The historical sidecar failure lacks retained exit/log evidence; successful fresh launches do not establish its original cause."
+  ],
+  "scheduler": {
+    "installed_cli_syntax_checked": true,
+    "gateway_running": true,
+    "active_jobs": 0,
+    "job_created": false,
+    "reason": "This task validates tooling; it does not restart the ongoing monitoring mission."
+  },
+  "final_integrated_startup": {
+    "source_commit": "2b93f00",
+    "includes_main_pr": 60,
+    "match_id": "match-279c9a2a58d3389cd1829e2c41bd4efe",
+    "phase": "native_ready",
+    "elapsed_seconds": 139.0,
+    "native_worker_healthy": true,
+    "mcp_healthy": true,
+    "live_sovereign_processes": 1,
+    "committed_world_heads": 1,
+    "active_incidents": 0,
+    "health_classification_at_startup": "unknown",
+    "health_limit": "Native readiness does not replace cached supervisor health; initial health stayed unknown until its sampling caught up.",
+    "parked": true,
+    "verified_checkpoint": true,
+    "image_ids": {
+      "worker": "sha256:87ebe550c395d14b9b7a3631679135f777082a0d218b2b5c9daa5beabce5df0c",
+      "mcp": "sha256:a2eeaf9b4464d7eaace388ba45158fb16e7ac6973afdf276ab81ea7279c4581f",
+      "harness": "sha256:ee5f6ed55f1eeb786856703135216522a75439cd4c148bef0b704bb6a910c327"
+    },
+    "packet_sha256": "d18c8d6cb6b4ca2458ce987a18babf5433207a5814d9ef861629a4ad36d9b7ab"
+  },
+  "merge_validation": {
+    "main_commit": "e4cac9a",
+    "main_pr": 62,
+    "conflict_resolution": "Preserved both operator acceptance and tile-occupancy coverage sections.",
+    "checks": [
+      "operator_cli_test.py passed",
+      "world_anchor_format_test.py passed",
+      "supply_pod_observation_contract_test.py passed",
+      "git diff --check passed"
+    ],
+    "deployment": "Not redeployed during conflict resolution; native evidence above refers to its recorded source commits."
+  }
+}

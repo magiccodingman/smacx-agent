@@ -50,6 +50,8 @@ public sealed class PortalFlowTests : IAsyncLifetime
     [Fact]
     public async Task OperatorRoutesRequireAuthenticationAndCreationRetriesAreIdempotent()
     {
+        using var preflight = await client!.GetAsync("api/operator/preflight");
+        Assert.Equal(HttpStatusCode.Unauthorized, preflight.StatusCode);
         using var anonymous = await client!.GetAsync("api/operator/matches/match-test/health");
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         var csrf = await GetDataAsync<CsrfTokenResponse>("api/auth/csrf");

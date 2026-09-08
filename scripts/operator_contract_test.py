@@ -38,20 +38,35 @@ with tempfile.TemporaryDirectory() as tmp:
         assert control.list_supervision_incidents(match_id=scope.match_id, active_only=True), 'missing durable fence'
         state['paused'] = True; state['mcp']['paused'] = True
     manager = SimpleNamespace(docker=SimpleNamespace(list_owned_containers=lambda *args: []), installation_id=store.installation_id(), _lifecycle_lock=threading.RLock(), worker_status=lambda _: dict(state), quarantine_match=quarantine)
-    server = ControlHTTPServer(('127.0.0.1',0),control,root,worker_manager=manager,service_token='operator-fixture')
+    manager.worker_image='worker:test';manager.mcp_image='mcp:test'
+    manager.network_name='network';manager.control_data_volume='control'
+    manager.docker.ping=lambda:True
+    manager.docker.inspect_network=lambda _: {'Id':'network'}
+    manager.docker.inspect_volume=lambda _: {'Name':'control'}
+    manager.docker.inspect_image=lambda _: {'Id':'sha256:test'}
+    server = ControlHTTPServer(('127.0.0.1',0),control,root,worker_manager=manager,service_token='operator-fixture',harness_manager=SimpleNamespace(image_ref='harness:test'))
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     def call(action, method='GET', auth=True, data=None):
         headers={'Content-Type':'application/json'}
         if auth: headers['X-SMACX-Service-Token']='operator-fixture'
-        request=Request(f'http://127.0.0.1:{server.server_port}/api/v1/matches/match-operator/operator/{action}',
+        route = '/api/v1/operator/preflight' if action=='preflight' else f'/api/v1/matches/match-operator/operator/{action}'
+        request=Request(f'http://127.0.0.1:{server.server_port}{route}',
             method=method,headers=headers,data=json.dumps(data or {}).encode() if method=='POST' else None)
         with urlopen(request) as response: return json.load(response)['report']
     try:
-        for route, method in [('health','GET'),('inspect','GET'),('events','GET'),('pause','POST')]:
+        for route, method in [('preflight','GET'),('health','GET'),('inspect','GET'),('events','GET'),('pause','POST')]:
             try: call(route,method,False)
             except HTTPError as error: assert error.code==401
             else: raise AssertionError('unauthenticated operator access')
+        assert call('preflight')['prerequisites_ready']
+        assert call('preflight')['installation_id']==store.installation_id()
         assert call('health')['state']=='idle'
+        spec['network']={'mcp_startup_failure':{'capture_complete':True,'state':{'ExitCode':23}}}
+        def unavailable(_): raise OSError('Docker unavailable')
+        manager.worker_status=unavailable
+        assert call('health')['workers'][0]['startup_failure']['state']['ExitCode']==23
+        manager.worker_status=lambda _:dict(state)
+
         view=call('inspect'); assert view['perspectives'][0]['objects']
         assert all('metadata' not in o for o in view['perspectives'][0]['objects'])
         first=call('events'); assert first['events']

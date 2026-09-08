@@ -74,7 +74,7 @@ The archive uses the existing authorized diagnostic export. A packet adds health
 - CLI HTTP roster, retry, cookie and packet tests: `scripts/operator_cli_test.py`.
 - Authenticated control HTTP, projection/journal, pause/recovery-fence tests: `scripts/operator_contract_test.py` in the MCP Python environment.
 - Real isolated Docker process containment: `scripts/operator_docker_containment_test.py` with the Docker socket and `smacx-agent-control:operator-tools` image. This tests process containment, not native game mechanics.
-- Existing native checkpoint recovery remains the authority. A fresh full native-game acceptance run has not been performed for these additions; the original campaign remains paused.
+- Existing native checkpoint recovery remains the authority. Two fresh native startup checks have passed for the guided operator path, including packet export and verified parking. Full-game acceptance remains unproven; see [the evidence](benchmarks/operator-readiness.json).
 
 GitHub issue automation, storage policy changes, recurring agent scheduling and the knowledge-transfer prompt are a subsequent phase. These tools do not create issues, launch monitoring agents, merge PRs or resume games on their own.
 
@@ -83,3 +83,20 @@ Accepted startup continues provisioning if the initiating HTTP client disconnect
 For two installations on the same hostname, assign different `SMACX_PORTAL_COOKIE_PREFIX` values as well as separate ports, Compose projects, networks, volumes, worker/MCP/harness image references, control-data volume references, and operator cookie files. Cookies are not port-scoped. The default prefix preserves existing login cookies; a custom prefix also separates auxiliary Identity cookies. Changing a prefix requires logging in again.
 
 Graphiti runtime heartbeat reports event-loop liveness independently of batch completion. Read `metadata.phase`, `projected_events`, `failed_events`, and `last_projection_unix` to distinguish a pending projection from completed work. A healthy container alone does not establish provider progress.
+
+## Guided startup and deployment read-back
+
+Start with [the operator quickstart](operator-quickstart.md), including Hermes
+execution and scheduling instructions. `deployment` checks an explicit local
+Compose project and writes image IDs; `preflight` verifies installation identity,
+image prerequisites and optionally the running operator module hashes and image
+receipt. `bootstrap` creates the preset, saves its match ID before starting, locks
+its state file and streams progress until verified native readiness or a bounded
+unverified/failure result. It never silently resubmits an ambiguous start.
+
+MCP startup failures now retain bounded inspection/log evidence in worker network
+metadata before container cleanup and emit a campaign diagnostic event. Operator
+health includes this receipt even after container removal. Historical receipts
+are time-stamped; current `mcp_status` determines whether the failure is active.
+Missing logs/inspection are explicit capture gaps. No recovery or fair-play
+contract changes are involved.
