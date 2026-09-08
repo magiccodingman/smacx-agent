@@ -14,5 +14,20 @@
     "former11_moves_remaining": 0
   },
   "comparison": "Agrees with turn51 conditional support-after-completion forecast. Hurry receipt recorded56 credits spent and20 accumulated minerals.",
-  "limits": "No inference that a current no-task sample proves no work occurred between observations. Tile836 currently has road; earlier feature baseline/completion events must be compared before diagnosing automation. No automatic support casualty observed at this sample."
+  "limits": "No inference that a current no-task sample proves no work occurred between observations. Tile836 currently has road; earlier feature baseline/completion events must be compared before diagnosing automation. No automatic support casualty observed at this sample.",
+  "turn53_followup": {
+    "native_information_event": "unit_support_shortage",
+    "unit_name": "Formers",
+    "effect_status": "forced_disband_pending_native_processing",
+    "decision_id": "decision-5a7fbd060bb642cb9e79e41c091abc3d",
+    "ack_choice": "choice-03a6ca0b741c45c69aa9512da6f04acd",
+    "observed_after": {
+      "former11_absent": true,
+      "former12_present": true,
+      "support": 4,
+      "intake": 4,
+      "surplus": 0
+    },
+    "attribution": "Native support-shortage popup plus subsequent unit removal establishes forced support loss, not combat or an automation-reset diagnosis. Specific casualty was not predicted in advance."
+  }
 }
