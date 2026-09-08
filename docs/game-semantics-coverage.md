@@ -774,3 +774,9 @@ references, stale/unknown distinctions, unseen registry factions, revision misma
 returned-ID revalidation and metadata isolation. Store, memory-status and canonical
 evidence regressions pass. Installed/live acceptance remains pending; see
 `docs/benchmarks/astra-faction-memory35.json`. Assertions remain unverified.
+
+Faction-reference deployment acceptance: the installed-image test passes with only
+test scripts mounted; recovered native/MCP services are healthy at turn37 and the
+MCP controller hash matches source. Graphiti completed at1788851940.638363 before
+sovereign restart. All15 schemas pass at7,612 conservative tokens (not an exact
+tokenizer measurement). Live autonomous faction-linked memory write remains open.

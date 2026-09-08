@@ -19,8 +19,22 @@
     "platform_store_test": "passed"
   },
   "limits": [
-    "Controlled projection and native guard fixtures; installed image and live provider write pending.",
+    "Controlled projection and native guard fixtures plus installed-image/deployment checks; live provider memory write pending.",
     "Identity resolution does not verify assertions or infer current territorial ownership from stale evidence.",
     "Existing non-generated legacy actor IDs retain their existing store validation contract."
-  ]
+  ],
+  "deployment": {
+    "installed_test": "passed without host source mounted",
+    "native_turn": 37,
+    "worker_mcp": "healthy",
+    "incident": "cleared by operator resume",
+    "graphiti_completed_unix": 1788851940.638363,
+    "sovereign": "running after rebuild",
+    "controller_sha256": "edf23afb11212b08bd354ac7a06b9fe96c8746911a91a9cfb2f58e9c45faebc9",
+    "schema_budget": {
+      "managed_tools": 15,
+      "conservative_tokens": 7612,
+      "exact_tokenizer": false
+    }
+  }
 }
