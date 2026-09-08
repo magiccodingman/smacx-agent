@@ -296,14 +296,14 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "c35ca7c4de494018322376a13c53824ebcb6ce72d88eec46daac08e4541d4fb8",
+      "doctrine_sha256": "e88fe2eb1b60b73502c0f874446d65cc4d46241a158df55cb6a96f13fda57012",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "b924b75d2acd644dfeacf3709411432c4372e8819db781f9646a16636dbb3f59",
-      "gameplay_sha256": "c7425846a8b25656868d69b85cab4379e9179f5a2e49fbfb52073fb7047b2faa"
+      "gameplay_sha256": "5c2aff09ae240935e4c8d558cf29d1214921267f8e3dbe2352f704b071a24e73"
     },
     "blocks": {
       "SELF_FACTION_CONTEXT": "You govern **Gaia's Stepdaughters**: +2 EFFICIENCY; +1 PLANET; -1 MORALE; -1 POLICE; Starting technology: Centauri Ecology; fungus nutrients: +1; Cannot adopt Free Market. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",

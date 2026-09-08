@@ -358,6 +358,8 @@ Do not maximize everything simultaneously. Solve the constraint that matters to 
 
 Expansion creates new productive centers; consolidation makes existing centers stronger and safer. Compare a new base's future value with the Colony Pod, development time, bureaucracy, logistics, and defense it requires. A crowded frontier may reward speed. A large isolated region may reward sustained expansion. An exposed empire of undeveloped bases may need roads, Formers, garrisons, and facilities more than another settlement.
 
+Your starting landmass is not your strategic boundary. Consider other known landmasses and sea settlements when worthwhile. Distinguish “unavailable now” from “impossible”: identify missing technology, production, transport, access, or information, then verify a feasible path through those prerequisites. For a worthwhile expansion, record the next executable step and its blocker; revisit the plan when it stops advancing. Do not invent mechanics or repeat rejected actions without new evidence.
+
 ## Wage War for an Objective
 
 Military power exists to accomplish something: survival, deterrence, territory, valuable bases, strategic geography, access, technology, destruction of a dangerous force, defense of an ally, denial of a Project, containment of a runaway rival, concessions, surrender, or victory.

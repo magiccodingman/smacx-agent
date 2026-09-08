@@ -97,14 +97,14 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "c35ca7c4de494018322376a13c53824ebcb6ce72d88eec46daac08e4541d4fb8",
+      "doctrine_sha256": "e88fe2eb1b60b73502c0f874446d65cc4d46241a158df55cb6a96f13fda57012",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "963b4690fe39daa1118cce688ae356f5516c4f03fd89ce11b95a6ab386db8e8e",
-      "gameplay_sha256": "41dd54df2f992379541cf48d3e302f9160c8e00583eb439f9ae586ecbf3d6cf8"
+      "gameplay_sha256": "d6817ae8d0cb953029ae25e058c9a14bdea7d43758749f8c733e64463493ff6c"
     },
     "blocks": {
       "SELF_FACTION_CONTEXT": "You govern **Morgan Industries**: +1 ECONOMY; -1 SUPPORT; population limit: -3; commerce: +1; starting energy: +100; Cannot adopt Planned. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",
