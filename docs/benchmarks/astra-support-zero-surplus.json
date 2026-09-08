@@ -11,7 +11,7 @@
     "production_support_surplus_test pass",
     "managed_action_path_contract_test pass"
   ],
-  "deployment": "pending",
+  "deployment": "Installed-image tests passed; operator recovery succeeded; fresh native turn18 catalog through installed managed formatter exposes conditional surplus0 and zero-surplus state.",
   "native_post_completion_comparison": "pending",
   "scope": "Derived arithmetic under existing native caveats; no new exact mechanics claim"
 }
