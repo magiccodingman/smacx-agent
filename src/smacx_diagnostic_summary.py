@@ -121,6 +121,13 @@ def summary(event):
             'turn_handoff_required','turn_provenance','base_screen_closed','turn_completion_verified','turn_boundary_notice','choice_scope','production_context','citizen_context','query_hint','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_accumulated','production_name','terraform_completion_verified','follow_up') if k in result}
         health = result.get('plan_health')
+        if isinstance(result.get('mode'), str) and isinstance(result.get('items'), list):
+            chosen['world_query'] = {
+                'mode': result['mode'], 'returned_items': len(result['items']),
+                'has_continuation': bool(result.get('continuation')),
+            }
+            if isinstance(result.get('result_token_estimate'), (int, float)):
+                chosen['world_query']['result_token_estimate'] = result['result_token_estimate']
         if isinstance(health, dict):
             chosen['plan_health'] = {k: health[k] for k in (
                 'active_plan_count', 'intent_coverage_complete', 'assessment_scope',

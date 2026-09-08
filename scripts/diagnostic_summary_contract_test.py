@@ -6,6 +6,13 @@ assert result_object(wrapped)['error']['code']=='schema_missing_required'
 event={'kind':'tool_returned','actor':'sovereign','payload':{'managed_name':'smac_memory','content':wrapped}}
 assert 'schema_missing_required' in summary(event)
 metrics=Metrics();metrics.add(event)
+world_event={'kind':'managed_tool_returned','payload':{'tool':'smac_world','result':{
+    'ok':True,'mode':'forces','items':[{'object_ref':'own-unit-1','large_evidence':'x'*10000}],
+    'continuation':'cursor-private','result_token_estimate':1434}}}
+world_text=summary(world_event)
+assert '"returned_items":1' in world_text and '"has_continuation":true' in world_text
+assert 'large_evidence' not in world_text and 'cursor-private' not in world_text
+assert len(world_text)<300
 assert metrics.as_dict()['failure_observations_by_layer']=={'tool_returned:schema_missing_required':1}
 sdk_error={'error':json.dumps({'ok':False,'error':{'code':'unknown_tool_arguments',
     'unknown_arguments':['detail']},'execution_status':'not_executed','native_action_executed':False})}
