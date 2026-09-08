@@ -15,7 +15,13 @@
     "journal_memory_evidence_test": "passed: claim, belief, unknown/foreign/abandoned rejection, inherited prefix, post-fork rejection, cache loss, restart, tamper rejection, legacy SQL IDs",
     "memory_status_feedback_test": "passed",
     "platform_store_test": "passed",
-    "campaign_journal_test": "passed"
+    "campaign_journal_test": "passed",
+    "provider_schema_budget_test": {
+      "passed": true,
+      "managed_tools": 15,
+      "total_schema_conservative_tokens": 7553,
+      "exact_tokenizer_used": false
+    }
   },
   "limits": [
     "Guarded writer tests use controlled native snapshot.",

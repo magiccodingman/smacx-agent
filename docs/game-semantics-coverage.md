@@ -738,3 +738,8 @@ source mounts; the live MCP controller hash matches the repaired source. Operato
 resume restored healthy native/MCP services and Graphiti completed at
 1788850707.7660103 before the sovereign restarted. Live citation retry remains
 unproven and is tracked separately from deployment success.
+
+Post-deployment schema validation for the journal citation guidance passes: 15
+managed tools, 7,553 conservative schema tokens. No exact tokenizer measurement
+is claimed. The turn35 sovereign has resumed guarded movement and refreshed its
+decision after a native rejection; a new cited memory write remains pending.
