@@ -19,13 +19,24 @@
     "movement_preview_scope_test": "pass: actual managed facade with native-shaped receipt/query sink; conditional scope retained, no execution/consumption, movement deployment rejected",
     "installed_control": "pass: movement_preview_scope_test, counterfactual_choice_contract_test, opaque_choice_execution_test; scripts-only mounts"
   },
-  "remaining": "Actual provider delivery and improved behavior pending. No combat calculator or watchdog change.",
+  "remaining": "Improved behavior and any future invalid-ID error/preview-result delivery remain unverified. Self-destruct scope and preview schema verified in actual submitted body.",
   "deployment": {
     "recovery_ok": true,
     "turn": 39,
     "timeline": "timeline-restore-b71c924c578c44d98ca5eb41",
     "running_mcp_source_sha256": "026429f0e47f0dacbb83f597557accbe3268e23c553536ccfa9b9da2ed33f0d6",
     "matches_tested_source": true,
-    "graphiti": "queued before sovereign restart"
+    "graphiti": "completed at 1788855777.794006; one sovereign active"
+  },
+  "provider_delivery": {
+    "time": 1788855820.6701803,
+    "correlation": {
+      "attention_lease_id": "attention-lease-c067d9c51fe6407fa860cff6936791f1",
+      "episode_id": "episode-db2dd5338dfaf1f3458adecfdec5814a",
+      "request_id": "b70704ea86e14cfbbf56d408ac2d1b73",
+      "runtime_context_sha256": "5f417f00737e9ba1ff60faf9bf658e368aab7d296f2f9b8ee198b9d436c92ce7"
+    },
+    "self_destruct_scope_delivered": true,
+    "preview_schema_boundary_delivered": true
   }
 }
