@@ -824,10 +824,11 @@ public sealed class PortalMatchSupervisor(
         }
     }
 
-    private async Task EnsureAgentRunsAsync(
+    internal async Task EnsureAgentRunsAsync(
         ApplicationDbContext database, ControlPlaneClient control,
         PortalMatchProfile match, CancellationToken cancellationToken)
     {
+        if (match.Status != "running") return;
         // A capability incident is a deliberate fail-closed latch. The control
         // plane stops the active run, and the portal must not mistake that
         // absence for an invitation to create a replacement run every cycle.
@@ -889,6 +890,26 @@ public sealed class PortalMatchSupervisor(
             catch (ControlPlaneException exception) when (exception.Code == "harness_run_already_active_for_seat")
             {
                 // Another supervisor cycle won the idempotent start race.
+            }
+            catch (ControlPlaneException exception) when (exception.Code.StartsWith("doctrine_", StringComparison.Ordinal))
+            {
+                // This cannot improve by retrying every supervision cycle. Latch
+                // the failure before containment, and expose the existing failed-
+                // campaign end path even when no first checkpoint exists.
+                match.Status = "error";
+                match.LastError = exception.Message;
+                match.UpdatedAt = DateTimeOffset.UtcNow;
+                database.PortalMatchEvents.Add(new PortalMatchEvent
+                {
+                    MatchId = match.MatchId, EventType = "doctrine_start_failed",
+                    Summary = exception.Message,
+                });
+                await database.SaveChangesAsync(CancellationToken.None);
+                using var containment = await control.PostRawAsync(
+                    $"api/v1/matches/{match.MatchId}/operator/pause", new { }, cancellationToken);
+                await lobbyHub.Clients.Group(LobbyHub.GroupName(match.MatchId)).SendAsync(
+                    "LobbyChanged", match.MatchId, cancellationToken);
+                return;
             }
         }
     }

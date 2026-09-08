@@ -1086,3 +1086,13 @@ delivery and improved expansion remain unverified; low reasoning is preserved.
 
 Commands, browser version and evidence limits are in the
 [LAN HTTPS acceptance record](benchmarks/lan-https-audio.md).
+
+## Doctrine deployment compatibility checkpoint (2026-09-08)
+
+| Capability | Evidence and limits |
+| --- | --- |
+| Deployed native compatibility | Old compiled worker fingerprint rejected; rebuilt worker accepted against control image registry. Isolated native receipt → confirmed context → compiled doctrine → managed prompt → exact persisted reuse passed. No compatibility allowlist changes. |
+| Doctrine startup failure | SQLite/HTTP supervisor test proves durable error before containment and no repeated launch. Real failed campaign was operator-contained, ended, and worker removed. |
+| Release checks | Standard launcher verifies compiled worker/control contract before deployment. Full five-seat sovereign gameplay remains a separate acceptance task. |
+
+See [repair evidence](benchmarks/doctrine-deployment-repair.md).

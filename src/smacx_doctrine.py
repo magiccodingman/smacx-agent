@@ -13,6 +13,17 @@ DOCTRINE_VERSION = 'smacx.sovereign-doctrine.v1'
 COMPILER_VERSION = 'smacx.doctrine-compiler.v1'
 CONTEXT_SCHEMA = 'smacx.confirmed-gameplay-context.v1'
 COMPATIBILITY = 'thinker-smacx-doctrine.v1'
+
+
+def doctrine_error_message(code: str) -> str:
+    if code == 'doctrine_explicit_recompile_required':
+        return 'The saved gameplay doctrine differs from the current fixed contracts. Explicit recompile_doctrine approval is required before replacing it.'
+    if code == 'doctrine_unreviewed_engine_build':
+        return 'The native worker engine does not match the doctrine compatibility contract. Deploy matching reviewed worker and control images; prompt recompilation cannot approve an engine build.'
+    if code == 'doctrine_confirmed_context_required':
+        return 'The AI seat has no confirmed native gameplay context. Verify native startup and its public-rules receipt before starting the AI.'
+    return f'Gameplay doctrine assembly rejected the native setup ({code}). Verify the loaded public rules and engine compatibility before retrying.'
+
 TEMPLATE = Path(__file__).with_name('doctrine') / 'sovereign-v1.md'
 BLOCKS = (
     'SELF_FACTION_CONTEXT','OPPONENT_FACTION_CONTEXT','DIFFICULTY_BASE_CONTEXT','WORLD_CONTEXT',

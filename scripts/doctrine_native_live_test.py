@@ -17,7 +17,9 @@ def main():
     docker=DockerClient();worker=None
     with tempfile.TemporaryDirectory(prefix='smacx-doctrine-native-') as tmp:
         control=ControlPlane(SmacxStore(Path(tmp)/'state.sqlite3'),Path(tmp)/'secrets')
-        manager=WorkerManager(control,docker,worker_image='smacx-agent-worker:doctrine-review',mcp_image='smacx-agent-control:doctrine-review')
+        manager=WorkerManager(control,docker,
+            worker_image=os.environ.get('SMACX_TEST_WORKER_IMAGE','smacx-agent-worker:doctrine-review'),
+            mcp_image=os.environ.get('SMACX_TEST_CONTROL_IMAGE','smacx-agent-control:doctrine-review'))
         try:
             source=manager.validate_game_source(source_path,display_name='Doctrine native source')
             runtime=manager.ensure_bundled_runtime()
