@@ -1,0 +1,18 @@
+{
+  "scope": "diagnostic_only",
+  "tests": {
+    "diagnostic_history_readonly_test": "pass",
+    "campaign_diagnostics_contract_test": "pass"
+  },
+  "proven": [
+    "retained WAL export",
+    "source hashes unchanged",
+    "private staging removed",
+    "concurrent change rejected",
+    "corrupt history explicit gap",
+    "other streams survive"
+  ],
+  "live_helper_history_bytes": 323661,
+  "deployed_endpoint": "pending",
+  "native_turn9_timeout": "not reproduced in isolated two-move replay"
+}

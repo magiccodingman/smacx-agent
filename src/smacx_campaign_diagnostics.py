@@ -13,6 +13,8 @@ import sqlite3
 import os
 import subprocess
 import tempfile
+import shutil
+from contextlib import contextmanager
 from smacx_diagnostics import redact
 
 
@@ -47,6 +49,45 @@ TABLES = ("matches", "harness_runs", "supervision_incidents", "attention_items",
           "goals", "plans", "commitments", "events", "cognitive_operations", "campaign_checkpoint_generations", "specialist_dependencies", "specialist_trace_manifests")
 
 
+@contextmanager
+def _hermes_history_connection(database: Path, target: Path):
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    try:
+        connection.execute("BEGIN")
+        connection.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+    except sqlite3.Error:
+        connection.close()
+    else:
+        try:
+            yield connection
+        finally:
+            connection.close()
+        return
+    # A closed WAL database without its SHM cannot be opened on a read-only
+    # mount. Rebuild transient metadata in private staging, never in source.
+    # A live writer can race this fallback: refuse changed files explicitly.
+    files = [database, Path(str(database) + "-wal"), Path(str(database) + "-journal")]
+    def signatures():
+        return [(p.name, p.stat().st_size, p.stat().st_mtime_ns)
+                if p.exists() else (p.name, None, None) for p in files]
+    before = signatures()
+    if sum(row[1] or 0 for row in before) > 512 * 1024 * 1024:
+        raise RuntimeError("history_staging_byte_limit")
+    with tempfile.TemporaryDirectory(dir=target, prefix=".history-") as temporary:
+        for source in files:
+            if source.exists():
+                shutil.copyfile(source, Path(temporary) / source.name)
+        if signatures() != before:
+            raise RuntimeError("history_source_changed_during_capture")
+        connection = sqlite3.connect(Path(temporary) / database.name)
+        try:
+            connection.execute("PRAGMA temp_store=MEMORY")
+            connection.execute("BEGIN")
+            yield connection
+        finally:
+            connection.close()
+
+
 def snapshot_hermes(source: Path, target: Path, match_id: str, profile_id: str) -> None:
     """Called in an isolated helper with a read-only Hermes volume."""
     from smacx_diagnostics import _SAFE
@@ -56,11 +97,10 @@ def snapshot_hermes(source: Path, target: Path, match_id: str, profile_id: str) 
     database = source / "profiles" / profile_id / "state.db"
     total=0
     if database.exists():
-        connection=sqlite3.connect(f"file:{database}?mode=ro",uri=True)
-        connection.row_factory=sqlite3.Row
         try:
-            connection.execute("BEGIN")
-            with (target/"hermes-history.jsonl").open("w") as out:
+            with _hermes_history_connection(database, target) as connection, \
+                    (target/"hermes-history.jsonl").open("w") as out:
+                connection.row_factory=sqlite3.Row
                 for row in connection.execute("SELECT m.id,m.session_id,m.role,m.content,m.tool_call_id,m.tool_calls,m.tool_name,m.timestamp FROM messages m JOIN sessions s ON s.id=m.session_id WHERE s.title=? ORDER BY m.id",(match_id,)):
                     record=json.dumps({"schema":"smacx.hermes-history.v1","actor":"sovereign",
                         "kind":"retained_message","recorded_unix":row["timestamp"],"payload":redact(dict(row))})+"\n"
@@ -69,7 +109,12 @@ def snapshot_hermes(source: Path, target: Path, match_id: str, profile_id: str) 
                         out.write(json.dumps({"kind":"capture_gap","payload":{"reason":"history_byte_limit"}})+"\n")
                         break
                     out.write(record);total+=size
-        finally:connection.close()
+        except (sqlite3.Error, OSError, RuntimeError) as exc:
+            # History is one diagnostic source, not authority for restoration.
+            # Preserve all other streams even when this source is unavailable.
+            (target/"history-gap.jsonl").write_text(json.dumps({
+                "kind":"capture_gap", "payload":{"reason":"retained_history_unavailable",
+                "exception_type":type(exc).__name__}})+"\n")
     else:
         (target/"history-missing.jsonl").write_text(json.dumps({"kind":"capture_gap","payload":{"reason":"retained_history_missing"}})+"\n")
     logs=source/"diagnostics"/match_id
