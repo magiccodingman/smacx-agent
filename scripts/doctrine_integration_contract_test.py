@@ -80,6 +80,10 @@ def main():
     try:validate_managed_context(personality+'x'*100000,65536)
     except ValueError as e:assert str(e)=='managed_prompt_context_headroom_insufficient'
     else:raise AssertionError('oversized prefix accepted')
+    from smacx_doctrine import doctrine_error_message
+    assert 'Deploy matching' in doctrine_error_message('doctrine_unreviewed_engine_build')
+    assert 'Explicit recompile_doctrine approval' in doctrine_error_message('doctrine_explicit_recompile_required')
+    assert 'no confirmed native gameplay context' in doctrine_error_message('doctrine_confirmed_context_required')
     print(json.dumps({'passed':True,'adapter_scope_rules_and_exclusions':True,'explicit_recompile':True,
         'restart_exact_bytes':True,'runtime_and_session_invariant':True,'personality_order':True,'prompt_bytes':len(text.encode()),
         'classification':'deterministic native-shaped adapter + persisted-profile seam'}))

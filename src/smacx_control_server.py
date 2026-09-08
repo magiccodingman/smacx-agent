@@ -1387,7 +1387,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     def _handle_exception(self, exc: Exception) -> None:
         from smacx_doctrine import DoctrineError
         if isinstance(exc, DoctrineError):
-            self._error(409, str(exc), "Gameplay doctrine could not be safely assembled. Verify the loaded public rules; changed fixed contracts require explicit recompile_doctrine approval.")
+            from smacx_doctrine import doctrine_error_message
+            self._error(409, str(exc), doctrine_error_message(str(exc)))
             return
         if isinstance(exc, AuthenticationError):
             status = 429 if str(exc) == "too_many_attempts" else 401

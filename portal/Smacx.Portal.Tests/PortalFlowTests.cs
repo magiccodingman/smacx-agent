@@ -734,6 +734,61 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.True(await database.PortalMatches.AnyAsync(item => item.MatchId == matchId));
     }
 
+    [Fact]
+    public async Task DoctrineFailureLatchesErrorAndContainsInsteadOfRestarting()
+    {
+        await File.WriteAllTextAsync(Path.Combine(dataRoot, "portal-service-token"), "fixture-token");
+        await using var scope = factory!.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var owner = new ApplicationUser { Id = "doctrine-owner", UserName = "doctrine-owner" };
+        db.Users.Add(owner);
+        var match = new PortalMatchProfile { MatchId = "match-doctrine-failure", Status = "running", OwnerUserId = owner.Id };
+        db.PortalMatches.Add(match);
+        db.PortalLobbySeats.Add(new PortalLobbySeat { MatchId = match.MatchId, SeatIndex = 0,
+            ControllerKind = "agent", AgentId = "agent-fixture", ControlInstanceId = "instance-fixture" });
+        db.PortalAiProfiles.Add(new PortalAiProfile { AgentId = "agent-fixture", ProviderId = "provider-fixture" });
+        await db.SaveChangesAsync();
+        var launches = 0;
+        var pauses = 0;
+        factory.ControlOverride = async (request, _) =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            object payload;
+            var status = HttpStatusCode.OK;
+            if (path.EndsWith("/incidents")) payload = new { ok = true, incidents = Array.Empty<object>() };
+            else if (path.EndsWith("/harness-runs") && request.Method == HttpMethod.Get)
+                payload = new { ok = true, harness_runs = Array.Empty<object>() };
+            else if (path.EndsWith("/harness-runs"))
+            {
+                launches++;
+                status = HttpStatusCode.Conflict;
+                payload = new { ok = false, error = new { code = "doctrine_unreviewed_engine_build", message = "Deploy matching reviewed worker and control images." } };
+            }
+            else if (path.EndsWith("/operator/pause"))
+            {
+                // The latch must be durable before containment is attempted.
+                Assert.Equal("error", (await db.PortalMatches.AsNoTracking().SingleAsync()).Status);
+                pauses++;
+                payload = new { ok = true, report = new { containment_verified = true } };
+            }
+            else if (path.EndsWith("/" + match.MatchId))
+                payload = new { ok = true,
+                    match = new { match_id = match.MatchId, display_name = "Fixture", mode = "standard", status = "running", created_unix = 0, updated_unix = 0 },
+                    seats = new[] { new { seat_index = 0, controller_kind = "agent", agent_id = "runtime-agent", status = "assigned", instance_id = "instance-fixture" } } };
+            else throw new InvalidOperationException(path);
+            return new HttpResponseMessage(status) { Content = JsonContent.Create(payload) };
+        };
+        var supervisor = ActivatorUtilities.CreateInstance<Smacx.Portal.Services.PortalMatchSupervisor>(scope.ServiceProvider);
+        var control = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.ControlPlaneClient>();
+        await supervisor.EnsureAgentRunsAsync(db, control, match, CancellationToken.None);
+        await supervisor.EnsureAgentRunsAsync(db, control, match, CancellationToken.None);
+        Assert.Equal("error", match.Status);
+        Assert.Contains("matching reviewed", match.LastError);
+        Assert.Equal(1, launches);
+        Assert.Equal(1, pauses);
+        Assert.Equal(1, await db.PortalMatchEvents.CountAsync(x => x.EventType == "doctrine_start_failed"));
+    }
+
     private async Task<T> GetDataAsync<T>(string path)
     {
         var response = await client!.GetFromJsonAsync<ApiResponse<T>>(path);

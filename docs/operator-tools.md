@@ -70,6 +70,17 @@ The archive uses the existing authorized diagnostic export. A packet adds health
 
 ## Validation and boundaries
 
+Before a partial deployment, also verify the actual worker DLL against the
+control image's doctrine registration:
+
+```sh
+python3 scripts/doctrine_deployment_test.py --worker-image WORKER_IMAGE --control-image CONTROL_IMAGE
+```
+
+Matching tags/container health alone do not prove this compatibility. The
+standard `control-center-up.sh` launcher performs this check after its builds.
+An engine mismatch requires aligned reviewed images, not prompt recompilation.
+
 - Real portal HTTP/Identity/CSRF/SQLite smoke: `scripts/operator_portal_http_test.py` (build the Debug portal first).
 - CLI HTTP roster, retry, cookie and packet tests: `scripts/operator_cli_test.py`.
 - Authenticated control HTTP, projection/journal, pause/recovery-fence tests: `scripts/operator_contract_test.py` in the MCP Python environment.

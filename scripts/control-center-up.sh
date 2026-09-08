@@ -69,6 +69,9 @@ docker compose "$@" --profile build build edge
 docker compose "$@" --profile build build ddns
 docker compose "$@" --profile build build worker-image
 docker compose "$@" --profile build build harness-image
+# A control-only rebuild can otherwise pair a new reviewed contract with an
+# older worker DLL. Verify the built artifacts before replacing any services.
+python3 scripts/doctrine_deployment_test.py
 # Word splitting is deliberate: this is a fixed internal service list, never
 # operator-provided input.
 # shellcheck disable=SC2086
