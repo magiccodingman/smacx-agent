@@ -1,0 +1,21 @@
+{
+  "incident_id": "incident-c858305ede724166aef3456d36477dbb",
+  "turn": 39,
+  "observed": {
+    "invalid_id": "One-character transcription error; correct ID present in provider request bb0827c55e694b4da6d7f4401df7758a. Rejected before native dispatch.",
+    "reasoning": "Sovereign inferred possible movement blockage from invalid_choice, confused self-destruct blast information with combat, and requested an action preview expecting combat odds.",
+    "adapter_defect": "_decision_information removed self_destruct:context ID without preserving its semantic scope."
+  },
+  "repairs": [
+    "Invalid-choice message explicitly states exact ID mismatch, no native attempt and no movement legality test.",
+    "Self-destruct information retains public applies_to_action and explicit blast-only meaning after private ID removal.",
+    "Movement action/deployment previews state conditional support/garrison scope and explicitly exclude combat odds, damage/survival and arrival.",
+    "Provider world schema declares the movement-preview boundary."
+  ],
+  "validation": {
+    "opaque_choice_execution_test": "pass",
+    "counterfactual_choice_contract_test": "pass, including information labeling, stable reprocessing and ordinary diplomacy preservation",
+    "provider_schema_budget_test": "pass: 15 tools; world 663 and total 7647 conservative tokens"
+  },
+  "remaining": "Full preview response-path regression, installed validation, deployment and live provider/behavior verification pending. No combat calculator or watchdog change."
+}

@@ -2054,9 +2054,16 @@ def _decision_advisories(choices: object, *, semantic_context: Mapping[str, Any]
 
 def _decision_information(choices: object, context: Mapping | None) -> list[dict]:
     """Keep the native terms that make a closed response understandable."""
-    return [_semanticize_choice({key: value for key, value in row.items() if key != "id"}, context)
-            for row in choices if isinstance(row, dict) and not row.get("command")
-            and row.get("kind") in {"information", "capability_status"}]
+    information = []
+    for row in choices:
+        if not isinstance(row, dict) or row.get("command") or row.get("kind") not in {"information", "capability_status"}:
+            continue
+        public = {key: value for key, value in row.items() if key != "id"}
+        if row.get("id") == "self_destruct:context":
+            public["applies_to_action"] = "self_destruct_unit"
+            public["meaning"] = "Self-destruct blast preview only. Projected deaths apply only if this unit self-destructs; these are not attack odds, movement outcomes or an incoming-damage forecast."
+        information.append(_semanticize_choice(public, context))
+    return information
 
 
 def _latest_rule_advisories(match_id: str, session_id: str) -> list[dict]:
@@ -2312,7 +2319,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
         "social|terraform|action with decision_id and choice_id from a current final choice; "
         "deployment with capability (combat|colony|former|transport|probe|supply), target_ref, "
         "and optional choice_refs:[{decision_id,choice_id}] for up to four build, hurry or upgrade options. "
-        "Put kind in scenario_json; target_ref is a tool argument. Previews are conditional and never execute."
+        "Put kind in scenario_json; target_ref is a tool argument. Action/deployment movement previews cover support and garrison consequences, not combat odds or arrival. Previews are conditional and never execute."
     )
 )
 def smac_world(
@@ -2391,6 +2398,9 @@ def smac_world(
                     receipt = {"ok": True, "kind": "action", "action_revision": action_revision,
                                "proposed_action": command, "epistemic_status": "conditional",
                                "executes_action": False}
+                if command == "move_unit":
+                    receipt["prediction_scope"] = "Conditional support and garrison/relationship consequences of a successful move only."
+                    receipt["not_predicted"] = ["combat odds", "combat damage or survival", "movement success or arrival"]
                 if scenario["kind"] == "action":
                     plans = attention.journal.projection_records(attention.scope, "plans", limit=129,
                                                                  statuses={"active"})
@@ -3667,7 +3677,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         if not isinstance(cached_choice, dict):
             return {
                 "ok": False,
-                "error": {"code": "invalid_choice", "message": "Use one choice_id from this exact decision."},
+                "error": {"code": "invalid_choice", "message": "The supplied choice_id does not exactly match any choice in this decision. No native action was attempted and movement legality was not tested. Copy an available choice_id exactly; do not infer a blocked path from this error."},
                 "available_choice_ids": sorted(decision.get("choices", {})),
             }
         choice = dict(cached_choice)

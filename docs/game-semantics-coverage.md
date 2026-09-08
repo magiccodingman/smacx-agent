@@ -819,3 +819,7 @@ The current isolated Hermes image passes `specialist_provider_capture_test.py`: 
 ### Live Spartan diplomacy and turn-39 transition
 
 The recovered campaign passed the Spartan introduction, treaty accept/reject decision, accepted response, popup acknowledgement and fresh diplomacy menu. The subsequent committed faction observation at turn39 reports `treaty=true`, `vendetta=false`, last spoken turn38, all current with `observation-309` provenance. This establishes one live modal sequence plus its observed relationship result and continued turn progression, not exhaustive modal safety or strategic quality. Evidence: `docs/benchmarks/astra-spartan-diplomacy38.json`.
+
+### Turn-39 response-boundary repair
+
+A second contained deliberation stall exposed specific ambiguity: an exact-ID mismatch was interpreted as possible blocked movement; self-destruct blast information lost its only action label when the adapter stripped its native ID; and a conditional support/garrison movement preview was requested for combat odds. The adapter now preserves a public self-destruct action label and blast-only meaning, the ID error explains its pre-native scope, and movement previews/schema explicitly exclude combat odds and arrival. Opaque execution, preview authorization/information reprocessing and provider schema budgets pass. Full response-path, installed and live gates remain pending; the game remains contained. Evidence: `docs/benchmarks/astra-response-boundaries39.json`.

@@ -87,6 +87,9 @@ def main() -> int:
         if invalid.get("error", {}).get("code") != "invalid_choice":
             raise AssertionError(f"invented choice was not rejected: {invalid}")
 
+        assert "No native action was attempted" in invalid["error"]["message"]
+        assert "movement legality was not tested" in invalid["error"]["message"]
+
         base_id, base_choices = smacx_mcp._cache_decision_choices(
             {"match_id": "match-test", "session_id": "session-test", "revision": "r2"},
             [{"command": "set_first_base_name", "suggested_name": "Safe Landing"}],
