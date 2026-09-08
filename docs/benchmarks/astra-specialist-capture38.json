@@ -1,0 +1,22 @@
+{
+  "checkpoint": "turn38-specialist-capture",
+  "image": "smacx-astra-harness:dev",
+  "result": {
+    "event": "pass",
+    "payload": {
+      "actual_hermes_loop": true,
+      "iterative_world_queries": true,
+      "iterative_reference_research": true,
+      "exact_one_specialist_instrument": true,
+      "no_sovereign_state": true,
+      "trace_derived_citations": true,
+      "sequential_process_state_isolation": true,
+      "stable_child_prefixes": true,
+      "compressed_provider_trajectory_traces": true,
+      "failed_lookup_not_evidence_or_staleness": true,
+      "captured_provider_calls": 16
+    }
+  },
+  "scope": "Actual Hermes processes with deterministic captured provider and current source mounted read-only. This is not an autonomous live-model commission and is not an installed-source-only test.",
+  "open_gate": "Spontaneous sovereign commission, delivered specialist results and decision use in the running acceptance campaign remain unverified."
+}
