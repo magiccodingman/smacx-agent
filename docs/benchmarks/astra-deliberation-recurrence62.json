@@ -87,5 +87,12 @@
       "harness_continuation_contract_test.py unchanged tests pass"
     ],
     "live_acceptance": "pending"
+  },
+  "installed_validation": {
+    "harness_request_state": "pass",
+    "control_drain_policy_and_reconciliation": "pass",
+    "packaging": "Initial control image omitted explicit COPY of new module; corrected and rebuilt. Healthy control and supervisor after correction.",
+    "supported_recovery": "in_progress",
+    "live_grace": "pending"
   }
 }
