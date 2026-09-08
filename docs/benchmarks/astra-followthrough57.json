@@ -1,0 +1,176 @@
+{
+  "turn_before": 56,
+  "turn_after": 57,
+  "archive_sha256": "66615a772c024d85f2d9f23c0571524e985b099723c687be1b9852d45a5e0b3f",
+  "execution_chain": [
+    {
+      "time": 1788880026.1186626,
+      "correlation": {
+        "choice_id": "choice-3861fe93e7474b2fac9c0adb2578a71b",
+        "decision_id": "decision-90fd3dc1fa3344879277e4b2e26a3067",
+        "invocation_id": "31b37c981470460ba6738f80f747f168"
+      },
+      "result": {
+        "decision_consumed": null,
+        "error": {
+          "code": "expired_decision",
+          "message": "The decision's elapsed-time lease expired. No native action was attempted; expiry does not establish a changed world revision or an illegal action."
+        },
+        "execution_status": "not_dispatched",
+        "expiry": {
+          "age_seconds": 334.207,
+          "lease_seconds": 300.0,
+          "reason": "elapsed_time"
+        },
+        "failure_budget": {
+          "consecutive_failures": 1,
+          "stop_at": 4
+        },
+        "native_action_executed": false,
+        "native_call_attempted": false,
+        "ok": false,
+        "required_next": {
+          "reason": "Obtain fresh IDs. Reuse your intended action only if the new frame still supports it; do not repeat unchanged strategic analysis or infer new game facts from expiry.",
+          "tool": "smac_decision"
+        }
+      }
+    },
+    {
+      "time": 1788880051.3835104,
+      "correlation": {
+        "choice_id": "choice-51ebd59ed0334a9abc5301c8ec623dd9",
+        "decision_id": "decision-74c179db7ab040249080188069cd92e2",
+        "invocation_id": "5182a34d73d745799192e55e57840b5c"
+      },
+      "result": {
+        "action_id": 1,
+        "choice_id": "choice-51ebd59ed0334a9abc5301c8ec623dd9",
+        "completed": true,
+        "decision_consumed": true,
+        "decision_id": "decision-74c179db7ab040249080188069cd92e2",
+        "executed_choice": {
+          "choice_id": "choice-51ebd59ed0334a9abc5301c8ec623dd9",
+          "label": "End turn"
+        },
+        "execution": {
+          "action_id": 1,
+          "command": "end_turn",
+          "native_call_attempted": true,
+          "native_result": 1,
+          "resolution": "native_turn_advanced",
+          "status": "completed"
+        },
+        "execution_status": "completed",
+        "journal": {
+          "event_hash": "96b28f37368b452dac6094abcca314fddfa87ed802a57fae5d8a45c8e86401f4",
+          "journal_event_id": "journal-7fef1f30663e4d22a2092415dd354317",
+          "ok": true
+        },
+        "native_call_attempted": true,
+        "ok": true,
+        "queued": false,
+        "required_next": {
+          "ordinary_message": "TURN HANDOFF",
+          "stop_after": true
+        },
+        "source_turn": 56,
+        "turn_handoff_required": {
+          "completed_turns": "56",
+          "instruction": "Native control passed. Make no more tool calls in this episode. Return the concise TURN HANDOFF required by your system contract now.",
+          "maximum_words": 120,
+          "next_turn": 57,
+          "required": true,
+          "sections": [
+            "Outcome",
+            "Rationale",
+            "Changed conclusions",
+            "Next intent",
+            "Uncertainty"
+          ],
+          "target_words": 85
+        },
+        "turn_provenance": {
+          "observed_after_turn": 57,
+          "scope": "native choice selection and post-action observation; neither proves completion",
+          "selected_turn": 56
+        }
+      }
+    }
+  ],
+  "corrected_plan_provider_delivery": [
+    {
+      "attention_lease_id": "attention-lease-570aa28490a84ec89624bc433b1142e2",
+      "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+      "request_id": "537434aa862d4df394378907a53d3c00",
+      "runtime_context_sha256": "f1e3b2fea32894b706f05859dc6d1d8f2dbcffdda38d978d86c79a5f46547b60"
+    },
+    {
+      "attention_lease_id": "attention-lease-570aa28490a84ec89624bc433b1142e2",
+      "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+      "request_id": "ee5ee596855945c7b35e3defc13c7552",
+      "runtime_context_sha256": "238fd0185a6f90273f11100a42451a389eeef9c7c633835808e8111f30904ade"
+    },
+    {
+      "attention_lease_id": "attention-lease-570aa28490a84ec89624bc433b1142e2",
+      "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+      "request_id": "ea8c75930c284928a3854f87fa27e4c5",
+      "runtime_context_sha256": "a1fd91484393b2c1b23f42a41ed8e8aadd51705b53e8cc0d07bbf5efd1526e94"
+    },
+    {
+      "attention_lease_id": "attention-lease-5a04af095d184df2b0a0619d78508ce1",
+      "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+      "request_id": "35843aaf95e045719bf94a114aa48b5b",
+      "runtime_context_sha256": "c372f7581e0979712d5b31a4202b77d8b55e4fb91a080a83304227d27789cce8"
+    }
+  ],
+  "journal_goal": "journal-22322d4f9ec04ad0afb8a3bb62e6758f",
+  "journal_plan": "journal-5116441e1a4b4c78a90fda9bc3182b51",
+  "sensor_feature_comparison": {
+    "56": {
+      "epistemic_status": "current",
+      "first_known_turn": 54,
+      "last_verified_turn": 56,
+      "provenance_ref": "observation-432",
+      "source": "direct_sight",
+      "value": [
+        "road",
+        "rolling",
+        "vehicle"
+      ],
+      "world_revision": 4
+    },
+    "57": {
+      "epistemic_status": "current",
+      "first_known_turn": 57,
+      "last_verified_turn": 57,
+      "provenance_ref": "observation-438",
+      "source": "direct_sight",
+      "value": [
+        "road",
+        "rolling",
+        "sensor",
+        "vehicle"
+      ],
+      "world_revision": 3
+    }
+  },
+  "limits": [
+    "One successful expiry recovery does not prove all failures recover.",
+    "Prompt repair preceded follow-through; causal improvement is not established by one episode.",
+    "Sensor completion proves defensive infrastructure, not increased mineral income or competent expansion."
+  ],
+  "former_task_after": {
+    "epistemic_status": "current",
+    "first_known_turn": 57,
+    "last_verified_turn": 57,
+    "provenance_ref": "observation-438",
+    "source": "owned_state",
+    "value": {
+      "automation_active": true,
+      "completion_verified": false,
+      "order_kind": "none",
+      "state": "no_active_terraform_order"
+    },
+    "world_revision": 3
+  }
+}
