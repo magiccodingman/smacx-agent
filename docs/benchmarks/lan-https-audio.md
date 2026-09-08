@@ -53,4 +53,20 @@ need accepting again after certificate renewal.
 
 ## Deployment
 
-Main-stack deployment and post-deployment check will be recorded after rollout.
+Main `smacx-agent` stack redeployed with `smacx-agent-edge:lan-https` and
+`smacx-portal:lan-https`. Only edge and portal were recreated. Existing control,
+harness, worker settings and persistent volumes were preserved; the other
+agent's readiness stack was not touched. Temporary validation edge was removed.
+
+After startup, the browser test passed again against the actual port-8080 entry
+point, ending at `https://10.26.26.104/` with the same five successful API checks.
+`http://127.0.0.1:8080/healthz` returned 200, the portal reported healthy, and
+the LAN HTTP spectator path/query redirected to the corresponding HTTPS URL.
+An initial probe during container recreation encountered connection refusal;
+the reported successful results are from the completed rollout.
+
+Local deployment uses the existing resolved Compose base plus
+`runtime/astra/main-expansion.override.yaml` and
+`runtime/astra/main-lan-https.override.yaml` in the Astra checkout. Future
+deployments should retain these overrides or configure the documented `.env`
+settings in their source checkout; the base resolved JSON predates LAN HTTPS.
