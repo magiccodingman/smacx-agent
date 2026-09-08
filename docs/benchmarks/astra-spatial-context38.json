@@ -36,5 +36,12 @@
     "turn": 38,
     "native_and_mcp": "healthy",
     "sovereign_processes": 1
+  },
+  "operator_feedback_followup": {
+    "observed": "compact area budget failure rendered without its structured query_hint",
+    "repair": "retain query_hint in human diagnostic summaries",
+    "test": "world_changes_budget_recovery_test passes",
+    "deployment": "pending next controlled update",
+    "provider_behavior_changed": false
   }
 }
