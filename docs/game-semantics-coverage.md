@@ -667,3 +667,7 @@ Deployment evidence for the movement barrier: verified operator recovery returne
 Post-recovery turn-19 acceptance now verifies two autonomous native move completions (998→957 and 1156→1076), followed by verbatim receipt delivery in each next provider request. The original 1156→1116 failure is covered by the controlled native comparison; full-game and broader modal acceptance remain open.
 
 Turn-24 native support comparison: after the sovereign hurried the fifth Scout, direct native base-page read and current observation-144 agree on intake 2, support 2, surplus 0, population 2. This matches the previously delivered conditional forecast for this completion; it does not generalize to all upkeep conditions. See `astra-support-zero-surplus.json`. Strategic response remains under observation.
+
+### Attention cursor guidance (turn 25)
+
+Actual provider requests issued attention cursor 14 alongside world observation cursor 152; the sovereign submitted 152 and validation correctly rejected it. Tool and rejection guidance now name `attention.through_cursor` explicitly and distinguish the world counter. Canonical lease validation is unchanged. Evidence: `docs/benchmarks/astra-attention-cursor25.json`; deployment and corrected live acknowledgement remain pending.

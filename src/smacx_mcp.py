@@ -2519,6 +2519,8 @@ def smac_world(
 @mcp.tool(
     description=(
         "Acknowledge a processed batch from the current at-least-once attention lease. "
+        "Copy through_cursor from runtime context attention.through_cursor for that lease; "
+        "world observation_cursor and anchor_observation_cursor are different counters. "
         "Call only after genuinely considering those events. Acknowledgement records awareness, "
         "not mechanical resolution; blocking focus and incidents remain until resolved."
     )
@@ -2544,7 +2546,7 @@ def smac_attention_ack(
                      "attention_not_cognitively_responded"}:
             return {"ok": False, "error": error, "acknowledged_ids": [],
                     "required_next": {"tool": "smac_decision",
-                                      "reason": "Refresh current attention, review it, then acknowledge only its issued lease, IDs and attention cursor."}}
+                                      "reason": "Refresh current attention with smac_decision and review it. Copy attention.attention_lease_id and attention.through_cursor from that runtime context. Do not use world anchor_observation_cursor or an item observation_cursor; those count world observations, not attention events."}}
         return {"ok": False, "error": error}
 
 
