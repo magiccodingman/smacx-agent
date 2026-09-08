@@ -20,9 +20,11 @@
     "numeric_schema_delivered": true
   },
   "deployment": {
-    "recovered_turn": 40,
     "graphiti_completed_unix": 1788856479.6098814,
     "running_source_matches_tested": true,
-    "initial_resume_failure": "Connection refused during control startup; no recovery request reached control. Retried after healthy verification."
+    "initial_resume_failure": "Connection refused during control startup; no recovery request reached control. Retried after healthy verification.",
+    "control_reported_turn_at_recovery": 40,
+    "fresh_native_restored_turn": 39,
+    "turn_reporting_limit": "Control metadata initially retained40; fresh native decision and subsequent health establish restored checkpoint39."
   }
 }
