@@ -459,6 +459,14 @@
     "limits": "No new live-game equivalence claim; detailed numerical/custom rules require the loaded compatibility gate."
   },
   {
+    "id": "D042-production-progress",
+    "section": "# Technology, Production, Facilities, and Projects",
+    "text_sha256": "a28010d8d361c2fdfc4c024518cc5a143aea7a065c77f3ce8f6794f52b7f48d9",
+    "text": "A queued unit is not a fielded defender. If minerals remain to be accumulated and net mineral surplus is zero or negative, ordinary production makes no progress while that condition persists. Check support and citizen allocation, or other legal ways to change the condition, before relying on that build for timely defense. Already accumulated cost still requires native completion processing.",
+    "classification": "general_player_documentation_with_native_authority_override",
+    "limits": "Inventory synchronization for an existing doctrine paragraph; no new native equivalence claim."
+  },
+  {
     "id": "D043",
     "section": "# Technology, Production, Facilities, and Projects",
     "text_sha256": "b1c2a7e7851c29d71c044bb4f7c7acce6ef8844d3f1f4867a143a7c188b0b7fc",
@@ -1389,6 +1397,13 @@
     "section": "## Expand and Consolidate Deliberately",
     "text_sha256": "0ac6a0b55cbf2b720ad8b32c3cbb3dcbf837e4326b7e986b1790b463afec44b7",
     "text": "Expansion creates new productive centers; consolidation makes existing centers stronger and safer. Compare a new base's future value with the Colony Pod, development time, bureaucracy, logistics, and defense it requires. A crowded frontier may reward speed. A large isolated region may reward sustained expansion. An exposed empire of undeveloped bases may need roads, Formers, garrisons, and facilities more than another settlement.",
+    "classification": "authored_strategic_principle"
+  },
+  {
+    "id": "D124-expansion-prerequisites",
+    "section": "## Expand and Consolidate Deliberately",
+    "text_sha256": "bdd5c3832994d639295c071113d2a033b3e96382adff4d48936d0857a905ec39",
+    "text": "Your starting landmass is not your strategic boundary. Consider other known landmasses and sea settlements when worthwhile. Distinguish “unavailable now” from “impossible”: identify missing technology, production, transport, access, or information, then verify a feasible path through those prerequisites. For a worthwhile expansion, record the next executable step and its blocker; revisit the plan when it stops advancing. Do not invent mechanics or repeat rejected actions without new evidence.",
     "classification": "authored_strategic_principle"
   },
   {

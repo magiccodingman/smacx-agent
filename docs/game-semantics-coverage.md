@@ -1069,3 +1069,9 @@ transport, cursor, deduplication, Docker isolation and responsive fullscreen UI
 checks are recorded in [acceptance evidence](benchmarks/spectator-ai-activity.md).
 Evidence is controlled transport/browser data, not a new live sovereign run.
 The UI is not deployed yet; original gameplay acceptance gaps remain open.
+
+Expansion guidance/deployment checkpoint: [evidence](benchmarks/expansion-prerequisite-doctrine.md)
+records the approved prerequisite-planning paragraph, synchronized content
+inventory/goldens, passing composition checks, and main 8080 deployment. This
+deployment also supersedes PR67's pending UI deployment above. New-game provider
+delivery and improved expansion remain unverified; low reasoning is preserved.
