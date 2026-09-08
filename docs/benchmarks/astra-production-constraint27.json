@@ -134,5 +134,21 @@
         "worked_tiles_mask": 515
       }
     }
-  ]
+  ],
+  "next_turn_production": {
+    "epistemic_status": "current",
+    "first_known_turn": 28,
+    "last_verified_turn": 28,
+    "provenance_ref": "observation-183",
+    "source": "owned_state",
+    "value": {
+      "accumulated": 3,
+      "consumption": 2,
+      "intake": 4,
+      "surplus": 2,
+      "unit_support_cost": 2
+    },
+    "world_revision": 10,
+    "interpretation": "Accumulated minerals increased 1 to 3 across turn27 to28, matching the observed +2 surplus. No recovery cycle was performed for this check."
+  }
 }
