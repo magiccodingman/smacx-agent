@@ -675,3 +675,5 @@ Actual provider requests issued attention cursor 14 alongside world observation 
 Attention cursor guidance is deployed: installed MCP source verified, operator recovery restored turn 25, and one sovereign process resumed with no health reasons. Corrected live acknowledgement remains pending.
 
 Turn-26 attention acceptance: actual provider request issued cursor 2 for sequences 1 and 2; the sovereign submitted cursor 2 for that exact lease, and the guarded service acknowledged those two IDs. The prior cursor confusion has a verified successful post-deployment case, without claiming universal future model compliance.
+
+Turn28 advancing-episode reliability checkpoint: a verified advancing clean yield inherited the prior episode’s provider stall window and stopped its successor after about 10 seconds. The repaired baseline resets only for verified advancement; non-advancing yields retain their circuit breakers. Host continuation contracts pass; deployment and live recovery remain pending. [Evidence](benchmarks/astra-episode-stall28.json).

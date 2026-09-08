@@ -984,6 +984,18 @@ print(json.dumps(result,separators=(',',':')))
                     "semantic_unavailable_since_unix": None,
                     "semantic_unavailable_samples": 0,
                 }
+                if advanced:
+                    # The old episode may spend substantial provider work on
+                    # attention, compaction and its required handoff after the
+                    # native turn advances. Do not charge that completed
+                    # episode's window to its newly started successor.
+                    # Non-advancing yields retain both stall protections.
+                    yield_metadata.update(
+                        semantic_progress_unix=time.time(),
+                        semantic_fingerprint=progress.get("meaningful_fingerprint"),
+                        semantic_baseline_pending=True,
+                        semantic_sample_unix=0,
+                    )
                 if progress.get("final_score_completed") is True:
                     self._journal_run_event(
                         run, "agent.episode_ended", {

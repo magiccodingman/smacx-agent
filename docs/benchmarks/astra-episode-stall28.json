@@ -1,0 +1,22 @@
+{
+  "scope": "Advancing clean-yield stall baseline isolation",
+  "incident_id": "incident-5a8d962354444a119655f13d8efc21d9",
+  "turn": 28,
+  "last_native_progress_sample_unix": 1788842377.9710674,
+  "handoff_response_unix": 1788842720.3439753,
+  "verified_advancing_clean_yield_unix": 1788842731.37849,
+  "successor_started_unix": 1788842732.052739,
+  "incident_reported_unix": 1788842741.4733164,
+  "incorrect_inherited_window_seconds": 363.50224900245667,
+  "inherited_output_tokens": 15524,
+  "packet_sha256": "19a3a7d80d39cfdb2f7346fda003612364dec79638518897f3737ffd2cc7aa5c",
+  "repair": "Reset live stall timer and require a fresh usage baseline only after a comparable clean yield with verified native advancement. Non-advancing yield and live no-progress limits remain enforced.",
+  "tests": {
+    "harness_continuation_contract_test": "passed; advancing successor not charged prior episode, nonadvancing baseline retained, existing stall/quarantine/error-restart contracts pass"
+  },
+  "pending": [
+    "deployment",
+    "live recovery",
+    "successor progression"
+  ]
+}
