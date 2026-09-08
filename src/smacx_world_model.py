@@ -642,7 +642,7 @@ class SemanticLodProjector:
     """Create a bounded strategic anchor whose size follows active complexity."""
 
     # Bump when persisted summaries change independently of world material.
-    FORMAT_VERSION = 2
+    FORMAT_VERSION = 3
 
     def __init__(self, *, context_tier: str, token_cap: int | None = None) -> None:
         if context_tier not in {"64k", "256k"}:
@@ -1223,6 +1223,11 @@ class SemanticLodProjector:
                 "principle": "Peripheral strategic awareness; use smac_world for deliberate zoom.",
             },
         }
+        if any("vehicle" in square.features for square in squares):
+            anchor["tile_feature_meanings"] = {
+                "vehicle": "A unit occupies the tile, including your own unit. This is not a separate derelict, reward, or hostile-contact identification. Use unit records for identity and allegiance.",
+                "supply_pod": "A collectible pod observation, subject to its freshness. A landmark or a vehicle feature alone does not indicate a collectible pod.",
+            }
         # Reserve room for the final self-estimate and integrity hash so the
         # serialized anchor, not merely its pre-metadata body, obeys the cap.
         content_cap = max(448, self.token_cap - 64)

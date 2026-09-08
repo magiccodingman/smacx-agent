@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 from native_event_time_contract_test import function
-from smacx_world_model import PerspectiveProjector
+from smacx_world_model import PerspectiveProjector, SemanticLodProjector
 from smacx_world_types import WorldIdentity
 
 
@@ -60,6 +60,16 @@ int main(){
         assert feature['epistemic_status'] == ('current' if visible else 'stale'), feature
         assert feature['last_verified_turn'] == verified, feature
         prior = {**projected,'objects':rows,'world_revision':turn}
+    bundle['tiles'][0]['visible_now'] = True
+    bundle['tiles'][0]['features'] = ['vehicle']
+    projected = PerspectiveProjector(identity).project(bundle, observation_sequence=7)
+    anchor = SemanticLodProjector(context_tier="64k").build(projected)
+    assert 'including your own unit' in anchor['tile_feature_meanings']['vehicle']
+    assert 'freshness' in anchor['tile_feature_meanings']['supply_pod']
+    bundle['tiles'][0]['features'] = []
+    anchor = SemanticLodProjector(context_tier="64k").build(
+        PerspectiveProjector(identity).project(bundle, observation_sequence=8))
+    assert 'tile_feature_meanings' not in anchor
     print(json.dumps({'serializer_cases':7,'projection_transitions':6,
                       'live_native_comparison':'not covered'}))
 
