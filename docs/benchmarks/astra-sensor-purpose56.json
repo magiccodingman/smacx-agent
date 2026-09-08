@@ -13,5 +13,10 @@
     }
   ],
   "archive_sha256": "9a20d46b2f03edfd4489fa84352e32f6bf6932b276f606320ebe7152582e2bfe",
-  "limits": "Strategic use, completed terrain effect and mineral improvement remain unverified."
+  "limits": "Strategic use, completed terrain effect and mineral improvement remain unverified.",
+  "subsequent_sovereign_use": {
+    "verified": true,
+    "evidence": "astra-deliberation56.json",
+    "meaning": "Sovereign explicitly recognized Sensor Array as defense only, tile 836 unworked, and mineral surplus zero. Completion and improved economic outcome remain unverified."
+  }
 }

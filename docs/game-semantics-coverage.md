@@ -1007,3 +1007,7 @@ Sensor-purpose native build passes39/39. The change explains purpose without add
 Sensor-purpose delivery: paired recovery and profile recompile passed; actual requesta0506085dcc04c7c8c2c612cc40b24da contains sensor_defense in runtime context. Host compiled/native build validation passed; runtime-image compiler test was unavailable (no g++). Strategic use and completion remain open. Updated `astra-sensor-purpose56.json`.
 
 Reference56 checkpoint: spontaneous direct-reference Colony Pod population query returned4 excerpts/144 tokens with provenance. Retrieved excerpts do not answer timing/population-one questions; successful retrieval is not answer adequacy or specialist commissioning. Provider-delivery evidence recorded in `astra-reference56.json`.
+
+### Turn 56 deliberation incident and Sensor receipt consumption
+
+Actual sovereign output corrected its Sensor/mineral and hurry-affordability assumptions after receipt delivery, then queried the Former action path. This closes observed consumption of the Sensor-purpose clarification, not terrain completion or strategic success. The aggregate 360-second no-progress guard stopped the next provider request after two completed calls and 15,052 generated tokens; no native action had yet been dispatched. Native/journal state remains quarantined. See `benchmarks/astra-deliberation56.json`. Bounded deliberation versus repeated-action detection and in-flight handling remain under review; thresholds are unchanged.

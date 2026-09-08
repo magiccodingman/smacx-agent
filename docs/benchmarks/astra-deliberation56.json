@@ -1,0 +1,23 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "turn": 56,
+  "incident_id": "incident-29c8b958e14f4a98a58a4c1ccf3a4395",
+  "archive_sha256": "e60e43c7c60ac6bb989f7779c88af2b7be719b777bb5ee78a9dbff930a8988eb",
+  "observations": {
+    "sovereign_corrected_sensor_mineral_assumption": true,
+    "sovereign_recognized_unworked_tile": true,
+    "sovereign_corrected_hurry_affordability": true,
+    "sensor_completion_observed": false,
+    "native_action_dispatched_in_episode": false,
+    "last_query": "unit_actions own-unit-12",
+    "offered_choice": "Activate unit",
+    "last_provider_request_id": "5ebeedb4feea412389fcd27ebca72503",
+    "last_provider_request_unix": 1788878982.1942196,
+    "incident_reported_unix": 1788879092.9011774,
+    "inflight_request_age_at_incident_seconds": 110.70695781707764,
+    "completed_calls_without_progress": 2,
+    "generated_tokens_without_progress": 15052
+  },
+  "assessment": "The supervisor enforced its existing aggregate six-minute no-native-progress budget during a subsequent provider request. The preceding responses corrected stale strategic assumptions and queried a relevant unit action; no repeated rejected action loop was observed in this episode. This establishes a deliberation-budget incident, not a native execution failure. Whether policy should distinguish bounded useful investigation from repeated no-op actions remains open; do not merely increase thresholds or count reads as native progress.",
+  "next_gate": "Audit bounded deliberation and in-flight request handling before retrying; preserve native/journal pairing and deterministic loop safeguards."
+}
