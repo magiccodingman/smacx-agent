@@ -18,5 +18,20 @@
     "profile_recompile_http": 200,
     "live_sovereign_processes": 1,
     "active_incidents": 0
+  },
+  "live_followup": {
+    "archive_sha256": "0f179009ba3d11a9d374f543652f408397f88d3fc2eaf62fd7acee9056d1d9eb",
+    "successful_choices": [
+      {
+        "decision_id": "decision-60485b7320f64d22ac893c82d359fdae",
+        "catalog_to_dispatch_seconds": 48.8480884
+      },
+      {
+        "decision_id": "decision-fdcf0b323f2e4b6b98fb4d0dae5e2003",
+        "catalog_to_dispatch_seconds": 52.0235006
+      }
+    ],
+    "verified_effect": "Worker moved from756 to876; current food surplus2, mineral intake3/support4/surplus-1.",
+    "limits": "Execution resumed. Neither choice exercised age>180s. Workforce outcome worsens support deficit; strategic benefit not established."
   }
 }

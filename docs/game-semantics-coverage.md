@@ -977,3 +977,5 @@ Switch-consequence live delivery verified: actual provider requeste762286e6e8d42
 Decision lease checkpoint: observed provider latency181.4s exceeded the180s lease, preventing native dispatch before the turn53 stall. Finite lease increased to300s; original revision, single-use, stale rebase, and preview guards retained. Delayed-choice/expiry/preview/stale-rebase contracts pass. Installed/live recovery pending; no claim of full-game completion. Evidence: `docs/benchmarks/astra-decision-lease53.json`.
 
 Lease deployment checkpoint: installed opaque-choice contract passed; supported retry restored paired native/memory state at53, Graphiti rebuild completed, profile recompile returned200, and one sovereign resumed without active incidents. Delayed live execution remains pending.
+
+Lease recovery follow-up: two opaque workforce choices executed after49/52s; committed observation verifies assignment756→876, food surplus2 and mineral surplus−1. Recovery execution is proven; extended-lease use and strategic benefit are not. Sanitized archive hash and timings recorded in `astra-decision-lease53.json`.
