@@ -25,5 +25,21 @@ data rather than an undefined JsonElement, which previously caused a secondary
 HTTP 500 during serialization. The real-Docker fixture now includes 40,000
 characters and verifies complete retrieval, cursor resume and seat isolation.
 
-Deployed real-match/browser verification is recorded after rollout. This repair
-does not change inference settings, native gameplay, or diagnostics storage.
+Deployed main control/portal images `smacx-agent-control:activity-identity` and
+`smacx-portal:activity-identity`. Both health checks pass; the deployed control
+still matches the reviewed worker fingerprint. Local rollout appends
+`runtime/astra/main-activity-identity.override.yaml` after the prior overrides.
+
+Real authenticated endpoint verification returned 150 events on the first page,
+`available:true`, the correct runtime agent ID, and no gaps. Whole-match JSON
+download returned 599 events with no gaps. Real Chrome, through the HTTPS
+certificate-warning acceptance flow, opened the selected match's spectator page
+and rendered 11 activity message cards. Screenshot inspection confirmed actual
+sovereign output in the panel. The match was parked by this validation stage;
+retained activity worked without a live game worker. New live inference was not
+started for this check. Earlier deployed tests on the small fixture had missed
+both the identity difference and Docker fragmentation; these are now explicit
+regression cases.
+
+This repair does not change inference settings, native gameplay, or diagnostics
+storage. No campaign stop/resume command was issued during this repair.

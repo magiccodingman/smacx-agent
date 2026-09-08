@@ -1105,3 +1105,7 @@ Read and export now use the authoritative selected-seat mapping. The 87-test
 portal suite includes differing IDs, another AI seat, paginated export, missing
 mapping and permission boundaries. [Evidence](benchmarks/spectator-activity-identity.md)
 distinguishes the original controlled UI fixture from real-match validation.
+Deployed verification now confirms 150 events in the first API page, 599 in the
+whole-match export without gaps, and 11 real message cards rendered in Chrome
+from the parked campaign. Large Docker response fragmentation and serializable
+error envelopes are covered by the repaired path and regression checks.
