@@ -4203,6 +4203,8 @@ def smac_investigate(
         "Goal trigger / plan timing may include intent_horizon: this_turn_required, this_turn_preferred, next_opportunity, persistent_goal, monitor or backlog. "
         "Current-turn intent is reviewed before possible turn closure; intentional deferral/blocking uses reconciliation={turn,disposition:deferred|blocked,reason}. Preserve other fields when revising. "
         "Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
+        "Event evidence may use journal_event_id from a scoped action receipt or event_id from campaign history. "
+        "Cite only events that support the assertion; accepted citations do not verify its truth. "
         "Actor and event references are mechanically restricted to this same fair-play perspective."
     )
 )

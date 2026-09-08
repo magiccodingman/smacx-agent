@@ -1,0 +1,26 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "turn": 35,
+  "observed_failure": {
+    "tool": "smac_memory_update",
+    "action": "claim",
+    "error": "evidence_event_scope_mismatch",
+    "source_event_id": "journal-1caea28c5ea844fe88a3d3e91bed13e7",
+    "source": "previous accepted move receipt",
+    "cause": "canonical journal IDs were checked only against SQLite event IDs"
+  },
+  "repair": "Resolve canonical evidence in verified active timeline or inherited pre-fork prefix, preserving IDs in rebuildable SQL FK cache; do not infer assertion truth.",
+  "tests": {
+    "journal_memory_evidence_test": "passed: claim, belief, unknown/foreign/abandoned rejection, inherited prefix, post-fork rejection, cache loss, restart, tamper rejection, legacy SQL IDs",
+    "memory_status_feedback_test": "passed",
+    "platform_store_test": "passed",
+    "campaign_journal_test": "passed"
+  },
+  "limits": [
+    "Guarded writer tests use controlled native snapshot.",
+    "Live sovereign retry and provider delivery after deployment pending.",
+    "The cited movement is not proof of the unrelated territorial assertion.",
+    "Full gameplay and strategic competence acceptance remain open."
+  ]
+}

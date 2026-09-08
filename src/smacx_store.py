@@ -1804,6 +1804,32 @@ class SmacxStore:
             ),
         )
 
+    def project_journal_evidence(self, scope: MemoryScope, event: Mapping[str, Any]) -> None:
+        """Cache an already journal-verified event for memory foreign keys.
+
+        The controller must resolve the canonical active-timeline event first;
+        an existing cache row is never evidence of current timeline membership.
+        """
+        if any(event.get(key) != value for key, value in (
+                ("match_id", scope.match_id), ("agent_id", scope.agent_id),
+                ("perspective_id", scope.perspective_id))):
+            raise ScopeViolation("evidence_event_scope_mismatch")
+        event_id = _require_id(str(event.get("event_id") or ""), "event_id")
+        with self.transaction() as connection:
+            self.require_scope(scope, connection=connection)
+            existing = connection.execute("SELECT match_id, agent_id, perspective_id FROM events WHERE event_id = ?",
+                                          (event_id,)).fetchone()
+            if existing and tuple(existing) != (scope.match_id, scope.agent_id, scope.perspective_id):
+                raise ScopeViolation("evidence_event_scope_mismatch")
+            connection.execute(
+                "INSERT OR IGNORE INTO events(event_id,match_id,agent_id,perspective_id,event_type,source,"
+                "turn,year,importance,payload_json,search_text,observed_unix,created_unix) "
+                "VALUES(?,?,?,?,?,'campaign_journal',?,?,50,?,'',?,?)",
+                (event_id, scope.match_id, scope.agent_id, scope.perspective_id,
+                 event["event_type"], event.get("turn"), event.get("year"),
+                 _json(event["payload"]), event["recorded_unix"], event["recorded_unix"]),
+            )
+
     def _require_event_scope(
         self,
         connection: sqlite3.Connection,

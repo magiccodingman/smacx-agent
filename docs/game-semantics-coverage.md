@@ -715,3 +715,20 @@ Live turn33 failed-arrival feedback: the unchanged-location native move receipt 
 Raid publication recovery: an installed-image test now interrupts after the first raid attention enqueue, then resumes through a fresh collector. Exactly three distinct effects reach the lease and acknowledged recollection creates no duplicates. This covers the partial-publication window, not a future live raid occurrence.
 
 Live plan continuity at35: frontier-sweep revision2 committed synchronously, appeared in the immediate next runtime context, and appeared again in the first provider request of the distinct successor episode after handoff. This closes delivery for this write/handoff sample, not plan truth, execution, or crash recovery of this revision. Evidence: `docs/benchmarks/astra-plan-continuity35.json`.
+
+### Astra turn 35 — canonical memory evidence references
+
+Live `smac_memory_update` rejected an action receipt's canonical journal ID because
+the store validated only SQLite event IDs. The repair resolves each canonical
+reference against the verified active perspective timeline and inherited prefix
+through its recovery point, then caches the same ID for SQL foreign keys. Scope
+validation remains mandatory even when the cache already contains that ID. No
+assertion is promoted to verified truth by citation acceptance.
+
+Acceptance: `scripts/journal_memory_evidence_test.py` covers receipt → claim/belief,
+restart, disposable cache loss, inherited pre-fork evidence, abandoned post-fork
+evidence, foreign/unknown references, tampered canonical history, and legacy scoped
+SQL IDs. Store, journal and memory-status regressions pass. See
+`docs/benchmarks/astra-journal-evidence35.json`. Deployment and actual sovereign
+retry/provider-context delivery remain pending; this checkpoint is interface and
+recovery evidence, not full live capability acceptance.

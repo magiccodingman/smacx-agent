@@ -835,6 +835,18 @@ def write_platform_memory(
                 scope=scope, timeline_id=store.active_timeline_id(scope),
                 dimensions={"action": action, "mechanical_key_hits": mechanical_hits},
             )
+        # Provider-facing history and action receipts use canonical journal IDs.
+        # Validate membership on every write, even when the SQL cache has a row
+        # from a previous timeline. Never translate IDs or infer evidentiary truth.
+        references = [record.get(field) for field in
+                      ("source_event_id", "resolution_event_id", "through_event_id")]
+        if action == "belief" and isinstance(record.get("evidence"), list):
+            references.extend(item.get("event_id") for item in record["evidence"]
+                              if isinstance(item, Mapping))
+        canonical = [_journal().evidence_event(scope, ref) for ref in set(
+            value for value in references if isinstance(value, str) and value.startswith("journal-"))]
+        for event in canonical:
+            store.project_journal_evidence(scope, event)
         source_event_id = str(record.get("source_event_id") or "") or None
         if action == "claim":
             status = str(record.get("status") or "unverified")
@@ -1028,6 +1040,14 @@ def write_platform_memory(
                 "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
                 "example": "native-threat-873",
                 "message": "Use a machine key without spaces; put descriptive prose in content. No key is substituted automatically.",
+            }}
+        if write_stage == "not_started" and str(exc) == "evidence_event_scope_mismatch":
+            guidance = {"validation": {
+                "field": "record_json evidence references",
+                "message": "Use an event ID returned by this perspective's current campaign history or action receipt. "
+                    "Unknown, other-perspective and abandoned-timeline journal IDs are rejected. "
+                    "A valid citation establishes provenance, not that the event supports your assertion. "
+                    "Review the event's content; do not substitute an unrelated event merely to pass validation.",
             }}
         retry_policy = "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
         if write_stage == "not_started" and str(exc) in {

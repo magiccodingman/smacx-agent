@@ -561,6 +561,46 @@ class CampaignJournal:
             errors.append("manifest_head_mismatch")
         return {"ok": not errors, "events": count, "head_hash": previous, "errors": errors}
 
+    def evidence_event(self, scope: MemoryScope, event_id: str) -> dict[str, Any]:
+        """Resolve evidence only from the verified active perspective timeline."""
+        if not re.fullmatch(r"journal-[0-9a-f]{32}", event_id):
+            raise JournalError("evidence_event_scope_mismatch")
+        timeline = self.timeline_id(scope)
+        cutoff = None
+        visited: set[str] = set()
+        with self._locked(self.root, shared=True):
+            while timeline:
+                if timeline in visited or len(visited) >= 64:
+                    raise JournalError("journal_timeline_cycle_or_depth")
+                visited.add(timeline)
+                path = self.perspective_root(scope, timeline)
+                with self._locked(path):
+                    manifest = self._recover_suffix_locked(scope, timeline, path)
+                    maximum = int(manifest["sequence"])
+                    if cutoff is not None:
+                        maximum = 0
+                        if cutoff != "0" * 64:
+                            for filename in sorted((path / "events").glob("*.json")):
+                                item = self._load(filename, {})
+                                if item.get("event_hash") == cutoff:
+                                    maximum = item["sequence"]
+                                    break
+                            else:
+                                raise JournalError("invalid_journal_fork_hash")
+                    matches = list((path / "events").glob(f"*-{event_id}.json"))
+                    if len(matches) == 1:
+                        event = self._load(matches[0], {})
+                        if event.get("event_id") == event_id and event["sequence"] <= maximum:
+                            return event
+                    elif len(matches) > 1:
+                        raise JournalError("evidence_event_scope_mismatch")
+                    parent = manifest.get("parent_timeline_id")
+                    cutoff = manifest.get("forked_from_event_hash")
+                    if parent and (not isinstance(cutoff, str) or not re.fullmatch(r"[0-9a-f]{64}", cutoff)):
+                        raise JournalError("invalid_journal_fork_hash")
+                    timeline = _safe_identity(str(parent), "parent_timeline_id") if parent else ""
+        raise JournalError("evidence_event_scope_mismatch")
+
     def events_after(
         self, scope: MemoryScope, event_id: str | None = None, *,
         timeline_id: str = "", limit: int = 100,
