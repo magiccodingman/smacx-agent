@@ -178,9 +178,43 @@ their own game installation and the advanced player-network setup described in
 Plain LAN HTTP supports the full portal plus managed video, mouse, keyboard,
 touch, and spectating. Because browsers expose WebCodecs only to secure
 contexts, the stream automatically selects its JPEG/WebSocket compatibility
-path and omits game audio on that origin. Use the configured trusted HTTPS
-hostname (or another certificate trusted by the device) for H.264/WebCodecs
-video, game audio, and PWA installation.
+path and omits game audio on that origin.
+
+### LAN HTTPS and audio without installing certificates
+
+Set the server's stable LAN IPv4 address (or local DNS name) in `.env`:
+
+```dotenv
+SMACX_LAN_HTTPS_HOST=192.168.1.25
+SMACX_LAN_HTTPS_PORT=443
+```
+
+Rebuild/restart the edge with `docker compose up -d --build edge`. Requests to
+`http://192.168.1.25:8080` now redirect to `https://192.168.1.25`, preserving
+the path and query. Allow TCP 443 on the LAN as well as 8080. If publishing
+HTTPS on a different host port, set `SMACX_EDGE_HTTPS_PUBLISH` and
+`SMACX_LAN_HTTPS_PORT` to matching ports. The container still listens on 443.
+IPv6 literals are not supported by this setting yet.
+
+Caddy issues the local certificate automatically. On first access, accept the
+browser's certificate warning for your server (in Chrome: **Advanced → Proceed**).
+No certificate installation or global browser security changes are required for
+the tested Chrome streaming path. Certificate exceptions may need accepting
+again after renewal or in another browser profile. Keep the existing Caddy data
+volume so the local certificate authority survives redeployment. If the LAN IP
+changes, update the setting; a DHCP reservation avoids that interruption.
+
+Chrome 152 was verified to expose WebCodecs and load an AudioWorklet after the
+normal warning acceptance. This enables the existing primary stream's audio
+path for both players and spectators. Click inside the stream if the browser
+requires a gesture to begin audio playback. Other browsers and PWA installation
+have separate restrictions; they are not covered by this streaming check.
+
+`http://127.0.0.1:8080` remains available for operator tools and health checks.
+Public HTTPS continues to use `SMACX_PUBLIC_HOSTNAME` and its public certificate;
+it can coexist with a different LAN HTTPS host. Unconfigured HTTP hostnames
+retain the compatibility stream. There is no redirect based on arbitrary Host
+headers and no global HSTS policy that would prevent accepting a local warning.
 
 ## 7. Create the first game
 

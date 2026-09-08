@@ -288,8 +288,11 @@ Refresh the play or spectator page after updating the platform. Plain
 `http://HOST_LAN_IP:8080` automatically uses JPEG/WebSocket video because
 WebCodecs is unavailable on a non-loopback HTTP origin. The stream remains
 interactive for a player and read-only for a spectator. A small portal notice
-explains that game audio and PWA installation still require the configured
-trusted HTTPS address. Seeing Selkies' old fatal “requires a secure connection”
+explains how to use HTTPS for game audio. Configure
+`SMACX_LAN_HTTPS_HOST` as described in [LAN installation](lan-installation.md#lan-https-and-audio-without-installing-certificates)
+to redirect the LAN URL to local HTTPS. Chrome's normal certificate-warning
+acceptance was verified for streaming without installing a root certificate;
+PWA installation is not covered by that check. Seeing Selkies' old fatal “requires a secure connection”
 message means the active worker predates this compatibility build; park and
 resume that campaign, or recreate the worker from the current image.
 

@@ -1075,3 +1075,14 @@ records the approved prerequisite-planning paragraph, synchronized content
 inventory/goldens, passing composition checks, and main 8080 deployment. This
 deployment also supersedes PR67's pending UI deployment above. New-game provider
 delivery and improved expansion remain unverified; low reasoning is preserved.
+
+## LAN HTTPS streaming checkpoint (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| LAN HTTPS access | Configured host → generated Caddy route/certificate → HTTP redirect preserving path/query → actual Chrome certificate-warning acceptance → portal secure context verified. |
+| Browser audio prerequisites | HTTPS primary-stream selection covered by portal tests; real Chrome exposes decoders, supports Opus and loads AudioWorklet after warning acceptance. Native game sound capture → transport → audible playback remains unverified in this checkpoint (no active worker). |
+| Deployment persistence | Uses existing Caddy data volume; no client certificate installation or DB migration. Public-host configuration validates alongside LAN configuration; live public ACME issuance not tested. |
+
+Commands, browser version and evidence limits are in the
+[LAN HTTPS acceptance record](benchmarks/lan-https-audio.md).
