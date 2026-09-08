@@ -1,5 +1,5 @@
 {
-  "status": "deployed_live_gameplay_acceptance_pending",
+  "status": "controlled_regression_and_live_receipt_chain_verified",
   "turn": 19,
   "failure": {
     "operation": "list_bases immediately after queued move_unit",
@@ -20,7 +20,7 @@
     "dll_sha256": "27508b96d4fc7e1d6e7e7767f0bfdef446e63b7a77e681aa2cccb1e164b5efd5"
   },
   "limitations": [
-    "Autonomous post-recovery movement acceptance pending",
+    "Live second move chose 1076, not original failing destination 1116; exact destination reproduced in controlled native regression",
     "Additional native modal regression checks pending",
     "Full-game acceptance incomplete"
   ],
@@ -39,5 +39,32 @@
     "worker_health": "healthy",
     "mcp_health": "healthy",
     "portal_restored": true
-  }
+  },
+  "post_recovery_native_moves": [
+    {
+      "unit_id": 13,
+      "origin": 998,
+      "target": 957,
+      "observed": 957
+    },
+    {
+      "unit_id": 23,
+      "origin": 1156,
+      "target": 1076,
+      "observed": 1076
+    }
+  ],
+  "provider_receipt_delivery": [
+    {
+      "receipt_unix": 1788837661.11145,
+      "next_provider_unix": 1788837661.6590214,
+      "verbatim_receipt_present": true
+    },
+    {
+      "receipt_unix": 1788837704.0896506,
+      "next_provider_unix": 1788837704.6309853,
+      "verbatim_receipt_present": true
+    }
+  ],
+  "post_recovery_packet_sha256": "f8e8983a2a7a4f37dda65407a740618872cdf62e4a7dcd23b34820850f23d57b"
 }
