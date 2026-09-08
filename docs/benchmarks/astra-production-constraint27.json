@@ -23,7 +23,6 @@
     "installed_image_test": "passed"
   },
   "pending": [
-    "live successor episode progression",
     "sustained/full-game acceptance"
   ],
   "deployment": {
@@ -170,5 +169,24 @@
       },
       "world_revision": 10
     }
+  },
+  "sustained_production31": {
+    "minerals": {
+      "epistemic_status": "current",
+      "first_known_turn": 31,
+      "last_verified_turn": 31,
+      "provenance_ref": "observation-217",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 9,
+        "consumption": 2,
+        "intake": 4,
+        "surplus": 2,
+        "unit_support_cost": 2
+      },
+      "world_revision": 20
+    },
+    "inspection_sha256": "c4d8e1601f66d02a6050247f1e3503378330b4776fb8826202158dee1a26d17a",
+    "interpretation": "Current owned observation verifies accumulated minerals increased from 3 at turn28 to 9 at turn31, with +2 surplus retained after recovery. Production completion and strategic competence are not established."
   }
 }
