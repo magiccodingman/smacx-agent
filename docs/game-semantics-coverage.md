@@ -1003,3 +1003,5 @@ Growth comprehension follow-up: sovereign explicitly corrected9/30 timing from1â
 Sensor-purpose checkpoint: active owned Sensor Array tasks now identify defensive purpose and separate work progress from verified mineral income. Compiled task-visibility regression passes ownership/stale/unknown-completion and sensor-only annotation. Native build/deployment/provider delivery pending. Evidence: `astra-sensor-purpose56.json`.
 
 Sensor-purpose native build passes39/39. The change explains purpose without adding a numeric yield prediction or changing combat mechanics; installed/provider validation remains pending.
+
+Sensor-purpose delivery: paired recovery and profile recompile passed; actual requesta0506085dcc04c7c8c2c612cc40b24da contains sensor_defense in runtime context. Host compiled/native build validation passed; runtime-image compiler test was unavailable (no g++). Strategic use and completion remain open. Updated `astra-sensor-purpose56.json`.
