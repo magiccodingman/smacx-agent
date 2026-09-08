@@ -19,7 +19,7 @@
     "movement_preview_scope_test": "pass: actual managed facade with native-shaped receipt/query sink; conditional scope retained, no execution/consumption, movement deployment rejected",
     "installed_control": "pass: movement_preview_scope_test, counterfactual_choice_contract_test, opaque_choice_execution_test; scripts-only mounts"
   },
-  "remaining": "Improved behavior and any future invalid-ID error/preview-result delivery remain unverified. Self-destruct scope and preview schema verified in actual submitted body.",
+  "remaining": "Sustained behavior, full game and future invalid-ID/preview-result delivery remain unverified.",
   "deployment": {
     "recovery_ok": true,
     "turn": 39,
@@ -38,5 +38,31 @@
     },
     "self_destruct_scope_delivered": true,
     "preview_schema_boundary_delivered": true
+  },
+  "post_deployment_behavior": {
+    "decision_id": "decision-818452d11f584442a9bb122bf7987692",
+    "choice_id": "choice-bf3c2f5307ae4d22a7c4049d8ec9cdaf",
+    "action": "Skip unit",
+    "unit_ref": "own-unit-1",
+    "observed_moves_remaining": {
+      "epistemic_status": "current",
+      "first_known_turn": 39,
+      "last_verified_turn": 39,
+      "provenance_ref": "observation-315",
+      "source": "owned_state",
+      "value": 0,
+      "world_revision": 2
+    },
+    "observed_ready": {
+      "epistemic_status": "current",
+      "first_known_turn": 39,
+      "last_verified_turn": 39,
+      "provenance_ref": "observation-315",
+      "source": "owned_state",
+      "value": false,
+      "world_revision": 2
+    },
+    "next_observed_focus": "own-unit-3",
+    "scope": "Accepted choice followed by current owned-state effect; does not attribute strategic improvement to wording alone."
   }
 }
