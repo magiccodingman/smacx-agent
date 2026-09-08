@@ -987,3 +987,5 @@ Automation progress repair checkpoint: live explicit activation cleared automati
 Automation digest controlled acceptance: isolated running-native regression passes Former automation cancellation digest change, repeated-read stability, eligible-mode restrictions and stale replay rejection. Native39/39 build passes. Deployment/live supervisor reset remain pending. Updated `astra-automation-progress53.json`.
 
 Automation digest deployment: supported paired recovery installed native c8036ab3a8bc; worker/MCP healthy, Graphiti restore completed, profile recompile200 and one sovereign process present without incidents. Live supervisor reset on a subsequent automation transition remains pending.
+
+Turn54 acceptance: native end-turn53→54 verified. Sovereign-authored typed monitor plan revision4 and goal revision2 appear in actual provider context. Former12 moved875→836 and has active Sensor Array work2; completion and mineral benefit remain unverified. Evidence: `astra-monitor-plan54.json`.

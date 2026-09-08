@@ -1,0 +1,61 @@
+{
+  "provider_delivery": [
+    {
+      "correlation": {
+        "attention_lease_id": "attention-lease-a4203b86732d4b35a6ef3e3bffc408bf",
+        "episode_id": "episode-d739e47ae3d8a51cdb42cc8f7d54bfcb",
+        "request_id": "98b832239a284ebbb82bc279a637000a",
+        "runtime_context_sha256": "321819151e961621ad37e0e1d9391a8c076f3277129e0bc49dd9a1ed79ae1da4"
+      },
+      "plans": [
+        {
+          "key": "midgame-terraform-defense",
+          "revision": 4,
+          "timing": {
+            "intent_horizon": "monitor"
+          }
+        }
+      ],
+      "goal_revisions": [
+        2
+      ]
+    },
+    {
+      "correlation": {
+        "attention_lease_id": "attention-lease-b2c755301e5442ba9d9029839eba040f",
+        "episode_id": "episode-d739e47ae3d8a51cdb42cc8f7d54bfcb",
+        "request_id": "713231d4a2c449ae9cbfa7ab08a31144",
+        "runtime_context_sha256": "facc0fd6fdf23ded0bee9e9c5ebb465d17383abb206543f6a5bc8e3d70db6597"
+      },
+      "plans": [
+        {
+          "key": "midgame-terraform-defense",
+          "revision": 4,
+          "timing": {
+            "intent_horizon": "monitor"
+          }
+        }
+      ],
+      "goal_revisions": [
+        2
+      ]
+    }
+  ],
+  "archive_sha256": "dd69f725109a12ed212ea148b875915338496ca271679c5c6ab03f88a94ecaef",
+  "native_turn_advance": {
+    "from": 53,
+    "to": 54,
+    "decision_id": "decision-c218fc2206c04d1cb55f3a2d5f112717",
+    "choice_id": "choice-6fe41337a2434ea6abd51d74f24d8286",
+    "resolution": "native_turn_advanced"
+  },
+  "former54": {
+    "unit_ref": "own-unit-12",
+    "location_ref": "location-836",
+    "task": "Sensor Array",
+    "accumulated_work_points": 2,
+    "automation_active": true,
+    "completion_verified": false
+  },
+  "limits": "Typed monitor plan4 and goal2 reached actual provider context. Active Sensor Array work does not prove completion or improved mineral output. Full-game and live automation cancellation supervisor reset remain open."
+}
