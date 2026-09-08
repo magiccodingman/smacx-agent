@@ -1,0 +1,81 @@
+{
+  "checkpoint": "turn40-live-raid-and-order-attention",
+  "time": 1788856971.5371008,
+  "correlation": {
+    "attention_lease_id": "attention-lease-410a0c0086314676a4dfaadacf1afea5",
+    "episode_id": "episode-1d908f754f53323e5cb4e1b0f3ceb154",
+    "request_id": "27e60337efe54112ac1d7692ec974bfa",
+    "runtime_context_sha256": "aa2116896f93d915bcfed8fc844acd5f94621d783233e23be62203215e4f10d6"
+  },
+  "items": [
+    {
+      "attention_id": "attention-236d4b1a89cc4d3eb599b7b03e6f4495",
+      "attention_kind": "native_raid",
+      "attention_sequence": 7,
+      "captured_unix": 1788856852.877169,
+      "critical": 1,
+      "observation_cursor": 322,
+      "payload": {
+        "base_ref": "base-location-795",
+        "effect": "population",
+        "event_kind": "native_raid_effect",
+        "location_ref": "location-795",
+        "meaning": "Native life raid damage at the owned base; not production completion or a production switch.",
+        "observed_after": 1,
+        "observed_before": 2,
+        "occurrence_ref": "raid-86b40fb5d14e17b68c5acaf4",
+        "turn": 40
+      },
+      "priority": 90,
+      "redelivered": true
+    },
+    {
+      "attention_id": "attention-9ec8c4003b58442483bebf5fe9b9d6bd",
+      "attention_kind": "native_raid",
+      "attention_sequence": 8,
+      "captured_unix": 1788856852.9185324,
+      "critical": 1,
+      "observation_cursor": 322,
+      "payload": {
+        "base_ref": "base-location-795",
+        "effect": "stored_minerals",
+        "event_kind": "native_raid_effect",
+        "location_ref": "location-795",
+        "meaning": "Native life raid damage at the owned base; not production completion or a production switch.",
+        "observed_after": 0,
+        "observed_before": 8,
+        "occurrence_ref": "raid-eb1e5e11a441021dde974d34",
+        "turn": 40
+      },
+      "priority": 90,
+      "redelivered": true
+    },
+    {
+      "attention_id": "attention-76fc6a95a04247f9952038c405a80496",
+      "attention_kind": "persistent_order",
+      "attention_sequence": 9,
+      "captured_unix": 1788856887.5786211,
+      "critical": 0,
+      "observation_cursor": 322,
+      "payload": {
+        "arrival_verified": false,
+        "assigned_command": "return_to_base",
+        "assignment_turn": 39,
+        "cause": "unknown",
+        "current_order": "none",
+        "guidance": "The assigned order is no longer active and the unit is ready. Inspect current state and route options before repeating it. Assignment did not prove sustained movement or arrival; endpoint evidence does not establish why the order cleared.",
+        "location_changed": true,
+        "location_ref": "location-714",
+        "movement_spent_changed": false,
+        "observation_cursor": 322,
+        "ready": true,
+        "source_action_event_id": "journal-3e535722465941ba92faee757d5de785",
+        "unit_ref": "own-unit-3"
+      },
+      "priority": 65,
+      "redelivered": true
+    }
+  ],
+  "scope": "Exact request-only attention items in actual submitted provider body; not merely database presence. Raid values are event-time native observations, not endpoint production inference.",
+  "remaining": "Acknowledgement and subsequent tactical response pending; order-clearing cause remains unknown."
+}
