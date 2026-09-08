@@ -1068,6 +1068,27 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
                 "Remaining minerals will not accumulate while this net surplus stays nonpositive. "
                 "Allocation, support, terraforming or a legal hurry may change this; "
                 "queued units are not fielded defenders.")
+    support = result.get("support_projection", {})
+    surplus = (current or {}).get("mineral_surplus")
+    additional = support.get("additional_support_minerals")
+    current_source = catalog.get("current", {})
+    if (support.get("epistemic_status") == "conditional"
+            and current_source.get("epistemic_status", "current") == "current"
+            and type(surplus) is int and type(additional) is int):
+        # Arithmetic over the fresh native catalog, not an upkeep simulation.
+        # Retain the source's conditional status and all native caveats.
+        projected = surplus - additional
+        support["mineral_surplus_after_one_completion"] = projected
+        support["passive_production_after_one_completion"] = (
+            "positive_surplus" if projected > 0 else
+            "zero_surplus_no_passive_progress" if projected == 0 else
+            "negative_surplus_no_passive_progress")
+        support["production_condition"] = (
+            "Current net mineral surplus minus the projected additional support, "
+            "holding all other mineral inputs and consumption fixed. Zero surplus "
+            "also stops passive production; not exceeding gross output does not "
+            "mean production remains funded. This does not predict actual upkeep "
+            "or completion; verify the next native state.")
     return result
 
 

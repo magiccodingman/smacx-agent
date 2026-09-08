@@ -1,0 +1,17 @@
+{
+  "trigger": "actual sovereign rationale1788834950.1051137 treats non-exceeding support as harmless",
+  "native_catalog_inputs": {
+    "current_net_surplus": 1,
+    "additional_support": 1,
+    "gross_output": 2,
+    "support_after_completion": 2
+  },
+  "conditional_derived_surplus": 0,
+  "tests": [
+    "production_support_surplus_test pass",
+    "managed_action_path_contract_test pass"
+  ],
+  "deployment": "pending",
+  "native_post_completion_comparison": "pending",
+  "scope": "Derived arithmetic under existing native caveats; no new exact mechanics claim"
+}
