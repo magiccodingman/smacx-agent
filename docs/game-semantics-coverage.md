@@ -1187,9 +1187,9 @@ See [acceptance evidence](benchmarks/active-roster-and-threat-evidence.md).
 
 | Capability | Acceptance chain and remaining gap |
 | --- | --- |
-| Turn waiting | Native wait kind → distinct managed sleep directive → request focus ahead of ready units → clean episode exit → durable supervisor sleep passes. No provider restart until native phase/session or new scoped chat changes. Live recovered turn progression pending. |
+| Turn waiting | Native wait kind → distinct managed sleep directive → request focus ahead of ready units → clean episode exit → durable supervisor sleep passes. No provider restart until native phase/session or new scoped chat changes. Recovered native two-AI game confirms waiting process exits while peer acts; live turn-transfer wake pending. |
 | Communication wake | Published queued chat sequence → scoped wake cursor → serialized communication episode uses existing restricted toolset. Wake/read is not acknowledgement; old unread events cannot repeatedly wake the process. Attention restart and redelivery contracts pass; live messaging wake pending. |
 | Deadlock | Wait reports do not latch gaps. Operator-only peer native markers distinguish active peers from all-managed waiting; bounded all-wait quarantine and active polling suspension tests pass. Acting-player stall and outage guards retained. |
-| Visibility | Health exposes sleep and wake reason; spectator activity distinguishes sleeping, communication, active, and stopped episodes. Portal and reducer tests pass; deployment pending. |
+| Visibility | Health exposes sleep and wake reason; spectator activity distinguishes sleeping, communication, active, and stopped episodes. Portal and reducer tests pass; shared stack deployed healthy and authenticated spectator endpoint returns sleeping. |
 
 See [acceptance evidence](benchmarks/sovereign-event-wait.md).
