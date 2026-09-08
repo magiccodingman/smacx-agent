@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "classification": "controlled running native hurry then switch",
+  "forecast": {
+    "epistemic_status": "conditional",
+    "minerals_before": 8,
+    "minerals_after_switch": 0,
+    "mineral_change": -8,
+    "retool_penalty": 0,
+    "condition": "Immediate native switch at the current state. Switching uses the native retained-mineral baseline; recently hurried minerals may be lost even with zero retool penalty. Energy spent is not refunded. No completion or future income is predicted."
+  },
+  "receipt": {
+    "ok": true,
+    "command": "set_production",
+    "base_id": 0,
+    "item_id": 0,
+    "name": "Colony Pod",
+    "production_name": "Colony Pod",
+    "minerals_before": 8,
+    "minerals_accumulated": 0,
+    "mineral_change": -8
+  },
+  "hurry": {
+    "ok": true,
+    "command": "hurry_production",
+    "base_id": 0,
+    "energy_cost": 19,
+    "minerals_added": 8,
+    "production_name": "Scout Patrol",
+    "minerals_accumulated": 8,
+    "production_switched": false,
+    "completion_verified": false,
+    "energy_credits": 181
+  },
+  "query_preserved_state": true,
+  "limits": "Controlled running native hurry/switch case plus managed adapter proof; broader switching categories and actual sovereign delivery remain pending."
+}

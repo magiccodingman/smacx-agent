@@ -9889,6 +9889,19 @@ std::string test_managed_action_fixture_response(const std::string& request) {
             + ",\"observed_surplus\":" + std::to_string(surplus)
             + ",\"observed_progress\":" + std::to_string(Bases[target].minerals_accumulated) + '}';
     }
+    if (phase == "production_switch_prepare") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player switch fixture only.");
+        BASE& base = Bases[base_id];
+        base.queue_items[0] = BSC_SCOUT_PATROL;
+        base.queue_size = 0;
+        base.production_id_last = BSC_SCOUT_PATROL;
+        base.minerals_accumulated = base.minerals_accumulated_2 = 0;
+        base.state_flags &= ~BSTATE_HURRY_PRODUCTION;
+        Factions[faction].energy_credits = 200;
+        Factions[faction].hurry_cost_total = 0;
+        ++semantic_mutation_generation;
+        return "{\"ok\":true,\"base_id\":" + std::to_string(base_id) + '}';
+    }
     if (phase == "production_prepare") {
         if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player production fixture only.");
         for (int facility : {FAC_RECREATION_COMMONS, FAC_WEATHER_PARADIGM}) {
@@ -11150,6 +11163,34 @@ void append_production_support(std::ostringstream& out, int faction_id, int base
         << ",\"condition\":\"One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support.\"}";
 }
 
+struct ProductionSwitchEffect {
+    int retained;
+    int retool_loss;
+};
+
+ProductionSwitchEffect production_switch_effect(int base_id, int item) {
+    BASE& base = Bases[base_id];
+    if (item == base.queue_items[0]) return {base.minerals_accumulated, 0};
+    struct QueueReadGuard {
+        BASE& base; int prior;
+        ~QueueReadGuard() { base.queue_items[0] = prior; }
+    } guard{base, base.queue_items[0]};
+    base.queue_items[0] = item;
+    const int loss = mod_base_lose_minerals(base_id, item);
+    return {base.minerals_accumulated_2 - loss, loss};
+}
+
+void append_production_switch_effect(std::ostream& out, int base_id, int item) {
+    const auto effect = production_switch_effect(base_id, item);
+    const int before = Bases[base_id].minerals_accumulated;
+    out << ",\"switch_effect\":{\"epistemic_status\":\"conditional\","
+        << "\"minerals_before\":" << before
+        << ",\"minerals_after_switch\":" << effect.retained
+        << ",\"mineral_change\":" << effect.retained - before
+        << ",\"retool_penalty\":" << effect.retool_loss
+        << ",\"condition\":\"Immediate native switch at the current state. Switching uses the native retained-mineral baseline; recently hurried minerals may be lost even with zero retool penalty. Energy spent is not refunded. No completion or future income is predicted.\"}";
+}
+
 std::string production_choices_response(int faction_id, int base_id) {
     if (base_id < 0 || base_id >= *BaseCount || Bases[base_id].faction_id != faction_id) {
         return error_response("invalid_base", "base_id must identify a base owned by the human faction.");
@@ -11194,7 +11235,9 @@ std::string production_choices_response(int faction_id, int base_id) {
             << "\",\"command\":\"set_production\",\"base_id\":" << base_id
             << ",\"item_id\":" << unit_id
             << ",\"kind\":\"unit\",\"name\":" << json_string(Units[unit_id].name)
-            << ",\"mineral_cost\":" << mineral_cost(base_id, unit_id) << '}';
+            << ",\"mineral_cost\":" << mineral_cost(base_id, unit_id);
+        append_production_switch_effect(out, base_id, unit_id);
+        out << '}';
     }
     for (int facility_id = Fac_ID_First; facility_id <= SP_ID_Last; ++facility_id) {
         int item_id = -facility_id;
@@ -11206,7 +11249,9 @@ std::string production_choices_response(int faction_id, int base_id) {
             << ",\"item_id\":" << item_id
             << ",\"kind\":" << json_string(facility_id >= SP_ID_First ? "project" : "facility")
             << ",\"name\":" << json_string(Facility[facility_id].name)
-            << ",\"mineral_cost\":" << mineral_cost(base_id, item_id) << '}';
+            << ",\"mineral_cost\":" << mineral_cost(base_id, item_id);
+        append_production_switch_effect(out, base_id, item_id);
+        out << '}';
     }
     if (hurry_legal && full_hurry_cost <= available_energy) {
         if (comma) out << ',';
@@ -16908,6 +16953,7 @@ std::string semantic_command_response(const std::string& request) {
         base_compute(1);
         bool buildable = production_item_buildable(faction_id, base_id, item_id);
         if (!buildable) return error_response("invalid_production", "item_id is not currently buildable at this base.");
+        const int minerals_before = Bases[base_id].minerals_accumulated;
         mod_base_change(base_id, item_id);
         if (*MultiplayerActive) {
             // The base packet carries production and queue contents. The
@@ -16920,7 +16966,11 @@ std::string semantic_command_response(const std::string& request) {
         base_compute(1);
         return std::string("{\"ok\":true,\"command\":\"set_production\",\"base_id\":")
             + std::to_string(base_id) + ",\"item_id\":" + std::to_string(item_id)
-            + ",\"name\":" + json_string(production_name(item_id).c_str()) + '}';
+            + ",\"name\":" + json_string(production_name(item_id).c_str())
+            + ",\"production_name\":" + json_string(production_name(item_id).c_str())
+            + ",\"minerals_before\":" + std::to_string(minerals_before)
+            + ",\"minerals_accumulated\":" + std::to_string(Bases[base_id].minerals_accumulated)
+            + ",\"mineral_change\":" + std::to_string(Bases[base_id].minerals_accumulated - minerals_before) + '}';
     }
     if (command == "hurry_production") {
         int base_id = field_int(request, "base_id", -1);
@@ -18963,13 +19013,9 @@ std::string action_counterfactual_receipt(const std::string& request, int factio
             return error_response("invalid_production", "The nominated item is no longer buildable.");
         int loss = 0, retained = base.minerals_accumulated;
         if (command == "set_production" && item != prior_item) {
-            struct QueueReadGuard {
-                BASE& base; int prior;
-                QueueReadGuard(BASE& value, int item) : base(value), prior(value.queue_items[0]) { base.queue_items[0] = item; }
-                ~QueueReadGuard() { base.queue_items[0] = prior; }
-            } guard(base, item);
-            loss = mod_base_lose_minerals(id, item);
-            retained = base.minerals_accumulated_2 - loss;
+            const auto effect = production_switch_effect(id, item);
+            loss = effect.retool_loss;
+            retained = effect.retained;
         }
         const int cost = mineral_cost(id, item);
         int hurry_energy = 0;
