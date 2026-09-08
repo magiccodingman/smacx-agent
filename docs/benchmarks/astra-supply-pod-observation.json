@@ -43,6 +43,15 @@
   "native_cross_build": "39 build steps succeeded",
   "limitations": [
     "Controlled native cases do not establish generated-pod or no-scattering rule coverage.",
-    "Live campaign deployment and provider readback pending."
-  ]
+    "Sovereign readback pending: portal duplicate turn metric prevented restart after native recovery."
+  ],
+  "live_readback": {
+    "turn": 6,
+    "location_ref": "location-916",
+    "features": [
+      "vehicle"
+    ],
+    "epistemic_status": "current",
+    "recovery_http_status": 200
+  }
 }

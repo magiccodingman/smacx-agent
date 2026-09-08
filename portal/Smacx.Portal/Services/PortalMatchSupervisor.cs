@@ -616,7 +616,11 @@ public sealed class PortalMatchSupervisor(
                         StartedAt = previousEvent?.CreatedAt ?? now,
                         CompletedAt = now,
                     };
-                    database.PortalTurnMetrics.Add(metric);
+                    // Recovery can revisit an already recorded turn. Keep its
+                    // historical counters; duplicate analytics must not prevent
+                    // lifecycle reconciliation and sovereign restart.
+                    if (!await AddTurnMetricIfMissingAsync(database, metric, cancellationToken))
+                        continue;
                     await PopulateTelemetryAsync(
                         database, control, match.MatchId, seat.ControlInstanceId!, metric,
                         cancellationToken);
@@ -756,6 +760,20 @@ public sealed class PortalMatchSupervisor(
         match.UpdatedAt = DateTimeOffset.UtcNow;
         await database.SaveChangesAsync(CancellationToken.None);
         await NotifyAsync(match.MatchId, CancellationToken.None);
+    }
+
+    internal static async Task<bool> AddTurnMetricIfMissingAsync(
+        ApplicationDbContext database, PortalTurnMetric metric,
+        CancellationToken cancellationToken = default)
+    {
+        if (database.PortalTurnMetrics.Local.Any(item =>
+                item.MatchId == metric.MatchId && item.AgentId == metric.AgentId && item.Turn == metric.Turn)
+            || await database.PortalTurnMetrics.AnyAsync(item =>
+                item.MatchId == metric.MatchId && item.AgentId == metric.AgentId && item.Turn == metric.Turn,
+                cancellationToken))
+            return false;
+        database.PortalTurnMetrics.Add(metric);
+        return true;
     }
 
     private async Task PopulateTelemetryAsync(
