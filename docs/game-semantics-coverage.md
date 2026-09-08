@@ -748,3 +748,14 @@ Installed citation regression extended to guarded goal/plan source references,
 commitment resolution references and summary through-event references. Recovery
 now proves a successful claim write using an inherited pre-fork citation, beyond
 the earlier lookup check. All pass; no additional live acceptance is inferred.
+
+### Astra turn35 — live contact attention delivery
+
+Mind Worm contact at location673 generated critical attention sequence1 from
+observation264. Provider request06d09c24 contains the exact notice in its parsed
+runtime envelope with current direct-sight provenance. The sovereign acknowledged
+that ID with its correct lease/cursor; request6c01e227 excludes it from the next
+runtime attention envelope (the acknowledgement receipt remains in history). See
+`docs/benchmarks/astra-contact-attention35.json`. This proves delivery and lifecycle,
+not tactical response or why the move was rejected. Native raid-effect and
+persistent-order-clearing live delivery remain separate open gates.
