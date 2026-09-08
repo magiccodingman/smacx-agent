@@ -11,8 +11,14 @@
     "harness_owner_orphan_test": "passed stopped recovery and running/foreign identity/foreign installation isolation"
   },
   "pending": [
-    "deployed helper reconciliation",
-    "sovereign startup",
-    "live progression"
-  ]
+    "sustained live progression"
+  ],
+  "deployment": {
+    "installed_image_test": "passed",
+    "recovered_turn": 28,
+    "live_sovereign_processes": 1,
+    "active_incidents": 0,
+    "orphan_helper_present": false,
+    "manual_helper_removal": false
+  }
 }
