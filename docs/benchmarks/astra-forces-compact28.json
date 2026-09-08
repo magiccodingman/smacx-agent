@@ -12,8 +12,7 @@
     "world_model_contract_test": "passed"
   },
   "pending": [
-    "installed-image test",
-    "live provider query acceptance"
+    "live sovereign/provider query acceptance"
   ],
   "captured_live_replay": {
     "objects": 4,
@@ -25,5 +24,26 @@
     ],
     "scope": "Force objects available in captured observation deltas; not a complete live-world reconstruction",
     "no_skips_or_duplicates": true
+  },
+  "deployment": {
+    "installed_image_test": "passed",
+    "recovered_turn": 28,
+    "live_sovereign_processes": 1,
+    "incidents": []
+  },
+  "restored_projection_query": {
+    "scope": "Operator invocation of deployed WorldService against restored authoritative projection, not sovereign/provider invocation",
+    "owned_units_returned": 5,
+    "foreign_contacts_returned": 1,
+    "page_tokens": [
+      423,
+      497,
+      497,
+      498,
+      498,
+      507
+    ],
+    "continuation_exhausted": true,
+    "duplicate_refs": false
   }
 }
