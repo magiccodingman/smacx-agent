@@ -1121,3 +1121,13 @@ tests; improved model behavior is not yet claimed. See
 Installed-image citizen delivery and deployed source checks pass. Main control
 and harness image selection is updated; worker compatibility and service health
 are verified. No new provider-behavior or native-mechanics claim is made.
+
+## Semantic action evidence checkpoint 1 (2026-09-08)
+
+| Capability | Acceptance chain and remaining gap |
+| --- | --- |
+| Restricted unit actions | Native-shaped readiness/reason/lifecycle → managed decision context is covered. A missing current action is explicitly separated from strategic completion or permanent impossibility. Full MinGW bridge compilation passes; installed provider delivery remains pending. |
+| Artifact identity and disband | Positive Artifact role and Artifact-specific permanent-removal text are implemented at the native catalog. Exact choice binding and native confirmation are unchanged. Controlled native Artifact eligibility/effect cases remain pending; arrival is not labeled consumption. |
+| Movement units | Raw movement points, scale and remainder are delivered with the restriction reason and explicitly are not tile counts. Terrain-specific route accuracy remains a separate route-query/native acceptance claim. |
+
+See [checkpoint evidence](benchmarks/semantic-action-evidence.md).

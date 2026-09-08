@@ -1124,6 +1124,32 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
     return result
 
 
+def _unit_action_catalog_context(catalog: Mapping[str, Any],
+                                 context: Mapping[str, Any] | None) -> dict:
+    """Preserve why the native actor catalog is restricted at this revision."""
+    result = {
+        key: catalog[key]
+        for key in ("unit_name", "ready", "reason", "roles", "order",
+                    "movement_budget", "lifecycle")
+        if isinstance(catalog.get(key), (str, bool, Mapping))
+    }
+    if isinstance(catalog.get("at"), Mapping):
+        result["at"] = _semanticize_choice(catalog["at"], context)
+    result["catalog_scope"] = {
+        "exhaustive_for": "currently executable actions for this owned unit at this native revision",
+        "not_evidence_of": [
+            "strategic purpose completion",
+            "consumption of a special-unit benefit",
+            "permanent impossibility after movement refresh, activation, prerequisite changes, or relocation",
+        ],
+        "meaning": (
+            "An action missing from this frame is unavailable in the current native state. "
+            "Use the readiness reason and lifecycle evidence; do not infer that the unit is useless."
+        ),
+    }
+    return result
+
+
 
 def _citizen_catalog_context(catalog: Mapping[str, Any], context: Mapping[str, Any] | None,
                              base_ref: str) -> dict:
@@ -2606,7 +2632,7 @@ def smac_attention_ack(
                      "attention_not_cognitively_responded"}:
             return {"ok": False, "error": error, "acknowledged_ids": [],
                     "required_next": {"tool": "smac_decision",
-                                      "reason": "Refresh current attention with smac_decision and review it. Copy attention.attention_lease_id and attention.through_cursor from that runtime context. Do not use world anchor_observation_cursor or an item observation_cursor; those count world observations, not attention events."}}
+                                      "reason": "Refresh current attention with smac_decision and review it. For the full batch, copy only attention.acknowledgement.tool_arguments; do not supply a world observation cursor. Diagnostic attention through_cursor is accepted only for compatibility."}}
         return {"ok": False, "error": error}
 
 
@@ -2884,7 +2910,7 @@ def smac_decision(
                         "ok": False,
                         "error": {
                             "code": "unit_not_ready_in_decision_frame",
-                            "message": "This unit is not ready for the decision focus. Use a returned ready reference or omit it. To inspect remaining legal actions for a spent or ordered owned unit, query smac_choices kind=unit_actions with its own_unit_ref; readiness does not imply every management action is unavailable.",
+                            "message": "This unit is not ready for the decision focus. Use a returned ready reference or omit it. To inspect actions that remain legal despite movement exhaustion or a persistent order, query smac_choices kind=unit_actions with its own_unit_ref. Readiness does not establish whether the unit's strategic purpose is complete.",
                         },
                         "identity": identity,
                         "ready_unit_refs": ready_refs,
@@ -2971,6 +2997,10 @@ def smac_decision(
                 },
                 "meaning": "These are this frame's choices only. Query other families before concluding a management action is unavailable; their native legality is checked separately.",
             }
+        if choice_kind == "unit_actions":
+            frame["unit_action_context"] = _unit_action_catalog_context(
+                choices_result, semantic_context,
+            )
         if any(row.get("command") in {"give_energy_gift", "propose_human_energy"}
                for row in choices_result.get("choices", ())):
             semantic_context = _semantic_selector_context(str(identity["revision"]))

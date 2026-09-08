@@ -11894,7 +11894,16 @@ int target_tile_id = -1, int target_unit_id = -1) {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"kind\":\"unit_actions\",\"unit_id\":" << veh_id
         << ",\"unit_name\":" << json_string(veh.name()) << ",\"at\":{\"tile_id\":"
-        << semantic_tile_id(veh.x, veh.y) << "},\"roles\":{\"colony\":"
+        << semantic_tile_id(veh.x, veh.y) << "},\"movement_budget\":{\"movement_points\":"
+        << veh_speed(veh_id, 0) << ",\"movement_scale\":" << Rules->move_rate_roads
+        << ",\"moves_remaining\":"
+        << std::max(0, veh_speed(veh_id, 0) - static_cast<int>(veh.moves_spent))
+        << ",\"meaning\":\"Movement points are native movement ticks, not a tile count. Divide by movement_scale only for a nominal road-free movement-unit comparison; terrain, roads, fungus, damage, abilities, zones of control and transports determine legal travel.\"}"
+        << ",\"lifecycle\":{\"strategic_purpose_complete\":null,\"meaning\":"
+        << json_string(veh.plan() == PLAN_ARTIFACT
+            ? "This unit is an Alien Artifact. Arrival, movement exhaustion, or a restricted action catalog does not prove that an Artifact benefit was consumed. Verify an explicit native effect before recording completion."
+            : "Current readiness and orders do not prove that this unit's strategic purpose is complete.")
+        << "},\"roles\":{\"colony\":"
         << (veh.is_colony() ? "true" : "false") << ",\"former\":"
         << (veh.is_former() ? "true" : "false") << ",\"combat\":"
         << (veh.is_combat_unit() ? "true" : "false") << ",\"probe\":"
@@ -11908,6 +11917,7 @@ int target_tile_id = -1, int target_unit_id = -1) {
         << (semantic_air_defense_eligible(veh) ? "true" : "false")
         << ",\"carrier\":"
         << (semantic_carrier_capacity(veh_id) > 0 ? "true" : "false")
+        << ",\"artifact\":" << (veh.plan() == PLAN_ARTIFACT ? "true" : "false")
         << ",\"airdrop_capable\":" << (has_abil(veh.unit_id, ABL_DROP_POD) ? "true" : "false")
         << ",\"boarded\":" << (boarded_transport_id >= 0 ? "true" : "false")
         << ",\"designated_defender\":"
@@ -12083,7 +12093,12 @@ int target_tile_id = -1, int target_unit_id = -1) {
             out << "{\"id\":\"disband:" << veh_id
                 << "\",\"command\":\"disband_unit\",\"unit_id\":" << veh_id
                 << ",\"requires\":{\"confirm_disband\":1},\"destructive\":true,"
-                "\"meaning\":\"Open native disband confirmation for this spent or ordered unit. Verify recycling and unit removal afterward.\"}";
+                << "\"target_kind\":"
+                << json_string(veh.plan() == PLAN_ARTIFACT ? "alien_artifact" : "unit")
+                << ",\"meaning\":" << json_string(veh.plan() == PLAN_ARTIFACT
+                    ? "Open native confirmation to permanently remove this Alien Artifact and apply any currently eligible base recycling. Movement exhaustion does not prove the Artifact has been consumed or has no remaining strategic use."
+                    : "Open native confirmation to permanently remove this unit and apply any currently eligible base recycling. Its current lack of movement or persistent order does not mean its strategic purpose is complete.")
+                << '}';
         }
         out << "],\"ready\":false,\"reason\":"
             << json_string(boarded_transport_id >= 0 ? "boarded_transport"
