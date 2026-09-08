@@ -6,6 +6,8 @@
     "world_anchor_calendar_test.py: stored projection, current/stale/unknown/invalid, same-turn cache, service restart",
     "world_model_contract_test.py: pass"
   ],
-  "deployment": "pending",
-  "provider_delivery": "pending"
+  "deployment": "Control/harness rebuilt; installed-image calendar regression passed; verified park followed by successful resume, healthy worker/MCP",
+  "provider_delivery": "pending",
+  "restored_timeline": "timeline-restore-e4c7cb0ab36f42089ad5757d",
+  "restored_workforce": "Current owned minerals still intake4/support3/surplus1 after restore"
 }
