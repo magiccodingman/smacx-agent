@@ -377,7 +377,9 @@ def base_mechanics(topology: PerspectiveTopology,
     own_units = [item for item in objects.values() if item.get("kind") == "own_unit"]
     contacts = [item for item in objects.values()
                 if item.get("kind") == "foreign_contact" and item.get("status") == "active"
-                and relationship_class(item) == "hostile"]
+                and field_is_current(item, "roles")
+                and isinstance(field_value(item, "roles"), Mapping)
+                and field_value(item, "roles").get("combat") is True]
     rows = []
     for base in sorted(bases, key=lambda item: str(item.get("object_ref"))):
         ref = str(base["object_ref"])
@@ -408,10 +410,43 @@ def base_mechanics(topology: PerspectiveTopology,
                                                         topology=topology))
             except Exception:
                 continue
+            owner_ref = field_value(contact, "owner_ref")
+            owner = objects.get(str(owner_ref), {})
+            relations_field = owner.get("fields", {}).get("relations", {}) \
+                if isinstance(owner.get("fields"), Mapping) else {}
+            relations = relations_field.get("value", {}) \
+                if isinstance(relations_field, Mapping) else {}
+            formal_relationship = {
+                "epistemic_status": relations_field.get("epistemic_status", "unknown")
+                if isinstance(relations_field, Mapping) else "unknown",
+                "pact": relations.get("pact") if isinstance(relations, Mapping) else None,
+                "treaty": relations.get("treaty") if isinstance(relations, Mapping) else None,
+                "truce": relations.get("truce") if isinstance(relations, Mapping) else None,
+                "vendetta": relations.get("vendetta") if isinstance(relations, Mapping) else None,
+            }
+            origin_square = topology.by_ref.get(object_location(contact))
+            target_square = topology.by_ref.get(location)
+            geometric_distance = topology.shape.distance(
+                (origin_square.x, origin_square.y), (target_square.x, target_square.y)
+            ) if origin_square is not None and target_square is not None else None
+            relation_class = relationship_class(contact)
+            triad = field_value(contact, "triad") if field_is_current(contact, "triad") else None
             threats.append({"contact_ref": contact["object_ref"],
+                            "owner_ref": owner_ref,
+                            "formal_relationship": formal_relationship,
+                            "relationship_class": relation_class,
+                            "foreign_movement_zoc_constraint": (
+                                False if relation_class == "allied" else
+                                True if triad == "land" and origin_square is not None
+                                and not origin_square.ocean else
+                                False if triad in {"air", "sea"} else None
+                            ),
+                            "inferred_intent": "unknown_not_mechanically_observed",
+                            "geometric_distance": geometric_distance,
                             "minimum_observed_eta_turns": route.turns,
                             "reachable_on_known_world": route.reachable,
-                            "uncertainty": list(route.uncertainty)})
+                            "uncertainty": list(route.uncertainty),
+                            "eta_semantics": "lower_bound_from_one_visible_force_on_the_known_world"})
         progress = field_value(base, "minerals_accumulated", 0)
         cost = field_value(base, "production_cost", None)
         surplus = field_value(base, "mineral_surplus", 0)
@@ -437,9 +472,10 @@ def base_mechanics(topology: PerspectiveTopology,
             "friendly_response": sorted(reinforcements,
                                          key=lambda row: (row["eta_turns"] is None,
                                                           (row["eta_turns"] if row["eta_turns"] is not None else 10**9)))[:12],
-            "visible_hostile_response": sorted(threats,
+            "visible_foreign_response": sorted(threats,
                                                key=lambda row: (row["minimum_observed_eta_turns"] is None,
                                                                 (row["minimum_observed_eta_turns"] if row["minimum_observed_eta_turns"] is not None else 10**9)))[:12],
+            "foreign_force_boundary": "Visible foreign forces are a lower bound, not a complete force estimate. Formal relationship, movement ZOC and inferred intent are separate evidence.",
             "support_burden": len(supported_refs),
             "supported_unit_refs": supported_refs[:32],
             "support_mineral_cost": base_support_cost(base),

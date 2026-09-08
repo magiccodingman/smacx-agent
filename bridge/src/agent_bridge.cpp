@@ -14182,11 +14182,13 @@ std::string semantic_choices_response(const std::string& request) {
             bool demand_context_valid = demanded_technology_context_valid(label, faction_id);
             out << "{\"id\":\"diplomatic_demand:reject\","
                 << "\"command\":\"respond_to_diplomatic_offer\",\"response\":\"reject\","
-                << "\"meaning\":\"Refuse the demand for research data.\"}";
+                << "\"technology_transfer\":\"none\","
+                << "\"meaning\":\"Refuse the demand; no listed technology changes ownership through this choice.\"}";
             if (demand_context_valid) {
                 out << ",{\"id\":\"diplomatic_demand:concede\","
                     << "\"command\":\"respond_to_diplomatic_offer\",\"response\":\"accept\","
-                    << "\"meaning\":\"Transmit the complete demanded research bundle without bargaining.\"}";
+                    << "\"technology_transfer\":\"counterpart_acquires_every_listed_player_gives_technology;player_retains_each_technology\","
+                    << "\"meaning\":\"Transmit the complete listed research bundle. The counterpart gains those technologies and can use mechanics they enable; you retain them and receive no asset from this concession.\"}";
                 if (technology_demand_counter_label(label)) {
                     int price = max(0, agent_popup_parse_number(0));
                     int reciprocal = *diplo_tech_id2;
@@ -14195,7 +14197,9 @@ std::string semantic_choices_response(const std::string& request) {
                         << "\"command\":\"respond_to_diplomatic_offer\","
                         << "\"response\":\"counter\",\"payment\":\"energy\","
                         << "\"energy_credits_requested\":" << price
-                        << ",\"meaning\":\"Ask the counterpart to pay the native quoted energy price for the demanded technology.\"}";
+                        << ",\"technology_transfer_if_counter_accepted\":\"counterpart_acquires_the_demanded_technology;player_retains_it\","
+                        << "\"energy_transfer_if_counter_accepted\":\"counterpart_pays_player_the_quoted_credits\","
+                        << "\"meaning\":\"Counter with the native quoted Energy price. Only acceptance commits the listed technology and Energy transfers.\"}";
                     if (reciprocal >= 0 && reciprocal < MaxTechnologyNum
                     && counterpart >= 1 && counterpart < MaxPlayerNum
                     && (TechOwners[reciprocal] & (1 << counterpart))
@@ -14205,7 +14209,8 @@ std::string semantic_choices_response(const std::string& request) {
                             << "\"response\":\"counter\",\"payment\":\"technologies\","
                             << "\"technology_id\":" << reciprocal
                             << ",\"technology_name\":" << json_string(Tech[reciprocal].name)
-                            << ",\"meaning\":\"Request the exact native reciprocal technology named by this dialog.\"}";
+                            << ",\"technology_transfer_if_counter_accepted\":\"each_side_acquires_the_other_listed_technology_and_retains_its_own\","
+                            << "\"meaning\":\"Request the exact native reciprocal technology. Only acceptance commits the two-way acquisition.\"}";
                     }
                 }
             } else {
@@ -14221,11 +14226,13 @@ std::string semantic_choices_response(const std::string& request) {
             bool demand_context_valid = demanded_technology_context_valid(label, faction_id);
             out << "{\"id\":\"diplomatic_demand_followup:reject\","
                 << "\"command\":\"respond_to_diplomatic_offer\",\"response\":\"reject\","
-                << "\"meaning\":\"End this demand after the counterpart rejects the counteroffer.\"}";
+                << "\"technology_transfer\":\"none\","
+                << "\"meaning\":\"End this demand after the rejected counteroffer; no listed technology changes ownership through this choice.\"}";
             if (demand_context_valid) {
                 out << ",{\"id\":\"diplomatic_demand_followup:concede\","
                     << "\"command\":\"respond_to_diplomatic_offer\",\"response\":\"accept\","
-                    << "\"meaning\":\"Concede the original single-technology demand after the rejected counteroffer.\"}";
+                    << "\"technology_transfer\":\"counterpart_acquires_the_listed_player_gives_technology;player_retains_it\","
+                    << "\"meaning\":\"Concede the original demand. The counterpart gains the listed technology and can use mechanics it enables; you retain it and receive no asset.\"}";
             }
             out << ",{\"id\":\"diplomatic_demand_followup:terms\","
                 << "\"kind\":\"information\",\"offer_type\":\"technology_demand_followup\","
@@ -19505,6 +19512,30 @@ std::string execute_request(const std::string& request) {
     }
     if (op == "test_technology_demand_status") {
         return test_technology_demand_status_response();
+    }
+    if (op == "test_active_faction_roster") {
+        char test_mode[8] = {};
+        char enabled[8] = {};
+        if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode,
+                sizeof(test_mode)) || strcmp(test_mode, "1")
+        || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_ACTIVE_ROSTER", enabled,
+                sizeof(enabled)) || strcmp(enabled, "1")) {
+            return error_response("test_mode_disabled",
+                "The contained active-roster fixture is disabled.");
+        }
+        uint32_t living_mask = 0;
+        int living_count = 0;
+        for (int faction_id = 1; faction_id < MaxPlayerNum; ++faction_id) {
+            if (is_alive(faction_id)) {
+                living_mask |= 1u << faction_id;
+                ++living_count;
+            }
+        }
+        return std::string("{\"ok\":true,\"configured_active_faction_mask\":")
+            + std::to_string(managed_active_faction_mask())
+            + ",\"living_faction_mask\":" + std::to_string(living_mask)
+            + ",\"living_faction_count\":" + std::to_string(living_count)
+            + '}';
     }
     if (op == "test_nerve_gas_status") return test_nerve_gas_status_response();
     if (op == "test_self_destruct_status") return test_self_destruct_status_response();

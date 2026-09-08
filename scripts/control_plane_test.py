@@ -339,6 +339,7 @@ def main() -> int:
                 "faction_choice_id": 1,
             }],
             faction_roster_choice_ids=faction_roster,
+            active_faction_mask=0x06,
         )
         reserved_human = next(
             seat for seat in reserved["seats"]
@@ -346,8 +347,27 @@ def main() -> int:
         )
         reserved_match = control.get_match(reserved["match"]["match_id"])
         if reserved_match["metadata"].get("faction_roster_choice_ids") != faction_roster \
+                or reserved_match["metadata"].get("active_faction_mask") != 0x06 \
                 or reserved_human["metadata"].get("requested_faction_choice_id") != 1:
             raise AssertionError("all-seat faction reservations were not preserved")
+        expect(
+            InvalidRecord,
+            lambda: control.create_lan_match(
+                "Inactive managed faction", [agent["agent_id"]],
+                agent_seats=[{
+                    "agent_id": agent["agent_id"], "player_name": "Agent",
+                    "faction_name": "Gaia's Stepdaughters", "faction_choice_id": 0,
+                    "personality_id": "none",
+                }],
+                managed_human_player_names=["Alice"],
+                human_seat_preferences=[{
+                    "player_name": "Alice", "faction_choice_id": 1,
+                }],
+                faction_roster_choice_ids=faction_roster,
+                active_faction_mask=0x02,
+            ),
+            "lan_managed_seat_inactive",
+        )
         expect(
             InvalidRecord,
             lambda: control.create_lan_match(
@@ -411,6 +431,7 @@ def main() -> int:
                 "storage_policy": True,
                 "exact_hermes_descriptor": True,
                 "managed_lan_identity_contract": True,
+                "selected_participant_mask": True,
                 "native_progress_mirror": True,
                 "immutable_audit": True,
             },

@@ -13,6 +13,7 @@ import time
 from typing import Any, Callable, Mapping
 
 from smacx_attention import AttentionService
+from smacx_mechanics import base_mechanics
 from smacx_store import MemoryScope
 from smacx_topology import MapShape
 from smacx_world import WorldService
@@ -204,6 +205,84 @@ def _spatial_context(projection: Mapping[str, Any], focus: Mapping[str, Any]) ->
                                         (origin[1]["epistemic_status"], target[1]["epistemic_status"]) else "current"})
     result["owned_bases_with_known_geometry"] = len(bases)
     return result
+
+
+def _nearby_base_defense(world: WorldService, projection: Mapping[str, Any],
+                         *, turn: Any, year: Any) -> dict[str, Any]:
+    """Surface bounded current defense mechanics when visible combat is near."""
+    objects = world._objects(projection)
+    topology = world._topology(projection)
+    owned_bases = []
+    for item in objects.values():
+        fields = item.get("fields", {}) if isinstance(item.get("fields"), Mapping) else {}
+        owner = fields.get("owner_ref", {})
+        square = topology.by_ref.get(str(item.get("location_ref") or ""))
+        if item.get("kind") == "base" and item.get("status") == "active" \
+                and isinstance(owner, Mapping) and owner.get("source") == "owned_state" \
+                and owner.get("epistemic_status") == "current" and square is not None:
+            owned_bases.append((str(item["object_ref"]), square))
+    contact_squares = []
+    for item in objects.values():
+        fields = item.get("fields", {}) if isinstance(item.get("fields"), Mapping) else {}
+        roles = fields.get("roles", {})
+        square = topology.by_ref.get(str(item.get("location_ref") or ""))
+        if item.get("kind") == "foreign_contact" and item.get("status") == "active" \
+                and isinstance(roles, Mapping) and roles.get("epistemic_status") == "current" \
+                and isinstance(roles.get("value"), Mapping) \
+                and roles["value"].get("combat") is True and square is not None:
+            contact_squares.append((str(item["object_ref"]), square))
+    relevant_pairs = sorted(
+        (base_ref, contact_ref)
+        for base_ref, base_square in owned_bases
+        for contact_ref, contact_square in contact_squares
+        if topology.shape.distance(
+            (base_square.x, base_square.y), (contact_square.x, contact_square.y),
+        ) <= 3
+    )
+    candidate_base_refs = list(dict.fromkeys(base for base, _ in relevant_pairs))
+    selected_base_refs = candidate_base_refs[:4]
+    selected_contact_refs = {
+        contact for base, contact in relevant_pairs if base in selected_base_refs
+    }
+    scoped_objects = {
+        ref: item for ref, item in objects.items()
+        if item.get("kind") != "foreign_contact" or ref in selected_contact_refs
+    }
+    rows = base_mechanics(topology, scoped_objects, selected_base_refs) \
+        if selected_base_refs else []
+    relevant = []
+    for row in rows:
+        base = objects.get(str(row.get("base_ref")), {})
+        owner = base.get("fields", {}).get("owner_ref", {}) \
+            if isinstance(base.get("fields"), Mapping) else {}
+        if not isinstance(owner, Mapping) or owner.get("source") != "owned_state" \
+                or owner.get("epistemic_status") != "current":
+            continue
+        nearby = [item for item in row.get("visible_foreign_response", ())
+                  if isinstance(item, Mapping)
+                  and isinstance(item.get("geometric_distance"), int)
+                  and item["geometric_distance"] <= 3]
+        if not nearby:
+            continue
+        relevant.append({
+            "base_ref": row.get("base_ref"), "location_ref": row.get("location_ref"),
+            "garrison_refs": list(row.get("garrison_refs", ()))[:12],
+            "observed_defender_count": row.get("observed_defender_count"),
+            "friendly_response": list(row.get("friendly_response", ()))[:8],
+            "visible_foreign_response": nearby[:8],
+        })
+    return {
+        "trigger": "current visible foreign combat unit within geometric range 3 of an owned base",
+        "bases": relevant[:4], "bases_truncated": len(candidate_base_refs) > 4,
+        "shared_era_context": {"turn": turn, "year": year,
+                               "meaning": "Shared turn and year establish era context; they do not prove equal resources, research, production, forces, or readiness."},
+        "evidence_boundaries": {
+            "visible_forces": "lower_bound_only",
+            "formal_relationship": "Treaty, Truce, Pact and Vendetta flags are reported separately when current.",
+            "movement_zoc": "A foreign non-Pact movement constraint does not prove Vendetta or hostile intent.",
+            "inferred_intent": "unknown unless separately supported by observed actions or communication.",
+        },
+    }
 
 
 def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
@@ -616,6 +695,11 @@ class RuntimeContextAssembler:
                  if isinstance(item, Mapping)], dependencies),
             "generated_unix": time.time(),
         }
+        nearby_defense = _nearby_base_defense(
+            self.world, projection, turn=turn, year=snapshot.get("year"),
+        )
+        if nearby_defense["bases"]:
+            payload["nearby_base_defense"] = nearby_defense
         if recall_context is not None:
             payload["interpretive_recall"] = recall_context
         non_anchor_tokens = estimate_tokens(payload)

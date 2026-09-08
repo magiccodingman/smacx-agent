@@ -88,7 +88,7 @@ def main() -> int:
     # Ownership, diplomacy, ZOC, bases, and units are intentionally absent
     # from physical topology. Changing them cannot affect mass identity.
     changed_nonterrain = PerspectiveTopology(shape, [
-        KnownSquare("l0", 0, 2, "land", owner_ref="faction-2", hostile_zoc=True),
+        KnownSquare("l0", 0, 2, "land", owner_ref="faction-2", foreign_movement_zoc=True),
         KnownSquare("l1", 2, 2, "land", owner_ref="faction-3"),
         KnownSquare("l2", 4, 2, "land", owner_ref="faction-2"),
         KnownSquare("o0", 1, 3, "ocean", owner_ref="faction-2"),

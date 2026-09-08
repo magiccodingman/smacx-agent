@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -106,11 +107,13 @@ public sealed class PortalFlowTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var submittedBody = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         factory!.ControlOverride = async (request, cancellationToken) =>
         {
             if (request.RequestUri!.AbsolutePath == "/api/v1/matches/solo")
             {
+                submittedBody.TrySetResult(await request.Content!.ReadAsStringAsync(cancellationToken));
                 entered.TrySetResult();
                 await release.Task.WaitAsync(cancellationToken);
                 return new HttpResponseMessage(HttpStatusCode.Created) { Content = JsonContent.Create(new
@@ -132,6 +135,12 @@ public sealed class PortalFlowTests : IAsyncLifetime
         var first = await Task.WhenAny(entered.Task, pending);
         if (first == pending) Assert.Fail(await (await pending).Content.ReadAsStringAsync());
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using (var submitted = JsonDocument.Parse(
+            await submittedBody.Task.WaitAsync(TimeSpan.FromSeconds(10))))
+        {
+            Assert.Equal(2, submitted.RootElement.GetProperty("autostart")
+                .GetProperty("active_faction_mask").GetInt32());
+        }
         abort.Cancel();
         release.TrySetResult();
         try { using var response = await pending; } catch (OperationCanceledException) { }
@@ -141,8 +150,14 @@ public sealed class PortalFlowTests : IAsyncLifetime
             await using var scope = factory.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var seat = await db.PortalLobbySeats.AsNoTracking().SingleAsync(x => x.MatchId == matchId && x.SeatIndex == 0);
+            var inactiveSeats = await db.PortalLobbySeats.AsNoTracking()
+                .Where(x => x.MatchId == matchId && x.SeatIndex > 0).ToArrayAsync();
             var match = await db.PortalMatches.AsNoTracking().SingleAsync(x => x.MatchId == matchId);
-            if (seat.ControlInstanceId == "instance-disconnect-fixture" && match.Status == "provisioning") break;
+            if (seat.ControlInstanceId == "instance-disconnect-fixture" && match.Status == "provisioning")
+            {
+                Assert.All(inactiveSeats, inactive => Assert.Equal("open", inactive.ControllerKind));
+                break;
+            }
             Assert.True(DateTime.UtcNow < deadline, "Disconnected startup lost its provisioned worker association.");
             await Task.Delay(25);
         }

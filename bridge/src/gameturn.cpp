@@ -1641,7 +1641,8 @@ void __cdecl turn_upkeep() {
         bool aliens_arrive = false;
         for (int i = 1; i < MaxPlayerNum; i++) {
             Faction& plr = Factions[i];
-            if (is_alien(i) || (!plr.base_count && !_strcmpi(MFactions[i].filename, "FUNGBOY"))) {
+            if (managed_faction_active(i) && (is_alien(i)
+            || (!plr.base_count && !_strcmpi(MFactions[i].filename, "FUNGBOY")))) {
                 // TODO: investigate more consistent ways to mark factions for late spawns
                 int flags = plr.player_flags | PFLAG_MAP_REVEALED;
                 if (flags == -1 && plr.diff_level == -1 && !is_human(i) && !is_alive(i)) {

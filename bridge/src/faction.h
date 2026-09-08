@@ -22,6 +22,8 @@ bool is_alien(int faction_id);
 bool is_alive(int faction_id);
 void set_human(int faction_id, bool active);
 void set_alive(int faction_id, bool active);
+uint32_t managed_active_faction_mask();
+bool managed_faction_active(int faction_id);
 bool thinker_enabled(int faction_id);
 bool thinker_move_upkeep(int faction_id);
 bool at_war(int faction1, int faction2);
@@ -90,4 +92,3 @@ int __cdecl mod_social_ai(int faction_id, int a2, int a3, int a4, int a5, CSocia
 int __cdecl mod_wants_to_attack(int faction_id, int faction_id_tgt, int faction_id_unk);
 int __cdecl mod_setup_player(int faction_id, int setup_id, int is_probe);
 int __cdecl mod_eliminate_player(int faction_id, int setup_id);
-

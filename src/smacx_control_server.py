@@ -695,6 +695,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(faction_roster_choice_ids, list) \
                         or not all(isinstance(item, int) for item in faction_roster_choice_ids):
                     raise InvalidRecord("invalid_lan_faction_roster")
+                active_faction_mask = body.get("active_faction_mask", 0xFE)
+                if isinstance(active_faction_mask, bool) or not isinstance(active_faction_mask, int) \
+                        or active_faction_mask < 0x02 or active_faction_mask > 0xFE:
+                    raise InvalidRecord("invalid_lan_active_faction_mask")
                 profile = str(body.get("profile", "small_easy"))
                 if profile not in LAN_PROFILES:
                     raise InvalidRecord("unsupported_lan_profile")
@@ -704,6 +708,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     managed_human_player_names=list(managed_human_player_names),
                     human_seat_preferences=list(human_seat_preferences),
                     faction_roster_choice_ids=list(faction_roster_choice_ids),
+                    active_faction_mask=active_faction_mask,
                     host_controller_kind=str(body.get("host_controller_kind", "agent")),
                     human_host_name=(str(body["human_host_name"])
                                      if body.get("human_host_name") is not None else None),
@@ -715,6 +720,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                         "lan_profile": profile,
                         "lan_session_name": str(body.get("session_name", "SMACX Managed LAN")),
                         "graphiti_enabled": body.get("graphiti_enabled", True) is True,
+                        "active_faction_mask": active_faction_mask,
                     },
                 )
                 workers = []
@@ -735,6 +741,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                             autostart={
                                 "enabled": False,
                                 "faction_roster": list(faction_roster_choice_ids),
+                                "active_faction_mask": active_faction_mask,
                             },
                             view_enabled=body.get("view_enabled") is True,
                             view_mode=("interactive" if seat["controller_kind"] == "human"

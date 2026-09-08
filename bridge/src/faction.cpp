@@ -145,6 +145,26 @@ void set_alive(int faction_id, bool active) {
     }
 }
 
+uint32_t managed_active_faction_mask() {
+    char value[16] = {};
+    if (!GetEnvironmentVariableA(
+            "SMACX_AGENT_ACTIVE_FACTION_MASK", value, sizeof(value))) {
+        return 0xFE;
+    }
+    char* end = NULL;
+    unsigned long parsed = strtoul(value, &end, 10);
+    if (end == value || *end != '\0' || parsed < 0x02 || parsed > 0xFE) {
+        debug("agent managed active faction mask invalid: %s\n", value);
+        return 0xFE;
+    }
+    return static_cast<uint32_t>(parsed) & 0xFE;
+}
+
+bool managed_faction_active(int faction_id) {
+    assert(faction_id >= 1 && faction_id < MaxPlayerNum);
+    return (managed_active_faction_mask() & (1u << faction_id)) != 0;
+}
+
 /*
 Exclude native life since Thinker AI routines don't apply to them.
 */
@@ -2492,4 +2512,3 @@ int __cdecl mod_eliminate_player(int faction_id, int setup_id) {
     }
     return 1;
 }
-

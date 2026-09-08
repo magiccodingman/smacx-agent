@@ -125,7 +125,7 @@ class KnownSquare:
     current: bool = True
     features: frozenset[str] = field(default_factory=frozenset)
     owner_ref: str | None = None
-    hostile_zoc: bool = False
+    foreign_movement_zoc: bool = False
     blocking_contact_occupied: bool = False
     altitude: int | None = None
 
@@ -285,7 +285,7 @@ class PerspectiveTopology:
             },
             "squares": [{"ref": item.location_ref, "x": item.x, "y": item.y,
                          "terrain": item.terrain, "features": sorted(item.features),
-                         "zoc": item.hostile_zoc,
+                         "zoc": item.foreign_movement_zoc,
                          "blocking_contact_occupied": item.blocking_contact_occupied,
                          "altitude": item.altitude}
                         for item in sorted(self.by_ref.values(), key=lambda row: row.location_ref)],
@@ -530,7 +530,7 @@ class PerspectiveTopology:
                 exact_constraints = profile.constraint_mode == "sovereign_exact"
                 occupied_terminal = exact_constraints and profile.triad != "air" \
                     and neighbor.blocking_contact_occupied
-                if exact_constraints and current.hostile_zoc and neighbor.hostile_zoc \
+                if exact_constraints and current.foreign_movement_zoc and neighbor.foreign_movement_zoc \
                         and not profile.ignores_zoc:
                     continue
                 effective = float(step_cost)
