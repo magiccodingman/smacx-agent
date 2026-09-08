@@ -200,6 +200,18 @@ class HarnessManager:
         receives no capabilities and never runs as root.
         """
         helper_name = self._name("harness-owner", identity)
+        try:
+            orphan = self.docker.inspect_container(helper_name)
+            self.docker.require_owned(orphan, self.installation_id,
+                                      purpose="harness-volume-owner")
+            labels = orphan.get("Config", {}).get("Labels", {})
+            if labels.get("io.smacx.harness") != identity:
+                raise HarnessManagerError("harness_owner_identity_mismatch")
+            if orphan.get("State", {}).get("Running"):
+                raise HarnessManagerError("harness_owner_helper_running")
+            self.docker.remove_container(helper_name)
+        except DockerNotFound:
+            pass
         identifier = self.docker.create_container(helper_name, {
             "Image": self.worker_manager.mcp_image,
             "Entrypoint": ["/bin/chown"],
