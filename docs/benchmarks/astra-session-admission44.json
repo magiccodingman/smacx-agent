@@ -7,5 +7,11 @@
     "operator_contract_test.py passed including fresh wait/stale/other-run/admitted",
     "control and pinned Hermes image build passed"
   ],
-  "limits": "Live callback through telemetry/operator chain pending; lease authority, stall thresholds and recovery semantics unchanged."
+  "limits": "Live callback through telemetry/operator chain pending; lease authority, stall thresholds and recovery semantics unchanged.",
+  "deployment": {
+    "park": "turn45 verified checkpoint; zero active sovereign runs",
+    "resume": "successful; worker and MCP healthy",
+    "graphiti": "running at last observation, no error",
+    "live_signal": "pending sovereign startup"
+  }
 }
