@@ -3,7 +3,8 @@ from math import isfinite
 from typing import Mapping
 
 
-def provider_drain_window(*, run_id, now, progress_since, stall_seconds, request, previous=None):
+def provider_drain_window(*, run_id, now, progress_since, stall_seconds, request, previous=None,
+                          progress_observed_after=None):
     deadline = progress_since + stall_seconds
     prior = previous if isinstance(previous, Mapping) and previous.get('base_deadline') == deadline else None
     if not isinstance(request, Mapping) or request.get('run_id') != run_id:
@@ -11,7 +12,12 @@ def provider_drain_window(*, run_id, now, progress_since, stall_seconds, request
     started, observed = request.get('started_unix'), request.get('observed_unix')
     if any(type(x) not in (int, float) or not isfinite(x) for x in (started, observed)):
         return False, prior
-    if not progress_since <= started <= deadline or not started <= observed <= now:
+    # Progress occurred between native samples; its detection time is not its
+    # execution time. A request begun in that interval may follow the effect.
+    earliest = progress_since if progress_observed_after is None else progress_observed_after
+    if type(earliest) not in (int, float) or not isfinite(earliest) or earliest > progress_since:
+        return False, prior
+    if not earliest <= started <= deadline or not started <= observed <= now:
         return False, prior
     identifier, phase = request.get('request_id'), request.get('phase')
     if not isinstance(identifier, str) or not identifier or len(identifier) > 128:

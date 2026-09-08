@@ -793,7 +793,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     match_id, str(body.get("provider_id", "")),
                     agent_id=agent_id,
                     recompile_doctrine=body.get("recompile_doctrine") is True,
-                    reasoning_effort=str(body.get("reasoning_effort", "low")),
+                    reasoning_effort=(str(body["reasoning_effort"]) if body.get("reasoning_effort") is not None else None),
                     model_id=(str(body["model_id"]) if body.get("model_id") else None),
                     context_length=body.get("context_length"),
                     generation_settings=(body.get("generation_settings")
@@ -833,7 +833,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 descriptor = self.server.control.prepare_hermes_profile(
                     match_id, str(body.get("provider_id", "")), agent_id=agent_id,
                     recompile_doctrine=body.get("recompile_doctrine") is True,
-                    reasoning_effort=str(body.get("reasoning_effort", "low")),
+                    reasoning_effort=(str(body["reasoning_effort"]) if body.get("reasoning_effort") is not None else None),
                     model_id=(str(body["model_id"]) if body.get("model_id") else None),
                     context_length=body.get("context_length"),
                     generation_settings=(body.get("generation_settings")
