@@ -9,5 +9,14 @@
   },
   "cross_build": "39/39",
   "original_turn9_cause": "unproven",
-  "deployment": "pending"
+  "deployment": {
+    "verified_recovery_http": 200,
+    "doctrine_recompile_http": 200,
+    "dll_sha256": "9cdd514a8a8976eafdb013ec283cfb9a8cf4aa21bb7beb2308bec1b3f54c362e",
+    "matches_tested_dll": true,
+    "worker": "healthy",
+    "mcp": "healthy",
+    "active_sovereigns": 1,
+    "turn": 9
+  }
 }
