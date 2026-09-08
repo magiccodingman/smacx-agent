@@ -16,7 +16,16 @@
     "opaque_choice_execution_test": "pass",
     "counterfactual_choice_contract_test": "pass, including information labeling, stable reprocessing and ordinary diplomacy preservation",
     "provider_schema_budget_test": "pass: 15 tools; world 663 and total 7647 conservative tokens",
-    "movement_preview_scope_test": "pass: actual managed facade with native-shaped receipt/query sink; conditional scope retained, no execution/consumption, movement deployment rejected"
+    "movement_preview_scope_test": "pass: actual managed facade with native-shaped receipt/query sink; conditional scope retained, no execution/consumption, movement deployment rejected",
+    "installed_control": "pass: movement_preview_scope_test, counterfactual_choice_contract_test, opaque_choice_execution_test; scripts-only mounts"
   },
-  "remaining": "Installed validation, deployment and live provider/behavior verification pending. No combat calculator or watchdog change."
+  "remaining": "Actual provider delivery and improved behavior pending. No combat calculator or watchdog change.",
+  "deployment": {
+    "recovery_ok": true,
+    "turn": 39,
+    "timeline": "timeline-restore-b71c924c578c44d98ca5eb41",
+    "running_mcp_source_sha256": "026429f0e47f0dacbb83f597557accbe3268e23c553536ccfa9b9da2ed33f0d6",
+    "matches_tested_source": true,
+    "graphiti": "queued before sovereign restart"
+  }
 }
