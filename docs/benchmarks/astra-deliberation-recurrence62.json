@@ -92,7 +92,25 @@
     "harness_request_state": "pass",
     "control_drain_policy_and_reconciliation": "pass",
     "packaging": "Initial control image omitted explicit COPY of new module; corrected and rebuilt. Healthy control and supervisor after correction.",
-    "supported_recovery": "in_progress",
+    "supported_recovery": "completed",
     "live_grace": "pending"
+  },
+  "live_request_state_acceptance": {
+    "turn": 62,
+    "state": "observed_active",
+    "active_runs": 1,
+    "live_sovereigns": 1,
+    "graphiti_rebuild": "completed",
+    "profile_compile_http_status": 200,
+    "supervisor_sample_unix": 1788882751.3147185,
+    "provider_request": {
+      "observed_unix": 1788882738.0427265,
+      "phase": "headers",
+      "request_id": "6b57dc14204e4e6cb7f825c8b67e085f",
+      "run_id": "run-699333ad896e4a28949f067de28e73fc",
+      "started_unix": 1788882737.9654696
+    },
+    "drain": null,
+    "assessment": "Actual sovereign marker propagated through normal supervisor telemetry with matching run/request. Drain activation and outcome still pending."
   }
 }

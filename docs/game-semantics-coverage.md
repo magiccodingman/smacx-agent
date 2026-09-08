@@ -1045,3 +1045,5 @@ Request-state telemetry checkpoint: bounded sovereign-only run/request phases no
 Bounded drain policy checkpoint: matching pending request may finish within a fixed ordinary-deadline+180s limit; completion gets at most30s dispatch time inside that limit. New requests, failures, missing/mismatched telemetry cannot renew grace. Semantic progress is unchanged. Boundary tests and production reconciliation hard-bound quarantine pass; deployment/live provider/native follow-through remain pending.
 
 Installed drain-policy checkpoint: runtime test caught missing explicit module packaging; Dockerfile corrected, rebuilt control is healthy, installed request-state and watchdog/reconciliation tests pass. Supported incident recovery is in progress. No live grace success is claimed.
+
+Live request-state chain verified62: current sovereign marker (headers phase) propagated through the normal supervisor telemetry sample with matching run/request IDs. Paired recovery, Graphiti completion, profile compilation and one live sovereign are confirmed. No drain is active yet; bounded grace and subsequent native effect remain unverified.
