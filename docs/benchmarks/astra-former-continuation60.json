@@ -1,0 +1,24 @@
+{
+  "turn": 60,
+  "source_sha256": "36fbfc8e54f781de96de3ca46f8706e33cd8fdaa1c005cc0b920363a0523b6df",
+  "task": {
+    "epistemic_status": "current",
+    "first_known_turn": 59,
+    "last_verified_turn": 60,
+    "provenance_ref": "observation-450",
+    "source": "owned_state",
+    "value": {
+      "accumulated_work_points": 2,
+      "automation_active": true,
+      "completion_verified": false,
+      "name": "Farm",
+      "order_kind": "terraform",
+      "state": "active_terraform_order"
+    },
+    "world_revision": 2
+  },
+  "preceding_evidence": "astra-followthrough57.json verifies completed Sensor; astra-scope-recovery58.json records automation enabled with no active task at58.",
+  "assessment": "Current owned state now exposes active Farm work, demonstrating automation selected another task after Sensor completion. No Farm completion or changed yields is claimed.",
+  "sovereign_plan_journal": "journal-6cb0c25340eb470baba9840db3b02fa8",
+  "turn_advance_choice": "choice-e3db193ebc7b4ac0acaf289177d056b4"
+}
