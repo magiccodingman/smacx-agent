@@ -665,3 +665,5 @@ A controlled native replay reproduced the live access violation in `mod_base_sup
 Deployment evidence for the movement barrier: verified operator recovery returned HTTP 200 at turn 19; worker and MCP are healthy, the live DLL matches the controlled test SHA-256, and doctrine recompilation succeeded. Autonomous post-recovery action acceptance remains pending.
 
 Post-recovery turn-19 acceptance now verifies two autonomous native move completions (998→957 and 1156→1076), followed by verbatim receipt delivery in each next provider request. The original 1156→1116 failure is covered by the controlled native comparison; full-game and broader modal acceptance remain open.
+
+Turn-24 native support comparison: after the sovereign hurried the fifth Scout, direct native base-page read and current observation-144 agree on intake 2, support 2, surplus 0, population 2. This matches the previously delivered conditional forecast for this completion; it does not generalize to all upkeep conditions. See `astra-support-zero-surplus.json`. Strategic response remains under observation.

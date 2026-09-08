@@ -12,7 +12,18 @@
     "managed_action_path_contract_test pass"
   ],
   "deployment": "Installed-image tests passed; operator recovery succeeded; fresh native turn18 catalog through installed managed formatter exposes conditional surplus0 and zero-surplus state.",
-  "native_post_completion_comparison": "pending",
+  "native_post_completion_comparison": {
+    "turn": 24,
+    "source": "Direct read-only native perspective_world_page bases, corroborated by current observation-144",
+    "base_id": 0,
+    "population": 2,
+    "mineral_intake": 2,
+    "support_cost": 2,
+    "mineral_surplus": 0,
+    "owned_units": 5,
+    "comparison": "Matches prior conditional additional support +1 and resulting surplus 0 for this completion only",
+    "packet_sha256": "eb59c4c46e6ff0506d778f99f2efe1b55894abd802afa3ec90cac64d8c9f4c84"
+  },
   "scope": "Derived arithmetic under existing native caveats; no new exact mechanics claim",
   "actual_provider_delivery": [
     {
