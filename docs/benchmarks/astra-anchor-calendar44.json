@@ -7,7 +7,52 @@
     "world_model_contract_test.py: pass"
   ],
   "deployment": "Control/harness rebuilt; installed-image calendar regression passed; verified park followed by successful resume, healthy worker/MCP",
-  "provider_delivery": "pending",
+  "provider_delivery": [
+    {
+      "recorded_unix": 1788865861.7464824,
+      "correlation": {
+        "attention_lease_id": "attention-lease-e9133976aba14c69aa70b341b996b491",
+        "episode_id": "episode-708b339950eda4e4b9125e436cd30db7",
+        "request_id": "f8b296dabc614b539d9a81ab1d98ed82",
+        "runtime_context_sha256": "6643109f0f34d6ac09fa04e53698c454d831dc077437fcf56b66aaa31f80a483"
+      },
+      "anchors": [
+        {
+          "turn": 44,
+          "year": 2144,
+          "identity": {
+            "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+            "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+            "timeline_id": "timeline-restore-e4c7cb0ab36f42089ad5757d",
+            "world_epoch": "world-1913022c9fe47da1057d630a747c06ee"
+          }
+        }
+      ]
+    },
+    {
+      "recorded_unix": 1788865873.7536476,
+      "correlation": {
+        "attention_lease_id": "attention-lease-e9133976aba14c69aa70b341b996b491",
+        "episode_id": "episode-708b339950eda4e4b9125e436cd30db7",
+        "request_id": "3bf510128649453394150f95765fa2dc",
+        "runtime_context_sha256": "2a762b9d3180ed495b308b96aeca973daa5452817b1900b3d85dc893bfb7bc45"
+      },
+      "anchors": [
+        {
+          "turn": 44,
+          "year": 2144,
+          "identity": {
+            "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+            "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+            "timeline_id": "timeline-restore-e4c7cb0ab36f42089ad5757d",
+            "world_epoch": "world-1913022c9fe47da1057d630a747c06ee"
+          }
+        }
+      ]
+    }
+  ],
   "restored_timeline": "timeline-restore-e4c7cb0ab36f42089ad5757d",
-  "restored_workforce": "Current owned minerals still intake4/support3/surplus1 after restore"
+  "restored_workforce": "Current owned minerals still intake4/support3/surplus1 after restore",
+  "archive_sha256": "b58f3616a5740b3017782afbc27d860de0d1620d122bc470be7869c57c7226e2",
+  "recovery_lease_observation": "Hermes waited approximately 150 seconds on durable session lease, then acquired it and resumed without operator mutation. Health reported observed_active during wait; explicit wait classification remains open."
 }
