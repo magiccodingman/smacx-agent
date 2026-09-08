@@ -2,7 +2,7 @@
   "schema": "smacx.acceptance-evidence.v1",
   "checkpoint": "operator startup reliability and handoff",
   "validation": {
-    "portal": "83/83",
+    "portal": "84/84 after integrating main PR #60",
     "http_operator": "passed including authenticated preflight",
     "cli": "passed; binding, roster, durable identity, unresolved-start refusal; gated HTTP regression returns before pending POST completes and re-entry does not duplicate startup",
     "startup_failure": "actual sidecar error-path fixture passed: persist before cleanup, redact, missing logs explicit",
@@ -15,7 +15,8 @@
       "logs_preserved": true,
       "native_game": false
     },
-    "source_drift_guard": "Real authenticated preflight rejected a changed checkout before any mutation."
+    "source_drift_guard": "Real authenticated preflight rejected a changed checkout before any mutation.",
+    "offline_diagnostics": "Authenticated operator health retains persisted startup evidence when worker Docker inspection raises an error."
   },
   "native_startup": {
     "source_commit": "b1e24e6",

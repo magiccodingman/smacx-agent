@@ -97,7 +97,8 @@ class OperatorService:
         for spec in self.control.list_worker_specs():
             if spec['match_id'] != match_id: continue
             if worker_error:
-                workers.append({'instance_id': spec['instance_id'], 'error': 'not_checked_after_worker_error'})
+                workers.append({'instance_id': spec['instance_id'], 'error': 'not_checked_after_worker_error',
+                    'startup_failure': spec.get('network', {}).get('mcp_startup_failure')})
                 continue
             try:
                 worker = self.manager.worker_status(spec['instance_id'])
@@ -107,7 +108,8 @@ class OperatorService:
                 workers[-1]['mcp_status'] = spec.get('network', {}).get('mcp_status')
             except Exception as error:
                 worker_error = True
-                workers.append({'instance_id': spec['instance_id'], 'error': type(error).__name__})
+                workers.append({'instance_id': spec['instance_id'], 'error': type(error).__name__,
+                    'startup_failure': spec.get('network', {}).get('mcp_startup_failure')})
         incidents = self.control.list_supervision_incidents(match_id=match_id, active_only=True)
         with self.store._connect() as connection:
             missions = [dict(r) for r in connection.execute(

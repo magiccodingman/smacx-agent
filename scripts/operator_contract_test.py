@@ -61,6 +61,12 @@ with tempfile.TemporaryDirectory() as tmp:
         assert call('preflight')['prerequisites_ready']
         assert call('preflight')['installation_id']==store.installation_id()
         assert call('health')['state']=='idle'
+        spec['network']={'mcp_startup_failure':{'capture_complete':True,'state':{'ExitCode':23}}}
+        def unavailable(_): raise OSError('Docker unavailable')
+        manager.worker_status=unavailable
+        assert call('health')['workers'][0]['startup_failure']['state']['ExitCode']==23
+        manager.worker_status=lambda _:dict(state)
+
         view=call('inspect'); assert view['perspectives'][0]['objects']
         assert all('metadata' not in o for o in view['perspectives'][0]['objects'])
         first=call('events'); assert first['events']
