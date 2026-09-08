@@ -4267,7 +4267,14 @@ def smac_memory_update(
             match_id, session_id, agent_id, perspective_id,
         )
     except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
+        return {
+            "ok": False, "error": str(exc),
+            "persistence": {"stage": "not_started", "journal_committed": False},
+            "required_next": {
+                "tool": "smac_decision",
+                "reason": "Nothing was saved. Copy the complete match_id and session_id from the fresh identity, and its revision as observed_revision. Do not reconstruct opaque IDs from memory. Managed agent_id and perspective_id may be omitted; supplied values must match this seat.",
+            },
+        }
     try:
         record = json.loads(record_json)
     except json.JSONDecodeError:
