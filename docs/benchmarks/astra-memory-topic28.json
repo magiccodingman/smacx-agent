@@ -4,7 +4,6 @@
   "repair": "Advertise claim/belief topic key syntax; return validator pattern and example for rejected topic before persistence, without substitution",
   "validation": "memory_status_feedback_test passed including claim/belief invalid-topic no-write checks and existing guarded memory/status/retirement contracts",
   "pending": [
-    "actual provider guidance delivery",
     "sovereign successful write and persistence"
   ],
   "deployment": {
@@ -13,5 +12,10 @@
     "turn": 28,
     "live_sovereign_processes": 1,
     "incidents": []
+  },
+  "provider_delivery": {
+    "request_unix": 1788844318.710986,
+    "advertised_topic_syntax_present": true,
+    "packet_sha256": "9182632677cc29c3e3045c4039a78d2f7f13c41dc9e04119483bd32a9efc185e"
   }
 }
