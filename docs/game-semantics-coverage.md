@@ -786,3 +786,16 @@ contains all15 tools and the repaired memory schema, including canonical journal
 citation and observed faction-reference guidance. Both repair evidence files
 retain request/context IDs and the schema digest. This closes schema delivery,
 not autonomous memory-write/effect acceptance.
+
+### Astra economic strategy audit through turn37
+
+Retained turn23 production choices include Colony Pod, Formers and Recycling
+Tanks; the next submitted provider request contains the Former choice ID. The
+sovereign reasoning recognizes the additional Scout's conditional zero-surplus
+consequence, considers economic alternatives, and chooses to hurry exploration.
+It also leaves a stated Recycling Tanks rules uncertainty unresolved. Turn37
+remains one base/five units with6 stored minerals/+1 surplus and known Centauri
+Ecology. This establishes an economic decision concern beyond tool discovery,
+not an all-model causal attribution or successful economic-unit execution. See
+`docs/benchmarks/astra-production-strategy37.json`; recovery confounding and
+full-game strategic acceptance remain open.
