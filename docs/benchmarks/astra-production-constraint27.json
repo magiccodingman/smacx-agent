@@ -23,8 +23,7 @@
     "installed_image_test": "passed"
   },
   "pending": [
-    "sovereign management response and native effect",
-    "sustained/full-game acceptance"
+    "post-effect checkpoint recovery and sustained/full-game acceptance"
   ],
   "deployment": {
     "recovered_turn": 27,
@@ -65,5 +64,35 @@
       "world_revision": 1
     }
   },
-  "deployed_packet_sha256": "1c66cc54073abe94f63418397b7fcefae10396ceb348bd519c68014efffee0b7"
+  "deployed_packet_sha256": "1c66cc54073abe94f63418397b7fcefae10396ceb348bd519c68014efffee0b7",
+  "live_effect": {
+    "turn": 27,
+    "base_ref": "base-location-795",
+    "observation_cursor": 180,
+    "world_revision": 8,
+    "source": "owned_state",
+    "epistemic_status": "current",
+    "old_worked_location": "location-876",
+    "new_worked_location": "location-716",
+    "mineral_intake_before": 2,
+    "mineral_intake_after": 4,
+    "support_cost_before_and_after": 2,
+    "mineral_surplus_before": 0,
+    "mineral_surplus_after": 2,
+    "managed_conversion_choice": "choice-56bde251c7404f3eb5b3d180aafc65a3",
+    "managed_assignment_choice": "choice-a7624e914a55464b9a4420c6d7df566a",
+    "interpretation": "Sovereign explicitly identified zero surplus, queried citizen management, converted worker, requeried and assigned specialist; current owned observation verifies the effect. This sequence does not isolate prompting as the sole cause."
+  },
+  "effect_packet_sha256": "0ec56da67f731c7e0f024400f0633284aeabe4b866e3c6ee7882001ab4dcf8bf",
+  "cleared_constraint_provider_delivery": {
+    "request_unix": 1788842131.9762154,
+    "constraints": {
+      "bases": [],
+      "details_truncated": false,
+      "meaning": "Incomplete mineral production has no positive passive progress at the observed surplus. Future inputs, hurry and other mineral transfers can change this; completion timing is not predicted.",
+      "missing_or_noncurrent_evidence_count": 0,
+      "no_positive_mineral_surplus_count": 0,
+      "review": "Use smac_choices kind=base_citizens or production with base_ref to review workforce and production options. Unit focus does not prevent base management; review before the final ready unit ends the turn."
+    }
+  }
 }
