@@ -979,3 +979,5 @@ Decision lease checkpoint: observed provider latency181.4s exceeded the180s leas
 Lease deployment checkpoint: installed opaque-choice contract passed; supported retry restored paired native/memory state at53, Graphiti rebuild completed, profile recompile returned200, and one sovereign resumed without active incidents. Delayed live execution remains pending.
 
 Lease recovery follow-up: two opaque workforce choices executed after49/52s; committed observation verifies assignment756→876, food surplus2 and mineral surplus−1. Recovery execution is proven; extended-lease use and strategic benefit are not. Sanitized archive hash and timings recorded in `astra-decision-lease53.json`.
+
+Extended lease live acceptance: sovereign activation executed258.06s after catalog return, beyond the former180s limit and within300s. Committed unit state shows automation cleared with movement still spent. This closes delayed live execution, not terrain work or strategic competence. Evidence: `astra-decision-lease53.json`.
