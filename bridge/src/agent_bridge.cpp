@@ -71,6 +71,8 @@ bool managed_human_controller = false;
 bool request_pending = false;
 bool request_in_progress = false;
 int agent_modal_service_depth = 0;
+// UI-thread only: native movement pumps messages with transient vehicle state.
+bool native_move_on_stack = false;
 uint64_t pending_sequence = 0;
 uint64_t response_sequence = 0;
 std::vector<int> pending_multiplayer_technology_presentations;
@@ -20533,6 +20535,15 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             return true;
         }
         if (deferred_move_unit_id >= 0) {
+            struct MoveReadBarrier {
+                MoveReadBarrier() { native_move_on_stack = true; }
+                ~MoveReadBarrier() {
+                    native_move_on_stack = false;
+                    // A nested message pump may have consumed the request's
+                    // notification. Service it only after movement has unwound.
+                    PostMessage(game_window, WM_SMACX_AGENT, 0, 0);
+                }
+            } move_read_barrier;
             int veh_id = deferred_move_unit_id;
             int direction = deferred_move_direction;
             int target_x = deferred_move_x;
@@ -20703,6 +20714,17 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
     uint64_t sequence = 0;
     EnterCriticalSection(&request_lock);
     if (request_pending && !request_in_progress) {
+        const std::string op = field_string(pending_request, "op");
+        // Being on the UI thread does not make reentrant reads safe. In
+        // particular list_bases -> base_compute sees transient movement
+        // coordinates inside the engine's animation/message loop. Leave the
+        // request queued until movement returns; retain bounded liveness and
+        // action-receipt polling, which do not recalculate base mechanics.
+        if (native_move_on_stack && op != "ping" && op != "status"
+        && op != "action_status") {
+            LeaveCriticalSection(&request_lock);
+            return true;
+        }
         request = pending_request;
         sequence = pending_sequence;
         request_in_progress = true;
