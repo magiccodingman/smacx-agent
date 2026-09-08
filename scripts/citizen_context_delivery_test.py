@@ -53,6 +53,9 @@ with patch.object(mcp, '_call', side_effect=native), \
     first = mcp.smac_choices(kind='base_citizens', base_ref='base-public')
     assert first['ok'], first
     evidence = first['citizen_context']
+    assert 'Talents and Drones can work tiles' in evidence['citizen_roles']['happiness']
+    assert 'loses that tile' in evidence['citizen_roles']['conversion_effect']
+    assert 'do not identify' in evidence['citizen_roles']['assignment']
     assert evidence['tiles'][0]['yields']['nutrients'] == 0
     assert evidence['tiles'][1]['yields']['nutrients'] == 1
     assert evidence['available_specialist_types'][0]['psych'] == 2
@@ -79,6 +82,7 @@ with patch.object(mcp, '_call', side_effect=native), \
     assert mcp._citizen_catalog_context({}, {}, '') == {}
     assert estimate_tokens(first) < 2048
     human = summary({'kind': 'tool_returned', 'payload': {'managed_name': 'smac_choices', 'result': first}})
+    assert 'Talents and Drones can work tiles' in human
     assert 'reassignment' in human and 'currently_assignable_tiles' in human
 print(json.dumps({'passed': True, 'native_shaped_guarded_two_step': True,
     'both_actions_journaled': True, 'single_use_choices': True,

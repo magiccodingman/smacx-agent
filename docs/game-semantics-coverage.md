@@ -1109,3 +1109,15 @@ Deployed verification now confirms 150 events in the first API page, 599 in the
 whole-match export without gaps, and 11 real message cards rendered in Chrome
 from the parked campaign. Large Docker response fragmentation and serializable
 error envelopes are covered by the repaired path and regression checks.
+
+## Citizen/reference clarification checkpoint (2026-09-08)
+
+Observed citizen allocation → managed citizen-choice response now includes the
+happiness/assignment distinction without inventing individual mappings. The
+native-shaped delivery test retains guarded execution and post-action allocation
+checks. Focused-reference guidance passes exact provider-prompt composition
+tests; improved model behavior is not yet claimed. See
+[acceptance evidence](benchmarks/citizen-reference-guidance.md).
+Installed-image citizen delivery and deployed source checks pass. Main control
+and harness image selection is updated; worker compatibility and service health
+are verified. No new provider-behavior or native-mechanics claim is made.

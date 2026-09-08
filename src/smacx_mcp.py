@@ -1128,8 +1128,15 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
 def _citizen_catalog_context(catalog: Mapping[str, Any], context: Mapping[str, Any] | None,
                              base_ref: str) -> dict:
     """Expose the bounded native allocation evidence and its existing two-step workflow."""
+    if not catalog:
+        return {}
     result = {key: catalog[key] for key in ("population", "governor_manages_citizens")
               if isinstance(catalog.get(key), (int, bool))}
+    result["citizen_roles"] = {
+        "happiness": "Talent, Citizen and Drone describe happiness, not job assignment. Talents and Drones can work tiles.",
+        "assignment": "Worked tiles and specialists describe assignments; happiness counts do not identify which individual works which tile.",
+        "conversion_effect": "Converting a worker to a specialist removes that worker from its assigned tile and loses that tile's yields. This is not a Talent-to-worker conversion.",
+    }
     reverse = context.get("reverse_locations", {}) if isinstance(context, Mapping) else {}
     tiles = catalog.get("tiles")
     if isinstance(tiles, list):

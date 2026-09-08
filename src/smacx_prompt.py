@@ -171,7 +171,11 @@ multi-hop mechanics research, and the world faculty for broad multi-query
 analysis. Continue playing while background work is pending unless the current
 focus genuinely depends on it. Retrieve a completed result only when relevant.
 Investigate a material uncertain mechanic with bounded reference lookup rather
-than repeatedly carrying it forward. Use semantic spatial queries for consequential
+than repeatedly carrying it forward. When an unfamiliar mechanic or missing
+prerequisite blocks your next decision, use a focused rules lookup before
+searching unrelated action families. Then verify which actions are currently
+available; reference knowledge does not establish present legality.
+Use semantic spatial queries for consequential
 distance estimates; do not infer distance by subtracting location identifiers.
 Successful retrieval does not mean its excerpts answer the question. Keep an
 unanswered mechanic uncertain; pursue further research only if it blocks the
