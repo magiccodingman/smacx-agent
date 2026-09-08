@@ -55,8 +55,54 @@
     "native_cross_build": "passed"
   },
   "pending": [
-    "controlled running native raid comparison",
     "deployment and live provider receipt",
     "full-game acceptance"
-  ]
+  ],
+  "controlled_native_replay": {
+    "source": "retained turn31 autosave, disposable network-none worker, repaired DLL",
+    "source_save_sha256": "c179e29d504e96fef79071d6bc17446d425e42cd50469dc115ac3236e380e756",
+    "result_sha256": "20676becee5497bf02138e3e7d8b9baf3c44268a72ddb17e9389ada5d4d37fc3",
+    "events": [
+      {
+        "sequence": 3,
+        "kind": "owned_native_raid_effect",
+        "turn": 32,
+        "subject_a": 0,
+        "subject_b": -1,
+        "from_tile_id": 795,
+        "to_tile_id": 795,
+        "value_before": 2,
+        "value_after": 1,
+        "item_name": "population",
+        "relationship_at_occurrence": "unknown",
+        "continuous_visibility": true
+      },
+      {
+        "sequence": 4,
+        "kind": "owned_native_raid_effect",
+        "turn": 32,
+        "subject_a": 0,
+        "subject_b": -1,
+        "from_tile_id": 795,
+        "to_tile_id": 795,
+        "value_before": 9,
+        "value_after": 0,
+        "item_name": "stored_minerals",
+        "relationship_at_occurrence": "unknown",
+        "continuous_visibility": true
+      }
+    ],
+    "after": {
+      "turn": 32,
+      "population": 2,
+      "minerals": {
+        "intake": 3,
+        "consumption": 2,
+        "unit_support_cost": 2,
+        "surplus": 1,
+        "accumulated": 1
+      }
+    },
+    "interpretation": "Actual native raid lowered population 2 to 1 and minerals 9 to 0. Later upkeep endpoint is population2 and minerals1; endpoints alone masked the loss."
+  }
 }
