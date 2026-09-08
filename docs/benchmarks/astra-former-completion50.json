@@ -16,5 +16,13 @@
   "comparison": "Turn49 production query conditionally predicted support4 and surplus0 after one supported unit; observed turn50 agrees.",
   "strategy_audit": "Scout5 moved HQ\u2192755 at47, back48, out49. Trace contains repeated reconsideration and incorrect distance estimates, then correct queried route. Not evidence of failed movement.",
   "archive_sha256": "1fe3bbe51e1dbf47bba36e9ace381325e484030fcc7ee326a815025fb8bc185e",
-  "limits": "Single live support comparison; no broad mechanics equivalence. Former construction proven, terrain work and expansion pending."
+  "limits": "Single live support comparison; no broad mechanics equivalence. Former construction proven, terrain work and expansion pending.",
+  "follow_up_51": {
+    "former_observation": "observation-404",
+    "former_location": "location-836",
+    "automation_active": true,
+    "terraform_state": "no_active_terraform_order",
+    "scout_audit": "Turn50 response sequence explicitly considered disband, then selected return to headquarters instead. Successful receipt for Scout2 was acknowledged before selecting Scout5 return. This sample supports sovereign reconsideration, not a failed native move; overall strategic attribution remains limited.",
+    "audit_archive_sha256": "1494a7e9916cc11b277981db7cff3b3c0bb12642355f2b3fa5651355ec5bb108"
+  }
 }

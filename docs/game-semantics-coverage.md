@@ -947,3 +947,5 @@ Turn50 Former completion verified: own-unit-11 Formers at headquarters; current 
 Turn51 intent feedback checkpoint: real sovereign string-valued trigger rejection now has structured field/type/horizon guidance. Guarded writer regression proves rejection leaves cognition unchanged and explicit corrected goal/plan writes succeed. No automatic coercion or weakened journal guard. Live delivery/retry remains pending. Former automation moved to836 but active terrain work is not yet verified. Evidence: `docs/benchmarks/astra-intent-feedback51.json`.
 
 Intent-feedback deployment: installed-image writer regression passed; verified park and resume completed at51 after isolated control/harness rebuild. Live sovereign consumption remains pending.
+
+Turn51 follow-up: current observation404 places Former11 at836 with automation retained and no active terraform task. Turn50 response sequence acknowledges a completed Scout2 return and then selects Scout5 return after considering disband. This narrows the movement diagnosis to sovereign reconsideration for that sample; no broad strategic competence claim. Follow-up in `docs/benchmarks/astra-former-completion50.json`.
