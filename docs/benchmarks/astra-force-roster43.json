@@ -1,0 +1,19 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "incident_id": "incident-500bcf7446484fe2b554908806cb8c03",
+  "problem": "Standard force pages returned one unit each while sovereign sought positions of five units; useful retrieval occurred alongside excessive deliberation before no-progress containment.",
+  "repair": "Add forces-only detail=roster with compact evidence-preserving rows and 2048-token ceiling; retain existing modes; add deep/standard query hint and managed schema guidance.",
+  "validation": {
+    "five_unit_fixture_tokens": 942,
+    "five_unit_single_page": true,
+    "forty_unit_pagination": "all 40 unique references, no omission, every page within 2048 tokens",
+    "epistemic": "stale HP retained; large stale evidence retrievable through deep query",
+    "invalid_mode": "roster rejected outside forces",
+    "installed_image": "pending",
+    "live_provider_query": "pending"
+  },
+  "limits": [
+    "No claim of solved deliberation stall or competent strategy.",
+    "Fixture is interface/budget evidence, not live sovereign use."
+  ]
+}

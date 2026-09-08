@@ -29,7 +29,7 @@ WORLD_MODES = frozenset({
     "overview", "area", "relation", "route", "reachability", "compare",
     "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual",
 })
-DETAIL_LIMITS = {"compact": 512, "standard": 2048}
+DETAIL_LIMITS = {"compact": 512, "standard": 2048, "roster": 2048}
 
 
 class WorldQueryError(ValueError):
@@ -747,6 +747,8 @@ class WorldService:
         scenario_json: str = "",
         runtime_counterfactual_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if detail == "roster" and mode != "forces":
+            raise WorldQueryError("roster_detail_requires_forces")
         if mode not in WORLD_MODES:
             raise WorldQueryError("invalid_world_mode")
         if not 65536 <= int(context_length) <= 16_777_216:
@@ -1007,7 +1009,7 @@ class WorldService:
                     objects, topology, subjects,
                 )
                 result["items"] = [_public_object(item) for item in selected]
-            elif mode == "forces" and detail == "compact":
+            elif mode == "forces" and detail in {"compact", "roster"}:
                 result["items"] = [_compact_force_object(item) for item in selected]
             elif mode == "intel":
                 topology = self._topology(projection)
@@ -1019,6 +1021,8 @@ class WorldService:
                 result["items"] = [_public_object(item) for item in selected]
             else:
                 result["items"] = [_public_object(item) for item in selected]
+            if mode == "forces" and detail in {"standard", "deep"}:
+                result["query_hint"] = "For a bounded force roster, query mode=forces detail=roster without continuation. Use each roster item's deep detail_query for full evidence; follow its continuation if present."
         elif mode == "area":
             center = objects.get(origin_ref or (subjects[0] if subjects else ""))
             derived_center = derived_registry.get(origin_ref or (subjects[0] if subjects else ""))

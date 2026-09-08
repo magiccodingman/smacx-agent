@@ -734,3 +734,7 @@ The supervisor contained `incident-549965cefd42470a9668b215a8458c7b` after 3 pro
 Expiry-feedback repair: return elapsed-time reason, age/lease seconds and no-native-dispatch status; distinguish expiry from revision or legality evidence. Fresh-frame guidance preserves only still-supported intent rather than repeating unchanged analysis. Regression verifies expiration removes the cached decision and dispatches no bridge call. TTL and stall guard unchanged; installed/live validation and deliberation outcome remain pending.
 
 Expiry checkpoint deployment: installed control regression passed without a source override. Worker/MCP recovered healthy, Graphiti rebuild completed at 1788859176.838343 and one sovereign restarted. Live expiry-feedback delivery and whether deliberation improves remain unverified; the resumed run is an acceptance experiment, not a closed stall gate.
+
+### Force roster checkpoint
+
+Add forces-only `detail=roster` with a 2,048-token ceiling and evidence-preserving compact rows. Standard/deep responses point to this composition view, while their existing full evidence remains available. Five-unit fixture fits one 942-token page; 40-unit pagination has no omissions/duplicates and respects each page ceiling. Stale HP and deep retained evidence verified. Installed/live acceptance pending in `docs/benchmarks/astra-force-roster43.json`; this is not proof the no-progress incident or strategic weakness is resolved.

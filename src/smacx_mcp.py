@@ -2323,7 +2323,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
 
 @mcp.tool(
     description=(
-        "Inspect the fair-play world using returned opaque references. Modes cover geography, "
+        "Inspect the fair-play world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
         "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
         "Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
         "site_economy with populations:[1,2,3] and up to four subject locations; "
@@ -2344,7 +2344,7 @@ def smac_world(
     movement_profile_ref: str = "mobility-land-default",
     radius: int = 3,
     since_cursor: int = 0,
-    detail: Literal["compact", "standard", "deep"] = "standard",
+    detail: Literal["compact", "standard", "deep", "roster"] = "standard",
     continuation: str = "",
     scenario_json: str = "",
 ) -> dict:
