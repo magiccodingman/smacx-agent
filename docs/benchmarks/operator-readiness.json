@@ -6,7 +6,8 @@
     "http_operator": "passed including authenticated preflight",
     "cli": "passed; binding, roster, durable identity, unresolved-start refusal",
     "startup_failure": "actual sidecar error-path fixture passed: persist before cleanup, redact, missing logs explicit",
-    "deployment": "stale images, settings, project and stopped containers rejected"
+    "deployment": "stale images, settings, project and stopped containers rejected",
+    "real_portal_catalog": "Fresh isolated Identity login, provider discovery, profile creation and authenticated preflight pass. CLI uses actual controlConnected field."
   },
   "native_startup": "pending isolated launch; no native readiness claim yet",
   "limits": [

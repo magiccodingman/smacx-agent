@@ -154,7 +154,7 @@ def preflight(client, expected=None, verify_checkout=False, images_file=None):
     catalog = client.request('api/catalog/lobby')
     report['catalog'] = catalog
     report['prerequisites_ready'] = report['prerequisites_ready'] and bool(
-        catalog.get('controlAvailable', True) and all(catalog.get(k) for k in ('gameSources', 'runtimes', 'agents')))
+        catalog.get('controlConnected', False) and all(catalog.get(k) for k in ('gameSources', 'runtimes', 'agents')))
     return report
 
 

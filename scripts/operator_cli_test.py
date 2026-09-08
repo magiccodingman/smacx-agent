@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory() as tmp:
             else:
                 assert 'operator-session=authenticated' in self.headers.get('Cookie','')
                 if path=='/api/operator/preflight': value={'schema':'smacx.operator-preflight.v1','installation_id':'installation-test','prerequisites_ready':state['ready']}
-                elif path=='/api/catalog/lobby': value={k:[{'id':i}] for k,i in [('gameSources','source-test'),('runtimes','runtime-test'),('agents','agent-test')]}
+                elif path=='/api/catalog/lobby': value={'controlConnected':True, **{k:[{'id':i}] for k,i in [('gameSources','source-test'),('runtimes','runtime-test'),('agents','agent-test')]}}
                 elif path=='/api/lobbies' and method=='POST':
                     assert body['worldSize']=='standard' and body['difficulty']=='librarian' and body['allowSpectators']
                     if not state['lobby']:
