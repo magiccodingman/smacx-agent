@@ -19393,11 +19393,26 @@ DWORD WINAPI server_worker(void*) {
     while (!stopping) {
         SOCKET client = accept(listen_socket, NULL, NULL);
         if (client == INVALID_SOCKET) break;
+        // Transport waits must not monopolize the single bridge dispatcher.
+        // These limits do not interrupt UI-thread execution or change its
+        // separate operation deadline; they apply only while reading/writing.
+        DWORD socket_timeout = 1000;
+        if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout))
+                == SOCKET_ERROR
+            || setsockopt(client, SOL_SOCKET, SO_SNDTIMEO,
+                reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout))
+                == SOCKET_ERROR) {
+            closesocket(client);
+            continue;
+        }
+        DWORD frame_started = GetTickCount();
         std::string buffer;
         char chunk[2048];
         while (!stopping) {
             int count = recv(client, chunk, sizeof(chunk), 0);
             if (count <= 0) break;
+            if (GetTickCount() - frame_started > 2000) break;
             buffer.append(chunk, chunk + count);
             if (buffer.size() > MaxRequestBytes) {
                 send_all(client, error_response("request_too_large", "Maximum request size is 16384 bytes.") + "\n");
@@ -19475,6 +19490,7 @@ DWORD WINAPI server_worker(void*) {
                     continue;
                 }
                 if (!send_all(client, response + "\n")) break;
+                frame_started = GetTickCount();
             }
         }
         closesocket(client);

@@ -1,0 +1,13 @@
+{
+  "authority": "controlled_native_test",
+  "baseline": "idle client causes BridgeUnavailable after 4 seconds",
+  "repaired": {
+    "idle_ping_seconds": 0.802,
+    "partial_ping_seconds": 0.801,
+    "slow_trickle_bounded": true,
+    "valid_fragmented_ping": true
+  },
+  "cross_build": "39/39",
+  "original_turn9_cause": "unproven",
+  "deployment": "pending"
+}
