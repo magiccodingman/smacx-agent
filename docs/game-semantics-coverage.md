@@ -759,3 +759,18 @@ runtime attention envelope (the acknowledgement receipt remains in history). See
 `docs/benchmarks/astra-contact-attention35.json`. This proves delivery and lifecycle,
 not tactical response or why the move was rejected. Native raid-effect and
 persistent-order-clearing live delivery remain separate open gates.
+
+### Astra turn35 — observed faction references in cognition
+
+A retained claim retry used provider-visible faction1/faction7 references and was
+rejected by the durable actor-ID validator. The managed writer now resolves public
+faction references only from the revision-matched active perspective projection:
+a known faction object or current/stale observed owner identity. It does not read
+hidden faction names into the response. Mapped generated actor IDs undergo the
+same visibility check when reused, and shared registry metadata is not overwritten.
+
+`memory_faction_reference_test.py` covers claim, relationship and commitment
+references, stale/unknown distinctions, unseen registry factions, revision mismatch,
+returned-ID revalidation and metadata isolation. Store, memory-status and canonical
+evidence regressions pass. Installed/live acceptance remains pending; see
+`docs/benchmarks/astra-faction-memory35.json`. Assertions remain unverified.

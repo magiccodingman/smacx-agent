@@ -4205,6 +4205,8 @@ def smac_investigate(
         "Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
         "Event evidence may use journal_event_id from a scoped action receipt or event_id from campaign history. "
         "Cite only events that support the assertion; accepted citations do not verify its truth. "
+        "Actor fields also accept observed world faction references (for example faction-1); "
+        "the result reports their durable actor mapping without adding hidden identity information. "
         "Actor and event references are mechanically restricted to this same fair-play perspective."
     )
 )

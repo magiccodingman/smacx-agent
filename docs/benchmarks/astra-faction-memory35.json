@@ -1,0 +1,26 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "observed_failure": {
+    "turn": 35,
+    "recorded_unix": 1788850259.6383257,
+    "error": "actor_scope_mismatch",
+    "actor_references": [
+      "faction-1",
+      "faction-7"
+    ],
+    "source": "retained managed claim retry after removing journal evidence"
+  },
+  "repair": "Resolve observed public faction references for claim, relationship and commitment actors using the native-revision-matched perspective world projection. Use generic stable actor identities without importing registry names. Revalidate generated opaque IDs against the same observed aliases.",
+  "tests": {
+    "memory_faction_reference_test": "passed: claim/relationship/commitment; current and stale known ownership; unknown/unseen rejected; stale revision rejected; returned ID revalidation; no name leak/overwrite",
+    "journal_memory_evidence_test": "passed",
+    "memory_status_feedback_test": "passed",
+    "platform_store_test": "passed"
+  },
+  "limits": [
+    "Controlled projection and native guard fixtures; installed image and live provider write pending.",
+    "Identity resolution does not verify assertions or infer current territorial ownership from stale evidence.",
+    "Existing non-generated legacy actor IDs retain their existing store validation contract."
+  ]
+}

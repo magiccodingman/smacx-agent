@@ -2302,6 +2302,27 @@ class SmacxStore:
             )
             return result
 
+    def ensure_faction_actor(self, match_id: str, faction_id: int) -> str:
+        """Return a stable faction actor without exposing or overwriting its metadata."""
+        import hashlib
+        _require_id(match_id, "match_id")
+        if type(faction_id) is not int or not 0 <= faction_id <= 7:
+            raise InvalidRecord("invalid_faction_id")
+        key = f"faction:{faction_id}"
+        actor_id = "actor-" + hashlib.sha256(f"{match_id}:{key}".encode()).hexdigest()[:32]
+        now = time.time()
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO actors(actor_id,match_id,stable_key,display_name,controller_kind,"
+                "faction_id,first_observed_unix,last_observed_unix,metadata_json) "
+                "VALUES(?,?,?,?,'unknown',?,?,?,'{}')",
+                (actor_id, match_id, key, f"Faction {faction_id}", faction_id, now, now))
+            row = connection.execute("SELECT actor_id FROM actors WHERE match_id=? AND stable_key=?",
+                                     (match_id, key)).fetchone()
+            if row is None:
+                raise ScopeViolation("actor_scope_mismatch")
+            return str(row["actor_id"])
+
     def upsert_actor(
         self,
         match_id: str,

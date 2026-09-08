@@ -767,6 +767,61 @@ def current_turn_intents(match_id: str, session_id: str, *, agent_id: str = "",
             "journal_head_hash": replayed["manifest"]["head_hash"]}
 
 
+def _resolve_memory_faction_refs(store, scope, record, observed_revision):
+    """Resolve public faction aliases using only this perspective's world cache.
+
+    Identity resolution never imports faction names or diplomatic knowledge from
+    the match-wide actor registry. The native guard has already been checked.
+    """
+    record = dict(record)
+    fields = ("asserted_by_actor_id", "about_actor_id", "actor_id")
+    refs = {record.get(field) for field in fields if isinstance(record.get(field), str)}
+    parties = record.get("parties")
+    if isinstance(parties, list):
+        refs.update(item.get("actor_id") for item in parties
+                    if isinstance(item, Mapping) and isinstance(item.get("actor_id"), str))
+    # Cached IDs created by this resolver must not bypass observed identity
+    # checks after a rewind or when reused by another perspective.
+    canonical_ids = {
+        "actor-" + hashlib.sha256(f"{scope.match_id}:faction:{number}".encode()).hexdigest()[:32]: f"faction-{number}"
+        for number in range(8)
+    }
+    cached_refs = {ref: canonical_ids[ref] for ref in refs if ref in canonical_ids}
+    refs = {ref for ref in refs if ref.startswith("faction-")} | set(cached_refs.values())
+    if not refs:
+        return record, {}
+    if any(not re.fullmatch(r"faction-[0-7]", ref) for ref in refs):
+        raise StoreError("actor_scope_mismatch")
+    timeline = store.active_timeline_id(scope)
+    params = (scope.match_id, scope.agent_id, scope.perspective_id, timeline)
+    with store._connect() as connection:
+        connection.execute("BEGIN")
+        head = connection.execute(
+            "SELECT action_revision FROM world_heads WHERE match_id=? AND agent_id=? "
+            "AND perspective_id=? AND timeline_id=?", params).fetchone()
+        if not head or str(head["action_revision"]) != str(observed_revision):
+            raise StoreError("memory_actor_world_observation_required")
+        for ref in refs:
+            known = connection.execute(
+                "SELECT 1 FROM world_objects WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND ("
+                "(object_kind='faction' AND object_ref=?) OR "
+                "(json_extract(payload_json,'$.fields.owner_ref.value')=? AND "
+                "json_extract(payload_json,'$.fields.owner_ref.epistemic_status') IN ('current','stale'))) LIMIT 1",
+                (*params, ref, ref)).fetchone()
+            if not known:
+                raise StoreError("actor_scope_mismatch")
+    resolved = {ref: store.ensure_faction_actor(scope.match_id, int(ref.split('-')[1])) for ref in sorted(refs)}
+    resolved.update({key: resolved[value] for key, value in cached_refs.items()})
+    for field in fields:
+        if isinstance(record.get(field), str) and record[field] in resolved:
+            record[field] = resolved[record[field]]
+    if isinstance(parties, list):
+        record['parties'] = [{**item, 'actor_id': resolved.get(item.get('actor_id'), item.get('actor_id'))}
+                             if isinstance(item, Mapping) else item for item in parties]
+    return record, resolved
+
+
 def write_platform_memory(
     action: str,
     match_id: str,
@@ -790,6 +845,7 @@ def write_platform_memory(
         store = _store()
         turn = snapshot.get("turn")
         year = snapshot.get("year")
+        record, actor_references = _resolve_memory_faction_refs(store, scope, record, observed_revision)
         if action in {"goal", "plan"}:
             from smacx_intent import validate_intent
             record = dict(record)
@@ -1021,6 +1077,7 @@ def write_platform_memory(
             "observed_year": year,
             "journal_event_id": journal_event["event_id"],
             "cognition_hygiene": hygiene,
+            "actor_references": actor_references,
             "persistence": {"stage": write_stage, "authority": "campaign_journal",
                             "next_context_source": "fresh_journal_working_state"},
         }
@@ -1048,6 +1105,13 @@ def write_platform_memory(
                     "Unknown, other-perspective and abandoned-timeline journal IDs are rejected. "
                     "A valid citation establishes provenance, not that the event supports your assertion. "
                     "Review the event's content; do not substitute an unrelated event merely to pass validation.",
+            }}
+        if write_stage == "not_started" and str(exc) in {"actor_scope_mismatch", "memory_actor_world_observation_required"}:
+            guidance = {"validation": {
+                "field": "record_json actor references",
+                "message": "Actor fields accept faction references from your observed world or scoped durable actor IDs. "
+                    "Do not guess unseen factions. Refresh smac_decision and world evidence if the projection is behind. "
+                    "A faction known only through observed ownership remains otherwise unidentified.",
             }}
         retry_policy = "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
         if write_stage == "not_started" and str(exc) in {
