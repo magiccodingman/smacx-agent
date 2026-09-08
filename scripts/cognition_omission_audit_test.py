@@ -31,6 +31,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert set(omissions.values())=={'status_filter','section_count_or_token_budget'}
     assert audit[2]['correlation']['journal_head_hash']==working['journal_head_hash']==before['manifest']['head_hash']
     selected=_cognition(working,token_budget=1_000_000,current_turn=1)
+    assert selected['evidence_semantics']['authority'] == \
+        'sovereign_interpretation_and_intent_not_current_mechanical_truth'
+    assert 'does not prove' in selected['evidence_semantics']['completion']
     runtime_audit=cognition_selection_audit(working,selected)
     assert runtime_audit['working_projection']['journal_head_hash']==audit[2]['correlation']['journal_head_hash']
     assert runtime_audit['working_projection']['scope']==working['scope']
@@ -51,5 +54,6 @@ with tempfile.TemporaryDirectory() as temporary:
     assert after['goals']==before['goals'] and after['manifest']['head_hash']==before['manifest']['head_hash']
 print(json.dumps({'passed':True,'canonical_source_records':131,'working_count_limit':100,
     'runtime_count_limit':12,'status_and_budget_omissions_accounted':True,
+    'cognition_evidence_boundary_delivered':True,
     'journal_unchanged_after_projection_and_reopen':True,
     'classification':'Production journal and runtime selection, controlled cognition; not actual provider delivery'}))

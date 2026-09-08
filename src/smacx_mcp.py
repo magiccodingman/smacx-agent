@@ -2612,15 +2612,17 @@ def smac_world(
 @mcp.tool(
     description=(
         "Acknowledge a processed batch from the current at-least-once attention lease. "
-        "Copy through_cursor from runtime context attention.through_cursor for that lease; "
-        "world observation_cursor and anchor_observation_cursor are different counters. "
+        "For the normal full delivered batch, pass only attention_lease_id from "
+        "attention.acknowledgement.tool_arguments and omit through_cursor. Use acknowledged_ids "
+        "only for an intentional partial acknowledgement. The diagnostic through_cursor remains "
+        "accepted for compatibility, but world observation cursors are different counters. "
         "Call only after genuinely considering those events. Acknowledgement records awareness, "
         "not mechanical resolution; blocking focus and incidents remain until resolved."
     )
 )
 def smac_attention_ack(
     attention_lease_id: str,
-    through_cursor: int,
+    through_cursor: int | None = None,
     acknowledged_ids: list[str] | None = None,
 ) -> dict:
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
@@ -3202,6 +3204,8 @@ def _smac_choices_once(
         frame["production_context"] = _production_catalog_context(result)
     if kind == "base_citizens":
         frame["citizen_context"] = _citizen_catalog_context(result, semantic_context, base_ref)
+    if kind == "unit_actions":
+        frame["unit_action_context"] = _unit_action_catalog_context(result, semantic_context)
     if not prepared:
         preparations = CHOICE_PREPARATIONS.begin(
             result, identity=identity, context=semantic_context, kind=kind,

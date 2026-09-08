@@ -40,3 +40,27 @@ survive the managed adapter while retaining conditional epistemic state. The
 same complete MinGW build covers the native additions. Controlled native
 comparison for population-one completion and installed provider delivery remain
 open; no exact completion timing is claimed.
+
+## Checkpoint 3 — attention and cognition integrity
+
+The random perspective-scoped attention lease ID now serves as the full-batch
+acknowledgement receipt. Runtime context supplies the exact minimal tool
+arguments, and the managed tool permits omitting `through_cursor`. Explicit IDs
+still support intentional partial acknowledgement, and the old cursor remains
+accepted for compatibility and diagnostics. The server does not clamp a guessed
+cursor or acknowledge an unseen batch.
+
+The attention expiry suite proves expired-response redelivery, immutable
+in-flight placement, newly queued critical delivery, invalid-ack no effect,
+receipt-only full acknowledgement and managed argument forwarding. Existing
+scope, response-completion, timeline and perspective checks remain authoritative.
+
+Runtime working cognition now labels beliefs as confidence-scored hypotheses and
+plan prose as intent whose narrative truth is not validated by `plan_health`.
+It explicitly requires observed effects before treating arrival or an accepted
+order as completion. `cognition_omission_audit_test.py` proves this boundary is
+present alongside the bounded canonical journal projection.
+
+These are deterministic storage/runtime tests. Exact provider delivery is part
+of the integrated checkpoint; no automatic strategy validator or hidden-state
+inference was introduced.
