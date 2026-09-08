@@ -47,6 +47,17 @@ def classify_health(match, runs, workers, incidents, now):
         # The authoritative supervisor owns stall thresholds and containment.
         # Do not implement a contradictory turn-duration detector here.
     if reasons: return 'unknown', sorted(set(reasons))
+    for run in runs:
+        if run.get('status') not in ACTIVE:
+            continue
+        admission = run.get('metadata', {}).get('semantic_telemetry', {}).get('session_admission', {})
+        if admission.get('run_id') != run.get('run_id'):
+            continue
+        if admission.get('phase') == 'waiting_session_lease':
+            observed = admission.get('observed_unix')
+            if type(observed) not in (int, float) or not 0 <= now - observed <= 120:
+                return 'unknown', ['session_admission_sample_stale']
+            return 'waiting', ['hermes_session_lease_wait']
     if any(r.get('status') in ACTIVE for r in runs): return 'observed_active', []
     return 'idle', ['no_active_sovereign_run']
 
@@ -159,6 +170,7 @@ class OperatorService:
         for run in runs[:32]:
             metadata = run.get('metadata', {})
             safe_runs.append({**{k: run.get(k) for k in ('run_id','status','desired_status','instance_id')},
+                'session_admission': metadata.get('semantic_telemetry', {}).get('session_admission'),
                 'observation': {k: metadata.get(k) for k in ('semantic_sample_unix','semantic_progress_unix',
                     'semantic_progress','semantic_telemetry_unix','semantic_baseline_pending','semantic_unavailable_reason',
                     'semantic_unavailable_samples','consecutive_clean_yields_without_progress')}})

@@ -114,6 +114,16 @@ with tempfile.TemporaryDirectory() as tmp:
         run={'status':'running','metadata':{'semantic_sample_unix':now,'semantic_progress_unix':now-10000}}
         # A long turn alone is not a deterministic stall.
         assert classify_health({},[run],[{'running':True,'health':'healthy'}],[],now)[0]=='observed_active'
+        run['run_id']='run-admission'
+        admission={'run_id':'run-admission','phase':'waiting_session_lease','observed_unix':now}
+        run['metadata']['semantic_telemetry']={'session_admission':admission}
+        assert classify_health({},[run],[],[],now)==('waiting',['hermes_session_lease_wait'])
+        admission['observed_unix']=now-121
+        assert classify_health({},[run],[],[],now)==('unknown',['session_admission_sample_stale'])
+        admission['phase']='session_admitted'
+        assert classify_health({},[run],[],[],now)[0]=='observed_active'
+        admission.update(run_id='other-run',phase='waiting_session_lease',observed_unix=now)
+        assert classify_health({},[run],[],[],now)[0]=='observed_active'
         run['metadata']['semantic_baseline_pending']=True
         assert classify_health({},[run],[{'running':True,'health':'healthy'}],[],now)==('unknown',['supervisor_usage_baseline_pending'])
         run['metadata'].pop('semantic_baseline_pending')

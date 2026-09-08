@@ -457,6 +457,7 @@ class HarnessManager:
                 f"SMACX_AGENT_MATCH_ID={run['match_id']}",
                 f"SMACX_AGENT_ID={run['agent_id']}",
                 f"SMACX_HARNESS_PROFILE_ID={run['harness_profile_id']}",
+                f"SMACX_HARNESS_RUN_ID={run['run_id']}",
                 f"SMACX_AGENT_SESSION_ID={run.get('native_session_id') or ''}",
                 f"SMACX_PERSPECTIVE_ID={runtime_metadata.get('perspective_id') or ''}",
                 f"SMACX_CONTEXT_LENGTH={runtime_metadata.get('context_length') or 65536}",
@@ -641,8 +642,15 @@ for path in paths:
         db.close()
         for key,value in zip(result,row): result[key]+=int(value or 0)
     except (sqlite3.Error,OSError): pass
+try:
+    with open('/data/diagnostics/session-admission.json') as stream:
+        admission=json.load(stream)
+    if admission.get('run_id') == RUN_ID:
+        result['session_admission']=admission
+except (OSError,ValueError,AttributeError): pass
 print(json.dumps(result,separators=(',',':')))
 '''
+        query = query.replace('RUN_ID', repr(str(run['run_id'])))
         identifier = self.docker.create_container(helper_name, {
             "Image": self.worker_manager.mcp_image,
             "Entrypoint": ["python3", "-c"],

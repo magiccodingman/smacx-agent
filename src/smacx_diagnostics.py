@@ -443,3 +443,26 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
 
     client_class.send = send
     client_class._smacx_wire_capture = True
+
+
+def record_session_admission(phase: str) -> None:
+    """Bounded, non-authoritative sovereign admission observation for operators."""
+    if phase not in {'waiting_session_lease', 'session_admitted'}:
+        return
+    run_id = os.environ.get('SMACX_HARNESS_RUN_ID', '')
+    if not _SAFE.fullmatch(run_id) or os.environ.get('SMACX_STRICT_SYSTEM_PROMPT') != '1' \
+            or os.environ.get('SMACX_SPECIALIST_STRICT_PROMPT') == '1':
+        return
+    root = os.environ.get('SMACX_DIAGNOSTICS_ROOT')
+    if not root:
+        return
+    value = {'run_id': run_id, 'phase': phase, 'observed_unix': time.time()}
+    try:
+        path = Path(root) / 'session-admission.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(f'.{os.getpid()}.tmp')
+        temporary.write_text(json.dumps(value))
+        temporary.replace(path)
+        record('session_admission', value, actor='sovereign')
+    except OSError:
+        pass  # Diagnostic failure never changes admission or lease ownership.

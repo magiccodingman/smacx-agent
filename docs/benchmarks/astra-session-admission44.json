@@ -1,0 +1,11 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "trigger": "Recovered Hermes waited approximately150 seconds for its previous durable lease while operator health reported observed_active.",
+  "change": "Pinned Hermes wait/admitted callbacks write one run-scoped diagnostic state file; existing read-only telemetry reads matching run; operator classifies fresh waiting and stale unknown. Specialist writers excluded.",
+  "validation": [
+    "session_admission_test.py passed",
+    "operator_contract_test.py passed including fresh wait/stale/other-run/admitted",
+    "control and pinned Hermes image build passed"
+  ],
+  "limits": "Live callback through telemetry/operator chain pending; lease authority, stall thresholds and recovery semantics unchanged."
+}
