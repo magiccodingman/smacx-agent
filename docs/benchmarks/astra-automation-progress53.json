@@ -1,0 +1,11 @@
+{
+  "incident_id": "incident-c3c15645508141f884d494e4eb1f7be6",
+  "turn": 53,
+  "observed": "Explicit activation cleared Former automation; owned_progress_digest remained 8:436154767840064505:2775315479765941537 before and after.",
+  "cause": "Native digest hashed order/auto subtype but omitted state bits used by automation and veh_wake.",
+  "repair": "Hash only ON_ALERT, EXPLORE and IN_TRANSPORT state bits, retaining foreign-state and unrelated-state exclusion.",
+  "validation": "Production C++ state-bit regression and native cross-build39/39 pass. Controlled native automation regression passes cancellation digest change, read stability, mode eligibility and stale replay rejection.",
+  "scope": "Do not relax stall thresholds or infer strategic progress from an order alone.",
+  "native_evidence_sha256": "0661d9994e4d45e6910e3c7bd7897a5c44c683608fefdc999bd9da6ee627ee5a",
+  "deployment": "pending"
+}

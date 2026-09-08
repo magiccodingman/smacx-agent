@@ -10536,6 +10536,8 @@ std::string semantic_owned_progress_digest() {
         mix(2); mix(semantic_vehicle_handle(i)); mix(veh.unit_id);
         mix(veh.x); mix(veh.y); mix(veh.cur_hitpoints()); mix(veh.moves_spent);
         mix(veh.order); mix(veh.order_auto_type);
+        // Automation can be cleared without changing ORDER_NONE/auto subtype.
+        mix(veh.state & (VSTATE_ON_ALERT | VSTATE_EXPLORE | VSTATE_IN_TRANSPORT));
         mix(veh.waypoint_count); mix(veh.waypoint_x[0]); mix(veh.waypoint_y[0]);
         finish();
     }

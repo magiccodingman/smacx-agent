@@ -19,7 +19,9 @@ struct BASE {
  int specialist_types[2]={0},governor_flags=0;
  unsigned char facilities_built[16]={0};
 };
+constexpr int VSTATE_ON_ALERT=0x200, VSTATE_EXPLORE=0x4000, VSTATE_IN_TRANSPORT=0x1;
 struct VEH {
+ int state=0;
  int faction_id=1,handle=1,unit_id=1,x=3,y=4,hp=10,moves_spent=0;
  int order=0,order_auto_type=0,waypoint_count=0,waypoint_x[1]={-1},waypoint_y[1]={-1};
  int cur_hitpoints() { return hp; }
@@ -51,6 +53,14 @@ int main() {
  Vehs[0].x=7;
  assert(baseline!=semantic_owned_progress_digest());
  Vehs[0].x=3;
+ assert(baseline==semantic_owned_progress_digest());
+ for (int flag : {VSTATE_ON_ALERT, VSTATE_EXPLORE, VSTATE_IN_TRANSPORT}) {
+  Vehs[0].state=flag;
+  assert(baseline!=semantic_owned_progress_digest());
+  Vehs[0].state=0;
+  assert(baseline==semantic_owned_progress_digest());
+ }
+ Vehs[0].state=8; // Unrelated state bits do not manufacture progress.
  assert(baseline==semantic_owned_progress_digest());
 }
 '''

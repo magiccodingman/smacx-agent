@@ -178,10 +178,16 @@ def main() -> int:
                              "choices": former_ordered_choices})
             return 10
 
+        automated_digest = bridge_request("semantic_snapshot")["snapshot"]["owned_progress_digest"]
+        assert bridge_request("semantic_snapshot")["snapshot"]["owned_progress_digest"] == automated_digest
         former_activated = command(
             former_ordered_choices, "activate_unit", unit_id=former_id,
         )
         emit("former_activated", former_activated)
+        activated_digest = bridge_request("semantic_snapshot")["snapshot"]["owned_progress_digest"]
+        assert activated_digest != automated_digest, "native automation cancellation was not counted"
+        assert bridge_request("semantic_snapshot")["snapshot"]["owned_progress_digest"] == activated_digest
+
         if not former_activated.get("ok") \
                 or former_activated.get("old_automation") != "auto_former_full" \
                 or former_activated.get("ready") is not True:
