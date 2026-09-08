@@ -79,5 +79,17 @@
       "harness": "sha256:ee5f6ed55f1eeb786856703135216522a75439cd4c148bef0b704bb6a910c327"
     },
     "packet_sha256": "d18c8d6cb6b4ca2458ce987a18babf5433207a5814d9ef861629a4ad36d9b7ab"
+  },
+  "merge_validation": {
+    "main_commit": "e4cac9a",
+    "main_pr": 62,
+    "conflict_resolution": "Preserved both operator acceptance and tile-occupancy coverage sections.",
+    "checks": [
+      "operator_cli_test.py passed",
+      "world_anchor_format_test.py passed",
+      "supply_pod_observation_contract_test.py passed",
+      "git diff --check passed"
+    ],
+    "deployment": "Not redeployed during conflict resolution; native evidence above refers to its recorded source commits."
   }
 }
