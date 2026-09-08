@@ -1060,10 +1060,10 @@ print(json.dumps(result,separators=(',',':')))
                     # forever, nor quarantine peers that are playing normally.
                     self.stop_run(str(run["run_id"]))
                     self.control.update_harness_run(str(run["run_id"]),
-                        desired_status="running", status="restarting", last_error="",
-                        metadata_update={"chat_wake_cursor": self._chat_wake_cursor(run)})
+                        desired_status="running", status="restarting", last_error="")
                     fresh_run = self.control.get_harness_run(str(run["run_id"]))
-                    self._sleep_until_event(fresh_run, progress)
+                    if not self._sleep_until_event(fresh_run, progress):
+                        self.start_run(str(run["run_id"]))
                     continue
                 stalled = bool(
                     progress.get("available") and previous_fingerprint

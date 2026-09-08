@@ -93,3 +93,23 @@ manager.reconcile_once()
 assert not manager.observed_running and control.run['metadata']['sleep']
 assert not control.incidents and not worker.quarantines
 print('PASS: active polling is bounded by sleep without quarantining the other player')
+
+# Chat arriving while a runaway waiting episode is stopped must get a new
+# communication invocation, not be marked seen and stranded in sleep.
+control, worker = FakeControl(), FakeWorkerManager()
+manager = WaitingManager(control, worker)
+manager.observed_running = True
+manager.chat_cursor = 42
+worker.progress.update(phase='wait', interaction_kind='waiting_for_turn', faction_id=2, current_faction_id=1)
+control.run['metadata'] = {'semantic_sample_unix':time.time()-61,
+ 'semantic_telemetry_unix':time.time()-61,'semantic_fingerprint':'turn-2',
+ 'semantic_progress_unix':time.time()-400,
+ 'semantic_baseline_telemetry':{'api_calls':0,'output_tokens':0}}
+control.get_harness_run = lambda _: copy.deepcopy(control.run)
+def stop_with_chat(_):
+    manager.observed_running = False
+    return control.update_harness_run(_, status='stopped',desired_status='stopped')
+manager.stop_run = stop_with_chat
+manager.reconcile_once()
+assert manager.start_count == 1 and control.run['metadata']['wake_reason']=='new_chat'
+print('PASS: new chat survives forced-suspension race')
