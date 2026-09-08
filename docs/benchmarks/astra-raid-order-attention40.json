@@ -77,5 +77,38 @@
     }
   ],
   "scope": "Exact request-only attention items in actual submitted provider body; not merely database presence. Raid values are event-time native observations, not endpoint production inference.",
-  "remaining": "Acknowledgement and subsequent tactical response pending; order-clearing cause remains unknown."
+  "remaining": "Raid/order notice delivery and acknowledgement verified. Separate current observations confirm two headquarters arrivals; not proof acknowledgement caused them. Scout3 clearing cause remains unknown; full-game strategy unverified.",
+  "acknowledgement": {
+    "all_three_acknowledged_unix": 1788857022.447917,
+    "source": "scoped attention records",
+    "scope": "acknowledgement does not itself prove tactical use"
+  },
+  "subsequent_owned_arrivals": [
+    {
+      "unit_ref": "own-unit-4",
+      "location_ref": "location-795",
+      "hp_evidence": {
+        "epistemic_status": "current",
+        "first_known_turn": 18,
+        "last_verified_turn": 41,
+        "provenance_ref": "observation-326",
+        "source": "owned_state",
+        "value": 10,
+        "world_revision": 10
+      }
+    },
+    {
+      "unit_ref": "own-unit-5",
+      "location_ref": "location-795",
+      "hp_evidence": {
+        "epistemic_status": "current",
+        "first_known_turn": 24,
+        "last_verified_turn": 41,
+        "provenance_ref": "observation-326",
+        "source": "owned_state",
+        "value": 10,
+        "world_revision": 10
+      }
+    }
+  ]
 }
