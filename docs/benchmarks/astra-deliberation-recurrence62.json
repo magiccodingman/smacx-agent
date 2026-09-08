@@ -57,5 +57,23 @@
     }
   ],
   "assessment": "Repeat aggregate no-progress stop during an in-flight request, after fresh decision and production lookup. Prompt guidance did not eliminate recurrence. No rejected native-action loop appears in this window. Native/collectors remain quarantined; no automatic retry.",
-  "next_repair_review": "Consider bounded current-request completion handling and explicit deliberation-budget feedback while preserving a hard nonrenewable no-progress limit; reads must not become native progress."
+  "next_repair_review": "Consider bounded current-request completion handling and explicit deliberation-budget feedback while preserving a hard nonrenewable no-progress limit; reads must not become native progress.",
+  "request_state_checkpoint": {
+    "implementation": "Bounded sovereign-only run/request/phase/start/observation marker, read by existing no-network telemetry helper; older completion cannot overwrite newer request.",
+    "states": [
+      "submitted",
+      "headers",
+      "completed",
+      "failed",
+      "closed_incomplete"
+    ],
+    "tests": [
+      "provider_request_state_test.py passed in Hermes image",
+      "provider_audit_contract_test.py passed in Hermes image",
+      "harness_continuation_contract_test.py passed on host"
+    ],
+    "host_httpx": "unavailable; transport tests run in actual Hermes dependency environment",
+    "watchdog_policy_changed": false,
+    "deployment_and_live_verification": "pending"
+  }
 }

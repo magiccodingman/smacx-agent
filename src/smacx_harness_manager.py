@@ -648,6 +648,12 @@ try:
     if admission.get('run_id') == RUN_ID:
         result['session_admission']=admission
 except (OSError,ValueError,AttributeError): pass
+try:
+    with open('/data/diagnostics/provider-request.json') as stream:
+        request=json.load(stream)
+    if request.get('run_id') == RUN_ID:
+        result['provider_request']=request
+except (OSError,ValueError,AttributeError): pass
 print(json.dumps(result,separators=(',',':')))
 '''
         query = query.replace('RUN_ID', repr(str(run['run_id'])))
