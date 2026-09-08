@@ -43,7 +43,7 @@
   "native_cross_build": "39 build steps succeeded",
   "limitations": [
     "Controlled native cases do not establish generated-pod or no-scattering rule coverage.",
-    "Sovereign readback pending: portal duplicate turn metric prevented restart after native recovery."
+    "Provider delivery verified; changed sovereign behavior and full-game acceptance remain pending."
   ],
   "live_readback": {
     "turn": 6,
@@ -53,5 +53,21 @@
     ],
     "epistemic_status": "current",
     "recovery_http_status": 200
+  },
+  "provider_readback": {
+    "request_recorded_unix": 1788828649.4469302,
+    "location_ref": "location-916",
+    "features": [
+      "vehicle"
+    ],
+    "epistemic_status": "current",
+    "first_decision_call": "success"
+  },
+  "recovery": {
+    "portal_metric_replay": "passed live restart",
+    "doctrine_recompile_http": 200,
+    "graph_rebuild": "completed",
+    "live_sovereign_processes": 1,
+    "active_incidents": 0
   }
 }
