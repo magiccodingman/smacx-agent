@@ -7,5 +7,13 @@
   "validation": "Production C++ state-bit regression and native cross-build39/39 pass. Controlled native automation regression passes cancellation digest change, read stability, mode eligibility and stale replay rejection.",
   "scope": "Do not relax stall thresholds or infer strategic progress from an order alone.",
   "native_evidence_sha256": "0661d9994e4d45e6910e3c7bd7897a5c44c683608fefdc999bd9da6ee627ee5a",
-  "deployment": "pending"
+  "deployment": {
+    "prepared_image_suffix": "c8036ab3a8bc",
+    "native_and_mcp": "healthy",
+    "graphiti_restore": "completed",
+    "profile_recompile_http": 200,
+    "live_sovereign_processes": 1,
+    "active_incidents": 0,
+    "live_supervisor_reset": "pending"
+  }
 }

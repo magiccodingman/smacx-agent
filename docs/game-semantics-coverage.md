@@ -985,3 +985,5 @@ Extended lease live acceptance: sovereign activation executed258.06s after catal
 Automation progress repair checkpoint: live explicit activation cleared automation without changing the owned digest. Digest omitted native alert/explore state bits. Selected automation/transport bits now contribute; production C++ contract passes relevant transitions and unrelated-bit exclusion. Native build, controlled comparison and deployment pending. Evidence: `astra-automation-progress53.json`.
 
 Automation digest controlled acceptance: isolated running-native regression passes Former automation cancellation digest change, repeated-read stability, eligible-mode restrictions and stale replay rejection. Native39/39 build passes. Deployment/live supervisor reset remain pending. Updated `astra-automation-progress53.json`.
+
+Automation digest deployment: supported paired recovery installed native c8036ab3a8bc; worker/MCP healthy, Graphiti restore completed, profile recompile200 and one sovereign process present without incidents. Live supervisor reset on a subsequent automation transition remains pending.
