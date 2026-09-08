@@ -1047,3 +1047,5 @@ Bounded drain policy checkpoint: matching pending request may finish within a fi
 Installed drain-policy checkpoint: runtime test caught missing explicit module packaging; Dockerfile corrected, rebuilt control is healthy, installed request-state and watchdog/reconciliation tests pass. Supported incident recovery is in progress. No live grace success is claimed.
 
 Live request-state chain verified62: current sovereign marker (headers phase) propagated through the normal supervisor telemetry sample with matching run/request IDs. Paired recovery, Graphiti completion, profile compilation and one live sovereign are confirmed. No drain is active yet; bounded grace and subsequent native effect remain unverified.
+
+Live automation-digest gate62: sovereign Activate unit clears Former automation (owned observation468), native and meaningful fingerprints change in the same session/turn, and normal supervisor progress timestamp advances2751→2903. This closes the pending live cancellation/progress-reset gate from turn53. Subsequent direct-control utility and provider drain activation remain pending. See `benchmarks/astra-automation-live62.json`.
