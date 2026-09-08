@@ -1,0 +1,32 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "choice_id": "choice-199d39855560463da9b9fc53595cdccf",
+  "decision_id": "decision-8dce1ca7a9e14a239ed3fa054b6d413f",
+  "selected_turn": 46,
+  "observed_turn": 47,
+  "production": {
+    "epistemic_status": "current",
+    "first_known_turn": 46,
+    "last_verified_turn": 47,
+    "provenance_ref": "observation-384",
+    "source": "owned_state",
+    "value": "Formers",
+    "world_revision": 11
+  },
+  "minerals": {
+    "epistemic_status": "current",
+    "first_known_turn": 47,
+    "last_verified_turn": 47,
+    "provenance_ref": "observation-384",
+    "source": "owned_state",
+    "value": {
+      "accumulated": 4,
+      "consumption": 3,
+      "intake": 4,
+      "surplus": 1,
+      "unit_support_cost": 3
+    },
+    "world_revision": 11
+  },
+  "limits": "Current native owned projection proves Formers selected and minerals4. Does not prove completion, terrain work, support sustainability or expansion. Production query warned conditionally that one additional supported unit leaves zero surplus."
+}
