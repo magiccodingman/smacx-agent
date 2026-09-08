@@ -12,8 +12,18 @@
     "world_model_contract_test": "passed"
   },
   "pending": [
-    "captured live object replay",
     "installed-image test",
     "live provider query acceptance"
-  ]
+  ],
+  "captured_live_replay": {
+    "objects": 4,
+    "page_tokens": [
+      458,
+      458,
+      458,
+      461
+    ],
+    "scope": "Force objects available in captured observation deltas; not a complete live-world reconstruction",
+    "no_skips_or_duplicates": true
+  }
 }
