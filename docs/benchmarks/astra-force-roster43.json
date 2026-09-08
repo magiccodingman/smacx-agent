@@ -11,7 +11,23 @@
     "invalid_mode": "roster rejected outside forces",
     "installed_image": "passed scripts-only test mount in rebuilt control image",
     "live_provider_query": "pending",
-    "deployment": "worker/MCP healthy; Graphiti completed 1788860509.3682082; one sovereign restarted"
+    "deployment": "worker/MCP healthy; Graphiti completed 1788860509.3682082; one sovereign restarted",
+    "live_provider_schema": {
+      "request": {
+        "attention_lease_id": "attention-lease-b2bb7daaa9fb4ec383aca4c13a551d9f",
+        "episode_id": "episode-694b6aace689abcc1bccfae3c792428e",
+        "request_id": "d87e310d64a74007905328fc9a1b4029",
+        "runtime_context_sha256": "2380e020e9ecfc43bf16ed6352b58d03c26ea101065f3a0f661486fb1479f24f"
+      },
+      "recorded_unix": 1788860558.2308264,
+      "detail_enum": [
+        "compact",
+        "standard",
+        "deep",
+        "roster"
+      ],
+      "roster_guidance_present": true
+    }
   },
   "limits": [
     "No claim of solved deliberation stall or competent strategy.",
