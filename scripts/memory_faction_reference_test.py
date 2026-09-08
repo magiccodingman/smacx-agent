@@ -61,5 +61,33 @@ with tempfile.TemporaryDirectory() as tmp:
         with store._connect() as db:
             assert db.execute('select display_name from actors where actor_id=?',(mapping['faction-7'],)).fetchone()[0]=='Previously identified'
         assert 'Previously identified' not in json.dumps(write('claim',record))
+        # A removed contact must not erase its observed faction identity.
+        project('unknown')
+        observation=journal.append(scope,'observation.world_batch',{'deltas':[{
+          'object_ref':'contact-old','change':'added','current':{'kind':'foreign_contact',
+          'fields':{'owner_ref':{'value':'faction-0','epistemic_status':'current'}}}}]})
+        journal.append(scope,'observation.world_batch',{'deltas':[{
+          'object_ref':'contact-old','change':'removed'}]})
+        native_record={**record,'about_actor_id':'faction-0'}
+        historical=write('claim',native_record)
+        assert historical['ok'] and historical['record']['status']=='unverified',historical
+        state=journal.replay(scope)
+        assert 'contact-old' not in state['world_objects']
+        assert len(state['observed_faction_identities'])<=8
+        # Restarted replay derives the same identity from canonical events.
+        fresh=CampaignJournal(root/'campaigns')
+        assert fresh.replay(scope)['observed_faction_identities']==state['observed_faction_identities']
+        # A rewind before observation cannot inherit later identity knowledge.
+        journal.fork_timeline(scope,'timeline-before-native',native_save_sha256='a'*64,
+                              from_event_hash=observation['previous_hash'])
+        assert 'faction-0' not in journal.replay(scope,'timeline-before-native')['observed_faction_identities']
+        other=MemoryScope(scope.match_id,scope.agent_id,'perspective-other')
+        assert not journal.replay(other)['observed_faction_identities']
+        # Cached replay must not authorize tampered canonical history.
+        path=next(journal.perspective_root(scope).joinpath('events').glob('*-'+observation['event_id']+'.json'))
+        damaged=json.loads(path.read_text());damaged['payload']['forged']=True
+        path.write_text(json.dumps(damaged))
+        rejected=write('claim',native_record)
+        assert not rejected['ok'] and rejected['error'].startswith('journal_'),rejected
 print(json.dumps({'passed':True,'claim_relationship_commitment':True,'unknown_and_unseen_rejected':True,
                   'stale_identity_not_promoted':True,'fresh_projection_required':True,'registry_names_not_leaked_or_overwritten':True}))

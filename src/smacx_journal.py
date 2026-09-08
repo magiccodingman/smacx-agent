@@ -679,7 +679,7 @@ class CampaignJournal:
             "recent_actions": [], "lifecycle": [], "world_objects": {},
             "project_reports": {}, "plan_dependency_health": {},
             "world_observations": [], "world_continuity": "complete",
-            "world_observation_cursor": 0,
+            "world_observation_cursor": 0, "observed_faction_identities": {},
         }
 
     def _materialize_timeline(
@@ -789,6 +789,20 @@ class CampaignJournal:
                     continue
                 object_ref = str(change_payload.get("object_ref") or "")
                 change = str(change_payload.get("change") or "")
+                # Identity knowledge survives object removal. This is bounded
+                # to the eight native faction references and carries no claim
+                # that a contact, ownership, or diplomatic state is current.
+                current = change_payload.get("current")
+                if isinstance(current, Mapping):
+                    owner = (current.get("fields") or {}).get("owner_ref", {})
+                    refs = []
+                    if current.get("kind") == "faction":
+                        refs.append(object_ref)
+                    if isinstance(owner, Mapping) and owner.get("epistemic_status") in {"current", "stale"}:
+                        refs.append(owner.get("value"))
+                    for ref in refs:
+                        if isinstance(ref, str) and re.fullmatch(r"faction-[0-7]", ref):
+                            state.setdefault("observed_faction_identities", {})[ref] = event["event_id"]
                 if object_ref and change == "removed":
                     state["world_objects"].pop(object_ref, None)
                 elif object_ref and isinstance(change_payload.get("current"), Mapping):

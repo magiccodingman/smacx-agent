@@ -748,3 +748,7 @@ Roster live query gate verified: sovereign requested `forces`/`roster`; all five
 ### Live hurry/support comparison at turn 44
 
 Sovereign hurried Scout Patrol for 13 credits (receipt: 145 credits, 10 stored minerals). Next committed owned observation 353 at turn 44 counts six units and headquarters mineral surplus 0, population 2, stored minerals 1, still producing Scout Patrol. This matches the earlier conditional +1 support/zero net-surplus warning in this scenario; no general mechanics-equivalence or strategic-adequacy claim. Individual production event/new-unit identity not independently captured here. See `docs/benchmarks/astra-hurry43-effect44.json`.
+
+### Historical actor identity, turn 44
+
+The sovereign claim about native pressure failed `actor_scope_mismatch` after ownership-bearing contacts disappeared. Parent-prefix observation `journal-b7d6f4ac049a4c53868bff90a3678bf2` records faction-0 at turn 43. Journal replay now retains a bounded identity-to-evidence index across removal. The guarded resolver validates canonical evidence before historical fallback, preserving fresh projection checks and unverified claim status. Removal/restart/rewind/perspective/tamper fixtures and canonical citation regression pass. Installed deployment, recovery, and autonomous write remain pending; see `benchmarks/astra-historical-identity44.json`.

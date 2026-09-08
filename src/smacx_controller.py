@@ -768,7 +768,7 @@ def current_turn_intents(match_id: str, session_id: str, *, agent_id: str = "",
 
 
 def _resolve_memory_faction_refs(store, scope, record, observed_revision):
-    """Resolve public faction aliases using only this perspective's world cache.
+    """Resolve aliases from this perspective's present or journaled observations.
 
     Identity resolution never imports faction names or diplomatic knowledge from
     the match-wide actor registry. The native guard has already been checked.
@@ -810,7 +810,15 @@ def _resolve_memory_faction_refs(store, scope, record, observed_revision):
                 "json_extract(payload_json,'$.fields.owner_ref.epistemic_status') IN ('current','stale'))) LIMIT 1",
                 (*params, ref, ref)).fetchone()
             if not known:
-                raise StoreError("actor_scope_mismatch")
+                journal = _journal()
+                identities = journal.replay(scope, timeline, sections=("observed_faction_identities",)).get(
+                    "observed_faction_identities", {})
+                evidence_id = identities.get(ref)
+                if not evidence_id:
+                    raise StoreError("actor_scope_mismatch")
+                # Verify canonical ancestry/cutoff and integrity even if the
+                # replay cache already contains a historical identity.
+                journal.evidence_event(scope, evidence_id)
     resolved = {ref: store.ensure_faction_actor(scope.match_id, int(ref.split('-')[1])) for ref in sorted(refs)}
     resolved.update({key: resolved[value] for key, value in cached_refs.items()})
     for field in fields:

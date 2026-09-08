@@ -1,0 +1,22 @@
+{
+  "status": "implemented_fixture_verified_live_pending",
+  "turn": 44,
+  "issue": "Memory actor alias rejected after last ownership-bearing contact disappeared.",
+  "canonical_evidence": {
+    "event_id": "journal-b7d6f4ac049a4c53868bff90a3678bf2",
+    "turn": 43,
+    "faction_ref": "faction-0",
+    "timeline": "timeline-restore-e6086d6765fa468fbd3f22de",
+    "active_child": "timeline-restore-68177434da434472846f3070"
+  },
+  "repair": "Journal replay retains at most eight observed faction reference to event ID mappings; memory fallback verifies canonical evidence ancestry and integrity. No contacts or current ownership are restored.",
+  "validation": [
+    "memory_faction_reference_test.py: pass, including removed contact, restart, rewind, other perspective, tamper",
+    "journal_memory_evidence_test.py: pass"
+  ],
+  "pending": [
+    "installed image validation",
+    "redeploy and bridge-verified recovery",
+    "live sovereign historical identity write"
+  ]
+}
