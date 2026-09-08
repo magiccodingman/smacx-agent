@@ -56,7 +56,7 @@ COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
 COPY src/smacx_journal.py src/smacx_context_policy.py src/smacx_choice_preparation.py /opt/smacx/src/
 COPY src/smacx_diagnostics.py src/smacx_diagnostic_summary.py \
     src/smacx_campaign_diagnostics.py src/smacx_intent.py /opt/smacx/src/
-COPY src/smacx_operator.py src/smacx_ops.py src/smacx_former_attention.py /opt/smacx/src/
+COPY src/smacx_operator.py src/smacx_ops.py src/smacx_former_attention.py src/smacx_order_attention.py /opt/smacx/src/
 COPY src/smacx_attention.py src/smacx_spatial_scope.py src/smacx_milestones.py src/smacx_plan_health.py src/smacx_counterfactual.py src/smacx_entitlements.py src/smacx_mechanics.py \
     src/smacx_observation.py src/smacx_temporal_episodes.py src/smacx_regions.py src/smacx_runtime_context.py \
     src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \
@@ -79,7 +79,7 @@ ENV PYTHONPATH=/opt/smacx/src \
     SMACX_CONTROL_PORT=8081
 
 WORKDIR /opt/smacx
-RUN /opt/smacx/mcp-venv/bin/python -c "import smacx_mcp, smacx_campaign_diagnostics, smacx_intent, smacx_operator, smacx_former_attention"
+RUN /opt/smacx/mcp-venv/bin/python -c "import smacx_mcp, smacx_campaign_diagnostics, smacx_intent, smacx_operator, smacx_former_attention, smacx_order_attention"
 VOLUME ["/var/lib/smacx"]
 EXPOSE 8081
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=4 \

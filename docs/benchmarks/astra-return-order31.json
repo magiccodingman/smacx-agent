@@ -167,13 +167,24 @@
             "notices": 0
           }
         ]
+      },
+      "installed_image": {
+        "passed": [
+          "cleared",
+          "pending",
+          "spent",
+          "movement",
+          "superseded",
+          "epoch",
+          "crash"
+        ]
       }
     },
     "pending": [
-      "installed-image validation",
       "live provider delivery",
       "native cancellation cause",
       "full-game acceptance"
-    ]
+    ],
+    "packaging": "Explicit Docker module copy and build import check added; installed test mounts only test scripts, not host source."
   }
 }
