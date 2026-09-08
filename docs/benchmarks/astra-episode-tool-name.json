@@ -1,0 +1,10 @@
+{
+  "observed": "Two resumed sovereign episodes attempted smac_decision and were rejected before execution; exposed name is mcp__smacx__smac_decision. One corrected itself on a later provider call.",
+  "repair": "Use exact exposed name in default initial and continuation episode messages and generated resume messages.",
+  "validation": "harness_continuation_contract_test.py passed",
+  "limits": [
+    "No alias execution added",
+    "No claim that model will never invent tool names",
+    "Live future-episode uptake pending"
+  ]
+}

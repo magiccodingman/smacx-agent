@@ -368,14 +368,14 @@ class HarnessManager:
     def default_initial_prompt() -> str:
         return (
             "[SMACX_EPISODE_BOUNDARY kind=start] Re-anchor with the authoritative "
-            "smac_decision state, then continue autonomous play."
+            "mcp__smacx__smac_decision state, then continue autonomous play."
         )
 
     @staticmethod
     def default_continuation_prompt() -> str:
         return (
             "[SMACX_EPISODE_BOUNDARY kind=resume] Re-anchor with the newest authoritative "
-            "smac_decision state. Continue autonomous play until the next real boundary; "
+            "mcp__smacx__smac_decision state. Continue autonomous play until the next real boundary; "
             "produce a TURN HANDOFF only when a semantic result requires it."
         )
 
@@ -523,7 +523,7 @@ class HarnessManager:
         else:
             prompt = (
                 f"[SMACX_EPISODE_BOUNDARY kind=resume sequence={invocation_count + 1}] "
-                "Re-anchor with the newest authoritative smac_decision state. Continue "
+                "Re-anchor with the newest authoritative mcp__smacx__smac_decision state. Continue "
                 "autonomous play until the next real boundary; produce a TURN HANDOFF only "
                 "when a semantic result requires it."
             )

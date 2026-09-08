@@ -583,3 +583,7 @@ Landmark clarification deployment: the turn-2 diagnostic runtime-context stream 
 The turn-2 stall trace showed a successful deep-detail world retry followed by an empty interaction query. The empty frame incorrectly required execution. Empty unprepared catalogs now request a fresh decision, and interaction guidance distinguishes active dialogs from tile exploration. Managed-action adapter tests pass, including existing staged preparation and nonempty families. Evidence: `docs/benchmarks/astra-empty-interaction.json`. Deployment and model uptake remain pending; no watchdog threshold changed.
 
 Empty-choice repair deployment: supported capability recovery completed at turn 2, with one sovereign and no active incident. Its first fresh decision frame returned legal unit actions. This verifies resumption; the empty-catalog guidance has not yet been exercised by the live sovereign.
+
+### Episode tool-name guidance
+
+Repeated live episode starts used unqualified `smac_decision`, which the dispatcher correctly rejected before execution. Episode messages now name the exposed `mcp__smacx__smac_decision` tool. Continuation contracts pass; dispatch validation remains unchanged. Evidence: `docs/benchmarks/astra-episode-tool-name.json`. Live uptake in a future episode remains pending.
