@@ -33,5 +33,14 @@
     "energy_credits": 181
   },
   "query_preserved_state": true,
-  "limits": "Controlled running native hurry/switch case plus managed adapter proof; broader switching categories and actual sovereign delivery remain pending."
+  "limits": "Controlled running native hurry/switch case plus managed adapter proof; broader switching categories and actual sovereign delivery remain pending.",
+  "deployment": {
+    "installed_adapter_test": "passed",
+    "preview_guard_contract": "passed",
+    "runtime_refresh_recovery": "completed",
+    "doctrine_recompile": "HTTP200",
+    "health": "observed_active",
+    "turn": 53,
+    "active_sovereign_runs": 1
+  }
 }
