@@ -9,8 +9,9 @@
     "forty_unit_pagination": "all 40 unique references, no omission, every page within 2048 tokens",
     "epistemic": "stale HP retained; large stale evidence retrievable through deep query",
     "invalid_mode": "roster rejected outside forces",
-    "installed_image": "pending",
-    "live_provider_query": "pending"
+    "installed_image": "passed scripts-only test mount in rebuilt control image",
+    "live_provider_query": "pending",
+    "deployment": "worker/MCP healthy; Graphiti completed 1788860509.3682082; one sovereign restarted"
   },
   "limits": [
     "No claim of solved deliberation stall or competent strategy.",

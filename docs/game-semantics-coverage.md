@@ -877,3 +877,5 @@ Expiry checkpoint deployment: installed control regression passed without a sour
 ### Force roster checkpoint
 
 Add forces-only `detail=roster` with a 2,048-token ceiling and evidence-preserving compact rows. Standard/deep responses point to this composition view, while their existing full evidence remains available. Five-unit fixture fits one 942-token page; 40-unit pagination has no omissions/duplicates and respects each page ceiling. Stale HP and deep retained evidence verified. Installed/live acceptance pending in `docs/benchmarks/astra-force-roster43.json`; this is not proof the no-progress incident or strategic weakness is resolved.
+
+Roster deployment evidence: installed-image regression passed with scripts-only mount. Own worker/MCP recovered healthy, Graphiti rebuilt at 1788860509.3682082, and one sovereign restarted. Actual provider roster guidance and sovereign use remain pending; no full-game or stall-resolution claim.
