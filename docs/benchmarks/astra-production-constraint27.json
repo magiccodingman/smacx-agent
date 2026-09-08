@@ -23,7 +23,8 @@
     "installed_image_test": "passed"
   },
   "pending": [
-    "post-effect checkpoint recovery and sustained/full-game acceptance"
+    "live successor episode progression",
+    "sustained/full-game acceptance"
   ],
   "deployment": {
     "recovered_turn": 27,
@@ -150,5 +151,24 @@
     },
     "world_revision": 10,
     "interpretation": "Accumulated minerals increased 1 to 3 across turn27 to28, matching the observed +2 surplus. No recovery cycle was performed for this check."
+  },
+  "recovery28": {
+    "supported_retry_after_update": true,
+    "incidents_cleared": true,
+    "minerals": {
+      "epistemic_status": "current",
+      "first_known_turn": 28,
+      "last_verified_turn": 28,
+      "provenance_ref": "observation-183",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 3,
+        "consumption": 2,
+        "intake": 4,
+        "surplus": 2,
+        "unit_support_cost": 2
+      },
+      "world_revision": 10
+    }
   }
 }

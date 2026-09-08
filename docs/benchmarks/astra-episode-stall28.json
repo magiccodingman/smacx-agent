@@ -15,8 +15,26 @@
     "harness_continuation_contract_test": "passed; advancing successor not charged prior episode, nonadvancing baseline retained, existing stall/quarantine/error-restart contracts pass"
   },
   "pending": [
-    "deployment",
-    "live recovery",
-    "successor progression"
-  ]
+    "live successor episode progression",
+    "sustained/full-game acceptance"
+  ],
+  "recovery28": {
+    "supported_retry_after_update": true,
+    "incidents_cleared": true,
+    "minerals": {
+      "epistemic_status": "current",
+      "first_known_turn": 28,
+      "last_verified_turn": 28,
+      "provenance_ref": "observation-183",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 3,
+        "consumption": 2,
+        "intake": 4,
+        "surplus": 2,
+        "unit_support_cost": 2
+      },
+      "world_revision": 10
+    }
+  }
 }
