@@ -14,7 +14,27 @@
   },
   "limits": [
     "Projection fixtures prove deterministic context behavior, not native movement mechanics.",
-    "Actual provider delivery and improved sovereign behavior pending; guarded recovery requested.",
+    "Actual provider submission verified; improved sovereign decisions and sustained turn progression remain pending.",
     "Watchdog limits remain unchanged; a trustworthy complete game remains unverified."
-  ]
+  ],
+  "provider_delivery": {
+    "recorded_unix": 1788854134.6181726,
+    "correlation": {
+      "attention_lease_id": "attention-lease-c9ada72335e448d0891227b5c1b25885",
+      "episode_id": "episode-f7bee9b6ed7294554b27ebb3434df599",
+      "request_id": "a739972c1060489bbc8af394dca7aced",
+      "runtime_context_sha256": "49a17775d42e1c169ffc4201f02d6c078f62105e9aa6b444a1341b75af5cf97c"
+    },
+    "focused_unit_distance": 6,
+    "observed_contact_distance_to_owned_base": 2,
+    "relation_count": 2,
+    "artifact": "runtime/astra/evidence-spatial38-provider/diagnostics.zip",
+    "scope": "actual submitted provider body, not merely assembled context"
+  },
+  "recovery": {
+    "graphiti_completed_unix": 1788854108.3225608,
+    "turn": 38,
+    "native_and_mcp": "healthy",
+    "sovereign_processes": 1
+  }
 }
