@@ -15,5 +15,11 @@
   "tests": [
     "attention_communication_contract_test: pass",
     "attention_lease_expiry_test including managed_refresh_guidance: pass in MCP container"
-  ]
+  ],
+  "deployment": {
+    "verified_recovery_turn": 25,
+    "installed_mcp_guidance_verified": true,
+    "live_sovereign_processes": 1,
+    "health_reasons": []
+  }
 }
