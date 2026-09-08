@@ -1,0 +1,28 @@
+{
+  "status": "recovery_cutoff_verified",
+  "checkpoint": {
+    "event_id": "journal-d16ff9f17f9d4138b642621be0a26157",
+    "sequence": 44,
+    "turn": 44,
+    "recorded_unix": 1788861158.320321
+  },
+  "excluded_later_plan": {
+    "event_id": "journal-3c9437168584456ab639b6e20bf2c7d6",
+    "sequence": 48,
+    "recorded_unix": 1788861325.0012062,
+    "plan_key": "pivot-colony-defense"
+  },
+  "restored_plan": {
+    "plan_key": "frontier-sweep",
+    "revision": 5
+  },
+  "provider": {
+    "recorded_unix": 1788862171.8405323,
+    "attention_lease_id": "attention-lease-4e20ea02acf64ada997c2da6c9464e40",
+    "episode_id": "episode-c2210ae357460642d72c51d81a9d8a2d",
+    "request_id": "72033300cf374c3cb750e26dc9689e75",
+    "runtime_context_sha256": "29493f7b6d3f55300a16716c39843fcc260bfc95576aa2b0c07594f56b0f4935"
+  },
+  "finding": "Provider received checkpoint-consistent earlier plan. Later colony pivot was correctly excluded by verified recovery cutoff, not silently lost within a preserved timeline. Repeated repairs can repeat pre-pivot strategy; this run cannot isolate model strategic competence from recovery interventions.",
+  "pending": "Autonomous renewed pivot and actual colony production/expansion."
+}
