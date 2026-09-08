@@ -600,3 +600,18 @@ Episode-name follow-up: live readback exposed a portal `initial_prompt` override
 | Hermes operation | Concrete CLI/schema recipe + tool-wrapper format + native scheduler commands | Installed Hermes syntax inspected; no scheduler/wakeup claim until a real job attempt is verified. |
 
 [Acceptance evidence](benchmarks/operator-readiness.json) and [operator quickstart](operator-quickstart.md).
+### Supply-pod observation repair (deployment pending)
+
+Current visible tile and movement exports consult native `goody_at` instead of treating the raw pod bit as collectible availability. Fog retains prior observed features and their verification turn as stale, including observed pod absence. Hidden squares never trigger a live pod query.
+
+Evidence: `docs/benchmarks/astra-supply-pod-observation.json`; seven compiled serializer cases, six projector transitions, the geographic contract, native cross-build, and five controlled running-game comparisons pass. Removed-pod and monolith cases agree with native availability. Generated-pod and no-scattering rule comparisons remain unproven in the running game. Provider readback, deployment, and resumed gameplay remain pending; this capability is not marked complete.
+
+Supply-pod deployment readback: supported native recovery completed at turn 6; location-916 now reports current `["vehicle"]`, with the consumed pod absent. Sovereign uptake remains pending.
+
+### Recovery turn-metric replay
+
+Live rollback from turn 7 to 6 exposed duplicate `(MatchId, AgentId, Turn)` insertion, aborting portal supervision before sovereign restart. The supervisor now retains the existing turn metric when replaying a turn. A real SQLite regression covers pending and persisted duplicates, original counter preservation, and subsequent-turn commit. All 84 portal tests pass. No database rebuild or schema weakening is required. Live portal deployment/recovery verification remains pending. Per-attempt accounting remains in causal diagnostics; this repair does not claim turn-summary attribution across recovery is exact.
+
+Portal replay deployment: recovery now passes the duplicate-metric seam and reaches profile preparation. The engine-compatibility guard then correctly rejected the newly built bridge because its reviewed-source manifest had not been updated. Reviewed changes affect observation serialization and an explicitly gated fixture, not game rules; the manifest is updated explicitly. Doctrine integration contracts pass, including rejected unreviewed engines and explicit recompilation. Runtime registration/recompilation is still pending.
+
+Supply-pod/recovery checkpoint: the refreshed worker and MCP are healthy, Graphiti restore completed, explicit reviewed doctrine recompilation returned HTTP 200, and the portal restarted one sovereign without active incidents. Its first qualified decision call succeeded. The captured provider request at 1788828649.4469302 contains current location-916 features `["vehicle"]` and separate Unity landmark evidence. Thus observed → represented → provider-delivered is verified for this consumed pod. Sovereign adaptation and full-game acceptance remain pending; no victory or strategic-quality claim follows from restart.

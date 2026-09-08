@@ -8861,7 +8861,14 @@ std::string test_pact_port_fixture_response() {
     return out.str();
 }
 
-std::string item_names(uint32_t items) {
+std::string item_names(uint32_t items, int observed_pod = -1) {
+    // Live callers supply the game's guarded goody_at result. A remembered
+    // item word must never trigger a lookup against the current hidden map.
+    if (observed_pod >= 0) {
+        items = (items & ~BIT_SUPPLY_POD) | (observed_pod ? BIT_SUPPLY_POD : 0);
+    } else if (items & (BIT_SUPPLY_REMOVE | BIT_MONOLITH)) {
+        items &= ~BIT_SUPPLY_POD;
+    }
     struct NamedBit { uint32_t bit; const char* name; };
     const NamedBit named[] = {
         {BIT_BASE_IN_TILE, "base"}, {BIT_VEH_IN_TILE, "vehicle"}, {BIT_ROAD, "road"},
@@ -8886,6 +8893,44 @@ std::string item_names(uint32_t items) {
     }
     out << ']';
     return out.str();
+}
+
+std::string test_supply_pod_fixture_response() {
+    char test_mode[8] = {}, acceptance_mode[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", test_mode, sizeof(test_mode))
+    || strcmp(test_mode, "1")
+    || !GetEnvironmentVariableA("SMACX_ACCEPTANCE_SUPPLY_POD", acceptance_mode,
+        sizeof(acceptance_mode)) || strcmp(acceptance_mode, "1")) {
+        return error_response("test_mode_disabled", "The supply pod fixture is disabled.");
+    }
+    if (!game_active()) return error_response("not_in_game", "Start a game first.");
+    // Test-only, synchronous UI-thread comparison against the running executable.
+    // Restore the square before emitting each result; no game action is dispatched.
+    const int faction_id = *CurrentPlayerFaction;
+    std::ostringstream out;
+    out << "{\"ok\":true,\"cases\":[";
+    int count = 0;
+    for (int y = 0; y < *MapAreaY; ++y) {
+        for (int x = y & 1; x < *MapAreaX; x += 2) {
+            MAP* sq = mapsq(x, y);
+            if (!sq || !sq->is_visible(faction_id)) continue;
+            const uint32_t original = sq->items;
+            const uint32_t candidates[] = {original, BIT_SUPPLY_POD,
+                BIT_SUPPLY_POD | BIT_SUPPLY_REMOVE, BIT_SUPPLY_POD | BIT_MONOLITH, 0};
+            for (int i = 0; i < 5; ++i) {
+                sq->items = candidates[i];
+                const int available = goody_at(x, y);
+                sq->items = original;
+                const std::string features = item_names(candidates[i], available);
+                if (count++) out << ',';
+                out << "{\"case\":" << i << ",\"native_available\":" << available
+                    << ",\"features\":" << features << '}';
+            }
+            out << "],\"restored\":" << (sq->items == original ? "true" : "false") << '}';
+            return out.str();
+        }
+    }
+    return error_response("no_visible_square", "No visible square for fixture.");
 }
 
 std::string visible_landmark_records(MAP* sq, int x, int y) {
@@ -8963,7 +9008,7 @@ std::string tiles_response(const std::string& request) {
             if (emitted++) out << ',';
             out << "{\"tile_id\":" << semantic_tile_id(wx, y)
                 << ",\"visible_now\":" << (visible ? "true" : "false")
-                << ",\"features\":" << item_names(remembered_items);
+                << ",\"features\":" << item_names(remembered_items, visible ? goody_at(wx, y) : -1);
             if (visible) {
                 out << ",\"altitude\":" << sq->alt_level()
                     << ",\"is_ocean\":" << (sq->alt_level() < ALT_SHORE_LINE ? "true" : "false")
@@ -9578,7 +9623,7 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
             radius_comma = true;
             ++known_radius_count;
             out << "{\"location_ref\":\"location-" << semantic_tile_id(rx, ry)
-                << "\",\"features\":" << item_names(radius_sq->items)
+                << "\",\"features\":" << item_names(radius_sq->items, goody_at(rx, ry))
                 << ",\"yields\":{\"nutrients\":"
                 << mod_crop_yield(faction_id, -1, rx, ry, 0)
                 << ",\"minerals\":" << mod_mine_yield(faction_id, -1, rx, ry, 0)
@@ -10124,7 +10169,7 @@ std::string perspective_world_page_response(const std::string& request) {
             const uint32_t remembered = visible ? sq->items : mapped ? sq->visible_items[faction_id - 1] : 0;
             out << "{\"tile_id\":" << index << ",\"x\":" << x << ",\"y\":" << y
                 << ",\"visible_now\":" << (visible ? "true" : "false");
-            if (mapped || visible) out << ",\"features\":" << item_names(remembered);
+            if (mapped || visible) out << ",\"features\":" << item_names(remembered, visible ? goody_at(x, y) : -1);
             if (!visible && survey) {
                 out << ",\"entitled_fields\":{\"terrain\":{\"channel\":\"unity_survey\",\"value\":"
                     << json_string(is_ocean(sq) ? "ocean" : "land")
@@ -11638,7 +11683,7 @@ std::string multiplayer_unit_choices_response(int faction_id, int veh_id) {
             }
             out
                 << ",\"is_ocean\":" << (is_ocean(sq) ? "true" : "false")
-                << ",\"features\":" << item_names(sq->items) << '}';
+                << ",\"features\":" << item_names(sq->items, goody_at(x, y)) << '}';
         }
         if (comma) out << ',';
         comma = true;
@@ -11968,7 +12013,7 @@ int target_tile_id = -1, int target_unit_id = -1) {
             << ",\"visible_now\":" << (visible ? "true" : "false");
         if (visible) {
             out << ",\"is_ocean\":" << (is_ocean(sq) ? "true" : "false")
-                << ",\"features\":" << item_names(sq->items)
+                << ",\"features\":" << item_names(sq->items, goody_at(x, y))
                 << ",\"may_initiate_combat_or_contact\":"
                 << (visible_non_pact_unit ? "true" : "false")
                 << ",\"boards_transport\":"
@@ -19242,6 +19287,9 @@ std::string execute_request(const std::string& request) {
     }
     if (op == "test_lan_ai_contact_fixture") {
         return test_lan_ai_contact_fixture_response(request);
+    }
+    if (op == "test_supply_pod_fixture") {
+        return test_supply_pod_fixture_response();
     }
     if (op == "test_airdrop_legality_fixture") {
         return test_airdrop_legality_fixture_response();
