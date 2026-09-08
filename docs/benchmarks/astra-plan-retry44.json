@@ -1,0 +1,21 @@
+{
+  "recorded_unix": 1788862610.92625,
+  "correlation": {
+    "attention_lease_id": "attention-lease-41bcc583e1404682a3f5618b826f9fa9",
+    "episode_id": "episode-c2210ae357460642d72c51d81a9d8a2d",
+    "request_id": "6f603d9586f04c908b986b934977c363",
+    "runtime_context_sha256": "c562af7455a7a83e8accd979a1fda573a59aaea17fee6c32adb583abf7d6475a"
+  },
+  "plan_id": "plan-e3e66f852e084a56b5667d0d773279c9",
+  "revision": 7,
+  "target_refs": [
+    "location-673"
+  ],
+  "status": "live_retry_and_next_request_verified",
+  "journal_event_id": "journal-ae55270c150f4f5f973afd5fae9cb541",
+  "sequence": "Stale pre-move memory revision rejected before persistence; sovereign requested fresh decision, retried successfully, and next provider context contained revision 7.",
+  "limitations": [
+    "Not evidence of historical faction alias fallback: this write is a plan.",
+    "Does not prove eventual expansion or survival of post-checkpoint writes through rollback."
+  ]
+}
