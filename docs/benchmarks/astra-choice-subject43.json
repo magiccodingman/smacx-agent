@@ -1,0 +1,19 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "checkpoint": "Semantic selected-subject receipts",
+  "evidence": {
+    "response_unix": 1788857896.1874757,
+    "observation": "Sovereign struggled to reconstruct which Scout received successive Return to base orders; executed_choice retained only label and ID.",
+    "private_capture": "runtime/astra/evidence-turn42-end/diagnostics.zip"
+  },
+  "repair": "Cache bounded public unit/base/target references after binding catalog-level selectors; include in execution receipts for initial, rebased and conflict paths. No native selectors or arbitrary command arguments exposed.",
+  "validation": {
+    "opaque_choice_execution_test": "passed with mounted source; explicit scoped unit reference, unmapped-selector omission, unchanged dispatch and single-use contracts",
+    "installed_image": "pending",
+    "live_provider_delivery": "pending"
+  },
+  "limits": [
+    "Receipt identifies selection, not completed arrival or current unit state.",
+    "No causal claim that this resolves all sovereign confusion or strategic weakness."
+  ]
+}

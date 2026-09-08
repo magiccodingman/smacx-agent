@@ -857,3 +857,7 @@ Turn40 attention acknowledgement is persisted for both raid notices and Scout3's
 | Nearby hostile contact attention | Current Mind Worm at location-955 represented in actual provider request and attention acknowledged; `docs/benchmarks/astra-strategy42.json` | Adequacy of defense remains sovereign strategy, not proven by acknowledgement |
 | Turn boundary and context attribution | Native handoff turn 42/year 2142, followed by TURN HANDOFF; runtime year was null, not the sovereign-inferred 2141 | Broader modal acceptance remains open |
 | Expansion and spatial reasoning | Live trace exposes one base/five Scouts/continued Scout production and unsupported ID-based reasoning | Strategic competence remains unverified; no completion claim |
+
+### Selected-subject receipt repair at turn 43
+
+Turn-42 provider reasoning exposed ambiguity across repeated Return to base receipts: selected unit references were absent from the execution summary. Cache only scoped semantic subject/target references and repeat them in execution receipts; preserve native authority, single-use choices and outcome semantics. The regression proves catalog-level selector binding and unmapped native-selector omission. Installed-image and actual provider delivery remain pending in `docs/benchmarks/astra-choice-subject43.json`; selection does not prove arrival. Own match paused with verified containment before deployment.

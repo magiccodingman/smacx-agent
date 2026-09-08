@@ -75,6 +75,22 @@ def main() -> int:
                 or payload.get("expected_revision") != "r1":
             raise AssertionError(f"server-owned payload was incomplete: {calls[-1]}")
 
+        # A catalog-level unit selector must survive in the semantic receipt.
+        # Native arguments and selectors absent from the scoped map must not leak.
+        for native_id, expected in ((7, "own-unit-seven"), (8, None)):
+            receipt_id, offered = smacx_mcp._cache_decision_choices(
+                {"match_id": "receipt-test", "session_id": "session-test", "revision": "r2"},
+                [{"command": "return_to_base"}], choice_kind="unit_actions",
+                choice_arguments={"unit_id": native_id},
+                semantic_context={"reverse_units": {7: "own-unit-seven"}},
+            )
+            receipt_result = smacx_mcp.smac_execute_choice(receipt_id, offered[0]["choice_id"])
+            assert receipt_result.get("ok"), receipt_result
+            receipt = receipt_result["executed_choice"]
+            assert receipt.get("own_unit_ref") == expected, receipt
+            assert set(receipt) <= {"choice_id", "label", "own_unit_ref"}, receipt
+            assert calls[-2][1]["unit_id"] == native_id, calls[-2]
+
         repeated = smacx_mcp.smac_execute_choice(decision_id, str(public["choice_id"]))
         if repeated.get("error", {}).get("code") != "consumed_decision":
             raise AssertionError(f"decision replay was not rejected: {repeated}")

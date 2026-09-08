@@ -2124,6 +2124,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
     public: list[dict] = []
     private: dict[str, dict] = {}
     labels: dict[str, str] = {}
+    receipt_subjects: dict[str, dict] = {}
     raw_items = bind_ballot_choices(choices) if isinstance(choices, list) else []
     compact: list[dict] = []
     advisories = _decision_advisories(raw_items, semantic_context=semantic_context)
@@ -2210,6 +2211,15 @@ def _cache_decision_choices(identity: dict, choices: object, *,
         compact.append(dict(shown))
         labels[choice_id] = label
         private[choice_id] = bound
+        # Retain only scoped public selectors, never raw native command arguments.
+        # Response-level selectors were bound after the displayed catalog was built.
+        semantic_bound = _semanticize_choice(bound, semantic_context)
+        receipt_subjects[choice_id] = {
+            key: semantic_bound[key] for key in
+            ("own_unit_ref", "base_ref", "target_location_ref", "contact_ref",
+             "target_base_ref", "target_unit_ref")
+            if isinstance(semantic_bound.get(key), str)
+        }
     with DECISION_LOCK:
         expired = [key for key, value in DECISION_CACHE.items()
                    if now - float(value.get("created_monotonic", 0)) > DECISION_TTL_SECONDS]
@@ -2237,6 +2247,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "choices": private,
             "choice_labels": labels,
+            "receipt_subjects": receipt_subjects,
             "advisories": advisories,
             "information": (_decision_information(raw_items, semantic_context)
                             if catalog_information is None else catalog_information),
@@ -3728,6 +3739,8 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         decision["consumed"] = True
         identity = dict(decision.get("identity") or {})
         choice_label = str(decision.get("choice_labels", {}).get(choice_id) or "Selected choice")
+        selected_receipt = {"choice_id": choice_id, "label": choice_label,
+                            **decision.get("receipt_subjects", {}).get(choice_id, {})}
 
     from smacx_diagnostics import record as diagnostic_record, INVOCATION
     diagnostic_record("choice_selected", {"choice": choice, "label": choice_label,
@@ -3787,7 +3800,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             return {
                 "ok": False,
                 "error": {"code": "repetition_circuit_open", "message": incident["message"]},
-                "executed_choice": {"choice_id": choice_id, "label": choice_label},
+                "executed_choice": dict(selected_receipt),
                 "incident": incident,
                 "required_next": {"stop_after": True,
                                   "reason": "The incident was automatically reported."},
@@ -3806,7 +3819,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             **result,
             "decision_id": decision_id,
             "choice_id": choice_id,
-            "executed_choice": {"choice_id": choice_id, "label": choice_label},
+            "executed_choice": dict(selected_receipt),
         }
         response.pop("command", None)
         if choice.get("command") in {"create_unit_design", "retire_unit_design", "upgrade_prototype"}:
@@ -3913,7 +3926,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                     **rebased,
                     "decision_id": decision_id,
                     "choice_id": choice_id,
-                    "executed_choice": {"choice_id": choice_id, "label": choice_label},
+                    "executed_choice": dict(selected_receipt),
                     "guard_revalidated": True,
                     "previous_revision": identity.get("revision"),
                     "executed_revision": refreshed_identity.get("revision"),
@@ -3968,7 +3981,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         **result,
         "decision_id": decision_id,
         "choice_id": choice_id,
-        "executed_choice": {"choice_id": choice_id, "label": choice_label},
+        "executed_choice": dict(selected_receipt),
         "error": {
             "code": "decision_conflict",
             "message": "The selected action could not be atomically rebased. Obtain one fresh decision; do not retry this ID.",

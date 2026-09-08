@@ -718,3 +718,7 @@ Live218 monitoring: no repeated context-fetch failure;217→218 handoff is deliv
 ### Turn-42 strategic attribution and threat delivery audit
 
 Actual provider request `706488db609f4f0cb3fb8357e22b0476` contains current Mind Worm evidence at location-955, subsequently acknowledged. Native handoff advances to turn 42/year 2142. The apparent year mismatch is not reproduced: the runtime anchor year is null; the sovereign supplied 2141 in reasoning. One base, five Scouts and continued Scout production still fail to establish competent expansion. Location-ID arithmetic and unsupported stacking assumptions remain model-behavior findings, not verified native failures. See `docs/benchmarks/astra-strategy42.json`; this checkpoint does not close strategic or full-game acceptance.
+
+### Selected-subject receipt repair at turn 43
+
+Turn-42 provider reasoning exposed ambiguity across repeated Return to base receipts: selected unit references were absent from the execution summary. Cache only scoped semantic subject/target references and repeat them in execution receipts; preserve native authority, single-use choices and outcome semantics. The regression proves catalog-level selector binding and unmapped native-selector omission. Installed-image and actual provider delivery remain pending in `docs/benchmarks/astra-choice-subject43.json`; selection does not prove arrival. Own match paused with verified containment before deployment.
