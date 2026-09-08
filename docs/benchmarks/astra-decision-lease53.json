@@ -10,5 +10,13 @@
     "counterfactual_choice_contract_test: scope/revision/TTL/consumption pass",
     "stale_opaque_rebase_test: pass"
   ],
-  "acceptance": "Source contracts verified; installed image and live recovery pending. Full-game acceptance remains open."
+  "acceptance": "Installed contracts and paired recovery verified; delayed live choice execution and full-game acceptance remain open.",
+  "deployment": {
+    "installed_opaque_contract": "pass",
+    "paired_native_recovery": "verified turn53",
+    "graphiti_rebuild": "completed without error",
+    "profile_recompile_http": 200,
+    "live_sovereign_processes": 1,
+    "active_incidents": 0
+  }
 }
