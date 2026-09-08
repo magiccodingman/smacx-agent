@@ -1,0 +1,29 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "checkpoint": "turn44 workforce conversion after recovery",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "timeline_id": "timeline-restore-79922c89145444709f7c8160",
+  "decision_id": "decision-1b3207e851fd40eda1fc803123da9517",
+  "choice_id": "choice-d0b451fa17e747eba4e918f27bc739fb",
+  "base_ref": "base-location-795",
+  "observed_effect": {
+    "provenance": "observation-356",
+    "location-876_worked": false,
+    "specialists": [
+      {
+        "citizen_id": 1,
+        "name": "Doctor"
+      }
+    ],
+    "nutrient_surplus": 0,
+    "mineral_surplus": 0
+  },
+  "provider_delivery": {
+    "request_id": "b1b1d557e96a471c82cb16c40d975b6e",
+    "recorded_unix": 1788865187.3430183,
+    "tool_call_id": "chatcmpl-tool-9c873b131811b5c7",
+    "runtime_context_sha256": "0687cde3f4eaff5a8fde9c7a757928cbe32f9d511611044285bf854f14f0d6e2"
+  },
+  "archive_sha256": "01fc49dce241fc60c803cffa6b6a8e5b1f6bdc6b82a0a507c39fbd0d78d9d565",
+  "limits": "Only conversion and delivery verified; reassignment to productive tile, surplus improvement, autonomous disband and strategic expansion remain pending."
+}

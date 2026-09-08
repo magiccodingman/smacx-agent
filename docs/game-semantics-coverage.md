@@ -917,3 +917,5 @@ Recovery correctly failed closed with `doctrine_unreviewed_engine_build`: the re
 Disband doctrine deployment follow-up: explicit profile reassembly succeeded after isolated control/harness rebuild; sovereign run `run-8d3e4974514240bfb43b9f66e8233607` started on healthy recovered native session at turn 44. This closes the assembly blocker, not autonomous disband or full-game acceptance.
 
 Doctrine deployment prevention: control image builds now run the existing engine fingerprint check against a read-only build-context mount. Successful image build and an isolated altered-source rejection were verified. Registration remains an explicit review operation; no runtime or build auto-approval was introduced.
+
+Turn-44 workforce checkpoint: sovereign conversion of the worker on location-876 is verified by current observation-356 (tile unworked, one Doctor). The next provider request b1b1d557e96a471c82cb16c40d975b6e contains the execution tool receipt and updated base projection. Mineral surplus remains zero: this proves the intermediate conversion, not completed productive reassignment. Evidence: `docs/benchmarks/astra-workforce44.json`.
