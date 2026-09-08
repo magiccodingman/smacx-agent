@@ -50,5 +50,16 @@ provider reasoning settings, fair-play and journal authority are unchanged.
 
 Main-stack rollout uses explicit `doctrine-aligned` worker/control/portal image
 references, retaining the previous expansion harness and LAN HTTPS overrides.
-Post-deployment verification is recorded after rollout. No replacement user
-campaign is started; the owner will create the next game.
+Control and portal are healthy after rollout. Read-back confirms worker
+`smacx-agent-worker:doctrine-aligned`, MCP/control
+`smacx-agent-control:doctrine-aligned`, and unchanged harness
+`smacx-agent-harness:expansion-review`. The deployed image pair passes the
+artifact probe, localhost health returns 200 and LAN HTTP still redirects to
+HTTPS. Authenticated read-back confirms the failed campaign remains completed.
+The isolated validation worker/volumes and its prepared image were cleaned up.
+No replacement user campaign is started; the owner will create the next game.
+
+Local deployment appends `runtime/astra/main-doctrine.override.yaml` after the
+expansion and LAN HTTPS overrides in the Astra checkout. All persisted gameplay
+and portal data remain on the existing volumes. Other installations were not
+changed. There was no DB reset or prompt recompilation override.
