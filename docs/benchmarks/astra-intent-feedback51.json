@@ -1,0 +1,8 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "turn": 51,
+  "finding": "Sovereign goal write supplied trigger as string persistent_goal; rejected before persistence with no field-level guidance.",
+  "repair": "Rejected goal trigger and plan timing report expected object shape, supported horizons and explicit retry guidance; no coercion or automatic write.",
+  "validation": "memory_status_feedback_test.py passed in container; invalid metadata preserves canonical state and explicit corrected goal/plan writes succeed.",
+  "limits": "Live repaired-response delivery and sovereign retry pending. Former at location-836 retains automation but no active terraform task; terrain-work acceptance remains open."
+}

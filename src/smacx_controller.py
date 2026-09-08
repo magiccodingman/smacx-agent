@@ -1132,6 +1132,18 @@ def write_platform_memory(
                     "Do not guess unseen factions. Refresh smac_decision and world evidence if the projection is behind. "
                     "A faction known only through observed ownership remains otherwise unidentified.",
             }}
+        if write_stage == "not_started" and str(exc) == "invalid_intent_metadata" and action in {"goal", "plan"}:
+            from smacx_intent import HORIZONS
+            field = "trigger" if action == "goal" else "timing"
+            guidance = {"memory_write_committed": False, "validation": {
+                "field": "record_json." + field,
+                "expected_type": "object",
+                "allowed_intent_horizons": sorted(HORIZONS),
+                "example": {field: {"intent_horizon": "persistent_goal"}},
+                "message": "Put intent_horizon inside this metadata object, not directly in a string. "
+                    "Choose the horizon that matches your intended commitment; preserve the remaining record fields. "
+                    "No write started. Retry explicitly with a current observation guard.",
+            }}
         retry_policy = "Inspect canonical working state before retrying if a write began; an error does not prove nothing committed."
         if write_stage == "not_started" and str(exc) in {
                 "stale_memory_observation", "missing_memory_observation_guard"}:
