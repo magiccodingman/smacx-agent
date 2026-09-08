@@ -51,6 +51,22 @@ def _public_object(item: Mapping[str, Any], *, include_fields: bool = True) -> d
     return provider_safe(result)
 
 
+def _compact_force_object(item: Mapping[str, Any]) -> dict[str, Any]:
+    result = _public_object(item, include_fields=False)
+    fields = item.get("fields", {})
+    # Keep evidence envelopes intact; never promote remembered fields to
+    # current facts to save space. Full records remain subject-queryable.
+    selected = {}
+    for key in ("name", "hp", "moves_remaining", "order_name"):
+        field = fields.get(key)
+        if isinstance(field, Mapping) and estimate_tokens(field) <= 70:
+            selected[key] = field
+    result["fields"] = selected
+    result["omitted_field_count"] = len(fields) - len(selected)
+    result["detail_query"] = {"mode": "forces", "subject_refs": [item.get("object_ref")], "detail": "deep"}
+    return provider_safe(result)
+
+
 class WorldService:
     """Read-only facade. It calculates facts and never chooses strategy."""
 
@@ -991,6 +1007,8 @@ class WorldService:
                     objects, topology, subjects,
                 )
                 result["items"] = [_public_object(item) for item in selected]
+            elif mode == "forces" and detail == "compact":
+                result["items"] = [_compact_force_object(item) for item in selected]
             elif mode == "intel":
                 topology = self._topology(projection)
                 turn_state = objects.get("world-turn", {})

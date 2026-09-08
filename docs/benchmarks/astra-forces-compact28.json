@@ -1,0 +1,19 @@
+{
+  "turn": 28,
+  "query": {
+    "mode": "forces",
+    "detail": "compact"
+  },
+  "observed_error": "single_world_item_exceeds_budget",
+  "packet_sha256": "9350ce60736deaf011982202c07cee288c5f2668e13bad45e8a06a192b1d18d1",
+  "repair": "Compact forces uses identity and bounded name/hp/movement/order evidence envelopes, explicit omitted-field count and subject-specific deep detail query. Full standard/deep representation is unchanged.",
+  "tests": {
+    "forces_compact_budget_test": "passed all fixture force pagination without skips/duplicates, 512 token bound and deep stale evidence retrieval",
+    "world_model_contract_test": "passed"
+  },
+  "pending": [
+    "captured live object replay",
+    "installed-image test",
+    "live provider query acceptance"
+  ]
+}
