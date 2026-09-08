@@ -94,5 +94,45 @@
       "no_positive_mineral_surplus_count": 0,
       "review": "Use smac_choices kind=base_citizens or production with base_ref to review workforce and production options. Unit focus does not prevent base management; review before the final ready unit ends the turn."
     }
-  }
+  },
+  "native_reassignment_receipts": [
+    {
+      "recorded_unix": 1788842040.343494,
+      "operation": "semantic_command",
+      "arguments": {
+        "command": "convert_worker_to_specialist",
+        "base_id": 0,
+        "citizen_id": 1,
+        "specialist_index": -1,
+        "tile_index": 10,
+        "expected_revision": "12344281990547376520"
+      },
+      "result": {
+        "base_id": 0,
+        "command": "convert_worker_to_specialist",
+        "ok": true,
+        "specialist_total": 1,
+        "worked_tiles_mask": 3
+      }
+    },
+    {
+      "recorded_unix": 1788842131.3858504,
+      "operation": "semantic_command",
+      "arguments": {
+        "command": "assign_specialist_to_tile",
+        "base_id": 0,
+        "citizen_id": -1,
+        "specialist_index": 0,
+        "tile_index": 9,
+        "expected_revision": "10354049224802023152"
+      },
+      "result": {
+        "base_id": 0,
+        "command": "assign_specialist_to_tile",
+        "ok": true,
+        "specialist_total": 0,
+        "worked_tiles_mask": 515
+      }
+    }
+  ]
 }
