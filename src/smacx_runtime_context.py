@@ -14,6 +14,7 @@ from typing import Any, Callable, Mapping
 
 from smacx_attention import AttentionService
 from smacx_store import MemoryScope
+from smacx_topology import MapShape
 from smacx_world import WorldService
 from smacx_world_model import estimate_tokens
 from smacx_world_types import canonical_json, content_hash
@@ -127,6 +128,82 @@ def _force_summary(projection: Mapping[str, Any]) -> dict[str, Any]:
                              "scope": "current owned Former roles and task evidence; orders do not prove completion or ETA"},
             "unit_names": bounded(designs), "support_home_base_not_defense_assignment": bounded(home_bases),
             "missing_or_noncurrent_fields": unknown}
+
+
+def _spatial_context(projection: Mapping[str, Any], focus: Mapping[str, Any]) -> dict[str, Any]:
+    """Bounded geometry from scoped evidence, never from semantic ID arithmetic."""
+    objects = {item["object_ref"]: item for item in projection.get("objects", ())}
+    result = {
+        "world_revision": projection.get("world_revision"), "relations": [],
+        "meaning": "Geometric square distance only: not a route, movement cost, base radius, threat ETA or guaranteed arrival. Stale endpoints describe last observed positions.",
+        "query": {"tool": "smac_world", "mode": "relation",
+                  "origin_ref": "<unit/contact/base ref>", "target_ref": "<base/location ref>"},
+        "route_review": "Use smac_world mode=route with origin_ref set to the owned unit ref and target_ref set to the destination for movement planning; geometric proximity alone does not establish reachability.",
+    }
+    # Require explicit observed shape. Sparse known squares cannot establish wrap
+    # or dimensions, and deriving them would silently turn absence into geometry.
+    map_state = next((item for item in objects.values() if item.get("kind") == "map_state"), {})
+    fields = map_state.get("fields", {})
+    if any(fields.get(key, {}).get("epistemic_status") != "current"
+           for key in ("width", "height", "horizontal_wrap")):
+        return {**result, "unavailable_reason": "current_map_shape_unavailable"}
+    width, height, wrap = (_field(map_state, key) for key in ("width", "height", "horizontal_wrap"))
+    if type(width) is not int or type(height) is not int or type(wrap) is not bool \
+            or width < 2 or width % 2 or height < 1:
+        return {**result, "unavailable_reason": "invalid_observed_map_shape"}
+    shape = MapShape(width, height, wrap)
+
+    def endpoint(item):
+        if item.get("status") not in {"active", "stale", "lost"}:
+            return None
+        item_fields = item.get("fields", {})
+        evidence = item_fields.get("location_ref", item_fields.get("owner_ref", {}))
+        epistemic = evidence.get("epistemic_status")
+        if epistemic not in {"current", "stale"}:
+            return None
+        if item.get("status") in {"stale", "lost"}:
+            epistemic = "stale"
+        location = objects.get(item.get("location_ref"), {})
+        metadata = location.get("metadata", {})
+        x, y = metadata.get("native_x"), metadata.get("native_y")
+        if location.get("kind") != "location" or type(x) is not int or type(y) is not int:
+            return None
+        position = shape.normalize((x, y))
+        if position is None:
+            return None
+        return position, {"object_ref": item["object_ref"], "location_ref": item["location_ref"],
+                          "epistemic_status": epistemic,
+                          "provenance_ref": evidence.get("provenance_ref"),
+                          "last_verified_turn": evidence.get("last_verified_turn")}
+
+    bases = [(item, endpoint(item)) for item in objects.values()
+             if item.get("kind") == "base" and item.get("status") == "active"
+             and item.get("fields", {}).get("owner_ref", {}).get("source") == "owned_state"
+             and item.get("fields", {}).get("owner_ref", {}).get("epistemic_status") == "current"]
+    bases = [(item, data) for item, data in bases if data is not None]
+    focus_ref = focus.get("unit", {}).get("own_unit_ref")
+    contacts = sorted((item for item in objects.values()
+                       if item.get("kind") == "foreign_contact" and endpoint(item) is not None),
+                      key=lambda item: (item.get("status") != "active", item["object_ref"]))
+    # Explicit sample, not a claim to enumerate the nearest or most dangerous
+    # contacts. Avoid an all-contacts by all-bases product on fragmented Huge maps.
+    subjects = ([objects[focus_ref]] if focus_ref in objects else []) + contacts[:4]
+    result["contact_sample"] = {"included": min(4, len(contacts)), "omitted": max(0, len(contacts) - 4),
+                                "selection": "current before stale, then stable ref; not a threat ranking"}
+    for item in subjects:
+        origin = endpoint(item)
+        if origin is None:
+            continue
+        nearest = sorted(((shape.distance(origin[0], data[0]), base["object_ref"], data)
+                          for base, data in bases), key=lambda row: (row[0], row[1]))[:2]
+        for distance, _, target in nearest:
+            result["relations"].append({"origin": origin[1], "target": target[1],
+                                        "geometric_distance": distance,
+                                        "bearing": shape.bearing(origin[0], target[0]),
+                                        "epistemic_status": "stale" if "stale" in
+                                        (origin[1]["epistemic_status"], target[1]["epistemic_status"]) else "current"})
+    result["owned_bases_with_known_geometry"] = len(bases)
+    return result
 
 
 def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
@@ -520,6 +597,7 @@ class RuntimeContextAssembler:
             "world": {},
             "focus": focus,
             "force_summary": _force_summary(projection),
+            "spatial_context": _spatial_context(projection, focus),
             **({"current_turn_intent_review": intent_review} if intent_review.get("total_pending") else {}),
             "attention": attention_context,
             "working_cognition": cognition,
@@ -596,6 +674,7 @@ class RuntimeContextAssembler:
             "deltas": estimate_tokens(payload["world"]["net_deltas"]),
             "focus": estimate_tokens(payload["focus"]),
             "force_summary": estimate_tokens(payload["force_summary"]),
+            "spatial_context": estimate_tokens(payload["spatial_context"]),
             "intent_review": estimate_tokens(payload.get("current_turn_intent_review", {})),
             "attention": estimate_tokens(payload["attention"]),
             "cognition": estimate_tokens(cognition),

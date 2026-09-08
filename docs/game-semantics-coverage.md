@@ -799,3 +799,9 @@ Ecology. This establishes an economic decision concern beyond tool discovery,
 not an all-model causal attribution or successful economic-unit execution. See
 `docs/benchmarks/astra-production-strategy37.json`; recovery confounding and
 full-game strategic acceptance remain open.
+
+### Turn-38 bounded spatial context checkpoint
+
+The captured turn-38 stall contained repeated map-shape and distance guesses from opaque location IDs despite existing doctrine. Request-only context now supplies bounded geometric relations from the scoped projection: focused unit plus at most four observed contacts, each to two nearest owned bases. Selection and omissions are explicit; contact sampling is not a danger ranking. Explicit current map dimensions are required, stale endpoints stay stale, unknown endpoints are omitted, and coordinates remain private. Geometry does not establish movement cost, base radius, threat ETA, route legality or arrival.
+
+Acceptance chain: observed stall → represented scoped positions → calculated bounded geometry → runtime assembly **fixture verified**. `runtime_spatial_context_test.py` passes wrapped/flat, stale/unknown, coordinate privacy and 10,000-contact/1,000-base bounds (10 relations, 1,169 conservative tokens). `runtime_context_contract_test.py` passes, including Huge runtime budget (26,727/32,768). Installed/provider delivery and autonomous decision improvement remain **pending**; this is not a completed strategic-competence capability. Evidence: `docs/benchmarks/astra-spatial-context38.json`. Watchdog containment remains unchanged.
