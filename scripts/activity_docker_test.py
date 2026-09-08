@@ -18,7 +18,7 @@ import os
 from smacx_diagnostics import DiagnosticWriter
 w=DiagnosticWriter(Path('/data/diagnostics'),'match-docker-test','sovereign')
 w.emit('provider_request_submitted',{'body':{'model':'test','messages':[{'content':'private'}]}},correlation={'request_id':'one'})
-w.emit('provider_activity_delta',{'chunks':[{'choices':[{'delta':{'content':'visible'}}]}]},correlation={'request_id':'one'})
+w.emit('provider_activity_delta',{'chunks':[{'choices':[{'delta':{'content':'visible'+'x'*40000}}]}]},correlation={'request_id':'one'})
 for root,dirs,files in os.walk('/data'):
  os.chown(root,10000,10000)
  for name in files:os.chown(os.path.join(root,name),10000,10000)
@@ -35,6 +35,7 @@ for root,dirs,files in os.walk('/data'):
         get_harness_runtime_spec=lambda _: {'data_volume':volume})
     page=manager.activity('match-docker-test','agent-docker-test')
     assert len(page['events'])==2 and 'private' not in str(page)
+    assert 'visible'+'x'*40000 in str(page), 'large Docker log response was truncated'
     assert not manager.activity('match-docker-test','agent-docker-test',page['cursor'])['events']
     assert not manager.activity('match-docker-test','other-agent')['events']
     print('PASS: installed read-only owned Docker helper, stopped-run history, cursor resume and seat scope')
