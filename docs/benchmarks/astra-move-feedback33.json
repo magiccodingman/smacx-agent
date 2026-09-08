@@ -1,0 +1,25 @@
+{
+  "scope": "Unsuccessful arrival remains explicit in immediate next provider request",
+  "receipt_unix": 1788849077.1290786,
+  "next_request_unix": 1788849077.6653316,
+  "exact_receipt_delivered": true,
+  "execution": {
+    "action_id": 7,
+    "command": "move_unit",
+    "movement_observation": {
+      "meaning": "Completed means the native attempt resolved, not necessarily arrival. Refresh the decision; an unreported movement failure reason remains unknown.",
+      "reported_position_changed": false,
+      "requested_target_reported": false,
+      "scope": "Native resolution receipt, not a guarantee of current unit state."
+    },
+    "native_call_attempted": true,
+    "native_result": 1,
+    "observed_location_ref": "location-1157",
+    "origin_location_ref": "location-1157",
+    "resolution": "native_move_resolved",
+    "status": "completed",
+    "target_location_ref": "location-1158"
+  },
+  "packet_sha256": "9081e85a940b3c971944b7ffae71d852904155190e6a510257cd414c5c1bad69",
+  "interpretation": "Native attempt completed but target was not reached. Receipt reports unchanged location and unknown reason; no assertion of arrival."
+}

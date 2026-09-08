@@ -709,3 +709,5 @@ Controlled running-native raid replay passes from the retained turn31 autosave i
 Raid deployment validation: installed control image passes event/publication/attention tests without mounted host source. Worker DLL SHA256 cb58b9776fdb33f89b9aba4f804f045c1672997bd6b934c471de04fee440bc2c matches the controlled native replay exactly. Supported checkpoint recovery is in progress; provider receipt remains unverified.
 
 Raid deployment recovered turn32 with a replay-matched prepared game DLL. The doctrine gate correctly withheld startup for the changed source hash; observation-only native changes were reviewed, the manifest registered, adapter contracts passed and explicit profile recompilation returned200. Sovereign provider delivery remains pending.
+
+Live turn33 failed-arrival feedback: the unchanged-location native move receipt reached the immediate next provider request exactly, including requested_target_reported=false and unknown failure reason. This verifies delivery, not arrival or native rejection cause. Evidence: `docs/benchmarks/astra-move-feedback33.json`.
