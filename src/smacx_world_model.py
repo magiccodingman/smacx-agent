@@ -261,8 +261,18 @@ class PerspectiveProjector:
                 feature_values.add("rocky")
             elif rockiness == 1:
                 feature_values.add("rolling")
-            features = frozenset(feature_values)
             prior_location = self._prior_objects.get(ref, {})
+            prior_features = prior_location.get("fields", {}).get("features", {}) \
+                if isinstance(prior_location, Mapping) else {}
+            # Native remembered item bits cannot encode every generated pod.
+            # Preserve the last observed feature set under fog, including a
+            # verified absence, until current vision can replace it. Never
+            # reconstruct collectible availability from the hidden live map.
+            retain_features = (not current and isinstance(prior_features, Mapping)
+                               and isinstance(prior_features.get("value"), list))
+            if retain_features:
+                feature_values = set(prior_features["value"])
+            features = frozenset(feature_values)
             prior_terrain = prior_location.get("fields", {}).get("terrain", {}) \
                 if isinstance(prior_location, Mapping) else {}
             observed_terrain = tile.get("terrain")
@@ -282,6 +292,13 @@ class PerspectiveProjector:
                                       turn=turn, world_revision=revision_hint,
                                       provenance_ref=provenance),
             }
+            if retain_features:
+                fields["features"] = EpistemicValue(
+                    sorted(features), EpistemicStatus.STALE, EvidenceSource.STALE_MAP,
+                    prior_features.get("first_known_turn"),
+                    prior_features.get("last_verified_turn"), revision_hint,
+                    prior_features.get("provenance_ref"), prior_features.get("known_bounds"),
+                )
             if current and isinstance(tile.get("landmarks"), list):
                 landmark_rows = [dict(value) for value in tile["landmarks"]
                                  if isinstance(value, Mapping)]
@@ -305,7 +322,7 @@ class PerspectiveProjector:
                                              world_revision=revision_hint,
                                              provenance_ref=provenance)
             # Survey is topography, never live vision, resources, occupants or ownership.
-            if "features" not in tile and not current:
+            if "features" not in tile and not current and not retain_features:
                 fields["features"] = EpistemicValue(
                     None, EpistemicStatus.UNKNOWN, EvidenceSource.STALE_MAP,
                     None, None, revision_hint, provenance,
