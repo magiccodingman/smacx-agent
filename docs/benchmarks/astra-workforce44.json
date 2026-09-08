@@ -25,5 +25,52 @@
     "runtime_context_sha256": "0687cde3f4eaff5a8fde9c7a757928cbe32f9d511611044285bf854f14f0d6e2"
   },
   "archive_sha256": "01fc49dce241fc60c803cffa6b6a8e5b1f6bdc6b82a0a507c39fbd0d78d9d565",
-  "limits": "Only conversion and delivery verified; reassignment to productive tile, surplus improvement, autonomous disband and strategic expansion remain pending."
+  "limits": "Reassignment and mineral surplus 0\u21921 verified in committed perspective. Next provider delivery of this second action and future production/expansion remain pending.",
+  "reassignment": {
+    "choice_id": "choice-06386d6f72f645759ce4fcc5844e2ecd",
+    "worked_tile": "location-836",
+    "minerals": {
+      "epistemic_status": "current",
+      "first_known_turn": 44,
+      "last_verified_turn": 44,
+      "provenance_ref": "observation-357",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 1,
+        "consumption": 3,
+        "intake": 4,
+        "surplus": 1,
+        "unit_support_cost": 3
+      },
+      "world_revision": 3
+    },
+    "nutrients": {
+      "epistemic_status": "current",
+      "first_known_turn": 44,
+      "last_verified_turn": 44,
+      "provenance_ref": "observation-356",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 6,
+        "consumption": 4,
+        "intake": 4,
+        "surplus": 0
+      },
+      "world_revision": 2
+    },
+    "citizens": {
+      "epistemic_status": "current",
+      "first_known_turn": 44,
+      "last_verified_turn": 44,
+      "provenance_ref": "observation-357",
+      "source": "owned_state",
+      "value": {
+        "drones": 0,
+        "specialists": [],
+        "superdrones": 0,
+        "talents": 1
+      },
+      "world_revision": 3
+    }
+  }
 }
