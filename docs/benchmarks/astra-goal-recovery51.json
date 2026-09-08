@@ -1,0 +1,17 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "turn": 51,
+  "request_id": "736e9da12f7e4e329161d459e90f1935",
+  "runtime_context_sha256": "eb2955002188a91f2f07bacaeed50c0a037e324287602c15a1f39636fa4eebed",
+  "archive_sha256": "10550368f86c9669615101cf25771f0fd1665c2ac613a443e80ecebcf8240351",
+  "goal": {
+    "key": "fix-mineral-shortfall",
+    "revision": 1,
+    "created_unix": 1788869243.5989447,
+    "status": "active",
+    "priority": 1,
+    "trigger": {}
+  },
+  "proof": "Actual resumed provider runtime working_cognition.goals contains goal after verified park/recovery. Sovereign emitted rationale prioritizes management before final unit action.",
+  "limits": "Goal saved before repaired error guidance deployment, with empty trigger. Does not prove use of guidance or current-turn reconciliation. No economic improvement or full-game completion inferred."
+}

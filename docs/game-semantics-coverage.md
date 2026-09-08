@@ -949,3 +949,5 @@ Turn51 intent feedback checkpoint: real sovereign string-valued trigger rejectio
 Intent-feedback deployment: installed-image writer regression passed; verified park and resume completed at51 after isolated control/harness rebuild. Live sovereign consumption remains pending.
 
 Turn51 follow-up: current observation404 places Former11 at836 with automation retained and no active terraform task. Turn50 response sequence acknowledges a completed Scout2 return and then selects Scout5 return after considering disband. This narrows the movement diagnosis to sovereign reconsideration for that sample; no broad strategic competence claim. Follow-up in `docs/benchmarks/astra-former-completion50.json`.
+
+Turn51 cognition recovery: actual resumed provider request736e9da12f7e4e329161d459e90f1935 contains fix-mineral-shortfall revision1 after verified park/recovery. Sovereign emitted management-before-final-unit rationale. Goal was saved before feedback deployment with empty trigger: neither guidance use nor mandatory intent reconciliation is proven. Economic effect remains pending. Evidence: `docs/benchmarks/astra-goal-recovery51.json`.
