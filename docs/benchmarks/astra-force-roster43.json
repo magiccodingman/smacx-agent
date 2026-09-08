@@ -10,7 +10,24 @@
     "epistemic": "stale HP retained; large stale evidence retrievable through deep query",
     "invalid_mode": "roster rejected outside forces",
     "installed_image": "passed scripts-only test mount in rebuilt control image",
-    "live_provider_query": "pending",
+    "live_provider_query": {
+      "request": {
+        "attention_lease_id": "attention-lease-d33c7f5c5b154d79b3a78d94017d21c8",
+        "episode_id": "episode-694b6aace689abcc1bccfae3c792428e",
+        "request_id": "b640629f16174b8f99a6223624afd1f4",
+        "runtime_context_sha256": "cb21ae9367a220e820c4f3844b4305abb9577022b6c52fa45af02bd7d1da066e"
+      },
+      "recorded_unix": 1788860992.3497145,
+      "unit_refs": [
+        "own-unit-1",
+        "own-unit-2",
+        "own-unit-3",
+        "own-unit-4",
+        "own-unit-5"
+      ],
+      "continuation": null,
+      "result_token_estimate": 1434
+    },
     "deployment": "worker/MCP healthy; Graphiti completed 1788860509.3682082; one sovereign restarted",
     "live_provider_schema": {
       "request": {
@@ -27,7 +44,8 @@
         "roster"
       ],
       "roster_guidance_present": true
-    }
+    },
+    "live_query_return_unix": 1788860992.0110183
   },
   "limits": [
     "No claim of solved deliberation stall or competent strategy.",

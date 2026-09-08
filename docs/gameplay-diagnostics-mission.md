@@ -742,3 +742,5 @@ Add forces-only `detail=roster` with a 2,048-token ceiling and evidence-preservi
 Roster deployment evidence: installed-image regression passed with scripts-only mount. Own worker/MCP recovered healthy, Graphiti rebuilt at 1788860509.3682082, and one sovereign restarted. Actual provider roster guidance and sovereign use remain pending; no full-game or stall-resolution claim.
 
 Roster provider delivery verified: request `d87e310d64a74007905328fc9a1b4029` includes the roster enum and force-composition guidance in the actual tool schema. Native decision confirms restored turn 43. Autonomous roster querying and resulting gameplay decisions remain pending.
+
+Roster live query gate verified: sovereign requested `forces`/`roster`; all five owned units returned in one 1,434-token page without continuation, and actual provider request `b640629f16174b8f99a6223624afd1f4` contains that result. This closes roster query/delivery acceptance, not strategic adequacy, production completion or full-game acceptance. Evidence: `docs/benchmarks/astra-force-roster43.json`.
