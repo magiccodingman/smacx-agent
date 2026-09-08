@@ -12,7 +12,7 @@ code=r'''
 #include <sstream>
 #include <iostream>
 #include <cassert>
-const int VehOrderFormerFirst=4,VehOrderFormerLast=23;
+const int VehOrderFormerFirst=4,VehOrderFormerLast=23,FORMER_SENSOR=5;
 struct VEH {int faction_id=1,order=0,movement_turns=6;bool former=true,automated=true;
  bool is_former(){return former;}};
 struct Terra {const char* name="work";} Terraform[20];
@@ -36,6 +36,8 @@ for row in rows:
  assert task['automation_active'] and task['completion_verified'] is False
  assert task['state']==('active_terraform_order' if active else 'no_active_terraform_order')
  assert ('accumulated_work_points' in task)==active
+ assert (task.get('purpose') == 'sensor_defense') == (row['order'] == 9)
+ if row['order'] == 9: assert 'verify tile yields' in task['effect_scope']
  assert 'eta' not in task and 'remaining_turns' not in task
  if active:assert task['accumulated_work_points']==6
 assert source.count('<< semantic_owned_terraform_task(faction_id, veh)')==4

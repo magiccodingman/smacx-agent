@@ -1,0 +1,49 @@
+{
+  "turn": 28,
+  "query": {
+    "mode": "forces",
+    "detail": "compact"
+  },
+  "observed_error": "single_world_item_exceeds_budget",
+  "packet_sha256": "9350ce60736deaf011982202c07cee288c5f2668e13bad45e8a06a192b1d18d1",
+  "repair": "Compact forces uses identity and bounded name/hp/movement/order evidence envelopes, explicit omitted-field count and subject-specific deep detail query. Full standard/deep representation is unchanged.",
+  "tests": {
+    "forces_compact_budget_test": "passed all fixture force pagination without skips/duplicates, 512 token bound and deep stale evidence retrieval",
+    "world_model_contract_test": "passed"
+  },
+  "pending": [
+    "live sovereign/provider query acceptance"
+  ],
+  "captured_live_replay": {
+    "objects": 4,
+    "page_tokens": [
+      458,
+      458,
+      458,
+      461
+    ],
+    "scope": "Force objects available in captured observation deltas; not a complete live-world reconstruction",
+    "no_skips_or_duplicates": true
+  },
+  "deployment": {
+    "installed_image_test": "passed",
+    "recovered_turn": 28,
+    "live_sovereign_processes": 1,
+    "incidents": []
+  },
+  "restored_projection_query": {
+    "scope": "Operator invocation of deployed WorldService against restored authoritative projection, not sovereign/provider invocation",
+    "owned_units_returned": 5,
+    "foreign_contacts_returned": 1,
+    "page_tokens": [
+      423,
+      497,
+      497,
+      498,
+      498,
+      507
+    ],
+    "continuation_exhausted": true,
+    "duplicate_refs": false
+  }
+}

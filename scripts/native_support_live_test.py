@@ -76,8 +76,15 @@ def main():
                     time.sleep(.1)
                 else: raise AssertionError('support notice did not close')
                 assert observed['faction']['units'] == popup['faction']['units'] - 1, (popup, observed)
+                feed = call('observation_feed', after_sequence=0, limit=256)
+                losses = [event for event in feed.get('events', [])
+                    if event.get('kind') == 'visible_unit_destroyed'
+                    and event.get('item_name') == 'support_shortage']
+                assert len(losses) == 1, feed
+                assert losses[0]['subject_a'] >= 0 and losses[0]['subject_b'] == 1, losses
+
                 print(json.dumps({'passed': True, 'classification': 'controlled running native support comparison',
-                    'comparisons': rows, 'forced_disband_popup_exercised': True,
+                    'comparisons': rows, 'forced_disband_popup_exercised': True, 'causal_loss_events': losses,
                     'information': information, 'acknowledgement': acknowledgement,
                     'unit_count_before': popup['faction']['units'],
                     'unit_count_after': observed['faction']['units']}), flush=True)

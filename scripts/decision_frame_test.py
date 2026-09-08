@@ -84,6 +84,12 @@ def main() -> int:
                 or frame["choice_scope"].get("all_management_actions_enumerated") is not False:
             raise AssertionError("ready-unit frame implied exhaustive management choices")
 
+        unavailable = smacx_mcp.smac_decision(own_unit_ref="own-unit-spent")
+        assert unavailable["error"]["code"] == "unit_not_ready_in_decision_frame"
+        assert unavailable["required_next"]["arguments"] == {
+            "kind": "unit_actions", "own_unit_ref": "own-unit-spent"}
+        assert unavailable["required_next"]["tool"] == "smac_choices"
+
         full_frame = smacx_mcp.smac_decision(detail="full")
         if full_frame.get("snapshot", {}).get("revision") != "r1":
             raise AssertionError(f"full detail omitted snapshot: {full_frame}")

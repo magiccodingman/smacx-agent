@@ -1,0 +1,27 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "incident_id": "incident-5e675c2e0f25436a8fed3840e06001af",
+  "classification": "production queue representation ambiguity observed in sovereign trace",
+  "native_contract": "production current reads base.queue_items[0]; queue.entries is base.queue_size+1",
+  "repair": "Managed queue explicitly includes current item and counts only remaining entries as items_after_current. Missing/invalid count remains unknown.",
+  "tests": [
+    "production_queue_context_test passed",
+    "production_context_delivery_test passed"
+  ],
+  "limits": "Does not prove entire stall resolved; live provider delivery and subsequent gameplay pending. No stall-policy relaxation.",
+  "archive_sha256": "1df771c7b9a3f13320199e935bf4a777b338950ed5f5d9ffb97077222f584f3f",
+  "deployment": {
+    "installed_image_test": "passed",
+    "retry_after_update": "completed",
+    "health": "observed_active",
+    "turn": 53,
+    "active_sovereign_runs": 1
+  },
+  "live_delivery": {
+    "request_id": "d59e49b7d297466c9db9b1fd04f8b817",
+    "recorded_unix": 1788872106.7122927,
+    "runtime_context_sha256": "4f2774da0ff6dccdeb2c9d0b10722c5b0c25262c6ac08b7bdde0491b0eeca368",
+    "archive_sha256": "e4382bc0a63590bc0079e66baecb3809bd9c2c15f5bccd34fd1f6c42fce179b1",
+    "proof": "Actual provider tool history contains includes_current_item clarification. Comprehension not inferred."
+  }
+}

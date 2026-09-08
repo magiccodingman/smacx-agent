@@ -1,0 +1,50 @@
+{
+  "scope": "Advancing clean-yield stall baseline isolation",
+  "incident_id": "incident-5a8d962354444a119655f13d8efc21d9",
+  "turn": 28,
+  "last_native_progress_sample_unix": 1788842377.9710674,
+  "handoff_response_unix": 1788842720.3439753,
+  "verified_advancing_clean_yield_unix": 1788842731.37849,
+  "successor_started_unix": 1788842732.052739,
+  "incident_reported_unix": 1788842741.4733164,
+  "incorrect_inherited_window_seconds": 363.50224900245667,
+  "inherited_output_tokens": 15524,
+  "packet_sha256": "19a3a7d80d39cfdb2f7346fda003612364dec79638518897f3737ffd2cc7aa5c",
+  "repair": "Reset live stall timer and require a fresh usage baseline only after a comparable clean yield with verified native advancement. Non-advancing yield and live no-progress limits remain enforced.",
+  "tests": {
+    "harness_continuation_contract_test": "passed; advancing successor not charged prior episode, nonadvancing baseline retained, existing stall/quarantine/error-restart contracts pass"
+  },
+  "pending": [
+    "sustained successor effects and full-game acceptance"
+  ],
+  "recovery28": {
+    "supported_retry_after_update": true,
+    "incidents_cleared": true,
+    "minerals": {
+      "epistemic_status": "current",
+      "first_known_turn": 28,
+      "last_verified_turn": 28,
+      "provenance_ref": "observation-183",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 3,
+        "consumption": 2,
+        "intake": 4,
+        "surplus": 2,
+        "unit_support_cost": 2
+      },
+      "world_revision": 10
+    }
+  },
+  "live_successor29": {
+    "run_id": "run-78ee2ef553c14a85980f83e532820b15",
+    "invocation_count": 2,
+    "last_clean_yield_advanced": true,
+    "last_clean_yield_unix": 1788845127.122112,
+    "attempt_started_unix": 1788845127.8805664,
+    "semantic_progress_unix": 1788845127.1221135,
+    "semantic_baseline_pending": false,
+    "playable_decision_turn": 29,
+    "interpretation": "Live advancing clean yield resets timer at the boundary and successor obtains a fresh baseline and playable decision. Sustained successor effects remain under monitoring."
+  }
+}

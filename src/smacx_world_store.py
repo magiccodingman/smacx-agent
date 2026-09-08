@@ -466,6 +466,10 @@ class WorldStore:
             events.append({"event_kind": "unit_destroyed", "unit_ref": raw["unit_ref"],
                            "location_ref": raw.get("location_ref"),
                            "turn": raw.get("turn", row["turn"])})
+            if raw.get("removal_cause") == "support_shortage" and raw.get("cause_source") == "native_support_disband_call":
+                events[-1].update({"removal_cause": "support_shortage",
+                    "cause_source": "native_support_disband_call",
+                    "meaning": "Forced native disband for insufficient home-base mineral support; not a combat loss."})
         count = int(rows[0]["event_count"]) if rows else 0
         return {"events": events, "event_count": count,
                 "details_truncated": count > len(events),

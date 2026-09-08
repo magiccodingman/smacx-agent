@@ -1,0 +1,30 @@
+{
+  "scope": "diagnostic_only",
+  "tests": {
+    "diagnostic_history_readonly_test": "pass",
+    "campaign_diagnostics_contract_test": "pass"
+  },
+  "proven": [
+    "retained WAL export",
+    "source hashes unchanged",
+    "private staging removed",
+    "concurrent change rejected",
+    "corrupt history explicit gap",
+    "other streams survive"
+  ],
+  "live_helper_history_bytes": 323661,
+  "deployed_endpoint": {
+    "http_status": 200,
+    "zip_bytes": 8023839,
+    "zip_integrity": "pass",
+    "retained_history_bytes": 323661,
+    "history_gap": false,
+    "complete": false,
+    "remaining_gaps": [
+      "world_telemetry row_limit",
+      "source_missing",
+      "acceptance_coverage_in_progress"
+    ]
+  },
+  "native_turn9_timeout": "not reproduced in isolated two-move replay"
+}

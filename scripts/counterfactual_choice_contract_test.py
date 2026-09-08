@@ -21,6 +21,17 @@ def rejects(fn):
 
 
 def main():
+    native_info = {"id": "self_destruct:context", "kind": "information",
+                   "source_unit_id": 7, "blast_damage": 0,
+                   "known_affected_units": [{"projected_lethal": True, "source_unit": True}]}
+    labeled = mcp._decision_information([native_info], {"reverse_units": {7: "own-unit-8"}})[0]
+    assert labeled["applies_to_action"] == "self_destruct_unit"
+    assert "not attack odds" in labeled["meaning"]
+    assert "id" not in labeled and "source_unit_id" not in labeled
+    assert native_info["id"] == "self_destruct:context"
+    assert mcp._decision_information([labeled], None) == [labeled]
+    ordinary = {"kind": "information", "offer_type": "treaty"}
+    assert mcp._decision_information([ordinary], None) == [ordinary]
     semantic = mcp._semanticize_choice({"command": "move_unit", "unit_id": 7},
                                      {"reverse_units": {7: "own-unit-8"}})
     linked = action_relationships({}, semantic,

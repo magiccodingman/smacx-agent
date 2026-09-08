@@ -48,15 +48,19 @@ RUN ln -sf libsqlite3.so.3.53.4 /usr/local/lib/libsqlite3.so.0 \
 RUN python3 -m venv /opt/smacx/mcp-venv \
     && /opt/smacx/mcp-venv/bin/pip install --no-cache-dir "mcp==2.0.0"
 
+# Reject an unreviewed native source delta before publishing the control image.
+# This only checks the committed registration; it never approves a new build.
+RUN --mount=type=bind,target=/review python3 /review/scripts/doctrine_engine_contract.py
+
 COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_docker.py src/smacx_worker_manager.py src/smacx_operations.py \
-    src/smacx_harness_manager.py src/smacx_hermes.py src/smacx_controller.py \
+    src/smacx_harness_manager.py src/smacx_provider_watchdog.py src/smacx_hermes.py src/smacx_controller.py \
     src/smacx_mcp.py src/smacx_mcp_validation.py src/smacx_reference.py src/smacx_capabilities.py \
     src/smacx_game_settings.py src/smacx_prompt.py src/smacx_generation.py /opt/smacx/src/
 COPY src/smacx_journal.py src/smacx_context_policy.py src/smacx_choice_preparation.py /opt/smacx/src/
 COPY src/smacx_diagnostics.py src/smacx_diagnostic_summary.py \
     src/smacx_campaign_diagnostics.py src/smacx_intent.py /opt/smacx/src/
-COPY src/smacx_operator.py src/smacx_ops.py src/smacx_former_attention.py /opt/smacx/src/
+COPY src/smacx_operator.py src/smacx_ops.py src/smacx_former_attention.py src/smacx_order_attention.py /opt/smacx/src/
 COPY src/smacx_attention.py src/smacx_spatial_scope.py src/smacx_milestones.py src/smacx_plan_health.py src/smacx_counterfactual.py src/smacx_entitlements.py src/smacx_mechanics.py \
     src/smacx_observation.py src/smacx_temporal_episodes.py src/smacx_regions.py src/smacx_runtime_context.py \
     src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \
@@ -79,7 +83,7 @@ ENV PYTHONPATH=/opt/smacx/src \
     SMACX_CONTROL_PORT=8081
 
 WORKDIR /opt/smacx
-RUN /opt/smacx/mcp-venv/bin/python -c "import smacx_mcp, smacx_campaign_diagnostics, smacx_intent, smacx_operator, smacx_former_attention"
+RUN /opt/smacx/mcp-venv/bin/python -c "import smacx_mcp, smacx_campaign_diagnostics, smacx_intent, smacx_operator, smacx_former_attention, smacx_order_attention"
 VOLUME ["/var/lib/smacx"]
 EXPOSE 8081
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=4 \

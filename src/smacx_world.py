@@ -29,7 +29,7 @@ WORLD_MODES = frozenset({
     "overview", "area", "relation", "route", "reachability", "compare",
     "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual",
 })
-DETAIL_LIMITS = {"compact": 512, "standard": 2048}
+DETAIL_LIMITS = {"compact": 512, "standard": 2048, "roster": 2048}
 
 
 class WorldQueryError(ValueError):
@@ -48,6 +48,22 @@ def _public_object(item: Mapping[str, Any], *, include_fields: bool = True) -> d
               if item.get(key) is not None}
     if include_fields:
         result["fields"] = item.get("fields", {})
+    return provider_safe(result)
+
+
+def _compact_force_object(item: Mapping[str, Any]) -> dict[str, Any]:
+    result = _public_object(item, include_fields=False)
+    fields = item.get("fields", {})
+    # Keep evidence envelopes intact; never promote remembered fields to
+    # current facts to save space. Full records remain subject-queryable.
+    selected = {}
+    for key in ("name", "hp", "moves_remaining", "order_name"):
+        field = fields.get(key)
+        if isinstance(field, Mapping) and estimate_tokens(field) <= 70:
+            selected[key] = field
+    result["fields"] = selected
+    result["omitted_field_count"] = len(fields) - len(selected)
+    result["detail_query"] = {"mode": "forces", "subject_refs": [item.get("object_ref")], "detail": "deep"}
     return provider_safe(result)
 
 
@@ -401,6 +417,12 @@ class WorldService:
                     })
         turn = next((_value(item, "turn") for item in projection.get("objects", ())
                      if item.get("kind") == "turn_state"), None)
+        calendar = next((item.get("fields", {}).get("year", {})
+                         for item in projection.get("objects", ())
+                         if item.get("kind") == "turn_state"), {})
+        # Calendar labels come from current native evidence, never turn arithmetic.
+        year = calendar.get("value") if calendar.get("epistemic_status") == "current" \
+            and type(calendar.get("value")) is int else None
         recent_material_refs = tuple(dict.fromkeys((
             *recent_material_refs,
             *self.store.recent_material_refs(
@@ -421,6 +443,7 @@ class WorldService:
         regenerate = current is None or current["world_epoch"] != identity.world_epoch \
             or current["payload"].get("projector_version") != SemanticLodProjector.FORMAT_VERSION \
             or current["payload"].get("turn") != turn \
+            or current["payload"].get("year") != year \
             or int(current.get("token_estimate") or estimate_tokens(current["payload"])) \
                 > effective_token_cap \
             or int(projection["observation_cursor"]) - int(
@@ -460,7 +483,7 @@ class WorldService:
             model_projection = {
                 **projection, "known_squares": squares,
                 "map_shape": projection.get("map_shape") or self._topology(projection).shape.__dict__,
-                "turn": turn,
+                "turn": turn, "year": year,
             }
             previous_regions = [
                 *self.store.load_regions(self.scope, identity.timeline_id,
@@ -731,6 +754,8 @@ class WorldService:
         scenario_json: str = "",
         runtime_counterfactual_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if detail == "roster" and mode != "forces":
+            raise WorldQueryError("roster_detail_requires_forces")
         if mode not in WORLD_MODES:
             raise WorldQueryError("invalid_world_mode")
         if not 65536 <= int(context_length) <= 16_777_216:
@@ -991,6 +1016,8 @@ class WorldService:
                     objects, topology, subjects,
                 )
                 result["items"] = [_public_object(item) for item in selected]
+            elif mode == "forces" and detail in {"compact", "roster"}:
+                result["items"] = [_compact_force_object(item) for item in selected]
             elif mode == "intel":
                 topology = self._topology(projection)
                 turn_state = objects.get("world-turn", {})
@@ -1001,6 +1028,8 @@ class WorldService:
                 result["items"] = [_public_object(item) for item in selected]
             else:
                 result["items"] = [_public_object(item) for item in selected]
+            if mode == "forces" and detail in {"standard", "deep"}:
+                result["query_hint"] = "For a bounded force roster, query mode=forces detail=roster without continuation. Use each roster item's deep detail_query for full evidence; follow its continuation if present."
         elif mode == "area":
             center = objects.get(origin_ref or (subjects[0] if subjects else ""))
             derived_center = derived_registry.get(origin_ref or (subjects[0] if subjects else ""))

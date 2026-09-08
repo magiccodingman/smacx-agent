@@ -1,0 +1,70 @@
+{
+  "status": "controlled_regression_and_live_receipt_chain_verified",
+  "turn": 19,
+  "failure": {
+    "operation": "list_bases immediately after queued move_unit",
+    "exception": "0xc0000005",
+    "symbol": "mod_base_support()+0x273",
+    "read_address": "0x8",
+    "old_dll_sha256": "9cdd514a8a8976eafdb013ec283cfb9a8cf4aa21bb7beb2308bec1b3f54c362e"
+  },
+  "repair": "Keep state-reading requests queued while native movement is on the UI stack; repost after unwinding. Retain status and action receipt polling.",
+  "controlled_native": {
+    "unit_id": 23,
+    "origin_tile_id": 1156,
+    "target_tile_id": 1116,
+    "old_build": "same instruction access violation",
+    "new_build": "completed, destination verified, base read and ping successful",
+    "base_read_seconds": 0.154,
+    "test": "scripts/native_move_read_barrier_test.py",
+    "dll_sha256": "27508b96d4fc7e1d6e7e7767f0bfdef446e63b7a77e681aa2cccb1e164b5efd5"
+  },
+  "limitations": [
+    "Live second move chose 1076, not original failing destination 1116; exact destination reproduced in controlled native regression",
+    "Additional native modal regression checks pending",
+    "Full-game acceptance incomplete"
+  ],
+  "additional_checks": {
+    "native_cross_build": "39/39 build steps passed",
+    "transport_liveness": "idle, partial, trickle and fragmented frames passed on repaired DLL",
+    "doctrine_integration": "native-shaped adapter and persisted-profile contract passed",
+    "reviewed_engine_source_sha256": "4b7006b2c95a573cf1407d4d4a54c80e6f6e47dddc6f1f5d7c7a5637afd6ae0f"
+  },
+  "deployment": {
+    "resume_http_status": 200,
+    "recompile_http_status": 200,
+    "restored_turn": 19,
+    "live_dll_sha256": "27508b96d4fc7e1d6e7e7767f0bfdef446e63b7a77e681aa2cccb1e164b5efd5",
+    "matches_tested_dll": true,
+    "worker_health": "healthy",
+    "mcp_health": "healthy",
+    "portal_restored": true
+  },
+  "post_recovery_native_moves": [
+    {
+      "unit_id": 13,
+      "origin": 998,
+      "target": 957,
+      "observed": 957
+    },
+    {
+      "unit_id": 23,
+      "origin": 1156,
+      "target": 1076,
+      "observed": 1076
+    }
+  ],
+  "provider_receipt_delivery": [
+    {
+      "receipt_unix": 1788837661.11145,
+      "next_provider_unix": 1788837661.6590214,
+      "verbatim_receipt_present": true
+    },
+    {
+      "receipt_unix": 1788837704.0896506,
+      "next_provider_unix": 1788837704.6309853,
+      "verbatim_receipt_present": true
+    }
+  ],
+  "post_recovery_packet_sha256": "f8e8983a2a7a4f37dda65407a740618872cdf62e4a7dcd23b34820850f23d57b"
+}

@@ -714,3 +714,109 @@ Context-cut deployment at216 passes supported checkpoint/recovery with18 units,2
 Live216→217 context-boundary acceptance passes: final-unit and popup receipts reach the immediate next provider exactly; handoff19f9e237 reaches95c0413a exactly, followed by new episode9edfa54e. Automatic217 checkpointc986bf96 is verified on the alternating slot. No pre-provider context failure recurs in this sample. One unknown-decision rejection dispatches nothing, reaches the next request exactly, and is followed by a successful fresh decision/action. Full-game and sustained autonomous-use acceptance remain open.
 
 Live218 monitoring: no repeated context-fetch failure;217→218 handoff is delivered exactly. A critical-attention refusal dispatches nothing and is followed by acknowledgement, a fresh frame and accepted action. A later stale memory draft is correctly uncommitted. The next actual episode prunes its full tool pair but explicitly retains rejection/retry intent in the handoff; successful retry is not yet observed. This is not evidence of a committed revision16 or a silently hidden failure. Former217 source/configuration review excludes an unsupported attribution to Thinker replacement search code; reset cause remains unestablished. Evidence is in `benchmarks/gameplay-context-cut-turn216.json` and `benchmarks/gameplay-former-task-turn121.json`.
+
+### Turn-42 strategic attribution and threat delivery audit
+
+Actual provider request `706488db609f4f0cb3fb8357e22b0476` contains current Mind Worm evidence at location-955, subsequently acknowledged. Native handoff advances to turn 42/year 2142. The apparent year mismatch is not reproduced: the runtime anchor year is null; the sovereign supplied 2141 in reasoning. One base, five Scouts and continued Scout production still fail to establish competent expansion. Location-ID arithmetic and unsupported stacking assumptions remain model-behavior findings, not verified native failures. See `docs/benchmarks/astra-strategy42.json`; this checkpoint does not close strategic or full-game acceptance.
+
+### Selected-subject receipt repair at turn 43
+
+Turn-42 provider reasoning exposed ambiguity across repeated Return to base receipts: selected unit references were absent from the execution summary. Cache only scoped semantic subject/target references and repeat them in execution receipts; preserve native authority, single-use choices and outcome semantics. The regression proves catalog-level selector binding and unmapped native-selector omission. Installed-image and actual provider delivery remain pending in `docs/benchmarks/astra-choice-subject43.json`; selection does not prove arrival. Own match paused with verified containment before deployment.
+
+Receipt checkpoint deployment: rebuilt installed control-image regression passed with a scripts-only mount. Isolated worker/MCP recovered healthy; Graphiti rebuild completed and one sovereign restarted. Actual provider receipt consumption remains the next live acceptance gate.
+
+Receipt live gate verified: actual provider request `e3fe69582bd84ad3be0e07da9f9e680e` contains the tool result selecting Sentry with `own_unit_ref=own-unit-2`. Native decision confirms recovered turn 43. Sovereign also queried a route to headquarters; its result preserves stochastic fungus ETA uncertainty, followed by the Sentry selection. This proves provider delivery of the scoped receipt, not defensive adequacy or actual route arrival. Sanitized evidence: `docs/benchmarks/astra-choice-subject43.json`.
+
+### Turn-43 no-progress incident: unresolved
+
+The supervisor contained `incident-549965cefd42470a9668b215a8458c7b` after 3 provider calls/14,471 generated tokens without native progress. One response took about 199 seconds, exceeding the 180-second decision lease; expiry rejected dispatch, and the sovereign fetched a fresh frame but incorrectly attributed expiry to revision change. Capture proves repeated deliberation; provider overload contribution is not isolated. Preserve paused state while reviewing precise expiry feedback and bounded deliberation support. No freshness/watchdog relaxation or successful-recovery claim. Evidence: `docs/benchmarks/astra-stall43.json`.
+
+Expiry-feedback repair: return elapsed-time reason, age/lease seconds and no-native-dispatch status; distinguish expiry from revision or legality evidence. Fresh-frame guidance preserves only still-supported intent rather than repeating unchanged analysis. Regression verifies expiration removes the cached decision and dispatches no bridge call. TTL and stall guard unchanged; installed/live validation and deliberation outcome remain pending.
+
+Expiry checkpoint deployment: installed control regression passed without a source override. Worker/MCP recovered healthy, Graphiti rebuild completed at 1788859176.838343 and one sovereign restarted. Live expiry-feedback delivery and whether deliberation improves remain unverified; the resumed run is an acceptance experiment, not a closed stall gate.
+
+### Force roster checkpoint
+
+Add forces-only `detail=roster` with a 2,048-token ceiling and evidence-preserving compact rows. Standard/deep responses point to this composition view, while their existing full evidence remains available. Five-unit fixture fits one 942-token page; 40-unit pagination has no omissions/duplicates and respects each page ceiling. Stale HP and deep retained evidence verified. Installed/live acceptance pending in `docs/benchmarks/astra-force-roster43.json`; this is not proof the no-progress incident or strategic weakness is resolved.
+
+Roster deployment evidence: installed-image regression passed with scripts-only mount. Own worker/MCP recovered healthy, Graphiti rebuilt at 1788860509.3682082, and one sovereign restarted. Actual provider roster guidance and sovereign use remain pending; no full-game or stall-resolution claim.
+
+Roster provider delivery verified: request `d87e310d64a74007905328fc9a1b4029` includes the roster enum and force-composition guidance in the actual tool schema. Native decision confirms restored turn 43. Autonomous roster querying and resulting gameplay decisions remain pending.
+
+Roster live query gate verified: sovereign requested `forces`/`roster`; all five owned units returned in one 1,434-token page without continuation, and actual provider request `b640629f16174b8f99a6223624afd1f4` contains that result. This closes roster query/delivery acceptance, not strategic adequacy, production completion or full-game acceptance. Evidence: `docs/benchmarks/astra-force-roster43.json`.
+
+### Live hurry/support comparison at turn 44
+
+Sovereign hurried Scout Patrol for 13 credits (receipt: 145 credits, 10 stored minerals). Next committed owned observation 353 at turn 44 counts six units and headquarters mineral surplus 0, population 2, stored minerals 1, still producing Scout Patrol. This matches the earlier conditional +1 support/zero net-surplus warning in this scenario; no general mechanics-equivalence or strategic-adequacy claim. Individual production event/new-unit identity not independently captured here. See `docs/benchmarks/astra-hurry43-effect44.json`.
+
+### Historical actor identity, turn 44
+
+The sovereign claim about native pressure failed `actor_scope_mismatch` after ownership-bearing contacts disappeared. Parent-prefix observation `journal-b7d6f4ac049a4c53868bff90a3678bf2` records faction-0 at turn 43. Journal replay now retains a bounded identity-to-evidence index across removal. The guarded resolver validates canonical evidence before historical fallback, preserving fresh projection checks and unverified claim status. Removal/restart/rewind/perspective/tamper fixtures and canonical citation regression pass. Installed deployment, recovery, and autonomous write remain pending; see `benchmarks/astra-historical-identity44.json`.
+
+Historical identity deployment follow-up: scripts-only installed-image regression passed; operator-pause recovery restored session `session-2a9163aa85da4f3893d8c2064b562283` with healthy worker/MCP. Graphiti rebuild completed at `1788862106.9486046`, and the sovereign container is running. Live historical-actor write remains pending; this is deployment/recovery evidence, not end-to-end completion.
+
+Turn-44 plan recovery acceptance: native checkpoint sequence 44 preceded colony-pivot write sequence 48 on the parent timeline. Restored provider request `72033300cf374c3cb750e26dc9689e75` contains frontier-sweep revision 5, consistent with that cutoff. The pivot was correctly excluded; copying it across recovery would violate native/memory alignment. This limits strategic attribution in a repeatedly repaired match. Evidence: `benchmarks/astra-plan-cutoff44.json`. Autonomous renewed pivot and expansion remain unproven.
+
+Human query-trace checkpoint: force roster returned only `ok` in live CLI although full provider records contained the roster. Human summaries now show mode, returned item count, continuation presence, and the existing result token estimate, without dumping object evidence/cursors or altering provider results. Diagnostic summary contract passes. Running containers are unchanged; installed/live trace validation is pending the next deployment.
+
+Turn-44 live memory retry checkpoint: stale pre-move revision rejected with persistence not_started; the sovereign refreshed and committed plan revision 7 (`journal-ae55270c150f4f5f973afd5fae9cb541`). Actual next provider request `6f603d9586f04c908b986b934977c363` contains the plan and location-673 target. This proves immediate publication for this retry, not historical actor fallback or strategic execution. See `benchmarks/astra-plan-retry44.json`. The bounded human world-query summary also passed its scripts-only installed-image regression; running containers have not yet adopted that logging-only change.
+
+Turn-44 stall investigation: incident `incident-d621f72829b940398e73e20e0b8f3193` froze native/collectors after 364 seconds, five provider calls, and 13,522 tokens without native progress. Trace contains a successful plan write, production query, rejected spent-unit selection for intended disband, and citizen query. Both managed and native readiness gates restrict that disband path. Native `Console_disband` semantics and bridge direct-deletion fidelity require controlled comparison before a repair. Stall classification does not distinguish bounded novel management investigation from repeated reasoning. No guard relaxed or match resumed. Evidence: `benchmarks/astra-stall44.json`.
+
+Disband objective protection checkpoint: confirmed native VFLAG_IS_OBJECTIVE/DISBANDOBJ guard was missing from bridge deletion. Choice enumeration now omits objective disband and execution rejects before mutation. Compiled actual dispatch regression and isolated native cross-build pass. Native recycling/confirmation, spent-unit eligibility, and live acceptance remain open. No runtime replaced. Evidence: `benchmarks/astra-disband-objective44.json`.
+
+Native disband checkpoint: direct deletion replaced by deferred UI-thread Console_disband and native confirmation choices through the existing tool surface. Controlled ready/spent Scouts inside a base each recycled 5 minerals; cancel preserved unit state excluding UI selection and preserved minerals. Outside-base disband removed one unit without mineral credit. Objective protection and one-use opaque confirmation regressions pass. Readiness errors expose remaining-action queries. Native cross-build passes. Full-stack installation, recovery and spontaneous sovereign execution remain pending; stall-policy review remains open. Evidence: `benchmarks/astra-native-disband44.json`.
+
+Disband deployment regression follow-up: stale_opaque_rebase_test used catalog r2 with snapshot r3 for its expected-success case and omitted snapshot/turn in its terms-rejection cases. Fixture now uses aligned r2 and turn 1, supplies the required snapshot, and asserts decision_conflict specifically for changed price/schedule/session. Regression passes without production guard changes. Isolated control/harness/worker image build completed; replacement and live acceptance remain pending.
+
+### Disband build doctrine registration
+
+Recovery correctly failed closed with `doctrine_unreviewed_engine_build`: the reviewed native disband build was not registered. Reviewed the complete native delta since `34b059b`; fixed public rules remain unchanged. Registered the exact source fingerprint; engine-contract and doctrine integration checks pass, including rejection of unknown builds and explicit recompilation. Controlled native disband evidence remains in `docs/benchmarks/astra-native-disband44.json`. Live reassembly/continuation remains pending; see `docs/benchmarks/astra-disband-doctrine44.json`.
+
+Disband doctrine deployment follow-up: explicit profile reassembly succeeded after isolated control/harness rebuild; sovereign run `run-8d3e4974514240bfb43b9f66e8233607` started on healthy recovered native session at turn 44. This closes the assembly blocker, not autonomous disband or full-game acceptance.
+
+Doctrine deployment prevention: control image builds now run the existing engine fingerprint check against a read-only build-context mount. Successful image build and an isolated altered-source rejection were verified. Registration remains an explicit review operation; no runtime or build auto-approval was introduced.
+
+Turn-44 workforce checkpoint: sovereign conversion of the worker on location-876 is verified by current observation-356 (tile unworked, one Doctor). The next provider request b1b1d557e96a471c82cb16c40d975b6e contains the execution tool receipt and updated base projection. Mineral surplus remains zero: this proves the intermediate conversion, not completed productive reassignment. Evidence: `docs/benchmarks/astra-workforce44.json`.
+
+Turn-44 reassignment effect verified: location-836 worked, no remaining specialist, mineral intake 4/support 3/surplus 1. Nutrient surplus remains zero. This proves native workforce allocation improved production income; next-request delivery of the second action and later production remain pending. Also identified an open anchor-year omission: WorldStore.load supplies objects without top-level year, and WorldService anchor reconstruction forwards turn but omits the observed year (src/smacx_world.py model_projection). Scope/epistemic regression and correction remain pending.
+
+Anchor calendar repair checkpoint: scoped current integer year is now forwarded from turn-state evidence, with same-turn cache invalidation. Stale/unknown/invalid values produce no current year; no turn-to-year inference. Stored-projection/cache/restart regression and full world-model contract suite pass. Deployed provider delivery remains pending. Evidence: `docs/benchmarks/astra-anchor-calendar44.json`.
+
+Calendar deployment checkpoint: installed-image regression passed. Campaign parked with a verified recovery checkpoint and resumed successfully onto timeline-restore-e4c7cb0ab36f42089ad5757d; worker/MCP healthy. Restored current owned mineral surplus remains 1, preserving the workforce improvement. Actual provider anchor-year delivery remains pending.
+
+Calendar provider gate closed: actual request f8b296dabc614b539d9a81ab1d98ed82 and subsequent request contain the restored anchor with turn44/year2144. No year was inferred. Recovery also exposed a reporting limitation: durable Hermes session lease waited about150 seconds before automatic acquisition while health said observed_active. One sovereign process verified; no lock deletion or restart performed. Explicit session-wait health classification remains open.
+
+Session admission reporting checkpoint: explicit pinned Hermes wait/admitted instrumentation writes bounded run-scoped non-authoritative diagnostics, read through existing telemetry and surfaced as waiting/unknown when appropriate. Specialist exclusion, bounded replacement, other-run rejection, stale handling, operator contracts and actual image patch builds pass. Live end-to-end wait classification remains pending; no lease manipulation or stall-policy relaxation. Evidence: `docs/benchmarks/astra-session-admission44.json`.
+
+Admission deployment checkpoint: campaign reached native turn45, parked with verified checkpoint and no active sovereign, then resumed with rebuilt control/harness images and healthy worker/MCP. Patched run_agent.py also compiles in the installed image. Graphiti rebuild is running without a reported error; live wait/admitted signal remains pending.
+
+Live admission waiting chain verified at turn45: run-98692ca07c6f44c8bec18017011ec92f emitted its real wait callback; the operator API reports waiting with hermes_session_lease_wait after normal supervisor telemetry sampling. Exactly one live sovereign process is reported. No forced lease release or competing telemetry helper. Post-admission clearing remains pending.
+
+Admission reporting live gate closed: previous lease expired normally; Hermes resumed smac_decision at turn45 and emitted session_admitted at1788866521.222302. The normal supervisor sample propagated this matching-run transition to observed_active. Both waiting and clearing are verified; no forced lease operation. Health is sampled rather than instantaneous.
+
+Turn45 strategy/economy checkpoint: accumulated minerals1→2 confirms positive production income after workforce reassignment; food surplus0 and Scout production remain. Actual provider e0e9db9e69aa4471be993fa790b1c50c contains frontier-sweep revision5 (end_turn45), not later archive plan rows outside recovered context. First expansion and strategic follow-through remain open. Evidence: `docs/benchmarks/astra-strategy45.json`.
+
+Turn46 acceptance: three Scouts observed at headquarters after return orders; remaining three still have go_to orders elsewhere. Sovereign frontier-sweep completion revision8 is reflected by an empty active-plan list in subsequent actual provider request3227a0f2d70b4933b5986f2d8b7f4b39. Bookkeeping consistency does not prove objective satisfaction or strategic competence. Evidence: `docs/benchmarks/astra-return-plan46.json`.
+
+Turn46→47 production follow-through: sovereign queried production/support then selected Set production; current owned observation384 at47 confirms Formers and minerals4. This is a concrete production change away from repeated Scouts, not completed Former work or expansion. Conditional next-unit support warning remains relevant. Evidence: `docs/benchmarks/astra-former-production47.json`.
+
+Turn50 Former completion verified: own-unit-11 Formers at headquarters; current base support4/intake4/surplus0 agrees with turn49 conditional next-unit projection. Scout5 back-and-forth is native-successful; trace shows reconsideration and erroneous distance reasoning before correct route use, not a demonstrated movement defect. Terrain work and expansion remain open. Evidence: `docs/benchmarks/astra-former-completion50.json`.
+
+## Current acceptance checkpoint: turn 56
+
+The isolated Astra campaign remains the live acceptance target; the original AI - 3 baseline and other operator installation are unchanged. PR #64 remains unmerged. Recent evidence is indexed here to distinguish historical partial entries above from later verification:
+
+- `benchmarks/astra-decision-lease53.json`: actual 258-second guarded activation accepted under the reviewed 300-second lease; expired choices remain nondispatchable.
+- `benchmarks/astra-automation-progress53.json`: controlled native cancellation changes the owned progress digest; live supervisor observation of a subsequent cancellation remains pending.
+- `benchmarks/astra-monitor-plan54.json`: sovereign-authored typed monitor intent in actual provider context, with native turn advance and active Sensor work.
+- `benchmarks/astra-growth-gap55.json`: controlled native growth boundaries, current receipt delivery, and sovereign correction of an unsupported growth timeline. This is not an exact future-date prediction.
+- `benchmarks/astra-sensor-purpose56.json`: current native task-purpose receipt delivered and used; completed terrain and economic benefit remain unverified.
+- `benchmarks/astra-reference56.json`: spontaneous bounded reference lookup delivered but excerpts insufficient for Colony Pod population timing. It is not a specialist-child acceptance.
+- `benchmarks/astra-deliberation56.json`: native no-progress guard stopped deliberation before action dispatch. Concise research/decision guidance is deployed and verified in actual provider system messages. Recovery, Graphiti completion and one live sovereign are verified; behavioral benefit remains pending.
+
+Full-game completion, competent expansion, spontaneous specialist-child use, autonomous canonical-evidence claim writing, historical actor fallback, and remaining live recovery/semantic gates are still open. A successful read, prompt delivery, or acknowledgement cannot close these gates. Continue observing actual decisions and native effects; retain the existing no-progress stop bound while evaluating the prompt repair.
+
+Turn57 checkpoint: `benchmarks/astra-followthrough57.json` verifies sovereign expiry-feedback recovery through fresh guarded native turn advance, corrected plan publication in actual provider context, and current/current Sensor feature completion at836. These two live gates supersede their pending entries above; strategic expansion and economic benefit remain open.
+
+Turn62 Farm acceptance: `benchmarks/astra-farm-effect62.json` verifies task continuation through physical Farm completion and observed food surplus1→2. This supersedes the pending Farm-completion/economic-benefit entries; expansion, mineral recovery and full-game outcome remain open.

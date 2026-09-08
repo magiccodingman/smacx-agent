@@ -1,0 +1,68 @@
+{
+  "incident_id": "incident-c858305ede724166aef3456d36477dbb",
+  "turn": 39,
+  "observed": {
+    "invalid_id": "One-character transcription error; correct ID present in provider request bb0827c55e694b4da6d7f4401df7758a. Rejected before native dispatch.",
+    "reasoning": "Sovereign inferred possible movement blockage from invalid_choice, confused self-destruct blast information with combat, and requested an action preview expecting combat odds.",
+    "adapter_defect": "_decision_information removed self_destruct:context ID without preserving its semantic scope."
+  },
+  "repairs": [
+    "Invalid-choice message explicitly states exact ID mismatch, no native attempt and no movement legality test.",
+    "Self-destruct information retains public applies_to_action and explicit blast-only meaning after private ID removal.",
+    "Movement action previews state conditional support/garrison scope and explicitly exclude combat odds, damage/survival and arrival.",
+    "Provider world schema declares the movement-preview boundary."
+  ],
+  "validation": {
+    "opaque_choice_execution_test": "pass",
+    "counterfactual_choice_contract_test": "pass, including information labeling, stable reprocessing and ordinary diplomacy preservation",
+    "provider_schema_budget_test": "pass: 15 tools; world 663 and total 7647 conservative tokens",
+    "movement_preview_scope_test": "pass: actual managed facade with native-shaped receipt/query sink; conditional scope retained, no execution/consumption, movement deployment rejected",
+    "installed_control": "pass: movement_preview_scope_test, counterfactual_choice_contract_test, opaque_choice_execution_test; scripts-only mounts"
+  },
+  "remaining": "Sustained behavior, full game and future invalid-ID/preview-result delivery remain unverified.",
+  "deployment": {
+    "recovery_ok": true,
+    "turn": 39,
+    "timeline": "timeline-restore-b71c924c578c44d98ca5eb41",
+    "running_mcp_source_sha256": "026429f0e47f0dacbb83f597557accbe3268e23c553536ccfa9b9da2ed33f0d6",
+    "matches_tested_source": true,
+    "graphiti": "completed at 1788855777.794006; one sovereign active"
+  },
+  "provider_delivery": {
+    "time": 1788855820.6701803,
+    "correlation": {
+      "attention_lease_id": "attention-lease-c067d9c51fe6407fa860cff6936791f1",
+      "episode_id": "episode-db2dd5338dfaf1f3458adecfdec5814a",
+      "request_id": "b70704ea86e14cfbbf56d408ac2d1b73",
+      "runtime_context_sha256": "5f417f00737e9ba1ff60faf9bf658e368aab7d296f2f9b8ee198b9d436c92ce7"
+    },
+    "self_destruct_scope_delivered": true,
+    "preview_schema_boundary_delivered": true
+  },
+  "post_deployment_behavior": {
+    "decision_id": "decision-818452d11f584442a9bb122bf7987692",
+    "choice_id": "choice-bf3c2f5307ae4d22a7c4049d8ec9cdaf",
+    "action": "Skip unit",
+    "unit_ref": "own-unit-1",
+    "observed_moves_remaining": {
+      "epistemic_status": "current",
+      "first_known_turn": 39,
+      "last_verified_turn": 39,
+      "provenance_ref": "observation-315",
+      "source": "owned_state",
+      "value": 0,
+      "world_revision": 2
+    },
+    "observed_ready": {
+      "epistemic_status": "current",
+      "first_known_turn": 39,
+      "last_verified_turn": 39,
+      "provenance_ref": "observation-315",
+      "source": "owned_state",
+      "value": false,
+      "world_revision": 2
+    },
+    "next_observed_focus": "own-unit-3",
+    "scope": "Accepted choice followed by current owned-state effect; does not attribute strategic improvement to wording alone."
+  }
+}

@@ -1270,6 +1270,10 @@ game binaries/assets, credentials, private provider addresses, account data, cha
             if time.time() - float(spec.get("updated_unix") or 0) < 15.0:
                 continue
             try:
+                if any(row.get("incident_kind") == "operator_pause"
+                       for row in self.control.list_supervision_incidents(
+                           match_id=str(spec["match_id"]), active_only=True)):
+                    continue
                 match = self.control.get_match(str(spec["match_id"]))
                 metadata = match.get("metadata", {})
                 if metadata.get("incident_quarantine", {}).get("native_and_collectors_frozen"):
@@ -1327,6 +1331,11 @@ game binaries/assets, credentials, private provider addresses, account data, cha
                                     "why_blocked": "The bridge became unavailable before a complete, verified native and AI-memory checkpoint was published. Native execution and observation collectors are frozen; restoring an incomplete checkpoint would mismatch game state and AI memory."})
                     operator_required += 1
             except Exception as exc:
+                # A pause can arrive after our initial observation while
+                # recovery waits for the lifecycle lock. This is containment,
+                # not a second incident that would block explicit resume.
+                if isinstance(exc, WorkerManagerError) and str(exc) == "operator_pause_blocks_automatic_recovery":
+                    continue
                 self._incident(str(spec["instance_id"]), "supervisor_error", "operator_required",
                                {"error": str(exc)[:1000]})
                 operator_required += 1

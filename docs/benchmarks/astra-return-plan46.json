@@ -1,0 +1,24 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "turn": 46,
+  "arrivals_observed": [
+    "own-unit-3",
+    "own-unit-4",
+    "own-unit-10"
+  ],
+  "destination": "location-795",
+  "other_units": "own-unit-1/2/5 retain go_to orders at distinct locations; no arrival claim",
+  "durable_plan": {
+    "key": "frontier-sweep",
+    "revision": 8,
+    "status": "completed",
+    "created_unix": 1788866872.5648782
+  },
+  "subsequent_provider": {
+    "request_id": "3227a0f2d70b4933b5986f2d8b7f4b39",
+    "runtime_context_sha256": "569a62e29da40c05a7984acd99aaee752e1ce75b5af48f70cae4e7da67982186",
+    "working_cognition_plans": []
+  },
+  "archive_sha256": "a797f294f234f7479ad4239bbd4d61223f72c6df577cc25bb67f5aeaba2061ab",
+  "limits": "Provider bookkeeping follows sovereign completion declaration; does not prove all exploration targets satisfied, defense effective, or expansion achieved."
+}

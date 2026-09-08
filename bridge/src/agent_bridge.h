@@ -19,6 +19,8 @@ void agent_doctrine_rules_loading(const char* alpha_path, bool complete);
 // periodic observer remains the reconciliation fallback for mutations outside
 // these patched sites.
 void agent_observe_unit_destroyed(int veh_id);
+// Runs the unchanged native kill path with scoped support-loss attribution.
+void agent_kill_unsupported_unit(int veh_id);
 void agent_observe_base_founded(int base_id);
 void agent_observe_base_destroyed(int base_id);
 void agent_observe_base_captured(int base_id, int old_faction_id,
@@ -31,6 +33,8 @@ void agent_observe_production_completed(int base_id, int production_id,
 void agent_observe_production_queue(int base_id, bool advanced);
 void agent_observe_production_selection(int base_id, bool repeat);
 void agent_observe_project_interrupted(int base_id, int production_id);
+void agent_observe_native_raid_effect(int base_id, const char* effect,
+    int before, int after);
 
 // Fallback request service at the two stock DirectPlay await loops used by
 // paired human diplomacy. Engine access remains on the game thread.

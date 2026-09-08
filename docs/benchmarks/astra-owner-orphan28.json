@@ -1,0 +1,24 @@
+{
+  "scope": "Stopped harness ownership helper retry",
+  "turn": 28,
+  "helper": "smacx-fe840e1161a6-harness-owner-8cb730b34d244625",
+  "observed_state": "Created, never started, installation/purpose/profile labels match own stack",
+  "created_utc": "2026-09-08T04:52:49.425771409Z",
+  "symptom": "Portal sovereign creation repeatedly returned HTTP502 docker operation failed; native/MCP healthy with zero sovereign processes",
+  "cause_boundary": "Existing deterministic helper name lacks stopped-orphan reconciliation. Exact interruption that left it behind is not established.",
+  "repair": "Require matching installation, purpose and harness identity before removing stopped helper. Running or mismatched helpers fail closed.",
+  "tests": {
+    "harness_owner_orphan_test": "passed stopped recovery and running/foreign identity/foreign installation isolation"
+  },
+  "pending": [
+    "sustained live progression"
+  ],
+  "deployment": {
+    "installed_image_test": "passed",
+    "recovered_turn": 28,
+    "live_sovereign_processes": 1,
+    "active_incidents": 0,
+    "orphan_helper_present": false,
+    "manual_helper_removal": false
+  }
+}

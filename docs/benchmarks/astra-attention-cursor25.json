@@ -1,0 +1,38 @@
+{
+  "observed_turn": 25,
+  "actual_provider_requests": [
+    1788840106.868593,
+    1788840124.4589496,
+    1788840134.631506
+  ],
+  "issued_attention_through_cursor": 14,
+  "world_anchor_observation_cursor": 152,
+  "submitted_attention_cursor": 152,
+  "result": "attention_ack_cursor_out_of_range; no acknowledgement",
+  "packet_sha256": "8d76536cc634d321828662d637f11c52958c3d7e8935cf56dff67ebecc81af66",
+  "repair": "Tool description and rejection guidance explicitly identify attention.through_cursor and distinguish world observation counters. Validation unchanged.",
+  "acceptance": "Live turn26 provider lease -> matching sovereign acknowledgement -> accepted two IDs verified; no claim that all future cursor errors are eliminated",
+  "tests": [
+    "attention_communication_contract_test: pass",
+    "attention_lease_expiry_test including managed_refresh_guidance: pass in MCP container"
+  ],
+  "deployment": {
+    "verified_recovery_turn": 25,
+    "installed_mcp_guidance_verified": true,
+    "live_sovereign_processes": 1,
+    "health_reasons": []
+  },
+  "live_corrected_ack": {
+    "provider_unix": 1788840811.7980247,
+    "issued_cursor": 2,
+    "item_sequences": [
+      1,
+      2
+    ],
+    "request_unix": 1788840884.76728,
+    "submitted_cursor": 2,
+    "result_unix": 1788840884.7797809,
+    "acknowledged_count": 2,
+    "packet_sha256": "642229eafa643988648d3ee1cdf2575b722d5a34f4ea6e8c1e1389e750a2eb50"
+  }
+}

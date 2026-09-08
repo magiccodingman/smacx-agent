@@ -1,0 +1,60 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "observed_state_turn37": {
+    "owned_bases": 1,
+    "owned_units": 5,
+    "stored_minerals": 6,
+    "net_minerals": 1,
+    "known_technologies": [
+      "Biogenetics",
+      "Centauri Ecology"
+    ],
+    "research_accumulated": 29,
+    "research_cost": 35
+  },
+  "production_frame": {
+    "turn": 23,
+    "returned_unix": 1788839356.6472943,
+    "decision_id": "decision-0979bd406c11417bae9cef21e74f6434",
+    "offered": [
+      {
+        "name": "Colony Pod",
+        "mineral_cost": 30
+      },
+      {
+        "name": "Formers",
+        "mineral_cost": 20
+      },
+      {
+        "name": "Scout Patrol",
+        "mineral_cost": 10
+      },
+      {
+        "name": "Recycling Tanks",
+        "mineral_cost": 40
+      }
+    ],
+    "support_warning": "conditional zero net mineral surplus after one additional unit"
+  },
+  "provider_delivery": {
+    "submitted_unix": 1788839356.938622,
+    "request_id": "a43101fbded048e796dd5ec885bc77e8",
+    "episode_id": "episode-988a2273e3772539b1022b9c149ea2ad",
+    "former_choice_id_present": true
+  },
+  "sovereign_reasoning_summary": {
+    "recorded_unix": 1788839475.199303,
+    "recognized_support_stall": true,
+    "considered_former_and_colony": true,
+    "selected_intent": "Hurry Scout for earlier exploration despite the projected production stall.",
+    "reference_gap": "Expressed uncertain Recycling Tanks mechanics without resolving that uncertainty in this response."
+  },
+  "assessment": "Economic-unit availability and provider delivery are established for this historical frame. The stated decision favors exploration over relieving the economic bottleneck.",
+  "limits": [
+    "Does not prove successful sovereign Former/Colony production or current native legality.",
+    "Does not establish all strategic weakness is model-caused; campaign recovery and other harness repairs are confounders.",
+    "No tactical or economic policy was injected into the sovereign.",
+    "Full-game and broader strategic acceptance remain open."
+  ]
+}

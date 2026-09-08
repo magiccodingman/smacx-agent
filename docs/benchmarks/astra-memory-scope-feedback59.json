@@ -1,0 +1,21 @@
+{
+  "problem": "Turn58 repeated writes copied a truncated session ID and received only a mismatch string.",
+  "source_archive_sha256": "a4c7f1ccb37d5ef9b9c9ceba0635f2debc4053b76cb6c500410b95f805a0572a",
+  "repair": "Explicit not_started/journal_committed false plus fresh decision guidance; scope and revision enforcement unchanged.",
+  "validation": [
+    "memory_scope_feedback_test: four scope mismatches never reach persistence, explicit corrected retry retains fresh revision and bound seat",
+    "memory_guard_discovery_test: actual decision-to-writer chain and stale revision rejection pass"
+  ],
+  "deployment": {
+    "control_image": "smacx-astra-control:dev",
+    "installed_scope_test": "pass",
+    "restored_turn": 59,
+    "graphiti_rebuild": "completed",
+    "profile_compile_status": 200,
+    "health": "observed_active",
+    "active_runs": 1,
+    "live_sovereigns": 1,
+    "sampled_unix": 1788881154.6683638
+  },
+  "live_error_consumption": "pending"
+}

@@ -1,0 +1,46 @@
+{
+  "authority": "controlled_native_test",
+  "baseline": "idle client causes BridgeUnavailable after 4 seconds",
+  "repaired": {
+    "idle_ping_seconds": 0.802,
+    "partial_ping_seconds": 0.801,
+    "slow_trickle_bounded": true,
+    "valid_fragmented_ping": true
+  },
+  "cross_build": "39/39",
+  "original_turn9_cause": "unproven",
+  "deployment": {
+    "verified_recovery_http": 200,
+    "doctrine_recompile_http": 200,
+    "dll_sha256": "9cdd514a8a8976eafdb013ec283cfb9a8cf4aa21bb7beb2308bec1b3f54c362e",
+    "matches_tested_dll": true,
+    "worker": "healthy",
+    "mcp": "healthy",
+    "active_sovereigns": 1,
+    "turn": 9
+  },
+  "live_followup": {
+    "turn": 10,
+    "incidents": [],
+    "moves": [
+      "996\u2192916",
+      "1035\u21921034"
+    ],
+    "receipt_delivery": [
+      {
+        "receipt_unix": 1788832596.9821641,
+        "next_provider_unix": 1788832597.3765364,
+        "complete_receipt_preserved_verbatim": true,
+        "runtime_context_appended": true
+      },
+      {
+        "receipt_unix": 1788832643.0586822,
+        "next_provider_unix": 1788832643.6558316,
+        "complete_receipt_preserved_verbatim": true,
+        "runtime_context_appended": true
+      }
+    ],
+    "original_failed_target_repeated": false,
+    "packet_zip_sha256": "53958e1312822a6993edf402ad4c6eee96a5f9addaa0e92833c12585d3e768c8"
+  }
+}

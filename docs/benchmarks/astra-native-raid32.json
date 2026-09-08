@@ -1,0 +1,121 @@
+{
+  "scope": "Native raid causality and owned event capture",
+  "historical_evidence": {
+    "packet_sha256": "1980ee7662c529603bba6e9ab42580dc339c855c763ef8ffdd553d0928e1ea7a",
+    "before_turn": 31,
+    "minerals_before": 9,
+    "after_turn": 32,
+    "minerals_after": 1,
+    "own_unit_count_before_after": 5,
+    "native_last_started_popup_label": "WORMSATTACK",
+    "interpretation": "Raid branch erases minerals and removes the attacking native. Historical popup and endpoints support raid attribution; they do not directly measure intermediate population loss or every native effect."
+  },
+  "repair": "Capture actual owned-base raid effect values at native mutation sites; project typed events and critical attention without inferring production completion.",
+  "validation": {
+    "adapter": {
+      "passed": true,
+      "raid_effects": [
+        {
+          "base_ref": "base-location-0",
+          "effect": "population",
+          "event_kind": "native_raid_effect",
+          "location_ref": "location-0",
+          "meaning": "Native life raid damage at the owned base; not production completion or a production switch.",
+          "observed_after": 2,
+          "observed_before": 3,
+          "occurrence_ref": "raid-fe3202cea93014d822da0735",
+          "turn": 50
+        },
+        {
+          "base_ref": "base-location-0",
+          "effect": "stored_minerals",
+          "event_kind": "native_raid_effect",
+          "location_ref": "location-0",
+          "meaning": "Native life raid damage at the owned base; not production completion or a production switch.",
+          "observed_after": 0,
+          "observed_before": 9,
+          "occurrence_ref": "raid-20e544d386b4aa65e60b4521",
+          "turn": 50
+        },
+        {
+          "base_ref": "base-location-0",
+          "effect": "Recreation Commons",
+          "event_kind": "native_raid_effect",
+          "location_ref": "location-0",
+          "meaning": "Native life raid damage at the owned base; not production completion or a production switch.",
+          "observed_after": 0,
+          "observed_before": 1,
+          "occurrence_ref": "raid-7996aa7829a11ba0d61a55cc",
+          "turn": 50
+        }
+      ],
+      "scope": "native-shaped adapter/publication/attention; not running-game comparison"
+    },
+    "compiled_hook": "passed ownership exclusion, invalid base/faction and inactive guards",
+    "native_cross_build": "passed",
+    "installed_control_image": true,
+    "worker_dll_sha256": "cb58b9776fdb33f89b9aba4f804f045c1672997bd6b934c471de04fee440bc2c",
+    "worker_dll_matches_native_replay": true,
+    "installed_raid_enqueue_interruption": "Passed: injected failure after first raid enqueue; fresh collector resumes publication, leases exactly three distinct effects, and acknowledged recollection duplicates none."
+  },
+  "pending": [
+    "deployment and live provider receipt",
+    "full-game acceptance"
+  ],
+  "controlled_native_replay": {
+    "source": "retained turn31 autosave, disposable network-none worker, repaired DLL",
+    "source_save_sha256": "c179e29d504e96fef79071d6bc17446d425e42cd50469dc115ac3236e380e756",
+    "result_sha256": "20676becee5497bf02138e3e7d8b9baf3c44268a72ddb17e9389ada5d4d37fc3",
+    "events": [
+      {
+        "sequence": 3,
+        "kind": "owned_native_raid_effect",
+        "turn": 32,
+        "subject_a": 0,
+        "subject_b": -1,
+        "from_tile_id": 795,
+        "to_tile_id": 795,
+        "value_before": 2,
+        "value_after": 1,
+        "item_name": "population",
+        "relationship_at_occurrence": "unknown",
+        "continuous_visibility": true
+      },
+      {
+        "sequence": 4,
+        "kind": "owned_native_raid_effect",
+        "turn": 32,
+        "subject_a": 0,
+        "subject_b": -1,
+        "from_tile_id": 795,
+        "to_tile_id": 795,
+        "value_before": 9,
+        "value_after": 0,
+        "item_name": "stored_minerals",
+        "relationship_at_occurrence": "unknown",
+        "continuous_visibility": true
+      }
+    ],
+    "after": {
+      "turn": 32,
+      "population": 2,
+      "minerals": {
+        "intake": 3,
+        "consumption": 2,
+        "unit_support_cost": 2,
+        "surplus": 1,
+        "accumulated": 1
+      }
+    },
+    "interpretation": "Actual native raid lowered population 2 to 1 and minerals 9 to 0. Later upkeep endpoint is population2 and minerals1; endpoints alone masked the loss."
+  },
+  "deployment": {
+    "turn": 32,
+    "prepared_image": "smacx-agent-prepared:fe840e1161a6-b829e813a01e-b1d5e4b5631a",
+    "game_dll_matches_replay": true,
+    "graphiti_restore_completed": true,
+    "reviewed_engine_source_sha256": "d9061cf87b45fe2692afdf2fc43b03849c332d613f91bea8ed104baf8f46225e",
+    "explicit_profile_recompile_http_status": 200,
+    "review": "Native delta adds owned diagnostic captures only; no rule or outcome changes. Doctrine adapter contract passes."
+  }
+}

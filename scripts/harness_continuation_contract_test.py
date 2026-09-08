@@ -190,7 +190,33 @@ def fresh_progress_uses_fresh_usage_baseline() -> None:
     assert control.run["metadata"]["semantic_baseline_telemetry"]["api_calls"] == 22
 
 
+def advancing_yield_resets_only_completed_episode_window() -> None:
+    for advanced in (True, False):
+        control, worker = FakeControl(), FakeWorkerManager()
+        manager = ContractHarnessManager(control, worker)
+        if not advanced:
+            control.run["metadata"]["attempt_started_progress"] = marker("r2", 2)
+        old = time.time() - 400
+        control.run["metadata"].update(
+            semantic_progress_unix=old, semantic_fingerprint="turn-2",
+            semantic_sample_unix=time.time()-61, semantic_telemetry_unix=time.time()-61,
+            semantic_baseline_telemetry={"api_calls":1,"output_tokens":0})
+        result = manager.reconcile_once()
+        assert manager.start_count == 1 and not control.incidents
+        metadata = control.run["metadata"]
+        if advanced:
+            assert metadata["semantic_progress_unix"] > old + 300
+            assert metadata["semantic_baseline_pending"] is True
+            manager.observed_running = True
+            assert manager.reconcile_once()["operator_required"] == 0
+            assert not control.incidents
+        else:
+            assert metadata["semantic_progress_unix"] == old
+            assert metadata["consecutive_clean_yields_without_progress"] == 1
+
+
 def main() -> int:
+    advancing_yield_resets_only_completed_episode_window()
     reasoning_detail_is_not_extra_output()
     fresh_progress_uses_fresh_usage_baseline()
     control = FakeControl()

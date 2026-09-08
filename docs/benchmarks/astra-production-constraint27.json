@@ -1,0 +1,192 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "scope": "Persistent current-state production constraint visibility; no claim of strategic improvement or game completion",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "turn": 27,
+  "observed": {
+    "base_ref": "base-location-795",
+    "production_name": "Scout Patrol",
+    "mineral_surplus": 0,
+    "minerals_accumulated": 1,
+    "production_cost": 10,
+    "first_known_turn": 24,
+    "last_verified_turn": 27,
+    "provider_request_unix": 1788841212.6882439,
+    "raw_current_fields_delivered": true,
+    "attention_items": 0
+  },
+  "packet_sha256": "179ddb77cd218e3b4781b6cbf6fedc39756c6c95cc24e2a3778840d97a892b80",
+  "repair": "Bounded persistent production_constraints in request-only force_summary; current owned evidence only, positive mineral cost and incomplete accumulation required; no exact ETA or mandatory strategy",
+  "validation": {
+    "production_constraint_context_test": "passed",
+    "runtime_context_contract_test": "passed including 64K/256K and Huge chaotic runtime budget",
+    "installed_image_test": "passed"
+  },
+  "pending": [
+    "sustained/full-game acceptance"
+  ],
+  "deployment": {
+    "recovered_turn": 27,
+    "native_session": "session-c0ec3f4ddd77495aa48fb3d2d42b13ec",
+    "live_sovereign_processes": 1,
+    "incidents": []
+  },
+  "provider_delivery": {
+    "request_unix": 1788841551.9544601,
+    "constraints": {
+      "bases": [
+        {
+          "base_ref": "base-location-795",
+          "epistemic_status": "current",
+          "last_verified_turn": 27,
+          "mineral_surplus": 0,
+          "minerals_accumulated": 1,
+          "production_cost": 10,
+          "production_name": "Scout Patrol",
+          "provenance_ref": "observation-168"
+        }
+      ],
+      "details_truncated": false,
+      "meaning": "Incomplete mineral production has no positive passive progress at the observed surplus. Future inputs, hurry and other mineral transfers can change this; completion timing is not predicted.",
+      "missing_or_noncurrent_evidence_count": 0,
+      "no_positive_mineral_surplus_count": 1,
+      "review": "Use smac_choices kind=base_citizens or production with base_ref to review workforce and production options. Unit focus does not prevent base management; review before the final ready unit ends the turn."
+    },
+    "identity": {
+      "action_revision": "15401997593886821026",
+      "continuity": "complete",
+      "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+      "observation_cursor": 170,
+      "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+      "session_id": "session-c0ec3f4ddd77495aa48fb3d2d42b13ec",
+      "timeline_id": "timeline-restore-edf4bdfc80654a4392d95595",
+      "world_epoch": "world-1913022c9fe47da1057d630a747c06ee",
+      "world_revision": 1
+    }
+  },
+  "deployed_packet_sha256": "1c66cc54073abe94f63418397b7fcefae10396ceb348bd519c68014efffee0b7",
+  "live_effect": {
+    "turn": 27,
+    "base_ref": "base-location-795",
+    "observation_cursor": 180,
+    "world_revision": 8,
+    "source": "owned_state",
+    "epistemic_status": "current",
+    "old_worked_location": "location-876",
+    "new_worked_location": "location-716",
+    "mineral_intake_before": 2,
+    "mineral_intake_after": 4,
+    "support_cost_before_and_after": 2,
+    "mineral_surplus_before": 0,
+    "mineral_surplus_after": 2,
+    "managed_conversion_choice": "choice-56bde251c7404f3eb5b3d180aafc65a3",
+    "managed_assignment_choice": "choice-a7624e914a55464b9a4420c6d7df566a",
+    "interpretation": "Sovereign explicitly identified zero surplus, queried citizen management, converted worker, requeried and assigned specialist; current owned observation verifies the effect. This sequence does not isolate prompting as the sole cause."
+  },
+  "effect_packet_sha256": "0ec56da67f731c7e0f024400f0633284aeabe4b866e3c6ee7882001ab4dcf8bf",
+  "cleared_constraint_provider_delivery": {
+    "request_unix": 1788842131.9762154,
+    "constraints": {
+      "bases": [],
+      "details_truncated": false,
+      "meaning": "Incomplete mineral production has no positive passive progress at the observed surplus. Future inputs, hurry and other mineral transfers can change this; completion timing is not predicted.",
+      "missing_or_noncurrent_evidence_count": 0,
+      "no_positive_mineral_surplus_count": 0,
+      "review": "Use smac_choices kind=base_citizens or production with base_ref to review workforce and production options. Unit focus does not prevent base management; review before the final ready unit ends the turn."
+    }
+  },
+  "native_reassignment_receipts": [
+    {
+      "recorded_unix": 1788842040.343494,
+      "operation": "semantic_command",
+      "arguments": {
+        "command": "convert_worker_to_specialist",
+        "base_id": 0,
+        "citizen_id": 1,
+        "specialist_index": -1,
+        "tile_index": 10,
+        "expected_revision": "12344281990547376520"
+      },
+      "result": {
+        "base_id": 0,
+        "command": "convert_worker_to_specialist",
+        "ok": true,
+        "specialist_total": 1,
+        "worked_tiles_mask": 3
+      }
+    },
+    {
+      "recorded_unix": 1788842131.3858504,
+      "operation": "semantic_command",
+      "arguments": {
+        "command": "assign_specialist_to_tile",
+        "base_id": 0,
+        "citizen_id": -1,
+        "specialist_index": 0,
+        "tile_index": 9,
+        "expected_revision": "10354049224802023152"
+      },
+      "result": {
+        "base_id": 0,
+        "command": "assign_specialist_to_tile",
+        "ok": true,
+        "specialist_total": 0,
+        "worked_tiles_mask": 515
+      }
+    }
+  ],
+  "next_turn_production": {
+    "epistemic_status": "current",
+    "first_known_turn": 28,
+    "last_verified_turn": 28,
+    "provenance_ref": "observation-183",
+    "source": "owned_state",
+    "value": {
+      "accumulated": 3,
+      "consumption": 2,
+      "intake": 4,
+      "surplus": 2,
+      "unit_support_cost": 2
+    },
+    "world_revision": 10,
+    "interpretation": "Accumulated minerals increased 1 to 3 across turn27 to28, matching the observed +2 surplus. No recovery cycle was performed for this check."
+  },
+  "recovery28": {
+    "supported_retry_after_update": true,
+    "incidents_cleared": true,
+    "minerals": {
+      "epistemic_status": "current",
+      "first_known_turn": 28,
+      "last_verified_turn": 28,
+      "provenance_ref": "observation-183",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 3,
+        "consumption": 2,
+        "intake": 4,
+        "surplus": 2,
+        "unit_support_cost": 2
+      },
+      "world_revision": 10
+    }
+  },
+  "sustained_production31": {
+    "minerals": {
+      "epistemic_status": "current",
+      "first_known_turn": 31,
+      "last_verified_turn": 31,
+      "provenance_ref": "observation-217",
+      "source": "owned_state",
+      "value": {
+        "accumulated": 9,
+        "consumption": 2,
+        "intake": 4,
+        "surplus": 2,
+        "unit_support_cost": 2
+      },
+      "world_revision": 20
+    },
+    "inspection_sha256": "c4d8e1601f66d02a6050247f1e3503378330b4776fb8826202158dee1a26d17a",
+    "interpretation": "Current owned observation verifies accumulated minerals increased from 3 at turn28 to 9 at turn31, with +2 surplus retained after recovery. Production completion and strategic competence are not established."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "turn": 56,
+  "action": "spontaneous direct_reference query about Colony Pod population cost/timing",
+  "returned_evidence_count": 4,
+  "returned_evidence_tokens": 144,
+  "query_tokens": 49,
+  "provider_delivery": [
+    {
+      "attention_lease_id": "attention-lease-436a70408318472896441036656bf550",
+      "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+      "request_id": "d4b24a02c48640c1985597c2696ddc48",
+      "runtime_context_sha256": "69b41d70baaa71f830275fcb10a4f19b2035ea29163c5af236335285e1eb5360"
+    }
+  ],
+  "assessment": "Retrieval ran with bounded excerpts/provenance, but excerpts do not answer production timing or population-one behavior. Do not equate successful retrieval with sufficient evidence. This is direct reference, not a specialist child mission.",
+  "archive_sha256": "e6b23c542f9d9b87c91025b97cf88e37ee09d048ed313011739b85f274fc4fa2"
+}

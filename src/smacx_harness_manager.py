@@ -21,6 +21,7 @@ from smacx_hermes import configure_profile
 from smacx_journal import CampaignJournal
 from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager
+from smacx_provider_watchdog import provider_drain_window
 from smacx_attention import AttentionService
 
 
@@ -200,6 +201,18 @@ class HarnessManager:
         receives no capabilities and never runs as root.
         """
         helper_name = self._name("harness-owner", identity)
+        try:
+            orphan = self.docker.inspect_container(helper_name)
+            self.docker.require_owned(orphan, self.installation_id,
+                                      purpose="harness-volume-owner")
+            labels = orphan.get("Config", {}).get("Labels", {})
+            if labels.get("io.smacx.harness") != identity:
+                raise HarnessManagerError("harness_owner_identity_mismatch")
+            if orphan.get("State", {}).get("Running"):
+                raise HarnessManagerError("harness_owner_helper_running")
+            self.docker.remove_container(helper_name)
+        except DockerNotFound:
+            pass
         identifier = self.docker.create_container(helper_name, {
             "Image": self.worker_manager.mcp_image,
             "Entrypoint": ["/bin/chown"],
@@ -445,6 +458,7 @@ class HarnessManager:
                 f"SMACX_AGENT_MATCH_ID={run['match_id']}",
                 f"SMACX_AGENT_ID={run['agent_id']}",
                 f"SMACX_HARNESS_PROFILE_ID={run['harness_profile_id']}",
+                f"SMACX_HARNESS_RUN_ID={run['run_id']}",
                 f"SMACX_AGENT_SESSION_ID={run.get('native_session_id') or ''}",
                 f"SMACX_PERSPECTIVE_ID={runtime_metadata.get('perspective_id') or ''}",
                 f"SMACX_CONTEXT_LENGTH={runtime_metadata.get('context_length') or 65536}",
@@ -629,8 +643,21 @@ for path in paths:
         db.close()
         for key,value in zip(result,row): result[key]+=int(value or 0)
     except (sqlite3.Error,OSError): pass
+try:
+    with open('/data/diagnostics/session-admission.json') as stream:
+        admission=json.load(stream)
+    if admission.get('run_id') == RUN_ID:
+        result['session_admission']=admission
+except (OSError,ValueError,AttributeError): pass
+try:
+    with open('/data/diagnostics/provider-request.json') as stream:
+        request=json.load(stream)
+    if request.get('run_id') == RUN_ID:
+        result['provider_request']=request
+except (OSError,ValueError,AttributeError): pass
 print(json.dumps(result,separators=(',',':')))
 '''
+        query = query.replace('RUN_ID', repr(str(run['run_id'])))
         identifier = self.docker.create_container(helper_name, {
             "Image": self.worker_manager.mcp_image,
             "Entrypoint": ["python3", "-c"],
@@ -840,7 +867,10 @@ print(json.dumps(result,separators=(',',':')))
                     or not metadata.get("semantic_baseline_telemetry")
                     or metadata.get("semantic_baseline_pending"))
                 telemetry_fresh = False
-                if baseline_pending or now - last_telemetry >= 60:
+                stall_seconds = min(max(int(
+                    run["restart_policy"].get("semantic_stall_seconds", 360)
+                ), 120), 1800)
+                if baseline_pending or now - last_telemetry >= 60 or now - progress_since >= stall_seconds:
                     try:
                         sample = self.telemetry(str(run["run_id"]))
                         if isinstance(sample.get("telemetry"), dict):
@@ -889,6 +919,16 @@ print(json.dumps(result,separators=(',',':')))
                     and now - progress_since >= stall_seconds
                     and (generated >= 4096 or calls >= 2)
                 )
+                drain = None if progress_changed or not previous_fingerprint else metadata.get("provider_drain")
+                if stalled and telemetry_fresh:
+                    draining, drain = provider_drain_window(
+                        run_id=str(run["run_id"]), now=now, progress_since=progress_since,
+                        stall_seconds=stall_seconds, request=telemetry.get("provider_request"),
+                        previous=drain,
+                    )
+                    if draining:
+                        stalled = False
+                metadata_update["provider_drain"] = drain
                 if stalled:
                     gap_id = "gap-" + uuid.uuid4().hex
                     detail = {
@@ -903,6 +943,8 @@ print(json.dumps(result,separators=(',',':')))
                         "stall_seconds": now - progress_since,
                         "generated_tokens_without_progress": generated,
                         "api_calls_without_progress": calls, "progress": progress,
+                        "provider_request": telemetry.get("provider_request"),
+                        "provider_drain": drain,
                         "reported_at_unix": now, "native_worker_preserved": True,
                     }
                     # Queue diagnostics before attempting containment, so a
@@ -984,6 +1026,18 @@ print(json.dumps(result,separators=(',',':')))
                     "semantic_unavailable_since_unix": None,
                     "semantic_unavailable_samples": 0,
                 }
+                if advanced:
+                    # The old episode may spend substantial provider work on
+                    # attention, compaction and its required handoff after the
+                    # native turn advances. Do not charge that completed
+                    # episode's window to its newly started successor.
+                    # Non-advancing yields retain both stall protections.
+                    yield_metadata.update(
+                        semantic_progress_unix=time.time(),
+                        semantic_fingerprint=progress.get("meaningful_fingerprint"),
+                        semantic_baseline_pending=True,
+                        semantic_sample_unix=0,
+                    )
                 if progress.get("final_score_completed") is True:
                     self._journal_run_event(
                         run, "agent.episode_ended", {

@@ -36,7 +36,7 @@ def main() -> int:
                     }],
                 }
             if operation == "semantic_snapshot":
-                return {"ok": True, "snapshot": {"revision": "r3", "turn": 1, "year": 2101}}
+                return {"ok": True, "snapshot": {"revision": "r2", "turn": 1, "year": 2101}}
             raise AssertionError(operation)
 
         smacx_mcp._call = bridge
@@ -67,10 +67,12 @@ def main() -> int:
             row = {"command": "respond_to_diplomatic_offer", "response": "accept", "energy_credits": 40}
             terms = {"kind": "information", "offer_type": "loan_offer", "payment_per_turn": 2, "term_turns": 10}
             decision_id, public = smacx_mcp._cache_decision_choices(
-                identity, [row, terms], choice_kind="interaction", choice_arguments={})
+                identity, [row, terms], choice_kind="interaction", choice_arguments={}, turn=1, year=2101)
 
             def changed_bridge(operation, **arguments):
                 nonlocal attempts
+                if operation == "semantic_snapshot":
+                    return {"ok": True, "snapshot": {"revision": "r2", "turn": 1, "year": 2101}}
                 if operation == "semantic_command":
                     attempts += 1
                     return {"ok": False, "error": {"code": "stale_state"}}
@@ -84,6 +86,7 @@ def main() -> int:
             smacx_mcp._call = changed_bridge
             result = smacx_mcp.smac_execute_choice(decision_id, public[0]["choice_id"])
             assert not result.get("ok") and attempts == 1, (changed, result, attempts)
+            assert result.get("error", {}).get("code") == "decision_conflict", result
         print(json.dumps({"event": "pass", "payload": {
             "one_server_side_rebase": True, "model_retry_required": False,
             "revision_churn_hidden": True, "private_confirmation_preserved": True,

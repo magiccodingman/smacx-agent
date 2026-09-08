@@ -75,6 +75,22 @@ def main() -> int:
                 or payload.get("expected_revision") != "r1":
             raise AssertionError(f"server-owned payload was incomplete: {calls[-1]}")
 
+        # A catalog-level unit selector must survive in the semantic receipt.
+        # Native arguments and selectors absent from the scoped map must not leak.
+        for native_id, expected in ((7, "own-unit-seven"), (8, None)):
+            receipt_id, offered = smacx_mcp._cache_decision_choices(
+                {"match_id": "receipt-test", "session_id": "session-test", "revision": "r2"},
+                [{"command": "return_to_base"}], choice_kind="unit_actions",
+                choice_arguments={"unit_id": native_id},
+                semantic_context={"reverse_units": {7: "own-unit-seven"}},
+            )
+            receipt_result = smacx_mcp.smac_execute_choice(receipt_id, offered[0]["choice_id"])
+            assert receipt_result.get("ok"), receipt_result
+            receipt = receipt_result["executed_choice"]
+            assert receipt.get("own_unit_ref") == expected, receipt
+            assert set(receipt) <= {"choice_id", "label", "own_unit_ref"}, receipt
+            assert calls[-2][1]["unit_id"] == native_id, calls[-2]
+
         repeated = smacx_mcp.smac_execute_choice(decision_id, str(public["choice_id"]))
         if repeated.get("error", {}).get("code") != "consumed_decision":
             raise AssertionError(f"decision replay was not rejected: {repeated}")
@@ -86,6 +102,34 @@ def main() -> int:
         invalid = smacx_mcp.smac_execute_choice(invalid_id, "choice-not-real")
         if invalid.get("error", {}).get("code") != "invalid_choice":
             raise AssertionError(f"invented choice was not rejected: {invalid}")
+
+        assert "No native action was attempted" in invalid["error"]["message"]
+        assert "movement legality was not tested" in invalid["error"]["message"]
+
+        # Slow inference may exceed the former 180-second lease. It must still
+        # send the original native revision and remain single-use.
+        slow_id, slow_choices = smacx_mcp._cache_decision_choices(
+            {"match_id": "slow-test", "session_id": "session-test", "revision": "r1"},
+            [{"command": "end_turn"}], choice_kind="game_management", choice_arguments={},
+        )
+        smacx_mcp.DECISION_CACHE[slow_id]["created_monotonic"] -= 182
+        slow = smacx_mcp.smac_execute_choice(slow_id, slow_choices[0]["choice_id"])
+        assert slow.get("ok"), slow
+        assert calls[-2][1]["expected_revision"] == "r1", calls[-2]
+        assert smacx_mcp.smac_execute_choice(slow_id, slow_choices[0]["choice_id"])["error"]["code"] == "consumed_decision"
+
+        expired_id, expired_choices = smacx_mcp._cache_decision_choices(
+            {"match_id": "expiry-test", "session_id": "session-test", "revision": "r2"},
+            [{"command": "end_turn"}], choice_kind="game_management", choice_arguments={},
+        )
+        smacx_mcp.DECISION_CACHE[expired_id]["created_monotonic"] -= smacx_mcp.DECISION_TTL_SECONDS + 1
+        before_expiry_calls = len(calls)
+        expired = smacx_mcp.smac_execute_choice(expired_id, expired_choices[0]["choice_id"])
+        assert expired["error"]["code"] == "expired_decision", expired
+        assert expired["expiry"]["reason"] == "elapsed_time", expired
+        assert expired["expiry"]["age_seconds"] > expired["expiry"]["lease_seconds"], expired
+        assert expired["native_call_attempted"] is False and len(calls) == before_expiry_calls
+        assert expired_id not in smacx_mcp.DECISION_CACHE
 
         base_id, base_choices = smacx_mcp._cache_decision_choices(
             {"match_id": "match-test", "session_id": "session-test", "revision": "r2"},

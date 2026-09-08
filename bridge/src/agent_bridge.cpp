@@ -71,6 +71,8 @@ bool managed_human_controller = false;
 bool request_pending = false;
 bool request_in_progress = false;
 int agent_modal_service_depth = 0;
+// UI-thread only: native movement pumps messages with transient vehicle state.
+bool native_move_on_stack = false;
 uint64_t pending_sequence = 0;
 uint64_t response_sequence = 0;
 std::vector<int> pending_multiplayer_technology_presentations;
@@ -515,6 +517,9 @@ int deferred_obliterate_unit_id = -1;
 int active_obliterate_base_id = -1;
 int active_obliterate_unit_id = -1;
 int active_obliterate_decision = -1;
+int deferred_disband_unit_id = -1;
+int active_disband_unit_id = -1;
+int active_disband_decision = -1;
 int deferred_destroy_unit_id = -1;
 int deferred_destroy_former_id = -1;
 int deferred_destroy_owner_id = -1;
@@ -3602,6 +3607,10 @@ std::string semantic_owned_terraform_task(int faction_id, VEH& veh) {
     if (active) {
         out << ",\"name\":" << json_string(Terraform[veh.order - VehOrderFormerFirst].name)
             << ",\"accumulated_work_points\":" << static_cast<int>(veh.movement_turns);
+        if (veh.order - VehOrderFormerFirst == FORMER_SENSOR) {
+            out << ",\"purpose\":\"sensor_defense\",\"effect_scope\":\"Sensor Array work provides defensive infrastructure. Work points do not establish a mineral-income improvement; verify tile yields and worked allocation separately.\"";
+        }
+
     }
     out << ",\"completion_verified\":false}";
     return out.str();
@@ -4549,7 +4558,7 @@ bool semantic_interaction_command(const std::string& command) {
         "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer",
         "respond_to_territorial_incident", "respond_to_combat_confirmation",
         "respond_to_nerve_gas", "respond_to_end_turn_confirmation",
-        "respond_to_base_obliteration", "respond_to_supreme_leader",
+        "respond_to_base_obliteration", "respond_to_unit_disband", "respond_to_supreme_leader",
         "respond_to_game_over", "advance_endgame_presentation",
         "advance_technology_presentation", "advance_project_information",
         "respond_to_design_offer", "defer_social_engineering",
@@ -4675,6 +4684,9 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(base_ref_token(active_obliterate_base_id)));
     mix(static_cast<uint32_t>(unit_ref_token(active_obliterate_unit_id)));
     mix(static_cast<uint32_t>(active_obliterate_decision + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_disband_unit_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(active_disband_unit_id)));
+    mix(static_cast<uint32_t>(active_disband_decision + 1));
     mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_unit_id)));
     mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_former_id)));
     mix(static_cast<uint32_t>(deferred_destroy_owner_id + 2));
@@ -7640,6 +7652,30 @@ bool semantic_ignores_rough_movement(VEH& veh) {
             || has_abil(veh.unit_id, ABL_ANTIGRAV_STRUTS));
 }
 
+// Called only for an owned base after set_base/base_compute on the UI thread.
+void append_owned_growth(std::ostream& out, int base_id) {
+    const BASE& base = Bases[base_id];
+    const int faction = base.faction_id;
+    const int threshold = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+    const bool complex = has_fac_built(FAC_HAB_COMPLEX, base_id);
+    const bool dome = has_fac_built(FAC_HABITATION_DOME, base_id);
+    const int modifier = (has_project(FAC_ASCETIC_VIRTUES, faction) ? 2 : 0)
+        - MFactions[faction].rule_population;
+    const int limit = (complex ? Rules->pop_limit_wo_hab_dome : Rules->pop_limit_wo_hab_complex) + modifier;
+    const bool room = (base.pop_size < limit || dome) && base.pop_size < MaxBasePopSize;
+    const bool boom = (*BaseGrowthRate >= GrowthPopBoom || has_project(FAC_CLONING_VATS, faction))
+        && Rules->nutrient_intake_req_citizen && base.nutrient_surplus >= Rules->nutrient_intake_req_citizen;
+    out << ",\"growth\":{\"nutrient_threshold\":" << threshold
+        << ",\"growth_rating\":" << *BaseGrowthRate
+        << ",\"habitat_limit\":" << limit
+        << ",\"habitation_dome\":" << (dome ? "true" : "false")
+        << ",\"population_room\":" << (room ? "true" : "false")
+        << ",\"ordinary_growth_inhibited\":" << (*BaseGrowthRate <= -3 ? "true" : "false")
+        << ",\"population_boom_conditions_met\":" << (boom ? "true" : "false")
+        << ",\"negative_nutrient_stock\":" << (base.nutrients_accumulated < 0 ? "true" : "false")
+        << ",\"timing_semantics\":\"Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs.\"}";
+}
+
 std::string bases_response() {
     if (!game_active()) return error_response("not_in_game", "Start or load a game first.");
     ensure_test_base_action_fixture();
@@ -7681,7 +7717,9 @@ std::string bases_response() {
         out << "]},\"nutrients\":{\"intake\":" << base.nutrient_intake_2
             << ",\"consumption\":" << base.nutrient_consumption
             << ",\"surplus\":" << base.nutrient_surplus
-            << ",\"accumulated\":" << base.nutrients_accumulated << '}'
+            << ",\"accumulated\":" << base.nutrients_accumulated << '}';
+        append_owned_growth(out, i);
+        out
             << ",\"minerals\":{\"intake\":" << base.mineral_intake_2
             << ",\"consumption\":" << base.mineral_consumption
             << ",\"unit_support_cost\":" << *BaseForcesMaintCost
@@ -9678,6 +9716,79 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
+    if (phase == "diagnostics_growth_comparison") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Isolated single-player growth comparison only.");
+        BASE& base = Bases[base_id];
+        base.pop_size = 2;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = 0;
+        const int threshold = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+        base.nutrient_surplus = 1;
+        base.nutrients_accumulated = threshold - 1;
+        std::ostringstream out;
+        out << "{\"ok\":true,\"before\":{\"population\":2";
+        append_owned_growth(out, base_id);
+        out << "},\"threshold\":" << threshold;
+        mod_base_growth();
+        out << ",\"first_population\":" << static_cast<int>(base.pop_size)
+            << ",\"first_stock\":" << base.nutrients_accumulated;
+        mod_base_growth();
+        out << ",\"second_population\":" << static_cast<int>(base.pop_size);
+        base.pop_size = 2;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = -3;
+        base.nutrient_surplus = 1;
+        base.nutrients_accumulated = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+        out << ",\"inhibited_before\":{\"population\":2";
+        append_owned_growth(out, base_id);
+        out << '}';
+        mod_base_growth();
+        out << ",\"inhibited_population\":" << static_cast<int>(base.pop_size);
+        base.pop_size = 2;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = GrowthPopBoom;
+        base.nutrients_accumulated = 0;
+        base.nutrient_surplus = Rules->nutrient_intake_req_citizen;
+        out << ",\"boom_before\":{\"population\":2";
+        append_owned_growth(out, base_id);
+        out << '}';
+        mod_base_growth();
+        out << ",\"boom_population\":" << static_cast<int>(base.pop_size);
+        set_fac(FAC_HAB_COMPLEX, base_id, false);
+        set_fac(FAC_HABITATION_DOME, base_id, false);
+        const int cap = Rules->pop_limit_wo_hab_complex
+            + (has_project(FAC_ASCETIC_VIRTUES, faction) ? 2 : 0)
+            - MFactions[faction].rule_population;
+        base.pop_size = cap;
+        set_base(base_id);
+        base_compute(1);
+        *BaseGrowthRate = 0;
+        base.nutrient_surplus = 1;
+        base.nutrients_accumulated = (base.pop_size + 1) * mod_cost_factor(faction, RSC_NUTRIENT, base_id);
+        out << ",\"cap_before\":{\"population\":" << cap;
+        append_owned_growth(out, base_id);
+        out << '}';
+        mod_base_growth();
+        out << ",\"capped_population\":" << static_cast<int>(base.pop_size) << '}';
+        return out.str();
+    }
+    if (phase == "diagnostics_disband") {
+        if (*MultiplayerActive || interaction_kind(faction) != "turn")
+            return error_response("fixture_unavailable", "Isolated disband fixture requires an idle turn.");
+        BASE& base = Bases[base_id];
+        int id = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+        if (id < 0) return error_response("fixture_unavailable", "Cannot create disband fixture unit.");
+        Vehs[id].home_base_id = base_id;
+        Vehs[id].moves_spent = field_int(request, "spent", 0)
+            ? static_cast<uint8_t>(std::min(255, veh_speed(id, 0))) : 0;
+        if (field_int(request, "objective", 0)) Vehs[id].flags |= VFLAG_IS_OBJECTIVE;
+        ++semantic_mutation_generation;
+        return std::string("{\"ok\":true,\"unit_id\":") + std::to_string(id)
+            + ",\"base_id\":" + std::to_string(base_id) + '}';
+    }
     if (phase == "diagnostics_support_shortage") {
         if (*MultiplayerActive || test_support_shortage_base >= 0)
             return error_response("fixture_unavailable", "Isolated idle single-player support notice only.");
@@ -9866,6 +9977,19 @@ std::string test_managed_action_fixture_response(const std::string& request) {
         return std::string("{\"ok\":true,\"created_unit_count\":") + std::to_string(*VehCount - before)
             + ",\"observed_surplus\":" + std::to_string(surplus)
             + ",\"observed_progress\":" + std::to_string(Bases[target].minerals_accumulated) + '}';
+    }
+    if (phase == "production_switch_prepare") {
+        if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player switch fixture only.");
+        BASE& base = Bases[base_id];
+        base.queue_items[0] = BSC_SCOUT_PATROL;
+        base.queue_size = 0;
+        base.production_id_last = BSC_SCOUT_PATROL;
+        base.minerals_accumulated = base.minerals_accumulated_2 = 0;
+        base.state_flags &= ~BSTATE_HURRY_PRODUCTION;
+        Factions[faction].energy_credits = 200;
+        Factions[faction].hurry_cost_total = 0;
+        ++semantic_mutation_generation;
+        return "{\"ok\":true,\"base_id\":" + std::to_string(base_id) + '}';
     }
     if (phase == "production_prepare") {
         if (*MultiplayerActive) return error_response("fixture_unavailable", "Single-player production fixture only.");
@@ -10501,6 +10625,8 @@ std::string semantic_owned_progress_digest() {
         mix(2); mix(semantic_vehicle_handle(i)); mix(veh.unit_id);
         mix(veh.x); mix(veh.y); mix(veh.cur_hitpoints()); mix(veh.moves_spent);
         mix(veh.order); mix(veh.order_auto_type);
+        // Automation can be cleared without changing ORDER_NONE/auto subtype.
+        mix(veh.state & (VSTATE_ON_ALERT | VSTATE_EXPLORE | VSTATE_IN_TRANSPORT));
         mix(veh.waypoint_count); mix(veh.waypoint_x[0]); mix(veh.waypoint_y[0]);
         finish();
     }
@@ -11128,6 +11254,34 @@ void append_production_support(std::ostringstream& out, int faction_id, int base
         << ",\"condition\":\"One unit completes at this home base with current population, social support, mineral output, units and fungus unchanged. Facilities, colony population changes, convoys and future upkeep effects are not simulated. Support exceeding gross output can force native support cancellation or disbanding; no casualty is predicted. Verify actual completion and subsequent support.\"}";
 }
 
+struct ProductionSwitchEffect {
+    int retained;
+    int retool_loss;
+};
+
+ProductionSwitchEffect production_switch_effect(int base_id, int item) {
+    BASE& base = Bases[base_id];
+    if (item == base.queue_items[0]) return {base.minerals_accumulated, 0};
+    struct QueueReadGuard {
+        BASE& base; int prior;
+        ~QueueReadGuard() { base.queue_items[0] = prior; }
+    } guard{base, base.queue_items[0]};
+    base.queue_items[0] = item;
+    const int loss = mod_base_lose_minerals(base_id, item);
+    return {base.minerals_accumulated_2 - loss, loss};
+}
+
+void append_production_switch_effect(std::ostream& out, int base_id, int item) {
+    const auto effect = production_switch_effect(base_id, item);
+    const int before = Bases[base_id].minerals_accumulated;
+    out << ",\"switch_effect\":{\"epistemic_status\":\"conditional\","
+        << "\"minerals_before\":" << before
+        << ",\"minerals_after_switch\":" << effect.retained
+        << ",\"mineral_change\":" << effect.retained - before
+        << ",\"retool_penalty\":" << effect.retool_loss
+        << ",\"condition\":\"Immediate native switch at the current state. Switching uses the native retained-mineral baseline; recently hurried minerals may be lost even with zero retool penalty. Energy spent is not refunded. No completion or future income is predicted.\"}";
+}
+
 std::string production_choices_response(int faction_id, int base_id) {
     if (base_id < 0 || base_id >= *BaseCount || Bases[base_id].faction_id != faction_id) {
         return error_response("invalid_base", "base_id must identify a base owned by the human faction.");
@@ -11172,7 +11326,9 @@ std::string production_choices_response(int faction_id, int base_id) {
             << "\",\"command\":\"set_production\",\"base_id\":" << base_id
             << ",\"item_id\":" << unit_id
             << ",\"kind\":\"unit\",\"name\":" << json_string(Units[unit_id].name)
-            << ",\"mineral_cost\":" << mineral_cost(base_id, unit_id) << '}';
+            << ",\"mineral_cost\":" << mineral_cost(base_id, unit_id);
+        append_production_switch_effect(out, base_id, unit_id);
+        out << '}';
     }
     for (int facility_id = Fac_ID_First; facility_id <= SP_ID_Last; ++facility_id) {
         int item_id = -facility_id;
@@ -11184,7 +11340,9 @@ std::string production_choices_response(int faction_id, int base_id) {
             << ",\"item_id\":" << item_id
             << ",\"kind\":" << json_string(facility_id >= SP_ID_First ? "project" : "facility")
             << ",\"name\":" << json_string(Facility[facility_id].name)
-            << ",\"mineral_cost\":" << mineral_cost(base_id, item_id) << '}';
+            << ",\"mineral_cost\":" << mineral_cost(base_id, item_id);
+        append_production_switch_effect(out, base_id, item_id);
+        out << '}';
     }
     if (hurry_legal && full_hurry_cost <= available_energy) {
         if (comma) out << ',';
@@ -11915,9 +12073,17 @@ int target_tile_id = -1, int target_unit_id = -1) {
                     << ",\"known\":true,\"meaning\":\"Wake this passenger and make one native move from its sea transport onto adjacent land.\"}";
             }
         } else if (veh.order != ORDER_NONE && !veh_jail(veh_id)) {
+            comma = true;
             out << "{\"id\":\"activate:" << veh_id
                 << "\",\"command\":\"activate_unit\",\"unit_id\":" << veh_id
                 << ",\"meaning\":\"Cancel the persistent order and reactivate the unit under native movement rules.\"}";
+        }
+        if (!(veh.flags & VFLAG_IS_OBJECTIVE)) {
+            if (comma) out << ',';
+            out << "{\"id\":\"disband:" << veh_id
+                << "\",\"command\":\"disband_unit\",\"unit_id\":" << veh_id
+                << ",\"requires\":{\"confirm_disband\":1},\"destructive\":true,"
+                "\"meaning\":\"Open native disband confirmation for this spent or ordered unit. Verify recycling and unit removal afterward.\"}";
         }
         out << "],\"ready\":false,\"reason\":"
             << json_string(boarded_transport_id >= 0 ? "boarded_transport"
@@ -12724,10 +12890,12 @@ int target_tile_id = -1, int target_unit_id = -1) {
             out << "]}";
         }
     }
+    if (!(veh.flags & VFLAG_IS_OBJECTIVE)) {
     out << ",{\"id\":\"disband:" << veh_id
         << "\",\"command\":\"disband_unit\",\"unit_id\":" << veh_id
         << ",\"requires\":{\"confirm_disband\":1},"
         << "\"destructive\":true,\"meaning\":\"Permanently disband this unit. Unit ids may shift afterward; observe again.\"}";
+    }
     out << "]}";
     return out.str();
 }
@@ -13370,6 +13538,13 @@ std::string semantic_choices_response(const std::string& request) {
                     "\"kind\":\"capability_status\",\"supported\":false,"
                     "\"meaning\":\"No reviewed captive faction id matched the native rescue menu.\"}";
             }
+        } else if ((!strcmp(label, "DISBAND") || !strcmp(label, "DISBAND2"))
+        && active_disband_unit_id >= 0) {
+            out << "{\"id\":\"unit_disband:cancel\",\"command\":\"respond_to_unit_disband\","
+                "\"response\":\"cancel\",\"meaning\":\"Cancel native unit disband.\"},"
+                "{\"id\":\"unit_disband:proceed\",\"command\":\"respond_to_unit_disband\","
+                "\"response\":\"proceed\",\"confirm_disband\":1,\"destructive\":true,"
+                "\"meaning\":\"Confirm native disband. The game applies eligible base recycling; verify the resulting unit roster and base minerals.\"}";
         } else if ((!strcmp(label, "OBLIT") || !strcmp(label, "OBLITOK"))
         && active_obliterate_base_id >= 0 && active_obliterate_unit_id >= 0) {
             int base_id = active_obliterate_base_id;
@@ -15440,6 +15615,25 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"respond_to_end_turn_confirmation\","
             "\"response\":") + json_string(response.c_str()) + '}';
     }
+    if (command == "respond_to_unit_disband") {
+        std::string label = agent_popup_label();
+        std::string response = field_string(request, "response");
+        if ((label != "DISBAND" && label != "DISBAND2")
+        || active_disband_unit_id < 0
+        || (response != "cancel" && response != "proceed")) {
+            return error_response("invalid_unit_disband_response",
+                "Use the exact active native disband confirmation.");
+        }
+        if (response == "proceed" && field_int(request, "confirm_disband", 0) != 1) {
+            return error_response("disband_confirmation_required", "Confirm the destructive native choice.");
+        }
+        BasePop* popup = active_default_popup();
+        if (!popup) return error_response("popup_unavailable", "Native disband confirmation unavailable.");
+        active_disband_decision = response == "proceed" ? 1 : 0;
+        submit_popup_choice(popup, active_disband_decision);
+        return std::string("{\"ok\":true,\"command\":\"respond_to_unit_disband\",\"response\":")
+            + json_string(response.c_str()) + '}';
+    }
     if (command == "respond_to_base_obliteration") {
         std::string label = agent_popup_label();
         std::string response = field_string(request, "response");
@@ -16850,6 +17044,7 @@ std::string semantic_command_response(const std::string& request) {
         base_compute(1);
         bool buildable = production_item_buildable(faction_id, base_id, item_id);
         if (!buildable) return error_response("invalid_production", "item_id is not currently buildable at this base.");
+        const int minerals_before = Bases[base_id].minerals_accumulated;
         mod_base_change(base_id, item_id);
         if (*MultiplayerActive) {
             // The base packet carries production and queue contents. The
@@ -16862,7 +17057,11 @@ std::string semantic_command_response(const std::string& request) {
         base_compute(1);
         return std::string("{\"ok\":true,\"command\":\"set_production\",\"base_id\":")
             + std::to_string(base_id) + ",\"item_id\":" + std::to_string(item_id)
-            + ",\"name\":" + json_string(production_name(item_id).c_str()) + '}';
+            + ",\"name\":" + json_string(production_name(item_id).c_str())
+            + ",\"production_name\":" + json_string(production_name(item_id).c_str())
+            + ",\"minerals_before\":" + std::to_string(minerals_before)
+            + ",\"minerals_accumulated\":" + std::to_string(Bases[base_id].minerals_accumulated)
+            + ",\"mineral_change\":" + std::to_string(Bases[base_id].minerals_accumulated - minerals_before) + '}';
     }
     if (command == "hurry_production") {
         int base_id = field_int(request, "base_id", -1);
@@ -17640,6 +17839,28 @@ std::string semantic_command_response(const std::string& request) {
             + ",\"target_tile_id\":" + std::to_string(target_tile_id)
             + ",\"action_id\":" + std::to_string(deferred_action.id) + '}';
     }
+    if (command == "disband_unit") {
+        if (veh.flags & VFLAG_IS_OBJECTIVE) {
+            return error_response("objective_unit_disband_forbidden",
+                "Scenario objective units cannot be disbanded.");
+        }
+        if (field_int(request, "confirm_disband", 0) != 1) {
+            return error_response("disband_confirmation_required",
+                "Set confirm_disband to 1 after selecting the destructive choice.");
+        }
+        if (deferred_native_action_pending()) {
+            return error_response("action_already_queued", "Wait for the pending native action.");
+        }
+        deferred_disband_unit_id = veh_id;
+        begin_deferred_action("disband_unit", veh_id, veh.x, veh.y, veh.x, veh.y);
+        if (!PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0)) {
+            deferred_disband_unit_id = -1;
+            deferred_action.status = "rejected";
+            return error_response("unit_disband_queue_failed", "Native disband could not be queued.");
+        }
+        return std::string("{\"ok\":true,\"command\":\"disband_unit\",\"queued\":true,\"action_id\":")
+            + std::to_string(deferred_action.id) + '}';
+    }
     if (!veh_unmoved(veh_id)) {
         return error_response("unit_not_ready", "This unit has no unresolved action available this turn.");
     }
@@ -18299,19 +18520,7 @@ std::string semantic_command_response(const std::string& request) {
             + ",\"blast_damage\":" + std::to_string(blast_damage)
             + ",\"ids_may_have_shifted\":true}";
     }
-    if (command == "disband_unit") {
-        if (field_int(request, "confirm_disband", 0) != 1) {
-            return error_response("disband_confirmation_required",
-                "Set confirm_disband to 1 after selecting the destructive choice.");
-        }
-        std::string unit_name = veh.name();
-        int unit_id = veh.unit_id;
-        veh_kill(veh_id);
-        return std::string("{\"ok\":true,\"command\":\"disband_unit\",\"deleted_unit_id\":")
-            + std::to_string(veh_id) + ",\"prototype_id\":" + std::to_string(unit_id)
-            + ",\"unit_name\":" + json_string(unit_name.c_str())
-            + ",\"ids_may_have_shifted\":true}";
-    }
+
     if (command == "move_unit") {
         int target_tile_id = -1;
         int x = -1;
@@ -18895,13 +19104,9 @@ std::string action_counterfactual_receipt(const std::string& request, int factio
             return error_response("invalid_production", "The nominated item is no longer buildable.");
         int loss = 0, retained = base.minerals_accumulated;
         if (command == "set_production" && item != prior_item) {
-            struct QueueReadGuard {
-                BASE& base; int prior;
-                QueueReadGuard(BASE& value, int item) : base(value), prior(value.queue_items[0]) { base.queue_items[0] = item; }
-                ~QueueReadGuard() { base.queue_items[0] = prior; }
-            } guard(base, item);
-            loss = mod_base_lose_minerals(id, item);
-            retained = base.minerals_accumulated_2 - loss;
+            const auto effect = production_switch_effect(id, item);
+            loss = effect.retool_loss;
+            retained = effect.retained;
         }
         const int cost = mineral_cost(id, item);
         int hurry_energy = 0;
@@ -19393,11 +19598,26 @@ DWORD WINAPI server_worker(void*) {
     while (!stopping) {
         SOCKET client = accept(listen_socket, NULL, NULL);
         if (client == INVALID_SOCKET) break;
+        // Transport waits must not monopolize the single bridge dispatcher.
+        // These limits do not interrupt UI-thread execution or change its
+        // separate operation deadline; they apply only while reading/writing.
+        DWORD socket_timeout = 1000;
+        if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout))
+                == SOCKET_ERROR
+            || setsockopt(client, SOL_SOCKET, SO_SNDTIMEO,
+                reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout))
+                == SOCKET_ERROR) {
+            closesocket(client);
+            continue;
+        }
+        DWORD frame_started = GetTickCount();
         std::string buffer;
         char chunk[2048];
         while (!stopping) {
             int count = recv(client, chunk, sizeof(chunk), 0);
             if (count <= 0) break;
+            if (GetTickCount() - frame_started > 2000) break;
             buffer.append(chunk, chunk + count);
             if (buffer.size() > MaxRequestBytes) {
                 send_all(client, error_response("request_too_large", "Maximum request size is 16384 bytes.") + "\n");
@@ -19475,6 +19695,7 @@ DWORD WINAPI server_worker(void*) {
                     continue;
                 }
                 if (!send_all(client, response + "\n")) break;
+                frame_started = GetTickCount();
             }
         }
         closesocket(client);
@@ -19502,6 +19723,25 @@ void agent_doctrine_rules_loading(const char* alpha_path, bool complete) {
     }
 }
 
+namespace {
+int support_loss_handle = -1;
+}
+
+void agent_kill_unsupported_unit(int veh_id) {
+    // Native callers already run on the UI thread. Bind only this vehicle's
+    // stable identity; collateral cargo removals must not inherit its cause.
+    struct CauseScope {
+        int previous;
+        ~CauseScope() { support_loss_handle = previous; }
+    } scope{support_loss_handle};
+    support_loss_handle = -1;
+    if (lock_initialized && game_active() && veh_id >= 0 && veh_id < *VehCount) {
+        ensure_semantic_vehicle_handles();
+        support_loss_handle = semantic_vehicle_handle(veh_id);
+    }
+    kill(veh_id);
+}
+
 void agent_observe_unit_destroyed(int veh_id) {
     if (!lock_initialized || !game_active() || veh_id < 0
     || veh_id >= *VehCount) return;
@@ -19519,7 +19759,9 @@ void agent_observe_unit_destroyed(int veh_id) {
         const int tile_id = semantic_tile_id(veh.x, veh.y);
         append_observation_event("visible_unit_destroyed", *CurrentTurn,
             stable_handle, veh.faction_id, tile_id, tile_id,
-            veh.cur_hitpoints(), 0, true);
+            veh.cur_hitpoints(), 0, true,
+            veh.faction_id == perspective && stable_handle == support_loss_handle
+                ? "support_shortage" : nullptr);
     }
     // Mirror the native memmove that immediately follows this hook. Surviving
     // semantic handles and observation shadows retain their exact identity.
@@ -19544,6 +19786,16 @@ int category, int veh_id) {
     append_observation_event("owned_production_completed", *CurrentTurn,
         base_id, production_id, tile_id, tile_id, category, handle, true,
         prod_name(production_id));
+}
+
+void agent_observe_native_raid_effect(int base_id, const char* effect, int before, int after) {
+    if (!lock_initialized || !game_active() || base_id < 0 || base_id >= *BaseCount
+    || *CurrentPlayerFaction < 1 || *CurrentPlayerFaction >= MaxPlayerNum
+    || Bases[base_id].faction_id != *CurrentPlayerFaction) return;
+    const BASE& base = Bases[base_id];
+    const int tile_id = semantic_tile_id(base.x, base.y);
+    append_observation_event("owned_native_raid_effect", *CurrentTurn,
+        base_id, -1, tile_id, tile_id, before, after, true, effect);
 }
 
 void agent_observe_project_interrupted(int base_id, int production_id) {
@@ -20295,6 +20547,34 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
                 : (attempted ? "native_failure" : "state_changed_before_execution");
             return true;
         }
+        if (deferred_disband_unit_id >= 0) {
+            int unit_id = deferred_disband_unit_id;
+            int faction_id = game_active() ? *CurrentPlayerFaction : -1;
+            int count_before = *VehCount;
+            bool attempted = false;
+            if (!*MultiplayerActive && faction_id >= 1 && unit_id < *VehCount
+            && Vehs[unit_id].faction_id == faction_id
+            && !(Vehs[unit_id].flags & VFLAG_IS_OBJECTIVE)
+            && human_turn_actionable(faction_id)) {
+                attempted = true;
+                MapWin->iUnit = unit_id;
+                *CurrentVehID = unit_id;
+                active_disband_unit_id = unit_id;
+                active_disband_decision = -1;
+                Console_disband(MapWin, unit_id);
+            }
+            bool removed = attempted && *VehCount == count_before - 1;
+            bool cancelled = attempted && active_disband_decision == 0 && !removed;
+            deferred_disband_unit_id = -1;
+            active_disband_unit_id = -1;
+            active_disband_decision = -1;
+            deferred_action.native_result = removed ? 1 : 0;
+            deferred_action.status = removed || cancelled ? "completed" : "rejected";
+            deferred_action.resolution = removed ? "native_unit_disbanded"
+                : cancelled ? "cancelled_by_player" : "native_disband_not_verified";
+            ++semantic_mutation_generation;
+            return true;
+        }
         if (deferred_obliterate_base_id >= 0) {
             int base_id = deferred_obliterate_base_id;
             int unit_id = deferred_obliterate_unit_id;
@@ -20517,6 +20797,15 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             return true;
         }
         if (deferred_move_unit_id >= 0) {
+            struct MoveReadBarrier {
+                MoveReadBarrier() { native_move_on_stack = true; }
+                ~MoveReadBarrier() {
+                    native_move_on_stack = false;
+                    // A nested message pump may have consumed the request's
+                    // notification. Service it only after movement has unwound.
+                    PostMessage(game_window, WM_SMACX_AGENT, 0, 0);
+                }
+            } move_read_barrier;
             int veh_id = deferred_move_unit_id;
             int direction = deferred_move_direction;
             int target_x = deferred_move_x;
@@ -20687,6 +20976,17 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
     uint64_t sequence = 0;
     EnterCriticalSection(&request_lock);
     if (request_pending && !request_in_progress) {
+        const std::string op = field_string(pending_request, "op");
+        // Being on the UI thread does not make reentrant reads safe. In
+        // particular list_bases -> base_compute sees transient movement
+        // coordinates inside the engine's animation/message loop. Leave the
+        // request queued until movement returns; retain bounded liveness and
+        // action-receipt polling, which do not recalculate base mechanics.
+        if (native_move_on_stack && op != "ping" && op != "status"
+        && op != "action_status") {
+            LeaveCriticalSection(&request_lock);
+            return true;
+        }
         request = pending_request;
         sequence = pending_sequence;
         request_in_progress = true;

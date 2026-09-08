@@ -1,0 +1,55 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "observed_failure": {
+    "turn": 35,
+    "recorded_unix": 1788850259.6383257,
+    "error": "actor_scope_mismatch",
+    "actor_references": [
+      "faction-1",
+      "faction-7"
+    ],
+    "source": "retained managed claim retry after removing journal evidence"
+  },
+  "repair": "Resolve observed public faction references for claim, relationship and commitment actors using the native-revision-matched perspective world projection. Use generic stable actor identities without importing registry names. Revalidate generated opaque IDs against the same observed aliases.",
+  "tests": {
+    "memory_faction_reference_test": "passed: claim/relationship/commitment; current and stale known ownership; unknown/unseen rejected; stale revision rejected; returned ID revalidation; no name leak/overwrite",
+    "journal_memory_evidence_test": "passed",
+    "memory_status_feedback_test": "passed",
+    "platform_store_test": "passed"
+  },
+  "limits": [
+    "Controlled projection and native guard fixtures plus installed-image/deployment checks; live provider memory write pending.",
+    "Identity resolution does not verify assertions or infer current territorial ownership from stale evidence.",
+    "Existing non-generated legacy actor IDs retain their existing store validation contract."
+  ],
+  "deployment": {
+    "installed_test": "passed without host source mounted",
+    "native_turn": 37,
+    "worker_mcp": "healthy",
+    "incident": "cleared by operator resume",
+    "graphiti_completed_unix": 1788851940.638363,
+    "sovereign": "running after rebuild",
+    "controller_sha256": "edf23afb11212b08bd354ac7a06b9fe96c8746911a91a9cfb2f58e9c45faebc9",
+    "schema_budget": {
+      "managed_tools": 15,
+      "conservative_tokens": 7612,
+      "exact_tokenizer": false
+    }
+  },
+  "provider_schema_delivery": {
+    "recorded_unix": 1788852185.4748616,
+    "correlation": {
+      "attention_lease_id": "attention-lease-e6e5c53e442443e4a39f3775fd852baf",
+      "episode_id": "episode-1c836aec0ec27d75080881028d579198",
+      "request_id": "ab3de60cb1f4432cb1d432e5332a6a4a",
+      "runtime_context_sha256": "0531609d763939e37666cacb5b7fe836e8890fea6cac49dfa8b01bb4a7d21861"
+    },
+    "managed_tools_offered": 15,
+    "memory_update_schema_sha256": "fab8fcc0dab99292bc9e4ebdd454192416e3d832823371f3db26446b40b7d1d2",
+    "canonical_journal_citation_guidance_present": true,
+    "observed_faction_reference_guidance_present": true,
+    "scope": "actual provider_request_submitted body.tools, not schema inventory alone",
+    "autonomous_write_proven": false
+  }
+}

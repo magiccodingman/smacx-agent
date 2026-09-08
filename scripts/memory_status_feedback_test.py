@@ -69,6 +69,36 @@ with tempfile.TemporaryDirectory() as tmp:
             assert result['validation']['allowed_values']==list(MEMORY_STATUS_VALUES[action])
             assert result['persistence']['stage']=='not_started'
             assert c._journal_working_state(scope)==before,'rejected status wrote cognition'
+        for action in ('claim', 'belief'):
+            result=c.write_platform_memory(action,scope.match_id,'session-delivery','r4',
+                {'topic':'Mind Worms at 873','content':'Observed threat','confidence':0.5})
+            assert result['error']==f'invalid_{action}_topic',result
+            assert result['validation']['field']=='record_json.topic'
+            assert result['persistence']['stage']=='not_started'
+            assert c._journal_working_state(scope)==before
+        for action in ('claim', 'belief'):
+            result=c.write_platform_memory(action,scope.match_id,'session-delivery','r4',
+                {'topic':'confidence-scale', 'content':'Test', 'confidence':80})
+            assert result['error']=='invalid_confidence', result
+            assert result['validation']['minimum']==0.0 and result['validation']['maximum']==1.0
+            assert result['persistence']['stage']=='not_started'
+            assert c._journal_working_state(scope)==before
+        for action,field in (("goal","trigger"),("plan","timing")):
+            result=c.write_platform_memory(action,scope.match_id,'session-delivery','r4',
+                {**records[action],field:'persistent_goal'})
+            assert result['error']=='invalid_intent_metadata',result
+            assert result['validation']['field']=='record_json.'+field
+            assert result['validation']['example']=={field:{'intent_horizon':'persistent_goal'}}
+            assert result['memory_write_committed'] is False
+            assert c._journal_working_state(scope)==before,'invalid metadata wrote cognition'
+            fixed=c.write_platform_memory(action,scope.match_id,'session-delivery','r4',
+                {**records[action],**result['validation']['example']})
+            assert fixed['ok'],fixed
+            assert fixed['record'][field]['intent_horizon']=='persistent_goal'
+            before=c._journal_working_state(scope)
+        corrected=c.write_platform_memory('claim',scope.match_id,'session-delivery','r4',
+            {'topic':'confidence-scale','content':'Test','confidence':0.8})
+        assert corrected['ok'],corrected
         record=records['plan']
         active=c.write_platform_memory('plan',scope.match_id,'session-delivery','r4',
             {**record,'status':'active'})

@@ -1,0 +1,71 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "turn": 56,
+  "incident_id": "incident-29c8b958e14f4a98a58a4c1ccf3a4395",
+  "archive_sha256": "e60e43c7c60ac6bb989f7779c88af2b7be719b777bb5ee78a9dbff930a8988eb",
+  "observations": {
+    "sovereign_corrected_sensor_mineral_assumption": true,
+    "sovereign_recognized_unworked_tile": true,
+    "sovereign_corrected_hurry_affordability": true,
+    "sensor_completion_observed": false,
+    "native_action_dispatched_in_episode": false,
+    "last_query": "unit_actions own-unit-12",
+    "offered_choice": "Activate unit",
+    "last_provider_request_id": "5ebeedb4feea412389fcd27ebca72503",
+    "last_provider_request_unix": 1788878982.1942196,
+    "incident_reported_unix": 1788879092.9011774,
+    "inflight_request_age_at_incident_seconds": 110.70695781707764,
+    "completed_calls_without_progress": 2,
+    "generated_tokens_without_progress": 15052
+  },
+  "assessment": "The supervisor enforced its existing aggregate six-minute no-native-progress budget during a subsequent provider request. The preceding responses corrected stale strategic assumptions and queried a relevant unit action; no repeated rejected action loop was observed in this episode. This establishes a deliberation-budget incident, not a native execution failure. Whether policy should distinguish bounded useful investigation from repeated no-op actions remains open; do not merely increase thresholds or count reads as native progress.",
+  "next_gate": "Audit bounded deliberation and in-flight request handling before retrying; preserve native/journal pairing and deterministic loop safeguards.",
+  "repair": {
+    "scope": "Concise sovereign contract guidance: retrieval success is not answer sufficiency; further research depends on the next decision; act when evidence suffices instead of repeatedly re-deriving state.",
+    "watchdog_thresholds_changed": false,
+    "validation": [
+      "strict_prompt_contract_test.py passed"
+    ],
+    "live_delivery_and_effect": "pending"
+  },
+  "deployment": {
+    "isolated_images": [
+      "smacx-astra-control:dev",
+      "smacx-astra-harness:dev"
+    ],
+    "supported_incident_retry": true,
+    "restored_turn": 56,
+    "graphiti_rebuild": "completed",
+    "profile_recompile_http_status": 200,
+    "health": "observed_active",
+    "active_sovereign_runs": 1,
+    "live_sovereign_processes": 1,
+    "active_incidents": 0,
+    "sampled_unix": 1788879652.8981035
+  },
+  "actual_provider_delivery": {
+    "archive_sha256": "00e481bc89c3505966ca67b0040da5ed94a8b089b75322a48b8c5ac4902bb72b",
+    "requests": [
+      {
+        "recorded_unix": 1788879629.5348074,
+        "correlation": {
+          "attention_lease_id": "attention-lease-0b62d194ed05490299e07c3481319861",
+          "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+          "request_id": "178e9e451b084631991ac49d07f69990",
+          "runtime_context_sha256": "efd4e998fc96593468065e000cbd9ad9eb38fa16b9820e2877a5176d99dab1e1"
+        },
+        "system_sha256": "e35b61427e71e3e26eb833f9bd02fc49bca3d654fe28db71241ed9d58531a07e"
+      },
+      {
+        "recorded_unix": 1788879692.3049817,
+        "correlation": {
+          "attention_lease_id": "attention-lease-0b62d194ed05490299e07c3481319861",
+          "episode_id": "episode-8fcf07676278daadde43fa7b790d2499",
+          "request_id": "54bea3a64fa64e1d9577754a4ed6e7b8",
+          "runtime_context_sha256": "cf2c300004d17e313d087ad8420bbcf5b64ac4a0ea2fc8322a09d847a1d2ebcf"
+        },
+        "system_sha256": "e35b61427e71e3e26eb833f9bd02fc49bca3d654fe28db71241ed9d58531a07e"
+      }
+    ]
+  }
+}

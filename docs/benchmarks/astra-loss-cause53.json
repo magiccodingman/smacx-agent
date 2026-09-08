@@ -1,0 +1,27 @@
+{
+  "schema": "smacx.acceptance.v1",
+  "status": "deployed_live_delivery_pending",
+  "archive_sha256": "756693c6fe4850a16c7b019fa1c4bc69b0a0a576f7e2381d4f9f3f57955f7cfb",
+  "requests_missing_cause": [
+    "ddaa868d70b546649962f67216adaeac",
+    "6bd78af9943143aa9f5a82379e9801d8",
+    "58e2754a42ae4d40aaa8e6c7a90a2ebe"
+  ],
+  "finding": "Later actual wire requests lack unit_support_shortage/forced_disband explanation; general unit_destroyed semantic event and loss summary retain no removal cause. Native popup previously exposed support shortage.",
+  "source": "bridge/src/base.cpp support shortage calls kill(best_veh); generic veh removal hook emits visible_unit_destroyed without cause.",
+  "next": "Preserve exact native support-loss cause with owned-unit identity at removal; carry through committed observation and provider loss summary. Verify controlled native case plus recovery/provider delivery. Do not infer cause from coincident deficits or unit names.",
+  "containment": "Own campaign parked with verified recovery checkpoint at turn53.",
+  "validation": {
+    "native_cross_build": "passed39/39",
+    "source_and_installed_observation_attention_regression": "passed normal, upgrade, acknowledged upgrade, crash retry, 64 losses bounded",
+    "controlled_native": "16 support comparisons passed; forced shortage6\u21925 units; exactly one visible_unit_destroyed event with support_shortage cause",
+    "engine_fingerprint": "c205ad2c25f10af30c7ce2442bc337aaba6d777857744b835f881edf126e40a3"
+  },
+  "deployment": {
+    "runtime_refresh_recovery": "completed",
+    "prepared_image": "smacx-agent-prepared:fe840e1161a6-b829e813a01e-a02bead31132",
+    "doctrine_recompile": "HTTP200",
+    "active_sovereign_runs": 1,
+    "live_sovereign_processes": 1
+  }
+}

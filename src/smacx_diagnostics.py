@@ -311,6 +311,36 @@ def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
     agent_class._smacx_diagnostic_capture = True
 
 
+_PROVIDER_PHASE_LOCK = threading.Lock()
+
+
+def record_provider_phase(request_id: str, phase: str, started_unix: float) -> None:
+    """One bounded run-scoped transport observation; never gameplay progress."""
+    run_id = os.environ.get("SMACX_HARNESS_RUN_ID", "")
+    root = os.environ.get("SMACX_DIAGNOSTICS_ROOT")
+    if not root or not _SAFE.fullmatch(run_id) or not _SAFE.fullmatch(request_id) \
+            or os.environ.get("SMACX_STRICT_SYSTEM_PROMPT") != "1" \
+            or os.environ.get("SMACX_SPECIALIST_STRICT_PROMPT") == "1":
+        return
+    if phase not in {"submitted", "headers", "completed", "failed", "closed_incomplete"}:
+        return
+    try:
+        with _PROVIDER_PHASE_LOCK:
+            path = Path(root) / "provider-request.json"
+            if phase != "submitted":
+                prior = json.loads(path.read_text())
+                if prior.get("run_id") != run_id or prior.get("request_id") != request_id:
+                    return  # An older completion must not overwrite a newer request.
+            value = {"run_id": run_id, "request_id": request_id, "phase": phase,
+                     "started_unix": started_unix, "observed_unix": time.time()}
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(f".{os.getpid()}.tmp")
+            temporary.write_text(json.dumps(value))
+            temporary.replace(path)
+    except (OSError, ValueError, AttributeError):
+        pass  # Telemetry cannot change transport behavior.
+
+
 def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
     """Audit serialized chat-completions requests at the synchronous HTTP boundary.
 
@@ -329,6 +359,8 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
         request_id = uuid.uuid4().hex
         PROVIDER_CORRELATION.set({"request_id": request_id})
         started = time.monotonic_ns()
+        started_unix = time.time()
+        record_provider_phase(request_id, "submitted", started_unix)
         correlation = {"request_id": request_id}
 
         def emit(kind, payload, _request_id):
@@ -371,16 +403,19 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
         try:
             response = original(self, request, *args, **kwargs)
         except BaseException as exc:
+            record_provider_phase(request_id, "failed", started_unix)
             emit("provider_transport_failed", {
                 "exception_type": type(exc).__name__,
                 "elapsed_ms": (time.monotonic_ns() - started) / 1_000_000}, request_id)
             raise
+        record_provider_phase(request_id, "headers", started_unix)
         emit("provider_response_headers", {
             "http_status": response.status_code,
             "elapsed_ms": (time.monotonic_ns() - started) / 1_000_000,
             "completion_verified": False,
         }, request_id)
         if response.is_stream_consumed:
+            record_provider_phase(request_id, "completed", started_unix)
             try:
                 response_body = response.json()
                 _remember_provider_calls(response_body, correlation)
@@ -416,6 +451,7 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
                 def receipt(self):
                     if self.recorded: return
                     self.recorded = True
+                    record_provider_phase(request_id, "completed" if self.finished else "closed_incomplete", started_unix)
                     emit("provider_response_stream", {"chunks": self.chunks,
                         "stream_exhausted": self.finished, "done_marker_observed": self.done,
                         "capture_truncated": self.omitted,
@@ -443,3 +479,26 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
 
     client_class.send = send
     client_class._smacx_wire_capture = True
+
+
+def record_session_admission(phase: str) -> None:
+    """Bounded, non-authoritative sovereign admission observation for operators."""
+    if phase not in {'waiting_session_lease', 'session_admitted'}:
+        return
+    run_id = os.environ.get('SMACX_HARNESS_RUN_ID', '')
+    if not _SAFE.fullmatch(run_id) or os.environ.get('SMACX_STRICT_SYSTEM_PROMPT') != '1' \
+            or os.environ.get('SMACX_SPECIALIST_STRICT_PROMPT') == '1':
+        return
+    root = os.environ.get('SMACX_DIAGNOSTICS_ROOT')
+    if not root:
+        return
+    value = {'run_id': run_id, 'phase': phase, 'observed_unix': time.time()}
+    try:
+        path = Path(root) / 'session-admission.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(f'.{os.getpid()}.tmp')
+        temporary.write_text(json.dumps(value))
+        temporary.replace(path)
+        record('session_admission', value, actor='sovereign')
+    except OSError:
+        pass  # Diagnostic failure never changes admission or lease ownership.

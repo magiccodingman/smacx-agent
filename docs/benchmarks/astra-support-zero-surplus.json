@@ -1,0 +1,37 @@
+{
+  "trigger": "actual sovereign rationale1788834950.1051137 treats non-exceeding support as harmless",
+  "native_catalog_inputs": {
+    "current_net_surplus": 1,
+    "additional_support": 1,
+    "gross_output": 2,
+    "support_after_completion": 2
+  },
+  "conditional_derived_surplus": 0,
+  "tests": [
+    "production_support_surplus_test pass",
+    "managed_action_path_contract_test pass"
+  ],
+  "deployment": "Installed-image tests passed; operator recovery succeeded; fresh native turn18 catalog through installed managed formatter exposes conditional surplus0 and zero-surplus state.",
+  "native_post_completion_comparison": {
+    "turn": 24,
+    "source": "Direct read-only native perspective_world_page bases, corroborated by current observation-144",
+    "base_id": 0,
+    "population": 2,
+    "mineral_intake": 2,
+    "support_cost": 2,
+    "mineral_surplus": 0,
+    "owned_units": 5,
+    "comparison": "Matches prior conditional additional support +1 and resulting surplus 0 for this completion only",
+    "packet_sha256": "eb59c4c46e6ff0506d778f99f2efe1b55894abd802afa3ec90cac64d8c9f4c84"
+  },
+  "scope": "Derived arithmetic under existing native caveats; no new exact mechanics claim",
+  "actual_provider_delivery": [
+    {
+      "tool_return_unix": 1788837921.716235,
+      "next_provider_unix": 1788837921.9317386,
+      "full_receipt_present": true
+    }
+  ],
+  "turn19_choice": "Retained Scout production and declined hurry; saving credits rationale does not establish recognition of future zero surplus.",
+  "packet_sha256": "85d8f086c074be0d820108f6dce7ed78eb83f059a39d7b9c57554d2a34e3e3b2"
+}

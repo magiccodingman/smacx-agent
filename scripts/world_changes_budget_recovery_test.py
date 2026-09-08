@@ -43,5 +43,13 @@ with tempfile.TemporaryDirectory() as temporary:
             # The console summary must retain the recovery instruction too.
             assert 'required_next' in human, human
     assert rows == frozen
+    # Other world modes use a query hint rather than required_next. Preserve
+    # that guidance in operator output instead of rendering an opaque error.
+    area_error = {'ok': False, 'mode': 'area',
+                  'error': {'code': 'single_world_item_exceeds_budget'},
+                  'query_hint': 'Narrow subject_refs or use deep detail.'}
+    human = summary({'kind': 'tool_returned', 'payload': {
+        'managed_name': 'smac_world', 'result': area_error}})
+    assert area_error['query_hint'] in human, human
 print(json.dumps({'passed': True, 'exact_retry_preserves_sibling_position': True,
                   'historical_epistemics_unchanged': True, 'provider_inference': False}))

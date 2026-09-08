@@ -1,0 +1,106 @@
+{
+  "scope": "Live journaled plan update through immediate context and resumed episode",
+  "journal_event_id": "journal-0db5e40fabeb4cbba1116f7f6b6aaee4",
+  "write_return_unix": 1788849668.1825209,
+  "handoff_unix": 1788849737.779648,
+  "provider_delivery": [
+    {
+      "request_unix": 1788849668.5071187,
+      "correlation": {
+        "attention_lease_id": "attention-lease-e00437e92ff04dd8b56d2fb8d3b74fa8",
+        "episode_id": "episode-3f09c73a32eb862a557fc594ba2be9e4",
+        "request_id": "a5b6033fb49f46debb1dd154aa91757f",
+        "runtime_context_sha256": "ed0496535fb7d5770991c34c329e87d038ad7e82074fe76a1f297cf6b674f66a"
+      },
+      "plan": {
+        "agent_id": "agent-seat-23342da8f26ca5dc8ae9b3d4",
+        "contingencies": [],
+        "contingencies_json": "[]",
+        "contradictory_evidence": [],
+        "contradictory_evidence_json": "[]",
+        "created_unix": 1788849668.1333225,
+        "dependencies": [],
+        "dependencies_json": "[]",
+        "intended_role": null,
+        "last_confirmation": {
+          "note": "All five Scouts resolved onto frontier-adjacent tiles on turn 34; 9 unknown boundary tiles remain; Mind Worm ZOC no longer observed on 833 or 913; 6th Scout in production; 117 credits, minerals +1, nutrients +2, research 71%.",
+          "turn": 35
+        },
+        "last_confirmation_json": "{\"note\":\"All five Scouts resolved onto frontier-adjacent tiles on turn 34; 9 unknown boundary tiles remain; Mind Worm ZOC no longer observed on 833 or 913; 6th Scout in production; 117 credits, minerals +1, nutrients +2, research 71%.\",\"turn\":35}",
+        "linked_commitments": [],
+        "linked_commitments_json": "[]",
+        "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+        "objective": "Map the remaining unknown frontier to locate the Spartan Federation base and secure terrain for a first Colony Pod or garrison. Only 9 unknown boundary tiles remain: north 757/837/877/918/958/999/1038/1079 and south 673. Scouts repositioned this turn: 1118, 1157, 1077, 1074, 953, 674. The Mind Worm at 874/914 no longer projects a visible ZOC; its movement pattern is unknown. A 6th Scout Patrol is in production.",
+        "participants": [],
+        "participants_json": "[]",
+        "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+        "plan_id": "plan-fadfdca247a744199b1bd4fb19fd3b6c",
+        "plan_key": "frontier-sweep",
+        "plan_revision": 2,
+        "source_event_id": null,
+        "status": "active",
+        "superseded_by_plan_id": null,
+        "supersedes_plan_id": "plan-03ff4814eb6148aca2d4a83c4c0d5a89",
+        "target_refs": [],
+        "target_refs_json": "[]",
+        "timing": {
+          "end_turn": 55,
+          "intent_horizon": "persistent_goal",
+          "start_turn": 24
+        },
+        "timing_json": "{\"end_turn\":55,\"intent_horizon\":\"persistent_goal\",\"start_turn\":24}",
+        "title": "Frontier sweep"
+      }
+    },
+    {
+      "request_unix": 1788849752.9621725,
+      "correlation": {
+        "attention_lease_id": "attention-lease-3e2b7f7ec05644f19f4575be15f5d71f",
+        "episode_id": "episode-e8bfcf5cff72adcadb3fb2f3f8c0b7e0",
+        "request_id": "ac84fb9624b5483189fb0ef188e54ea6",
+        "runtime_context_sha256": "1ec5fef693a6e031f74bab1b247dc6413dc9d540c20d7021f590367aa769b37f"
+      },
+      "plan": {
+        "agent_id": "agent-seat-23342da8f26ca5dc8ae9b3d4",
+        "contingencies": [],
+        "contingencies_json": "[]",
+        "contradictory_evidence": [],
+        "contradictory_evidence_json": "[]",
+        "created_unix": 1788849668.1333225,
+        "dependencies": [],
+        "dependencies_json": "[]",
+        "intended_role": null,
+        "last_confirmation": {
+          "note": "All five Scouts resolved onto frontier-adjacent tiles on turn 34; 9 unknown boundary tiles remain; Mind Worm ZOC no longer observed on 833 or 913; 6th Scout in production; 117 credits, minerals +1, nutrients +2, research 71%.",
+          "turn": 35
+        },
+        "last_confirmation_json": "{\"note\":\"All five Scouts resolved onto frontier-adjacent tiles on turn 34; 9 unknown boundary tiles remain; Mind Worm ZOC no longer observed on 833 or 913; 6th Scout in production; 117 credits, minerals +1, nutrients +2, research 71%.\",\"turn\":35}",
+        "linked_commitments": [],
+        "linked_commitments_json": "[]",
+        "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+        "objective": "Map the remaining unknown frontier to locate the Spartan Federation base and secure terrain for a first Colony Pod or garrison. Only 9 unknown boundary tiles remain: north 757/837/877/918/958/999/1038/1079 and south 673. Scouts repositioned this turn: 1118, 1157, 1077, 1074, 953, 674. The Mind Worm at 874/914 no longer projects a visible ZOC; its movement pattern is unknown. A 6th Scout Patrol is in production.",
+        "participants": [],
+        "participants_json": "[]",
+        "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+        "plan_id": "plan-fadfdca247a744199b1bd4fb19fd3b6c",
+        "plan_key": "frontier-sweep",
+        "plan_revision": 2,
+        "source_event_id": null,
+        "status": "active",
+        "superseded_by_plan_id": null,
+        "supersedes_plan_id": "plan-03ff4814eb6148aca2d4a83c4c0d5a89",
+        "target_refs": [],
+        "target_refs_json": "[]",
+        "timing": {
+          "end_turn": 55,
+          "intent_horizon": "persistent_goal",
+          "start_turn": 24
+        },
+        "timing_json": "{\"end_turn\":55,\"intent_horizon\":\"persistent_goal\",\"start_turn\":24}",
+        "title": "Frontier sweep"
+      }
+    }
+  ],
+  "packet_sha256": "ee7582b3026a453260e27b0aceb5d01ff84275eb4e2c8837e603ca63c7b8f252",
+  "limitations": "Delivery proves persistence and visibility, not factual accuracy of sovereign plan prose, strategic execution, or crash recovery of this particular revision."
+}

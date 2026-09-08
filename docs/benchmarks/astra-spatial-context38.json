@@ -1,0 +1,70 @@
+{
+  "checkpoint": "turn38-spatial-context",
+  "incident_id": "incident-dbe3966ceb0749a7896c678a4edf3c54",
+  "observed_problem": "Captured sovereign reasoning repeatedly inferred map dimensions and relative positions from semantic location IDs during the contained turn-38 deliberation stall.",
+  "implementation": "Request-only bounded geometry for focused owned unit and up to four observed contacts to two nearest owned bases each. Explicit current map dimensions required; no sparse-map fallback. Current/stale/unknown evidence preserved; native coordinates excluded. Sample omissions explicit; no threat ranking, route, base-radius or ETA assertion.",
+  "validation": {
+    "runtime_spatial_context_test": "pass: wrapped and flat geometry, stale and unknown evidence, no native coordinates, 10000 contacts and 1000 bases bounded to 10 relations",
+    "large_spatial_context_conservative_tokens": 1169,
+    "runtime_context_contract_test": "pass",
+    "runtime_tokens_64k": 5473,
+    "runtime_tokens_256k": 8843,
+    "huge_chaotic_runtime_tokens_256k": 26727,
+    "installed_image_test": "pass: smacx-astra-control:dev, scripts-only mount; no source override"
+  },
+  "limits": [
+    "Projection fixtures prove deterministic context behavior, not native movement mechanics.",
+    "Actual provider submission verified; improved sovereign decisions and sustained turn progression remain pending.",
+    "Watchdog limits remain unchanged; a trustworthy complete game remains unverified."
+  ],
+  "provider_delivery": {
+    "recorded_unix": 1788854134.6181726,
+    "correlation": {
+      "attention_lease_id": "attention-lease-c9ada72335e448d0891227b5c1b25885",
+      "episode_id": "episode-f7bee9b6ed7294554b27ebb3434df599",
+      "request_id": "a739972c1060489bbc8af394dca7aced",
+      "runtime_context_sha256": "49a17775d42e1c169ffc4201f02d6c078f62105e9aa6b444a1341b75af5cf97c"
+    },
+    "focused_unit_distance": 6,
+    "observed_contact_distance_to_owned_base": 2,
+    "relation_count": 2,
+    "artifact": "runtime/astra/evidence-spatial38-provider/diagnostics.zip",
+    "scope": "actual submitted provider body, not merely assembled context"
+  },
+  "recovery": {
+    "graphiti_completed_unix": 1788854108.3225608,
+    "turn": 38,
+    "native_and_mcp": "healthy",
+    "sovereign_processes": 1
+  },
+  "operator_feedback_followup": {
+    "observed": "compact area budget failure rendered without its structured query_hint",
+    "repair": "retain query_hint in human diagnostic summaries",
+    "test": "world_changes_budget_recovery_test passes",
+    "deployment": "pending next controlled update",
+    "provider_behavior_changed": false,
+    "installed_validation": {
+      "control": "world_changes_budget_recovery_test passed with scripts-only mount",
+      "harness": "installed summary retains query_hint",
+      "running_campaign_replaced": false
+    }
+  },
+  "post_recovery_progress": {
+    "observed_native_moves": [
+      {
+        "unit": "own-unit-1",
+        "origin": "location-999",
+        "target": "location-1039",
+        "arrival_reported": true
+      },
+      {
+        "unit": "own-unit-2",
+        "origin": "location-1038",
+        "target": "location-1118",
+        "arrival_reported": true
+      }
+    ],
+    "next_focus": "own-unit-3",
+    "scope": "live execution receipts and fresh decision; not proof spatial context caused better strategy"
+  }
+}

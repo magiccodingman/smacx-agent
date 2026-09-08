@@ -1,0 +1,220 @@
+{
+  "archive_sha256": "962f1960a31e5d1b28f3205e7da693f9abb98770c5a3332ef3f23cd6231e79e1",
+  "chain": [
+    {
+      "time": 1788880420.0884805,
+      "correlation": {
+        "invocation_id": "ef2581c6cf7a4b7d90a3de3815926039",
+        "observed_revision": "16633737547685855581",
+        "session_id": "session-66a8df8cf89741c0948e74c03a9622e6"
+      },
+      "result": {
+        "error": "managed_perspective_scope_mismatch",
+        "ok": false
+      }
+    },
+    {
+      "time": 1788880464.3515291,
+      "correlation": {
+        "invocation_id": "8c625dd567f64580827c04f8110fc632",
+        "observed_revision": "14175168061857442045",
+        "session_id": "session-66a8df8cf89741c0948e74c03a9622e6"
+      },
+      "result": {
+        "action": "goal",
+        "actor_references": {},
+        "cognition_hygiene": "clean",
+        "identity": {
+          "agent_id": "agent-seat-23342da8f26ca5dc8ae9b3d4",
+          "graph_namespace": "smacx_a5228540c728bca64518b91a8522b00d0580745b30ab90f7",
+          "installation_id": "installation-351346e63efa48de9d9095d4c08e3ba8",
+          "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+          "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+          "session_id": "session-66a8df8cf89741c0948e74c03a9622e6"
+        },
+        "journal_event_id": "journal-e9a6488783b74d78a4e755b71a0b1fd9",
+        "observed_revision": "14175168061857442045",
+        "observed_turn": 57,
+        "observed_year": 2157,
+        "ok": true,
+        "persistence": {
+          "authority": "campaign_journal",
+          "next_context_source": "fresh_journal_working_state",
+          "stage": "runtime_projection_built"
+        },
+        "record": {
+          "agent_id": "agent-seat-23342da8f26ca5dc8ae9b3d4",
+          "created_unix": 1788880464.2972393,
+          "description": "Turn 57: worker reassigned 756->835 (workers now 795 N2M1, 716 N2M2, 835 N1M1). Nutrients 10/30, +1/turn -> pop 3 in ~20 turns. Minerals still intake 4 vs support 4 (surplus 0; at pop 2 only 3 workers fit, max intake 4). Colony Pod 0/30, no passive progress until pop 3. At pop 3, assign 3rd citizen to an M1 tile (676/757/836/714 area) -> intake 5, surplus +1 -> pod advances +1/turn (~30 turns). Hurry is 105 energy - unaffordable (20 credits, +4/turn). When pod completes, support becomes 5 > intake 4: native may cancel a unit's support or disband - at that point decide whether to disband Scouts (Mind Worm pressure has eased; 6 Scouts at HQ) or keep them. Energy allocation 5/5/0. Research 70% (34/48) Explore, 3 technologies.",
+          "due_turn": null,
+          "due_year": null,
+          "goal_id": "goal-4501a820d5ac4d9bbe5e31c07918038a",
+          "goal_key": "fix-mineral-shortfall",
+          "goal_revision": 6,
+          "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+          "parent_goal_id": null,
+          "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+          "priority": 1,
+          "source_event_id": null,
+          "status": "active",
+          "superseded_by_goal_id": null,
+          "supersedes_goal_id": "goal-152f4e45d37f47b2ad96cc2da0303757",
+          "title": "Keep mineral surplus positive so the Colony Pod builds",
+          "trigger": {},
+          "trigger_json": "{}"
+        }
+      }
+    },
+    {
+      "time": 1788880464.4214308,
+      "correlation": {
+        "invocation_id": "879ccedf3dbc4cecb7887244d2c0f864",
+        "observed_revision": "14175168061857442045",
+        "session_id": "session-66a8df8cf89741c0948e74c03a9622e6"
+      },
+      "result": {
+        "action": "plan",
+        "actor_references": {},
+        "cognition_hygiene": "clean",
+        "identity": {
+          "agent_id": "agent-seat-23342da8f26ca5dc8ae9b3d4",
+          "graph_namespace": "smacx_a5228540c728bca64518b91a8522b00d0580745b30ab90f7",
+          "installation_id": "installation-351346e63efa48de9d9095d4c08e3ba8",
+          "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+          "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+          "session_id": "session-66a8df8cf89741c0948e74c03a9622e6"
+        },
+        "journal_event_id": "journal-c4c0d47b42474418bde19acfbe408620",
+        "observed_revision": "14175168061857442045",
+        "observed_turn": 57,
+        "observed_year": 2157,
+        "ok": true,
+        "persistence": {
+          "authority": "campaign_journal",
+          "next_context_source": "fresh_journal_working_state",
+          "stage": "runtime_projection_built"
+        },
+        "record": {
+          "agent_id": "agent-seat-23342da8f26ca5dc8ae9b3d4",
+          "contingencies": [],
+          "contingencies_json": "[]",
+          "contradictory_evidence": [],
+          "contradictory_evidence_json": "[]",
+          "created_unix": 1788880464.37539,
+          "dependencies": [],
+          "dependencies_json": "[]",
+          "intended_role": null,
+          "last_confirmation": {
+            "note": "Turn 57 verified: pop 2 (1 Talent, 0 Drones); nutrients 10/30 (+1/turn); minerals intake 4 (795 M1, 835 M1, 716 M2) vs support 4, surplus 0, Colony Pod 0/30 stalled (hurry 105 energy, unaffordable at 20 credits). Former at 836 on auto improve_home_base, Sensor Array feature placed, no active terraform order (idle). Six Scouts alert at HQ. Energy 20 credits, +4/turn, allocation 5/5/0. Research 70% (34/48) Explore, 3 technologies. No hostile ZOCs; Mind Worms absent. 131 known locations; only frontier unknown is fungus 673. Spartan Truce/Treaty, commlink held; faction-7's 5 eastern ocean tiles relationship unknown.",
+            "turn": 57
+          },
+          "last_confirmation_json": "{\"note\":\"Turn 57 verified: pop 2 (1 Talent, 0 Drones); nutrients 10/30 (+1/turn); minerals intake 4 (795 M1, 835 M1, 716 M2) vs support 4, surplus 0, Colony Pod 0/30 stalled (hurry 105 energy, unaffordable at 20 credits). Former at 836 on auto improve_home_base, Sensor Array feature placed, no active terraform order (idle). Six Scouts alert at HQ. Energy 20 credits, +4/turn, allocation 5/5/0. Research 70% (34/48) Explore, 3 technologies. No hostile ZOCs; Mind Worms absent. 131 known locations; only frontier unknown is fungus 673. Spartan Truce/Treaty, commlink held; faction-7's 5 eastern ocean tiles relationship unknown.\",\"turn\":57}",
+          "linked_commitments": [],
+          "linked_commitments_json": "[]",
+          "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+          "objective": "Former (own-unit-12, auto improve_home_base) has completed the Sensor Array at 836 (defense bonus; no mineral income) and is idle in auto mode awaiting a new task. The mineral fix is population 2->3: nutrients 10/30 with +1/turn, ~20 turns out, then assign the third citizen to an M1 tile (676/757/836/714) to lift intake to 5 and surplus to +1, letting the queued Colony Pod (cost 30) build passively. Six Scouts hold alert at HQ against recurring Mind Worm pressure. Monitor: pod completion raises support to 5 > intake 4 - native may force support cancellation or disbanding; at that point decide whether to disband Scouts or hold. Do not disband while native pressure is plausible.",
+          "participants": [
+            {
+              "intended_role": "terraform",
+              "ref": "own-unit-12"
+            }
+          ],
+          "participants_json": "[{\"intended_role\":\"terraform\",\"ref\":\"own-unit-12\"}]",
+          "perspective_id": "perspective-74de5b18f2364bd5b2ff045054599090",
+          "plan_id": "plan-4a86004bbe804484b29d0e29bef53885",
+          "plan_key": "midground-terraform-defense",
+          "plan_revision": 5,
+          "source_event_id": null,
+          "status": "active",
+          "superseded_by_plan_id": null,
+          "supersedes_plan_id": "plan-fe47d76cf7a34738a984d6fd7e1f33ab",
+          "target_refs": [
+            "base-location-795"
+          ],
+          "target_refs_json": "[\"base-location-795\"]",
+          "timing": {
+            "intent_horizon": "monitor"
+          },
+          "timing_json": "{\"intent_horizon\":\"monitor\"}",
+          "title": "Sensor Array defense at HQ; Colony Pod queued; fix minerals via pop growth; hold Scouts alert"
+        }
+      }
+    },
+    {
+      "time": 1788880514.2282107,
+      "correlation": {
+        "choice_id": "choice-4fbb40d440ec410ba7e608870c029214",
+        "decision_id": "decision-d7cc8c5948aa44da8e7ccd1d2045fad5",
+        "invocation_id": "bdbc9c68286b4ecdb5373b37df949f50"
+      },
+      "result": {
+        "action_id": 2,
+        "choice_id": "choice-4fbb40d440ec410ba7e608870c029214",
+        "completed": true,
+        "decision_consumed": true,
+        "decision_id": "decision-d7cc8c5948aa44da8e7ccd1d2045fad5",
+        "executed_choice": {
+          "choice_id": "choice-4fbb40d440ec410ba7e608870c029214",
+          "label": "End turn"
+        },
+        "execution": {
+          "action_id": 2,
+          "command": "end_turn",
+          "native_call_attempted": true,
+          "native_result": 1,
+          "resolution": "native_turn_advanced",
+          "status": "completed"
+        },
+        "execution_status": "completed",
+        "journal": {
+          "event_hash": "28d9d6424277f60dcec8fb56f37357162ee751936f2cdaad1f675b8e7bf79f40",
+          "journal_event_id": "journal-17d59dcfc84646409f3881499d03770b",
+          "ok": true
+        },
+        "native_call_attempted": true,
+        "ok": true,
+        "queued": false,
+        "required_next": {
+          "ordinary_message": "TURN HANDOFF",
+          "stop_after": true
+        },
+        "source_turn": 57,
+        "turn_handoff_required": {
+          "completed_turns": "57",
+          "instruction": "Native control passed. Make no more tool calls in this episode. Return the concise TURN HANDOFF required by your system contract now.",
+          "maximum_words": 120,
+          "next_turn": 58,
+          "required": true,
+          "sections": [
+            "Outcome",
+            "Rationale",
+            "Changed conclusions",
+            "Next intent",
+            "Uncertainty"
+          ],
+          "target_words": 85
+        },
+        "turn_provenance": {
+          "observed_after_turn": 58,
+          "scope": "native choice selection and post-action observation; neither proves completion",
+          "selected_turn": 57
+        }
+      }
+    }
+  ],
+  "former_task_turn58": {
+    "epistemic_status": "current",
+    "first_known_turn": 57,
+    "last_verified_turn": 58,
+    "provenance_ref": "observation-442",
+    "source": "owned_state",
+    "value": {
+      "automation_active": true,
+      "completion_verified": false,
+      "order_kind": "none",
+      "state": "no_active_terraform_order"
+    },
+    "world_revision": 6
+  },
+  "assessment": "Mistyped perspective scope rejected; sovereign explicitly corrected identity and revision, received goal/plan journal receipts, then advanced native57\u219258. No bypass or operator retry. Former automation enabled but no active work order at58; new terrain work remains pending."
+}

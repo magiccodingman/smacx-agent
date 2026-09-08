@@ -1,0 +1,253 @@
+{
+  "turn": 62,
+  "provider_request_id": "d9b9350bbd5446fb9ecf4ca77cad46bd",
+  "archive_sha256": "e9c314ea819dd8f9b3f267d99990c36cd97ef24a4fe4262ebbbd0ab07354a0d7",
+  "delivered_contact_changes": [
+    {
+      "object_ref": "contact-episode-f22337ee9e7e1031775d3fe9ea773f3d",
+      "change": "changed",
+      "location_ref": "location-796",
+      "fields": {
+        "hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-459",
+          "source": "direct_sight",
+          "value": 4,
+          "world_revision": 7
+        },
+        "max_hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": 10,
+          "world_revision": 6
+        },
+        "name": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": "Mind Worms",
+          "world_revision": 6
+        },
+        "owner_ref": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": "faction-0",
+          "world_revision": 6
+        }
+      }
+    },
+    {
+      "object_ref": "contact-episode-f22337ee9e7e1031775d3fe9ea773f3d",
+      "change": "changed",
+      "location_ref": "location-796",
+      "fields": {
+        "hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-460",
+          "source": "direct_sight",
+          "value": 1,
+          "world_revision": 8
+        },
+        "max_hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": 10,
+          "world_revision": 6
+        },
+        "name": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": "Mind Worms",
+          "world_revision": 6
+        },
+        "owner_ref": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": "faction-0",
+          "world_revision": 6
+        }
+      }
+    },
+    {
+      "object_ref": "contact-episode-f22337ee9e7e1031775d3fe9ea773f3d",
+      "change": "changed",
+      "location_ref": "location-796",
+      "fields": {
+        "hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-461",
+          "source": "direct_sight",
+          "value": 0,
+          "world_revision": 9
+        },
+        "max_hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": 10,
+          "world_revision": 6
+        },
+        "name": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": "Mind Worms",
+          "world_revision": 6
+        },
+        "owner_ref": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-458",
+          "source": "direct_sight",
+          "value": "faction-0",
+          "world_revision": 6
+        }
+      }
+    },
+    {
+      "object_ref": "contact-episode-6b035198a6d73011c69b7297089f19d8",
+      "change": "changed",
+      "location_ref": "location-796",
+      "fields": {
+        "hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-463",
+          "source": "direct_sight",
+          "value": 1,
+          "world_revision": 11
+        },
+        "max_hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-462",
+          "source": "direct_sight",
+          "value": 10,
+          "world_revision": 10
+        },
+        "name": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-462",
+          "source": "direct_sight",
+          "value": "Mind Worms",
+          "world_revision": 10
+        },
+        "owner_ref": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-462",
+          "source": "direct_sight",
+          "value": "faction-0",
+          "world_revision": 10
+        }
+      }
+    },
+    {
+      "object_ref": "contact-episode-6b035198a6d73011c69b7297089f19d8",
+      "change": "changed",
+      "location_ref": "location-796",
+      "fields": {
+        "hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-464",
+          "source": "direct_sight",
+          "value": 0,
+          "world_revision": 12
+        },
+        "max_hp": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-462",
+          "source": "direct_sight",
+          "value": 10,
+          "world_revision": 10
+        },
+        "name": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-462",
+          "source": "direct_sight",
+          "value": "Mind Worms",
+          "world_revision": 10
+        },
+        "owner_ref": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-462",
+          "source": "direct_sight",
+          "value": "faction-0",
+          "world_revision": 10
+        }
+      }
+    },
+    {
+      "object_ref": "contact-9c6304a3218d645e182eb58ad6a86f3d",
+      "change": "removed",
+      "location_ref": null,
+      "fields": {}
+    },
+    {
+      "object_ref": "contact-episode-f22337ee9e7e1031775d3fe9ea773f3d",
+      "change": "removed",
+      "location_ref": null,
+      "fields": {}
+    },
+    {
+      "object_ref": "contact-96d128a44a807c26013c92a4cd9d5b09",
+      "change": "removed",
+      "location_ref": null,
+      "fields": {}
+    },
+    {
+      "object_ref": "contact-episode-6b035198a6d73011c69b7297089f19d8",
+      "change": "removed",
+      "location_ref": null,
+      "fields": {}
+    },
+    {
+      "object_ref": "contact-2748dcb0a855eb642afb15795f23c11d",
+      "change": "removed",
+      "location_ref": null,
+      "fields": {}
+    }
+  ],
+  "assessment": "Actual provider runtime includes two contacts declining to observed zero HP and removal, and a surviving contact at877. This is stronger than disappearance alone but does not identify the killer. Sovereign attribution to alert Scouts remains an inference; no causal attacker receipt was established in this audit."
+}

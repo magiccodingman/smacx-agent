@@ -1,0 +1,109 @@
+{
+  "turn": 57,
+  "assessment": "Sovereign initially claimed swapping M1 tiles would gain minerals, then corrected itself and completed the temporary specialist reassignment. Native allocation path executed; final resource balance returns to the starting balance, not a strategic improvement. Colony Pod still has zero passive surplus.",
+  "conversion_choice": "choice-af9871d4f9484ae99e90abc2c6f8419f",
+  "assignment_choice": "choice-c8f4c21fe7044bf29b5b81939fb65a1e",
+  "states": {
+    "base-allocation57": {
+      "source_sha256": "8241091f6cf20e94bb77ee4aa72ddf543fb6f347e3de9d92c0b9bcd1571c9a98",
+      "fields": {
+        "minerals": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 57,
+          "provenance_ref": "observation-440",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 0,
+            "consumption": 4,
+            "intake": 3,
+            "surplus": -1,
+            "unit_support_cost": 4
+          },
+          "world_revision": 4
+        },
+        "nutrients": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 57,
+          "provenance_ref": "observation-440",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 10,
+            "consumption": 4,
+            "intake": 4,
+            "surplus": 0
+          },
+          "world_revision": 4
+        },
+        "citizens": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 57,
+          "provenance_ref": "observation-440",
+          "source": "owned_state",
+          "value": {
+            "drones": 0,
+            "specialists": [
+              {
+                "citizen_id": 1,
+                "name": "Doctor"
+              }
+            ],
+            "superdrones": 0,
+            "talents": 1
+          },
+          "world_revision": 4
+        }
+      }
+    },
+    "base-reassigned57": {
+      "source_sha256": "b62cf63ca0970a9c5285b063862c8074bb19737165549cc87182ad0f7a479b14",
+      "fields": {
+        "minerals": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 57,
+          "provenance_ref": "observation-441",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 0,
+            "consumption": 4,
+            "intake": 4,
+            "surplus": 0,
+            "unit_support_cost": 4
+          },
+          "world_revision": 5
+        },
+        "nutrients": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 57,
+          "provenance_ref": "observation-441",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 10,
+            "consumption": 4,
+            "intake": 5,
+            "surplus": 1
+          },
+          "world_revision": 5
+        },
+        "citizens": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 57,
+          "provenance_ref": "observation-441",
+          "source": "owned_state",
+          "value": {
+            "drones": 0,
+            "specialists": [],
+            "superdrones": 0,
+            "talents": 1
+          },
+          "world_revision": 5
+        }
+      }
+    }
+  }
+}

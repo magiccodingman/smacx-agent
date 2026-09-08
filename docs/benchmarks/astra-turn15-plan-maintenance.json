@@ -1,0 +1,36 @@
+{
+  "scope": "actual autonomous run, no operator strategy injection",
+  "turn": 15,
+  "memory_write_returned_unix": 1788833680.0937915,
+  "later_provider_unix": 1788833750.0439703,
+  "delivered_plan_revision": 5,
+  "timing": {
+    "start_turn": 14,
+    "end_turn": 22,
+    "intent_horizon": "next_opportunity"
+  },
+  "participants": [
+    "own-unit-1",
+    "own-unit-2",
+    "own-unit-3"
+  ],
+  "strategy": "Sovereign explicitly retains Scout production and prioritizes exploration. It considered production lookup but did not demonstrate a new lookup in this sample.",
+  "limits": [
+    "Plan maintenance and later delivery proven; strategic quality not proven",
+    "Expansion omission not yet attributable to missing managed actions",
+    "Wreckage/pod interpretation remains a behavioral concern"
+  ],
+  "packet_sha256": "60ee8b2ae38259ae20af26b31aee130d6c4b5ccef2d3e67e17d1b9751b536e19",
+  "interpretation_audit": {
+    "actual_request_legend": "landmark or vehicle alone does not indicate a collectible pod",
+    "current_target_features": {
+      "location-1115": [],
+      "location-1156": [
+        "rocky"
+      ]
+    },
+    "verified_turn": 15,
+    "conclusion": "These observed target features do not support collectible-pod claims. Existing doctrine requires evidence-based belief revision. No new serializer failure established for these two targets.",
+    "limits": "Other targets may require targeted queries; do not infer all target states from the bounded anchor."
+  }
+}

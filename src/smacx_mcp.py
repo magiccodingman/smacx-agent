@@ -100,7 +100,9 @@ MATCH_BRIEFING_RESUME_NOTICES: set[tuple[str, str]] = set()
 MATCH_BRIEFING_LOCK = threading.Lock()
 DECISION_CACHE: dict[str, dict] = {}
 DECISION_LOCK = threading.Lock()
-DECISION_TTL_SECONDS = 180.0
+# A measured provider response took 181.4 seconds. Allow bounded reasoning
+# latency; execution still requires the original native revision and guards.
+DECISION_TTL_SECONDS = 300.0
 CHOICE_PREPARATIONS = ChoicePreparations(ttl=DECISION_TTL_SECONDS)
 AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
 AIRDROP_RECEIPT_LOCK = threading.Lock()
@@ -275,6 +277,25 @@ def _former_attempt_baseline(choice, identity, decision):
                                   "world_epoch": projection["identity"]["world_epoch"],
                                   "observation_cursor": projection.get("observation_cursor")}
     return former_attempt
+
+
+def _order_attempt_baseline(choice, identity, decision):
+    from smacx_order_attention import COMMANDS, unit_state
+    order_attempt = None
+    if MANAGED_ATTACHED and choice.get("command") in COMMANDS:
+        _, tracking = _runtime_services()
+        projection = tracking.world_store.load(tracking.scope, tracking.timeline_id)
+        if projection and str(projection.get("action_revision")) == str(identity.get("revision")):
+            unit = next((item for item in projection.get("objects", ())
+                         if item.get("kind") == "own_unit" and
+                         item.get("metadata", {}).get("native_id") == choice.get("unit_id")), None)
+            baseline = unit_state(projection, unit["object_ref"]) if unit else None
+            if baseline:
+                order_attempt = {"before": baseline, "mode": choice.get("command"),
+                                  "turn": decision.get("turn"),
+                                  "world_epoch": projection["identity"]["world_epoch"],
+                                  "observation_cursor": projection.get("observation_cursor")}
+    return order_attempt
 
 
 def _refresh_request_world(episode_id: str) -> dict:
@@ -1058,6 +1079,17 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
                       for key in keys
                       if isinstance((value := catalog[section].get(key)), (str, int, float, bool))}
             for section, keys in fields.items() if isinstance(catalog.get(section), Mapping)}
+    queue = result.get("queue")
+    if queue is not None:
+        entries = queue.get("entries")
+        # Native production_choices counts queue_items[0] (current production)
+        # in queue_size + 1. Do not count that item again as pending output.
+        if type(entries) is int and 1 <= entries <= 10:
+            queue["includes_current_item"] = True
+            queue["items_after_current"] = entries - 1
+            queue["meaning"] = (
+                "Entry 0 is current production, not an additional item. "
+                "A one-entry queue contains only the item being built.")
     current = result.get("current")
     if current:
         current["progress_state"] = production_flow_state(
@@ -1068,6 +1100,27 @@ def _production_catalog_context(catalog: Mapping[str, Any]) -> dict:
                 "Remaining minerals will not accumulate while this net surplus stays nonpositive. "
                 "Allocation, support, terraforming or a legal hurry may change this; "
                 "queued units are not fielded defenders.")
+    support = result.get("support_projection", {})
+    surplus = (current or {}).get("mineral_surplus")
+    additional = support.get("additional_support_minerals")
+    current_source = catalog.get("current", {})
+    if (support.get("epistemic_status") == "conditional"
+            and current_source.get("epistemic_status", "current") == "current"
+            and type(surplus) is int and type(additional) is int):
+        # Arithmetic over the fresh native catalog, not an upkeep simulation.
+        # Retain the source's conditional status and all native caveats.
+        projected = surplus - additional
+        support["mineral_surplus_after_one_completion"] = projected
+        support["passive_production_after_one_completion"] = (
+            "positive_surplus" if projected > 0 else
+            "zero_surplus_no_passive_progress" if projected == 0 else
+            "negative_surplus_no_passive_progress")
+        support["production_condition"] = (
+            "Current net mineral surplus minus the projected additional support, "
+            "holding all other mineral inputs and consumption fixed. Zero surplus "
+            "also stops passive production; not exceeding gross output does not "
+            "mean production remains funded. This does not predict actual upkeep "
+            "or completion; verify the next native state.")
     return result
 
 
@@ -2014,9 +2067,16 @@ def _decision_advisories(choices: object, *, semantic_context: Mapping[str, Any]
 
 def _decision_information(choices: object, context: Mapping | None) -> list[dict]:
     """Keep the native terms that make a closed response understandable."""
-    return [_semanticize_choice({key: value for key, value in row.items() if key != "id"}, context)
-            for row in choices if isinstance(row, dict) and not row.get("command")
-            and row.get("kind") in {"information", "capability_status"}]
+    information = []
+    for row in choices:
+        if not isinstance(row, dict) or row.get("command") or row.get("kind") not in {"information", "capability_status"}:
+            continue
+        public = {key: value for key, value in row.items() if key != "id"}
+        if row.get("id") == "self_destruct:context":
+            public["applies_to_action"] = "self_destruct_unit"
+            public["meaning"] = "Self-destruct blast preview only. Projected deaths apply only if this unit self-destructs; these are not attack odds, movement outcomes or an incoming-damage forecast."
+        information.append(_semanticize_choice(public, context))
+    return information
 
 
 def _latest_rule_advisories(match_id: str, session_id: str) -> list[dict]:
@@ -2077,6 +2137,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
     public: list[dict] = []
     private: dict[str, dict] = {}
     labels: dict[str, str] = {}
+    receipt_subjects: dict[str, dict] = {}
     raw_items = bind_ballot_choices(choices) if isinstance(choices, list) else []
     compact: list[dict] = []
     advisories = _decision_advisories(raw_items, semantic_context=semantic_context)
@@ -2163,6 +2224,15 @@ def _cache_decision_choices(identity: dict, choices: object, *,
         compact.append(dict(shown))
         labels[choice_id] = label
         private[choice_id] = bound
+        # Retain only scoped public selectors, never raw native command arguments.
+        # Response-level selectors were bound after the displayed catalog was built.
+        semantic_bound = _semanticize_choice(bound, semantic_context)
+        receipt_subjects[choice_id] = {
+            key: semantic_bound[key] for key in
+            ("own_unit_ref", "base_ref", "target_location_ref", "contact_ref",
+             "target_base_ref", "target_unit_ref")
+            if isinstance(semantic_bound.get(key), str)
+        }
     with DECISION_LOCK:
         expired = [key for key, value in DECISION_CACHE.items()
                    if now - float(value.get("created_monotonic", 0)) > DECISION_TTL_SECONDS]
@@ -2190,6 +2260,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "choices": private,
             "choice_labels": labels,
+            "receipt_subjects": receipt_subjects,
             "advisories": advisories,
             "information": (_decision_information(raw_items, semantic_context)
                             if catalog_information is None else catalog_information),
@@ -2265,14 +2336,14 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
 
 @mcp.tool(
     description=(
-        "Inspect the fair-play world using returned opaque references. Modes cover geography, "
+        "Inspect the fair-play world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
         "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
         "Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
         "site_economy with populations:[1,2,3] and up to four subject locations; "
         "social|terraform|action with decision_id and choice_id from a current final choice; "
         "deployment with capability (combat|colony|former|transport|probe|supply), target_ref, "
         "and optional choice_refs:[{decision_id,choice_id}] for up to four build, hurry or upgrade options. "
-        "Put kind in scenario_json; target_ref is a tool argument. Previews are conditional and never execute."
+        "Put kind in scenario_json; target_ref is a tool argument. Movement action previews cover support and garrison consequences, not combat odds or arrival. Previews are conditional and never execute."
     )
 )
 def smac_world(
@@ -2286,7 +2357,7 @@ def smac_world(
     movement_profile_ref: str = "mobility-land-default",
     radius: int = 3,
     since_cursor: int = 0,
-    detail: Literal["compact", "standard", "deep"] = "standard",
+    detail: Literal["compact", "standard", "deep", "roster"] = "standard",
     continuation: str = "",
     scenario_json: str = "",
 ) -> dict:
@@ -2351,6 +2422,9 @@ def smac_world(
                     receipt = {"ok": True, "kind": "action", "action_revision": action_revision,
                                "proposed_action": command, "epistemic_status": "conditional",
                                "executes_action": False}
+                if command == "move_unit":
+                    receipt["prediction_scope"] = "Conditional support and garrison/relationship consequences of a successful move only."
+                    receipt["not_predicted"] = ["combat odds", "combat damage or survival", "movement success or arrival"]
                 if scenario["kind"] == "action":
                     plans = attention.journal.projection_records(attention.scope, "plans", limit=129,
                                                                  statuses={"active"})
@@ -2498,6 +2572,8 @@ def smac_world(
 @mcp.tool(
     description=(
         "Acknowledge a processed batch from the current at-least-once attention lease. "
+        "Copy through_cursor from runtime context attention.through_cursor for that lease; "
+        "world observation_cursor and anchor_observation_cursor are different counters. "
         "Call only after genuinely considering those events. Acknowledgement records awareness, "
         "not mechanical resolution; blocking focus and incidents remain until resolved."
     )
@@ -2523,7 +2599,7 @@ def smac_attention_ack(
                      "attention_not_cognitively_responded"}:
             return {"ok": False, "error": error, "acknowledged_ids": [],
                     "required_next": {"tool": "smac_decision",
-                                      "reason": "Refresh current attention, review it, then acknowledge only its issued lease, IDs and attention cursor."}}
+                                      "reason": "Refresh current attention with smac_decision and review it. Copy attention.attention_lease_id and attention.through_cursor from that runtime context. Do not use world anchor_observation_cursor or an item observation_cursor; those count world observations, not attention events."}}
         return {"ok": False, "error": error}
 
 
@@ -2801,10 +2877,13 @@ def smac_decision(
                         "ok": False,
                         "error": {
                             "code": "unit_not_ready_in_decision_frame",
-                            "message": "The requested own_unit_ref is not in the fresh snapshot's ready_unit_refs. Use one returned reference or omit it.",
+                            "message": "This unit is not ready for the decision focus. Use a returned ready reference or omit it. To inspect remaining legal actions for a spent or ordered owned unit, query smac_choices kind=unit_actions with its own_unit_ref; readiness does not imply every management action is unavailable.",
                         },
                         "identity": identity,
                         "ready_unit_refs": ready_refs,
+                        "required_next": {"tool": "smac_choices", "arguments": {
+                            "kind": "unit_actions", "own_unit_ref": own_unit_ref,
+                        }, "reason": "Enumerate remaining legal actions; an empty catalog is possible."},
                     }
             elif ready_refs:
                 selected = ready_refs[0]
@@ -3148,7 +3227,7 @@ def _turn_reconciliation_gate(command_arguments: dict) -> dict | None:
 
 
 def smac_command(
-    command: Literal["acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
+    command: Literal["acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_unit_disband", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
     session_id: str,
     expected_revision: str,
@@ -3612,8 +3691,12 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             DECISION_CACHE.pop(decision_id, None)
             return {
                 "ok": False,
-                "error": {"code": "expired_decision", "message": "The choice expired; obtain a fresh frame."},
-                "required_next": {"tool": "smac_decision"},
+                "error": {"code": "expired_decision", "message": "The decision's elapsed-time lease expired. No native action was attempted; expiry does not establish a changed world revision or an illegal action."},
+                "expiry": {"reason": "elapsed_time", "lease_seconds": DECISION_TTL_SECONDS,
+                           "age_seconds": round(now - float(decision.get("created_monotonic", 0)), 3)},
+                "native_call_attempted": False,
+                "required_next": {"tool": "smac_decision",
+                                  "reason": "Obtain fresh IDs. Reuse your intended action only if the new frame still supports it; do not repeat unchanged strategic analysis or infer new game facts from expiry."},
             }
         if decision.get("consumed"):
             return {
@@ -3625,7 +3708,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         if not isinstance(cached_choice, dict):
             return {
                 "ok": False,
-                "error": {"code": "invalid_choice", "message": "Use one choice_id from this exact decision."},
+                "error": {"code": "invalid_choice", "message": "The supplied choice_id does not exactly match any choice in this decision. No native action was attempted and movement legality was not tested. Copy an available choice_id exactly; do not infer a blocked path from this error."},
                 "available_choice_ids": sorted(decision.get("choices", {})),
             }
         choice = dict(cached_choice)
@@ -3676,6 +3759,8 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         decision["consumed"] = True
         identity = dict(decision.get("identity") or {})
         choice_label = str(decision.get("choice_labels", {}).get(choice_id) or "Selected choice")
+        selected_receipt = {"choice_id": choice_id, "label": choice_label,
+                            **decision.get("receipt_subjects", {}).get(choice_id, {})}
 
     from smacx_diagnostics import record as diagnostic_record, INVOCATION
     diagnostic_record("choice_selected", {"choice": choice, "label": choice_label,
@@ -3735,7 +3820,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             return {
                 "ok": False,
                 "error": {"code": "repetition_circuit_open", "message": incident["message"]},
-                "executed_choice": {"choice_id": choice_id, "label": choice_label},
+                "executed_choice": dict(selected_receipt),
                 "incident": incident,
                 "required_next": {"stop_after": True,
                                   "reason": "The incident was automatically reported."},
@@ -3745,6 +3830,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             }
 
     former_attempt = _former_attempt_baseline(choice, identity, decision)
+    order_attempt = _order_attempt_baseline(choice, identity, decision)
     result = smac_command(**_command_payload(choice, identity))
     error = result.get("error") if isinstance(result, dict) else None
     error_code = error.get("code") if isinstance(error, dict) else error
@@ -3753,7 +3839,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             **result,
             "decision_id": decision_id,
             "choice_id": choice_id,
-            "executed_choice": {"choice_id": choice_id, "label": choice_label},
+            "executed_choice": dict(selected_receipt),
         }
         response.pop("command", None)
         if choice.get("command") in {"create_unit_design", "retire_unit_design", "upgrade_prototype"}:
@@ -3769,6 +3855,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                     "decision_id": decision_id, "choice_id": choice_id,
                     "selected_action": choice.get("command"),
                     **({"former_automation_attempt": former_attempt} if former_attempt else {}),
+                    **({"persistent_order_attempt": order_attempt} if order_attempt else {}),
                     "choice_parameters": {
                         key: value for key, value in choice.items()
                         if key not in {"confirm_destructive", "confirm_nerve_gas", "confirm_obliteration"}
@@ -3852,13 +3939,14 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                 "revision": fresh.get("revision", ""),
             }
             rebased_former_attempt = _former_attempt_baseline(replacement, refreshed_identity, fresh)
+            rebased_order_attempt = _order_attempt_baseline(replacement, refreshed_identity, fresh)
             rebased = smac_command(**_command_payload(replacement, refreshed_identity))
             if rebased.get("ok"):
                 response = {
                     **rebased,
                     "decision_id": decision_id,
                     "choice_id": choice_id,
-                    "executed_choice": {"choice_id": choice_id, "label": choice_label},
+                    "executed_choice": dict(selected_receipt),
                     "guard_revalidated": True,
                     "previous_revision": identity.get("revision"),
                     "executed_revision": refreshed_identity.get("revision"),
@@ -3876,6 +3964,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
                         "decision_id": decision_id, "choice_id": choice_id,
                         "selected_action": choice.get("command"), "guard_revalidated": True,
                         **({"former_automation_attempt": rebased_former_attempt} if rebased_former_attempt else {}),
+                        **({"persistent_order_attempt": rebased_order_attempt} if rebased_order_attempt else {}),
                         "choice_parameters": {
                             key: value for key, value in replacement.items()
                             if key not in {"confirm_destructive", "confirm_nerve_gas", "confirm_obliteration"}
@@ -3912,7 +4001,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         **result,
         "decision_id": decision_id,
         "choice_id": choice_id,
-        "executed_choice": {"choice_id": choice_id, "label": choice_label},
+        "executed_choice": dict(selected_receipt),
         "error": {
             "code": "decision_conflict",
             "message": "The selected action could not be atomically rebased. Obtain one fresh decision; do not retry this ID.",
@@ -4142,6 +4231,8 @@ def smac_investigate(
         "This is the native snapshot guard, not a memory/database revision or journal hash. After state changes, obtain a fresh decision. "
         "record_json schemas: claim={topic,content,asserted_by_actor_id?,about_actor_id?,confidence?,status?,source_event_id?}; "
         "belief={topic,content,confidence,evidence?:[{event_id,stance,weight}]}; "
+        "Claim and belief topic is a machine key: 1-128 ASCII letters/digits or _ . : -, "
+        "starting with a letter/digit, with no spaces (example: native-threat-873). Put descriptive prose in content. "
         "relationship={actor_id,affinity,trust,respect,threat,grievance,obligation,confidence,reasons:[...],source_event_id?}; "
         "commitment={commitment_key,title,terms,status,parties?:[{actor_id,role}],due_turn?,due_year?,source_event_id?,resolution_event_id?}; "
         "goal={goal_key?,title,description,priority,status,due_turn?,due_year?,trigger?,parent_goal_id?,source_event_id?}; "
@@ -4154,7 +4245,11 @@ def smac_investigate(
         "summary={section,content,through_event_id?}, where section is situation, relationships, goals, plans, commitments, recent_events, or chat. "
         "Goal trigger / plan timing may include intent_horizon: this_turn_required, this_turn_preferred, next_opportunity, persistent_goal, monitor or backlog. "
         "Current-turn intent is reviewed before possible turn closure; intentional deferral/blocking uses reconciliation={turn,disposition:deferred|blocked,reason}. Preserve other fields when revising. "
-        "Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
+        "Confidence is always 0..1 (80%=0.8). Relationship affinity/trust/respect/threat/obligation are integers -100..100; grievance is 0..100. Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
+        "Event evidence may use journal_event_id from a scoped action receipt or event_id from campaign history. "
+        "Cite only events that support the assertion; accepted citations do not verify its truth. "
+        "Actor fields also accept observed world faction references (for example faction-1); "
+        "the result reports their durable actor mapping without adding hidden identity information. "
         "Actor and event references are mechanically restricted to this same fair-play perspective."
     )
 )
@@ -4172,7 +4267,14 @@ def smac_memory_update(
             match_id, session_id, agent_id, perspective_id,
         )
     except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
+        return {
+            "ok": False, "error": str(exc),
+            "persistence": {"stage": "not_started", "journal_committed": False},
+            "required_next": {
+                "tool": "smac_decision",
+                "reason": "Nothing was saved. Copy the complete match_id and session_id from the fresh identity, and its revision as observed_revision. Do not reconstruct opaque IDs from memory. Managed agent_id and perspective_id may be omitted; supplied values must match this seat.",
+            },
+        }
     try:
         record = json.loads(record_json)
     except json.JSONDecodeError:

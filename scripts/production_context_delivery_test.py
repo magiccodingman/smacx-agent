@@ -16,6 +16,8 @@ def main():
                   "energy_cost": 120, "available_energy": 58},
         "queue": {"entries": 1, "capacity": 10, "append_command": "private_command"},
         "choices": [{"command": "set_production", "base_id": 7, "item_id": 0, "name": "Colony Pod"}]}
+    catalog['choices'][0]['switch_effect'] = {'epistemic_status':'conditional',
+        'minerals_before':20,'minerals_after_switch':0,'mineral_change':-20,'retool_penalty':0}
     original = copy.deepcopy(catalog)
     def native(operation, **arguments):
         assert operation in ("semantic_snapshot", "semantic_choices")
@@ -30,6 +32,7 @@ def main():
     assert context["hurry"] == catalog["hurry"]
     assert context["current"]["name"] == "Colony Pod"
     assert len(frame["choices"]) == 1
+    assert frame["choices"][0]["switch_effect"] == catalog["choices"][0]["switch_effect"]
     assert "hidden" not in json.dumps(context) and "private_command" not in json.dumps(context)
     assert catalog == original
     assert mcp._production_catalog_context({}) == {}, "missing evidence became a false fact"

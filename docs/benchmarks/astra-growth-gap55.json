@@ -1,0 +1,127 @@
+{
+  "finding": "Actual provider runtime contains stored nutrients, surplus and social growth rating but no native nutrient threshold or growth gates. Sovereign describes unsupported8/7 and imminent growth as mineral solution.",
+  "request_id": "f506fbb164b24fccab8e5f4686d6fe00",
+  "runtime_context_sha256": "987c63458ead35c2366b2c736a129325053d56cf46c940f2d8c8617e01cb85b3",
+  "archive_sha256": "aa1577cda33ff0a88706cd810fee8e6039ebb1b0899aed17d76e92e1eb4f0224",
+  "native_source": "mod_base_growth: threshold=(pop_size+1)*mod_cost_factor; habitat/growth inhibition and population-boom rules also govern growth. Threshold checked before adding ordinary surplus.",
+  "status": "Controlled native comparison, epistemic storage, deployment and actual provider context delivery verified. Strategic use and full-game completion remain open.",
+  "implementation": "Owned native base receipt now exposes threshold, rating, population room/habitat/dome, ordinary inhibition and boom prerequisites; timing text explicitly avoids a promised date.",
+  "validation": "Native cross-build39/39, installed current/stale/unknown storage regression, and controlled native ordinary sequencing/inhibition/boom/habitat-cap comparisons pass.",
+  "native_comparison": {
+    "passed": true,
+    "native_comparison": {
+      "ok": true,
+      "before": {
+        "population": 2,
+        "growth": {
+          "nutrient_threshold": 27,
+          "growth_rating": 0,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": true,
+          "ordinary_growth_inhibited": false,
+          "population_boom_conditions_met": false,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "threshold": 27,
+      "first_population": 2,
+      "first_stock": 27,
+      "second_population": 3,
+      "inhibited_before": {
+        "population": 2,
+        "growth": {
+          "nutrient_threshold": 27,
+          "growth_rating": -3,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": true,
+          "ordinary_growth_inhibited": true,
+          "population_boom_conditions_met": false,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "inhibited_population": 2,
+      "boom_before": {
+        "population": 2,
+        "growth": {
+          "nutrient_threshold": 27,
+          "growth_rating": 6,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": true,
+          "ordinary_growth_inhibited": false,
+          "population_boom_conditions_met": true,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "boom_population": 3,
+      "cap_before": {
+        "population": 7,
+        "growth": {
+          "nutrient_threshold": 72,
+          "growth_rating": 0,
+          "habitat_limit": 7,
+          "habitation_dome": false,
+          "population_room": false,
+          "ordinary_growth_inhibited": false,
+          "population_boom_conditions_met": false,
+          "negative_nutrient_stock": false,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        }
+      },
+      "capped_population": 7
+    }
+  },
+  "deployment": {
+    "restored_turn": 56,
+    "stored_nutrients": 9,
+    "native_threshold": 30,
+    "surplus": 1,
+    "growth_rating": 0,
+    "habitat_limit": 9,
+    "profile_recompile_http": 200,
+    "live_sovereign_processes": 0
+  },
+  "provider_delivery": [
+    {
+      "correlation": {
+        "attention_lease_id": "attention-lease-eb1c14ffd0b4424d95d339b84680be18",
+        "episode_id": "episode-06324b026d9faf5b88a0222222f0aac2",
+        "request_id": "574b239bef38436aa0e5330aa0fe93b3",
+        "runtime_context_sha256": "c2fd9ae327e5e71491c810cbac439579b956f39638dfdadd65010d823935b43a"
+      },
+      "growth": {
+        "epistemic_status": "current",
+        "first_known_turn": 56,
+        "last_verified_turn": 56,
+        "provenance_ref": "observation-434",
+        "source": "owned_state",
+        "value": {
+          "growth_rating": 0,
+          "habitat_limit": 9,
+          "habitation_dome": false,
+          "negative_nutrient_stock": false,
+          "nutrient_threshold": 30,
+          "ordinary_growth_inhibited": false,
+          "population_boom_conditions_met": false,
+          "population_room": true,
+          "timing_semantics": "Current native inputs, not a promised growth date. Ordinary growth checks stored nutrients against the threshold before adding that upkeep's surplus. Habitat/max population, growth inhibition, negative stock and population-boom rules apply; future allocation, support and events can change inputs."
+        },
+        "world_revision": 2
+      }
+    }
+  ],
+  "delivery_archive_sha256": "ac306d9a5db77d43edbd46fb092243630560046a0d7a659963897d6237260dad",
+  "sovereign_use": {
+    "turn": 56,
+    "plan_journal": "journal-4a7ddad06e6c4270aa0a1092223f5dcb",
+    "goal_journal": "journal-3949bc2c4e07432990792ba07ddce67a",
+    "observed_correction": "Explicitly revised9/30 growth estimate from1-2 turns to roughly20-21 turns and reprioritized terraforming.",
+    "limits": "Approximate estimate not exact timing; Sensor Array mineral-yield assumption remains unsupported.",
+    "archive_sha256": "c5dd97b62e9ecf8c7c57581d0a341481f9a3d2c050ce799b0020e013621a2691"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+  "turn": 35,
+  "attention": {
+    "attention_lease_id": "attention-lease-4b878e19932c493d89bf9266a4fce4a0",
+    "items": [
+      {
+        "attention_id": "attention-153288debbb34d99a0e02f1095f80e26",
+        "attention_kind": "world_change",
+        "attention_sequence": 1,
+        "captured_unix": 1788850829.6460226,
+        "critical": 1,
+        "observation_cursor": 264,
+        "payload": {
+          "delta": {
+            "change": "appeared",
+            "fields": {
+              "hp": {
+                "epistemic_status": "current",
+                "first_known_turn": 35,
+                "last_verified_turn": 35,
+                "provenance_ref": "observation-264",
+                "source": "direct_sight",
+                "value": 10,
+                "world_revision": 4
+              },
+              "max_hp": {
+                "epistemic_status": "current",
+                "first_known_turn": 35,
+                "last_verified_turn": 35,
+                "provenance_ref": "observation-264",
+                "source": "direct_sight",
+                "value": 10,
+                "world_revision": 4
+              },
+              "name": {
+                "epistemic_status": "current",
+                "first_known_turn": 35,
+                "last_verified_turn": 35,
+                "provenance_ref": "observation-264",
+                "source": "direct_sight",
+                "value": "Mind Worms",
+                "world_revision": 4
+              },
+              "owner_ref": {
+                "epistemic_status": "current",
+                "first_known_turn": 35,
+                "last_verified_turn": 35,
+                "provenance_ref": "observation-264",
+                "source": "direct_sight",
+                "value": "faction-0",
+                "world_revision": 4
+              }
+            },
+            "kind": "foreign_contact",
+            "location_ref": "location-673",
+            "object_ref": "contact-a3e2028bc5f3ae7f6450ba24a3995012"
+          }
+        },
+        "priority": 90,
+        "redelivered": false
+      }
+    ],
+    "status": "placed",
+    "through_cursor": 1
+  },
+  "persisted_unix": 1788850829.6464179,
+  "acknowledged_unix": 1788851034.7772806,
+  "provider_delivery": {
+    "kind": "provider_request_submitted",
+    "time": 1788850830.0614934,
+    "correlation": {
+      "attention_lease_id": "attention-lease-4b878e19932c493d89bf9266a4fce4a0",
+      "episode_id": "episode-2807944fe50fcd7fa76e38e3facd8640",
+      "request_id": "06d09c24f32a4550b95b30c2b36ba7fa",
+      "runtime_context_sha256": "620fa0ed8393d7f46163962705bbf911de1abbebe5919fe7c46c1e8ea5b3ed91"
+    },
+    "hits": [
+      {
+        "role": "tool",
+        "has_location": true,
+        "has_contact": true
+      }
+    ]
+  },
+  "acknowledgement": {
+    "kind": "managed_tool_returned",
+    "time": 1788851034.7896204,
+    "payload": {
+      "elapsed_ms": 13.434961,
+      "result": {
+        "acknowledged_ids": [
+          "attention-153288debbb34d99a0e02f1095f80e26"
+        ],
+        "attention_cursor": 1,
+        "attention_lease_id": "attention-lease-4b878e19932c493d89bf9266a4fce4a0",
+        "ok": true,
+        "through_cursor": 1
+      },
+      "tool": "smac_attention_ack"
+    }
+  },
+  "post_ack_request_id": "6c01e22741d0422abf0155a8e2991a3d",
+  "post_ack_runtime_attention": {
+    "attention_lease_id": "attention-lease-9cfacdd9731c457d92c11482340730d5",
+    "items": [],
+    "status": "placed",
+    "through_cursor": 0
+  },
+  "limits": [
+    "Proves captured contact \u2192 persisted notice \u2192 provider runtime \u2192 exact acknowledgement \u2192 removed from next attention envelope.",
+    "Does not prove tactical response, raid-effect delivery, or persistent-order-clearing delivery.",
+    "No claim that this contact caused the movement rejection."
+  ]
+}

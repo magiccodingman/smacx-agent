@@ -1,0 +1,137 @@
+{
+  "incident_id": "incident-74b328bb0a7742cbad7198cc5f481600",
+  "archive_sha256": "a510069dc464f9d9edfe27493a6f389baed1b9fccaf234c71764c28c44ad9f2f",
+  "stall_seconds": 364.7611861228943,
+  "completed_calls": 2,
+  "generated_tokens": 14063,
+  "last_request_id": "8ccc0435401341499b9d53cf3e22182c",
+  "last_request_age_at_stop": 78.301114320755,
+  "preceding_request_seconds": 204.68641328811646,
+  "timeline": [
+    {
+      "time": 1788881831.2414978,
+      "kind": "sovereign_response",
+      "finish_reason": "tool_calls"
+    },
+    {
+      "time": 1788881831.2647755,
+      "kind": "managed_tool_started",
+      "tool": "smac_decision",
+      "arguments": {
+        "detail": "compact",
+        "finish_ready_units": false,
+        "own_unit_ref": "",
+        "target_location_ref": "",
+        "target_unit_ref": ""
+      }
+    },
+    {
+      "time": 1788881831.7576323,
+      "kind": "provider_request_submitted",
+      "request_id": "d9b9350bbd5446fb9ecf4ca77cad46bd"
+    },
+    {
+      "time": 1788882036.4440455,
+      "kind": "sovereign_response",
+      "finish_reason": "tool_calls"
+    },
+    {
+      "time": 1788882036.470272,
+      "kind": "managed_tool_started",
+      "tool": "smac_choices",
+      "arguments": {
+        "amount": null,
+        "base_ref": "base-location-795",
+        "kind": "production",
+        "option_ref": "",
+        "own_unit_ref": "",
+        "preparation_ref": "",
+        "target_location_ref": "",
+        "target_unit_ref": ""
+      }
+    },
+    {
+      "time": 1788882036.8910508,
+      "kind": "provider_request_submitted",
+      "request_id": "8ccc0435401341499b9d53cf3e22182c"
+    }
+  ],
+  "assessment": "Repeat aggregate no-progress stop during an in-flight request, after fresh decision and production lookup. Prompt guidance did not eliminate recurrence. No rejected native-action loop appears in this window. Native/collectors remain quarantined; no automatic retry.",
+  "next_repair_review": "Consider bounded current-request completion handling and explicit deliberation-budget feedback while preserving a hard nonrenewable no-progress limit; reads must not become native progress.",
+  "request_state_checkpoint": {
+    "implementation": "Bounded sovereign-only run/request/phase/start/observation marker, read by existing no-network telemetry helper; older completion cannot overwrite newer request.",
+    "states": [
+      "submitted",
+      "headers",
+      "completed",
+      "failed",
+      "closed_incomplete"
+    ],
+    "tests": [
+      "provider_request_state_test.py passed in Hermes image",
+      "provider_audit_contract_test.py passed in Hermes image",
+      "harness_continuation_contract_test.py passed on host"
+    ],
+    "host_httpx": "unavailable; transport tests run in actual Hermes dependency environment",
+    "watchdog_policy_changed": false,
+    "deployment_and_live_verification": "pending"
+  },
+  "bounded_drain_policy": {
+    "eligible": "Matching-run pending request started within current progress window and before its ordinary deadline; freshly sampled telemetry required.",
+    "hard_limit": "Ordinary semantic deadline plus180 seconds, nonrenewable.",
+    "completion_dispatch": "Up to30 seconds after completed transport, capped by hard limit; no new request admitted to grace.",
+    "unchanged": "Semantic-progress clock, native effect authority, error guards and no-telemetry stop behavior.",
+    "tests": [
+      "provider_drain_window_test.py: boundaries, stale/foreign/nonfinite/missing data, failure/close, no extension by new request, progress invalidation",
+      "production reconcile: unchanged progress timestamp and hard-bound quarantine",
+      "harness_continuation_contract_test.py unchanged tests pass"
+    ],
+    "live_acceptance": "pending"
+  },
+  "installed_validation": {
+    "harness_request_state": "pass",
+    "control_drain_policy_and_reconciliation": "pass",
+    "packaging": "Initial control image omitted explicit COPY of new module; corrected and rebuilt. Healthy control and supervisor after correction.",
+    "supported_recovery": "completed",
+    "live_grace": "pending"
+  },
+  "live_request_state_acceptance": {
+    "turn": 62,
+    "state": "observed_active",
+    "active_runs": 1,
+    "live_sovereigns": 1,
+    "graphiti_rebuild": "completed",
+    "profile_compile_http_status": 200,
+    "supervisor_sample_unix": 1788882751.3147185,
+    "provider_request": {
+      "observed_unix": 1788882738.0427265,
+      "phase": "headers",
+      "request_id": "6b57dc14204e4e6cb7f825c8b67e085f",
+      "run_id": "run-699333ad896e4a28949f067de28e73fc",
+      "started_unix": 1788882737.9654696
+    },
+    "drain": null,
+    "assessment": "Actual sovereign marker propagated through normal supervisor telemetry with matching run/request. Drain activation and outcome still pending."
+  },
+  "live_drain_outcome": {
+    "archive_sha256": "fb1d3b7803ef2b1485d3298d76279c5afab0fb8a158d43f16b845d0b944cf617",
+    "incident_id": "incident-1b6a6e7e4e944d9597eb0fc5232654ac",
+    "drain": {
+      "base_deadline": 1788883263.4175708,
+      "hard_deadline": 1788883443.4175708,
+      "request_id": "97d2135c71c14db2a93a1c20ced04ee8",
+      "started_unix": 1788883213.6236842
+    },
+    "provider_request_at_stop": {
+      "observed_unix": 1788883328.3358495,
+      "phase": "headers",
+      "request_id": "aca82e6c679047fe8c1e904274fcf614",
+      "run_id": "run-699333ad896e4a28949f067de28e73fc",
+      "started_unix": 1788883328.2422287
+    },
+    "reported_unix": 1788883329.993349,
+    "assessment": "Grace activated for matching pending request97d2135c; response completed and sovereign saved a plan. A new requestaca82e6c did not renew grace and supervisor quarantined without native progress. Verifies live activation/nonrenewal, not improved strategy or progress-to-action. No further timeout extension justified.",
+    "plan_journal": "journal-75b9c1c7823a49249344ac9e05663d05",
+    "reasoning_limit": "Plan contains unsupported worked-tile/mining constraints and inconsistent arithmetic; journal acceptance does not validate strategy."
+  }
+}

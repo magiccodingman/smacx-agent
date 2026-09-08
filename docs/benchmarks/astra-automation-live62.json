@@ -1,0 +1,100 @@
+{
+  "turn": 62,
+  "archive_sha256": "54081311c651ad7b5a3f3a386fd323a42b526f961e9cea50a49049767104c7bb",
+  "actions": [
+    {
+      "recorded_unix": 1788882880.0391383,
+      "result": {
+        "choice_id": "choice-989cb52d52094568a8a32a3c4e94c3d6",
+        "decision_consumed": true,
+        "decision_id": "decision-4980f78827b4439fb42b024513343f8f",
+        "executed_choice": {
+          "choice_id": "choice-989cb52d52094568a8a32a3c4e94c3d6",
+          "label": "Activate unit",
+          "own_unit_ref": "own-unit-12"
+        },
+        "execution_status": "accepted",
+        "journal": {
+          "event_hash": "0ad2a13591ed8d55de50443914ab1b6273317d7e5a8936e93245c6bb47490b7d",
+          "journal_event_id": "journal-409fb72b6d56484abbce6d40a8e04039",
+          "ok": true
+        },
+        "left_carrier": false,
+        "ok": true,
+        "old_automation": "auto_former_improve_home_base",
+        "old_order": 0,
+        "ready": false,
+        "required_next": {
+          "reason": "This decision is consumed, including after rejection. Obtain a fresh frame.",
+          "tool": "smac_decision"
+        },
+        "turn_provenance": {
+          "observed_after_turn": 62,
+          "scope": "native choice selection and post-action observation; neither proves completion",
+          "selected_turn": 62
+        }
+      }
+    }
+  ],
+  "before": {
+    "semantic_sample_unix": 1788882751.3147185,
+    "semantic_progress_unix": 1788882751.3147185,
+    "semantic_progress": {
+      "available": true,
+      "briefing_acknowledgement": "a7ea82dcbeb946e01f7651ada3a04572876480b670b44270c7b0dbb7b62ede55",
+      "final_score_completed": false,
+      "game_completed": false,
+      "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+      "meaningful_fingerprint": "d261d204bd88cf995660faebe6c3b819f4e153bf12b172058231e409722f4420",
+      "native_fingerprint": "d7f05f21ea7d73583423b1808937d4b3db09bbb2ffb66c322eaa0dfa59075623",
+      "phase": "turn",
+      "revision": "16387174457524715429",
+      "session_id": "session-2d32fbb9cb384b74b4557bb37d5eaca3",
+      "turn": 62,
+      "year": 2162
+    },
+    "semantic_telemetry_unix": 1788882751.3147185,
+    "semantic_baseline_pending": false,
+    "semantic_unavailable_reason": null,
+    "semantic_unavailable_samples": 0,
+    "consecutive_clean_yields_without_progress": null
+  },
+  "after": {
+    "semantic_sample_unix": 1788882994.7905068,
+    "semantic_progress_unix": 1788882903.4175708,
+    "semantic_progress": {
+      "available": true,
+      "briefing_acknowledgement": "a7ea82dcbeb946e01f7651ada3a04572876480b670b44270c7b0dbb7b62ede55",
+      "final_score_completed": false,
+      "game_completed": false,
+      "match_id": "match-71cfa9f38afc6ed0006ccc2382a5d4b3",
+      "meaningful_fingerprint": "d75d16f43ceab0ca187790b08dd48d74a59b113bd9fc3eb9c9f736115c703c11",
+      "native_fingerprint": "2d0df587cef86af1300e8a62c8d554965537b3a99f7341d9afdfe7c77d14ec7a",
+      "phase": "turn",
+      "revision": "2171664376949823744",
+      "session_id": "session-2d32fbb9cb384b74b4557bb37d5eaca3",
+      "turn": 62,
+      "year": 2162
+    },
+    "semantic_telemetry_unix": 1788882964.3652947,
+    "semantic_baseline_pending": false,
+    "semantic_unavailable_reason": null,
+    "semantic_unavailable_samples": 0,
+    "consecutive_clean_yields_without_progress": null
+  },
+  "task_after": {
+    "epistemic_status": "current",
+    "first_known_turn": 62,
+    "last_verified_turn": 62,
+    "provenance_ref": "observation-468",
+    "source": "owned_state",
+    "value": {
+      "automation_active": false,
+      "completion_verified": false,
+      "order_kind": "none",
+      "state": "no_active_terraform_order"
+    },
+    "world_revision": 2
+  },
+  "assessment": "Autonomous Activate unit clears native Former automation; native/meaningful fingerprints change in same session and turn, normal supervisor progress clock advances. Closes live automation-transition observation gate, not strategic value of cancellation or subsequent terrain work."
+}

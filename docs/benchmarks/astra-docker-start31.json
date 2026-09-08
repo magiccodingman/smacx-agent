@@ -1,0 +1,30 @@
+{
+  "scope": "Docker container-start timeout distinct from MCP health failure",
+  "observed": {
+    "failure_capture_unix": 1788847075.5580761,
+    "failure": "DockerUnavailable",
+    "inspection_capture": "DockerUnavailable",
+    "docker_start_event_unix": 1788847090,
+    "cleanup_destroy_event_unix": 1788847091,
+    "daemon_evidence": "Container inspection request cancelled by client with broken pipe at 05:58:10 UTC; container start completed after failure capture."
+  },
+  "repair": "Use max(configured client timeout, 90 seconds) for container start only. No automatic mutation retry; health verification remains required.",
+  "validation": [
+    "host request-budget regression passed",
+    "installed image request-budget regression passed"
+  ],
+  "pending": [
+    "underlying daemon startup delay cause",
+    "full-game acceptance"
+  ],
+  "other_stack_attribution": "Not established",
+  "recovery": {
+    "turn": 31,
+    "worker": "healthy",
+    "mcp": "healthy",
+    "sovereign_container": "running",
+    "graphiti_rebuild_id": "rebuild-58c51f621b6d4d6d8d255b739663c29a",
+    "graphiti_completed_unix": 1788847289.4127586,
+    "interpretation": "Controlled retry succeeded. Memory restore gate withheld sovereign until rebuild completed. This does not prove the retry required more than the old 15-second startup timeout."
+  }
+}

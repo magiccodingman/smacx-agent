@@ -1,0 +1,190 @@
+{
+  "scope": "Return-to-base assignment followed by ready/no-order observation; cause unproven",
+  "packet_sha256": "fa7c20df2386fecf7546374f5177aa9d95bdbed8311f65a5882f9fec7436db08",
+  "native_assignments": [
+    {
+      "recorded_unix": 1788846318.0612223,
+      "unit_id": 13,
+      "result": {
+        "arrival_verified": false,
+        "command": "return_to_base",
+        "destination_base_id": 0,
+        "destination_base_name": "U.N. Headquarters",
+        "ok": true,
+        "order": "go_to",
+        "order_assigned": true,
+        "persistent": true,
+        "ready": false,
+        "unit_id": 13
+      }
+    },
+    {
+      "recorded_unix": 1788846436.4846916,
+      "unit_id": 23,
+      "result": {
+        "arrival_verified": false,
+        "command": "return_to_base",
+        "destination_base_id": 0,
+        "destination_base_name": "U.N. Headquarters",
+        "ok": true,
+        "order": "go_to",
+        "order_assigned": true,
+        "persistent": true,
+        "ready": false,
+        "unit_id": 23
+      }
+    },
+    {
+      "recorded_unix": 1788846519.196595,
+      "unit_id": 13,
+      "result": {
+        "arrival_verified": false,
+        "command": "return_to_base",
+        "destination_base_id": 0,
+        "destination_base_name": "U.N. Headquarters",
+        "ok": true,
+        "order": "go_to",
+        "order_assigned": true,
+        "persistent": true,
+        "ready": false,
+        "unit_id": 13
+      }
+    }
+  ],
+  "subsequent_frames": [
+    {
+      "recorded_unix": 1788846456.6354957,
+      "focus": {
+        "kind": "unit_actions",
+        "unit": {
+          "hp": 10,
+          "location_ref": "location-1156",
+          "max_hp": 10,
+          "movement_points": 3,
+          "movement_scale": 3,
+          "moves_remaining": 3,
+          "name": "Scout Patrol",
+          "order_name": "none",
+          "own_unit_ref": "own-unit-1",
+          "ready": true,
+          "roles": {
+            "colony": false,
+            "combat": true,
+            "former": false,
+            "probe": false,
+            "supply": false,
+            "transport": false
+          }
+        }
+      }
+    }
+  ],
+  "classification": "Observed order discontinuity; native cancellation versus harness interference remains unproven. Existing dedicated former-automation reconciliation does not cover return-to-base.",
+  "next": "Trace post-action observations and intervening commands; add bounded general persistent-order outcome feedback if no existing mechanism covers this chain.",
+  "intervening_managed_commands": [
+    {
+      "command": "move_unit",
+      "unit_id": 23,
+      "queued": true,
+      "recorded_unix": 1788846352.3381937
+    },
+    {
+      "command": "return_to_base",
+      "unit_id": 23,
+      "recorded_unix": 1788846436.4846916
+    }
+  ],
+  "explicit_managed_cancellation_of_unit13_observed": false,
+  "pause_incident": "incident-975d0c0595354c63a7e1eb7dbd1b22d6",
+  "acceptance_status": "investigation_open",
+  "repair": {
+    "implementation": "Accepted managed persistent orders record revision-qualified owned baselines in the campaign journal. Later current ready/no-order observations enqueue bounded attention with cause unknown; explicit replacement commands, epoch changes and observation gaps do not imply native cancellation.",
+    "tests": {
+      "persistent_order_attention_test": {
+        "passed": [
+          "cleared",
+          "pending",
+          "spent",
+          "movement",
+          "superseded",
+          "epoch",
+          "crash"
+        ]
+      },
+      "former_automation_attention_test": {
+        "passed": true,
+        "cases": [
+          {
+            "mode": "stopped",
+            "notices": 1
+          },
+          {
+            "mode": "repeated",
+            "notices": 2
+          },
+          {
+            "mode": "active",
+            "notices": 0
+          },
+          {
+            "mode": "pending",
+            "notices": 0
+          },
+          {
+            "mode": "movement",
+            "notices": 0
+          },
+          {
+            "mode": "replacement",
+            "notices": 0
+          },
+          {
+            "mode": "superseded",
+            "notices": 0
+          },
+          {
+            "mode": "overlap",
+            "notices": 1
+          },
+          {
+            "mode": "epoch",
+            "notices": 0
+          },
+          {
+            "mode": "crash",
+            "notices": 1
+          },
+          {
+            "mode": "rejected",
+            "notices": 0
+          },
+          {
+            "mode": "tile_change",
+            "notices": 0
+          },
+          {
+            "mode": "unknown",
+            "notices": 0
+          }
+        ]
+      },
+      "installed_image": {
+        "passed": [
+          "cleared",
+          "pending",
+          "spent",
+          "movement",
+          "superseded",
+          "epoch",
+          "crash"
+        ]
+      }
+    },
+    "pending": [
+      "live provider delivery",
+      "native cancellation cause",
+      "full-game acceptance"
+    ],
+    "packaging": "Explicit Docker module copy and build import check added; installed test mounts only test scripts, not host source."
+  }
+}

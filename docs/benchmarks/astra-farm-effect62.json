@@ -1,0 +1,109 @@
+{
+  "turn": 62,
+  "states": {
+    "farmtile62": {
+      "sha256": "2f32b047d28cffe07202cb5114110c10ebc683bc9831859cbdb80d514f92223b",
+      "fields": {
+        "features": {
+          "epistemic_status": "current",
+          "first_known_turn": 58,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-457",
+          "source": "direct_sight",
+          "value": [
+            "rolling",
+            "vehicle"
+          ],
+          "world_revision": 5
+        }
+      }
+    },
+    "farmtile62-settled": {
+      "sha256": "b7ed377e090c54d488b6bb738470d73e01d79ea259fff4732f9a359209dc0864",
+      "fields": {
+        "features": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-465",
+          "source": "direct_sight",
+          "value": [
+            "farm",
+            "rolling",
+            "vehicle"
+          ],
+          "world_revision": 13
+        }
+      }
+    },
+    "base62": {
+      "sha256": "4f50aaa73b6f91b01c848747986534b7c21c143633b88aab8e2bdde783ba1ed1",
+      "fields": {
+        "nutrients": {
+          "epistemic_status": "current",
+          "first_known_turn": 61,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-457",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 14,
+            "consumption": 4,
+            "intake": 5,
+            "surplus": 1
+          },
+          "world_revision": 5
+        },
+        "minerals": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-457",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 0,
+            "consumption": 4,
+            "intake": 4,
+            "surplus": 0,
+            "unit_support_cost": 4
+          },
+          "world_revision": 5
+        }
+      }
+    },
+    "base62-settled": {
+      "sha256": "22a4404c4794c65daabde87e620cf0f7798d85ac1e45f83ee30e924832ececee",
+      "fields": {
+        "nutrients": {
+          "epistemic_status": "current",
+          "first_known_turn": 62,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-465",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 15,
+            "consumption": 4,
+            "intake": 6,
+            "surplus": 2
+          },
+          "world_revision": 13
+        },
+        "minerals": {
+          "epistemic_status": "current",
+          "first_known_turn": 57,
+          "last_verified_turn": 62,
+          "provenance_ref": "observation-457",
+          "source": "owned_state",
+          "value": {
+            "accumulated": 0,
+            "consumption": 4,
+            "intake": 4,
+            "surplus": 0,
+            "unit_support_cost": 4
+          },
+          "world_revision": 5
+        }
+      }
+    }
+  },
+  "assessment": "Within turn62 native processing, current tile835 gained a Farm feature and base food intake5\u21926/surplus1\u21922. Minerals remain intake4/support4/surplus0. Combined with prior active Farm work2\u21926, this verifies completion and observed food benefit. No mineral improvement, exact growth ETA, or expansion outcome is claimed."
+}
