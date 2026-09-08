@@ -517,6 +517,9 @@ int deferred_obliterate_unit_id = -1;
 int active_obliterate_base_id = -1;
 int active_obliterate_unit_id = -1;
 int active_obliterate_decision = -1;
+int deferred_disband_unit_id = -1;
+int active_disband_unit_id = -1;
+int active_disband_decision = -1;
 int deferred_destroy_unit_id = -1;
 int deferred_destroy_former_id = -1;
 int deferred_destroy_owner_id = -1;
@@ -4551,7 +4554,7 @@ bool semantic_interaction_command(const std::string& command) {
         "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer",
         "respond_to_territorial_incident", "respond_to_combat_confirmation",
         "respond_to_nerve_gas", "respond_to_end_turn_confirmation",
-        "respond_to_base_obliteration", "respond_to_supreme_leader",
+        "respond_to_base_obliteration", "respond_to_unit_disband", "respond_to_supreme_leader",
         "respond_to_game_over", "advance_endgame_presentation",
         "advance_technology_presentation", "advance_project_information",
         "respond_to_design_offer", "defer_social_engineering",
@@ -4677,6 +4680,9 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(base_ref_token(active_obliterate_base_id)));
     mix(static_cast<uint32_t>(unit_ref_token(active_obliterate_unit_id)));
     mix(static_cast<uint32_t>(active_obliterate_decision + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_disband_unit_id)));
+    mix(static_cast<uint32_t>(unit_ref_token(active_disband_unit_id)));
+    mix(static_cast<uint32_t>(active_disband_decision + 1));
     mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_unit_id)));
     mix(static_cast<uint32_t>(unit_ref_token(deferred_destroy_former_id)));
     mix(static_cast<uint32_t>(deferred_destroy_owner_id + 2));
@@ -9680,6 +9686,20 @@ std::string test_managed_action_fixture_response(const std::string& request) {
     if (base_id < 0 || !human_turn_actionable(faction))
         return error_response("fixture_unavailable", "Requires an actionable owned base.");
     const std::string phase = field_string(request, "phase");
+    if (phase == "diagnostics_disband") {
+        if (*MultiplayerActive || interaction_kind(faction) != "turn")
+            return error_response("fixture_unavailable", "Isolated disband fixture requires an idle turn.");
+        BASE& base = Bases[base_id];
+        int id = veh_init(BSC_SCOUT_PATROL, faction, base.x, base.y);
+        if (id < 0) return error_response("fixture_unavailable", "Cannot create disband fixture unit.");
+        Vehs[id].home_base_id = base_id;
+        Vehs[id].moves_spent = field_int(request, "spent", 0)
+            ? static_cast<uint8_t>(std::min(255, veh_speed(id, 0))) : 0;
+        if (field_int(request, "objective", 0)) Vehs[id].flags |= VFLAG_IS_OBJECTIVE;
+        ++semantic_mutation_generation;
+        return std::string("{\"ok\":true,\"unit_id\":") + std::to_string(id)
+            + ",\"base_id\":" + std::to_string(base_id) + '}';
+    }
     if (phase == "diagnostics_support_shortage") {
         if (*MultiplayerActive || test_support_shortage_base >= 0)
             return error_response("fixture_unavailable", "Isolated idle single-player support notice only.");
@@ -11917,9 +11937,17 @@ int target_tile_id = -1, int target_unit_id = -1) {
                     << ",\"known\":true,\"meaning\":\"Wake this passenger and make one native move from its sea transport onto adjacent land.\"}";
             }
         } else if (veh.order != ORDER_NONE && !veh_jail(veh_id)) {
+            comma = true;
             out << "{\"id\":\"activate:" << veh_id
                 << "\",\"command\":\"activate_unit\",\"unit_id\":" << veh_id
                 << ",\"meaning\":\"Cancel the persistent order and reactivate the unit under native movement rules.\"}";
+        }
+        if (!(veh.flags & VFLAG_IS_OBJECTIVE)) {
+            if (comma) out << ',';
+            out << "{\"id\":\"disband:" << veh_id
+                << "\",\"command\":\"disband_unit\",\"unit_id\":" << veh_id
+                << ",\"requires\":{\"confirm_disband\":1},\"destructive\":true,"
+                "\"meaning\":\"Open native disband confirmation for this spent or ordered unit. Verify recycling and unit removal afterward.\"}";
         }
         out << "],\"ready\":false,\"reason\":"
             << json_string(boarded_transport_id >= 0 ? "boarded_transport"
@@ -13374,6 +13402,13 @@ std::string semantic_choices_response(const std::string& request) {
                     "\"kind\":\"capability_status\",\"supported\":false,"
                     "\"meaning\":\"No reviewed captive faction id matched the native rescue menu.\"}";
             }
+        } else if ((!strcmp(label, "DISBAND") || !strcmp(label, "DISBAND2"))
+        && active_disband_unit_id >= 0) {
+            out << "{\"id\":\"unit_disband:cancel\",\"command\":\"respond_to_unit_disband\","
+                "\"response\":\"cancel\",\"meaning\":\"Cancel native unit disband.\"},"
+                "{\"id\":\"unit_disband:proceed\",\"command\":\"respond_to_unit_disband\","
+                "\"response\":\"proceed\",\"confirm_disband\":1,\"destructive\":true,"
+                "\"meaning\":\"Confirm native disband. The game applies eligible base recycling; verify the resulting unit roster and base minerals.\"}";
         } else if ((!strcmp(label, "OBLIT") || !strcmp(label, "OBLITOK"))
         && active_obliterate_base_id >= 0 && active_obliterate_unit_id >= 0) {
             int base_id = active_obliterate_base_id;
@@ -15443,6 +15478,25 @@ std::string semantic_command_response(const std::string& request) {
         submit_popup_choice(active, response == "proceed" ? 1 : 0);
         return std::string("{\"ok\":true,\"command\":\"respond_to_end_turn_confirmation\","
             "\"response\":") + json_string(response.c_str()) + '}';
+    }
+    if (command == "respond_to_unit_disband") {
+        std::string label = agent_popup_label();
+        std::string response = field_string(request, "response");
+        if ((label != "DISBAND" && label != "DISBAND2")
+        || active_disband_unit_id < 0
+        || (response != "cancel" && response != "proceed")) {
+            return error_response("invalid_unit_disband_response",
+                "Use the exact active native disband confirmation.");
+        }
+        if (response == "proceed" && field_int(request, "confirm_disband", 0) != 1) {
+            return error_response("disband_confirmation_required", "Confirm the destructive native choice.");
+        }
+        BasePop* popup = active_default_popup();
+        if (!popup) return error_response("popup_unavailable", "Native disband confirmation unavailable.");
+        active_disband_decision = response == "proceed" ? 1 : 0;
+        submit_popup_choice(popup, active_disband_decision);
+        return std::string("{\"ok\":true,\"command\":\"respond_to_unit_disband\",\"response\":")
+            + json_string(response.c_str()) + '}';
     }
     if (command == "respond_to_base_obliteration") {
         std::string label = agent_popup_label();
@@ -17644,6 +17698,28 @@ std::string semantic_command_response(const std::string& request) {
             + ",\"target_tile_id\":" + std::to_string(target_tile_id)
             + ",\"action_id\":" + std::to_string(deferred_action.id) + '}';
     }
+    if (command == "disband_unit") {
+        if (veh.flags & VFLAG_IS_OBJECTIVE) {
+            return error_response("objective_unit_disband_forbidden",
+                "Scenario objective units cannot be disbanded.");
+        }
+        if (field_int(request, "confirm_disband", 0) != 1) {
+            return error_response("disband_confirmation_required",
+                "Set confirm_disband to 1 after selecting the destructive choice.");
+        }
+        if (deferred_native_action_pending()) {
+            return error_response("action_already_queued", "Wait for the pending native action.");
+        }
+        deferred_disband_unit_id = veh_id;
+        begin_deferred_action("disband_unit", veh_id, veh.x, veh.y, veh.x, veh.y);
+        if (!PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0)) {
+            deferred_disband_unit_id = -1;
+            deferred_action.status = "rejected";
+            return error_response("unit_disband_queue_failed", "Native disband could not be queued.");
+        }
+        return std::string("{\"ok\":true,\"command\":\"disband_unit\",\"queued\":true,\"action_id\":")
+            + std::to_string(deferred_action.id) + '}';
+    }
     if (!veh_unmoved(veh_id)) {
         return error_response("unit_not_ready", "This unit has no unresolved action available this turn.");
     }
@@ -18303,23 +18379,7 @@ std::string semantic_command_response(const std::string& request) {
             + ",\"blast_damage\":" + std::to_string(blast_damage)
             + ",\"ids_may_have_shifted\":true}";
     }
-    if (command == "disband_unit") {
-        if (veh.flags & VFLAG_IS_OBJECTIVE) {
-            return error_response("objective_unit_disband_forbidden",
-                "Scenario objective units cannot be disbanded.");
-        }
-        if (field_int(request, "confirm_disband", 0) != 1) {
-            return error_response("disband_confirmation_required",
-                "Set confirm_disband to 1 after selecting the destructive choice.");
-        }
-        std::string unit_name = veh.name();
-        int unit_id = veh.unit_id;
-        veh_kill(veh_id);
-        return std::string("{\"ok\":true,\"command\":\"disband_unit\",\"deleted_unit_id\":")
-            + std::to_string(veh_id) + ",\"prototype_id\":" + std::to_string(unit_id)
-            + ",\"unit_name\":" + json_string(unit_name.c_str())
-            + ",\"ids_may_have_shifted\":true}";
-    }
+
     if (command == "move_unit") {
         int target_tile_id = -1;
         int x = -1;
@@ -20327,6 +20387,34 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             deferred_action.resolution = removed
                 ? "native_terrain_improvement_destroyed"
                 : (attempted ? "native_failure" : "state_changed_before_execution");
+            return true;
+        }
+        if (deferred_disband_unit_id >= 0) {
+            int unit_id = deferred_disband_unit_id;
+            int faction_id = game_active() ? *CurrentPlayerFaction : -1;
+            int count_before = *VehCount;
+            bool attempted = false;
+            if (!*MultiplayerActive && faction_id >= 1 && unit_id < *VehCount
+            && Vehs[unit_id].faction_id == faction_id
+            && !(Vehs[unit_id].flags & VFLAG_IS_OBJECTIVE)
+            && human_turn_actionable(faction_id)) {
+                attempted = true;
+                MapWin->iUnit = unit_id;
+                *CurrentVehID = unit_id;
+                active_disband_unit_id = unit_id;
+                active_disband_decision = -1;
+                Console_disband(MapWin, unit_id);
+            }
+            bool removed = attempted && *VehCount == count_before - 1;
+            bool cancelled = attempted && active_disband_decision == 0 && !removed;
+            deferred_disband_unit_id = -1;
+            active_disband_unit_id = -1;
+            active_disband_decision = -1;
+            deferred_action.native_result = removed ? 1 : 0;
+            deferred_action.status = removed || cancelled ? "completed" : "rejected";
+            deferred_action.resolution = removed ? "native_unit_disbanded"
+                : cancelled ? "cancelled_by_player" : "native_disband_not_verified";
+            ++semantic_mutation_generation;
             return true;
         }
         if (deferred_obliterate_base_id >= 0) {

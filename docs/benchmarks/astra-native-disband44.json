@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "native_disband_cases": [
+    {
+      "spent": false,
+      "cancel_preserved_unit_and_minerals": true,
+      "removed_units": 1,
+      "minerals_before": 9,
+      "minerals_after": 14
+    },
+    {
+      "spent": true,
+      "cancel_preserved_unit_and_minerals": true,
+      "removed_units": 1,
+      "minerals_before": 14,
+      "minerals_after": 19
+    }
+  ],
+  "status": "controlled_native_and_adapter_verified_deployment_pending",
+  "dll_sha256": "f84d3f12c321757ba341fd01f1c95c19dd5353a48b1a61eb7ba97d0a65d43487",
+  "native_path": "Console_disband on deferred UI thread; native DISBAND/DISBAND2 confirmation; game applies recycling before kill.",
+  "outside_base_case": {
+    "removed_units": 1,
+    "base_minerals_before": 9,
+    "base_minerals_after": 9
+  },
+  "adapter_tests": [
+    "disband_opaque_contract_test.py passes opaque one-use confirmation and queued-not-completed (deferred wait stubbed)",
+    "decision_frame_test.py passes remaining-action query guidance",
+    "native_disband_objective_test.py passes actual queue dispatch guards"
+  ],
+  "limitations": [
+    "Controlled native fixture, not spontaneous sovereign use",
+    "Installed full stack and recovery not yet validated",
+    "Stall-policy investigation remains open",
+    "Cancellation can change UI selection; fixture support was recomputed before baseline."
+  ]
+}
