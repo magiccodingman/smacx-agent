@@ -1,5 +1,5 @@
 {
-  "status": "implemented_fixture_verified_live_pending",
+  "status": "installed_recovered_live_write_pending",
   "turn": 44,
   "issue": "Memory actor alias rejected after last ownership-bearing contact disappeared.",
   "canonical_evidence": {
@@ -12,11 +12,18 @@
   "repair": "Journal replay retains at most eight observed faction reference to event ID mappings; memory fallback verifies canonical evidence ancestry and integrity. No contacts or current ownership are restored.",
   "validation": [
     "memory_faction_reference_test.py: pass, including removed contact, restart, rewind, other perspective, tamper",
-    "journal_memory_evidence_test.py: pass"
+    "journal_memory_evidence_test.py: pass",
+    "Installed control image, scripts-only mount: memory_faction_reference_test.py passed"
   ],
   "pending": [
-    "installed image validation",
-    "redeploy and bridge-verified recovery",
     "live sovereign historical identity write"
-  ]
+  ],
+  "recovery": {
+    "incident_id": "incident-7172218c17a64da68e26769928e32dbe",
+    "new_session_id": "session-2a9163aa85da4f3893d8c2064b562283",
+    "worker_and_mcp": "healthy",
+    "graphiti_completed_unix": 1788862106.9486046,
+    "sovereign_container": "smacx-fe840e1161a6-hermes-8cb730b34d244625",
+    "sovereign_process": "running"
+  }
 }

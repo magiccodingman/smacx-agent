@@ -893,3 +893,5 @@ Sovereign hurried Scout Patrol for 13 credits (receipt: 145 credits, 10 stored m
 | Capability | Evidence and remaining acceptance |
 | --- | --- |
 | Remember an observed faction after its contact disappears | Observed: turn-43 canonical parent-prefix ownership event. Represented/calculated: bounded journal replay identity index. Provider/sovereign path: existing guarded memory alias resolver fallback implemented. Fixture write succeeds without promoting claim status or restoring contacts; restart, rewind exclusion, perspective isolation, and tamper rejection pass. Installed deployment and live sovereign write remain pending. See `benchmarks/astra-historical-identity44.json`. |
+
+Historical identity deployment follow-up: scripts-only installed-image regression passed; operator-pause recovery restored session `session-2a9163aa85da4f3893d8c2064b562283` with healthy worker/MCP. Graphiti rebuild completed at `1788862106.9486046`, and the sovereign container is running. Live historical-actor write remains pending; this is deployment/recovery evidence, not end-to-end completion.

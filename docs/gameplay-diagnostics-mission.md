@@ -752,3 +752,5 @@ Sovereign hurried Scout Patrol for 13 credits (receipt: 145 credits, 10 stored m
 ### Historical actor identity, turn 44
 
 The sovereign claim about native pressure failed `actor_scope_mismatch` after ownership-bearing contacts disappeared. Parent-prefix observation `journal-b7d6f4ac049a4c53868bff90a3678bf2` records faction-0 at turn 43. Journal replay now retains a bounded identity-to-evidence index across removal. The guarded resolver validates canonical evidence before historical fallback, preserving fresh projection checks and unverified claim status. Removal/restart/rewind/perspective/tamper fixtures and canonical citation regression pass. Installed deployment, recovery, and autonomous write remain pending; see `benchmarks/astra-historical-identity44.json`.
+
+Historical identity deployment follow-up: scripts-only installed-image regression passed; operator-pause recovery restored session `session-2a9163aa85da4f3893d8c2064b562283` with healthy worker/MCP. Graphiti rebuild completed at `1788862106.9486046`, and the sovereign container is running. Live historical-actor write remains pending; this is deployment/recovery evidence, not end-to-end completion.
