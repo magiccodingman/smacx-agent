@@ -965,3 +965,5 @@ Support-cause deployment: explicit runtime-refresh recovery installed prepared w
 Turn53 queue-meaning checkpoint: stalled sovereign trace explicitly counted current production separately from queue entry0. Native source counts current in entries. Managed context now states includes_current_item and items_after_current; missing/invalid counts remain unknown. Queue and existing production-delivery regressions pass. Live delivery/stall recovery pending; no action or stall-policy change. Evidence: `docs/benchmarks/astra-production-queue53.json`.
 
 Queue clarification deployed: installed-image test passes; supported retry-after-update completed and native/MCP recovered healthy at53 with incident cleared. Live provider consumption and sustained strategic progress remain pending.
+
+Queue clarification live delivery verified: actual provider requestd59e49b7d297466c9db9b1fd04f8b817 contains the production tool result with includes_current_item=true/items_after_current=0. This closes delivery only, not comprehension or stalled-game resolution. Updated `docs/benchmarks/astra-production-queue53.json`.
