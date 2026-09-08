@@ -39,10 +39,13 @@ public sealed class AiActivityController(ApplicationDbContext database,
             var cursor = ""; var gaps = new HashSet<string>();
             try
             {
+                var runtimeAgentId = await RuntimeAgentAsync(matchId, seat.SeatIndex, token);
+                if (runtimeAgentId is null)
+                    throw new ControlPlaneException("activity_runtime_agent_unavailable", "The selected seat has no confirmed gameplay agent.");
                 while (true)
                 {
                     using var data = await control.GetRawAsync(
-                        $"api/v1/matches/{Uri.EscapeDataString(matchId)}/activity/{Uri.EscapeDataString(seat.AgentId!)}?cursor={Uri.EscapeDataString(cursor)}", token);
+                        $"api/v1/matches/{Uri.EscapeDataString(matchId)}/activity/{Uri.EscapeDataString(runtimeAgentId)}?cursor={Uri.EscapeDataString(cursor)}", token);
                     var report = data.RootElement.GetProperty("report");
                     foreach (var item in report.GetProperty("events").EnumerateArray()) item.WriteTo(writer);
                     foreach (var gap in report.GetProperty("gaps").EnumerateArray()) gaps.Add(gap.GetString() ?? "capture_gap");
@@ -79,8 +82,12 @@ public sealed class AiActivityController(ApplicationDbContext database,
         if (cursor?.Length > 16000) return BadRequest();
         try
         {
+            var runtimeAgentId = await RuntimeAgentAsync(matchId, seatIndex, HttpContext.RequestAborted);
+            if (runtimeAgentId is null)
+                return Conflict(ApiResponse<JsonElement>.Failure("activity_runtime_agent_unavailable",
+                    "The selected seat has no confirmed gameplay agent."));
             using var data = await control.GetRawAsync(
-                $"api/v1/matches/{Uri.EscapeDataString(matchId)}/activity/{Uri.EscapeDataString(seat.AgentId)}?cursor={Uri.EscapeDataString(cursor ?? "")}",
+                $"api/v1/matches/{Uri.EscapeDataString(matchId)}/activity/{Uri.EscapeDataString(runtimeAgentId)}?cursor={Uri.EscapeDataString(cursor ?? "")}",
                 HttpContext.RequestAborted);
             return ApiResponse<JsonElement>.Success(data.RootElement.GetProperty("report").Clone());
         }
@@ -88,5 +95,14 @@ public sealed class AiActivityController(ApplicationDbContext database,
         {
             return StatusCode(error.StatusCode ?? 502, ApiResponse<JsonElement>.Failure(error.Code, error.Message));
         }
+    }
+
+    private async Task<string?> RuntimeAgentAsync(string matchId, int seatIndex, CancellationToken token)
+    {
+        // Portal AgentId identifies the reusable AI configuration. Diagnostics
+        // belong to the match's sovereign identity, including after retirement.
+        var match = await control.GetMatchAsync(matchId, token);
+        return match.Seats.SingleOrDefault(s => s.SeatIndex == seatIndex &&
+            s.ControllerKind == "agent")?.AgentId;
     }
 }

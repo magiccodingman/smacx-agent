@@ -1096,3 +1096,12 @@ Commands, browser version and evidence limits are in the
 | Release checks | Standard launcher verifies compiled worker/control contract before deployment. Full five-seat sovereign gameplay remains a separate acceptance task. |
 
 See [repair evidence](benchmarks/doctrine-deployment-repair.md).
+
+## Spectator runtime identity checkpoint (2026-09-08)
+
+Live diagnostics existed but were not provider-queryable through the spectator
+endpoint because the portal profile ID differed from the runtime seat agent ID.
+Read and export now use the authoritative selected-seat mapping. The 87-test
+portal suite includes differing IDs, another AI seat, paginated export, missing
+mapping and permission boundaries. [Evidence](benchmarks/spectator-activity-identity.md)
+distinguishes the original controlled UI fixture from real-match validation.
