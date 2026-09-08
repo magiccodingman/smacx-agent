@@ -1,0 +1,6 @@
+{
+  "finding": "Sovereign goal at56 attributes mineral improvement to Sensor Array work despite no verified yield change.",
+  "repair": "Owned active Sensor Array task identifies sensor_defense purpose; work points do not establish mineral income and tile yields/worked allocation must be verified. No numeric bonus, ETA or completed effect is inferred.",
+  "source": "Native sensor defense modifier in veh_combat.cpp; owned terraform task state in agent_bridge.cpp.",
+  "validation": "Compiled production task visibility regression and native cross-build39/39 pass. No combat multiplier or yield forecast changed. Installed image and provider delivery pending."
+}

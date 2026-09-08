@@ -3607,6 +3607,10 @@ std::string semantic_owned_terraform_task(int faction_id, VEH& veh) {
     if (active) {
         out << ",\"name\":" << json_string(Terraform[veh.order - VehOrderFormerFirst].name)
             << ",\"accumulated_work_points\":" << static_cast<int>(veh.movement_turns);
+        if (veh.order - VehOrderFormerFirst == FORMER_SENSOR) {
+            out << ",\"purpose\":\"sensor_defense\",\"effect_scope\":\"Sensor Array work provides defensive infrastructure. Work points do not establish a mineral-income improvement; verify tile yields and worked allocation separately.\"";
+        }
+
     }
     out << ",\"completion_verified\":false}";
     return out.str();

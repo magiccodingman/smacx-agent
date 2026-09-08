@@ -999,3 +999,7 @@ Growth deployment: paired recovery restored56 with current receipt threshold30, 
 Growth provider delivery verified: request574b239bef38436aa0e5330aa0fe93b3 carries current native growth threshold30 and gates in active base detail, including conditional timing semantics. This closes delivery, not strategic use. Updated `astra-growth-gap55.json`.
 
 Growth comprehension follow-up: sovereign explicitly corrected9/30 timing from1–2 turns to roughly20–21 and persisted revised plan/goal via journal. This is observed use of the receipt, not proof of exact ETA or sound terraforming strategy; it still assumes Sensor Array work improves minerals. Updated `astra-growth-gap55.json`.
+
+Sensor-purpose checkpoint: active owned Sensor Array tasks now identify defensive purpose and separate work progress from verified mineral income. Compiled task-visibility regression passes ownership/stale/unknown-completion and sensor-only annotation. Native build/deployment/provider delivery pending. Evidence: `astra-sensor-purpose56.json`.
+
+Sensor-purpose native build passes39/39. The change explains purpose without adding a numeric yield prediction or changing combat mechanics; installed/provider validation remains pending.
