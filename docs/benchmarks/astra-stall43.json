@@ -22,5 +22,11 @@
     "next_review": "Precise lease-expiry feedback and bounded deliberation support without relaxing freshness or stall guards."
   },
   "status": "unresolved; match remains paused",
-  "private_archive": "runtime/astra/evidence-stall43/diagnostics.zip"
+  "private_archive": "runtime/astra/evidence-stall43/diagnostics.zip",
+  "repair": {
+    "change": "Elapsed-time expiry receipt with age/lease seconds, explicit no-native-dispatch and bounded fresh-frame recovery guidance.",
+    "invariants": "180-second TTL, native revision checks and no-progress guard unchanged.",
+    "test": "opaque_choice_execution_test passed: forced elapsed lease, cache invalidation and zero additional bridge calls.",
+    "limits": "Installed and live behavior verification pending; repeated deliberation not yet proven resolved."
+  }
 }

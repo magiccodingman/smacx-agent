@@ -3675,8 +3675,12 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             DECISION_CACHE.pop(decision_id, None)
             return {
                 "ok": False,
-                "error": {"code": "expired_decision", "message": "The choice expired; obtain a fresh frame."},
-                "required_next": {"tool": "smac_decision"},
+                "error": {"code": "expired_decision", "message": "The decision's elapsed-time lease expired. No native action was attempted; expiry does not establish a changed world revision or an illegal action."},
+                "expiry": {"reason": "elapsed_time", "lease_seconds": DECISION_TTL_SECONDS,
+                           "age_seconds": round(now - float(decision.get("created_monotonic", 0)), 3)},
+                "native_call_attempted": False,
+                "required_next": {"tool": "smac_decision",
+                                  "reason": "Obtain fresh IDs. Reuse your intended action only if the new frame still supports it; do not repeat unchanged strategic analysis or infer new game facts from expiry."},
             }
         if decision.get("consumed"):
             return {

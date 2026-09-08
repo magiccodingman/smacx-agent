@@ -106,6 +106,19 @@ def main() -> int:
         assert "No native action was attempted" in invalid["error"]["message"]
         assert "movement legality was not tested" in invalid["error"]["message"]
 
+        expired_id, expired_choices = smacx_mcp._cache_decision_choices(
+            {"match_id": "expiry-test", "session_id": "session-test", "revision": "r2"},
+            [{"command": "end_turn"}], choice_kind="game_management", choice_arguments={},
+        )
+        smacx_mcp.DECISION_CACHE[expired_id]["created_monotonic"] -= smacx_mcp.DECISION_TTL_SECONDS + 1
+        before_expiry_calls = len(calls)
+        expired = smacx_mcp.smac_execute_choice(expired_id, expired_choices[0]["choice_id"])
+        assert expired["error"]["code"] == "expired_decision", expired
+        assert expired["expiry"]["reason"] == "elapsed_time", expired
+        assert expired["expiry"]["age_seconds"] > expired["expiry"]["lease_seconds"], expired
+        assert expired["native_call_attempted"] is False and len(calls) == before_expiry_calls
+        assert expired_id not in smacx_mcp.DECISION_CACHE
+
         base_id, base_choices = smacx_mcp._cache_decision_choices(
             {"match_id": "match-test", "session_id": "session-test", "revision": "r2"},
             [{"command": "set_first_base_name", "suggested_name": "Safe Landing"}],
