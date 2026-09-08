@@ -22,5 +22,11 @@
     "Live sovereign retry and provider delivery after deployment pending.",
     "The cited movement is not proof of the unrelated territorial assertion.",
     "Full gameplay and strategic competence acceptance remain open."
-  ]
+  ],
+  "deployment": {
+    "installed_image_test": "passed without host source mounts",
+    "operator_resume": "HTTP 200, incident cleared; native worker and MCP healthy at turn 35",
+    "graphiti_rebuild": "completed at 1788850707.7660103; sovereign container running",
+    "controller_sha256": "e1a5bebbeac1d32861a8c4b9983bf9e22678affd6776e402cefeeccdfab8a0c5"
+  }
 }

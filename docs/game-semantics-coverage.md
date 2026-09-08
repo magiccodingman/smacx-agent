@@ -732,3 +732,9 @@ SQL IDs. Store, journal and memory-status regressions pass. See
 `docs/benchmarks/astra-journal-evidence35.json`. Deployment and actual sovereign
 retry/provider-context delivery remain pending; this checkpoint is interface and
 recovery evidence, not full live capability acceptance.
+
+Turn35 evidence repair deployment: the installed-image test passes without host
+source mounts; the live MCP controller hash matches the repaired source. Operator
+resume restored healthy native/MCP services and Graphiti completed at
+1788850707.7660103 before the sovereign restarted. Live citation retry remains
+unproven and is tracked separately from deployment success.
