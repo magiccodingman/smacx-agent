@@ -75,5 +75,17 @@
     "host_httpx": "unavailable; transport tests run in actual Hermes dependency environment",
     "watchdog_policy_changed": false,
     "deployment_and_live_verification": "pending"
+  },
+  "bounded_drain_policy": {
+    "eligible": "Matching-run pending request started within current progress window and before its ordinary deadline; freshly sampled telemetry required.",
+    "hard_limit": "Ordinary semantic deadline plus180 seconds, nonrenewable.",
+    "completion_dispatch": "Up to30 seconds after completed transport, capped by hard limit; no new request admitted to grace.",
+    "unchanged": "Semantic-progress clock, native effect authority, error guards and no-telemetry stop behavior.",
+    "tests": [
+      "provider_drain_window_test.py: boundaries, stale/foreign/nonfinite/missing data, failure/close, no extension by new request, progress invalidation",
+      "production reconcile: unchanged progress timestamp and hard-bound quarantine",
+      "harness_continuation_contract_test.py unchanged tests pass"
+    ],
+    "live_acceptance": "pending"
   }
 }

@@ -21,6 +21,7 @@ from smacx_hermes import configure_profile
 from smacx_journal import CampaignJournal
 from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager
+from smacx_provider_watchdog import provider_drain_window
 from smacx_attention import AttentionService
 
 
@@ -866,7 +867,10 @@ print(json.dumps(result,separators=(',',':')))
                     or not metadata.get("semantic_baseline_telemetry")
                     or metadata.get("semantic_baseline_pending"))
                 telemetry_fresh = False
-                if baseline_pending or now - last_telemetry >= 60:
+                stall_seconds = min(max(int(
+                    run["restart_policy"].get("semantic_stall_seconds", 360)
+                ), 120), 1800)
+                if baseline_pending or now - last_telemetry >= 60 or now - progress_since >= stall_seconds:
                     try:
                         sample = self.telemetry(str(run["run_id"]))
                         if isinstance(sample.get("telemetry"), dict):
@@ -915,6 +919,16 @@ print(json.dumps(result,separators=(',',':')))
                     and now - progress_since >= stall_seconds
                     and (generated >= 4096 or calls >= 2)
                 )
+                drain = None if progress_changed or not previous_fingerprint else metadata.get("provider_drain")
+                if stalled and telemetry_fresh:
+                    draining, drain = provider_drain_window(
+                        run_id=str(run["run_id"]), now=now, progress_since=progress_since,
+                        stall_seconds=stall_seconds, request=telemetry.get("provider_request"),
+                        previous=drain,
+                    )
+                    if draining:
+                        stalled = False
+                metadata_update["provider_drain"] = drain
                 if stalled:
                     gap_id = "gap-" + uuid.uuid4().hex
                     detail = {
@@ -929,6 +943,8 @@ print(json.dumps(result,separators=(',',':')))
                         "stall_seconds": now - progress_since,
                         "generated_tokens_without_progress": generated,
                         "api_calls_without_progress": calls, "progress": progress,
+                        "provider_request": telemetry.get("provider_request"),
+                        "provider_drain": drain,
                         "reported_at_unix": now, "native_worker_preserved": True,
                     }
                     # Queue diagnostics before attempting containment, so a
