@@ -56,6 +56,7 @@ from smacx_world import WORLD_MODES, WorldQueryError
 from smacx_mechanics import production_flow_state
 from smacx_counterfactual import action_relationships, parse_scenario
 from smacx_runtime_context import RuntimeContextAssembler
+from smacx_turn_wait import snapshot_foreign_turn_wait
 from smacx_diagnostics import record as diagnostic_record, trace_managed_tool, INVOCATION
 from smacx_world_types import content_hash
 from smacx_specialists import (
@@ -2862,9 +2863,9 @@ def smac_decision(
                 "turn": snapshot.get("turn"), "year": snapshot.get("year"),
                 "phase": "wait", "state": _compact_decision_state(snapshot),
                 "required_next": ({"stop_after": True, "ordinary_message": "WAITING"}
-                    if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn"
+                    if snapshot_foreign_turn_wait(snapshot)
                     else {"tool": "smac_wait", "reason": protocol.get("required_action")}),
-                **({"sleep": _sleep_directive(snapshot)} if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn" else {}),
+                **({"sleep": _sleep_directive(snapshot)} if snapshot_foreign_turn_wait(snapshot) else {}),
                 "choices": [],
             }
             if detail == "full":
@@ -4423,7 +4424,7 @@ def _wait_response(observation: dict, *, changed: bool) -> dict:
                           "reason": "Native processing is still pending." if phase == "wait" else
                           "Obtain a fresh decision now. A blocking interaction or actionable turn requires a decision, not further waiting."},
     }
-    if phase == "wait" and interaction.get("kind") == "waiting_for_turn":
+    if snapshot_foreign_turn_wait(snapshot):
         result["sleep"] = _sleep_directive(snapshot)
         result["required_next"] = {"stop_after": True, "ordinary_message": "WAITING"}
     return _attach_chat_attention(result, snapshot)
@@ -4499,9 +4500,9 @@ def smac_report_capability_gap(
         return {"ok": False, "recorded": False, "gameplay_mutations_blocked": False,
                 "error": {"code": "native_wait_not_capability_gap",
                           "message": "Waiting is not a missing action capability. The supervisor owns native liveness checks."},
-                "sleep": _sleep_directive(snapshot) if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn" else None,
+                "sleep": _sleep_directive(snapshot) if snapshot_foreign_turn_wait(snapshot) else None,
                 "required_next": ({"stop_after": True, "ordinary_message": "WAITING"}
-                    if snapshot.get("interaction", {}).get("kind") == "waiting_for_turn"
+                    if snapshot_foreign_turn_wait(snapshot)
                     else {"tool": "smac_wait"})}
     if not explicit_gap:
         rule = _settlement_rule_explains_request(

@@ -1193,3 +1193,10 @@ See [acceptance evidence](benchmarks/active-roster-and-threat-evidence.md).
 | Visibility | Health exposes sleep and wake reason; spectator activity distinguishes sleeping, communication, active, and stopped episodes. Portal and reducer tests pass; shared stack deployed healthy and authenticated spectator endpoint returns sleeping. |
 
 See [acceptance evidence](benchmarks/sovereign-event-wait.md).
+
+
+Foreign-owner engine-wait correction: live turn-2 wake is verified. Native deferred
+engine work can mask `waiting_for_turn`; explicit foreign ownership now selects
+the same provider-free sleep through a shared supervisor/MCP classifier. Tests
+cover no repeated starts and own/unknown-owner watchdog retention. Incident and
+acceptance evidence are recorded in the event-wait benchmark.

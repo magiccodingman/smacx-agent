@@ -113,3 +113,20 @@ manager.stop_run = stop_with_chat
 manager.reconcile_once()
 assert manager.start_count == 1 and control.run['metadata']['wake_reason']=='new_chat'
 print('PASS: new chat survives forced-suspension race')
+
+# A native deferred end-turn guard precedes waiting_for_turn classification.
+# Foreign-owner engine wait must sleep too, then wake when ownership returns.
+control, worker = FakeControl(), FakeWorkerManager()
+manager = WaitingManager(control, worker)
+worker.progress.update(phase='wait', interaction_kind='waiting_for_engine', faction_id=1, current_faction_id=2)
+for _ in range(12): manager.reconcile_once()
+assert manager.start_count == 0 and not control.incidents
+assert control.run['metadata']['sleep']
+worker.progress.update(current_faction_id=1)
+manager.reconcile_once()
+assert manager.start_count == 1 and not control.run['metadata']['sleep']
+from smacx_turn_wait import progress_foreign_turn_wait
+for owner in (None, 0, -1, True, '2', 8, 1):
+    worker.progress['current_faction_id'] = owner
+    assert not progress_foreign_turn_wait(worker.progress), owner
+print('PASS: foreign-owner engine wait sleeps; own/unknown engine wait retains watchdog')
