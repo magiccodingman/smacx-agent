@@ -58,3 +58,30 @@ and operator/spectator visibility in the recovered game. Native turn/session and
 chat wake are covered by deterministic contracts; a complete live turn transfer
 and live chat wake have not yet been observed in this acceptance window. The
 campaign remains running for user testing. No full-game result is claimed.
+
+
+## Foreign-owner engine wait correction
+
+The recovered match reached turn 2 and the Spartan sovereign woke with
+`native_phase_changed`, confirming live turn wake. Incident
+`incident-80d19b27d670450f88ddd1279ad0a5e3` then exposed a missed classification:
+Peacekeepers had `waiting_for_engine`, faction 1, current faction 2, while
+Spartans were advancing. Three clean exits triggered the old no-progress guard.
+This was supervisor containment, not evidence of a native process crash.
+
+Native deferred work has precedence over turn ownership in `interaction_kind`.
+A shared classifier now recognizes engine wait as foreign-turn sleep only with
+explicit distinct valid faction IDs. Native interaction classification and
+execution guards remain unchanged. Own/unknown-owner engine processing retains
+its watchdog; foreign wait retains the managed-peer progress watchdog. Regression
+contracts cover repeated clean exits, ownership returning, invalid/missing IDs,
+and provider wait receipts. Deployment verification follows below.
+
+
+Correction deployment: control and harness images rebuilt; installed control
+imports and foreign-engine classifier pass. Shared control/portal health checks
+pass after redeployment. Native binaries and database volumes were preserved.
+The earlier live wake is confirmed by `wake_reason: native_phase_changed` and
+Spartan native turn-2 progress. Recovery of the new clean-yield incident uses the
+control API's verified-checkpoint recover operation with runtime refresh (the
+portal retry-after-update route accepts capability-gap incidents only).

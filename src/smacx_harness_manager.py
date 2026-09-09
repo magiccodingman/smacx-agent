@@ -23,6 +23,7 @@ from smacx_store import InvalidRecord, ScopeViolation, StoreError
 from smacx_worker_manager import WorkerManager
 from smacx_provider_watchdog import provider_drain_window
 from smacx_attention import AttentionService
+from smacx_turn_wait import progress_foreign_turn_wait
 
 
 HERMES_IMAGE = "smacx-agent-harness:dev"
@@ -163,7 +164,7 @@ class HarnessManager:
         sleeping = metadata.get("sleep") or {}
         chat = self._chat_wake_cursor(run)
         wake = None
-        if progress.get("phase") != "wait" or progress.get("interaction_kind") != "waiting_for_turn":
+        if not progress_foreign_turn_wait(progress):
             wake = "native_phase_changed"
         elif sleeping and sleeping.get("session_id") != progress.get("session_id"):
             wake = "session_changed"
@@ -1052,7 +1053,7 @@ print(json.dumps(result,separators=(',',':')))
                 stall_seconds = min(max(int(
                     run["restart_policy"].get("semantic_stall_seconds", 360)
                 ), 120), 1800)
-                if (progress.get("interaction_kind") == "waiting_for_turn"
+                if (progress_foreign_turn_wait(progress)
                         and not baseline_pending and previous_fingerprint
                         and now - progress_since >= stall_seconds
                         and (generated >= 4096 or calls >= 2)):
@@ -1067,7 +1068,7 @@ print(json.dumps(result,separators=(',',':')))
                     continue
                 stalled = bool(
                     progress.get("available") and previous_fingerprint
-                    and progress.get("interaction_kind") != "waiting_for_turn"
+                    and not progress_foreign_turn_wait(progress)
                     and not baseline_pending
                     and fingerprint == previous_fingerprint
                     and now - progress_since >= stall_seconds
@@ -1158,7 +1159,7 @@ print(json.dumps(result,separators=(',',':')))
                         errors += 1
                         operator_required += 1
                     continue
-                if progress.get("interaction_kind") == "waiting_for_turn" or metadata.get("sleep"):
+                if progress_foreign_turn_wait(progress) or metadata.get("sleep"):
                     if self._sleep_until_event(run, progress):
                         continue
                     # A wake is a fresh episode baseline, not a clean-yield loop.

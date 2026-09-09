@@ -16,3 +16,10 @@ with patch.object(m,'_call',return_value={'ok':True,'snapshot':snapshot}), \
     assert not m.CAPABILITY_GAPS
 assert _focus(snapshot)['kind']=='wait'
 print('PASS: wait receipt, non-latching false gap, wait precedence over ready units')
+
+snapshot['interaction']={'kind':'waiting_for_engine','engine_state':{'current_faction_id':2}}
+snapshot['faction']={'id':1}
+with patch.object(m,'_call',return_value={'ok':True,'snapshot':snapshot}), \
+     patch.object(m,'_attach_chat_attention',side_effect=lambda r,i:r):
+    assert m._wait_response({},changed=False)['required_next']['ordinary_message']=='WAITING'
+print('PASS: foreign-owner deferred engine wait yields without native reclassification')
