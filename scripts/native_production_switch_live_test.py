@@ -48,6 +48,9 @@ def main():
                 hurry = play.command(before, 'hurry_production', base_id=base_id)
                 assert hurry.get('ok') and hurry['minerals_accumulated'] > 0, hurry
                 catalog = call('semantic_choices', kind='production', base_id=base_id)
+                assert type(catalog['population']) is int and catalog['population'] > 0
+                colonies = [c for c in catalog['choices'] if c.get('name') == 'Colony Pod']
+                assert colonies and type(colonies[0]['population_effect']['population_at_query']) is int
                 current_name = catalog['current']['name']
                 same = next(c for c in catalog['choices'] if c.get('name') == current_name)
                 target = next(c for c in catalog['choices'] if c.get('name') == 'Colony Pod')

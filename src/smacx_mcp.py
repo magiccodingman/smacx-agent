@@ -3084,6 +3084,7 @@ def smac_choices(
     for attempt in range(2):
         result = _smac_choices_once(**arguments)
         error = result.get("error", {})
+        error = error if isinstance(error, Mapping) else {"code": error}
         changing = (error.get("code") == "choice_frame_revision_changed" or
             error.get("code") == "invalid_semantic_selector" and error.get("detail") in {
                 "semantic_reference_stale_revision", "semantic_reference_native_revision_changed"})
@@ -3160,10 +3161,12 @@ def _smac_choices_once(
         }}
     result = _call("semantic_choices", kind=kind, **choice_arguments)
     if not result.get("ok"):
-        if kind in base_kinds and (result.get("error") or {}).get("code") == "invalid_base":
+        error = result.get("error")
+        error_code = error.get("code") if isinstance(error, Mapping) else error
+        if kind in base_kinds and error_code == "invalid_base":
             # Ownership can change after selector resolution. Keep the native
             # failure code but recover through the public semantic surface.
-            return {**result, "error": {**result["error"],
+            return {**result, "error": {**(error if isinstance(error, Mapping) else {"code": error}),
                 "message": "The selected base_ref is no longer an available owned base. Refresh the world and choose a current owned base_ref."},
                 "required_next": {"tool": "smac_world", "mode": "overview"}}
         return result

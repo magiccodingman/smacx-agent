@@ -11320,7 +11320,7 @@ std::string production_choices_response(int faction_id, int base_id) {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"kind\":\"production\",\"base_id\":" << base_id
         << ",\"base_name\":" << json_string(base.name)
-        << ",\"population\":" << base.pop_size
+        << ",\"population\":" << static_cast<int>(base.pop_size)
         << ",\"current\":{\"item_id\":" << base.queue_items[0]
         << ",\"name\":" << json_string(production_name(base.queue_items[0]).c_str())
         << ",\"mineral_cost\":" << current_item_cost
@@ -11349,7 +11349,7 @@ std::string production_choices_response(int faction_id, int base_id) {
         append_production_switch_effect(out, base_id, unit_id);
         if (Units[unit_id].plan == PLAN_COLONY) {
             out << ",\"population_effect\":{\"epistemic_status\":\"conditional\","
-                "\"population_at_query\":" << base.pop_size
+                "\"population_at_query\":" << static_cast<int>(base.pop_size)
                 << ",\"population_change_on_selection\":0,\"population_cost_on_completion\":1,"
                 "\"meaning\":\"Selecting this Colony Pod starts or changes production and does not itself remove population. Native completion normally consumes one population; if completion occurs at population one, native rules may delay completion or require an abandon-base decision. Recheck at completion.\"}";
         }
