@@ -1308,3 +1308,8 @@ uses existing guarded enumeration. Controlled adapter/cache tests cover delivery
 scope, pending/handoff exclusions and observation failure without action replay.
 Live timing and behavioral acceptance remain pending; no automatic next mutation.
 See [acceptance evidence](benchmarks/efficient-continuation.md).
+
+Efficient continuation checkpoint 2: stale pre-write memory rejection → fresh
+scoped evidence → explicit sovereign reconsideration/retry. Controlled tests
+verify no rebase, no repeated write, and preservation of uncertain commit status.
+Evidence-scope guards and lease-only attention acknowledgement remain authoritative.

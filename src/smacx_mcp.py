@@ -4467,7 +4467,7 @@ def smac_memory_update(
         return {"ok": False, "error": "invalid_memory_record_json"}
     if not isinstance(record, dict):
         return {"ok": False, "error": "invalid_memory_record_json"}
-    return write_platform_memory(
+    result = write_platform_memory(
         action,
         match_id,
         session_id,
@@ -4476,6 +4476,29 @@ def smac_memory_update(
         agent_id=agent_id,
         perspective_id=perspective_id,
     )
+    if os.environ.get("SMACX_MEMORY_REPAIR_CONTEXT", "1") != "0" and not result.get("ok") \
+            and (result.get("persistence") or {}).get("stage") == "not_started":
+        if result.get("error") in {"stale_memory_observation", "missing_memory_observation_guard"}:
+            try:
+                frame = smac_decision()
+                identity = frame.get("identity") or {}
+                if identity and (identity.get("match_id"), identity.get("session_id")) != (match_id, session_id):
+                    frame = {"ok": False, "error": {"code": "memory_repair_scope_changed"}}
+                result["repair_context"] = {"schema": "smacx.memory-repair.v1", "frame": frame,
+                    "automatic_retry": False,
+                    "instruction": "Review fresh evidence before retrying. Copy identity.revision only if the record remains supported; never relabel stale conclusions as current."}
+                if frame.get("ok"):
+                    result["required_next"] = {"instruction": "Reconsider against repair_context.frame. Retry explicitly only if supported; obey any handoff or blocked state in that frame."}
+                for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
+                    if field in frame:
+                        result[field] = frame[field]
+            except Exception as exc:
+                result["repair_context"] = {"available": False, "exception_type": type(exc).__name__}
+        elif result.get("error") == "evidence_event_scope_mismatch":
+            result["repair_context"] = {"schema": "smacx.memory-repair.v1", "automatic_retry": False,
+                "instruction": "Use only a supporting event actually read in your current perspective and timeline. World observation_cursor and attention through_cursor are not event IDs. For a summary, through_event_id is optional: omit it when no event boundary is asserted. Do not remove a required citation or substitute unrelated evidence to bypass validation."}
+    return result
+
 
 
 @mcp.tool(

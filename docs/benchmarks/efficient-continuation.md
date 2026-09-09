@@ -14,3 +14,11 @@ These establish adapter behavior, not live native mechanical accuracy or speedup
 Performance target: fewer explicit decision-only provider generations. No measured
 percentage improvement is claimed. Disable independently with
 `SMACX_POST_ACTION_DECISION=0` in the MCP process.
+
+Checkpoint 2: pre-write stale observation errors include a fresh guarded decision
+for reconsideration. No automatic retry/rebase occurs. Evidence-scope failures
+explain optional summary event boundaries and prohibit unrelated replacements.
+Writes that started never get this retry path. Existing lease-only attention
+acknowledgement already avoids requiring a world/attention cursor selection.
+`memory_repair_context_test.py` passes read-failure, pre-write-only and no-rebase
+checks. Disable independently with `SMACX_MEMORY_REPAIR_CONTEXT=0`.
