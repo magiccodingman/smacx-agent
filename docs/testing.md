@@ -634,3 +634,12 @@ The turn118 aircraft-state boundary regression is `PYTHONPATH=src python3 script
 `PYTHONPATH=src python3 scripts/former_task_visibility_test.py` compiles the owned task serializer and distinguishes automation/no-task/active-task/stale/foreign cases. Run `runtime_context_contract_test.py`, `fair_play_world_test.py`, and `managed_action_path_contract_test.py` for this information-only path. Work points are not elapsed turns, an ETA, or completion proof; use the separate live checkpoint/provider evidence in `benchmarks/gameplay-former-task-turn121.json`.
 
 Cognition omission audit: `PYTHONPATH=src python3 scripts/cognition_omission_audit_test.py` exercises canonical journal status/count/token selection and final runtime selection, preserving all source records after reopen. It does not establish actual provider delivery or sovereign behavior.
+
+`multiplayer_energy_demand_contract_test.py` compiles the production multiplayer
+energy-demand gate and affordability guard. `native_multiplayer_energy_demand_test.py`
+requires the private hash-checked turn-7 save, `SMACX_DEMAND_TEST_SAVE`,
+`SMACX_TEST_GAME_SOURCE`, `SMACX_TEST_WORKER_IMAGE`, and
+`SMACX_TEST_CONTROL_IMAGE`. It creates isolated two-client workers, replays the
+observed moves into native AI contact, and checks demand responses against both
+clients' treasury, diplomacy, unit and base state. It never resumes a production
+campaign or starts a sovereign. See [acceptance evidence](benchmarks/multiplayer-energy-demand.md).

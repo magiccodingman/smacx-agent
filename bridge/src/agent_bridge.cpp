@@ -3998,6 +3998,11 @@ bool omit_zero = false) {
 }
 
 bool reviewed_information_popup(const std::string& label) {
+    // Stock BULLY0..6 announce the native AI's response to a refused demand.
+    // They contain no alternatives. The native continuation owns any ensuing
+    // Vendetta; acknowledging the notice does not prove that effect completed.
+    bool refused_demand_notice = label.size() == 6 && label.compare(0, 5, "BULLY") == 0
+        && label[5] >= '0' && label[5] <= '6';
     bool vendetta_statement = label.size() > 8 && label.compare(0, 8, "VENDETTA") == 0
         && label[8] >= '0' && label[8] <= '9';
     // Unity-pod outcomes beginning GOODY* and OGREPOD report an outcome that
@@ -4085,7 +4090,7 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "COUNCILOPEN" || label == "COUNCILHOTPASS" || label == "COUNCILHOTFAIL"
         || label == "COUNCILHOTVETO" || label == "COUNCILHOTGOVWIN"
         || label == "COUNCILHOTGOVLOSE" || label == "COUNCILHOTGOVNONE"
-        || vendetta_statement || resolved_unity_pod || resolved_technology_notice
+        || refused_demand_notice || vendetta_statement || resolved_unity_pod || resolved_technology_notice
         || resolved_probe_notice || resolved_project_notice || resolved_base_capture_notice
         || resolved_elimination_notice || resolved_diplomacy_notice
         || resolved_commerce_notice || resolved_base_status || resolved_production_notice;
@@ -8265,6 +8270,12 @@ std::string test_network_sync_status_response() {
         Faction& faction = Factions[faction_id];
         out << "{\"id\":" << faction_id
             << ",\"energy\":" << faction.energy_credits
+            << ",\"diplomatic_status\":[";
+        for (int other = 0; other < MaxPlayerNum; ++other) {
+            if (other) out << ',';
+            out << faction.diplo_status[other];
+        }
+        out << ']'
             << ",\"allocation\":{\"economy\":"
             << (10 - faction.SE_alloc_labs - faction.SE_alloc_psych)
             << ",\"psych\":" << faction.SE_alloc_psych
@@ -11067,6 +11078,7 @@ std::string semantic_snapshot_response() {
         << "\"continue_diplomacy:ai_greeting\","
         << "\"respond_to_diplomatic_offer:reject_technology_or_relationship_offer\","
         << "\"respond_to_diplomatic_offer:introduced_commlink_accept_or_reject\","
+        << "\"respond_to_diplomatic_offer:ai_energy_demand_reject_accept_counter\","
         << "\"choose_diplomacy_option:finish_ai_conversation\","
         << "\"move_unit:adjacent_safe_or_at_war_combat_v2\","
         << "\"skip_unit:native_synch_veh\","
@@ -14995,6 +15007,17 @@ std::string semantic_command_response(const std::string& request) {
         && multiplayer_contact_other < MaxPlayerNum
         && !is_human(multiplayer_contact_other)
         && active_default_popup();
+    bool validated_multiplayer_energy_demand_response =
+        command == "respond_to_diplomatic_offer"
+        && bribe_demand_label(active_label)
+        && (field_string(request, "response") == "reject"
+            || field_string(request, "response") == "accept"
+            || field_string(request, "response") == "counter")
+        && multiplayer_contact_other >= 1
+        && multiplayer_contact_other < MaxPlayerNum
+        && multiplayer_contact_other != faction_id
+        && !is_human(multiplayer_contact_other)
+        && active_default_popup();
     bool validated_multiplayer_introduced_commlink_response =
         command == "respond_to_diplomatic_offer"
         && (field_string(request, "response") == "accept"
@@ -15158,6 +15181,7 @@ std::string semantic_command_response(const std::string& request) {
         || validated_multiplayer_contact_response
         || validated_multiplayer_ai_greeting
         || validated_multiplayer_reject_ai_technology_trade
+        || validated_multiplayer_energy_demand_response
         || validated_multiplayer_introduced_commlink_response
         || validated_multiplayer_finish_ai_diplomacy
         || validated_multiplayer_queue_append
@@ -16340,6 +16364,13 @@ std::string semantic_command_response(const std::string& request) {
         BasePop* active = active_default_popup();
         if (!active) return error_response("popup_unavailable", "The diplomatic offer popup is unavailable.");
         int principal = ParseNumTable[0];
+        if ((bribe_demand || bribe_ultimatum) && response != "reject") {
+            int price = agent_popup_parse_number(counter ? 1 : 0);
+            if (price < 0 || Factions[faction_id].energy_credits < price) {
+                return error_response("energy_demand_not_affordable",
+                    "The quoted demand is no longer affordable; inspect fresh choices.");
+            }
+        }
         if ((joint_attack_energy_counteroffer || joint_attack_tech_counteroffer)
         && response == "accept") {
             int target = *diplo_trade_faction_id;
@@ -16588,8 +16619,8 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"respond_to_diplomatic_offer\",\"response\":")
             + json_string(response.c_str()) + ",\"offer_type\":"
             + json_string(offer_type)
-            + (energy_peace_offer_label(label) ? ",\"energy_change_verified\":false" : "")
-            + (energy_peace_offer_label(label)
+            + ((energy_peace_offer_label(label) || bribe_demand || bribe_ultimatum) ? ",\"energy_change_verified\":false" : "")
+            + ((energy_peace_offer_label(label) || bribe_demand || bribe_ultimatum)
                 ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects.\""
                 : unconditional_truce_offer_label(label)
                     ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta.\""

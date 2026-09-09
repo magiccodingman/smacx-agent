@@ -1,0 +1,335 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "response": "reject",
+      "label": "DEMANDBRIBE2",
+      "follow_on": [
+        "BULLY5"
+      ],
+      "energy_before": {
+        "1": 101,
+        "2": 115,
+        "3": 78,
+        "4": 83,
+        "5": 101,
+        "6": 200,
+        "7": 100
+      },
+      "energy_after": {
+        "1": 101,
+        "2": 115,
+        "3": 78,
+        "4": 83,
+        "5": 101,
+        "6": 200,
+        "7": 100
+      },
+      "both_clients_converged": true,
+      "diplomatic_status": [
+        [
+          -2147450600,
+          0,
+          0,
+          0,
+          -939523816,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          -2147483648,
+          0,
+          0,
+          0
+        ],
+        [
+          -2147450600,
+          -939523816,
+          0,
+          -2147483648,
+          0,
+          -2147483648,
+          0,
+          0
+        ],
+        [
+          -2147450600,
+          0,
+          0,
+          0,
+          -2147483648,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "unrelated_units_and_bases_unchanged": true,
+      "invalid_and_duplicate_rejected": true,
+      "receipt": {
+        "ok": true,
+        "command": "respond_to_diplomatic_offer",
+        "response": "reject",
+        "offer_type": "energy_demand",
+        "energy_change_verified": false,
+        "relationship_change_verified": false,
+        "completion_semantics": "The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects."
+      }
+    },
+    {
+      "response": "accept",
+      "label": "DEMANDBRIBE0",
+      "follow_on": [],
+      "energy_before": {
+        "1": 101,
+        "2": 115,
+        "3": 78,
+        "4": 83,
+        "5": 101,
+        "6": 200,
+        "7": 100
+      },
+      "energy_after": {
+        "1": 51,
+        "2": 115,
+        "3": 78,
+        "4": 133,
+        "5": 101,
+        "6": 200,
+        "7": 100
+      },
+      "both_clients_converged": true,
+      "diplomatic_status": [
+        [
+          -2147450600,
+          0,
+          0,
+          0,
+          -855572468,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          -2147483648,
+          0,
+          0,
+          0
+        ],
+        [
+          -2147450600,
+          -855572468,
+          0,
+          -2147483648,
+          0,
+          -2147483648,
+          0,
+          0
+        ],
+        [
+          -2147450600,
+          0,
+          0,
+          0,
+          -2147483648,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "unrelated_units_and_bases_unchanged": true,
+      "invalid_and_duplicate_rejected": true,
+      "receipt": {
+        "ok": true,
+        "command": "respond_to_diplomatic_offer",
+        "response": "accept",
+        "offer_type": "energy_demand",
+        "energy_change_verified": false,
+        "relationship_change_verified": false,
+        "completion_semantics": "The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects."
+      }
+    },
+    {
+      "response": "counter",
+      "label": "DEMANDBRIBE3",
+      "follow_on": [
+        "WEASELEDOUT",
+        "HELLO",
+        "DIPLO"
+      ],
+      "energy_before": {
+        "1": 101,
+        "2": 115,
+        "3": 78,
+        "4": 83,
+        "5": 101,
+        "6": 200,
+        "7": 100
+      },
+      "energy_after": {
+        "1": 81,
+        "2": 115,
+        "3": 78,
+        "4": 103,
+        "5": 101,
+        "6": 200,
+        "7": 100
+      },
+      "both_clients_converged": true,
+      "diplomatic_status": [
+        [
+          -2147450600,
+          0,
+          0,
+          0,
+          -855572468,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          -2147483648,
+          0,
+          0,
+          0
+        ],
+        [
+          -2147450600,
+          -855572468,
+          0,
+          -2147483648,
+          0,
+          -2147483648,
+          0,
+          0
+        ],
+        [
+          -2147450600,
+          0,
+          0,
+          0,
+          -2147483648,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "unrelated_units_and_bases_unchanged": true,
+      "invalid_and_duplicate_rejected": true,
+      "receipt": {
+        "ok": true,
+        "command": "respond_to_diplomatic_offer",
+        "response": "counter",
+        "offer_type": "energy_demand",
+        "energy_change_verified": false,
+        "relationship_change_verified": false,
+        "completion_semantics": "The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects."
+      }
+    }
+  ],
+  "classification": "isolated native two-client saved-game replay; no sovereign strategy inferred",
+  "engine_source_sha256": "506d0b5b8c39b19c1f0c214f87930394726520bf98f3b6ce87dcdb040e3b000f",
+  "save_sha256": "2a9b12d39a13e8a51698254d2ad9743f962b43cc5b7bc04f2e6205e8bbc6371f"
+}
