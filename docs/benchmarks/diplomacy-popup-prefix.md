@@ -14,5 +14,8 @@ No choice or native execution guard has been loosened.
 
 Compiled native-predicate regression passes for numbered demand and liberation
 labels and negative demand labels. A source audit checks all remaining literal
-prefix lengths. Native worker cross-build and deployed acceptance are pending.
+prefix lengths. Native worker Docker cross-build passes. Compiled worker fingerprint matches
+the explicitly reviewed control manifest; doctrine integration contracts pass.
+Shared control/worker/MCP/harness images are deployed; checkpoint recovery is
+in progress.
 These tests prove classification, not live payment/counteroffer effects.

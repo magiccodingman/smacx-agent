@@ -1206,6 +1206,7 @@ acceptance evidence are recorded in the event-wait benchmark.
 
 Energy demands: turn-10 native popup observed, but response enumeration was
 blocked by a bad prefix length. Compiled predicate regression and family-wide
-literal-length audit pass after repair; live choice/execution validation pending.
+literal-length audit pass after repair; native cross-build and packaged fingerprint checks pass; live choice/execution
+validation pending.
 Liberated-base notices had the same family of bug and are covered by the compiled
 classification test. See [evidence](benchmarks/diplomacy-popup-prefix.md).
