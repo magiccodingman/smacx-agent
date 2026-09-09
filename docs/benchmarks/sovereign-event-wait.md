@@ -76,3 +76,12 @@ execution guards remain unchanged. Own/unknown-owner engine processing retains
 its watchdog; foreign wait retains the managed-peer progress watchdog. Regression
 contracts cover repeated clean exits, ownership returning, invalid/missing IDs,
 and provider wait receipts. Deployment verification follows below.
+
+
+Correction deployment: control and harness images rebuilt; installed control
+imports and foreign-engine classifier pass. Shared control/portal health checks
+pass after redeployment. Native binaries and database volumes were preserved.
+The earlier live wake is confirmed by `wake_reason: native_phase_changed` and
+Spartan native turn-2 progress. Recovery of the new clean-yield incident uses the
+control API's verified-checkpoint recover operation with runtime refresh (the
+portal retry-after-update route accepts capability-gap incidents only).
