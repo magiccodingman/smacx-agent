@@ -48,6 +48,18 @@ with tempfile.TemporaryDirectory() as temporary:
     executed=[{'role':'user','content':'Execute and observe.'},*batch([
         ('execute','smac_execute_choice',{},receipt),('observe','smac_decision',{}, {'ok':True,'state':'new'})])]
     assert result(AIAgent._sanitize_api_messages(executed),'execute')==receipt
+    recovery={'ok':False,'error':{'code':'unknown_decision'},'native_action_executed':False,
+        'failure_budget':{'consecutive_failures':1,'stop_at':4},
+        'recovery':{'kind':'decision_refresh','attempted_action_replayed':False,'frame':{
+            'ok':True,'decision_id':'fresh-frame','choices':[{'choice_id':'fresh-choice','label':'Skip unit'}]}}}
+    recovering=[{'role':'user','content':'Continue gameplay'},*batch([
+        ('invalid','smac_execute_choice',{'decision_id':'invented','choice_id':'invented'},recovery)])]
+    recovery_history=copy.deepcopy(recovering)
+    with httpx.Client(transport=httpx.MockTransport(receive)) as client:
+        client.post('https://controlled.invalid/v1/chat/completions',json={
+            'messages':AIAgent._sanitize_api_messages(recovering)})
+    assert result(captured[-1]['messages'],'invalid')==recovery
+    assert recovering==recovery_history
     # Emergency pressure must not silently prune/replace unseen results from
     # the latest batch. Old complete protocol groups remain disposable.
     old=[{'role':'user','content':'Long episode'}]

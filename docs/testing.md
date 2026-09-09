@@ -643,3 +643,23 @@ requires the private hash-checked turn-7 save, `SMACX_DEMAND_TEST_SAVE`,
 observed moves into native AI contact, and checks demand responses against both
 clients' treasury, diplomacy, unit and base state. It never resumes a production
 campaign or starts a sovereign. See [acceptance evidence](benchmarks/multiplayer-energy-demand.md).
+
+
+### Invalid opaque decision recovery
+
+`decision_recovery_test.py` exercises the actual decision enumerator, cache and
+execution wrapper with a controlled native-shaped bridge. Unknown, expired,
+consumed and invalid-choice handles return a new frame without replaying the
+rejected action. The sovereign's separate selection executes once. Four invalid
+submissions still latch the circuit; refresh failure, wait state and session
+changes fail safely. Text correction and native action rejection do not trigger
+this handle-recovery path. `hermes_complementary_results_test.py` checks that the
+original rejection and fresh frame both survive actual Hermes sanitization and
+a controlled HTTP request, without changing durable history.
+
+Run the MCP test in the control image with `PYTHONPATH=/workspace/src`. Run the
+Hermes test in the harness image with
+`PYTHONPATH=/workspace/src:/workspace/harness:/workspace/scripts`.
+These are adapter/protocol claims, not predicted-mechanics validation or proof
+that a model will always use the fresh choices. Live recovery evidence is in
+[decision-recovery-turn8](benchmarks/decision-recovery-turn8.md).

@@ -128,7 +128,10 @@ def main() -> int:
         assert expired["error"]["code"] == "expired_decision", expired
         assert expired["expiry"]["reason"] == "elapsed_time", expired
         assert expired["expiry"]["age_seconds"] > expired["expiry"]["lease_seconds"], expired
-        assert expired["native_call_attempted"] is False and len(calls) == before_expiry_calls
+        assert expired["native_call_attempted"] is False
+        # Invalid-handle recovery may observe, but must never dispatch a retry.
+        assert all(operation == "semantic_snapshot" for operation, _ in calls[before_expiry_calls:])
+        assert expired["recovery"]["attempted_action_replayed"] is False
         assert expired_id not in smacx_mcp.DECISION_CACHE
 
         base_id, base_choices = smacx_mcp._cache_decision_choices(

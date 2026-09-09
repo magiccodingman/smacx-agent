@@ -125,3 +125,11 @@ health={'active_plan_count':1,'intent_coverage_complete':True,'plans_without_wor
 rendered=summary({'kind':'tool_returned','payload':{'managed_name':'smac_cognition','result':{'ok':True,'plan_health':health}}})
 assert '"plans_without_world_bindings_count":1' in rendered and 'not interpreted or verified' in rendered
 print(json.dumps({'plan_binding_counts_visible':True,'narrative_not_dumped_or_promoted':True}))
+
+recovery={'kind':'managed_tool_returned','payload':{'tool':'smac_execute_choice','result':{
+    'ok':False,'error':{'code':'unknown_decision'},'native_action_executed':False,
+    'recovery':{'kind':'decision_refresh','attempted_action_replayed':False,'frame':{
+        'ok':True,'decision_id':'fresh-frame','phase':'turn','choices':[{'choice_id':'fresh-choice'}]}}}}}
+rendered=summary(recovery)
+assert '"decision_id":"fresh-frame"' in rendered and '"choice_count":1' in rendered
+assert '"attempted_action_replayed":false' in rendered and '"ok":false' in rendered

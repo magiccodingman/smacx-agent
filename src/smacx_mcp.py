@@ -3609,13 +3609,49 @@ def _latch_journal_failure(
     return response
 
 
+def _refresh_rejected_decision(response: dict, key: tuple[str, str]) -> dict:
+    """Return fresh evidence after an invalid handle; never replay an action.
+
+    Keep the original failure and its budget. Enumeration uses the same
+    authority, fair-play, briefing and turn gates as an explicit decision call.
+    The sovereign still selects a new opaque choice (which is guarded again).
+    """
+    code = (response.get("error") or {}).get("code")
+    if code not in {"unknown_decision", "expired_decision", "consumed_decision", "invalid_choice"}:
+        return response
+    response.setdefault("required_next", {"tool": "smac_decision"})
+    recovery = {"kind": "decision_refresh", "attempted_action_replayed": False}
+    try:
+        frame = smac_decision()
+        identity = frame.get("identity") or {}
+        if identity and (str(identity.get("match_id") or ""),
+                         str(identity.get("session_id") or "")) != key:
+            frame = {"ok": False, "error": {"code": "recovery_scope_changed"}}
+        recovery["frame"] = frame
+        if isinstance(frame.get("required_next"), dict):
+            response["required_next"] = dict(frame["required_next"])
+        # A changed turn can require the sovereign episode to end. Preserve
+        # that signal at receipt level as well as inside the recovery frame.
+        for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
+            if field in frame:
+                response[field] = frame[field]
+    except Exception as exc:
+        # An unavailable observation must not mask the original rejection or
+        # reset its failure budget. No synthetic/previous frame is substituted.
+        recovery["frame"] = {"ok": False, "error": {
+            "code": "decision_refresh_failed", "exception_type": type(exc).__name__}}
+    response["recovery"] = recovery
+    return response
+
+
 @mcp.tool(
     description=(
         "Execute exactly one short-lived opaque choice returned by the latest smac_decision "
         "or smac_choices frame. The server owns the native command, parameters, confirmation "
         "flags, and revision guard. Supply text only when that exact choice exposes text_input; "
         "an opening base-name choice uses its native suggested default when text is omitted. "
-        "Never invent command names or reuse a consumed decision."
+        "Never invent command names or reuse a consumed decision. An invalid handle may return "
+        "recovery.frame: fresh evidence, not an executed retry. Select anew from that frame."
     )
 )
 def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dict:
@@ -3706,11 +3742,15 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         if len(history) < FAILED_CHOICE_LIMIT:
             response["failure_budget"] = {"consecutive_failures": len(history),
                 "stop_at": FAILED_CHOICE_LIMIT}
-            return response
-        incident = {"code": "repeated_failed_choice_submissions",
-            "failure_codes": history, "attempt_count": len(history),
-            "message": "Repeated choice submissions failed despite recovery opportunities. Autonomous play is stopped for operator review."}
-        RUNTIME_CIRCUITS[key] = incident
+        else:
+            incident = {"code": "repeated_failed_choice_submissions",
+                "failure_codes": history, "attempt_count": len(history),
+                "message": "Repeated choice submissions failed despite recovery opportunities. Autonomous play is stopped for operator review."}
+            RUNTIME_CIRCUITS[key] = incident
+    # Native reads must run outside the progress lock. Never enumerate after
+    # the circuit trips, and never reset the budget merely for a fresh frame.
+    if len(history) < FAILED_CHOICE_LIMIT:
+        return _refresh_rejected_decision(response, key)
     journal = controller_record_campaign_action(key[0], key[1], {
         "decision_id": decision_id, "choice_id": choice_id,
         "outcome": "failure_circuit_open", "incident": incident,
