@@ -67,3 +67,9 @@ capsule round-trip correctness, not repair of the original inconsistent capsule.
 
 Memory-pairing, compressed/plain save digest, snapshot-pin retention, fallback,
 and recovery observation-order tests pass separately. Portal tests: 87/87.
+
+Final packaged checks passed against installed control modules (local and image
+worker-manager hashes match). The compiled worker/control engine fingerprint
+matches. Shared services were redeployed with checkpoint-hardening images;
+control and portal report healthy. The original campaign remains stopped with
+zero sovereign processes. About 32 GB of disk space remains available.

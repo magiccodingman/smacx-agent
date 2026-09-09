@@ -16,7 +16,9 @@ kept = retained_checkpoints({'recovery_checkpoint':history[0], 'recovery_checkpo
 assert [x['checkpoint_id'] for x in kept] == ['checkpoint-8','checkpoint-7','checkpoint-6','checkpoint-0']
 assert staging_slot('control_recovery',kept) not in {x['native_save_slot'] for x in kept}
 
-for failures in (1, 2):
+for failures, failure_reason in ((n, reason) for n in (1, 2) for reason in (
+        'checkpoint_semantic_identity_restore_failed:peer', 'native_checkpoint_digest_mismatch',
+        'checkpoint-save-digest_failed:missing', 'hermes_checkpoint_integrity_failure')):
     candidates = [checkpoint(2),checkpoint(1,True)]
     state = {'metadata':{'recovery_checkpoint':candidates[0], 'recovery_checkpoint_history':candidates[1:]}}
     events=[]
@@ -28,7 +30,7 @@ for failures in (1, 2):
         assert not events or events[-1]=='quarantine'
         events.append(_checkpoint['checkpoint_id'])
         if len([e for e in events if e!='quarantine']) <= failures:
-            raise WorkerManagerError('checkpoint_semantic_identity_restore_failed:peer')
+            raise WorkerManagerError(failure_reason)
         return {'native_semantic_identity_restore':[{},{}]}
     m._recover_match_locked=restore
     def quarantine(*args,**kwargs):events.append('quarantine');return {'frozen':True}

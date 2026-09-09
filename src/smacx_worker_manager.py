@@ -3660,6 +3660,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if seat.get("instance_id") and
             seat.get("metadata", {}).get("delegation_status") != "active"
         ]
+        if host_instance_id not in managed_instances:
+            raise WorkerManagerError("checkpoint_waiting_for_quiescence:host_identity_unavailable")
         controller_by_instance = {
             str(seat["instance_id"]): str(seat.get("controller_kind", "agent"))
             for seat in seats if seat.get("instance_id")
@@ -4228,7 +4230,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         "recovery_attempts": failures, "incident_quarantine": quarantine,
                         "recovery_required": True})
                     retryable = isinstance(exc, WorkerManagerError) and str(exc).startswith(("checkpoint_semantic_identity_restore_failed:",
-                        "native_checkpoint_digest_mismatch", "checkpoint_save_file_missing"))
+                        "native_checkpoint_digest_mismatch", "checkpoint_save_file_missing",
+                        "checkpoint-save-digest_failed:", "hermes_checkpoint_integrity_failure"))
                     if not retryable:
                         raise
                     continue

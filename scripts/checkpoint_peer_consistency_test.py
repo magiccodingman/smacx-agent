@@ -30,3 +30,10 @@ try:validate_peer_capsules({'peer':bad})
 except ValueError:pass
 else:raise AssertionError('forged diagnostic fields accepted')
 print('PASS: local quiescence is insufficient; divergent peer rejected before save; perspective-only difference accepted')
+
+# A native save cannot be paired using only non-host replicas' evidence.
+manager.control.list_seats=lambda _: [{'instance_id':'instance-test','metadata':{'delegation_status':'active'}},{'instance_id':'instance-peer'}]
+with patch('smacx_worker_manager.time.sleep'):
+    try:manager.checkpoint_match('match-test')
+    except WorkerManagerError as e:assert str(e)=='checkpoint_waiting_for_quiescence:host_identity_unavailable'
+    else:raise AssertionError('checkpoint accepted without saved host evidence')
