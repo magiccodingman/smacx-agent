@@ -34,7 +34,20 @@ published here.
 
 ## Deployment and campaign recovery
 
-Pending deployment and restoration of the existing paired turn-8 checkpoint.
-The last turn-7 checkpoint was already restore-tested. The turn-8 checkpoint is
-save-verified; it is not counted as restored until paired native verification
-and AI-memory restoration succeed.
+Deployed `smacx-agent-control:decision-recovery` to the main control service and
+both MCP sidecars. Running MCP source hashes match the repaired checkout.
+Native worker and Hermes images remain the previously validated versions.
+
+The existing turn-8 checkpoint
+`checkpoint-d9f7891e19ce43bda95cb1a5c6289155` successfully restored both managed
+seats and paired AI state, and is now `restore_tested` (1788964747.888539).
+The durable portal recovery operation completed at 2026-09-09T14:39:31Z.
+Both sovereign runs/processes are active, both native clients and MCPs are
+healthy, and the health report has no active incident or health reason.
+The Peacekeeper sovereign subsequently selected and acknowledged the restored
+SIMULYOU notification through a fresh guarded decision; the receipt was accepted.
+
+This proves deployment and continuation of the original campaign. The automatic
+invalid-handle recovery path is covered by controlled adapter/provider-wire tests;
+it has not yet been exercised by a new autonomous invalid submission in this
+restored campaign. No intentionally invalid action was injected into production.
