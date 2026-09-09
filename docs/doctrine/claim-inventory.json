@@ -361,8 +361,8 @@
   {
     "id": "D033",
     "section": "# Formers, Terraforming, Expansion, and Ecology",
-    "text_sha256": "985953ab8798e3c28a1e2c78259b3ef5edc05ad97a43f77269652efd2cc60570",
-    "text": "A new base creates another center of population, production, research, terraforming, territory, and military reach. That power can compound, but the base also needs useful terrain, development, transportation, social control, and security. Wide expansion can increase bureaucracy Drones and leave many weak settlements that cannot support one another.",
+    "text_sha256": "6ea652547bb60aeeeaf573841571e2c8f275a1e1e394a95e5ba6084c95021f3e",
+    "text": "A new base creates another center of population, production, research, terraforming, territory, and military reach. That power can compound, but the base also needs useful terrain, development, transportation, social control, and security. Wide expansion can increase bureaucracy Drones and leave many weak settlements that cannot support one another. Opaque references are identifiers only: never infer coordinates, distance, direction, adjacency, order, or similarity from their spelling or numeric suffixes; use returned spatial fields or `smac_world` evidence.",
     "classification": "general_player_documentation_with_native_authority_override",
     "sources": [
       "conceptsx.txt (fingerprinted in evidence/sources.json)",

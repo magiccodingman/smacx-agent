@@ -89,14 +89,14 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "e88fe2eb1b60b73502c0f874446d65cc4d46241a158df55cb6a96f13fda57012",
+      "doctrine_sha256": "34a2cc4bff04b7492a08abf0e86ab76bfe45448d48d5dbe0e6801a948434dd54",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "5120eb105f538238831d34cf33361a14f9f3300a52d7344acc07fb13ef5cd96e",
-      "gameplay_sha256": "d37b28395a2991ec2cfa5e67b8ae70532471b128e89006423e1a368708c79113"
+      "gameplay_sha256": "00c05411a8096dc272336505cada9b9626237b9d8a3da6021373fcf21a4e20f9"
     },
     "blocks": {
       "SELF_FACTION_CONTEXT": "You govern **University of Planet**: +2 RESEARCH; -2 PROBE; Free facility: Network Node; One extra Drone per 4 citizens (rounded down). These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",

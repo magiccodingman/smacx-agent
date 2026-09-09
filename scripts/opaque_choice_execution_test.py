@@ -247,6 +247,31 @@ def main() -> int:
                 or false_gap.get("recorded") is not False:
             raise AssertionError(f"native rule was misreported as a capability gap: {false_gap}")
 
+        legal_id, legal_choices = smacx_mcp._cache_decision_choices(
+            {"match_id": "match-settlement", "session_id": "session-settlement",
+             "revision": "r-settlement"},
+            [{"command": "found_base", "unit_id": 14,
+              "settlement_context": {
+                  "founding_legality": "current_native_legal", "site_tile_id": 812,
+                  "minimum_base_range": 3, "nearest_known_base_range": 3,
+                  "known_radius_location_count": 21,
+                  "radius_complete_currently_visible": True,
+                  "overlapping_known_bases": [
+                      {"base_id": 5, "overlapping_radius_location_count": 7}],
+                  "meaning": "Native legality does not establish strategic quality."}}],
+            choice_kind="unit_actions", choice_arguments={"unit_id": 14},
+            semantic_context={"reverse_units": {14: "own-unit-pod"},
+                              "reverse_locations": {812: "location-site"},
+                              "reverse_bases": {5: "base-home"}},
+            focus={"kind": "unit_actions"}, turn=9, year=2109, phase="turn",
+        )
+        assert legal_id and len(legal_choices) == 1
+        settlement = legal_choices[0]["settlement_context"]
+        assert settlement["site_location_ref"] == "location-site"
+        assert settlement["overlapping_known_bases"] == [{
+            "base_ref": "base-home", "overlapping_radius_location_count": 7}]
+        assert settlement["founding_legality"] == "current_native_legal"
+
         # The same accept action on different displayed agreement terms is
         # meaningful progress; identical terms remain a repeated state.
         fingerprints = []

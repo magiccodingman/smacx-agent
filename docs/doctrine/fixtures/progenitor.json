@@ -84,14 +84,14 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "e88fe2eb1b60b73502c0f874446d65cc4d46241a158df55cb6a96f13fda57012",
+      "doctrine_sha256": "34a2cc4bff04b7492a08abf0e86ab76bfe45448d48d5dbe0e6801a948434dd54",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "3f035f6ecc2219de9d7919ee05a89ff58d48fa34cafe620db6f978817819bfc3",
-      "gameplay_sha256": "cd82cb140d63ad2baf620a48ce33e9add33d6cb79948b0c85bbe6b046afd680d"
+      "gameplay_sha256": "0e28139b673d3c4e7f97b8d466d0593432daaf2849987172b0a21d9c76fa8b73"
     },
     "blocks": {
       "SELF_FACTION_CONTEXT": "You govern **Manifold Caretakers**: +1 PLANET; Conventional defense modifier: 125%; Free facility: Recycling Tanks. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda. The loaded build rules can close the Voice/Ascent route after the Subspace Generator prerequisite is discovered; inspect current native eligibility before relying on Transcendence. The globally enabled Diplomatic route is not available to your faction; treat it as an opponent threat.",

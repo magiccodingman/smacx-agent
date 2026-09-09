@@ -1024,6 +1024,7 @@ _CHOICE_REF_KEYS = {
     "origin_tile_id": ("origin_location_ref", "reverse_locations"),
     "to_tile_id": ("to_location_ref", "reverse_locations"),
     "source_tile_id": ("source_location_ref", "reverse_locations"),
+    "site_tile_id": ("site_location_ref", "reverse_locations"),
     "destination_tile_id": ("destination_location_ref", "reverse_locations"),
     "target_tile_id": ("target_location_ref", "reverse_locations"),
 }
@@ -1241,7 +1242,7 @@ def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
             for item in value:
                 collect(item)
         elif isinstance(value, Mapping):
-            if value.get("command") == "move_unit":
+            if value.get("command") in {"move_unit", "collect_supply_pod"}:
                 for key in ("origin_tile_id", "target_tile_id", "observed_tile_id"):
                     tile = value.get(key)
                     if isinstance(tile, int) and not isinstance(tile, bool) and tile >= 0:
@@ -1257,6 +1258,13 @@ def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
         elif isinstance(value, dict):
             for item in list(value.values()):
                 explain(item)
+            if value.get("command") == "collect_supply_pod" \
+                    and value.get("status") in {"completed", "rejected"}:
+                value["supply_pod_observation"] = {
+                    "scope": "Current native deferred-action receipt.",
+                    "meaning": "A completed collection means the visible pod was removed through native movement. It does not predict or generalize the random outcome; obtain a fresh decision and observe any follow-up interaction.",
+                }
+                return
             if value.get("command") != "move_unit" or value.get("status") not in {"completed", "rejected"}:
                 return
             if not str(value.get("resolution", "")).startswith("native_move_"):
@@ -1632,6 +1640,13 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "The native order started and work increased. The terrain improvement is not complete; inspect later terraform_task and tile observations.")
     if action.get("resolution") == "native_base_founded":
         completion["completion_semantics"] = "A new owned base and consumption of its Colony Pod were observed."
+    if action.get("resolution") == "native_supply_pod_resolved":
+        completion["supply_pod_removed"] = action.get("supply_pod_removed") is True
+        completion["completion_semantics"] = (
+            "The visible supply pod was removed through the native movement path. "
+            "Its random consequence is not inferred; inspect the fresh decision, unit state, "
+            "world changes and any follow-up interaction."
+        )
     if action.get("resolution") == "native_combat_resolved":
         completion["completion_semantics"] = (
             "The native combat call resolved. Completion alone does not establish attacker survival, "
@@ -2389,6 +2404,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
     description=(
         "Inspect the fair-play world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
         "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
+        "Before consequential settlement, mode=compare with nominated location subject_refs returns current native founding legality, known radius overlap, yields, distance and logistics evidence; compare alternatives when available because legal does not mean strategically good. "
         "Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
         "site_economy with populations:[1,2,3] and up to four subject locations; "
         "social|terraform|action with decision_id and choice_id from a current final choice; "
@@ -3292,7 +3308,7 @@ def _turn_reconciliation_gate(command_arguments: dict) -> dict | None:
 
 
 def smac_command(
-    command: Literal["acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_unit_disband", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
+    command: Literal["acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_unit_disband", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "collect_supply_pod", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
     session_id: str,
     expected_revision: str,

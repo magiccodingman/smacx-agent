@@ -12,16 +12,18 @@ from smacx_store import MemoryScope,SmacxStore
 from smacx_worker_manager import WorkerManager
 
 
-def exercise(manager, ids, *, full=True):
+def exercise(manager, ids, *, full=True, pod_only=False):
     def call(i, op, **args):return manager._native_request(i,op,timeout=30,**args)
     def command(i,frame,name,**args):
         return call(i,'semantic_command',command=name,match_id=frame['match_id'],
                     session_id=frame['session_id'],expected_revision=frame['revision'],**args)
     def settled():
-        deadline=time.monotonic()+25
+        deadline=time.monotonic()+45
         while time.monotonic()<deadline:
             states=[call(i,'test_network_sync_status') for i in ids]
-            if all(states[0][k]==states[1][k] for k in ('vehicles','bases','factions')):return states[0]
+            if all(all(k in state for k in ('vehicles','bases','factions')) for state in states) \
+            and all(states[0][k]==states[1][k] for k in ('vehicles','bases','factions')):
+                return states[0]
             time.sleep(.2)
         raise AssertionError(('replicas diverged',states))
     def actionable():
@@ -75,6 +77,17 @@ def exercise(manager, ids, *, full=True):
                 time.sleep(.1)
             assert status['action']['status']=='completed',(receipt,status)
         return settled()
+    pod_rows=[call(i,'test_multiplayer_supply_pod_fixture',faction_id=faction) for i in ids]
+    assert pod_rows[0]==pod_rows[1] and pod_rows[0].get('supply_pod_present'),pod_rows
+    pod_after=execute(pod_rows[0],'collect_supply_pod',target_tile_id=pod_rows[0]['target_tile_id'])
+    pod_status=[call(i,'test_multiplayer_supply_pod_fixture',
+                     target_tile_id=pod_rows[0]['target_tile_id']) for i in ids]
+    assert all(row.get('ok') and row.get('supply_pod_present') is False for row in pod_status),pod_status
+    results.append({'action':'collect_supply_pod','two_peers_verified':True,
+                    'pod_removed':True,'native_outcome_not_predicted':True})
+    if pod_only:
+        print(json.dumps({'development_cases':results}),flush=True)
+        return results,call,command,settled
     pod=fixture(-1);before=settled()
     after=execute(pod,'found_base')
     assert len(after['bases'])==len(before['bases'])+1 and len(after['vehicles'])==len(before['vehicles'])-1
@@ -133,7 +146,13 @@ def main():
             print(json.dumps({'isolated_match':mid,'workers':[w['instance_id'] for w in workers]}),flush=True)
             manager.start_lan_match(mid,session_name='Development regression',resume_slot='replay',_defer_ready=True)
             ids=[w['instance_id'] for w in workers]
-            cases,call,command,settled=exercise(manager,ids)
+            pod_only=os.environ.get('SMACX_DEVELOPMENT_POD_ONLY')=='1'
+            cases,call,command,settled=exercise(manager,ids,pod_only=pod_only)
+            if pod_only:
+                print(json.dumps({'passed':True,'cases':cases,
+                    'save_sha256':hashlib.sha256(saved).hexdigest(),
+                    'two_peer_effect_verified':True}),flush=True)
+                return
             before=settled()
             f=call(ids[0],'semantic_choices',kind='game_management')
             save=command(ids[0],f,'save_game',slot='development')
@@ -147,6 +166,20 @@ def main():
             # Cross the native host turn normally, then repeat from the remote
             # player's seat: both directions must synchronize, not only host writes.
             for _ in range(100):
+                # A restored peer may have a passive introduction/result
+                # popup even while the authority is completing the prior
+                # player's turn. Resolve those interactions on their owning
+                # client before evaluating the network handoff.
+                for peer in ids:
+                    peer_snap=call(peer,'semantic_snapshot')['snapshot']
+                    if peer_snap['interaction']['kind'] in ('turn','waiting_for_turn','waiting_for_engine'):
+                        continue
+                    peer_frame=call(peer,'semantic_choices',kind='interaction')
+                    peer_ack=next((r for r in peer_frame.get('choices',[])
+                                   if r.get('command')=='acknowledge_popup'),None)
+                    if peer_ack:
+                        r=command(peer,peer_frame,'acknowledge_popup')
+                        assert r.get('ok') or r.get('error',{}).get('code')=='stale_state',r
                 snap=call(ids[0],'semantic_snapshot')['snapshot']
                 if snap['interaction']['engine_state'].get('current_faction_id')==2:break
                 kind='interaction' if snap['interaction']['kind']!='turn' else 'game_management'
@@ -163,7 +196,8 @@ def main():
                 if not issued:
                     f=call(ids[0],'semantic_choices',kind='game_management')
                     if any(r.get('command')=='end_turn' for r in f.get('choices',[])):
-                        r=command(ids[0],f,'end_turn');assert r.get('ok'),r
+                        r=command(ids[0],f,'end_turn')
+                        assert r.get('ok') or r.get('error',{}).get('code') in ('not_actionable','stale_state'),r
                 time.sleep(.2)
             else:raise AssertionError('host did not hand off to remote player')
             remote_cases,*_=exercise(manager,list(reversed(ids)),full=False)

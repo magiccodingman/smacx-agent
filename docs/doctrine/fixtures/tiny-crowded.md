@@ -97,7 +97,7 @@ Former time is productive capacity. An improvement completed early can add resou
 
 A **Colony Pod** is a unit that founds a new base. Producing one normally reduces the home base's population; founding consumes the Pod. Sea Colony Pods perform the equivalent role on ocean once available.
 
-A new base creates another center of population, production, research, terraforming, territory, and military reach. That power can compound, but the base also needs useful terrain, development, transportation, social control, and security. Wide expansion can increase bureaucracy Drones and leave many weak settlements that cannot support one another.
+A new base creates another center of population, production, research, terraforming, territory, and military reach. That power can compound, but the base also needs useful terrain, development, transportation, social control, and security. Wide expansion can increase bureaucracy Drones and leave many weak settlements that cannot support one another. Opaque references are identifiers only: never infer coordinates, distance, direction, adjacency, order, or similarity from their spelling or numeric suffixes; use returned spatial fields or `smac_world` evidence.
 
 There is no universal correct base count. Expand when another base is likely to become worth its population, production, Former effort, defensive burden, and opportunity cost. Consolidate when existing bases, infrastructure, stability, or military security have become the more important constraint.
 
