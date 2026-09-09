@@ -1319,3 +1319,8 @@ prose alongside tool calls, recent episode, unresolved failures and unsuperseded
 query evidence. Exact duplicate prose can be removed under pressure. Current
 runtime cognition stays journal-derived; no inferred semantic summary is created.
 Controlled retention tests pass; model strategic equivalence is not claimed.
+
+Efficient continuation integrated acceptance: installed Hermes/provider capture
+and guarded two-action adapter chain pass. Nested-frame lifecycle, journal scope,
+fairness, attention, context pressure and immutable audit checks pass. Live game
+latency/strategic outcomes remain explicitly unvalidated; see benchmark evidence.

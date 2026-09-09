@@ -323,7 +323,8 @@ def main() -> int:
                     # sanitizer. This old result exceeds the raw preflight cap.
                     database = root / "profiles" / profile["profile_id"] / "state.db"
                     assert database.is_file(), list(root.rglob("*.db"))
-                    oversized_result = "DISPOSABLE_PREFLIGHT_MARKER " + "old state " * 150000
+                    oversized_result = json.dumps({"ok": True, "superseded_runtime_state": True,
+                        "historical_fixture": "DISPOSABLE_PREFLIGHT_MARKER " + "old state " * 150000})
                     with sqlite3.connect(database) as db:
                         old_result = db.execute(
                             "SELECT id FROM messages WHERE role='tool' ORDER BY id LIMIT 1"

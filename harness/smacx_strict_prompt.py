@@ -442,6 +442,13 @@ def _collect_old_disposable_pairs(messages, tool_names, *, keep: int = 24):  # n
             continue
         if any(tool_names.get(call_id) not in _DISPOSABLE_TOOL_NAMES for call_id in ids):
             continue
+        results = [_managed_tool_result(messages[tool_row_by_id[call_id]].get("content")) for call_id in ids]
+        if any(not isinstance(result, dict) or result.get("ok") is not True
+               or any(result.get(k) for k in ("queued", "persistent", "order", "incident", "gameplay_mutations_blocked"))
+               for result in results):
+            continue
+        if message.get("content"):
+            continue  # Prose may hold the only record of strategic intent.
         groups.append({index, *(tool_row_by_id[call_id] for call_id in ids)})
     removable = groups[:-keep] if len(groups) > keep else []
     return set().union(*removable) if removable else set()
@@ -670,7 +677,9 @@ def _install() -> None:
             }, separators=(",", ":"))
             superseded_consumed_rows.add(index)
             compacted_frames += 1
-        for index in state_rows[:-1]:
+        for index in state_rows:
+            if index == state_rows[-1] and index >= last_user:
+                continue
             message = sanitized[index]
             if index in superseded_consumed_rows \
                     or str(message.get("tool_call_id") or "") in pending_tool_ids:
@@ -785,6 +794,9 @@ def _install() -> None:
             ]
             for message in query_tool_rows[:-1]:
                 if str(message.get("tool_call_id") or "") in pending_tool_ids:
+                    continue
+                previous = _managed_tool_result(message.get("content"))
+                if not isinstance(previous, dict) or previous.get("ok") is not True:
                     continue
                 message["content"] = json.dumps({
                     "ok": True, "semantic_gc": "context_pressure_query_eviction",

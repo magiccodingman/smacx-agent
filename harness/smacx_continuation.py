@@ -17,13 +17,14 @@ def preserve_continuation(messages, last_user, tool_names, decode, *, threshold=
              for m in rows if m.get('role')=='tool'}
     removable=set()
     for i,m in enumerate(rows):
-        if i>=cutoff or m.get('role')!='assistant':continue
+        if i>=last_user or m.get('role')!='assistant':continue
         for call in m.get('tool_calls') or []:
             ident=str(call.get('id'));r=results.get(ident);name=tool_names.get(ident)
             if not isinstance(r,dict) or r.get('ok') is not True:continue
             # Query evidence can contain strategic dependencies. Retain it unless
             # the existing semantic layer explicitly marked it superseded.
             settled=r.get('superseded_runtime_state') or r.get('semantic_gc')=='superseded_query_evidence'
+            if i>=cutoff and not settled:continue
             if name=='smac_execute_choice':
                 settled=r.get('execution_status')=='completed' and r.get('completed') is True
                 if r.get('post_action_decision'):

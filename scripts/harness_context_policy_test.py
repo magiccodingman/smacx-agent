@@ -144,7 +144,7 @@ def main() -> int:
                     dispatched_call(identifier, "smac_execute_choice"),
                 ]},
                 {"role": "tool", "tool_call_id": identifier,
-                 "content": json.dumps({"executed": True, "detail": "y" * 1024})},
+                 "content": json.dumps({"ok": True, "completed": True, "execution_status": "completed", "detail": "y" * 1024})},
             ))
         bounded_five_hundred = AIAgent._sanitize_api_messages(five_hundred)
         surviving_pairs = sum(

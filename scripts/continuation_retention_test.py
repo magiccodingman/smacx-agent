@@ -10,7 +10,7 @@ rows=[{'role':'user','content':'old'},
  {'role':'assistant','content':'Treaty promise stands; enemy sighting stale.'},
  {'role':'user','content':'recent'},
  {'role':'assistant','content':'Pod effect not verified.','tool_calls':[{'id':'recent'}]},
- {'role':'tool','tool_call_id':'recent','content':json.dumps({'ok':True,'superseded_runtime_state':True})},
+ {'role':'tool','tool_call_id':'recent','content':json.dumps({'ok':True,'effect_verified':False})},
  {'role':'user','content':'current'}]
 frozen=copy.deepcopy(rows)
 out,metrics=preserve_continuation(rows,9,{'done':'smac_decision'},json.loads,threshold=0)

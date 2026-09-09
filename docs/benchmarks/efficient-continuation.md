@@ -38,3 +38,30 @@ protocol pairing and immutable input. Unknown strategic prose is retained. This
 may retain more evidence than the old aggressive prior-episode cleanup; no
 compaction latency gain is asserted. `SMACX_CONSERVATIVE_CONTINUATION=0` disables
 this pass (retaining pairs rather than restoring unsafe blanket deletion).
+
+Resume fixture clarification: an old unparseable tool error is no longer treated
+as disposable merely because an episode ended. The oversized disposable fixture
+now explicitly identifies superseded state; separate retention tests pin errors.
+Emergency protocol eviction also preserves accompanying strategic prose and
+non-success results. This is stricter retention, not an increased context budget.
+
+Integrated acceptance (controlled, no paid provider/game campaign):
+- Real Hermes HTTP capture passes initial/resumed gameplay and communication,
+  exact diagnostic/request correspondence, low/medium/high settings, runtime-only
+  context, lease failure recovery and oversized SQLite-history preflight.
+- Actual Hermes sanitizer passes complementary choices, bundled frame delivery,
+  consumed nested frame removal with execution outcome retained, immutable audit,
+  latest-batch protection and oversized unseen-batch fail-closed behavior.
+- 500 settled-action fixture: 170,972 → 8,235 conservative history tokens.
+  500 cognition/notebook fixture: 1,074,282 → 15,247 conservative history tokens.
+  Irreducible history still fails closed. These are synthetic budget tests.
+- Opaque execution, failed choice budget, transport errors, journal evidence
+  scope/timeline, MCP schema, fairness, attention and runtime budget tests pass.
+- Controlled bridge chain executes exactly two sovereign-selected mutations using
+  the bundled second decision; no intervening explicit decision tool call needed.
+- Diagnostic `post_action_decision_built` records availability, collection duration
+  and decision identity for later attribution. Existing provider/tool traces and
+  history compaction counters support generation-count and latency comparisons.
+
+No live strategic equivalence, checkpoint restore, or percentage speedup is
+claimed. The parked campaign remains the user's next behavioral validation run.

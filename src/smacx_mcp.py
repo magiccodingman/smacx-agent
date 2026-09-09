@@ -3707,6 +3707,7 @@ def _attach_post_action_decision(response: dict, key: tuple[str, str]) -> dict:
     if response.get("turn_handoff_required") or response.get("sleep") or response.get("queued") \
             or (response.get("required_next") or {}).get("stop_after"):
         return response
+    started = time.monotonic()
     try:
         frame = smac_decision()
         identity = frame.get("identity") or {}
@@ -3726,6 +3727,12 @@ def _attach_post_action_decision(response: dict, key: tuple[str, str]) -> dict:
     else:
         response["required_next"] = {"tool": "smac_decision",
             "reason": "Execution outcome above is unchanged. Next observation failed; do not repeat the executed action."}
+    diagnostic_record("post_action_decision_built", {
+        "available": bool(frame.get("ok")),
+        "collection_seconds": round(time.monotonic() - started, 4),
+        "decision_id": frame.get("decision_id"),
+        "execution_status": response.get("execution_status"),
+    }, actor="mcp")
     return response
 
 

@@ -111,3 +111,24 @@ for code in ('native_action_rejected', 'invalid_choice_text', 'unexpected_choice
     assert m._refresh_rejected_decision(response, key) == response and 'recovery' not in response
 m.smac_decision = original
 print('decision recovery passed: real frame/cache/guarded selection, four-failure bound, no replay, wait/error/scope safety')
+
+# Bundled success uses actual enumeration/cache and a new guarded selection.
+clear(); phase='turn'
+original_bridge=m._call
+
+def settled_bridge(operation, **arguments):
+    result=original_bridge(operation, **arguments)
+    if operation=='semantic_command':
+        result.update(completed=True,execution={'status':'completed','native_call_attempted':True})
+    return result
+
+m._call=settled_bridge
+first=m.smac_decision()
+selected=attempt(first['decision_id'],first['choices'][0]['choice_id'])
+assert selected['completed'] and len(writes)==1
+next_frame=selected['post_action_decision']['frame']
+assert next_frame['decision_id']!=first['decision_id']
+second=attempt(next_frame['decision_id'],next_frame['choices'][0]['choice_id'])
+assert second['ok'] and len(writes)==2
+assert m.DECISION_CACHE[first['decision_id']]['consumed']
+print('post-action chain passed: observed -> cached -> returned -> guarded next selection, exactly two selected mutations')
