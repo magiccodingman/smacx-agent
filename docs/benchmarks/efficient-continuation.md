@@ -65,3 +65,10 @@ Integrated acceptance (controlled, no paid provider/game campaign):
 
 No live strategic equivalence, checkpoint restore, or percentage speedup is
 claimed. The parked campaign remains the user's next behavioral validation run.
+
+Deployment acceptance: shared stack control API is healthy on the new image;
+MCP/harness image selection and four installed source hashes match this branch.
+Provider/Graphiti/portal/network/volume configuration was compared and preserved.
+Campaign remains parked at turn 6/year 2106, zero active sovereign runs/incidents.
+No database rebuild, native image change, or automatic campaign resume occurred.
+[Sanitized deployment receipt](efficient-continuation-deployment.json).
