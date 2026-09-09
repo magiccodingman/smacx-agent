@@ -1313,3 +1313,9 @@ Efficient continuation checkpoint 2: stale pre-write memory rejection → fresh
 scoped evidence → explicit sovereign reconsideration/retry. Controlled tests
 verify no rebase, no repeated write, and preservation of uncertain commit status.
 Evidence-scope guards and lease-only attention acknowledgement remain authoritative.
+
+Efficient continuation checkpoint 3: provider-only retention preserves strategic
+prose alongside tool calls, recent episode, unresolved failures and unsuperseded
+query evidence. Exact duplicate prose can be removed under pressure. Current
+runtime cognition stays journal-derived; no inferred semantic summary is created.
+Controlled retention tests pass; model strategic equivalence is not claimed.

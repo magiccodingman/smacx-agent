@@ -630,6 +630,10 @@ def _install() -> None:
                 if name in _STATE_TOOL_NAMES:
                     state_rows.append(index)
                 result = _managed_tool_result(message.get("content"))
+                if name == "smac_execute_choice" and isinstance(result, dict):
+                    nested = (result.get("post_action_decision") or {}).get("frame")
+                    if isinstance(nested, dict) and isinstance(nested.get("decision_id"), str):
+                        decision_rows[nested["decision_id"]] = index
                 if name in {"smac_decision", "smac_choices"} and isinstance(result, dict) \
                         and isinstance(result.get("decision_id"), str):
                     decision_rows[result["decision_id"]] = index
@@ -649,6 +653,14 @@ def _install() -> None:
         for decision_id in consumed_decision_ids:
             index = decision_rows.get(decision_id)
             if index is None or str(sanitized[index].get("tool_call_id") or "") in pending_tool_ids:
+                continue
+            original_result = _managed_tool_result(sanitized[index].get("content"))
+            if isinstance(original_result, dict) and original_result.get("post_action_decision"):
+                original_result["post_action_decision"] = {
+                    "schema": "smacx.post-action-decision.v1",
+                    "frame": {"superseded_runtime_state": True, "decision_consumed": True}}
+                sanitized[index]["content"] = json.dumps(original_result, separators=(",", ":"))
+                compacted_frames += 1
                 continue
             sanitized[index]["content"] = json.dumps({
                 "ok": True,
@@ -699,17 +711,14 @@ def _install() -> None:
         # forever even though the journal and handoff already preserve the
         # durable outcome. Current-episode pairs remain untouched so provider
         # tool-call ordering stays valid while the turn is in progress.
-        filtered = []
-        for index, message in enumerate(sanitized):
-            if index < last_user and isinstance(message, dict):
-                if message.get("role") == "assistant" and message.get("tool_calls"):
-                    pruned_tool_calls += len(message.get("tool_calls") or [])
-                    continue
-                if message.get("role") == "tool" and str(
-                        message.get("tool_call_id") or "") in historical_tool_call_ids:
-                    pruned_tool_results += 1
-                    continue
-            filtered.append(message)
+        from smacx_continuation import preserve_continuation
+        continuation_metrics = {}
+        if os.environ.get("SMACX_CONSERVATIVE_CONTINUATION", "1") != "0":
+            filtered, continuation_metrics = preserve_continuation(
+                sanitized, last_user, tool_names, _managed_tool_result)
+            pruned_tool_calls = pruned_tool_results = continuation_metrics["settled_protocol_pairs_removed"]
+        else:
+            filtered = sanitized
         if compacted_reasoning or compacted_think_blocks \
                 or compacted_frames or compacted_boundaries \
                 or pruned_tool_calls or pruned_tool_results:
@@ -812,7 +821,7 @@ def _install() -> None:
             "removed_rows": removed_row_count,
         }
         from smacx_diagnostics import record
-        record("history_compaction", {**_RUNTIME_STATE.gc_metrics,
+        record("history_compaction", {**_RUNTIME_STATE.gc_metrics, **continuation_metrics,
             "reasoning_fields": compacted_reasoning, "think_blocks": compacted_think_blocks,
             "state_frames": compacted_frames, "episode_boundaries": compacted_boundaries,
             "query_results_superseded": compacted_queries,
