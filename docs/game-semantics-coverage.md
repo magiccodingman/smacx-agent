@@ -1247,5 +1247,8 @@ land development now passes represented → provider-queryable → sovereign-exp
 The final native two-client replay verifies 24 host/remote cases, pod consumption
 and new base creation, work versus completed terrain, order cancellation, native
 activation movement semantics, exact peer agreement and native save/reload.
-Production deployment/recovery and autonomous use remain separately unverified.
+Production deployment and recovery now pass: the original turn-9 paired checkpoint
+is restore-tested, both sovereigns are live, all worker/MCP services are healthy,
+and no active incident remains. Both sovereigns executed fresh introduction
+acknowledgements. Autonomous use of newly enabled development remains unobserved.
 [Layered evidence](benchmarks/multiplayer-development.md).

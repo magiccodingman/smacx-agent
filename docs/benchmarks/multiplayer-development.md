@@ -36,7 +36,17 @@ may be refunded; actual movement is not refunded.
   preserves exact vehicle/base state and save digest. [Results](multiplayer-development.json).
 - Native cross-build completes 39/39 targets; packaged MCP receipt tests and
   reviewed engine compatibility checks pass.
-- Deployment and original campaign recovery are pending.
+- Deployed `smacx-agent-control:development` and
+  `smacx-agent-worker:development` to the main stack. Both MCP source hashes
+  match the checkout. Both prepared workers derive from the tested worker image.
+- Original turn-9 paired checkpoint `checkpoint-8e0a5fe8706449178a0088e605ba3a9d`
+  restored both managed seats and is `restore_tested` at 1788969801.839774.
+  Portal recovery completed at 2026-09-09T16:03:29Z. Both sovereign processes
+  are live, all four worker/MCP services are healthy, and no incident/health
+  reason remains. Both sovereigns have acknowledged their restored introduction
+  through actual fresh guarded choices.
+- Autonomous selection of the new development actions is not yet observed;
+  native mechanical effect proof is the isolated replay above.
 
 Private incident evidence is retained under `runtime/astra/evidence-colony-turn9`.
 The scoped diagnostic archive SHA-256 is
