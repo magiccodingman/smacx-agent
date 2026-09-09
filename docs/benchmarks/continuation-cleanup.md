@@ -38,4 +38,20 @@ geographic semantics and fair-play contracts pass. Runtime assembly exercises
 the review signal with unchanged belief input at 64K and 256K; budgets remain
 bounded (6,019 / 9,389; Huge chaotic 27,102 conservative tokens).
 
-Installed-image provider checks and deployment read-back: pending.
+Installed-image acceptance: actual Hermes sanitizer tests pass current-batch,
+complementary-query, nested-decision consumption and immutable-history checks.
+Real Hermes HTTP capture passes initial/resumed gameplay and communication,
+request/diagnostic correspondence, runtime-only context, lease release/retry,
+reasoning settings and oversized SQLite-history preflight. No paid provider used.
+
+Shared-stack deployment verified at source commit `652144a`: seven installed
+source hashes match. Control API is healthy; the new MCP/harness image selection
+is configured. Provider, Graphiti, portal, native worker, networks and volumes
+were preserved by configuration comparison. AI - 4 remains parked at turn 5,
+with zero active sovereign runs and zero incidents. No migration or game resume.
+
+- Control image: `sha256:6b32db6a18a1e7ed284bcf7e2d3b0110c1dff53a282385703bcbaeaa9710a9cd`
+- Harness image: `sha256:79707132b02ec7894102a48bbe34e8a1d9d8a28fd1df2eb69fabb8ef192594e5`
+
+Live turn-time improvement and strategic response to the review signals remain
+unmeasured. Captured replay establishes input reduction and retention only.
