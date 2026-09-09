@@ -43,3 +43,22 @@ Checkpoint 2 validation completed:
   query delivery. No production provider requests were made.
 - Original campaign read-back confirms parked turn 17/year 2117 and an available
   verified checkpoint. The campaign has not been resumed for this validation.
+
+Final acceptance:
+- Final control image imports both new modules from `/opt/smacx/src`; installed
+  geographic, native-shaped WorldService and runtime-context contracts pass.
+  Final runtime fixture totals: 5,867 (64K), 9,236 (256K), 27,033 (Huge chaotic
+  256K), all inside existing budgets. These are conservative token estimates.
+- Shared 8080/443 deployment read-back verifies all core image IDs and configured
+  worker/MCP/harness images, network and volume. Operator prerequisites pass.
+  Six modified runtime source hashes match the running control container.
+- Existing portal override was reconciled into the deployment receipt; its
+  running image was preserved. Native worker, provider settings, Graphiti and
+  data volumes were retained. The campaign remains parked at turn 17/year 2117
+  with its verified checkpoint. No DB rebuild or campaign launch occurred.
+- Reclaimed 14.49 GB of unused Docker build cache older than 24 hours; no game
+  volumes, campaign evidence or recovery images were pruned.
+
+[Sanitized deployment receipt](operational-geography-deployment.json).
+The next human-run campaign is the behavioral acceptance step: review scouting,
+settlement choices and task follow-through against emitted tool evidence.

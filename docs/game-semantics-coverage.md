@@ -1294,3 +1294,9 @@ an old assignment persists. Managed order/Former/intent/citizen contracts and re
 Hermes-to-controlled-HTTP operational-review delivery pass. Initial and resumed
 provider requests retain the current 15-tool surface. Installed deployment is
 still pending; improved live strategy and sustained task progress are unproven.
+
+Operational checkpoint 3: final installed-image geography/runtime tests pass;
+real controlled-provider delivery is verified; shared stack image/settings and
+six runtime source hashes match. The campaign remains parked with a checkpoint.
+No paid provider run, new native-mechanics claim or improved-strategy claim.
+See the [sanitized deployment receipt](benchmarks/operational-geography-deployment.json).
