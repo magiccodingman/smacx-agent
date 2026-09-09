@@ -389,7 +389,7 @@ std::vector<int> field_int_array(const std::string& json, const char* name,
         if (!end || end == json.c_str() + pos || value < 0 || value > 0x7fffffffL)
             return {};
         result.push_back(static_cast<int>(value));
-        if (result.size() > static_cast<size_t>(MaxVehNum) * 8 + 3) return {};
+        if (result.size() > static_cast<size_t>(MaxVehNum)) return {};
         pos = static_cast<size_t>(end - json.c_str());
         while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t'
         || json[pos] == '\r' || json[pos] == '\n')) ++pos;

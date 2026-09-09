@@ -3,10 +3,12 @@
 import copy
 import hashlib
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from smacx_worker_manager import WorkerManager, WorkerManagerError
+from smacx_checkpoint_policy import identity_hash
 
 previous = {'verified':True, 'slot':'control_recovery', 'turn':1}
 state = {'status':'running', 'host_instance_id':'instance-test',
@@ -25,7 +27,9 @@ def native(_instance, operation, **kw):
         return {'snapshot':{'turn':2,'year':2102,'revision':'stable',
                             'protocol':{'phase':'turn'}}}
     if operation == 'semantic_identity_state':
-        return {'ok':True,'schema':'smacx.private-vehicle-identity.v1'}
+        return {'ok':True,'schema':'smacx.private-vehicle-identity.v1','turn':2,'faction_id':1,
+                'native_validation_fields':[2,1,0], 'native_validation_hash':identity_hash([2,1,0]),
+                'semantic_vehicle_handles':[]}
     if operation == 'semantic_choices':
         return {'choices':[{'command':'save_game'}],'revision':'stable'}
     assert operation == 'semantic_command' and kw['command'] == 'save_game'
@@ -38,6 +42,7 @@ def snapshot(*_args):
     return []
 
 manager = object.__new__(WorkerManager)
+manager._lifecycle_lock = threading.RLock()
 manager.control = SimpleNamespace(
     get_match=lambda _id:copy.deepcopy(state),
     list_seats=lambda _id:[{'instance_id':'instance-test','controller_kind':'agent'}],

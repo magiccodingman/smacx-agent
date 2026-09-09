@@ -18,7 +18,7 @@ from typing import Any, Mapping
 import uuid
 
 from smacx_control import ControlPlane
-from smacx_checkpoint_policy import retained_checkpoints, staging_slot
+from smacx_checkpoint_policy import retained_checkpoints, staging_slot, validate_peer_capsules, identity_differences
 from smacx_attention import AttentionService
 from smacx_controller import BridgeUnavailable, bridge_request_to
 from smacx_docker import DockerClient, DockerError, DockerNotFound
@@ -3628,6 +3628,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
 
     def checkpoint_match(self, match_id: str, *,
                          slot: str = "control_recovery") -> dict[str, Any]:
+        with self._lifecycle_lock:
+            return self._checkpoint_match_locked(match_id, slot=slot)
+
+    def _checkpoint_match_locked(self, match_id: str, *,
+                                 slot: str = "control_recovery") -> dict[str, Any]:
         """Capture one native and AI-memory-consistent recovery boundary."""
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", slot):
             raise InvalidRecord("invalid_save_slot")
@@ -3720,6 +3725,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             if sample_index < 2:
                 time.sleep(0.35)
         paused_harnesses = self._pause_match_harnesses(match_id)
+        published = False
         try:
             # Close the final race between the stability samples and Docker's
             # pause. If the agent committed an action in that interval, no
@@ -3752,6 +3758,17 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                         capsule.get("semantic_vehicle_handles") or []
                     ),
                 }
+            try:
+                validate_peer_capsules(native_identity_by_instance)
+            except ValueError as exc:
+                self.control.update_match_lifecycle(match_id, "running", metadata={
+                    "checkpoint_capture_deferred": {"reason": str(exc), "observed_unix": time.time(),
+                        "previous_checkpoint_preserved": True,
+                        "peer_differences": {instance: identity_differences(
+                            native_identity_by_instance[host_instance_id].get("native_validation_fields"),
+                            capsule.get("native_validation_fields"), ignore_perspective=True)
+                            for instance, capsule in native_identity_by_instance.items() if instance != host_instance_id}}})
+                raise WorkerManagerError(f"checkpoint_peers_not_synchronized:{exc}") from exc
             choices = self._native_request(
                 host_instance_id, "semantic_choices", kind="game_management",
                 timeout=30.0,
@@ -3769,7 +3786,15 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 expected_revision=choices.get("revision"), timeout=30.0,
             )
             if not saved.get("ok"):
+                if saved.get("error", {}).get("code") in {"stale_state", "stale_revision"}:
+                    raise WorkerManagerError("checkpoint_state_changed_during_quiescence:save")
                 raise WorkerManagerError("native_checkpoint_failed")
+            def verify_capture_unchanged():
+                for instance_id, capsule in native_identity_by_instance.items():
+                    current = self._native_request(instance_id, "semantic_identity_state", timeout=20.0, action="export")
+                    if current.get("ok") is not True or current.get("native_validation_hash") != capsule["native_validation_hash"] or current.get("semantic_vehicle_handles") != capsule["semantic_vehicle_handles"]:
+                        raise WorkerManagerError("checkpoint_state_changed_during_quiescence:save_or_memory_capture")
+            verify_capture_unchanged()
             save_digest = self._checkpoint_save_digest(host_instance_id, native_slot)
             checkpoint_id = _new_id("checkpoint")
             checkpoint = {
@@ -3845,6 +3870,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "graphiti": "rebuild_from_campaign_journal_head",
                 "journal": "fork_from_recorded_head",
             }
+            verify_capture_unchanged()
             checkpoint["garbage_collection"] = {
                 "status": "pending",
                 "obsolete_checkpoint_directories_removed": 0,
@@ -3853,8 +3879,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 match_id, "running", metadata={
                     "recovery_checkpoint": checkpoint, "recovery_required": False,
                     "recovery_checkpoint_history": retained,
+                    "checkpoint_capture_deferred": None,
                 },
             )
+            published = True
             checkpoint["generation"] = self.store.complete_checkpoint_generation(
                 match_id, checkpoint_id,
             )
@@ -3874,7 +3902,14 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             )
             return {"ok": True, "match": updated, "checkpoint": checkpoint}
         finally:
-            self._unpause_harnesses(paused_harnesses)
+            try:
+                if not published:
+                    # A post-save/post-memory consistency rejection must not
+                    # accumulate an unreferenced Hermes archive each retry.
+                    previous = match.get("metadata", {}).get("recovery_checkpoint") or {}
+                    self._cleanup_recovery_snapshots(match_id, str(previous.get("checkpoint_id") or ""))
+            finally:
+                self._unpause_harnesses(paused_harnesses)
 
     def quarantine_match(self, match_id: str, *, stop_collectors: bool = False) -> dict[str, Any]:
         """Freeze native execution and collectors while retaining incident RAM.
@@ -4183,7 +4218,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 try:
                     result = self._recover_match_locked(match_id, refresh_runtime=refresh_runtime,
                                                         _checkpoint=checkpoint)
-                except WorkerManagerError as exc:
+                except Exception as exc:
+                    self.control.update_match_lifecycle(match_id, "error", metadata={"recovery_required": True})
                     # Freeze partial native restores before any fallback. Never
                     # launch collectors with partially imported identity state.
                     quarantine = self.quarantine_match(match_id, stop_collectors=True)
@@ -4191,7 +4227,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     self.control.update_match_lifecycle(match_id, "error", metadata={
                         "recovery_attempts": failures, "incident_quarantine": quarantine,
                         "recovery_required": True})
-                    retryable = str(exc).startswith(("checkpoint_semantic_identity_restore_failed:",
+                    retryable = isinstance(exc, WorkerManagerError) and str(exc).startswith(("checkpoint_semantic_identity_restore_failed:",
                         "native_checkpoint_digest_mismatch", "checkpoint_save_file_missing"))
                     if not retryable:
                         raise
@@ -4307,15 +4343,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 actual = self._native_request(instance_id, "semantic_identity_state", timeout=20.0, action="export")
                 expected_fields = capsule.get("native_validation_fields")
                 actual_fields = actual.get("native_validation_fields")
-                differences = []
-                if isinstance(expected_fields, list) and isinstance(actual_fields, list):
-                    names = ["faction", "design", "x", "y", "home_base_plus_one", "order", "moves_spent", "health"]
-                    for index, (expected_value, actual_value) in enumerate(zip(expected_fields, actual_fields)):
-                        if expected_value != actual_value:
-                            differences.append({"row": (index - 3) // 8 if index >= 3 else None,
-                                "field": names[(index - 3) % 8] if index >= 3 else ["turn", "perspective", "vehicle_count"][index],
-                                "expected": expected_value, "actual": actual_value})
-                    differences = differences[:32]
+                differences = identity_differences(expected_fields, actual_fields)
                 diagnostic = {"instance_id": instance_id,
                     "checkpoint_id": checkpoint.get("checkpoint_id"),
                     "expected_hash": capsule.get("native_validation_hash"),

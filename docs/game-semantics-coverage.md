@@ -1223,3 +1223,9 @@ covered by orchestration tests. A successful save is explicitly `save_verified`;
 native field diagnostics are added without projecting hidden state to providers.
 Root-cause native reproduction and full multiplayer restore acceptance remain
 pending; see [evidence](benchmarks/checkpoint-recovery-hardening.md).
+
+Checkpoint native acceptance: controlled two-seat save/reload restored exact
+native hashes and vehicle handles and returned to turn/wait. Cross-peer mismatch
+now blocks publication before saving; post-save and post-memory checks reject
+changed captures. Fallback/memory/pin tests pass; UI distinguishes paired saves
+from restore-tested evidence. The historical inconsistent capsule is not repaired.

@@ -50,7 +50,7 @@
         @if (!Incident.VerifiedCheckpointAvailable)
         {
             <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-2">
-                No bridge-verified checkpoint is available. Resume and retry remain disabled rather than
+                No paired recovery checkpoint is available. Resume and retry remain disabled rather than
                 restoring native game state with mismatched AI memory. An owner can end the campaign from its lobby.
             </MudAlert>
         }
@@ -61,7 +61,7 @@
                 <MudButton Variant="Variant.Filled" Color="Color.Warning"
                            StartIcon="@Icons.Material.Filled.RestartAlt"
                            Disabled="RetryBusy" OnClick="Retry">
-                    @(RetryBusy ? "Recovering…" : "Retry from verified checkpoint")
+                    @(RetryBusy ? "Recovering…" : "Retry from paired checkpoint")
                 </MudButton>
             }
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
