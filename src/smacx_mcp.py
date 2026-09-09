@@ -1286,7 +1286,8 @@ def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
             origin, target, observed = (value.get(key) for key in
                 ("origin_location_ref", "target_location_ref", "observed_location_ref"))
             observation = {"scope": "Native resolution receipt, not a guarantee of current unit state.",
-                           "meaning": "Completed means the native attempt resolved, not necessarily arrival. Refresh the decision; an unreported movement failure reason remains unknown."}
+                           "observation_stage": "native_attempt_resolution",
+                           "meaning": "Completed means the attempt resolved, not necessarily arrival. This sample can precede the later world observation; a different later position does not contradict this earlier sample. Unreported failure cause remains unknown."}
             if isinstance(origin, str) and isinstance(observed, str):
                 observation["reported_position_changed"] = observed != origin
             if isinstance(target, str) and isinstance(observed, str):
@@ -3717,6 +3718,28 @@ def _attach_post_action_decision(response: dict, key: tuple[str, str]) -> dict:
         frame = {"ok": False, "error": {"code": "post_action_observation_failed",
                                       "exception_type": type(exc).__name__}}
     response["post_action_decision"] = {"schema": "smacx.post-action-decision.v1", "frame": frame}
+    execution = response.get('execution') or {}
+    if frame.get('ok') and execution.get('movement_observation'):
+        reconciliation = {'status': 'later_position_unavailable',
+                          'meaning': 'Earlier receipt remains historical; no arrival or failure cause inferred.'}
+        try:
+            from smacx_order_attention import unit_state
+            _, tracking = _runtime_services()
+            projection = tracking.world_store.load(tracking.scope, tracking.timeline_id)
+            if projection and str(projection.get('action_revision')) == str((frame.get('identity') or {}).get('revision')):
+                unit_ref = (response.get('executed_choice') or {}).get('own_unit_ref')
+                state = unit_state(projection, unit_ref)
+                if state:
+                    reconciliation = {
+                        'status': 'later_current_position_observed', 'unit_ref': unit_ref,
+                        'earlier_location_ref': execution.get('observed_location_ref'),
+                        'later_location_ref': state['location_ref'],
+                        'later_action_revision': projection['action_revision'],
+                        'later_observation_cursor': projection.get('observation_cursor'),
+                        'meaning': 'Use this later position for current placement. The earlier receipt sample is superseded for placement only; route, cause, arrival and objective completion are not established.'}
+        except Exception:
+            pass  # Optional comparison never changes execution success or triggers replay.
+        response['movement_reconciliation'] = reconciliation
     if frame.get("ok"):
         response["required_next"] = dict(frame.get("required_next") or {"tool": "smac_decision"})
         if frame.get("choices"):

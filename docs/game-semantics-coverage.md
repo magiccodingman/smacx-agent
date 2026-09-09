@@ -1324,3 +1324,10 @@ Efficient continuation integrated acceptance: installed Hermes/provider capture
 and guarded two-action adapter chain pass. Nested-frame lifecycle, journal scope,
 fairness, attention, context pressure and immutable audit checks pass. Live game
 latency/strategic outcomes remain explicitly unvalidated; see benchmark evidence.
+
+Continuation cleanup checkpoints: expired receipt protocol is compacted while
+outcome/provenance/unknown obligations and strategic prose survive captured-request
+replay. Physical boundary completeness reaches anchors and registry queries;
+runtime assembly flags possible belief overstatement without modifying cognition.
+Later movement placement is revision-matched and does not imply task completion.
+See [cleanup acceptance](benchmarks/continuation-cleanup.md) for evidence and limits.

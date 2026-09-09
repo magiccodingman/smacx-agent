@@ -724,7 +724,8 @@ def _install() -> None:
         continuation_metrics = {}
         if os.environ.get("SMACX_CONSERVATIVE_CONTINUATION", "1") != "0":
             filtered, continuation_metrics = preserve_continuation(
-                sanitized, last_user, tool_names, _managed_tool_result)
+                sanitized, last_user, tool_names, _managed_tool_result,
+                protected=pending_tool_ids)
             pruned_tool_calls = pruned_tool_results = continuation_metrics["settled_protocol_pairs_removed"]
         else:
             filtered = sanitized

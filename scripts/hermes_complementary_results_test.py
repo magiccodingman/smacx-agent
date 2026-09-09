@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory() as temporary:
     attached_rows+=batch([('second','smac_execute_choice',{'decision_id':'bundled','choice_id':'bundled-choice'},
         {'ok':True,'decision_consumed':True,'completed':True})])
     cleaned=result(AIAgent._sanitize_api_messages(attached_rows),'first')
-    assert cleaned['completed'] and cleaned['post_action_decision']['frame']['decision_consumed']
+    assert cleaned['completed'] and 'post_action_decision' not in cleaned
     assert 'bundled-choice' not in json.dumps(cleaned)
     recovery={'ok':False,'error':{'code':'unknown_decision'},'native_action_executed':False,
         'failure_budget':{'consecutive_failures':1,'stop_at':4},

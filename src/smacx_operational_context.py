@@ -1,5 +1,41 @@
 """Observed operational exceptions and commitments, without assigning strategy."""
 from collections import defaultdict
+import re
+
+
+def geographic_completeness(topology, refs):
+    """Known terrain extent only; unobserved neighbors have no inferred domain."""
+    unknown = set()
+    stale = False
+    for ref in refs:
+        square = topology.by_ref[ref]
+        stale |= not square.current
+        for position in topology.shape.neighbors((square.x, square.y)).values():
+            neighbor = topology.by_position.get(position)
+            if neighbor is None or neighbor.terrain == 'unknown':
+                unknown.add(position)
+            elif not neighbor.current:
+                stale = True
+    return {'boundary_status': 'incomplete' if unknown else 'indeterminate_stale' if stale else 'observed_closed',
+            'unknown_adjacent_location_count': len(unknown)}
+
+
+def geographic_belief_review(cognition, anchor, limit=2):
+    """Heuristic review trigger, never a determination that a belief is false."""
+    incomplete = [m for m in anchor.get('physical_masses', [])
+                  if m.get('landmass_ref') and m.get('geographic_completeness', {}).get('boundary_status') in {'incomplete', 'indeterminate_stale'}]
+    if not incomplete:
+        return []
+    rows = []
+    for belief in cognition.get('beliefs', []):
+        content = str(belief.get('content') or '')
+        if re.search(r'\b(island|landmass|continent)\b', content, re.I) and re.search(r'\b(fully (revealed|explored|mapped)|entirely (mine|ours)|no rivals)\b', content, re.I):
+            rows.append({'belief_ref': belief.get('belief_id') or belief.get('ref_id'),
+                         'belief_topic': belief.get('topic'),
+                         'review_reason': 'possible_geographic_overstatement',
+                         'candidate_landmass_refs': [m['landmass_ref'] for m in incomplete[:2]],
+                         'meaning': 'Text heuristic: the belief may concern these incompletely observed areas. Verify scope and coverage; no belief or confidence was changed.'})
+    return rows[:limit]
 
 
 def operational_context(objects, limit=8):

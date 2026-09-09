@@ -25,3 +25,23 @@ m.smac_decision=lambda: {**frame,'identity':{'match_id':'other','session_id':key
 r=m._attach_post_action_decision(copy.deepcopy(base),key)
 assert r['ok'] and r['post_action_decision']['frame']['error']['code']=='post_action_scope_changed'
 print('post-action decision: settled success, pending/handoff exclusion, scope and observation failure passed')
+
+from types import SimpleNamespace
+frame['identity']['revision'] = 'later'
+m.smac_decision = lambda: copy.deepcopy(frame)
+projection = {'action_revision': 'later', 'observation_cursor': 9, 'objects': [{
+    'object_ref': 'own-unit-1', 'kind': 'own_unit', 'location_ref': 'location-new',
+    'fields': {k: {'epistemic_status': 'current', 'value': v} for k, v in
+               {'order_name': 'none', 'ready': False, 'moves_spent': 6}.items()}}]}
+m._runtime_services = lambda: (None, SimpleNamespace(scope='scope', timeline_id='main',
+    world_store=SimpleNamespace(load=lambda *args: projection)))
+moving = {**base, 'executed_choice': {'own_unit_ref': 'own-unit-1'},
+          'execution': {'movement_observation': {'reported_position_changed': False},
+                        'observed_location_ref': 'location-old'}}
+r = m._attach_post_action_decision(copy.deepcopy(moving), key)
+assert r['movement_reconciliation']['later_location_ref'] == 'location-new'
+assert r['execution'] == moving['execution']
+projection['action_revision'] = 'wrong'
+r = m._attach_post_action_decision(copy.deepcopy(moving), key)
+assert r['movement_reconciliation']['status'] == 'later_position_unavailable'
+print('movement chronology: current matching observation supersedes placement only; mismatched revision rejected')

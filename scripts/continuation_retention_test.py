@@ -21,3 +21,23 @@ assert any(m.get('tool_call_id')=='recent' for m in out)
 assert sum(m.get('content')=='Treaty promise stands; enemy sighting stale.' for m in out)==1
 assert metrics['exact_prose_duplicates_removed']==1 and not metrics['semantic_summary_inferred']
 print('continuation retention: strategic rationale, stale evidence, promise, unresolved result, recent episode, pair validity, immutable audit passed')
+
+receipt = {'ok': True, 'completed': True, 'execution_status': 'completed',
+           'unrecognized_effect_obligation': {'effect_verified': False},
+           'executed_choice': {'label': 'Move'}, 'execution': {'status': 'completed'},
+           'journal': {'journal_event_id': 'event-1'},
+           'post_action_decision': {'frame': {'decision_consumed': True}},
+           'required_next': {'decision_id': 'expired'}}
+history = [{'role': 'user', 'content': 'old'},
+           {'role': 'assistant', 'content': 'Chosen for river access.', 'tool_calls': [{'id': 'move'}]},
+           {'role': 'tool', 'tool_call_id': 'move', 'content': json.dumps(receipt)},
+           {'role': 'user', 'content': 'next'}]
+out, _ = preserve_continuation(history, 3, {'move': 'smac_execute_choice'}, json.loads)
+retained = json.loads(out[2]['content'])
+assert retained['journal'] == receipt['journal'] and retained['execution'] == receipt['execution']
+assert retained['unrecognized_effect_obligation'] == receipt['unrecognized_effect_obligation']
+assert 'post_action_decision' not in retained and 'required_next' not in retained
+assert out[1]['content'] == history[1]['content']
+out, _ = preserve_continuation(history, 3, {'move': 'smac_execute_choice'}, json.loads, protected={'move'})
+assert out[2] == history[2]
+print('settled receipt compacted with outcome, provenance and prose retained; unseen receipt protected')

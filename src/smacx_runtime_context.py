@@ -748,9 +748,13 @@ class RuntimeContextAssembler:
             "anchor_observation_cursor": anchor["anchor_observation_cursor"],
             "anchor": anchor["payload"],
             "net_deltas": anchor.get("net_deltas", []),
-            "delta_semantics": "appeared/changed describe known representation, not physical creation/growth. Feature and landmark counts are known extent; increases may be discovery. Use qualified temporal events for observed changes; no event is not proof of no physical change.",
+            "delta_semantics": "appeared/changed describe known representation, not creation/growth. Counts are known extent, not total size. Unknown neighbors have unknown land/ocean type. Observed boundary closure proves neither ownership nor absence of rivals. Use temporal events for observed changes; absence of events does not prove absence of change.",
             "net_deltas_truncated": bool(anchor.get("net_deltas_truncated")),
         }
+        from smacx_operational_context import geographic_belief_review
+        belief_review = geographic_belief_review(cognition, anchor['payload'])
+        if belief_review:
+            payload['operational_review']['geographic_belief_review'] = belief_review
         # The authoritative anchor/focus, binding commitments, and critical
         # attention are pinned. Optional interpretive recall is the first
         # runtime component discarded under pressure.

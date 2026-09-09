@@ -138,7 +138,7 @@ def main() -> int:
                  "updated_unix": 1000 - index} for index in range(30)
             ],
             "beliefs": [
-                {"topic": f"belief-{index}", "content": "b" * 1200,
+                {"topic": f"belief-{index}", "content": "My island is fully revealed with no rivals." if index == 0 else "b" * 1200,
                  "updated_unix": 1000 - index} for index in range(30)
             ],
             "situation": {"summaries": [
@@ -161,6 +161,9 @@ def main() -> int:
                                   episode_mode="gameplay", context_length=65536)
         rich = assembler.build(episode_id="episode-runtime-256k",
                                episode_mode="gameplay", context_length=262144)
+        assert compact['operational_review']['geographic_belief_review'][0]['review_reason'] == 'possible_geographic_overstatement'
+        assert rich['operational_review']['geographic_belief_review']
+        assert working['sections']['beliefs'][0]['content'] == 'My island is fully revealed with no rivals.'
         assert compact["identity"] == rich["identity"]
         assert compact["identity"]["session_id"] == "session-runtime-current"
         assert compact["identity"]["action_revision"] == "action-9"

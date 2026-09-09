@@ -1071,7 +1071,7 @@ class WorldService:
                     {key: value for key, value in row.items() if key in {
                         "landmass_ref", "ocean_mass_ref", "region_ref", "frontier_ref",
                         "theater_ref", "ownership_interface_ref", "anchor_location_ref", "known_location_count",
-                        "location_count", "mobility_profile_ref", "owned_base_count",
+                        "location_count", "geographic_completeness", "mobility_profile_ref", "owned_base_count",
                         "current_foreign_base_count"}}
                     for ref, row in sorted(derived_registry.items())
                     if not subjects or ref in nominated_regions

@@ -868,11 +868,13 @@ class SemanticLodProjector:
                           | (set(mass.location_refs) & pinned)
                           | ({mass.region_ref} & pinned))
         ref_key = "landmass_ref" if kind == "land" else "ocean_mass_ref"
+        from smacx_operational_context import geographic_completeness
         return {
             ref_key: mass.region_ref,
             "lineage_ref": mass.lineage_ref, "version": mass.version,
             "anchor_location_ref": mass.anchor_location_ref,
             "known_location_count": len(mass.location_refs),
+            "geographic_completeness": geographic_completeness(topology, mass.location_refs),
             "current_known_location_count": sum(
                 int(topology.by_ref[ref].current) for ref in mass.location_refs
             ),
@@ -1249,7 +1251,7 @@ class SemanticLodProjector:
         if estimate_tokens(anchor) > content_cap:
             anchor["physical_masses"] = [{key: value for key, value in item.items()
                                           if key in {"landmass_ref", "ocean_mass_ref", "version",
-                                                     "known_location_count", "lod_level",
+                                                     "known_location_count", "geographic_completeness", "lod_level",
                                                      "promoted_by_refs", "owned_base_count", "owned_base_refs",
                                                      "current_foreign_base_count", "owned_land_force_count",
                                                      "current_visible_land_contact_counts_by_faction"}}
