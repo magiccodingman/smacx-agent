@@ -174,7 +174,8 @@ public sealed record UpdateLobbySeatRequest(
     string PersonalityId = "standard");
 
 public sealed record MatchLifecycleRequest(
-    string Action, string? Slot = null, string? IncidentId = null);
+    string Action, string? Slot = null, string? IncidentId = null,
+    bool RecompileDoctrine = false);
 
 public sealed record ControllerLeaseRequest(string PlayInstanceId);
 

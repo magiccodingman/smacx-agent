@@ -120,6 +120,13 @@ def summary(event):
             'completed','queued','action_id','gameplay','completion_semantics','effect_disposition','state_changed_during_enumeration',
             'turn_handoff_required','turn_provenance','base_screen_closed','turn_completion_verified','turn_boundary_notice','choice_scope','production_context','citizen_context','query_hint','required_next','persistence','journal_event_id',
             'energy_cost','energy_credits','minerals_added','minerals_before','minerals_accumulated','mineral_change','production_name','terraform_completion_verified','follow_up') if k in result}
+        recovery = result.get('recovery')
+        if isinstance(recovery, dict) and recovery.get('kind') == 'decision_refresh':
+            frame = recovery.get('frame') or {}
+            chosen['recovery'] = {'kind': 'decision_refresh',
+                'attempted_action_replayed': recovery.get('attempted_action_replayed'),
+                'frame': {k: frame[k] for k in ('ok', 'error', 'decision_id', 'turn', 'phase', 'focus') if k in frame},
+                'choice_count': len(frame.get('choices') or [])}
         health = result.get('plan_health')
         if isinstance(result.get('mode'), str) and isinstance(result.get('items'), list):
             chosen['world_query'] = {

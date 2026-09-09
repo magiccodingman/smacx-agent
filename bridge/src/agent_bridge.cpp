@@ -535,6 +535,17 @@ int deferred_obliterate_unit_id = -1;
 int active_obliterate_base_id = -1;
 int active_obliterate_unit_id = -1;
 int active_obliterate_decision = -1;
+int deferred_development_unit_id = -1;
+int deferred_development_former_id = -1;
+bool deferred_development_sent = false;
+int deferred_development_faction = -1;
+int deferred_development_work_before = 0;
+int deferred_development_bases_before = 0;
+int deferred_development_units_before = 0;
+DWORD deferred_development_sent_at = 0;
+int deferred_development_x = -1;
+int deferred_development_y = -1;
+uint64_t deferred_development_handle = 0;
 int deferred_disband_unit_id = -1;
 int active_disband_unit_id = -1;
 int active_disband_decision = -1;
@@ -1170,13 +1181,60 @@ int origin_x = -1, int origin_y = -1, int target_x = -1, int target_y = -1) {
         static_cast<int>(deferred_action.id), unit_id);
 }
 
+void finish_pending_development() {
+    if (!deferred_development_sent || deferred_development_unit_id < 0
+    || native_move_on_stack || !game_active()) return;
+    const int id = deferred_development_unit_id, former = deferred_development_former_id;
+    const int x = deferred_development_x, y = deferred_development_y;
+    bool verified = false, terrain_completed = false;
+    if (former < 0) {
+        const int base = base_at(x, y);
+        bool pod_present = false;
+        // Inspect existing handles only; never allocate identities for hidden units.
+        for (int handle : semantic_vehicle_handles)
+            if (handle == static_cast<int>(deferred_development_handle)) pod_present = true;
+        verified = !pod_present && *BaseCount == deferred_development_bases_before + 1
+            && *VehCount == deferred_development_units_before - 1
+            && base >= 0 && Bases[base].faction_id == deferred_development_faction;
+    } else if (id < *VehCount && Vehs[id].faction_id == deferred_development_faction
+    && semantic_vehicle_handle(id) == deferred_development_handle
+    && Vehs[id].x == x && Vehs[id].y == y) {
+        MAP* sq = mapsq(x, y);
+        terrain_completed = sq && (former == FORMER_REMOVE_FUNGUS ? !sq->is_fungus()
+            : (sq->items & Terraform[former].bit) != 0);
+        verified = (Vehs[id].order == former + VehOrderFormerFirst
+            && Vehs[id].movement_turns > deferred_development_work_before) || terrain_completed;
+    }
+    if (!verified && GetTickCount() - deferred_development_sent_at < 15000) return;
+    deferred_development_unit_id = -1;
+    deferred_development_sent = false;
+    deferred_action.native_result = verified ? 1 : 0;
+    deferred_action.status = verified ? "completed" : "rejected";
+    deferred_action.resolution = verified ? former < 0 ? "native_base_founded"
+        : terrain_completed ? "native_terraform_completed" : "native_terraform_work_observed"
+        : "native_development_not_verified";
+    ++semantic_mutation_generation;
+}
+
 std::string deferred_action_response(uint32_t requested_id = 0) {
+    finish_pending_development();
     if (!deferred_action.id) {
         return "{\"ok\":true,\"action\":null}";
     }
     if (requested_id && requested_id != deferred_action.id) {
         return error_response("action_status_expired",
             "Only the most recently queued deferred action remains available; observe fresh state.");
+    }
+    // action_status remains callable while a blocking native move is on the
+    // stack so watchdogs can distinguish progress from a dead process.  Do
+    // not expose a provisional completion or inspect map/unit state in that
+    // transient window: the native routine may still be presenting a pod
+    // result, compacting vehicles, or unwinding DirectPlay callbacks.
+    if (native_move_on_stack) {
+        return std::string("{\"ok\":true,\"action\":{\"action_id\":")
+            + std::to_string(deferred_action.id)
+            + ",\"command\":" + json_string(deferred_action.command.c_str())
+            + ",\"status\":\"pending\",\"resolution\":\"native_action_unwinding\"}}";
     }
     std::ostringstream out;
     out << "{\"ok\":true,\"action\":{\"action_id\":" << deferred_action.id
@@ -1189,6 +1247,12 @@ std::string deferred_action_response(uint32_t requested_id = 0) {
     }
     if (!deferred_action.resolution.empty()) {
         out << ",\"resolution\":" << json_string(deferred_action.resolution.c_str());
+    }
+    if (deferred_action.command == "collect_supply_pod"
+    && deferred_action.status != "pending") {
+        out << ",\"supply_pod_removed\":"
+            << (!goody_at(deferred_action.target_x, deferred_action.target_y)
+                ? "true" : "false");
     }
     if (deferred_action.unit_id >= 0) {
         out << ",\"unit_id\":" << deferred_action.unit_id
@@ -3490,7 +3554,7 @@ void append_governor_permissions(std::ostringstream& out, uint32_t flags) {
 bool deferred_native_action_pending() {
     return deferred_diplomacy_faction_id >= 0 || deferred_council_faction_id >= 0
         || deferred_nerve_staple_base_id >= 0 || deferred_obliterate_base_id >= 0
-        || deferred_destroy_unit_id >= 0
+        || deferred_destroy_unit_id >= 0 || deferred_development_unit_id >= 0
         || deferred_move_unit_id >= 0
         || deferred_probe_unit_id >= 0 || deferred_missile_unit_id >= 0
         || pending_council_timer_stage > 0;
@@ -3998,6 +4062,11 @@ bool omit_zero = false) {
 }
 
 bool reviewed_information_popup(const std::string& label) {
+    // Stock BULLY0..6 announce the native AI's response to a refused demand.
+    // They contain no alternatives. The native continuation owns any ensuing
+    // Vendetta; acknowledging the notice does not prove that effect completed.
+    bool refused_demand_notice = label.size() == 6 && label.compare(0, 5, "BULLY") == 0
+        && label[5] >= '0' && label[5] <= '6';
     bool vendetta_statement = label.size() > 8 && label.compare(0, 8, "VENDETTA") == 0
         && label[8] >= '0' && label[8] <= '9';
     // Unity-pod outcomes beginning GOODY* and OGREPOD report an outcome that
@@ -4085,7 +4154,7 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "COUNCILOPEN" || label == "COUNCILHOTPASS" || label == "COUNCILHOTFAIL"
         || label == "COUNCILHOTVETO" || label == "COUNCILHOTGOVWIN"
         || label == "COUNCILHOTGOVLOSE" || label == "COUNCILHOTGOVNONE"
-        || vendetta_statement || resolved_unity_pod || resolved_technology_notice
+        || refused_demand_notice || vendetta_statement || resolved_unity_pod || resolved_technology_notice
         || resolved_probe_notice || resolved_project_notice || resolved_base_capture_notice
         || resolved_elimination_notice || resolved_diplomacy_notice
         || resolved_commerce_notice || resolved_base_status || resolved_production_notice;
@@ -4702,6 +4771,8 @@ std::string semantic_revision() {
     mix(static_cast<uint32_t>(base_ref_token(active_obliterate_base_id)));
     mix(static_cast<uint32_t>(unit_ref_token(active_obliterate_unit_id)));
     mix(static_cast<uint32_t>(active_obliterate_decision + 1));
+    mix(static_cast<uint32_t>(unit_ref_token(deferred_development_unit_id)));
+    mix(static_cast<uint32_t>(deferred_development_former_id + 2));
     mix(static_cast<uint32_t>(unit_ref_token(deferred_disband_unit_id)));
     mix(static_cast<uint32_t>(unit_ref_token(active_disband_unit_id)));
     mix(static_cast<uint32_t>(active_disband_decision + 1));
@@ -8166,6 +8237,108 @@ std::string test_full_endgame_status_response() {
     return out.str();
 }
 
+std::string test_multiplayer_development_fixture_response(const std::string& request) {
+    char mode[8] = {}, lan[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", mode, sizeof(mode)) || strcmp(mode, "1")
+    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_LAN_HOST", lan, sizeof(lan)) || strcmp(lan, "1"))
+        return error_response("test_mode_disabled", "Isolated multiplayer development fixture is disabled.");
+    if (!game_active() || !*MultiplayerActive) return error_response("test_not_multiplayer", "Load an isolated multiplayer fixture.");
+    int faction = field_int(request, "faction_id", -1);
+    int former = field_int(request, "former_id", -1);
+    if (faction < 1 || faction >= MaxPlayerNum || former < -1 || former > FORMER_REMOVE_FUNGUS)
+        return error_response("invalid_fixture", "Invalid controlled fixture selector.");
+    for (int y = 4; y < *MapAreaY - 4; ++y) {
+        for (int x = y & 1; x < *MapAreaX; x += 2) {
+            MAP* sq = mapsq(x, y);
+            if (!sq || is_ocean(sq) || sq->base_who() >= 0 || veh_at(x, y) >= 0
+            || (sq->owner >= 1 && sq->owner != faction)
+            || !can_build_base(x, y, faction, TRIAD_LAND)) continue;
+            // Apply this fixture identically on both isolated replicas.
+            for (int f = FORMER_FARM; f <= FORMER_MONOLITH; ++f)
+                sq->items &= ~(Terraform[f].bit | Terraform[f].bit_incompatible);
+            rocky_set(x, y, LEVEL_ROLLING);
+            sq->owner = faction;
+            sq->visibility |= (1 << faction);
+            if (former == FORMER_REMOVE_FUNGUS) sq->items |= BIT_FUNGUS;
+            int id = veh_init(former < 0 ? BSC_COLONY_POD : BSC_FORMERS, faction, x, y);
+            Vehs[id].moves_spent = 0;
+            Vehs[id].order = ORDER_NONE;
+            Vehs[id].visibility |= 1 << faction;
+            if (field_int(request, "moved", 0) == 1) {
+                Vehs[id].moves_spent = 1;
+                Vehs[id].state |= VSTATE_HAS_MOVED;
+                Vehs[id].flags &= ~VFLAG_FULL_MOVE_SKIPPED;
+            }
+            // Completion case tests the actual final work increment/terrain effect.
+            if (former >= 0 && field_int(request, "complete", 0) == 1)
+                Vehs[id].movement_turns = 250;
+            ++semantic_mutation_generation;
+            return std::string("{\"ok\":true,\"unit_id\":") + std::to_string(id)
+                + ",\"tile_id\":" + std::to_string(semantic_tile_id(x, y)) + '}';
+        }
+    }
+    return error_response("fixture_site_unavailable", "No controlled legal land site.");
+}
+
+std::string test_multiplayer_supply_pod_fixture_response(const std::string& request) {
+    char mode[8] = {}, lan[8] = {};
+    if (!GetEnvironmentVariableA("SMACX_AGENT_TEST_MODE", mode, sizeof(mode)) || strcmp(mode, "1")
+    || !GetEnvironmentVariableA("SMACX_AGENT_TEST_LAN_HOST", lan, sizeof(lan)) || strcmp(lan, "1"))
+        return error_response("test_mode_disabled", "Isolated multiplayer supply-pod fixture is disabled.");
+    if (!game_active() || !*MultiplayerActive)
+        return error_response("test_not_multiplayer", "Load an isolated multiplayer fixture.");
+    int target_tile_id = field_int(request, "target_tile_id", -1);
+    if (target_tile_id >= 0) {
+        int x = -1, y = -1;
+        if (!semantic_tile_coords(target_tile_id, &x, &y))
+            return error_response("invalid_fixture_tile", "Unknown supply-pod fixture tile.");
+        return std::string("{\"ok\":true,\"target_tile_id\":")
+            + std::to_string(target_tile_id) + ",\"supply_pod_present\":"
+            + (goody_at(x, y) ? "true" : "false") + '}';
+    }
+    int faction = field_int(request, "faction_id", -1);
+    if (faction < 1 || faction >= MaxPlayerNum)
+        return error_response("invalid_fixture", "Invalid controlled fixture faction.");
+    for (int y = 4; y < *MapAreaY - 4; ++y) {
+        for (int x = y & 1; x < *MapAreaX; x += 2) {
+            MAP* origin = mapsq(x, y);
+            if (!origin || is_ocean(origin) || origin->base_who() >= 0
+            || veh_at(x, y) >= 0 || (origin->owner >= 1 && origin->owner != faction)) continue;
+            for (int dir = 0; dir < 8; ++dir) {
+                int tx = wrap(x + BaseOffsetX[dir]);
+                int ty = y + BaseOffsetY[dir];
+                MAP* target = mapsq(tx, ty);
+                if (!target || is_ocean(target) || target->base_who() >= 0
+                || veh_at(tx, ty) >= 0
+                || (target->owner >= 1 && target->owner != faction)) continue;
+                origin->owner = faction;
+                target->owner = faction;
+                origin->visibility |= 1 << faction;
+                target->visibility |= 1 << faction;
+                target->items &= ~(BIT_SUPPLY_REMOVE | BIT_MONOLITH
+                    | BIT_SUPPLY_POD | BIT_UNK_4000000 | BIT_UNK_8000000);
+                target->items |= (*GameRules & RULES_NO_UNITY_SCATTERING)
+                    ? BIT_UNK_4000000 : BIT_SUPPLY_POD;
+                int id = veh_init(BSC_SCOUT_PATROL, faction, x, y);
+                if (id < 0) continue;
+                Vehs[id].moves_spent = 0;
+                Vehs[id].order = ORDER_NONE;
+                Vehs[id].visibility |= 1 << faction;
+                ++semantic_mutation_generation;
+                std::ostringstream out;
+                out << "{\"ok\":true,\"unit_id\":" << id
+                    << ",\"origin_tile_id\":" << semantic_tile_id(x, y)
+                    << ",\"target_tile_id\":" << semantic_tile_id(tx, ty)
+                    << ",\"direction_id\":" << dir
+                    << ",\"supply_pod_present\":"
+                    << (goody_at(tx, ty) ? "true" : "false") << '}';
+                return out.str();
+            }
+        }
+    }
+    return error_response("fixture_site_unavailable", "No controlled adjacent land pair is available.");
+}
+
 std::string test_network_sync_status_response() {
     char test_mode[8] = {};
     char test_lan[8] = {};
@@ -8225,6 +8398,8 @@ std::string test_network_sync_status_response() {
             << ",\"faction_id\":" << static_cast<int>(veh.faction_id)
             << ",\"prototype_id\":" << static_cast<int>(veh.unit_id)
             << ",\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
+            << ",\"movement_turns\":" << static_cast<int>(veh.movement_turns)
+            << ",\"tile_items\":" << static_cast<unsigned int>(mapsq(veh.x, veh.y)->items)
             << ",\"moves_spent\":" << static_cast<int>(veh.moves_spent)
             << ",\"damage_taken\":" << static_cast<int>(veh.damage_taken)
             << ",\"order\":" << static_cast<int>(veh.order)
@@ -8265,6 +8440,12 @@ std::string test_network_sync_status_response() {
         Faction& faction = Factions[faction_id];
         out << "{\"id\":" << faction_id
             << ",\"energy\":" << faction.energy_credits
+            << ",\"diplomatic_status\":[";
+        for (int other = 0; other < MaxPlayerNum; ++other) {
+            if (other) out << ',';
+            out << faction.diplo_status[other];
+        }
+        out << ']'
             << ",\"allocation\":{\"economy\":"
             << (10 - faction.SE_alloc_labs - faction.SE_alloc_psych)
             << ",\"psych\":" << faction.SE_alloc_psych
@@ -10654,6 +10835,7 @@ std::string semantic_owned_progress_digest() {
 }
 
 std::string semantic_snapshot_response() {
+    finish_pending_development();
     InterlockedExchange(&request_execution_stage, 10);
     if (!game_active()) return status_response();
     refresh_deferred_end_turn_state();
@@ -11067,8 +11249,13 @@ std::string semantic_snapshot_response() {
         << "\"continue_diplomacy:ai_greeting\","
         << "\"respond_to_diplomatic_offer:reject_technology_or_relationship_offer\","
         << "\"respond_to_diplomatic_offer:introduced_commlink_accept_or_reject\","
+        << "\"respond_to_diplomatic_offer:ai_energy_demand_reject_accept_counter\","
         << "\"choose_diplomacy_option:finish_ai_conversation\","
         << "\"move_unit:adjacent_safe_or_at_war_combat_v2\","
+        << "\"collect_supply_pod:adjacent_visible_native_network_move\","
+        << "\"found_base:land_native_network_build\","
+        << "\"terraform:basic_land_native_synch_action\","
+        << "\"activate_unit:held_land_native_synch_veh\","
         << "\"skip_unit:native_synch_veh\","
         << "\"hold_unit:native_synch_veh\","
         << "\"sentry_unit:native_synch_veh\","
@@ -11320,7 +11507,7 @@ std::string production_choices_response(int faction_id, int base_id) {
         << ",\"revision\":" << json_string(semantic_revision().c_str())
         << ",\"kind\":\"production\",\"base_id\":" << base_id
         << ",\"base_name\":" << json_string(base.name)
-        << ",\"population\":" << base.pop_size
+        << ",\"population\":" << static_cast<int>(base.pop_size)
         << ",\"current\":{\"item_id\":" << base.queue_items[0]
         << ",\"name\":" << json_string(production_name(base.queue_items[0]).c_str())
         << ",\"mineral_cost\":" << current_item_cost
@@ -11349,7 +11536,7 @@ std::string production_choices_response(int faction_id, int base_id) {
         append_production_switch_effect(out, base_id, unit_id);
         if (Units[unit_id].plan == PLAN_COLONY) {
             out << ",\"population_effect\":{\"epistemic_status\":\"conditional\","
-                "\"population_at_query\":" << base.pop_size
+                "\"population_at_query\":" << static_cast<int>(base.pop_size)
                 << ",\"population_change_on_selection\":0,\"population_cost_on_completion\":1,"
                 "\"meaning\":\"Selecting this Colony Pod starts or changes production and does not itself remove population. Native completion normally consumes one population; if completion occurs at population one, native rules may delay completion or require an abandon-base decision. Recheck at completion.\"}";
         }
@@ -11793,6 +11980,76 @@ int target_x, int target_y) {
         || (is_ocean(sq) == (veh.triad() == TRIAD_SEA));
 }
 
+bool multiplayer_supply_pod_target(int faction_id, int veh_id,
+int target_x, int target_y) {
+    if (faction_id < 1 || veh_id < 0 || veh_id >= *VehCount
+    || Vehs[veh_id].faction_id != faction_id
+    || !semantic_unit_requires_decision(veh_id)) return false;
+    VEH& veh = Vehs[veh_id];
+    MAP* sq = mapsq(target_x, target_y);
+    if (!sq || !sq->is_visible(faction_id) || !goody_at(target_x, target_y)) {
+        return false;
+    }
+    bool adjacent = false;
+    for (int dir = 0; dir < 8; ++dir) {
+        adjacent |= wrap(veh.x + BaseOffsetX[dir]) == target_x
+            && veh.y + BaseOffsetY[dir] == target_y;
+    }
+    if (!adjacent || base_at(target_x, target_y) >= 0
+    || (sq->owner >= 1 && sq->owner != faction_id)
+    || veh_at(target_x, target_y) >= 0) return false;
+    return veh.triad() == TRIAD_AIR
+        || (is_ocean(sq) == (veh.triad() == TRIAD_SEA));
+}
+
+void append_settlement_choice_evidence(std::ostringstream& out,
+int faction_id, int x, int y) {
+    int nearest_known_base_range = 9999;
+    std::map<int, std::vector<int>> known_base_radius;
+    for (int base_id = 0; base_id < *BaseCount; ++base_id) {
+        BASE& base = Bases[base_id];
+        MAP* base_sq = mapsq(base.x, base.y);
+        if (base.faction_id != faction_id
+        && (!base_sq || !base_sq->is_visible(faction_id))) continue;
+        nearest_known_base_range = min(nearest_known_base_range,
+            map_range(x, y, base.x, base.y));
+        for (int offset = 0; offset < 21; ++offset) {
+            int rx = 0, ry = 0;
+            if (next_tile(base.x, base.y, offset, &rx, &ry))
+                known_base_radius[semantic_tile_id(rx, ry)].push_back(base_id);
+        }
+    }
+    int known_radius_count = 0;
+    std::map<int, int> overlaps;
+    for (int offset = 0; offset < 21; ++offset) {
+        int rx = 0, ry = 0;
+        MAP* radius_sq = next_tile(x, y, offset, &rx, &ry);
+        if (!radius_sq) continue;
+        if (radius_sq->is_visible(faction_id)) ++known_radius_count;
+        auto found = known_base_radius.find(semantic_tile_id(rx, ry));
+        if (found != known_base_radius.end())
+            for (int base_id : found->second) ++overlaps[base_id];
+    }
+    out << ",\"settlement_context\":{\"founding_legality\":\"current_native_legal\""
+        << ",\"site_tile_id\":" << semantic_tile_id(x, y)
+        << ",\"minimum_base_range\":" << conf.base_spacing
+        << ",\"nearest_known_base_range\":";
+    if (nearest_known_base_range < 9999) out << nearest_known_base_range;
+    else out << "null";
+    out << ",\"known_radius_location_count\":" << known_radius_count
+        << ",\"radius_complete_currently_visible\":"
+        << (known_radius_count == 21 ? "true" : "false")
+        << ",\"overlapping_known_bases\":[";
+    bool comma = false;
+    for (const auto& entry : overlaps) {
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"base_id\":" << entry.first
+            << ",\"overlapping_radius_location_count\":" << entry.second << '}';
+    }
+    out << "],\"meaning\":\"Native legality does not establish strategic quality. Compare nominated alternative locations with smac_world mode=compare before consequential settlement when alternatives are known.\"}";
+}
+
 bool multiplayer_combat_move_target(int faction_id, int veh_id,
 int target_x, int target_y, int* target_faction_id = NULL) {
     if (faction_id < 1 || veh_id < 0 || veh_id >= *VehCount
@@ -11826,6 +12083,40 @@ int target_x, int target_y, int* target_faction_id = NULL) {
     return false;
 }
 
+// Every enabled development action has a two-client synchronization test.
+// Foreign territory and paid/global terrain changes are separate consent paths.
+bool multiplayer_development_eligible(int faction_id, int veh_id, int former_id) {
+    if (veh_id < 0 || veh_id >= *VehCount
+    || Vehs[veh_id].faction_id != faction_id
+    || !semantic_unit_requires_decision(veh_id)) return false;
+    VEH& veh = Vehs[veh_id];
+    MAP* sq = mapsq(veh.x, veh.y);
+    if (!sq || veh.triad() != TRIAD_LAND || is_ocean(sq)
+    || (sq->owner >= 1 && sq->owner != faction_id)) return false;
+    if (former_id < 0) {
+        return veh.is_colony() && *BaseCount < MaxBaseNum
+            && can_build_base(veh.x, veh.y, faction_id, veh.triad());
+    }
+    if (!veh.is_former() || sq->base_who() >= 0) return false;
+    if (former_id != FORMER_FARM && former_id != FORMER_MINE
+    && former_id != FORMER_SOLAR && former_id != FORMER_FOREST
+    && former_id != FORMER_ROAD && former_id != FORMER_SENSOR
+    && former_id != FORMER_REMOVE_FUNGUS) return false;
+    if (!terrain_avail(static_cast<FormerItem>(former_id), 0, faction_id)) return false;
+    if (former_id == FORMER_REMOVE_FUNGUS) return sq->is_fungus();
+    if (sq->is_fungus() || (sq->items & Terraform[former_id].bit)) return false;
+    if (former_id == FORMER_FARM && sq->rocky_level() == LEVEL_ROCKY) return false;
+    return true;
+}
+
+bool multiplayer_activation_eligible(int faction_id, int veh_id) {
+    if (veh_id < 0 || veh_id >= *VehCount) return false;
+    VEH& veh = Vehs[veh_id];
+    return veh.faction_id == faction_id && veh.triad() == TRIAD_LAND
+        && !veh_jail(veh_id) && (veh.order == ORDER_HOLD
+            || (veh.is_former() && veh.order >= ORDER_FARM && veh.order <= VehOrderFormerLast));
+}
+
 std::string multiplayer_unit_choices_response(int faction_id, int veh_id) {
     if (veh_id < 0 || veh_id >= *VehCount
     || Vehs[veh_id].faction_id != faction_id) {
@@ -11841,12 +12132,32 @@ std::string multiplayer_unit_choices_response(int faction_id, int veh_id) {
         << ",\"kind\":\"unit_actions\",\"unit_id\":" << veh_id
         << ",\"unit_name\":" << json_string(veh.name())
         << ",\"at\":{\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
-        << "},\"multiplayer_validation\":\"adjacent_move_and_combat_v2\",\"choices\":[";
+        << "},\"multiplayer_validation\":\"development_v3\",\"movement_budget\":{\"movement_points\":"
+        << veh_speed(veh_id, 0) << ",\"movement_scale\":" << Rules->move_rate_roads
+        << ",\"moves_remaining\":" << max(0, veh_speed(veh_id, 0) - static_cast<int>(veh.moves_spent))
+        << "},\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
+        << ",\"former\":" << (veh.is_former() ? "true" : "false")
+        << "},\"order\":{\"name\":" << json_string(semantic_unit_order_name(veh)) << '}'
+        << semantic_owned_terraform_task(faction_id, veh) << ",\"choices\":[";
     bool comma = false;
     if (semantic_unit_requires_decision(veh_id)) {
         for (int dir = 0; dir < 8; ++dir) {
             int x = wrap(veh.x + BaseOffsetX[dir]);
             int y = veh.y + BaseOffsetY[dir];
+            bool supply_pod = multiplayer_supply_pod_target(
+                faction_id, veh_id, x, y);
+            if (supply_pod) {
+                if (comma) out << ',';
+                comma = true;
+                out << "{\"id\":\"collect_supply_pod:"
+                    << semantic_tile_id(x, y)
+                    << "\",\"command\":\"collect_supply_pod\",\"unit_id\":" << veh_id
+                    << ",\"target_tile_id\":" << semantic_tile_id(x, y)
+                    << ",\"direction_id\":" << dir
+                    << ",\"consequential\":true,\"known_outcome\":false,"
+                    << "\"meaning\":\"Enter this visible adjacent supply pod through the native movement path. The native result is unknown and may be beneficial, dangerous, consume or displace the unit, or open a follow-up interaction; verify the result afterward.\"}";
+                continue;
+            }
             bool safe_move = multiplayer_safe_move_target(
                 faction_id, veh_id, x, y);
             int target_faction = -1;
@@ -11883,10 +12194,51 @@ std::string multiplayer_unit_choices_response(int faction_id, int veh_id) {
             << "\",\"command\":\"sentry_unit\",\"unit_id\":" << veh_id
             << ",\"meaning\":\"Sentry until the native game wakes the unit for nearby danger.\"}";
     }
+    if (multiplayer_activation_eligible(faction_id, veh_id)) {
+        if (comma) out << ',';
+        comma = true;
+        out << "{\"id\":\"activate:" << veh_id
+            << "\",\"command\":\"activate_unit\",\"unit_id\":" << veh_id
+            << ",\"meaning\":\"Cancel this persistent order through native activation. Thinker may restore wholly unused skipped movement; actual travel or work is not a new turn. Inspect the resulting movement budget.\"}";
+    }
+    if (veh.is_colony() || veh.is_former()) {
+        bool available = false;
+        for (int order = -1; order <= FORMER_REMOVE_FUNGUS; ++order) {
+            if (!multiplayer_development_eligible(faction_id, veh_id, order)) continue;
+            if (comma) out << ',';
+            comma = available = true;
+            if (order < 0) {
+                out << "{\"id\":\"found_base:" << veh_id
+                    << "\",\"command\":\"found_base\",\"unit_id\":" << veh_id
+                    << ",\"meaning\":\"Found a base on this legal site; consumes the Colony Pod. Home-base population was paid when the pod was produced, not again at settlement.\"";
+                append_settlement_choice_evidence(out, faction_id, veh.x, veh.y);
+                out << '}';
+            } else {
+                out << "{\"id\":\"terraform:" << order
+                    << "\",\"command\":\"terraform\",\"unit_id\":" << veh_id
+                    << ",\"former_id\":" << order << ",\"name\":" << json_string(Terraform[order].name)
+                    << ",\"meaning\":\"Begin this native terrain order. Verify work and completion in subsequent observations.\"}";
+            }
+        }
+        if (!available) {
+            if (comma) out << ',';
+            comma = true;
+            MAP* sq = mapsq(veh.x, veh.y);
+            const char* reason = !veh_unmoved(veh_id) ? "movement_exhausted"
+                : veh.order != ORDER_NONE ? "persistent_order_requires_activation"
+                : sq && sq->base_who() >= 0 ? "current_tile_has_base"
+                : sq && sq->owner >= 1 && sq->owner != faction_id ? "foreign_territory_not_validated"
+                : veh.is_colony() ? "native_site_illegal_or_unvalidated_triad"
+                : "no_validated_terrain_order_here";
+            out << "{\"id\":\"development:unavailable\",\"kind\":\"rule_status\",\"available\":false,\"reason\":"
+                << json_string(reason) << ",\"minimum_base_range\":" << conf.base_spacing
+                << ",\"meaning\":\"Current state restriction, not universal absence of founding or terraforming. Movement renews next turn; held orders require activation. Settlement must satisfy native spacing, terrain and ownership checks.\"}";
+        }
+    }
     if (comma) out << ',';
     out << "{\"id\":\"multiplayer:remaining_unit_actions\","
         << "\"kind\":\"capability_status\",\"supported\":false,"
-        << "\"meaning\":\"Visible adjacent safe movement and already-at-war conventional combat are validated. Contact, treaty-breaking hostility, pods, capture, and boarding remain separate capability families.\"}"
+        << "\"meaning\":\"Visible adjacent safe movement, guarded supply-pod collection, and already-at-war conventional combat are validated. Treaty-breaking hostility, capture, boarding, sea development and advanced terrain orders remain outside this validated unit-action subset. Land founding, basic terraforming and held-unit activation have separate guarded choices.\"}"
         << "],\"ready\":"
         << (semantic_unit_requires_decision(veh_id) ? "true" : "false") << '}';
     return out.str();
@@ -12742,7 +13094,9 @@ int target_tile_id = -1, int target_unit_id = -1) {
         if (can_build_base(veh.x, veh.y, faction_id, veh.triad())) {
             out << ",{\"id\":\"found_base:" << veh_id
                 << "\",\"command\":\"found_base\",\"unit_id\":" << veh_id
-                << ",\"meaning\":\"Found a base on this legal native-validated site; the Colony Pod is consumed.\"}";
+                << ",\"meaning\":\"Found a base on this legal native-validated site; the Colony Pod is consumed.\"";
+            append_settlement_choice_evidence(out, faction_id, veh.x, veh.y);
+            out << '}';
         } else {
             const char* reason = "native_site_illegal";
             int nearest_known_base_range = 9999;
@@ -14864,6 +15218,12 @@ std::string semantic_command_response(const std::string& request) {
             || multiplayer_combat_move_target(faction_id,
                 field_int(request, "unit_id", -1),
                 multiplayer_move_x, multiplayer_move_y));
+    bool validated_multiplayer_supply_pod = command == "collect_supply_pod"
+        && semantic_request_tile(request, &multiplayer_move_tile_id,
+            &multiplayer_move_x, &multiplayer_move_y)
+        && multiplayer_supply_pod_target(faction_id,
+            field_int(request, "unit_id", -1),
+            multiplayer_move_x, multiplayer_move_y);
     int multiplayer_finish_unit_id = field_int(request, "unit_id", -1);
     bool validated_multiplayer_finish =
         (command == "skip_unit" || command == "hold_unit" || command == "sentry_unit")
@@ -14871,6 +15231,14 @@ std::string semantic_command_response(const std::string& request) {
         && multiplayer_finish_unit_id < *VehCount
         && Vehs[multiplayer_finish_unit_id].faction_id == faction_id
         && semantic_unit_requires_decision(multiplayer_finish_unit_id);
+    bool validated_multiplayer_development =
+        (command == "found_base" && field_string(request, "name").empty()
+            && multiplayer_development_eligible(faction_id, multiplayer_finish_unit_id, -1))
+        || (command == "terraform" && field_int(request, "former_id", -1) >= 0
+            && multiplayer_development_eligible(faction_id, multiplayer_finish_unit_id,
+                field_int(request, "former_id", -1)));
+    bool validated_multiplayer_activation = command == "activate_unit"
+        && multiplayer_activation_eligible(faction_id, multiplayer_finish_unit_id);
     int multiplayer_ready_units = 0;
     for (int veh_id = 0; veh_id < *VehCount; ++veh_id) {
         if (Vehs[veh_id].faction_id == faction_id
@@ -14993,6 +15361,17 @@ std::string semantic_command_response(const std::string& request) {
             || relationship_offer_label(active_label))
         && multiplayer_contact_other >= 1
         && multiplayer_contact_other < MaxPlayerNum
+        && !is_human(multiplayer_contact_other)
+        && active_default_popup();
+    bool validated_multiplayer_energy_demand_response =
+        command == "respond_to_diplomatic_offer"
+        && bribe_demand_label(active_label)
+        && (field_string(request, "response") == "reject"
+            || field_string(request, "response") == "accept"
+            || field_string(request, "response") == "counter")
+        && multiplayer_contact_other >= 1
+        && multiplayer_contact_other < MaxPlayerNum
+        && multiplayer_contact_other != faction_id
         && !is_human(multiplayer_contact_other)
         && active_default_popup();
     bool validated_multiplayer_introduced_commlink_response =
@@ -15144,7 +15523,9 @@ std::string semantic_command_response(const std::string& request) {
         || (command == "advance_project_information" && project_information_id() >= 0)
         || (command == "choose_research_priority"
             && active_label == "TECHRANDOM")
-        || validated_multiplayer_move || validated_multiplayer_finish
+        || validated_multiplayer_move || validated_multiplayer_supply_pod
+        || validated_multiplayer_finish
+        || validated_multiplayer_development || validated_multiplayer_activation
         || validated_multiplayer_save
         || validated_multiplayer_end_turn || validated_multiplayer_production
         || validated_multiplayer_allocation
@@ -15158,6 +15539,7 @@ std::string semantic_command_response(const std::string& request) {
         || validated_multiplayer_contact_response
         || validated_multiplayer_ai_greeting
         || validated_multiplayer_reject_ai_technology_trade
+        || validated_multiplayer_energy_demand_response
         || validated_multiplayer_introduced_commlink_response
         || validated_multiplayer_finish_ai_diplomacy
         || validated_multiplayer_queue_append
@@ -16340,6 +16722,13 @@ std::string semantic_command_response(const std::string& request) {
         BasePop* active = active_default_popup();
         if (!active) return error_response("popup_unavailable", "The diplomatic offer popup is unavailable.");
         int principal = ParseNumTable[0];
+        if ((bribe_demand || bribe_ultimatum) && response != "reject") {
+            int price = agent_popup_parse_number(counter ? 1 : 0);
+            if (price < 0 || Factions[faction_id].energy_credits < price) {
+                return error_response("energy_demand_not_affordable",
+                    "The quoted demand is no longer affordable; inspect fresh choices.");
+            }
+        }
         if ((joint_attack_energy_counteroffer || joint_attack_tech_counteroffer)
         && response == "accept") {
             int target = *diplo_trade_faction_id;
@@ -16588,8 +16977,8 @@ std::string semantic_command_response(const std::string& request) {
         return std::string("{\"ok\":true,\"command\":\"respond_to_diplomatic_offer\",\"response\":")
             + json_string(response.c_str()) + ",\"offer_type\":"
             + json_string(offer_type)
-            + (energy_peace_offer_label(label) ? ",\"energy_change_verified\":false" : "")
-            + (energy_peace_offer_label(label)
+            + ((energy_peace_offer_label(label) || bribe_demand || bribe_ultimatum) ? ",\"energy_change_verified\":false" : "")
+            + ((energy_peace_offer_label(label) || bribe_demand || bribe_ultimatum)
                 ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh treasury and diplomatic state after native processing before recording payment or relationship effects.\""
                 : unconditional_truce_offer_label(label)
                     ? ",\"relationship_change_verified\":false,\"completion_semantics\":\"The response was submitted. Inspect fresh diplomatic state after native processing before recording a truce or continued Vendetta.\""
@@ -17801,6 +18190,7 @@ std::string semantic_command_response(const std::string& request) {
         }
         int old_order = veh.order;
         veh_wake(veh_id);
+        if (*MultiplayerActive) synch_veh(veh_id);
         if (boarded_carrier_id >= 0) {
             veh.state &= ~VSTATE_IN_TRANSPORT;
             stack_veh(boarded_carrier_id, 0);
@@ -18577,7 +18967,7 @@ std::string semantic_command_response(const std::string& request) {
             + ",\"ids_may_have_shifted\":true}";
     }
 
-    if (command == "move_unit") {
+    if (command == "move_unit" || command == "collect_supply_pod") {
         int target_tile_id = -1;
         int x = -1;
         int y = -1;
@@ -18596,7 +18986,7 @@ std::string semantic_command_response(const std::string& request) {
         deferred_move_direction = offset;
         deferred_move_x = x;
         deferred_move_y = y;
-        begin_deferred_action("move_unit", veh_id, veh.x, veh.y, x, y);
+        begin_deferred_action(command.c_str(), veh_id, veh.x, veh.y, x, y);
         if (!PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0)) {
             deferred_move_unit_id = -1;
             deferred_move_direction = -1;
@@ -18605,7 +18995,8 @@ std::string semantic_command_response(const std::string& request) {
             deferred_action.status = "rejected";
             return error_response("move_queue_failed", "The game could not queue the native movement action.");
         }
-        return std::string("{\"ok\":true,\"command\":\"move_unit\",\"queued\":true,\"unit_id\":")
+        return std::string("{\"ok\":true,\"command\":")
+            + json_string(command.c_str()) + ",\"queued\":true,\"unit_id\":"
             + std::to_string(veh_id) + ",\"target_tile_id\":"
             + std::to_string(target_tile_id)
             + ",\"action_id\":" + std::to_string(deferred_action.id) + '}';
@@ -18734,6 +19125,23 @@ std::string semantic_command_response(const std::string& request) {
         }
         out << '}';
         return out.str();
+    }
+    if (*MultiplayerActive && (command == "found_base" || command == "terraform")) {
+        if (deferred_native_action_pending()) return error_response("action_already_queued", "Wait for the pending native action.");
+        deferred_development_unit_id = veh_id;
+        deferred_development_sent = false;
+        deferred_development_former_id = command == "found_base" ? -1 : field_int(request, "former_id", -1);
+        deferred_development_x = veh.x;
+        deferred_development_y = veh.y;
+        deferred_development_handle = semantic_vehicle_handle(veh_id);
+        begin_deferred_action(command.c_str(), veh_id, veh.x, veh.y, veh.x, veh.y);
+        if (!PostMessage(game_window, WM_SMACX_AGENT_DEFERRED, 0, 0)) {
+            deferred_development_unit_id = -1;
+            deferred_action.status = "rejected";
+            return error_response("development_queue_failed", "Native development action could not be queued.");
+        }
+        return std::string("{\"ok\":true,\"queued\":true,\"action_id\":")
+            + std::to_string(deferred_action.id) + '}';
     }
     if (command == "found_base") {
         if (!veh.is_colony() || !can_build_base(veh.x, veh.y, faction_id, veh.triad())) {
@@ -19558,6 +19966,8 @@ std::string execute_request(const std::string& request) {
     if (op == "test_nerve_gas_status") return test_nerve_gas_status_response();
     if (op == "test_self_destruct_status") return test_self_destruct_status_response();
     if (op == "test_full_endgame_status") return test_full_endgame_status_response();
+    if (op == "test_multiplayer_development_fixture") return test_multiplayer_development_fixture_response(request);
+    if (op == "test_multiplayer_supply_pod_fixture") return test_multiplayer_supply_pod_fixture_response(request);
     if (op == "test_network_sync_status") {
         return test_network_sync_status_response();
     }
@@ -20627,6 +21037,60 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
                 : (attempted ? "native_failure" : "state_changed_before_execution");
             return true;
         }
+        if (deferred_development_unit_id >= 0) {
+            if (deferred_development_sent) {
+                finish_pending_development();
+                return true; // A network action is never sent twice.
+            }
+            native_move_on_stack = true;
+            auto development_read_barrier = cleanup_handler([&] {
+                native_move_on_stack = false;
+                PostMessage(game_window, WM_SMACX_AGENT, 0, 0);
+            });
+            const int id = deferred_development_unit_id, former = deferred_development_former_id;
+            const int faction = game_active() ? *CurrentPlayerFaction : -1;
+            if (faction < 1 || !*MultiplayerActive || !human_turn_actionable(faction)
+            || !multiplayer_development_eligible(faction, id, former)
+            || Vehs[id].x != deferred_development_x || Vehs[id].y != deferred_development_y
+            || semantic_vehicle_handle(id) != deferred_development_handle) {
+                deferred_development_unit_id = -1;
+                deferred_action.native_call_attempted = 0;
+                deferred_action.status = "rejected";
+                deferred_action.resolution = "state_changed_before_execution";
+                return true;
+            }
+            deferred_development_faction = faction;
+            deferred_development_work_before = Vehs[id].movement_turns;
+            deferred_development_bases_before = *BaseCount;
+            deferred_development_units_before = *VehCount;
+            deferred_development_sent_at = GetTickCount();
+            deferred_development_sent = true;
+            deferred_action.native_call_attempted = 1;
+            if (former < 0) {
+                net_action_build(id, NULL);
+            } else {
+                // Same order/synchronization/action sequence as Console_terraform,
+                // without its UI selection side effects on unrelated vehicles.
+                net_int_t locked_id = id;
+                if (NetDaemon_lock_veh(NetState, &locked_id, 0, -1, -1, 0)
+                || locked_id != id || !multiplayer_development_eligible(faction, id, former)
+                || semantic_vehicle_handle(id) != deferred_development_handle) {
+                    NetDaemon_unlock_veh(NetState);
+                    deferred_development_unit_id = -1;
+                    deferred_development_sent = false;
+                    deferred_action.status = "rejected";
+                    deferred_action.resolution = "state_changed_before_execution";
+                    return true;
+                }
+                Vehs[id].order = former + VehOrderFormerFirst;
+                synch_veh(id);
+                NetDaemon_await_synch(NetState);
+                NetDaemon_action(NetState, id, 1);
+            }
+            // Awaiting native transport is not proof of the resulting effect.
+            // Receipt/snapshot polling verifies after the engine stack unwinds.
+            return true;
+        }
         if (deferred_disband_unit_id >= 0) {
             int unit_id = deferred_disband_unit_id;
             int faction_id = game_active() ? *CurrentPlayerFaction : -1;
@@ -20898,9 +21362,12 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             bool attempted = false;
             int native_result = 0;
             int original_unit_id = -1;
+            int original_unit_handle = -1;
             int original_moves_spent = -1;
             int original_damage_taken = -1;
             bool visible_combat_target = false;
+            bool supply_pod_action = deferred_action.command == "collect_supply_pod";
+            bool supply_pod_present_before = false;
             resolved_artifact_unit_id = -1;
             resolved_artifact_consumed = false;
             uint64_t target_fingerprint_before = 1469598103934665603ULL;
@@ -20925,8 +21392,13 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             && direction >= 0 && direction < 8
             && wrap(Vehs[veh_id].x + BaseOffsetX[direction]) == target_x
             && Vehs[veh_id].y + BaseOffsetY[direction] == target_y
-            && human_turn_actionable(faction_id)) {
+            && human_turn_actionable(faction_id)
+            && (!supply_pod_action || multiplayer_supply_pod_target(
+                faction_id, veh_id, target_x, target_y))) {
                 attempted = true;
+                original_unit_handle = semantic_vehicle_handle(veh_id);
+                supply_pod_present_before = supply_pod_action
+                    && goody_at(target_x, target_y);
                 original_unit_id = Vehs[veh_id].unit_id;
                 original_moves_spent = Vehs[veh_id].moves_spent;
                 original_damage_taken = Vehs[veh_id].damage_taken;
@@ -20955,10 +21427,31 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
                         // received that payload. Follow with the stock full
                         // vehicle synchronization command so the final unit
                         // record is eventually identical on every client.
-                        synch_veh(veh_id);
-                        // Do not report deferred completion while that final
-                        // reliable synchronization is still queued locally.
-                        NetDaemon_await_exec(NetState, 1);
+                        // Supply-pod and combat resolution can destroy the
+                        // acting vehicle and compact Vehs.  Resolve the
+                        // survivor by stable semantic identity before sending
+                        // the follow-up record; the old array index may now
+                        // name an unrelated unit.
+                        // Pod resolution is itself a deterministic network
+                        // order and can add/remove vehicles while presenting
+                        // its native result.  A nested standalone synch_veh at
+                        // that point is not a stock protocol sequence and can
+                        // fault the DirectPlay handler; let the order packet
+                        // carry the complete pod result on every peer.
+                        if (!supply_pod_action) {
+                            int surviving_veh_id = -1;
+                            ensure_semantic_vehicle_handles();
+                            for (int candidate = 0; candidate < *VehCount; ++candidate) {
+                                if (semantic_vehicle_handle(candidate) == original_unit_handle) {
+                                    surviving_veh_id = candidate;
+                                    break;
+                                }
+                            }
+                            if (surviving_veh_id >= 0) synch_veh(surviving_veh_id);
+                            // Do not report deferred completion while that
+                            // final reliable synchronization is still queued.
+                            NetDaemon_await_exec(NetState, 1);
+                        }
                     }
                     if (*dword_93E908 == &network_veh_id) *dword_93E908 = NULL;
                 } else {
@@ -20973,34 +21466,49 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             resolved_artifact_consumed = false;
             deferred_action.native_result = native_result;
             deferred_action.native_call_attempted = attempted ? 1 : 0;
-            bool same_unit = veh_id >= 0 && veh_id < *VehCount
-                && Vehs[veh_id].faction_id == faction_id
-                && Vehs[veh_id].unit_id == original_unit_id;
+            int observed_veh_id = -1;
+            ensure_semantic_vehicle_handles();
+            for (int candidate = 0; candidate < *VehCount; ++candidate) {
+                if (semantic_vehicle_handle(candidate) == original_unit_handle) {
+                    observed_veh_id = candidate;
+                    break;
+                }
+            }
+            bool same_unit = observed_veh_id >= 0
+                && Vehs[observed_veh_id].faction_id == faction_id
+                && Vehs[observed_veh_id].unit_id == original_unit_id;
             if (same_unit) {
-                deferred_action.observed_x = Vehs[veh_id].x;
-                deferred_action.observed_y = Vehs[veh_id].y;
+                deferred_action.observed_x = Vehs[observed_veh_id].x;
+                deferred_action.observed_y = Vehs[observed_veh_id].y;
             }
             bool changed_position = same_unit
-                && (Vehs[veh_id].x != deferred_action.origin_x
-                    || Vehs[veh_id].y != deferred_action.origin_y);
+                && (Vehs[observed_veh_id].x != deferred_action.origin_x
+                    || Vehs[observed_veh_id].y != deferred_action.origin_y);
             bool attacker_state_changed = same_unit
-                && (Vehs[veh_id].moves_spent != original_moves_spent
-                    || Vehs[veh_id].damage_taken != original_damage_taken);
+                && (Vehs[observed_veh_id].moves_spent != original_moves_spent
+                    || Vehs[observed_veh_id].damage_taken != original_damage_taken);
             bool target_state_changed = attempted
                 && visible_target_fingerprint(target_x, target_y)
                     != target_fingerprint_before;
             bool combat_resolved = attempted && visible_combat_target
                 && (!same_unit || attacker_state_changed || target_state_changed);
+            bool supply_pod_removed = attempted && supply_pod_present_before
+                && !goody_at(target_x, target_y);
             deferred_action.status = attempted
-                && (native_result || changed_position || combat_resolved || artifact_consumed)
+                && (native_result || changed_position || combat_resolved
+                    || artifact_consumed || supply_pod_removed)
                 ? "completed" : "rejected";
-            deferred_action.resolution = artifact_consumed
+            deferred_action.resolution = supply_pod_removed
+                ? "native_supply_pod_resolved"
+                : artifact_consumed
                 ? "native_artifact_consumed"
                 : combat_resolved
                 ? "native_combat_resolved"
                 : (changed_position || native_result ? "native_move_resolved"
                     : attempted ? "native_move_rejected_reason_unknown"
-                    : "move_preconditions_changed_before_dispatch");
+                    : supply_pod_action
+                        ? "supply_pod_preconditions_changed_before_dispatch"
+                        : "move_preconditions_changed_before_dispatch");
             return true;
         }
         if (deferred_council_faction_id >= 0) {

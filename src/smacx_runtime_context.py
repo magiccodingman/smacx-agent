@@ -671,6 +671,8 @@ class RuntimeContextAssembler:
                 }
         intent_review = dict(self.intent_review(int(turn))) if self.intent_review and turn is not None else {}
         intent_review.pop("resolution_options", None)
+        protocol = snapshot.get("protocol") \
+            if isinstance(snapshot.get("protocol"), Mapping) else {}
         # Reserve all non-anchor mandatory/current cognition first.  Semantic
         # LOD receives only the remaining coherent envelope budget.
         payload = {
@@ -687,6 +689,16 @@ class RuntimeContextAssembler:
             },
             "world": {},
             "focus": focus,
+            "native_protocol": {
+                "source": "current_native_snapshot",
+                "phase": protocol.get("phase"),
+                "required_action": protocol.get("required_action"),
+                "ready_unit_count": len(snapshot.get("ready_unit_refs", ()))
+                    if isinstance(snapshot.get("ready_unit_refs"), list) else 0,
+                "end_turn_blocked": protocol.get("end_turn_blocked"),
+                "action_revision": snapshot.get("revision"),
+                "meaning": "This current native protocol controls action readiness. Projected order counts summarize observed world state and do not prove that a unit remains ready.",
+            },
             "force_summary": _force_summary(projection),
             "spatial_context": _spatial_context(projection, focus),
             **({"current_turn_intent_review": intent_review} if intent_review.get("total_pending") else {}),
@@ -769,6 +781,7 @@ class RuntimeContextAssembler:
             "anchor": estimate_tokens(payload["world"]["anchor"]),
             "deltas": estimate_tokens(payload["world"]["net_deltas"]),
             "focus": estimate_tokens(payload["focus"]),
+            "native_protocol": estimate_tokens(payload["native_protocol"]),
             "force_summary": estimate_tokens(payload["force_summary"]),
             "spatial_context": estimate_tokens(payload["spatial_context"]),
             "intent_review": estimate_tokens(payload.get("current_turn_intent_review", {})),

@@ -1024,6 +1024,7 @@ _CHOICE_REF_KEYS = {
     "origin_tile_id": ("origin_location_ref", "reverse_locations"),
     "to_tile_id": ("to_location_ref", "reverse_locations"),
     "source_tile_id": ("source_location_ref", "reverse_locations"),
+    "site_tile_id": ("site_location_ref", "reverse_locations"),
     "destination_tile_id": ("destination_location_ref", "reverse_locations"),
     "target_tile_id": ("target_location_ref", "reverse_locations"),
 }
@@ -1241,7 +1242,7 @@ def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
             for item in value:
                 collect(item)
         elif isinstance(value, Mapping):
-            if value.get("command") == "move_unit":
+            if value.get("command") in {"move_unit", "collect_supply_pod"}:
                 for key in ("origin_tile_id", "target_tile_id", "observed_tile_id"):
                     tile = value.get(key)
                     if isinstance(tile, int) and not isinstance(tile, bool) and tile >= 0:
@@ -1257,6 +1258,13 @@ def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
         elif isinstance(value, dict):
             for item in list(value.values()):
                 explain(item)
+            if value.get("command") == "collect_supply_pod" \
+                    and value.get("status") in {"completed", "rejected"}:
+                value["supply_pod_observation"] = {
+                    "scope": "Current native deferred-action receipt.",
+                    "meaning": "A completed collection means the visible pod was removed through native movement. It does not predict or generalize the random outcome; obtain a fresh decision and observe any follow-up interaction.",
+                }
+                return
             if value.get("command") != "move_unit" or value.get("status") not in {"completed", "rejected"}:
                 return
             if not str(value.get("resolution", "")).startswith("native_move_"):
@@ -1622,6 +1630,23 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "execution": action,
         }
     completion = {**result, "queued": False, "completed": True, "execution": action}
+    if action.get("resolution") in {"native_terraform_work_observed", "native_terraform_completed"}:
+        completion["terraform_completion_verified"] = action["resolution"] == "native_terraform_completed"
+        if not completion["terraform_completion_verified"]:
+            completion.update({"completed": False, "persistent": True})
+        completion["completion_semantics"] = (
+            "The selected terrain change was observed complete on this tile."
+            if completion["terraform_completion_verified"] else
+            "The native order started and work increased. The terrain improvement is not complete; inspect later terraform_task and tile observations.")
+    if action.get("resolution") == "native_base_founded":
+        completion["completion_semantics"] = "A new owned base and consumption of its Colony Pod were observed."
+    if action.get("resolution") == "native_supply_pod_resolved":
+        completion["supply_pod_removed"] = action.get("supply_pod_removed") is True
+        completion["completion_semantics"] = (
+            "The visible supply pod was removed through the native movement path. "
+            "Its random consequence is not inferred; inspect the fresh decision, unit state, "
+            "world changes and any follow-up interaction."
+        )
     if action.get("resolution") == "native_combat_resolved":
         completion["completion_semantics"] = (
             "The native combat call resolved. Completion alone does not establish attacker survival, "
@@ -2379,6 +2404,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
     description=(
         "Inspect the fair-play world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
         "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
+        "Before consequential settlement, mode=compare with nominated location subject_refs returns current native founding legality, known radius overlap, yields, distance and logistics evidence; compare alternatives when available because legal does not mean strategically good. "
         "Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
         "site_economy with populations:[1,2,3] and up to four subject locations; "
         "social|terraform|action with decision_id and choice_id from a current final choice; "
@@ -3084,6 +3110,7 @@ def smac_choices(
     for attempt in range(2):
         result = _smac_choices_once(**arguments)
         error = result.get("error", {})
+        error = error if isinstance(error, Mapping) else {"code": error}
         changing = (error.get("code") == "choice_frame_revision_changed" or
             error.get("code") == "invalid_semantic_selector" and error.get("detail") in {
                 "semantic_reference_stale_revision", "semantic_reference_native_revision_changed"})
@@ -3160,10 +3187,12 @@ def _smac_choices_once(
         }}
     result = _call("semantic_choices", kind=kind, **choice_arguments)
     if not result.get("ok"):
-        if kind in base_kinds and (result.get("error") or {}).get("code") == "invalid_base":
+        error = result.get("error")
+        error_code = error.get("code") if isinstance(error, Mapping) else error
+        if kind in base_kinds and error_code == "invalid_base":
             # Ownership can change after selector resolution. Keep the native
             # failure code but recover through the public semantic surface.
-            return {**result, "error": {**result["error"],
+            return {**result, "error": {**(error if isinstance(error, Mapping) else {"code": error}),
                 "message": "The selected base_ref is no longer an available owned base. Refresh the world and choose a current owned base_ref."},
                 "required_next": {"tool": "smac_world", "mode": "overview"}}
         return result
@@ -3279,7 +3308,7 @@ def _turn_reconciliation_gate(command_arguments: dict) -> dict | None:
 
 
 def smac_command(
-    command: Literal["acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_unit_disband", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
+    command: Literal["acknowledge_popup", "close_base_management", "respond_to_contact", "continue_diplomacy", "propose_human_relationship", "propose_human_technology", "propose_human_energy", "propose_human_joint_attack", "respond_human_diplomacy", "finish_human_diplomacy", "choose_diplomacy_option", "give_energy_gift", "choose_diplomacy_target", "choose_diplomacy_base_target", "cancel_diplomacy_selection", "respond_to_diplomatic_offer", "respond_to_council_vote_bargain", "respond_to_incoming_vote_offer", "respond_to_territorial_incident", "respond_to_combat_confirmation", "respond_to_nerve_gas", "respond_to_end_turn_confirmation", "respond_to_base_obliteration", "respond_to_unit_disband", "respond_to_supreme_leader", "respond_to_game_over", "advance_endgame_presentation", "advance_technology_presentation", "advance_project_information", "defer_social_engineering", "respond_to_design_offer", "respond_to_artifact", "respond_to_monolith", "respond_to_probe_incident", "choose_probe_sabotage_target", "respond_to_probe_sabotage_warning", "choose_captive_leader", "choose_council_proposal", "cast_council_vote", "set_first_base_name", "choose_research_priority", "set_research_priority", "choose_research", "set_energy_allocation", "set_social_engineering", "open_diplomacy", "convene_council", "skip_all_ready_units", "corner_global_energy_market", "create_unit_design", "retire_unit_design", "upgrade_prototype", "set_production", "hurry_production", "nerve_staple", "obliterate_base", "recycle_facility", "rename_base", "set_base_governor", "set_governor_permission", "queue_production", "remove_queued_production", "clear_production_queue", "convert_worker_to_specialist", "assign_specialist_to_tile", "set_specialist_type", "move_unit", "collect_supply_pod", "go_to", "go_to_base", "return_to_base", "recover_to_carrier", "board_carrier", "patrol_unit", "build_road_to", "skip_unit", "hold_unit", "sentry_unit", "activate_unit", "upgrade_unit", "auto_explore_unit", "set_unit_on_alert", "automate_air_defense", "automate_former", "set_bombing_run", "set_designated_defender", "use_psi_gate", "execute_probe_mission", "execute_probe_subversion", "board_transport", "remain_boarded", "disembark_unit", "airdrop_unit", "artillery_attack", "launch_missile", "self_destruct_unit", "destroy_terrain_improvement", "rehome_unit", "give_unit", "convoy_resource", "disband_unit", "found_base", "terraform", "save_game", "end_turn"],
     match_id: str,
     session_id: str,
     expected_revision: str,
@@ -3606,13 +3635,61 @@ def _latch_journal_failure(
     return response
 
 
+def _refresh_rejected_decision(
+    response: dict, key: tuple[str, str], *,
+    rejected_decision_id: str = "", rejected_choice_id: str = "",
+) -> dict:
+    """Return fresh evidence after an invalid handle; never replay an action.
+
+    Keep the original failure and its budget. Enumeration uses the same
+    authority, fair-play, briefing and turn gates as an explicit decision call.
+    The sovereign still selects a new opaque choice (which is guarded again).
+    """
+    code = (response.get("error") or {}).get("code")
+    if code not in {"unknown_decision", "expired_decision", "consumed_decision", "invalid_choice"}:
+        return response
+    response.setdefault("required_next", {"tool": "smac_decision"})
+    recovery = {"kind": "decision_refresh", "attempted_action_replayed": False}
+    try:
+        frame = smac_decision()
+        identity = frame.get("identity") or {}
+        if identity and (str(identity.get("match_id") or ""),
+                         str(identity.get("session_id") or "")) != key:
+            frame = {"ok": False, "error": {"code": "recovery_scope_changed"}}
+        recovery["frame"] = frame
+        if isinstance(frame.get("required_next"), dict):
+            response["required_next"] = dict(frame["required_next"])
+        if frame.get("ok") and isinstance(frame.get("choices"), list):
+            response["required_next"].update({
+                "select_choice_from": "recovery.frame.choices",
+                "instruction": "The submitted IDs are unusable. Select one current choice from recovery.frame and copy both replacement IDs exactly.",
+                "do_not_reuse": {
+                    "decision_id": rejected_decision_id,
+                    "choice_id": rejected_choice_id,
+                },
+            })
+        # A changed turn can require the sovereign episode to end. Preserve
+        # that signal at receipt level as well as inside the recovery frame.
+        for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
+            if field in frame:
+                response[field] = frame[field]
+    except Exception as exc:
+        # An unavailable observation must not mask the original rejection or
+        # reset its failure budget. No synthetic/previous frame is substituted.
+        recovery["frame"] = {"ok": False, "error": {
+            "code": "decision_refresh_failed", "exception_type": type(exc).__name__}}
+    response["recovery"] = recovery
+    return response
+
+
 @mcp.tool(
     description=(
         "Execute exactly one short-lived opaque choice returned by the latest smac_decision "
         "or smac_choices frame. The server owns the native command, parameters, confirmation "
         "flags, and revision guard. Supply text only when that exact choice exposes text_input; "
         "an opening base-name choice uses its native suggested default when text is omitted. "
-        "Never invent command names or reuse a consumed decision."
+        "Never invent command names or reuse a consumed decision. An invalid handle may return "
+        "recovery.frame: fresh evidence, not an executed retry. Select anew from that frame."
     )
 )
 def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dict:
@@ -3703,11 +3780,18 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         if len(history) < FAILED_CHOICE_LIMIT:
             response["failure_budget"] = {"consecutive_failures": len(history),
                 "stop_at": FAILED_CHOICE_LIMIT}
-            return response
-        incident = {"code": "repeated_failed_choice_submissions",
-            "failure_codes": history, "attempt_count": len(history),
-            "message": "Repeated choice submissions failed despite recovery opportunities. Autonomous play is stopped for operator review."}
-        RUNTIME_CIRCUITS[key] = incident
+        else:
+            incident = {"code": "repeated_failed_choice_submissions",
+                "failure_codes": history, "attempt_count": len(history),
+                "message": "Repeated choice submissions failed despite recovery opportunities. Autonomous play is stopped for operator review."}
+            RUNTIME_CIRCUITS[key] = incident
+    # Native reads must run outside the progress lock. Never enumerate after
+    # the circuit trips, and never reset the budget merely for a fresh frame.
+    if len(history) < FAILED_CHOICE_LIMIT:
+        return _refresh_rejected_decision(
+            response, key, rejected_decision_id=decision_id,
+            rejected_choice_id=choice_id,
+        )
     journal = controller_record_campaign_action(key[0], key[1], {
         "decision_id": decision_id, "choice_id": choice_id,
         "outcome": "failure_circuit_open", "incident": incident,

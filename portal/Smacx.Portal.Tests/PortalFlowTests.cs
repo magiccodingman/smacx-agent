@@ -804,6 +804,67 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal(1, await db.PortalMatchEvents.CountAsync(x => x.EventType == "doctrine_start_failed"));
     }
 
+    [Fact]
+    public async Task ApprovedCheckpointRecoveryRecompilesDoctrineForEveryRestartedAgent()
+    {
+        await File.WriteAllTextAsync(Path.Combine(dataRoot, "portal-service-token"), "fixture-token");
+        await using var scope = factory!.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var owner = new ApplicationUser { Id = "recovery-owner", UserName = "recovery-owner" };
+        db.Users.Add(owner);
+        var match = new PortalMatchProfile
+        {
+            MatchId = "match-recompile-recovery", Status = "running", OwnerUserId = owner.Id,
+        };
+        db.PortalMatches.Add(match);
+        db.PortalLobbySeats.Add(new PortalLobbySeat
+        {
+            MatchId = match.MatchId, SeatIndex = 0, ControllerKind = "agent",
+            AgentId = "agent-fixture", ControlInstanceId = "instance-fixture",
+        });
+        db.PortalAiProfiles.Add(new PortalAiProfile
+        {
+            AgentId = "agent-fixture", ProviderId = "provider-fixture",
+        });
+        db.PortalMaintenanceOperations.Add(new PortalMaintenanceOperation
+        {
+            MatchId = match.MatchId, Kind = "capability_recovery", Status = "running",
+            Phase = "restarting_sovereigns",
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                incidentId = "incident-fixture", recompileDoctrine = true,
+            }),
+        });
+        await db.SaveChangesAsync();
+        bool? recompile = null;
+        factory.ControlOverride = async (request, _) =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            object payload;
+            if (path.EndsWith("/incidents"))
+                payload = new { ok = true, incidents = Array.Empty<object>() };
+            else if (path.EndsWith("/harness-runs") && request.Method == HttpMethod.Get)
+                payload = new { ok = true, harness_runs = Array.Empty<object>() };
+            else if (path.EndsWith("/harness-runs"))
+            {
+                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                recompile = body.RootElement.GetProperty("recompile_doctrine").GetBoolean();
+                payload = new { ok = true, harness_run = new { run_id = "run-fixture" } };
+            }
+            else if (path.EndsWith("/" + match.MatchId))
+                payload = new { ok = true,
+                    match = new { match_id = match.MatchId, display_name = "Fixture", mode = "standard", status = "running", created_unix = 0, updated_unix = 0 },
+                    seats = new[] { new { seat_index = 0, controller_kind = "agent", agent_id = "runtime-agent", status = "assigned", instance_id = "instance-fixture" } } };
+            else throw new InvalidOperationException(path);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(payload) };
+        };
+        var supervisor = ActivatorUtilities.CreateInstance<Smacx.Portal.Services.PortalMatchSupervisor>(
+            scope.ServiceProvider);
+        var control = scope.ServiceProvider.GetRequiredService<Smacx.Portal.Services.ControlPlaneClient>();
+        await supervisor.EnsureAgentRunsAsync(db, control, match, CancellationToken.None);
+        Assert.True(recompile);
+    }
+
     private async Task<T> GetDataAsync<T>(string path)
     {
         var response = await client!.GetFromJsonAsync<ApiResponse<T>>(path);

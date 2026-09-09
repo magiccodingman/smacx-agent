@@ -634,3 +634,47 @@ The turn118 aircraft-state boundary regression is `PYTHONPATH=src python3 script
 `PYTHONPATH=src python3 scripts/former_task_visibility_test.py` compiles the owned task serializer and distinguishes automation/no-task/active-task/stale/foreign cases. Run `runtime_context_contract_test.py`, `fair_play_world_test.py`, and `managed_action_path_contract_test.py` for this information-only path. Work points are not elapsed turns, an ETA, or completion proof; use the separate live checkpoint/provider evidence in `benchmarks/gameplay-former-task-turn121.json`.
 
 Cognition omission audit: `PYTHONPATH=src python3 scripts/cognition_omission_audit_test.py` exercises canonical journal status/count/token selection and final runtime selection, preserving all source records after reopen. It does not establish actual provider delivery or sovereign behavior.
+
+`multiplayer_energy_demand_contract_test.py` compiles the production multiplayer
+energy-demand gate and affordability guard. `native_multiplayer_energy_demand_test.py`
+requires the private hash-checked turn-7 save, `SMACX_DEMAND_TEST_SAVE`,
+`SMACX_TEST_GAME_SOURCE`, `SMACX_TEST_WORKER_IMAGE`, and
+`SMACX_TEST_CONTROL_IMAGE`. It creates isolated two-client workers, replays the
+observed moves into native AI contact, and checks demand responses against both
+clients' treasury, diplomacy, unit and base state. It never resumes a production
+campaign or starts a sovereign. See [acceptance evidence](benchmarks/multiplayer-energy-demand.md).
+
+
+### Invalid opaque decision recovery
+
+`decision_recovery_test.py` exercises the actual decision enumerator, cache and
+execution wrapper with a controlled native-shaped bridge. Unknown, expired,
+consumed and invalid-choice handles return a new frame without replaying the
+rejected action. The sovereign's separate selection executes once. Four invalid
+submissions still latch the circuit; refresh failure, wait state and session
+changes fail safely. Text correction and native action rejection do not trigger
+this handle-recovery path. `hermes_complementary_results_test.py` checks that the
+original rejection and fresh frame both survive actual Hermes sanitization and
+a controlled HTTP request, without changing durable history.
+
+Run the MCP test in the control image with `PYTHONPATH=/workspace/src`. Run the
+Hermes test in the harness image with
+`PYTHONPATH=/workspace/src:/workspace/harness:/workspace/scripts`.
+These are adapter/protocol claims, not predicted-mechanics validation or proof
+that a model will always use the fresh choices. Live recovery evidence is in
+[decision-recovery-turn8](benchmarks/decision-recovery-turn8.md).
+
+### Multiplayer land development
+
+`multiplayer_development_contract_test.py` compiles the production eligibility
+gates on the host. `development_receipt_test.py` runs in the MCP control image
+and covers managed choices, opaque execution, journal delivery and the distinction
+between pending transport, work started and terrain completed.
+
+`native_multiplayer_development_test.py` uses two isolated workers and a private
+multiplayer save supplied by `SMACX_DEVELOPMENT_TEST_SAVE`. Also set
+`SMACX_TEST_GAME_SOURCE`, `SMACX_TEST_WORKER_IMAGE`, `SMACX_TEST_CONTROL_IMAGE`
+and `PYTHONPATH=src`. It exercises host and remote development, invalid/duplicate
+submissions, exact peer agreement and native save/reload. It starts no sovereign
+and does not operate on a production campaign. Test-only fixtures require both
+native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).

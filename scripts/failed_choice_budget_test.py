@@ -7,6 +7,7 @@ import smacx_mcp as m
 
 def main() -> None:
     m._sovereign_gameplay_gate = lambda operation: None
+    m._implicit_turn_handoff = lambda *args: None  # This fixture isolates execution, not the attention store.
     m._pending_capability_gap = lambda: None
     m._match_briefing_gate = lambda *args: None
     m.controller_record_campaign_action = lambda *args, **kwargs: {"ok": True}

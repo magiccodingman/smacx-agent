@@ -8,5 +8,5 @@ for count in (1, 2, 10):
 for count in (None, True, 0, -1, 11, '1'):
     q = _production_catalog_context({'queue': {'entries': count}})['queue']
     assert 'includes_current_item' not in q and 'items_after_current' not in q
-assert _production_catalog_context({}) == {}
+assert set(_production_catalog_context({})) == {"selection_completion_boundary"}
 print('production queue context passed')

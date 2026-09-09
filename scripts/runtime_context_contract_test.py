@@ -166,6 +166,12 @@ def main() -> int:
         assert compact["identity"]["action_revision"] == "action-9"
         assert compact["focus"]["focus_id"] == rich["focus"]["focus_id"]
         assert compact["focus"]["mandatory"] is True
+        assert compact["native_protocol"] == {
+            "source": "current_native_snapshot", "phase": "interaction",
+            "required_action": "respond", "ready_unit_count": 0,
+            "end_turn_blocked": None, "action_revision": "action-9",
+            "meaning": "This current native protocol controls action readiness. Projected order counts summarize observed world state and do not prove that a unit remains ready.",
+        }
         assert compact["plan_health"]["active_plan_count"] == 1
         assert compact["plan_health"]["assigned_owned_unit_count"] == 1
         assert rich["plan_health"] == compact["plan_health"]

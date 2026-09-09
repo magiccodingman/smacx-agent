@@ -35,7 +35,7 @@ def main():
     assert frame["choices"][0]["switch_effect"] == catalog["choices"][0]["switch_effect"]
     assert "hidden" not in json.dumps(context) and "private_command" not in json.dumps(context)
     assert catalog == original
-    assert mcp._production_catalog_context({}) == {}, "missing evidence became a false fact"
+    assert set(mcp._production_catalog_context({})) == {"selection_completion_boundary"}, "missing evidence became a false fact"
     # Native receipts can contain private own-entity slots. Strip these only
     # after _execute_choice_once (which journals the raw receipt) returns.
     raw = {"ok": True, "base_id": 7, "unit_id": 42,

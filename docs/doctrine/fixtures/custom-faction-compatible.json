@@ -76,14 +76,14 @@
     "metadata": {
       "doctrine_version": "smacx.sovereign-doctrine.v1",
       "compiler_version": "smacx.doctrine-compiler.v1",
-      "doctrine_sha256": "e88fe2eb1b60b73502c0f874446d65cc4d46241a158df55cb6a96f13fda57012",
+      "doctrine_sha256": "34a2cc4bff04b7492a08abf0e86ab76bfe45448d48d5dbe0e6801a948434dd54",
       "compatibility": {
         "profile": "thinker-smacx-doctrine.v1",
         "loaded_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "invariant_overrides": []
       },
       "fixed_configuration_sha256": "0330c7650ec3b100dba5cafd1e1c06adf53d4e1429686ce51d72c30ed8a7e9d2",
-      "gameplay_sha256": "6cd7b1d93f1a40ab5f26ce83c11d31931c1e9ed87596867cecd9aa5017088b72"
+      "gameplay_sha256": "37f30deceae16d6753c90c4742e5abd8a9e98e097939c3392070f41b60c418ff"
     },
     "blocks": {
       "SELF_FACTION_CONTEXT": "You govern **Public custom faction**: +3 INDUSTRY. These are fixed faction rules, not current Social Engineering totals or the changes caused by a proposed action. Use current action evidence for those deltas. These mechanics create opportunities and constraints; choose your strategy from the actual position, not a stock leader agenda.",

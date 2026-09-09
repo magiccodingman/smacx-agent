@@ -41,6 +41,7 @@ def main() -> int:
             "advance_endgame_presentation",
             "set_governor_permission",
             "propose_human_joint_attack",
+            "collect_supply_pod",
         }:
             if command_name not in command_values:
                 raise AssertionError(f"smac_command does not expose {command_name}")

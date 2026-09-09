@@ -248,6 +248,14 @@ and native effect comparisons; see the counterfactual acceptance ledger.
   strategic weights. Owned worker reservations, known radius sharing, fog,
   extraction limits and material facility/improvement dependencies remain
   explicit. Technology dependencies do not imply directed research control.
+
+Before a consequential founding choice, `mode=compare` with nominated visible
+location `subject_refs` is the bounded mechanical comparison surface. It reports
+current native legality, known-radius overlap, yields, distance, connectivity,
+transport and visible-risk evidence. A guarded `found_base` choice repeats the
+current site's legality, minimum spacing, nearest known base distance and known
+radius overlap so legal execution cannot be mistaken for a site-quality
+recommendation. Opaque reference spelling carries no spatial meaning.
 - `{"kind":"social","decision_id":"…","choice_id":"…"}` previews an
   issued final Social Engineering choice. `terraform` and `action` use the
   same reference form for their supported current choices. Previews preserve
