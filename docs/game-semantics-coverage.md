@@ -1275,3 +1275,28 @@ is restore-tested, both sovereigns are live, all worker/MCP services are healthy
 and no active incident remains. Both sovereigns executed fresh introduction
 acknowledgements. Autonomous use of newly enabled development remains unobserved.
 [Layered evidence](benchmarks/multiplayer-development.md).
+
+## Operational geography checkpoint (2026-09-09)
+
+| Layer | Implemented evidence and acceptance boundary |
+| --- | --- |
+| Shape and cuts | Known-area scale, fog boundary and base-relative bearings; iterative one-tile cuts carry separated-area sizes and component-wide fog qualification. Demand-only adjacent two-tile cuts are bounded and explicitly nonexhaustive. Long-chain, wraparound alternate-route and distant-fog fixtures pass; no strategic control claim. |
+| Exploration | Frontier comparisons retain observations, candidate roles/orders and subject-relative ETA. At most 64 route calculations per frontier; geometric candidate selection and incomplete coverage are explicit. Native-shaped WorldService area/compare delivery passes. Hidden area, rewards and faction probability remain unknown. |
+| Settlement | Current native radius receipts produce shared/additional coverage intervals without double-counting overlap between bases. Actual owned colony routes retain uncertainty and orders. Conditional future yield tools remain distinct. Native mechanics were not changed; improved sovereign choices remain unverified. |
+| Operations | Owned economic exceptions distinguish the current queue item from follow-up entries; stale rates do not raise current alerts. Recent canonical action baselines can be compared with committed endpoints without declaring stationary orders stuck. Pending final provider and deployment checks below. |
+
+See [operational geography acceptance](benchmarks/operational-geography.md).
+
+Operational checkpoint 2: native-shaped explicit order targets are captured as
+semantic requested destinations in new canonical action baselines. Unknown
+selectors remain absent; later unit actions are disclosed rather than assuming
+an old assignment persists. Managed order/Former/intent/citizen contracts and real
+Hermes-to-controlled-HTTP operational-review delivery pass. Initial and resumed
+provider requests retain the current 15-tool surface. Installed deployment is
+still pending; improved live strategy and sustained task progress are unproven.
+
+Operational checkpoint 3: final installed-image geography/runtime tests pass;
+real controlled-provider delivery is verified; shared stack image/settings and
+six runtime source hashes match. The campaign remains parked with a checkpoint.
+No paid provider run, new native-mechanics claim or improved-strategy claim.
+See the [sanitized deployment receipt](benchmarks/operational-geography-deployment.json).

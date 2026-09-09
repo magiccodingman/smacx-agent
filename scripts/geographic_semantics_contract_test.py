@@ -298,6 +298,22 @@ def main() -> int:
         assert detail["frontier_access"]["calculation_scope"] == "lazy_query_only"
         assert detail["frontier_access"]["reachable_scouts"]
         assert detail["frontier_access"]["nearest_scout_arrival_turns"] is not None
+        candidate = detail["frontier_access"]["reachable_scouts"][0]
+        assert candidate["candidate_kind"] == "owned_unit_not_assigned_scout"
+        assert "epistemic_status" in candidate["roles"]
+        compared = service.query(mode="compare", subject_refs=[issued[0]["frontier_ref"]], detail="deep")
+        assert compared["items"][0]["access"]["candidate_coverage_complete"]
+        assert compared["frontier_comparison_coverage"]["calculated"] == 1
+        masses = service.anchor(context_length=65536)["payload"]["physical_masses"]
+        mass_ref = next(m["landmass_ref"] for m in masses if m.get("landmass_ref"))
+        mass_detail = service.query(mode="area", origin_ref=mass_ref, detail="deep")
+        assert mass_detail["geographic_context"]["known_location_count"] > 0
+        assert "unobserved_extent" in mass_detail["geographic_context"]
+        intel = service.query(mode="intel", detail="deep")
+        assert "foreign_geography" in intel and intel.get("ok") is not False
+        connectors = service.query(mode="compare", origin_ref="own-unit-7", subject_refs=["location-21"], detail="deep")
+        assert "connector_coverage" in connectors and "wider_passages" in connectors
+
         legal = service.query(
             mode="compare", subject_refs=["location-20"], context_length=65536,
             runtime_base_site_receipts={

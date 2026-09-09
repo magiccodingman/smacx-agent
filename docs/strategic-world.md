@@ -556,3 +556,38 @@ Recent inspection promotion uses the query service's complete dependency-set/has
 Managed `automate_former` actions retain a current revision-matched owned-unit baseline in the canonical successful action receipt. Before leasing request attention, the service examines up to 32 recent attempts within 500 journal events against a newer committed observation in the same world epoch (at most 64 cursor steps later). An inactive automation policy with no active task or other order produces a noncritical notice with cause unknown. Separately resolved repeated assignments at unchanged qualified endpoints increase notice priority from 55 to 80. Active work, observed movement or tile changes resolve the initial attempt without a cancellation warning; later cancellation after such progress is outside this check. Superseding unit commands and unknown observations cannot establish native cancellation.
 
 The source action identity deduplicates notices across acknowledgement/restart. An enqueue-before-check marker permits recovery after an interrupted capture. No old action is retroactively assigned an invented baseline, and missing revision-matched evidence produces no attempt claim. This does not choose a terraforming strategy, prove no useful legal work exists, or stop the campaign. Fixture and runtime-adapter acceptance is recorded separately from pending live sovereign delivery in [the evidence](benchmarks/gameplay-former-automation-attention.json).
+
+## Geographic and operational comparisons
+
+`area` on a physical mass returns `geographic_context`: known size, current and
+remembered terrain counts, fog boundary, north/south span, feature counts and
+bounded base-relative bearings. Horizontal wrapping is explicit. Unexplored
+boundary length never estimates the area or faction probability beyond it.
+
+`compare` with frontier subject references compares up to four frontiers. Each
+frontier tests at most eight owned candidates against eight nearby boundary
+locations. Roles, orders, exact/conditional ETA and incomplete search coverage
+remain attached. A candidate called `scout_ref` for compatibility is explicitly
+an owned unit candidate, not a sovereign scouting assignment. A bounded miss is
+not proof that no route exists or that transport is required.
+
+`compare` with a unit origin and target subjects also returns surface connector
+evidence, selected by component and geometric proximity. Each one-tile cut gives
+separated known-area sizes and uncertainty from the whole known component. Deep
+queries additionally test at most 32 adjacent two-tile pairs on graphs with at
+most 4,096 passable nodes. Those are minimal cuts, not measured corridor widths,
+military control claims or exhaustive passage searches. Terrain cuts do not
+replace subject-relative route calculations with occupancy, ZOC or special transit.
+
+Settlement comparison reports an interval for additional visible radius coverage:
+per-base overlaps cannot be summed as distinct shared squares. Current owned
+colony arrival options are separate from generic base-network travel. Future
+yields remain conditional through the existing counterfactual surface.
+
+Runtime operational review surfaces current owned economic exceptions, colony
+units and bounded canonical order-baseline comparisons. Production queue entry
+zero is the current build. Equal endpoints do not establish inactivity, and an
+accepted order does not establish completion. Missing explicit destinations mean
+unknown assignments. Intel can join observed/remembered objects to their known
+physical masses without locating an unseen faction homeland. Explicit native
+capability-status rows describe runtime support separately from research.

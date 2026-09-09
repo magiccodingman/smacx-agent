@@ -12,6 +12,7 @@ import json
 import time
 from typing import Any, Callable, Mapping
 
+from smacx_operational_context import operational_context, order_review
 from smacx_attention import AttentionService
 from smacx_mechanics import base_mechanics
 from smacx_store import MemoryScope
@@ -700,6 +701,7 @@ class RuntimeContextAssembler:
                 "meaning": "This current native protocol controls action readiness. Projected order counts summarize observed world state and do not prove that a unit remains ready.",
             },
             "force_summary": _force_summary(projection),
+            "operational_review": operational_context({o["object_ref"]: o for o in projection.get("objects", ())}, limit=4),
             "spatial_context": _spatial_context(projection, focus),
             **({"current_turn_intent_review": intent_review} if intent_review.get("total_pending") else {}),
             "attention": attention_context,
@@ -719,6 +721,13 @@ class RuntimeContextAssembler:
             payload["nearby_base_defense"] = nearby_defense
         if recall_context is not None:
             payload["interpretive_recall"] = recall_context
+        journal = getattr(self.attention, "journal", None)
+        if journal is not None:
+            recent_actions = journal.latest_events(self.scope,
+                timeline_id=projection_identity.timeline_id, limit=128)
+            review = order_review(recent_actions, projection)
+            if review["items"]:
+                payload["operational_review"]["order_followthrough"] = review
         non_anchor_tokens = estimate_tokens(payload)
         anchor_cap = min(
             budgets["anchor"],
@@ -783,6 +792,7 @@ class RuntimeContextAssembler:
             "focus": estimate_tokens(payload["focus"]),
             "native_protocol": estimate_tokens(payload["native_protocol"]),
             "force_summary": estimate_tokens(payload["force_summary"]),
+            "operational_review": estimate_tokens(payload["operational_review"]),
             "spatial_context": estimate_tokens(payload["spatial_context"]),
             "intent_review": estimate_tokens(payload.get("current_turn_intent_review", {})),
             "attention": estimate_tokens(payload["attention"]),

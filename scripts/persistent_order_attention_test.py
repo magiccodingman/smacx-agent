@@ -35,6 +35,15 @@ def run(mode):
         with patch.object(mcp, 'MANAGED_ATTACHED', True), patch.object(mcp, '_runtime_services', return_value=(None, attention)):
             baseline = mcp._order_attempt_baseline(choice, {'revision': projection['action_revision']}, {'turn': 50})
             assert baseline, projection['objects'][-1]
+            targeted = mcp._order_attempt_baseline(
+                {'command': 'go_to', 'unit_id': unit['id'], 'target_tile_id': unit['tile_id']},
+                {'revision': projection['action_revision']}, {'turn': 50})
+            assert targeted['requested_destination_ref'] == baseline['before']['location_ref']
+            missing = mcp._order_attempt_baseline(
+                {'command': 'go_to', 'unit_id': unit['id'], 'target_tile_id': -1},
+                {'revision': projection['action_revision']}, {'turn': 50})
+            assert 'requested_destination_ref' not in missing
+
             assert mcp._order_attempt_baseline(choice, {'revision': 'wrong'}, {}) is None
         if mode == 'epoch': baseline['world_epoch'] = 'other'
         if mode == 'epoch':

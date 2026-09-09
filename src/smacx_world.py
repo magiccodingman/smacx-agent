@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable, Mapping
 
+from smacx_operational_context import operational_context
+from smacx_geographic_context import geographic_context, connector_evidence, wider_passage_evidence, frontier_access
 from smacx_counterfactual import deployment_alternatives, feasible_outputs, parse_scenario
 
 from smacx_mechanics import (
@@ -592,6 +594,10 @@ class WorldService:
             # same whole-result ceiling and must pass through auxiliary
             # demotion plus the bounded typed-error fallback below.
             body = []
+        for field in ("geographic_context", "wider_passages", "foreign_geography", "operational_review"):
+            if field in result and estimate_tokens(result) > budget:
+                result[field] = {"omitted": "requested_budget", "query_hint": "Narrow subjects or request deep detail."}
+                result["truncated"] = True
         original_items = len(body)
         # Keep one primary item while demoting auxiliary detail. Otherwise a
         # large multi-base object envelope can evict every small mechanics
@@ -886,7 +892,7 @@ class WorldService:
         known_refs = set(objects) | ({"world-geography", "world-map"} if mode == "area" else set())
         geography: dict[str, Any] | None = None
         derived_registry: dict[str, dict[str, Any]] = {}
-        if mode == "counterfactual" or mode == "relation" or mode == "compare" and not origin_ref and not target_ref or (
+        if mode in {"counterfactual", "relation", "intel"} or mode == "compare" and not origin_ref and not target_ref or (
             mode == "area" and (origin_ref or (subjects[0] if subjects else "")) not in objects
         ):
             geography = self._derived_geography(projection)
@@ -1009,6 +1015,7 @@ class WorldService:
             if subjects:
                 selected = [item for item in selected if item.get("object_ref") in subjects]
             if mode == "base":
+                result["operational_review"] = operational_context({o["object_ref"]: o for o in selected})
                 topology = self._topology(projection)
                 result["items"] = base_mechanics(topology, objects, subjects)
                 result["objects"] = [_public_object(item) for item in selected]
@@ -1023,6 +1030,23 @@ class WorldService:
             elif mode == "intel":
                 topology = self._topology(projection)
                 turn_state = objects.get("world-turn", {})
+                mass_membership = {ref: region.region_ref for region in geography.get("_region_projection", ())
+                    if region.mobility_profile_ref in {PHYSICAL_LAND_PROFILE, PHYSICAL_OCEAN_PROFILE}
+                    for ref in region.location_refs}
+                relevant_owners = set(subjects)
+                relevant_owners.update(str(_value(objects.get(ref, {}), "owner_ref")) for ref in subjects)
+                contacts = [obj for obj in objects.values()
+                    if obj.get("kind") in {"base", "foreign_contact"}
+                    and obj.get("fields", {}).get("owner_ref", {}).get("source") != "owned_state"
+                    and (not subjects or obj.get("object_ref") in subjects or str(_value(obj, "owner_ref")) in relevant_owners)]
+                result["foreign_geography"] = {"items": [{
+                    "object_ref": obj["object_ref"], "kind": obj["kind"], "status": obj.get("status"),
+                    "location_ref": obj.get("location_ref"), "known_physical_mass_ref": mass_membership.get(obj.get("location_ref")),
+                    "owner": obj.get("fields", {}).get("owner_ref", {}),
+                    "observation_evidence": {key: obj.get("fields", {}).get(key) for key in ("name", "last_seen_turn", "relations") if key in obj.get("fields", {})}}
+                    for obj in sorted(contacts, key=lambda o: str(o["object_ref"]))[:16]],
+                    "omitted_count": max(0, len(contacts)-16),
+                    "meaning": "Observed/remembered positions only; retired contacts are not current troops. Contacting a faction does not locate its homeland. Formal relations remain on faction records; movement and location do not establish intent. Use relation/route or base response for reachability."}
                 result["lost_contact_envelopes"] = lost_contact_envelopes(
                     topology, objects, current_turn=_value(turn_state, "turn"),
                     subject_refs=subjects,
@@ -1059,49 +1083,7 @@ class WorldService:
                 result["geographic_object"] = derived_center
                 boundary_refs = [str(value) for value in derived_center.get("boundary_refs", ())]
                 if derived_center.get("frontier_ref"):
-                    scouts = []
-                    for unit in objects.values():
-                        if unit.get("kind") != "own_unit":
-                            continue
-                        roles = _value(unit, "roles", {})
-                        if not isinstance(roles, Mapping) or not (
-                            roles.get("scout") or roles.get("explore") or roles.get("combat")
-                        ):
-                            continue
-                        start = str(unit.get("location_ref") or "")
-                        if start not in topology.by_ref:
-                            continue
-                        profile = mobility_profile(
-                            objects, "mobility-land-default",
-                            subject_ref=str(unit["object_ref"]), topology=topology,
-                        )
-                        candidates = [
-                            (topology.route(start, target, profile), target)
-                            for target in boundary_refs[:24] if target in topology.by_ref
-                        ]
-                        reachable = [(route, target) for route, target in candidates if route.reachable]
-                        if not reachable:
-                            continue
-                        route, target = min(reachable, key=lambda value: (
-                            int(value[0].turns if value[0].turns is not None else 10**9), float(value[0].movement_cost if value[0].movement_cost is not None else 10**9),
-                            value[1],
-                        ))
-                        scouts.append({
-                            "scout_ref": unit["object_ref"], "frontier_location_ref": target,
-                            "arrival_turns": route.turns, "movement_cost": route.movement_cost,
-                            "eta_kind": route.eta_kind, "uncertainty": list(route.uncertainty),
-                        })
-                    scouts.sort(key=lambda row: (
-                        int((row.get("arrival_turns") if row.get("arrival_turns") is not None else 10**9)), str(row["scout_ref"]),
-                    ))
-                    result["frontier_access"] = {
-                        "reachable_scouts": scouts[:8],
-                        "nearest_scout_arrival_turns": scouts[0]["arrival_turns"] if scouts else None,
-                        "known_land_route_available": bool(scouts),
-                        "transport_dependency": None if scouts else
-                            "possible_or_required; query logistics with a scout and frontier location",
-                        "calculation_scope": "lazy_query_only",
-                    }
+                    result["frontier_access"] = frontier_access(topology, objects, derived_center)
                 if spatial_center:
                     membership = set(spatial_center["location_refs"])
                     result["items"] = [_public_object(item) for item in objects.values()
@@ -1121,6 +1103,8 @@ class WorldService:
                             break
                     result["items"] = [_public_object(item) for item in objects.values()
                                        if str(item.get("location_ref") or item.get("object_ref")) in mass_locations]
+                    result["geographic_context"] = geographic_context(topology, mass_locations, objects)
+                    result["geographic_context"]["detail_query"] = "Use compare with an owned unit origin_ref and relevant subject_refs for surface connector evidence."
                 center_ref = ""
             if center_ref == "world-map":
                 known = set(topology.by_ref)
@@ -1231,11 +1215,26 @@ class WorldService:
             elif mode == "compare":
                 if not subjects:
                     raise WorldQueryError("compare_requires_subjects")
-                if origin_ref:
+                if all(derived_registry.get(ref, {}).get("frontier_ref") for ref in subjects):
+                    result["items"] = [{"frontier_ref": ref,
+                        "known_geography": derived_registry[ref],
+                        "access": frontier_access(topology, objects, derived_registry[ref])}
+                        for ref in subjects[:4]]
+                    result["frontier_comparison_coverage"] = {"requested": len(subjects),
+                        "calculated": min(4, len(subjects)), "omitted": max(0, len(subjects)-4),
+                        "meaning": "Compare observed opportunities and candidate orders. No exploration value ranking or unseen faction probability. Repeated candidate units across frontiers are alternatives, not multiple assignments."}
+                elif origin_ref:
                     result["items"] = response_matrix(
                         topology, objects, [origin_ref], subjects, movement_profile_ref,
                     )[0]["responses"]
-                    result["connectors"] = connector_analysis(topology, profile)[:24]
+                    connector_result = connector_evidence(topology, profile,
+                        origin_ref=objects.get(origin_ref, {}).get("location_ref") or origin_ref,
+                        objects=objects, limit=8)
+                    result["connectors"] = connector_result.pop("items")
+                    result["connector_coverage"] = connector_result
+                    if detail == "deep":
+                        result["wider_passages"] = wider_passage_evidence(topology, profile,
+                            objects.get(origin_ref, {}).get("location_ref") or origin_ref)
                 elif target_ref:
                     result["items"] = rendezvous_matrix(
                         topology, objects, subjects, [target_ref], movement_profile_ref,
