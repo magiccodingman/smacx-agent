@@ -85,3 +85,7 @@ The earlier live wake is confirmed by `wake_reason: native_phase_changed` and
 Spartan native turn-2 progress. Recovery of the new clean-yield incident uses the
 control API's verified-checkpoint recover operation with runtime refresh (the
 portal retry-after-update route accepts capability-gap incidents only).
+
+Post-recovery acceptance: both native workers and MCP sidecars are healthy,
+both sovereign processes are running, and no active incident remains. Live
+foreign-engine wait after this recovery is not yet claimed.
