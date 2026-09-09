@@ -1200,3 +1200,32 @@ engine work can mask `waiting_for_turn`; explicit foreign ownership now selects
 the same provider-free sleep through a shared supervisor/MCP classifier. Tests
 cover no repeated starts and own/unknown-owner watchdog retention. Incident and
 acceptance evidence are recorded in the event-wait benchmark.
+
+
+## Popup prefix correction (2026-09-09 UTC)
+
+Energy demands: turn-10 native popup observed, but response enumeration was
+blocked by a bad prefix length. Compiled predicate regression and family-wide
+literal-length audit pass after repair; native cross-build and packaged fingerprint checks pass; live choice/execution
+validation pending.
+Liberated-base notices had the same family of bug and are covered by the compiled
+classification test. See [evidence](benchmarks/diplomacy-popup-prefix.md).
+
+Popup correction deployment is complete. Saved-campaign recovery failed closed
+on a native vehicle-identity mismatch; containment is verified. Do not interpret
+the deployment or compiled matcher tests as successful live recovery.
+
+## Checkpoint hardening — retention layer
+
+Capture → digest/AI pairing → bounded retention → guarded recovery fallback is
+covered by orchestration tests. A successful save is explicitly `save_verified`;
+`restore_tested` requires all-seat identity import and collector startup. Private
+native field diagnostics are added without projecting hidden state to providers.
+Root-cause native reproduction and full multiplayer restore acceptance remain
+pending; see [evidence](benchmarks/checkpoint-recovery-hardening.md).
+
+Checkpoint native acceptance: controlled two-seat save/reload restored exact
+native hashes and vehicle handles and returned to turn/wait. Cross-peer mismatch
+now blocks publication before saving; post-save and post-memory checks reject
+changed captures. Fallback/memory/pin tests pass; UI distinguishes paired saves
+from restore-tested evidence. The historical inconsistent capsule is not repaired.

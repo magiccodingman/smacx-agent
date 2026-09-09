@@ -3,10 +3,12 @@
 import copy
 import hashlib
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from smacx_worker_manager import WorkerManager, WorkerManagerError
+from smacx_checkpoint_policy import identity_hash
 
 previous = {'verified':True, 'slot':'control_recovery', 'turn':1}
 state = {'status':'running', 'host_instance_id':'instance-test',
@@ -25,7 +27,9 @@ def native(_instance, operation, **kw):
         return {'snapshot':{'turn':2,'year':2102,'revision':'stable',
                             'protocol':{'phase':'turn'}}}
     if operation == 'semantic_identity_state':
-        return {'ok':True,'schema':'smacx.private-vehicle-identity.v1'}
+        return {'ok':True,'schema':'smacx.private-vehicle-identity.v1','turn':2,'faction_id':1,
+                'native_validation_fields':[2,1,0], 'native_validation_hash':identity_hash([2,1,0]),
+                'semantic_vehicle_handles':[]}
     if operation == 'semantic_choices':
         return {'choices':[{'command':'save_game'}],'revision':'stable'}
     assert operation == 'semantic_command' and kw['command'] == 'save_game'
@@ -38,6 +42,7 @@ def snapshot(*_args):
     return []
 
 manager = object.__new__(WorkerManager)
+manager._lifecycle_lock = threading.RLock()
 manager.control = SimpleNamespace(
     get_match=lambda _id:copy.deepcopy(state),
     list_seats=lambda _id:[{'instance_id':'instance-test','controller_kind':'agent'}],
@@ -72,9 +77,12 @@ with patch('smacx_worker_manager.time.sleep'):
     second = manager.checkpoint_match('match-test')['checkpoint']
     assert first['native_save_slot'] != second['native_save_slot']
     third = manager.checkpoint_match('match-test')['checkpoint']
-    assert third['native_save_slot'] == first['native_save_slot']
-    assert len(saves) == 3, 'candidate pair grew beyond two plus legacy slot'
+    assert third['native_save_slot'] not in {first['native_save_slot'], second['native_save_slot']}
+    assert len(saves) == 4, 'retained candidates overwritten or unbounded staging'
+    assert first in state['metadata']['recovery_checkpoint_history']
+    for _ in range(12): manager.checkpoint_match('match-test')
+    assert len(saves) <= 6, 'retention staging exceeds five plus legacy slot'
     assert third['slot'] == 'control_recovery'
-    assert len(unpaused) == 6
+    assert len(unpaused) == 18
 print(json.dumps({'passed':True,'failed_archive_preserves_previous_native':True,
                   'candidate_slots_bounded':True,'logical_slot_preserved':True}))

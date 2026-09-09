@@ -112,7 +112,7 @@ public sealed class PortalMaintenanceCoordinator(
             using (await control.PostRawAsync(
                 $"api/v1/matches/{proposal.MatchId}/park", new { }, cancellationToken)) { }
             await StepAsync(database, operation, "workers_parked",
-                "Every managed game worker is parked at the verified checkpoint.", 3,
+                "Every managed game worker is parked at the paired checkpoint.", 3,
                 cancellationToken);
 
             if (proposal.Kind == "native_resolution_change")
@@ -469,14 +469,14 @@ public sealed class PortalMaintenanceCoordinator(
             await StopHarnessRunsAsync(control, operation.MatchId, stoppingToken);
 
             await StepAsync(database, operation, "rebuilding_current_runtime",
-                "Rebuilding the game worker, semantic bridge, and MCP from the current images, then restoring the verified checkpoint.",
+                "Rebuilding the game worker, semantic bridge, and MCP from the current images, then restoring the paired checkpoint.",
                 2, stoppingToken);
             using (await control.PostRawAsync(
                 $"api/v1/matches/{operation.MatchId}/retry-after-update",
                 new { incident_id = incidentId }, stoppingToken)) { }
 
             await StepAsync(database, operation, "native_checkpoint_restored",
-                "The current native runtime is healthy and the verified checkpoint is restored.",
+                "The current native runtime is healthy and the paired checkpoint is restored.",
                 4, stoppingToken);
             operation.Status = "completed";
             operation.Phase = "complete";
@@ -492,7 +492,7 @@ public sealed class PortalMaintenanceCoordinator(
             {
                 MatchId = operation.MatchId,
                 EventType = "incident_retry",
-                Summary = "The capability-stopped campaign resumed from its verified checkpoint using the current managed runtime.",
+                Summary = "The capability-stopped campaign resumed from its paired checkpoint using the current managed runtime.",
                 DetailsJson = JsonSerializer.Serialize(new
                 {
                     operation.OperationId,

@@ -8,6 +8,7 @@ import time
 from smacx_diagnostics import redact
 from smacx_journal import CampaignJournal
 from smacx_store import InvalidRecord
+from smacx_checkpoint_policy import retained_checkpoints
 
 ACTIVE = {'queued', 'starting', 'running', 'restarting'}
 
@@ -182,6 +183,10 @@ class OperatorService:
             'sampled_unix': now, 'state': state, 'reasons': reasons,
             'match_status': match.get('status'), 'turn': match.get('last_turn'), 'year': match.get('last_year'),
             'workers': workers, 'runs': safe_runs, 'world_heads': heads,
+            'checkpoints': [{k: cp.get(k) for k in ('checkpoint_id','turn','year','verification')}
+                for cp in retained_checkpoints(match.get('metadata', {}))],
+            'recovery_attempts': match.get('metadata', {}).get('recovery_attempts', []),
+            'checkpoint_capture_deferred': match.get('metadata', {}).get('checkpoint_capture_deferred'),
             'incidents': incidents[:16], 'specialists': missions, 'active_specialist_missions': active_children,
             'verified_live_specialist_children': children,
             'live_sovereign_processes': live_runs if not run_verification_errors else None,

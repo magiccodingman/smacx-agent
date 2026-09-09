@@ -656,14 +656,14 @@ public sealed class LobbiesController(
                     if (!recoverableMatch.Match.HasVerifiedRecoveryCheckpoint)
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
                             "verified_recovery_checkpoint_required",
-                            "This campaign has no bridge-verified checkpoint and cannot be resumed safely."));
+                            "This campaign has no paired recovery checkpoint and cannot be resumed safely."));
                     await control.PostRawAsync($"api/v1/matches/{matchId}/recover", new { });
                     break;
                 case "retry-after-update":
                     if (profile.Status == "recovering")
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
                             "capability_recovery_in_progress",
-                            "This campaign is already rebuilding from its verified checkpoint."));
+                            "This campaign is already rebuilding from its paired checkpoint."));
                     if (profile.Status is not ("running" or "parked" or "error"))
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
                             "capability_recovery_not_available",
@@ -685,7 +685,7 @@ public sealed class LobbiesController(
                     if (!nativeMatch.Match.HasVerifiedRecoveryCheckpoint)
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
                             "verified_recovery_checkpoint_required",
-                            "This match does not have a bridge-verified recovery checkpoint."));
+                            "This match does not have a bridge-paired recovery checkpoint."));
                     var existingRecovery = await database.PortalMaintenanceOperations
                         .AnyAsync(item => item.MatchId == matchId &&
                             item.Kind == "capability_recovery" &&
@@ -720,7 +720,7 @@ public sealed class LobbiesController(
                     {
                         MatchId = matchId,
                         EventType = "incident_recovery_queued",
-                        Summary = "Durable capability recovery was queued from the verified checkpoint.",
+                        Summary = "Durable capability recovery was queued from the paired checkpoint.",
                     });
                     await database.SaveChangesAsync(HttpContext.RequestAborted);
                     return Accepted(ApiResponse<LobbyDetails>.Success(
@@ -738,7 +738,7 @@ public sealed class LobbiesController(
                     else if (profile.Status != "parked")
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
                             "end_requires_parked_match",
-                            "Park the campaign at a verified checkpoint before ending it permanently."));
+                            "Park the campaign at a paired checkpoint before ending it permanently."));
                     await control.PostRawAsync($"api/v1/matches/{matchId}/complete", new { });
                     break;
                 default: return BadRequest(ApiResponse<LobbyDetails>.Failure(
@@ -768,7 +768,7 @@ public sealed class LobbiesController(
             {
                 MatchId = matchId, EventType = request.Action,
                 Summary = request.Action == "retry-after-update"
-                    ? "The capability-stopped match resumed from its verified checkpoint using the current managed runtime."
+                    ? "The capability-stopped match resumed from its paired checkpoint using the current managed runtime."
                     : $"Match {request.Action} completed.",
             });
             await database.SaveChangesAsync(HttpContext.RequestAborted);
@@ -1536,7 +1536,7 @@ public sealed class LobbiesController(
         var maintenance = await ReadMaintenanceAsync(profile.MatchId);
         var recoveryBlockedReason = profile.Status is "parked" or "error" &&
             !runtime.HasVerifiedRecoveryCheckpoint
-                ? "No bridge-verified recovery checkpoint exists for this campaign. It cannot be resumed safely; end the campaign or preserve it for diagnosis."
+                ? "No bridge-paired recovery checkpoint exists for this campaign. It cannot be resumed safely; end the campaign or preserve it for diagnosis."
                 : null;
         return new LobbyDetails(
             profile.MatchId, profile.DisplayName, profile.Mode, profile.Status,
@@ -1711,7 +1711,7 @@ public sealed class LobbiesController(
         if (profile.Status == "completed")
             return new("completed", "The campaign is complete; its history and analytics remain available.", false);
         if (profile.Status == "parking")
-            return new("parking", "The campaign is taking a verified checkpoint before its workers stop.", true);
+            return new("parking", "The campaign is taking a paired checkpoint before its workers stop.", true);
         if (profile.Status == "parked")
             return new("parked", "The campaign is safely parked and ready to resume.", true);
         var humans = seats.Where(item => item.ControllerKind == "human").ToArray();
@@ -1730,7 +1730,7 @@ public sealed class LobbiesController(
         var seconds = Math.Max(0, (int)Math.Ceiling((eligibleAt - DateTimeOffset.UtcNow).TotalSeconds));
         if (seconds == 0)
             return new("checkpoint_pending",
-                "Every browser player is away; safe parking will complete at the next verified checkpoint.",
+                "Every browser player is away; safe parking will complete at the next paired checkpoint.",
                 true, 0, eligibleAt);
         var neverConnected = snapshots.All(item => !item.EverConnected);
         return new(neverConnected ? "awaiting_first_connection" : "idle_grace_period",

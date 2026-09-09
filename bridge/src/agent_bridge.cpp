@@ -352,6 +352,18 @@ uint64_t semantic_vehicle_layout_hash() {
     return hash;
 }
 
+// Private recovery diagnostics. Never project native rows into sovereign context.
+std::vector<int> semantic_vehicle_layout_fields() {
+    std::vector<int> values = {*CurrentTurn, *CurrentPlayerFaction, *VehCount};
+    for (int row = 0; row < *VehCount; ++row) {
+        VEH& v = Vehs[row];
+        for (int value : {int(v.faction_id), int(v.unit_id), int(v.x), int(v.y),
+             int(v.home_base_id + 1), int(v.order), int(v.moves_spent), int(v.cur_hitpoints())})
+            values.push_back(value);
+    }
+    return values;
+}
+
 std::vector<int> field_int_array(const std::string& json, const char* name,
                                  bool* valid) {
     if (valid) *valid = false;
@@ -403,6 +415,12 @@ std::string semantic_identity_state_response(const std::string& request) {
         for (size_t index = 0; index < semantic_vehicle_handles.size(); ++index) {
             if (index) out << ',';
             out << semantic_vehicle_handles[index];
+        }
+        out << "],\"native_validation_fields\":[";
+        auto fields = semantic_vehicle_layout_fields();
+        for (size_t i = 0; i < fields.size(); ++i) {
+            if (i) out << ',';
+            out << fields[i];
         }
         out << "]}";
         return out.str();
@@ -824,7 +842,7 @@ bool joint_attack_energy_counteroffer_label(const std::string& label) {
 }
 
 bool bribe_demand_label(const std::string& label) {
-    return label.compare(0, 12, "DEMANDBRIBE") == 0;
+    return label.compare(0, sizeof("DEMANDBRIBE") - 1, "DEMANDBRIBE") == 0;
 }
 
 bool loan_offer_label(const std::string& label) {
@@ -3999,7 +4017,7 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "HALTPROJECT" || label == "SURVIVEPROJECT" || label == "DONEPROJECT"
         || label == "SEIZEPROJECT" || label == "LOSEPROJECT";
     bool resolved_base_capture_notice = label.compare(0, 9, "SEIZEBASE") == 0
-        || label.compare(0, 11, "LIBERATEBASE") == 0 || label == "RENAMEBASE"
+        || label.compare(0, sizeof("LIBERATEBASE") - 1, "LIBERATEBASE") == 0 || label == "RENAMEBASE"
         || label == "OBLITTED" || label == "OBLITTED2";
     bool resolved_elimination_notice = label.compare(0, 7, "WIPEOUT") == 0
         || label == "TRACKED";

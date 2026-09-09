@@ -377,7 +377,7 @@ public sealed class PortalMatchSupervisor(
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {
                     MatchId = match.MatchId, EventType = "idle_park",
-                    Summary = "All browser players disconnected; a verified checkpoint was created and workers were parked.",
+                    Summary = "All browser players disconnected; a paired checkpoint was created and workers were parked.",
                 });
                 await database.SaveChangesAsync(cancellationToken);
                 await NotifyAsync(match.MatchId, cancellationToken);
@@ -719,7 +719,7 @@ public sealed class PortalMatchSupervisor(
         if (checkpoint is null)
         {
             match.Status = "error";
-            match.LastError = "A native player left before the first verified recovery checkpoint. The match is preserved for operator review.";
+            match.LastError = "A native player left before the first paired recovery checkpoint. The match is preserved for operator review.";
             await database.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -728,7 +728,7 @@ public sealed class PortalMatchSupervisor(
             MatchId = match.MatchId, Kind = "automatic_recovery", Status = "running",
             Phase = "recovering_native_session", CompletedSteps = 1, TotalSteps = 2,
             StableTurn = checkpoint.Turn, StableYear = checkpoint.Year,
-            Summary = "A native session ended; reconnecting every managed seat to the latest verified checkpoint.",
+            Summary = "A native session ended; reconnecting every managed seat to the latest paired checkpoint.",
             CanCancel = false,
         };
         database.PortalMaintenanceOperations.Add(operation);
@@ -740,7 +740,7 @@ public sealed class PortalMatchSupervisor(
                 $"api/v1/matches/{match.MatchId}/recover", new { }, cancellationToken)) { }
             operation.Status = "completed"; operation.Phase = "complete";
             operation.CompletedSteps = 2; operation.CompletedAt = DateTimeOffset.UtcNow;
-            operation.Summary = "Every managed seat reconnected to the latest verified checkpoint.";
+            operation.Summary = "Every managed seat reconnected to the latest paired checkpoint.";
             operation.UpdatedAt = DateTimeOffset.UtcNow;
             match.Status = "running"; match.LastError = null;
             database.PortalMatchEvents.Add(new PortalMatchEvent

@@ -68,7 +68,11 @@ def exercise(mode, fail_identity=False, staged_slot=False, fail_save=False):
         return {'ok': True, 'match': lifecycle(match_id, 'starting')}
     manager.start_lan_match = lan
     def native(instance, operation, **kwargs):
-        assert operation == 'semantic_identity_state' and kwargs['action'] == 'import'
+        assert operation == 'semantic_identity_state'
+        if kwargs['action'] == 'export':
+            events.append(('private_diagnostic', instance))
+            return {'ok': True, 'native_validation_hash': 'different'}
+        assert kwargs['action'] == 'import'
         assert not any(e[0] == 'collector' for e in events)
         if fail_identity and instance == ids[-1]:
             return {'ok': False, 'error': 'injected_identity_failure'}
