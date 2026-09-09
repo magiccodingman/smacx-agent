@@ -72,9 +72,12 @@ with patch('smacx_worker_manager.time.sleep'):
     second = manager.checkpoint_match('match-test')['checkpoint']
     assert first['native_save_slot'] != second['native_save_slot']
     third = manager.checkpoint_match('match-test')['checkpoint']
-    assert third['native_save_slot'] == first['native_save_slot']
-    assert len(saves) == 3, 'candidate pair grew beyond two plus legacy slot'
+    assert third['native_save_slot'] not in {first['native_save_slot'], second['native_save_slot']}
+    assert len(saves) == 4, 'retained candidates overwritten or unbounded staging'
+    assert first in state['metadata']['recovery_checkpoint_history']
+    for _ in range(12): manager.checkpoint_match('match-test')
+    assert len(saves) <= 6, 'retention staging exceeds five plus legacy slot'
     assert third['slot'] == 'control_recovery'
-    assert len(unpaused) == 6
+    assert len(unpaused) == 18
 print(json.dumps({'passed':True,'failed_archive_preserves_previous_native':True,
                   'candidate_slots_bounded':True,'logical_slot_preserved':True}))

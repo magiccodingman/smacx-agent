@@ -852,15 +852,17 @@ class WorldStore:
             )
         self.gc_snapshot_if_unpinned(snapshot_id)
 
-    def release_obsolete_checkpoint_pins(self, match_id: str, keep_checkpoint_id: str) -> int:
+    def release_obsolete_checkpoint_pins(self, match_id: str, keep_checkpoint_id: str | set[str]) -> int:
         """Release old checkpoint ownership only after its replacement is published."""
+        keep = {keep_checkpoint_id} if isinstance(keep_checkpoint_id, str) else keep_checkpoint_id
         with self.store.transaction() as connection:
             rows = connection.execute(
                 "SELECT p.snapshot_id,p.owner_id FROM world_snapshot_pins p "
                 "JOIN world_snapshots s ON s.snapshot_id=p.snapshot_id "
-                "WHERE s.match_id=? AND p.owner_kind='checkpoint' AND p.owner_id<>?",
-                (match_id, keep_checkpoint_id),
+                "WHERE s.match_id=? AND p.owner_kind='checkpoint'",
+                (match_id,),
             ).fetchall()
+            rows = [row for row in rows if row["owner_id"] not in keep]
             for row in rows:
                 connection.execute(
                     "DELETE FROM world_snapshot_pins WHERE snapshot_id=? "

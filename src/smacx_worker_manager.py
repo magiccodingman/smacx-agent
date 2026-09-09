@@ -18,6 +18,7 @@ from typing import Any, Mapping
 import uuid
 
 from smacx_control import ControlPlane
+from smacx_checkpoint_policy import retained_checkpoints, staging_slot
 from smacx_attention import AttentionService
 from smacx_controller import BridgeUnavailable, bridge_request_to
 from smacx_docker import DockerClient, DockerError, DockerNotFound
@@ -639,13 +640,15 @@ class WorkerManager:
         return restored
 
     def _cleanup_recovery_snapshots(self, match_id: str, keep_checkpoint_id: str) -> int:
-        WorldStore(self.store).release_obsolete_checkpoint_pins(match_id, keep_checkpoint_id)
+        retained = retained_checkpoints(self.control.get_match(match_id).get("metadata", {}))
+        keep = {str(x.get("checkpoint_id")) for x in retained} | {keep_checkpoint_id}
+        WorldStore(self.store).release_obsolete_checkpoint_pins(match_id, keep)
         root = self.store.path.parent / "recovery-snapshots" / match_id
         if not root.is_dir():
             return 0
         removed = 0
         for path in root.iterdir():
-            if path.is_dir() and path.name != keep_checkpoint_id:
+            if path.is_dir() and path.name not in keep:
                 shutil.rmtree(path)
                 removed += 1
         return removed
@@ -3631,14 +3634,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         match = self.control.get_match(match_id)
         if match["status"] != "running":
             raise WorkerManagerError("checkpoint_requires_running_match")
-        # Stage into the inactive member of a bounded pair. A failed AI
-        # archive must never overwrite the native half of the last verified
-        # checkpoint. Keep the caller's logical slot stable in public metadata.
-        previous_checkpoint = match.get("metadata", {}).get("recovery_checkpoint") or {}
-        previous_slot = str(previous_checkpoint.get("native_save_slot")
-                            or previous_checkpoint.get("slot") or "")
-        slot_prefix = "ckpt_" + hashlib.sha256(slot.encode()).hexdigest()[:16]
-        native_slot = slot_prefix + ("_b" if previous_slot == slot_prefix + "_a" else "_a")
+        retained = retained_checkpoints(match.get("metadata", {}))
+        native_slot = staging_slot(slot, retained)
         seats = self.control.list_seats(match_id)
         # A browser-managed human host is just as recoverable as an agent:
         # both have an isolated worker and authenticated native bridge. Only a
@@ -3747,6 +3744,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "turn": capsule.get("turn"),
                     "faction_id": capsule.get("faction_id"),
                     "native_validation_hash": capsule.get("native_validation_hash"),
+                    "native_validation_fields": capsule.get("native_validation_fields"),
                     "next_semantic_vehicle_handle": capsule.get(
                         "next_semantic_vehicle_handle"
                     ),
@@ -3777,7 +3775,9 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             checkpoint = {
                 "checkpoint_id": checkpoint_id,
                 "slot": slot, "native_save_slot": native_slot,
-                "verified": True, "created_unix": time.time(),
+                "verified": True, "verification": {"status": "save_verified",
+                    "meaning": "Native save digest and paired AI capture verified; restore not yet tested."},
+                "created_unix": time.time(),
                 "host_instance_id": host_instance_id,
                 "turn": saved.get("turn"), "year": saved.get("year"),
                 "path": saved.get("relative_path") or saved.get("path"),
@@ -3852,6 +3852,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             updated = self.control.update_match_lifecycle(
                 match_id, "running", metadata={
                     "recovery_checkpoint": checkpoint, "recovery_required": False,
+                    "recovery_checkpoint_history": retained,
                 },
             )
             checkpoint["generation"] = self.store.complete_checkpoint_generation(
@@ -3866,7 +3867,10 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 "obsolete_checkpoint_directories_removed": removed,
             }
             updated = self.control.update_match_lifecycle(
-                match_id, "running", metadata={"recovery_checkpoint": checkpoint},
+                match_id, "running", metadata={"recovery_checkpoint": checkpoint,
+                    "recovery_checkpoint_history": [x for x in retained_checkpoints(
+                        {"recovery_checkpoint": checkpoint, "recovery_checkpoint_history": retained})
+                        if x.get("checkpoint_id") != checkpoint_id]},
             )
             return {"ok": True, "match": updated, "checkpoint": checkpoint}
         finally:
@@ -4166,17 +4170,48 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
             pauses = [row for row in self.control.list_supervision_incidents(
                 match_id=match_id, active_only=True)
                 if row.get("incident_kind") == "operator_pause"]
-            if pauses and (not operator_pause_incident_id or any(
-                    row.get("incident_id") != operator_pause_incident_id for row in pauses)):
+            if pauses and (not operator_pause_incident_id or not any(
+                    row.get("incident_id") == operator_pause_incident_id for row in pauses)):
                 raise WorkerManagerError("operator_pause_blocks_automatic_recovery")
             if operator_pause_incident_id and not pauses:
                 raise WorkerManagerError("active_operator_pause_incident_required")
-            return self._recover_match_locked(match_id, refresh_runtime=refresh_runtime)
+            candidates = retained_checkpoints(self.control.get_match(match_id).get("metadata", {}))
+            if not candidates:
+                raise WorkerManagerError("verified_recovery_checkpoint_required")
+            failures = []
+            for checkpoint in candidates:
+                try:
+                    result = self._recover_match_locked(match_id, refresh_runtime=refresh_runtime,
+                                                        _checkpoint=checkpoint)
+                except WorkerManagerError as exc:
+                    # Freeze partial native restores before any fallback. Never
+                    # launch collectors with partially imported identity state.
+                    quarantine = self.quarantine_match(match_id, stop_collectors=True)
+                    failures.append({"checkpoint_id": checkpoint.get("checkpoint_id"), "reason": str(exc)[:1200]})
+                    self.control.update_match_lifecycle(match_id, "error", metadata={
+                        "recovery_attempts": failures, "incident_quarantine": quarantine,
+                        "recovery_required": True})
+                    retryable = str(exc).startswith(("checkpoint_semantic_identity_restore_failed:",
+                        "native_checkpoint_digest_mismatch", "checkpoint_save_file_missing"))
+                    if not retryable:
+                        raise
+                    continue
+                checkpoint = dict(checkpoint)
+                checkpoint["verification"] = {"status": "restore_tested", "restored_unix": time.time(),
+                    "managed_seats": len(result.get("native_semantic_identity_restore", [])),
+                    "runtime_image": self.worker_image}
+                result["match"] = self.control.update_match_lifecycle(match_id, "running", metadata={
+                    "recovery_checkpoint": checkpoint,
+                    "recovery_checkpoint_history": [x for x in candidates if x.get("checkpoint_id") != checkpoint.get("checkpoint_id")],
+                    "recovery_attempts": failures})
+                return result
+            raise WorkerManagerError("all_retained_checkpoints_failed:" + json.dumps(failures, separators=(",", ":")))
 
-    def _recover_match_locked(self, match_id: str, *, refresh_runtime: bool = False) -> dict[str, Any]:
+    def _recover_match_locked(self, match_id: str, *, refresh_runtime: bool = False,
+                              _checkpoint: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Resume a managed match only from its last bridge-verified checkpoint."""
         match = self.control.get_match(match_id)
-        checkpoint = match.get("metadata", {}).get("recovery_checkpoint")
+        checkpoint = _checkpoint if _checkpoint is not None else match.get("metadata", {}).get("recovery_checkpoint")
         if not isinstance(checkpoint, Mapping) or checkpoint.get("verified") is not True:
             raise WorkerManagerError("verified_recovery_checkpoint_required")
         logical_slot = str(checkpoint.get("slot") or "")
@@ -4269,6 +4304,25 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 action="import", **dict(capsule),
             )
             if response.get("ok") is not True or response.get("restored") is not True:
+                actual = self._native_request(instance_id, "semantic_identity_state", timeout=20.0, action="export")
+                expected_fields = capsule.get("native_validation_fields")
+                actual_fields = actual.get("native_validation_fields")
+                differences = []
+                if isinstance(expected_fields, list) and isinstance(actual_fields, list):
+                    names = ["faction", "design", "x", "y", "home_base_plus_one", "order", "moves_spent", "health"]
+                    for index, (expected_value, actual_value) in enumerate(zip(expected_fields, actual_fields)):
+                        if expected_value != actual_value:
+                            differences.append({"row": (index - 3) // 8 if index >= 3 else None,
+                                "field": names[(index - 3) % 8] if index >= 3 else ["turn", "perspective", "vehicle_count"][index],
+                                "expected": expected_value, "actual": actual_value})
+                    differences = differences[:32]
+                diagnostic = {"instance_id": instance_id,
+                    "checkpoint_id": checkpoint.get("checkpoint_id"),
+                    "expected_hash": capsule.get("native_validation_hash"),
+                    "actual_hash": actual.get("native_validation_hash"),
+                    "differences": differences, "field_evidence_available": isinstance(expected_fields, list)}
+                # Control metadata is operator-only, never journal/provider context.
+                self.control.update_match_lifecycle(match_id, "error", metadata={"recovery_identity_diagnostic": diagnostic})
                 detail = json.dumps(response, separators=(",", ":"))[:1000]
                 raise WorkerManagerError(
                     f"checkpoint_semantic_identity_restore_failed:{instance_id}:{detail}"

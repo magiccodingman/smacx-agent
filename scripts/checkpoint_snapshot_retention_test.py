@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 from semantic_consumer_contract_test import Fixture
 from smacx_worker_manager import WorkerManager
 from smacx_world_types import WorldIdentity
@@ -33,6 +34,7 @@ def main():
         f.worlds.pin_snapshot(old['snapshot_id'], 'recovery', 'recovery-audit')
         manager = object.__new__(WorkerManager)
         manager.store = f.store
+        manager.control = SimpleNamespace(get_match=lambda _: {'metadata': {}})
         manager._cleanup_recovery_snapshots(f.scope.match_id, 'checkpoint-new')
         assert Path(old['path']).is_file() and Path(new['path']).is_file()
         f.worlds.unpin_snapshot(old['snapshot_id'], 'recovery', 'recovery-audit')

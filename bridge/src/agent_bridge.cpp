@@ -352,6 +352,18 @@ uint64_t semantic_vehicle_layout_hash() {
     return hash;
 }
 
+// Private recovery diagnostics. Never project native rows into sovereign context.
+std::vector<int> semantic_vehicle_layout_fields() {
+    std::vector<int> values = {*CurrentTurn, *CurrentPlayerFaction, *VehCount};
+    for (int row = 0; row < *VehCount; ++row) {
+        VEH& v = Vehs[row];
+        for (int value : {int(v.faction_id), int(v.unit_id), int(v.x), int(v.y),
+             int(v.home_base_id + 1), int(v.order), int(v.moves_spent), int(v.cur_hitpoints())})
+            values.push_back(value);
+    }
+    return values;
+}
+
 std::vector<int> field_int_array(const std::string& json, const char* name,
                                  bool* valid) {
     if (valid) *valid = false;
@@ -377,7 +389,7 @@ std::vector<int> field_int_array(const std::string& json, const char* name,
         if (!end || end == json.c_str() + pos || value < 0 || value > 0x7fffffffL)
             return {};
         result.push_back(static_cast<int>(value));
-        if (result.size() > static_cast<size_t>(MaxVehNum)) return {};
+        if (result.size() > static_cast<size_t>(MaxVehNum) * 8 + 3) return {};
         pos = static_cast<size_t>(end - json.c_str());
         while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t'
         || json[pos] == '\r' || json[pos] == '\n')) ++pos;
@@ -403,6 +415,12 @@ std::string semantic_identity_state_response(const std::string& request) {
         for (size_t index = 0; index < semantic_vehicle_handles.size(); ++index) {
             if (index) out << ',';
             out << semantic_vehicle_handles[index];
+        }
+        out << "],\"native_validation_fields\":[";
+        auto fields = semantic_vehicle_layout_fields();
+        for (size_t i = 0; i < fields.size(); ++i) {
+            if (i) out << ',';
+            out << fields[i];
         }
         out << "]}";
         return out.str();

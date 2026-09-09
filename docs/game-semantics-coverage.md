@@ -1214,3 +1214,12 @@ classification test. See [evidence](benchmarks/diplomacy-popup-prefix.md).
 Popup correction deployment is complete. Saved-campaign recovery failed closed
 on a native vehicle-identity mismatch; containment is verified. Do not interpret
 the deployment or compiled matcher tests as successful live recovery.
+
+## Checkpoint hardening — retention layer
+
+Capture → digest/AI pairing → bounded retention → guarded recovery fallback is
+covered by orchestration tests. A successful save is explicitly `save_verified`;
+`restore_tested` requires all-seat identity import and collector startup. Private
+native field diagnostics are added without projecting hidden state to providers.
+Root-cause native reproduction and full multiplayer restore acceptance remain
+pending; see [evidence](benchmarks/checkpoint-recovery-hardening.md).

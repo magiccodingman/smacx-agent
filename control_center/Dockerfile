@@ -62,7 +62,7 @@ COPY src/smacx_diagnostics.py src/smacx_diagnostic_summary.py \
     src/smacx_campaign_diagnostics.py src/smacx_intent.py /opt/smacx/src/
 COPY src/smacx_operator.py src/smacx_ops.py src/smacx_former_attention.py src/smacx_order_attention.py src/smacx_activity.py /opt/smacx/src/
 COPY src/smacx_attention.py src/smacx_spatial_scope.py src/smacx_milestones.py src/smacx_plan_health.py src/smacx_counterfactual.py src/smacx_entitlements.py src/smacx_mechanics.py \
-    src/smacx_observation.py src/smacx_temporal_episodes.py src/smacx_regions.py src/smacx_runtime_context.py src/smacx_turn_wait.py \
+    src/smacx_observation.py src/smacx_temporal_episodes.py src/smacx_regions.py src/smacx_runtime_context.py src/smacx_turn_wait.py src/smacx_checkpoint_policy.py \
     src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \
     src/smacx_world.py src/smacx_world_model.py src/smacx_world_store.py \
     src/smacx_world_types.py /opt/smacx/src/
