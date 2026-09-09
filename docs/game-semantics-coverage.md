@@ -1286,3 +1286,11 @@ acknowledgements. Autonomous use of newly enabled development remains unobserved
 | Operations | Owned economic exceptions distinguish the current queue item from follow-up entries; stale rates do not raise current alerts. Recent canonical action baselines can be compared with committed endpoints without declaring stationary orders stuck. Pending final provider and deployment checks below. |
 
 See [operational geography acceptance](benchmarks/operational-geography.md).
+
+Operational checkpoint 2: native-shaped explicit order targets are captured as
+semantic requested destinations in new canonical action baselines. Unknown
+selectors remain absent; later unit actions are disclosed rather than assuming
+an old assignment persists. Managed order/Former/intent/citizen contracts and real
+Hermes-to-controlled-HTTP operational-review delivery pass. Initial and resumed
+provider requests retain the current 15-tool surface. Installed deployment is
+still pending; improved live strategy and sustained task progress are unproven.

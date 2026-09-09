@@ -31,3 +31,15 @@ is current); order history is request-only and scoped to the current epoch and
 committed observation. Runtime support advisories retain native authority. The
 provider schema gate remains 15 tools and 842 conservative tokens for smac_world
 (900 hard ceiling); no extra doctrine text or paid tokenization was used.
+
+Checkpoint 2 validation completed:
+- Container MCP environment: persistent order attention (including native-target
+  to semantic-destination capture), Former automation, intent reconciliation,
+  citizen managed delivery and fair-play contracts pass.
+- Real Hermes image → local controlled HTTP provider: new operational exceptions
+  survive the request-only context boundary in gameplay/communication episodes;
+  existing initial/resume, semantic-GC, diagnostic and direct-tool assertions pass.
+- WorldService checks additionally exercise intel geography and deep connector
+  query delivery. No production provider requests were made.
+- Original campaign read-back confirms parked turn 17/year 2117 and an available
+  verified checkpoint. The campaign has not been resumed for this validation.

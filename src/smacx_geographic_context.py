@@ -36,8 +36,8 @@ def geographic_context(topology, refs, objects):
                         "bearing_to_nearest_area": topology.shape.bearing((origin.x, origin.y), (nearest.x, nearest.y))})
     anchors.sort(key=lambda a: (a["geometric_range"], a["base_ref"]))
     return {"known_location_count": len(refs),
-            "current_terrain_location_count": sum(bool(s.current) for s in squares),
-            "remembered_terrain_location_count": sum(not s.current for s in squares),
+            "currently_visible_location_count": sum(bool(s.current) for s in squares),
+            "not_currently_visible_location_count": sum(not s.current for s in squares),
             "unknown_boundary_location_count": len(boundary),
             "unobserved_extent": "unknown" if boundary else "no_missing_adjacent_tiles_in_this_scope",
             "north_south_coordinate_span": max(s.y for s in squares) - min(s.y for s in squares),

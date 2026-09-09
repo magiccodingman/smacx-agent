@@ -61,7 +61,13 @@ def order_review(events, projection, limit=4):
         if int(attempt.get("observation_cursor") or 0) >= int(projection.get("observation_cursor") or 0): continue
         after = unit_state(projection, ref)
         if after is None: continue
+        native_unit = payload.get("choice_parameters", {}).get("unit_id")
+        later_unit_action = native_unit is not None and any(
+            e.get("event_type") == "game.action" and e.get("sequence", 0) > event.get("sequence", 0)
+            and e.get("payload", {}).get("choice_parameters", {}).get("unit_id") == native_unit for e in events)
         rows.append({"unit_ref": ref, "assignment_turn": attempt.get("turn"),
+                     "requested_destination_ref": attempt.get("requested_destination_ref"),
+                     "later_unit_action_observed": later_unit_action,
                      "source_action_event_id": event.get("event_id"),
                      "recorded_command": attempt.get("mode"),
                      "assignment_observation_cursor": attempt.get("observation_cursor"),
@@ -69,5 +75,11 @@ def order_review(events, projection, limit=4):
                      "observed_endpoint": after,
                      "location_differs_from_assignment": before.get("location_ref") != after.get("location_ref"),
                      "meaning": "Endpoint comparison only. Later commands may supersede assignment. Equal endpoints do not prove no intervening progress; changed location does not prove arrival or completion. Review changes and current intent before repeating an order."})
+    destinations = defaultdict(list)
+    for row in rows:
+        if row.get("requested_destination_ref") and not row["later_unit_action_observed"]:
+            destinations[row["requested_destination_ref"]].append(row["unit_ref"])
     return {"items": rows[:limit], "omitted_count": max(0, len(rows)-limit),
+            "shared_requested_destinations": [{"location_ref": r, "unit_refs": units[:8], "unit_count": len(units)}
+                for r, units in sorted(destinations.items()) if len(units) > 1][:4],
             "coverage": "bounded recent canonical action window; older assignments may be absent"}

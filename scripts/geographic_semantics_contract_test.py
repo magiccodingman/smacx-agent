@@ -309,6 +309,10 @@ def main() -> int:
         mass_detail = service.query(mode="area", origin_ref=mass_ref, detail="deep")
         assert mass_detail["geographic_context"]["known_location_count"] > 0
         assert "unobserved_extent" in mass_detail["geographic_context"]
+        intel = service.query(mode="intel", detail="deep")
+        assert "foreign_geography" in intel and intel.get("ok") is not False
+        connectors = service.query(mode="compare", origin_ref="own-unit-7", subject_refs=["location-21"], detail="deep")
+        assert "connector_coverage" in connectors and "wider_passages" in connectors
 
         legal = service.query(
             mode="compare", subject_refs=["location-20"], context_length=65536,

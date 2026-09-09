@@ -296,6 +296,20 @@ def _order_attempt_baseline(choice, identity, decision):
                                   "turn": decision.get("turn"),
                                   "world_epoch": projection["identity"]["world_epoch"],
                                   "observation_cursor": projection.get("observation_cursor")}
+                target_tile = next((choice[key] for key in ("target_tile_id", "to_tile_id", "destination_tile_id")
+                                    if type(choice.get(key)) is int), None)
+                if target_tile is not None:
+                    from smacx_world import WorldService
+                    topology = WorldService._topology(projection)
+                    destination = next((ref for ref, square in topology.by_ref.items()
+                                        if (square.x + topology.shape.width * square.y) // 2 == target_tile), None)
+                    if destination:
+                        order_attempt["requested_destination_ref"] = destination
+                elif choice.get("command") in {"go_to_base", "return_to_base"} and type(choice.get("base_id")) is int:
+                    destination = next((item.get("location_ref") for item in projection.get("objects", ())
+                                        if item.get("kind") == "base" and item.get("metadata", {}).get("native_id") == choice.get("base_id")), None)
+                    if destination:
+                        order_attempt["requested_destination_ref"] = destination
     return order_attempt
 
 
