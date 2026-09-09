@@ -3619,7 +3619,10 @@ def _latch_journal_failure(
     return response
 
 
-def _refresh_rejected_decision(response: dict, key: tuple[str, str]) -> dict:
+def _refresh_rejected_decision(
+    response: dict, key: tuple[str, str], *,
+    rejected_decision_id: str = "", rejected_choice_id: str = "",
+) -> dict:
     """Return fresh evidence after an invalid handle; never replay an action.
 
     Keep the original failure and its budget. Enumeration uses the same
@@ -3640,6 +3643,15 @@ def _refresh_rejected_decision(response: dict, key: tuple[str, str]) -> dict:
         recovery["frame"] = frame
         if isinstance(frame.get("required_next"), dict):
             response["required_next"] = dict(frame["required_next"])
+        if frame.get("ok") and isinstance(frame.get("choices"), list):
+            response["required_next"].update({
+                "select_choice_from": "recovery.frame.choices",
+                "instruction": "The submitted IDs are unusable. Select one current choice from recovery.frame and copy both replacement IDs exactly.",
+                "do_not_reuse": {
+                    "decision_id": rejected_decision_id,
+                    "choice_id": rejected_choice_id,
+                },
+            })
         # A changed turn can require the sovereign episode to end. Preserve
         # that signal at receipt level as well as inside the recovery frame.
         for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
@@ -3760,7 +3772,10 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
     # Native reads must run outside the progress lock. Never enumerate after
     # the circuit trips, and never reset the budget merely for a fresh frame.
     if len(history) < FAILED_CHOICE_LIMIT:
-        return _refresh_rejected_decision(response, key)
+        return _refresh_rejected_decision(
+            response, key, rejected_decision_id=decision_id,
+            rejected_choice_id=choice_id,
+        )
     journal = controller_record_campaign_action(key[0], key[1], {
         "decision_id": decision_id, "choice_id": choice_id,
         "outcome": "failure_circuit_open", "incident": incident,

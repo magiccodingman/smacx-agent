@@ -68,6 +68,8 @@ for failure in ('unknown_decision', 'expired_decision', 'consumed_decision', 'in
     frame = rejected['recovery']['frame']
     assert frame['ok'] and frame['decision_id'] != d
     assert rejected['required_next']['decision_id'] == frame['decision_id']
+    assert rejected['required_next']['select_choice_from'] == 'recovery.frame.choices'
+    assert rejected['required_next']['do_not_reuse'] == {'decision_id': d, 'choice_id': c}
     assert 'command' not in frame['choices'][0], frame
     selected = attempt(frame['decision_id'], frame['choices'][0]['choice_id'])
     assert selected['ok'] and len(writes) == 1, selected

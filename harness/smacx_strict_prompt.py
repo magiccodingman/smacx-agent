@@ -364,6 +364,31 @@ def _replace_managed_tool_arguments(call: object, arguments: dict) -> None:
     ) if outer_was_text else outer
 
 
+def _managed_tool_result(content: object) -> dict | None:
+    """Decode direct or Hermes-wrapped MCP JSON for wire-only compaction."""
+    if not isinstance(content, str):
+        return content if isinstance(content, dict) else None
+    candidates = [content]
+    if "<untrusted_tool_result" in content and "</untrusted_tool_result>" in content:
+        body = content.split(">", 1)[-1].rsplit("</untrusted_tool_result>", 1)[0]
+        candidates.extend(reversed(body.split("\n\n")))
+    for candidate in candidates:
+        try:
+            value = json.loads(candidate.strip())
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        for _ in range(2):
+            if not isinstance(value, dict) or not isinstance(value.get("result"), str):
+                break
+            try:
+                value = json.loads(value["result"])
+            except json.JSONDecodeError:
+                break
+        if isinstance(value, dict):
+            return value
+    return None
+
+
 def _request_tokens(messages) -> int:  # noqa: ANN001
     return max(1, (len(json.dumps(
         messages, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str,
@@ -560,6 +585,8 @@ def _install() -> None:
         historical_tool_call_ids: set[str] = set()
         pending_tool_ids: set[str] = set()
         state_rows: list[int] = []
+        decision_rows: dict[str, int] = {}
+        consumed_decision_ids: set[str] = set()
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict):
                 continue
@@ -598,18 +625,43 @@ def _install() -> None:
                         if index < last_user:
                             historical_tool_call_ids.add(call["id"])
             elif message.get("role") == "tool":
-                name = tool_names.get(str(message.get("tool_call_id") or ""), "")
+                call_id = str(message.get("tool_call_id") or "")
+                name = tool_names.get(call_id, "")
                 if name in _STATE_TOOL_NAMES:
                     state_rows.append(index)
+                result = _managed_tool_result(message.get("content"))
+                if name in {"smac_decision", "smac_choices"} and isinstance(result, dict) \
+                        and isinstance(result.get("decision_id"), str):
+                    decision_rows[result["decision_id"]] = index
+                elif name == "smac_execute_choice" and isinstance(result, dict) \
+                        and result.get("decision_consumed") is True:
+                    arguments = _managed_tool_arguments(tool_calls_by_id.get(call_id)) or {}
+                    decision_id = arguments.get("decision_id")
+                    if isinstance(decision_id, str):
+                        consumed_decision_ids.add(decision_id)
             elif message.get("role") == "user":
                 content = message.get("content")
                 if index < last_user and isinstance(content, str) \
                         and content.startswith("[SMACX_EPISODE_BOUNDARY"):
                     message["content"] = "[Superseded managed gameplay episode boundary.]"
                     compacted_boundaries += 1
+        superseded_consumed_rows: set[int] = set()
+        for decision_id in consumed_decision_ids:
+            index = decision_rows.get(decision_id)
+            if index is None or str(sanitized[index].get("tool_call_id") or "") in pending_tool_ids:
+                continue
+            sanitized[index]["content"] = json.dumps({
+                "ok": True,
+                "superseded_runtime_state": True,
+                "decision_consumed": True,
+                "instruction": "This decision was consumed by a later execution receipt. Never reuse its decision_id or choice_id; use the newest execution or recovery result and current native focus.",
+            }, separators=(",", ":"))
+            superseded_consumed_rows.add(index)
+            compacted_frames += 1
         for index in state_rows[:-1]:
             message = sanitized[index]
-            if str(message.get("tool_call_id") or "") in pending_tool_ids:
+            if index in superseded_consumed_rows \
+                    or str(message.get("tool_call_id") or "") in pending_tool_ids:
                 continue
             message["content"] = json.dumps({
                 "ok": True,
@@ -625,6 +677,8 @@ def _install() -> None:
         newest_query: dict[str, int] = {}
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict) or message.get("role") != "tool":
+                continue
+            if index in superseded_consumed_rows:
                 continue
             call_id = str(message.get("tool_call_id") or "")
             if tool_names.get(call_id) not in _QUERY_TOOL_NAMES:
