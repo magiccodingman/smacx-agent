@@ -32,7 +32,12 @@ Validation:
   [native results](multiplayer-energy-demand.json).
 - Semantic choice binding and doctrine integration contracts pass.
 - The built control approval and worker DLL fingerprint match.
-- Production recovery remains pending.
+- Production recovery succeeds on the original turn-7 paired checkpoint. It is
+  marked `restore_tested` on `smacx-agent-worker:energy-demand`; both worker/MCP
+  pairs are healthy, both sovereign processes are active, and the operator report
+  has no active incidents or health reasons. The portal completes recovery only
+  after both sovereigns are running. Autonomous reuse of a demand response is
+  still unobserved; the mechanics proof above is the isolated replay.
 
 One isolated worker startup stalled at the Firaxis splash and timed out. The same
 image succeeded on a fresh worker retry. That failure is retained in private

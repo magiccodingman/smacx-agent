@@ -1229,3 +1229,10 @@ native hashes and vehicle handles and returned to turn/wait. Cross-peer mismatch
 now blocks publication before saving; post-save and post-memory checks reject
 changed captures. Fallback/memory/pin tests pass; UI distinguishes paired saves
 from restore-tested evidence. The historical inconsistent capsule is not repaired.
+
+Multiplayer energy-demand checkpoint: final-build two-client reject/accept/counter
+replays pass exact transfer, diplomatic agreement, refusal-announcement closure,
+unchanged unit/base state and duplicate rejection. The original turn-7 campaign
+then passes paired recovery on the deployed image with both sovereigns active and
+no incidents. Autonomous reuse of this demand response remains unobserved.
+[Evidence](benchmarks/multiplayer-energy-demand.md).

@@ -331,5 +331,34 @@
   ],
   "classification": "isolated native two-client saved-game replay; no sovereign strategy inferred",
   "engine_source_sha256": "506d0b5b8c39b19c1f0c214f87930394726520bf98f3b6ce87dcdb040e3b000f",
-  "save_sha256": "2a9b12d39a13e8a51698254d2ad9743f962b43cc5b7bc04f2e6205e8bbc6371f"
+  "save_sha256": "2a9b12d39a13e8a51698254d2ad9743f962b43cc5b7bc04f2e6205e8bbc6371f",
+  "deployment": {
+    "sampled_unix": 1788962939.2506297,
+    "match_id": "match-b21f417c5d26223aa8754f40a995f469",
+    "state": "observed_active",
+    "match_status": "running",
+    "turn": 7,
+    "active_sovereign_runs": 2,
+    "live_sovereign_processes": 2,
+    "reasons": [],
+    "checkpoint_verification": {
+      "managed_seats": 2,
+      "restored_unix": 1788962911.435945,
+      "runtime_image": "smacx-agent-worker:energy-demand",
+      "status": "restore_tested"
+    },
+    "worker_and_mcp_health": [
+      {
+        "worker": "healthy",
+        "mcp": "healthy",
+        "paused": false
+      },
+      {
+        "worker": "healthy",
+        "mcp": "healthy",
+        "paused": false
+      }
+    ],
+    "autonomous_demand_response_observed": false
+  }
 }
