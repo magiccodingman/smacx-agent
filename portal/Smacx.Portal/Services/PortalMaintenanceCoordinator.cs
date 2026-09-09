@@ -452,12 +452,46 @@ public sealed class PortalMaintenanceCoordinator(
             return true;
         }
 
+        if (operation.Phase == "restarting_sovereigns")
+        {
+            if (!await AllManagedSovereignsRunningAsync(
+                    database, control, operation.MatchId, stoppingToken))
+                return true;
+            operation.Status = "completed";
+            operation.Phase = "complete";
+            operation.Summary = "Recovery completed. Every managed AI is running on the restored checkpoint.";
+            operation.CompletedSteps = operation.TotalSteps;
+            operation.CanCancel = false;
+            operation.CompletedAt = DateTimeOffset.UtcNow;
+            operation.UpdatedAt = DateTimeOffset.UtcNow;
+            match.Status = "running";
+            match.LastError = null;
+            match.UpdatedAt = DateTimeOffset.UtcNow;
+            database.PortalMatchEvents.Add(new PortalMatchEvent
+            {
+                MatchId = operation.MatchId,
+                EventType = "incident_retry",
+                Summary = "The paired checkpoint was restored and every managed AI restarted successfully.",
+                DetailsJson = JsonSerializer.Serialize(new { operation.OperationId }),
+            });
+            await database.SaveChangesAsync(stoppingToken);
+            await NotifyAsync(operation.MatchId, stoppingToken);
+            return true;
+        }
+
         try
         {
             using var payload = JsonDocument.Parse(operation.PayloadJson);
             var incidentId = payload.RootElement.GetProperty("incidentId").GetString();
+            var incidentKind = payload.RootElement.TryGetProperty(
+                "incidentKind", out var kind) ? kind.GetString() : null;
+            var recompileDoctrine = payload.RootElement.TryGetProperty(
+                "recompileDoctrine", out var recompile) && recompile.GetBoolean();
             if (string.IsNullOrWhiteSpace(incidentId))
                 throw new InvalidOperationException("The queued recovery has no incident identifier.");
+            if (!recompileDoctrine)
+                throw new InvalidOperationException(
+                    "Explicit gameplay-doctrine recompilation approval is missing.");
 
             operation.Status = "running";
             match.Status = "recovering";
@@ -471,34 +505,24 @@ public sealed class PortalMaintenanceCoordinator(
             await StepAsync(database, operation, "rebuilding_current_runtime",
                 "Rebuilding the game worker, semantic bridge, and MCP from the current images, then restoring the paired checkpoint.",
                 2, stoppingToken);
+            var recoveryPath = string.Equals(incidentKind, "operator_pause",
+                StringComparison.Ordinal)
+                ? $"api/v1/matches/{operation.MatchId}/operator/resume"
+                : $"api/v1/matches/{operation.MatchId}/retry-after-update";
             using (await control.PostRawAsync(
-                $"api/v1/matches/{operation.MatchId}/retry-after-update",
-                new { incident_id = incidentId }, stoppingToken)) { }
+                recoveryPath, new { incident_id = incidentId }, stoppingToken)) { }
 
             await StepAsync(database, operation, "native_checkpoint_restored",
                 "The current native runtime is healthy and the paired checkpoint is restored.",
                 4, stoppingToken);
-            operation.Status = "completed";
-            operation.Phase = "complete";
-            operation.Summary = "Recovery completed. Autonomous play is reconnecting now.";
-            operation.CompletedSteps = operation.TotalSteps;
-            operation.CanCancel = false;
-            operation.CompletedAt = DateTimeOffset.UtcNow;
+            operation.Status = "running";
+            operation.Phase = "restarting_sovereigns";
+            operation.Summary = "The checkpoint is restored. Recompiling doctrine and starting every managed AI.";
+            operation.CompletedSteps = 4;
             operation.UpdatedAt = DateTimeOffset.UtcNow;
             match.Status = "running";
             match.LastError = null;
             match.UpdatedAt = DateTimeOffset.UtcNow;
-            database.PortalMatchEvents.Add(new PortalMatchEvent
-            {
-                MatchId = operation.MatchId,
-                EventType = "incident_retry",
-                Summary = "The capability-stopped campaign resumed from its paired checkpoint using the current managed runtime.",
-                DetailsJson = JsonSerializer.Serialize(new
-                {
-                    operation.OperationId,
-                    incidentId,
-                }),
-            });
             await database.SaveChangesAsync(stoppingToken);
             await NotifyAsync(operation.MatchId, stoppingToken);
         }
@@ -519,11 +543,10 @@ public sealed class PortalMaintenanceCoordinator(
                     operation.MatchId, CancellationToken.None);
                 if (native.Match.Status == "running" && incident is null)
                 {
-                    operation.Status = "completed";
-                    operation.Phase = "complete";
-                    operation.Summary = "Recovery completed and was reconciled after the portal connection changed.";
-                    operation.CompletedSteps = operation.TotalSteps;
-                    operation.CompletedAt = DateTimeOffset.UtcNow;
+                    operation.Status = "running";
+                    operation.Phase = "restarting_sovereigns";
+                    operation.Summary = "The checkpoint restore completed despite a portal connection change. Restarting every managed AI.";
+                    operation.CompletedSteps = 4;
                     operation.UpdatedAt = DateTimeOffset.UtcNow;
                     match.Status = "running";
                     match.LastError = null;
@@ -571,6 +594,26 @@ public sealed class PortalMaintenanceCoordinator(
             await NotifyAsync(operation.MatchId, CancellationToken.None);
         }
         return true;
+    }
+
+    private static async Task<bool> AllManagedSovereignsRunningAsync(
+        ApplicationDbContext database, ControlPlaneClient control, string matchId,
+        CancellationToken cancellationToken)
+    {
+        var instanceIds = await database.PortalLobbySeats.AsNoTracking()
+            .Where(item => item.MatchId == matchId &&
+                item.ControllerKind == "agent" && item.ControlInstanceId != null)
+            .Select(item => item.ControlInstanceId!)
+            .ToArrayAsync(cancellationToken);
+        if (instanceIds.Length == 0) return true;
+        using var document = await control.GetRawAsync("api/v1/harness-runs", cancellationToken);
+        var running = document.RootElement.GetProperty("harness_runs").EnumerateArray()
+            .Where(item => item.GetProperty("match_id").GetString() == matchId &&
+                item.GetProperty("status").GetString() == "running")
+            .Select(item => item.GetProperty("instance_id").GetString())
+            .Where(item => item is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        return instanceIds.All(running.Contains);
     }
 
     internal static bool IsTransientLifecycleConflict(Exception exception)

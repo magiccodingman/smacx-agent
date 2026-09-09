@@ -660,6 +660,10 @@ public sealed class LobbiesController(
                     await control.PostRawAsync($"api/v1/matches/{matchId}/recover", new { });
                     break;
                 case "retry-after-update":
+                    if (!request.RecompileDoctrine)
+                        return BadRequest(ApiResponse<LobbyDetails>.Failure(
+                            "doctrine_recompile_approval_required",
+                            "Recovery with updated gameplay contracts requires explicit doctrine recompilation approval."));
                     if (profile.Status == "recovering")
                         return Conflict(ApiResponse<LobbyDetails>.Failure(
                             "capability_recovery_in_progress",
@@ -672,7 +676,7 @@ public sealed class LobbiesController(
                         return BadRequest(ApiResponse<LobbyDetails>.Failure(
                             "capability_incident_required",
                             "Choose the active capability incident to retry."));
-                    var activeIncident = await control.GetActiveCapabilityIncidentAsync(
+                    var activeIncident = await control.GetActiveOperatorIncidentAsync(
                         matchId, HttpContext.RequestAborted);
                     if (activeIncident is null || !string.Equals(
                             activeIncident.IncidentId, request.IncidentId,
@@ -705,6 +709,8 @@ public sealed class LobbiesController(
                         PayloadJson = JsonSerializer.Serialize(new
                         {
                             incidentId = request.IncidentId,
+                            incidentKind = activeIncident.IncidentKind,
+                            recompileDoctrine = request.RecompileDoctrine,
                         }),
                         CompletedSteps = 0,
                         TotalSteps = 5,

@@ -71,6 +71,8 @@ public sealed class PortalMatchSupervisor(
             .ToArrayAsync(cancellationToken);
         foreach (var operation in interruptedRecoveryOperations)
         {
+            if (operation.Phase == "restarting_sovereigns")
+                continue;
             operation.Status = "queued";
             operation.Phase = "reconciling_after_restart";
             operation.Summary = "The portal restarted during recovery. Native state is being reconciled and the operation will resume automatically.";
@@ -197,12 +199,10 @@ public sealed class PortalMatchSupervisor(
                     match.UpdatedAt = DateTimeOffset.UtcNow;
                     if (operation is not null && operation.Status is "queued" or "running")
                     {
-                        operation.Status = "completed";
-                        operation.Phase = "complete";
-                        operation.Summary = "Recovery completed and native state was reconciled successfully.";
-                        operation.CompletedSteps = operation.TotalSteps;
-                        operation.CanCancel = false;
-                        operation.CompletedAt = DateTimeOffset.UtcNow;
+                        operation.Status = "running";
+                        operation.Phase = "restarting_sovereigns";
+                        operation.Summary = "The restored native state is healthy. Restarting every managed AI.";
+                        operation.CompletedSteps = 4;
                         operation.UpdatedAt = DateTimeOffset.UtcNow;
                     }
                     await database.SaveChangesAsync(cancellationToken);
@@ -843,6 +843,19 @@ public sealed class PortalMatchSupervisor(
         var seats = await database.PortalLobbySeats.AsNoTracking()
             .Where(item => item.MatchId == match.MatchId && item.ControllerKind == "agent")
             .ToArrayAsync(cancellationToken);
+        var recovery = await database.PortalMaintenanceOperations.AsNoTracking()
+            .Where(item => item.MatchId == match.MatchId &&
+                item.Kind == "capability_recovery" && item.Status == "running" &&
+                item.Phase == "restarting_sovereigns")
+            .OrderByDescending(item => item.UpdatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        var recompileDoctrine = false;
+        if (recovery is not null)
+        {
+            using var payload = JsonDocument.Parse(recovery.PayloadJson);
+            recompileDoctrine = payload.RootElement.TryGetProperty(
+                "recompileDoctrine", out var approved) && approved.GetBoolean();
+        }
         foreach (var seat in seats)
         {
             var runtimeSeat = controlMatch.Seats.SingleOrDefault(item =>
@@ -875,6 +888,7 @@ public sealed class PortalMatchSupervisor(
                     context_length = profile.ContextLength,
                     reasoning_effort = profile.ReasoningEffort,
                     generation_settings = GenerationPayload(profile.GenerationSettingsJson),
+                    recompile_doctrine = recompileDoctrine,
                     run_budget_seconds = 86_400,
                     max_turns = 5_000,
                     restart_limit = 1_000,
