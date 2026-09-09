@@ -1210,3 +1210,7 @@ literal-length audit pass after repair; native cross-build and packaged fingerpr
 validation pending.
 Liberated-base notices had the same family of bug and are covered by the compiled
 classification test. See [evidence](benchmarks/diplomacy-popup-prefix.md).
+
+Popup correction deployment is complete. Saved-campaign recovery failed closed
+on a native vehicle-identity mismatch; containment is verified. Do not interpret
+the deployment or compiled matcher tests as successful live recovery.

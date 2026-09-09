@@ -19,3 +19,10 @@ the explicitly reviewed control manifest; doctrine integration contracts pass.
 Shared control/worker/MCP/harness images are deployed; checkpoint recovery is
 in progress.
 These tests prove classification, not live payment/counteroffer effects.
+
+
+Deployment completed with popup-prefix worker/control/harness images. Recovery
+then failed closed on Spartan native vehicle-identity hash mismatch, before MCP
+and sovereign startup. This is separate from the popup matcher; no identity
+validation was bypassed. Operator pause returned containment_verified=true.
+Campaign remains stopped. Live popup execution validation remains outstanding.
