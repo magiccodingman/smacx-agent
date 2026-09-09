@@ -644,7 +644,12 @@ public sealed class PortalMatchSupervisor(
             }
             if (match.Status == "running")
             {
-                if (nativeSessionLost)
+                var pairedRecoveryActive = await database.PortalMaintenanceOperations
+                    .AsNoTracking().AnyAsync(item => item.MatchId == match.MatchId &&
+                        item.Kind == "capability_recovery" &&
+                        (item.Status == "queued" || item.Status == "running"),
+                        cancellationToken);
+                if (nativeSessionLost && !pairedRecoveryActive)
                 {
                     await RecoverLostNativeSessionAsync(
                         database, control, match, cancellationToken);
@@ -708,6 +713,14 @@ public sealed class PortalMatchSupervisor(
         ApplicationDbContext database, ControlPlaneClient control,
         PortalMatchProfile match, CancellationToken cancellationToken)
     {
+        // A restored multiplayer client can briefly expose its menu lifecycle
+        // while its peers reconnect. Paired recovery owns worker replacement
+        // until every sovereign is running.
+        if (await database.PortalMaintenanceOperations.AsNoTracking().AnyAsync(item =>
+                item.MatchId == match.MatchId && item.Kind == "capability_recovery" &&
+                (item.Status == "queued" || item.Status == "running"),
+                cancellationToken))
+            return;
         var existing = await database.PortalMaintenanceOperations.AnyAsync(item =>
             item.MatchId == match.MatchId && item.Kind == "automatic_recovery" &&
             (item.Status == "queued" || item.Status == "running"), cancellationToken);
