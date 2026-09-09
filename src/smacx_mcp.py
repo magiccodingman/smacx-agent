@@ -3698,6 +3698,37 @@ def _refresh_rejected_decision(
     return response
 
 
+def _attach_post_action_decision(response: dict, key: tuple[str, str]) -> dict:
+    """Observe once after settled success; collection failure never reverses execution."""
+    if os.environ.get("SMACX_POST_ACTION_DECISION", "1") == "0" or not MANAGED_ATTACHED:
+        return response
+    if not response.get("ok") or response.get("execution_status") not in {"completed", "order_assigned"}:
+        return response
+    if response.get("turn_handoff_required") or response.get("sleep") or response.get("queued") \
+            or (response.get("required_next") or {}).get("stop_after"):
+        return response
+    try:
+        frame = smac_decision()
+        identity = frame.get("identity") or {}
+        if identity and tuple(str(identity.get(k) or "") for k in ("match_id", "session_id")) != key:
+            frame = {"ok": False, "error": {"code": "post_action_scope_changed"}}
+    except Exception as exc:
+        frame = {"ok": False, "error": {"code": "post_action_observation_failed",
+                                      "exception_type": type(exc).__name__}}
+    response["post_action_decision"] = {"schema": "smacx.post-action-decision.v1", "frame": frame}
+    if frame.get("ok"):
+        response["required_next"] = dict(frame.get("required_next") or {"tool": "smac_decision"})
+        if frame.get("choices"):
+            response["required_next"]["select_choice_from"] = "post_action_decision.frame.choices"
+        for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
+            if field in frame:
+                response[field] = frame[field]
+    else:
+        response["required_next"] = {"tool": "smac_decision",
+            "reason": "Execution outcome above is unchanged. Next observation failed; do not repeat the executed action."}
+    return response
+
+
 @mcp.tool(
     description=(
         "Execute exactly one short-lived opaque choice returned by the latest smac_decision "
@@ -3705,7 +3736,8 @@ def _refresh_rejected_decision(
         "flags, and revision guard. Supply text only when that exact choice exposes text_input; "
         "an opening base-name choice uses its native suggested default when text is omitted. "
         "Never invent command names or reuse a consumed decision. An invalid handle may return "
-        "recovery.frame: fresh evidence, not an executed retry. Select anew from that frame."
+        "recovery.frame: fresh evidence, not an executed retry. Select anew from that frame. "
+        "Settled success may include post_action_decision.frame; use its fresh choices directly."
     )
 )
 def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dict:
@@ -3776,6 +3808,8 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
     if consumed and not response.get("required_next"):
         response["required_next"] = {"tool": "smac_decision",
             "reason": "This decision is consumed, including after rejection. Obtain a fresh frame."}
+
+    response = _attach_post_action_decision(response, key)
 
     # A failure budget is deliberately independent of target and decision IDs.
     # Success resets this submission budget; unchanged-state success loops are

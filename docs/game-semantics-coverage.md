@@ -1300,3 +1300,11 @@ real controlled-provider delivery is verified; shared stack image/settings and
 six runtime source hashes match. The campaign remains parked with a checkpoint.
 No paid provider run, new native-mechanics claim or improved-strategy claim.
 See the [sanitized deployment receipt](benchmarks/operational-geography-deployment.json).
+
+### Efficient continuation checkpoint 1
+
+Settled execution → versioned fresh decision → sovereign-selectable opaque choice
+uses existing guarded enumeration. Controlled adapter/cache tests cover delivery,
+scope, pending/handoff exclusions and observation failure without action replay.
+Live timing and behavioral acceptance remain pending; no automatic next mutation.
+See [acceptance evidence](benchmarks/efficient-continuation.md).
