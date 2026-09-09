@@ -1,0 +1,27 @@
+{
+  "schema": "smacx.operational-geography-acceptance.v1",
+  "deployment_verified": true,
+  "prerequisites_ready": true,
+  "parked_turn": 17,
+  "verified_checkpoint_available": true,
+  "native_worker_unchanged": true,
+  "paid_provider_requests": 0,
+  "source_hashes": {
+    "smacx_geographic_context.py": "cfff03e8c28122f244078eb1bbbfa2dc3de750a461cb1fb2d1af5dd5230205f3",
+    "smacx_operational_context.py": "6a4ce40c31b18ae97c37d824214b357836a4c9c993b319ee2f641fde143bfe28",
+    "smacx_world.py": "53fb02dc9e90a41382f6de46c1298bb3608359fa0b8003dc448fedce45f08927",
+    "smacx_runtime_context.py": "356f014dba3db991075253614be39aafa177f62c48219199b83e39bd8a1b2356",
+    "smacx_mechanics.py": "547a25c6cb244eaa97523cd3344a94daffac482e893fd675fb11802e92a5932d",
+    "smacx_mcp.py": "66cf282efc3a2189ea983518a266f482475c988c004f0763a30e21f8ad56c83e"
+  },
+  "images": {
+    "worker": "sha256:a69c0f97190a561a3a24cf083899af67d5872dd56a13e18d613ccd3b2fbd4dc5",
+    "mcp": "sha256:86eb683a9cea93d237fe61a5a2566c044f5a37fd983278705dbea57f7460e274",
+    "harness": "sha256:f53a8c9140557719953d971063b61ad65e2b747e8c999ec45645abbf08a261c7"
+  },
+  "limits": [
+    "No live strategic improvement or campaign-completion claim.",
+    "Connector and scouting searches expose their bounded coverage.",
+    "No native mechanics changed."
+  ]
+}
