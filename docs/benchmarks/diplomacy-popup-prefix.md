@@ -26,3 +26,20 @@ then failed closed on Spartan native vehicle-identity hash mismatch, before MCP
 and sovereign startup. This is separate from the popup matcher; no identity
 validation was bypassed. Operator pause returned containment_verified=true.
 Campaign remains stopped. Live popup execution validation remains outstanding.
+
+
+Bounded recovery investigation: after startup settled, a read-only identity
+export from the Spartan worker still reported turn 9, faction 2 and 29 vehicle
+rows, but hash 10514326628721837733 versus checkpoint 407252985726212019.
+The worker was immediately paused again; no sovereign/MCP was started and no
+identity import was bypassed. The hash covers turn, faction, vehicle count and
+each row's faction/design/position/home/order/movement/health. The capsule stores
+only that aggregate hash, so the differing fields cannot be reconstructed from
+it. Only checkpoint-a40769be195343a28b6eb30b23f05396 remains in the paired recovery
+archive; older checkpoint directories were garbage-collected.
+
+This rules out a simple initial sampling delay, not every networking race or
+benign load-time normalization. Root cause remains unproven. A host-save/peer-state
+round-trip discrepancy is a hypothesis requiring controlled native reproduction
+and private field-level diagnostics. Fresh gameplay is recommended over bypassing
+the identity guard; this campaign remains preserved and paused as evidence.
