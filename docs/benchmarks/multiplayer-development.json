@@ -1,0 +1,185 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "action": "found_base",
+      "two_peers_verified": true,
+      "pod_consumed": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 0,
+      "completion": false,
+      "order_after": 4,
+      "work_after": 2,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 0,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 2,
+      "completion": false,
+      "order_after": 6,
+      "work_after": 2,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 2,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 3,
+      "completion": false,
+      "order_after": 7,
+      "work_after": 2,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 3,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 4,
+      "completion": false,
+      "order_after": 8,
+      "work_after": 2,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 4,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 5,
+      "completion": false,
+      "order_after": 9,
+      "work_after": 2,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 5,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 9,
+      "completion": false,
+      "order_after": 13,
+      "work_after": 2,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 9,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 10,
+      "completion": false,
+      "order_after": 14,
+      "work_after": 2,
+      "two_peers_verified": true
+    },
+    {
+      "action": "terraform",
+      "former_id": 10,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true
+    },
+    {
+      "action": "activate_working_former",
+      "two_peers_verified": true
+    },
+    {
+      "action": "activate_unit",
+      "two_peers_verified": true,
+      "had_moved": false,
+      "native_unused_skip_refund": true
+    },
+    {
+      "action": "activate_unit",
+      "two_peers_verified": true,
+      "had_moved": true,
+      "native_unused_skip_refund": false
+    },
+    {
+      "action": "found_base",
+      "two_peers_verified": true,
+      "pod_consumed": true,
+      "initiator": "remote_peer"
+    },
+    {
+      "action": "terraform",
+      "former_id": 5,
+      "completion": false,
+      "order_after": 9,
+      "work_after": 2,
+      "two_peers_verified": true,
+      "initiator": "remote_peer"
+    },
+    {
+      "action": "terraform",
+      "former_id": 5,
+      "completion": true,
+      "order_after": 0,
+      "work_after": 0,
+      "two_peers_verified": true,
+      "initiator": "remote_peer"
+    },
+    {
+      "action": "activate_working_former",
+      "two_peers_verified": true,
+      "initiator": "remote_peer"
+    },
+    {
+      "action": "activate_unit",
+      "two_peers_verified": true,
+      "had_moved": false,
+      "native_unused_skip_refund": true,
+      "initiator": "remote_peer"
+    },
+    {
+      "action": "activate_unit",
+      "two_peers_verified": true,
+      "had_moved": true,
+      "native_unused_skip_refund": false,
+      "initiator": "remote_peer"
+    }
+  ],
+  "save_sha256": "2a9b12d39a13e8a51698254d2ad9743f962b43cc5b7bc04f2e6205e8bbc6371f",
+  "native_save_reload_verified": true,
+  "engine_source_sha256": "4d62b079198791e78b2cdc286cf34a67051f06539c83f7d1a2702f2130270e26",
+  "scope": "Controlled native two-client fixture, exact state agreement; no production model behavior claim."
+}

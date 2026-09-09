@@ -1237,3 +1237,15 @@ unchanged unit/base state and duplicate rejection. The original turn-7 campaign
 then passes paired recovery on the deployed image with both sovereigns active and
 no incidents. Autonomous reuse of this demand response remains unobserved.
 [Evidence](benchmarks/multiplayer-energy-demand.md).
+
+## Multiplayer land-development repair
+
+Founding/terraforming coverage must distinguish single-player from multiplayer.
+The turn-9 campaign exposed missing multiplayer action catalog entries. Guarded
+land development now passes represented → provider-queryable → sovereign-expressible
+→ managed execution → journal adapter coverage. Compiled negative gates pass.
+The final native two-client replay verifies 24 host/remote cases, pod consumption
+and new base creation, work versus completed terrain, order cancellation, native
+activation movement semantics, exact peer agreement and native save/reload.
+Production deployment/recovery and autonomous use remain separately unverified.
+[Layered evidence](benchmarks/multiplayer-development.md).

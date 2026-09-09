@@ -1622,6 +1622,16 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "execution": action,
         }
     completion = {**result, "queued": False, "completed": True, "execution": action}
+    if action.get("resolution") in {"native_terraform_work_observed", "native_terraform_completed"}:
+        completion["terraform_completion_verified"] = action["resolution"] == "native_terraform_completed"
+        if not completion["terraform_completion_verified"]:
+            completion.update({"completed": False, "persistent": True})
+        completion["completion_semantics"] = (
+            "The selected terrain change was observed complete on this tile."
+            if completion["terraform_completion_verified"] else
+            "The native order started and work increased. The terrain improvement is not complete; inspect later terraform_task and tile observations.")
+    if action.get("resolution") == "native_base_founded":
+        completion["completion_semantics"] = "A new owned base and consumption of its Colony Pod were observed."
     if action.get("resolution") == "native_combat_resolved":
         completion["completion_semantics"] = (
             "The native combat call resolved. Completion alone does not establish attacker survival, "

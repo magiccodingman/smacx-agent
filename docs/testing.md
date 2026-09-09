@@ -663,3 +663,18 @@ Hermes test in the harness image with
 These are adapter/protocol claims, not predicted-mechanics validation or proof
 that a model will always use the fresh choices. Live recovery evidence is in
 [decision-recovery-turn8](benchmarks/decision-recovery-turn8.md).
+
+### Multiplayer land development
+
+`multiplayer_development_contract_test.py` compiles the production eligibility
+gates on the host. `development_receipt_test.py` runs in the MCP control image
+and covers managed choices, opaque execution, journal delivery and the distinction
+between pending transport, work started and terrain completed.
+
+`native_multiplayer_development_test.py` uses two isolated workers and a private
+multiplayer save supplied by `SMACX_DEVELOPMENT_TEST_SAVE`. Also set
+`SMACX_TEST_GAME_SOURCE`, `SMACX_TEST_WORKER_IMAGE`, `SMACX_TEST_CONTROL_IMAGE`
+and `PYTHONPATH=src`. It exercises host and remote development, invalid/duplicate
+submissions, exact peer agreement and native save/reload. It starts no sovereign
+and does not operate on a production campaign. Test-only fixtures require both
+native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).
