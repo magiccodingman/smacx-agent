@@ -1408,7 +1408,37 @@ def location_affordances(
         unknown_neighbors = len(topology.shape.neighbors(
             (topology.by_ref[location_ref].x, topology.by_ref[location_ref].y))) \
             - len(topology.adjacent(location_ref))
+        radius_count = receipt.get("known_radius_location_count")
+        overlaps = [r.get("overlapping_radius_location_count") for r in receipt.get("overlapping_known_bases", ())]
+        overlaps = [n for n in overlaps if type(n) is int and 0 <= n <= 21]
+        coverage = {"status": "unknown_requires_current_native_receipt"}
+        if type(radius_count) is int and 0 <= radius_count <= 21:
+            # Per-base overlap counts cannot be summed as distinct shared tiles.
+            lower_shared = max(0, max(overlaps, default=0) - (21-radius_count))
+            upper_shared = min(radius_count, sum(overlaps))
+            coverage = {"status": "bounded_from_current_receipt",
+                "visible_radius_locations": radius_count,
+                "shared_with_known_base_radii_min": lower_shared,
+                "shared_with_known_base_radii_max": upper_shared,
+                "additional_to_known_base_radii_min": radius_count-upper_shared,
+                "additional_to_known_base_radii_max": radius_count-lower_shared,
+                "meaning": "Coverage, not worker allocation or yield. Per-base overlaps may overlap each other. Unknown bases and unseen radius tiles are not counted as free land."}
+        colony_arrivals = []
+        for unit in objects.values():
+            roles = field_value(unit, "roles", {})
+            if unit.get("kind") != "own_unit" or unit.get("status", "active") != "active" or not field_is_current(unit, "roles") or not isinstance(roles, Mapping) or roles.get("colony") is not True:
+                continue
+            route = topology.route(object_location(unit), location_ref,
+                mobility_profile(objects, "owned-colony", subject_ref=str(unit["object_ref"]), topology=topology))
+            colony_arrivals.append({"unit_ref": unit["object_ref"], "reachable": route.reachable,
+                "arrival_turns": route.turns, "eta_kind": route.eta_kind,
+                "uncertainty": list(route.uncertainty), "observed_order": unit.get("fields", {}).get("order_name", {})})
+        colony_arrivals.sort(key=lambda r: (r["arrival_turns"] is None, r["arrival_turns"] or 0, r["unit_ref"]))
         rows.append({
+            "settlement_coverage": coverage,
+            "owned_colony_arrivals": colony_arrivals[:8],
+            "colony_arrivals_omitted": max(0, len(colony_arrivals)-8),
+            "future_yield_review": "Current yields are not improved future yields. Use counterfactual site_economy or a guarded terraform preview for conditional alternatives; research and construction are not assumed.",
             "subject_ref": subject_ref, "location_ref": location_ref,
             "terrain": source_fields.get("terrain"),
             "features": source_fields.get("features"),
@@ -1456,38 +1486,6 @@ def location_affordances(
 
 
 def connector_analysis(topology: PerspectiveTopology, profile: MobilityProfile) -> list[dict[str, Any]]:
-    """Find articulation locations in the currently known mobility graph."""
-    graph = {ref: {item.location_ref for item in topology.adjacent(ref).values()
-                   if topology._passable(item, profile)}
-             for ref, square in topology.by_ref.items() if topology._passable(square, profile)}
-    timer = 0
-    seen: set[str] = set()
-    low: dict[str, int] = {}
-    disc: dict[str, int] = {}
-    parent: dict[str, str | None] = {}
-    articulation: set[str] = set()
-
-    def visit(node: str) -> None:
-        nonlocal timer
-        seen.add(node); timer += 1; disc[node] = low[node] = timer
-        children = 0
-        for neighbor in sorted(graph.get(node, ())):
-            if neighbor not in seen:
-                parent[neighbor] = node; children += 1; visit(neighbor)
-                low[node] = min(low[node], low[neighbor])
-                if parent.get(node) is None and children > 1:
-                    articulation.add(node)
-                if parent.get(node) is not None and low[neighbor] >= disc[node]:
-                    articulation.add(node)
-            elif neighbor != parent.get(node):
-                low[node] = min(low[node], disc[neighbor])
-    for node in sorted(graph):
-        if node not in seen:
-            parent[node] = None; visit(node)
-    return [{"location_ref": ref, "kind": "narrow_connector",
-             "passage_width": 1, "mobility_profile_ref": profile.profile_ref,
-             "unknown_geography_may_provide_alternates": any(
-                 len(topology.adjacent(neighbor)) < len(topology.shape.neighbors(
-                     (topology.by_ref[neighbor].x, topology.by_ref[neighbor].y)))
-                 for neighbor in graph.get(ref, ())) }
-            for ref in sorted(articulation)]
+    """Compatibility list view over bounded iterative connector evidence."""
+    from smacx_geographic_context import connector_evidence
+    return connector_evidence(topology, profile)["items"]

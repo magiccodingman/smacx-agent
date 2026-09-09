@@ -1152,8 +1152,8 @@ def _unit_action_catalog_context(catalog: Mapping[str, Any],
             "permanent impossibility after movement refresh, activation, prerequisite changes, or relocation",
         ],
         "meaning": (
-            "An action missing from this frame is unavailable in the current native state. "
-            "Use the readiness reason and lifecycle evidence; do not infer that the unit is useless."
+            "An action missing from this frame may be unavailable in the current native state or unsupported by this runtime mode. "
+            "Use explicit capability_status, readiness and lifecycle evidence. Missing choices alone do not prove a research prerequisite or that the unit is useless."
         ),
     }
     return result
@@ -2138,6 +2138,8 @@ def _decision_information(choices: object, context: Mapping | None) -> list[dict
         if not isinstance(row, dict) or row.get("command") or row.get("kind") not in {"information", "capability_status"}:
             continue
         public = {key: value for key, value in row.items() if key != "id"}
+        if row.get("kind") == "capability_status":
+            public["availability_semantics"] = "Runtime support evidence, not a research prerequisite. Only returned current choices authorize execution; missing choices alone have no inferred cause."
         if row.get("id") == "self_destruct:context":
             public["applies_to_action"] = "self_destruct_unit"
             public["meaning"] = "Self-destruct blast preview only. Projected deaths apply only if this unit self-destructs; these are not attack odds, movement outcomes or an incoming-damage forecast."
@@ -2405,7 +2407,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
         "Inspect the fair-play world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
         "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
         "Before consequential settlement, mode=compare with nominated location subject_refs returns current native founding legality, known radius overlap, yields, distance and logistics evidence; compare alternatives when available because legal does not mean strategically good. "
-        "Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
+        "Compare frontier subject_refs for exploration access; area on a mass gives shape evidence. Compare with a unit origin gives connectors; deep adds bounded two-tile passages. Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
         "site_economy with populations:[1,2,3] and up to four subject locations; "
         "social|terraform|action with decision_id and choice_id from a current final choice; "
         "deployment with capability (combat|colony|former|transport|probe|supply), target_ref, "

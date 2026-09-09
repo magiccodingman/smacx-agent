@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 from smacx_hermes import COMMUNICATION_MCP_TOOLS, GAMEPLAY_MCP_TOOLS, configure_profile
 from smacx_prompt import compose_player_system_prompt, prompt_sha256
 from smacx_diagnostic_summary import result_object
+from smacx_operational_context import operational_context
 
 
 IMAGE = os.environ.get("SMACX_TEST_HARNESS_IMAGE", "smacx-agent-harness:dev")
@@ -85,6 +86,11 @@ def main() -> int:
                         "attention": {"items": [], "remaining_count": 0},
                         "cognition": {},
                         "operations": [],
+                        "operational_review": operational_context({"base-wire": {
+                            "object_ref": "base-wire", "kind": "base", "fields": {
+                                "owner_ref": {"value": "faction-own", "source": "owned_state", "epistemic_status": "current"},
+                                "nutrient_surplus": {"value": -2, "epistemic_status": "current"},
+                                "production_queue": {"value": [{"position": 0}], "epistemic_status": "current"}}}}),
                     },
                 }
                 data = json.dumps(payload).encode()
@@ -391,6 +397,8 @@ def main() -> int:
                     raise AssertionError(
                         f"runtime context was not a single terminal tail augmentation: {messages}"
                     )
+                assert "negative_nutrient_surplus" in runtime_rows[0][1]["content"]
+                assert "no_followup_queue_not_idle_production" in runtime_rows[0][1]["content"]
                 if runtime_rows[0][1].get("role") != "user":
                     raise AssertionError(f"initial runtime context did not augment user tail: {messages}")
                 tools = request.get("tools") or []
