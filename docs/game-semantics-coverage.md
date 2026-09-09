@@ -623,6 +623,15 @@ provider-safe semanticization, doctrine fixtures, and the native command are
 recorded in [checkpoint evidence](benchmarks/multiplayer-supply-settlement.md).
 Live strategic uptake and optimal pod valuation remain open.
 
+Integrated readback: the shared installation rebuilt both workers from the new
+bridge, restored and marked the paired turn-15 checkpoint `restore_tested`,
+explicitly recompiled doctrine, and restarted both low-reasoning sovereigns.
+Both worker/MCP pairs are healthy and the incident list is clear. The restored
+Peacekeeper consumed two new interaction decisions and requested a new
+unit-scoped frame without replaying the pre-incident IDs. A natural live pod or
+founding choice has not yet occurred, so those strategic-uptake claims remain
+open.
+
 ### Recovery turn-metric replay
 
 Live rollback from turn 7 to 6 exposed duplicate `(MatchId, AgentId, Turn)` insertion, aborting portal supervision before sovereign restart. The supervisor now retains the existing turn metric when replaying a turn. A real SQLite regression covers pending and persisted duplicates, original counter preservation, and subsequent-turn commit. All 84 portal tests pass. No database rebuild or schema weakening is required. Live portal deployment/recovery verification remains pending. Per-attempt accounting remains in causal diagnostics; this repair does not claim turn-summary attribution across recovery is exact.

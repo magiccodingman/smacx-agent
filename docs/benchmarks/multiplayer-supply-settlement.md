@@ -65,3 +65,15 @@ handoff slowly and is not counted as evidence for this checkpoint. No claim is
 made that the sovereign will value every random pod result optimally or that a
 legal settlement is a recommended settlement; live strategic uptake remains a
 later gameplay observation.
+
+## Integrated deployment
+
+The shared installation recovered campaign
+`match-b21f417c5d26223aa8754f40a995f469` from its paired turn-15 checkpoint after
+the reviewed doctrine recompile. Both native workers and MCP sidecars reported
+healthy on prepared image
+`smacx-agent-prepared:31f20d357478-b829e813a01e-a69c0f97190a`; both sovereign
+runs were active, the checkpoint was `restore_tested`, and no incident remained.
+This validates installation and recovery boundaries. The restored campaign had
+not yet presented a naturally occurring eligible pod or founding decision, so
+live strategic uptake of these two new choice fields remains open.

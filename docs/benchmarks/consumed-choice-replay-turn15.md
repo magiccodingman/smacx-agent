@@ -43,5 +43,12 @@ Acceptance evidence:
   and 9,089 conservative tokens in this run).
 
 This evidence proves observation, representation and provider delivery at the
-managed boundaries. The parked campaign has not yet been resumed on the repaired
-image, so sustained autonomous correction remains a live acceptance item.
+managed boundaries. Integrated recovery then rebuilt both workers from
+`smacx-agent-worker:pr78-gameplay`, restored the paired turn-15 checkpoint,
+explicitly recompiled doctrine, and started both sovereigns with `low`
+reasoning. Both workers and MCP sidecars reported healthy, the checkpoint became
+`restore_tested`, and the active incident cleared. The restored Peacekeeper
+consumed a fresh introduction choice, then obtained and consumed a different
+`SIMULYOU` choice before requesting a new unit-scoped frame. No old decision or
+choice ID was replayed. This proves immediate post-recovery correction; sustained
+multi-turn behavior remains a live acceptance item.
