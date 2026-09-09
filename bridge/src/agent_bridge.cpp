@@ -824,7 +824,7 @@ bool joint_attack_energy_counteroffer_label(const std::string& label) {
 }
 
 bool bribe_demand_label(const std::string& label) {
-    return label.compare(0, 12, "DEMANDBRIBE") == 0;
+    return label.compare(0, sizeof("DEMANDBRIBE") - 1, "DEMANDBRIBE") == 0;
 }
 
 bool loan_offer_label(const std::string& label) {
@@ -3999,7 +3999,7 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "HALTPROJECT" || label == "SURVIVEPROJECT" || label == "DONEPROJECT"
         || label == "SEIZEPROJECT" || label == "LOSEPROJECT";
     bool resolved_base_capture_notice = label.compare(0, 9, "SEIZEBASE") == 0
-        || label.compare(0, 11, "LIBERATEBASE") == 0 || label == "RENAMEBASE"
+        || label.compare(0, sizeof("LIBERATEBASE") - 1, "LIBERATEBASE") == 0 || label == "RENAMEBASE"
         || label == "OBLITTED" || label == "OBLITTED2";
     bool resolved_elimination_notice = label.compare(0, 7, "WIPEOUT") == 0
         || label == "TRACKED";
