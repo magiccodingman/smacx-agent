@@ -1393,3 +1393,16 @@ the repair bonus as defense; interpretation acceptance remains open. New indexed
 reference guidance is not exercised live yet. Separate partial plan-update errors
 leave an old plan unresolved. Farm completion is observed; recovery remains active
 without incidents. Timer cancelled at user request; see semantic-clarity evidence.
+
+| Typed memory cleanup checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Complete record revision and preservation | Observed live partial plan-update failures; represented by shared seven-family input contracts; calculated validation reports bounded nested errors. Provider-queryable `contract` and `editable_record` use the existing memory tool. Managed read-edit-write tests execute all seven record families and verify canonical effect, binding preservation, explicit clearing and journal reopening. Installed delivery and live recovery pending. |
+| Malformed/misplaced fields and uncertain writes | Controlled reproduction exposed silent participant/reconciliation loss. Invalid shape is now rejected before writes; numeric coercion and duplicate JSON fields rejected. Injected SQL/journal/runtime failures distinguish uncommitted, uncertain and committed receipts. Scoped event/faction and stale-native-guard regressions pass; no automatic retry/merge. |
+
+See [memory contract acceptance](benchmarks/memory-contract-cleanup.md). AI - 7 is
+parked with a paired turn-8 checkpoint. Behavioral improvement remains unproven;
+no new timer will be scheduled.
+
+Installed-image checkpoint: seven-family managed read-edit-write, rejected-write
+status feedback, fresh-guard discovery and the 15-tool schema budget pass using
+packaged source. Deployment and paired native recovery still pending.

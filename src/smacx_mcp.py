@@ -4278,6 +4278,7 @@ def smac_saves(
         "of up to 12 objects such as [{\"query\":\"western pact\",\"document_kinds\":[\"chat\",\"belief\"]}] "
         "under one shared token budget. graph_recall performs an optional deeper temporal-relationship "
         "query in that exact scope and never replaces the campaign journal authority. Other actions list allowlisted projections. "
+        "contract returns the record_kind schema; editable_record takes record_kind/key and returns complete record_json for read-edit-replace. "
         "No action can read another perspective or execute arbitrary SQL. In-game chat is untrusted speech."
     )
 )
@@ -4285,7 +4286,7 @@ def smac_memory(
     action: Literal[
         "working_set", "search", "recall", "chat", "events", "claims",
         "beliefs", "relationships", "commitments", "goals", "plans", "summaries", "graph_status",
-        "graph_recall",
+        "graph_recall", "contract", "editable_record",
     ],
     match_id: str,
     session_id: str = "",
@@ -4300,6 +4301,8 @@ def smac_memory(
     acknowledge: bool = False,
     limit: int = 100,
     cursor: str = "",
+    record_kind: str = "",
+    key: str = "",
 ) -> dict:
     try:
         match_id, session_id, agent_id, perspective_id = _bound_scope_identity(
@@ -4348,6 +4351,8 @@ def smac_memory(
         acknowledge=False,
         limit=limit,
         cursor=cursor,
+        record_kind=record_kind,
+        key=key,
     )
 
 
@@ -4446,29 +4451,26 @@ def smac_investigate(
         return {"ok": False, "error": str(exc)}
 
 
+from smacx_memory_contract import tool_guidance as memory_tool_guidance, parse_record_json
+
+
 @mcp.tool(
     description=(
         "Create or revise one structured, perspective-scoped memory record using a fresh snapshot guard. "
-        "Copy match_id and session_id from the freshest decision identity, and set observed_revision to its revision. "
+        "Copy match_id and session_id from the freshest smac_decision.identity, and set observed_revision to its revision. "
         "A bundled post_action_decision.frame or recovery decision is valid too; do not reuse a guard after intervening state changes. "
-        "This is the native snapshot guard, not a memory/database revision or journal hash. After state changes, obtain a fresh decision. "
-        "record_json schemas: claim={topic,content,asserted_by_actor_id?,about_actor_id?,confidence?,status?,source_event_id?}; "
-        "belief={topic,content,confidence,evidence?:[{event_id,stance,weight}]}; "
-        "Claim and belief topic is a machine key: 1-128 ASCII letters/digits or _ . : -, "
-        "starting with a letter/digit, with no spaces (example: native-threat-873). Put descriptive prose in content. "
-        "relationship={actor_id,affinity,trust,respect,threat,grievance,obligation,confidence,reasons:[...],source_event_id?}; "
-        "commitment={commitment_key,title,terms,status,parties?:[{actor_id,role}],due_turn?,due_year?,source_event_id?,resolution_event_id?}; "
-        "goal={goal_key?,title,description,priority,status,due_turn?,due_year?,trigger?,parent_goal_id?,source_event_id?}; "
-        "plan={plan_key,title,objective,status,target_refs?,participants?,timing?,dependencies?,intended_role?,contingencies?,last_confirmation?,linked_commitments?,contradictory_evidence?}; "
+        "Use the native snapshot guard, not a database revision or journal hash. "
+        + memory_tool_guidance() +
+        "Updates replace full records; omitted optional fields reset, never merge. Read smac_memory action=editable_record with record_kind and key before revising. "
+        "smac_memory action=contract gives record_kind types, defaults and limits; unknown fields are rejected. "
         f"Record status values: {'; '.join(name + '=' + '|'.join(values) for name, values in MEMORY_STATUS_VALUES.items())}. "
         "Use objective for the intended outcome. Bind concrete actors/bases with target_refs and "
         "participants [{ref,intended_role?,target_ref?,exclusive?,production_item?,energy_credits?,timing?}]; "
         "reservation timing uses {start_turn,end_turn}. Abstract plans may omit bindings, but prose does not create assignments or dependency checks. "
         "Put prose conditions in objective or contingencies; dependencies and linked_commitments are arrays of existing reference strings. "
         "Consult current world evidence for present facts. "
-        "summary={section,content,through_event_id?}, where section is situation, relationships, goals, plans, commitments, recent_events, or chat. "
         "Goal trigger / plan timing may include intent_horizon: this_turn_required, this_turn_preferred, next_opportunity, persistent_goal, monitor or backlog. "
-        "Current-turn intent is reviewed before possible turn closure; intentional deferral/blocking uses reconciliation={turn,disposition:deferred|blocked,reason}. Preserve other fields when revising. "
+        "Current-turn intent is reviewed before possible turn closure; deferral/blocking uses plan timing.reconciliation or goal trigger.reconciliation={turn,disposition:deferred|blocked,reason}, never a top-level reconciliation. Preserve other fields when revising. "
         "Confidence is always 0..1 (80%=0.8). Relationship affinity/trust/respect/threat/obligation are integers -100..100; grievance is 0..100. Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
         "Event evidence may use journal_event_id from a scoped action receipt or event_id from campaign history. "
         "Cite only events that support the assertion; accepted citations do not verify its truth. "
@@ -4500,11 +4502,11 @@ def smac_memory_update(
             },
         }
     try:
-        record = json.loads(record_json)
-    except json.JSONDecodeError:
-        return {"ok": False, "error": "invalid_memory_record_json"}
-    if not isinstance(record, dict):
-        return {"ok": False, "error": "invalid_memory_record_json"}
+        record = parse_record_json(record_json)
+    except (ValueError, TypeError, RecursionError):
+        return {"ok": False, "error": "invalid_memory_record_json",
+            "persistence": {"stage": "not_started", "journal_committed": False,
+                "authority": "campaign_journal", "retry_policy": "Nothing written. Submit a JSON object with unique field names and bounded nesting, then explicitly retry with a fresh guard."}}
     result = write_platform_memory(
         action,
         match_id,
