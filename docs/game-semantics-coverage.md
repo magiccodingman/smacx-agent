@@ -1375,3 +1375,10 @@ this sample; Peacekeeper latency is essentially unchanged. A generic invalid-pla
 error induces loss of binding, and a repair modifier is misread as combat defense.
 Those semantic gaps and broad performance/strategy acceptance remain open.
 See [thirty-minute review](benchmarks/ai7-thirty-minute-review.md).
+
+Semantic clarity checkpoint: plan reference syntax errors identify the precise
+array field/index; controlled rejection-to-explicit-retry preserves participant
+bindings and journal safety. Provider-facing repair objects now carry repair-only
+scope across restored/inspected/anchor paths without changing epistemic state;
+logistics and runtime defense boundaries separate repair from combat. Live model
+interpretation remains open. [Evidence](benchmarks/semantic-clarity-followup.md).

@@ -17,7 +17,7 @@ import uuid
 
 from smacx_game_settings import game_settings_environment, normalize_game_settings
 from smacx_journal import CampaignJournal, JournalError
-from smacx_store import MEMORY_STATUS_VALUES, MemoryScope, SmacxStore, StoreError
+from smacx_store import ID_PATTERN, MEMORY_STATUS_VALUES, MemoryScope, SmacxStore, StoreError
 from smacx_reference import read_reference as read_reference_store
 from smacx_attention import AttentionService
 from smacx_observation import ObservationCollector
@@ -842,6 +842,7 @@ def write_platform_memory(
 ) -> dict[str, Any]:
     """Write one typed memory projection behind a fresh fair-play observation guard."""
     write_stage = "not_started"
+    plan_validation = None
     try:
         scope, snapshot = _guard_platform_observation(
             match_id,
@@ -1034,6 +1035,18 @@ def write_platform_memory(
             for field in ("timing", "last_confirmation"):
                 if not isinstance(record.get(field, {}), Mapping):
                     raise StoreError(f"invalid_plan_{field}")
+            for field in ("target_refs", "dependencies", "linked_commitments"):
+                for index, value in enumerate(record.get(field, [])):
+                    if not isinstance(value, str) or not ID_PATTERN.fullmatch(value):
+                        plan_validation = {
+                            "field": f"record_json.{field}[{index}]",
+                            "expected_type": "reference string",
+                            "pattern": ID_PATTERN.pattern,
+                            "message": "Use an existing reference for this field. Put prose conditions in objective or contingencies. "
+                                "Preserve valid participants and other bindings; this error does not reject them. "
+                                "Nothing was saved; retry explicitly with a current observation guard.",
+                        }
+                        raise StoreError("invalid_plan_reference")
             stored = store.put_plan(
                 scope, str(record.get("plan_key") or ""),
                 str(record.get("title") or ""), str(record.get("objective") or ""),
@@ -1093,6 +1106,8 @@ def write_platform_memory(
         return {"ok": False, "error": "game_not_connected"}
     except (StoreError, JournalError, TypeError, ValueError) as exc:
         guidance = {}
+        if write_stage == "not_started" and plan_validation is not None:
+            guidance = {"validation": plan_validation, "memory_write_committed": False}
         if action in MEMORY_STATUS_VALUES and str(exc) == f"invalid_{action}_status":
             guidance = {"validation": {
                 "field": "record_json.status",

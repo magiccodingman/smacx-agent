@@ -13,7 +13,7 @@ from math import isfinite
 from typing import Any, Iterable, Mapping
 
 from smacx_topology import MobilityProfile, PerspectiveTopology
-from smacx_world_types import content_hash
+from smacx_world_types import REPAIR_RULES_MEANING, content_hash
 
 
 def field_value(item: Mapping[str, Any], name: str, default: Any = None) -> Any:
@@ -1253,6 +1253,7 @@ def logistics(objects: Mapping[str, Mapping[str, Any]],
                 })
             staging.append({**base, "subject_arrivals": arrivals})
         result["repair_rules"] = dict(repair_rules)
+        result["repair_rules_meaning"] = REPAIR_RULES_MEANING
         result["repair_rules_evidence"] = repair_rules_object.get("fields", {}).get("state")
         result["repair_locations"] = repair_locations[:64]
         result["damaged_unit_repair_options"] = repair_options[:64]

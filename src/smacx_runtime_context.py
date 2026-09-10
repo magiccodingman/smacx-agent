@@ -282,6 +282,7 @@ def _nearby_base_defense(world: WorldService, projection: Mapping[str, Any],
             "formal_relationship": "Treaty, Truce, Pact and Vendetta flags are reported separately when current.",
             "movement_zoc": "A foreign non-Pact movement constraint does not prove Vendetta or hostile intent.",
             "inferred_intent": "unknown unless separately supported by observed actions or communication.",
+            "defense_strength": "Garrison counts and response ETA do not establish combat odds. Global repair-rule bonuses are not combat defense modifiers.",
         },
     }
 
