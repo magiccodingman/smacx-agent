@@ -36,5 +36,6 @@ for mode in ('normal','intro','generic','choice','capture-fail','unchanged','rej
  elif mode in ('generic','choice'): assert events==[]
  elif mode=='capture-fail': assert events==['capture']
  else: assert events==['capture','execute']
+ if mode=='unchanged': assert result['choices']==[] and result['required_next']['tool']=='smac_wait'
  for item in result.get('automatic_notifications',[]): assert item['cognitively_acknowledged'] is False
 print('reviewed notice drain passed: durable capture first, four bound, unchanged/rejected/queued stop, generic and strategic choices untouched')

@@ -75,3 +75,6 @@ Initial live acceptance: AI - 7 accepted an INTRO acknowledgement and returned
 a fresh executable post-action frame in the same result (about one second for
 the call). Recovery INTRO handling exposed the separately reviewed narrative
 classification; it is now included without admitting generic one-button dialogs.
+An unchanged post-dismissal observation explicitly offers a wait, with no
+executable popup menu; it does not invite a second acknowledgement while native
+presentation is settling. The unchanged-observation fixture verifies this.

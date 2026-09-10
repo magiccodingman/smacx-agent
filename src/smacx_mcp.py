@@ -2925,6 +2925,9 @@ def smac_decision(
         marker = tuple(str(identity.get(k) or "") for k in ("match_id", "session_id", "revision"))
         if marker in seen:
             frame["notification_drain"] = {"status": "unchanged_observation", "automatic_retry": False}
+            frame["choices"] = []
+            frame["required_next"] = {"tool": "smac_wait",
+                "reason": "The dismissed notification has not visibly transitioned yet; wait for a fresh observation."}
             return frame
         seen.add(marker)
         evidence = {"popup_label": frame["focus"].get("popup_label"),
