@@ -1,0 +1,86 @@
+{
+  "schema": "smacx.continuation-policy-audit.v1",
+  "baseline_commit": "fd7c2bc",
+  "initial_commit": "203857f",
+  "deployed_cleanup_commit": "7f0d03f",
+  "measurement": "Same raw trace cuts, system, runtime and tools replayed through real Hermes; current server tokenizer chat-template counts, not recorded generation usage. No model generation.",
+  "results": [
+    {
+      "capture": "AI4 peace",
+      "policy": "baseline",
+      "requests": 45,
+      "tokenizer_count_sum": 1884307,
+      "message_bytes_sum": 6954602,
+      "assistant_prose_chars_sum": 115406,
+      "delta_from_baseline_percent": 0.0
+    },
+    {
+      "capture": "AI4 peace",
+      "policy": "initial",
+      "requests": 45,
+      "tokenizer_count_sum": 2317919,
+      "message_bytes_sum": 8481017,
+      "assistant_prose_chars_sum": 303916,
+      "delta_from_baseline_percent": 23.01
+    },
+    {
+      "capture": "AI4 peace",
+      "policy": "current",
+      "requests": 45,
+      "tokenizer_count_sum": 2162290,
+      "message_bytes_sum": 7950761,
+      "assistant_prose_chars_sum": 303916,
+      "delta_from_baseline_percent": 14.75
+    },
+    {
+      "capture": "AI4 peace",
+      "policy": "repaired",
+      "requests": 45,
+      "tokenizer_count_sum": 2125718,
+      "message_bytes_sum": 7815576,
+      "assistant_prose_chars_sum": 303916,
+      "delta_from_baseline_percent": 12.81
+    },
+    {
+      "capture": "AI4 spartan",
+      "policy": "baseline",
+      "requests": 66,
+      "tokenizer_count_sum": 2869347,
+      "message_bytes_sum": 10721409,
+      "assistant_prose_chars_sum": 162494,
+      "delta_from_baseline_percent": 0.0
+    },
+    {
+      "capture": "AI4 spartan",
+      "policy": "initial",
+      "requests": 66,
+      "tokenizer_count_sum": 3554160,
+      "message_bytes_sum": 13123301,
+      "assistant_prose_chars_sum": 356403,
+      "delta_from_baseline_percent": 23.87
+    },
+    {
+      "capture": "AI4 spartan",
+      "policy": "current",
+      "requests": 66,
+      "tokenizer_count_sum": 3217923,
+      "message_bytes_sum": 11929840,
+      "assistant_prose_chars_sum": 356403,
+      "delta_from_baseline_percent": 12.15
+    },
+    {
+      "capture": "AI4 spartan",
+      "policy": "repaired",
+      "requests": 66,
+      "tokenizer_count_sum": 3177325,
+      "message_bytes_sum": 11774081,
+      "assistant_prose_chars_sum": 356403,
+      "delta_from_baseline_percent": 10.73
+    }
+  ],
+  "limits": [
+    "Policies receive identical post-PR tool outcomes, including bundled decisions; this is history-policy isolation, not a reconstructed pre-PR game.",
+    "No causal turn-time or strategic-equivalence claim.",
+    "Tokenizer count for one AI5 request was 54680 versus recorded provider prompt_tokens 82077; discrepancy unresolved."
+  ]
+}

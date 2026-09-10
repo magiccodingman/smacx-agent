@@ -1331,3 +1331,14 @@ replay. Physical boundary completeness reaches anchors and registry queries;
 runtime assembly flags possible belief overstatement without modifying cognition.
 Later movement placement is revision-matched and does not imply task completion.
 See [cleanup acceptance](benchmarks/continuation-cleanup.md) for evidence and limits.
+
+Continuation baseline audit checkpoint: 111 original trace cuts replayed through
+real Hermes with fixed system/runtime/tools reproduce their deployed tokenizer
+counts. The deployed policy remains +13.18% above original history policy; an
+additional lossless transport pass lowers this to +11.56%, preserving prose and
+uncertain evidence. Net speed/token-reduction acceptance is **open**, not complete.
+Observed bundled choices establish sovereign use, not a causal latency improvement.
+Provider-reported usage differs from current tokenizer counts and remains separately
+reported. The base-tile restriction is explicitly location-local in provider-facing
+advisories; adapter tests pass, live behavioral improvement and deployment are pending.
+See [baseline audit and limits](benchmarks/continuation-baseline-audit.md).

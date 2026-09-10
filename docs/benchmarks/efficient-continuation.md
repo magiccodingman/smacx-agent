@@ -1,5 +1,9 @@
 # Efficient sovereign continuation acceptance
 
+**Performance acceptance remains open.** The [matched baseline audit](continuation-baseline-audit.md)
+measures the retention cost versus pre-PR policy and supersedes informal net
+token-saving claims. Guarded next-decision use is observed; faster turns are not established.
+
 Checkpoint 1: settled successful actions return a versioned next decision using
 ordinary decision enumeration. Pending actions, handoffs and uncertain execution
 are excluded. Failure to collect the next decision preserves the original action

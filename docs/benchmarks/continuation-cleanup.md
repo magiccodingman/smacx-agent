@@ -1,5 +1,9 @@
 # Continuation cleanup acceptance
 
+**Baseline correction:** the percentages below are incremental cleanup savings,
+not net savings from pre-PR code. The [matched baseline audit](continuation-baseline-audit.md)
+finds a remaining history-policy regression. Net performance acceptance is open.
+
 Receipt cleanup checkpoint: expired bundled decisions no longer pin full historic
 receipts. Completed receipts retain outcomes, journal references and all unknown
 fields (which may contain verification obligations); only obsolete handles and

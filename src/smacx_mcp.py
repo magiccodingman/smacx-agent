@@ -2139,6 +2139,12 @@ def _decision_advisories(choices: object, *, semantic_context: Mapping[str, Any]
         item = _semanticize_choice(
             {key: raw[key] for key in allowed if key in raw}, semantic_context,
         )
+        if item.get("reason") == "current_tile_has_base" and item.get("available") is False:
+            item["meaning"] = (
+                "This restriction applies to the current base tile, not the entire turn. "
+                "Relocation may permit founding or terraforming; inspect the destination's "
+                "current guarded choices. Movement, terrain and other legality checks still apply."
+            )
         if item:
             advisories.append(item)
         if len(advisories) >= 8:

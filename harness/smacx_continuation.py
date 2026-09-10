@@ -3,6 +3,37 @@ import copy
 import json
 
 
+def _compact_transport(content):
+    """Losslessly format JSON; unwrap only a sole transport `result` member.
+
+    Keep the tool's untrusted wrapper and any outer sibling metadata. Unknown
+    prose and non-JSON bodies are unchanged. No semantic evidence is selected.
+    """
+    if not isinstance(content, str):
+        return content
+    prefix = suffix = ''
+    body = content
+    if content.startswith('<untrusted_tool_result ') and content.endswith('</untrusted_tool_result>'):
+        end = content.rfind('</untrusted_tool_result>')
+        start = content.rfind('\n\n', 0, end)
+        if start < 0:
+            return content
+        prefix, body, suffix = content[:start + 2], content[start + 2:end], content[end:]
+    try:
+        value = json.loads(body)
+        for _ in range(2):
+            if not isinstance(value, dict) or set(value) != {'result'} or not isinstance(value['result'], str):
+                break
+            try:
+                decoded = json.loads(value['result'])
+            except ValueError:
+                break
+            value = decoded
+        return prefix + json.dumps(value, ensure_ascii=False, separators=(',', ':')) + suffix
+    except ValueError:
+        return content
+
+
 def preserve_continuation(messages, last_user, tool_names, decode, *, threshold=24000, protected=()):
     """Prune settled old protocol pairs; retain unresolved/unknown evidence and prose.
 
@@ -16,10 +47,18 @@ def preserve_continuation(messages, last_user, tool_names, decode, *, threshold=
     results={str(m.get('tool_call_id')):decode(m.get('content'))
              for m in rows if m.get('role')=='tool'}
     compacted = 0
+    transport_compacted = 0
     for index, message in enumerate(rows):
         ident = str(message.get('tool_call_id') or '')
         result = results.get(ident)
-        if message.get('role') != 'tool' or ident in protected or tool_names.get(ident) != 'smac_execute_choice':
+        if message.get('role') != 'tool' or ident in protected:
+            continue
+        name = tool_names.get(ident, '')
+        if name != 'smac_execute_choice':
+            if name.startswith('smac_'):
+                original = message.get('content')
+                message['content'] = _compact_transport(original)
+                transport_compacted += message['content'] != original
             continue
         if not isinstance(result, dict):
             continue
@@ -87,5 +126,6 @@ def preserve_continuation(messages, last_user, tool_names, decode, *, threshold=
         filtered=list(reversed(dedup))
     return filtered,{'settled_protocol_pairs_removed':len(removable),
                      'execution_receipts_compacted':compacted,
+                     'transport_results_compacted':transport_compacted,
                      'exact_prose_duplicates_removed':duplicates,
                      'recent_episode_retained':True,'semantic_summary_inferred':False}

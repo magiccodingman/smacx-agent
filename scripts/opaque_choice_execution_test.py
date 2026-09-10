@@ -48,6 +48,17 @@ def main() -> int:
             frame = smacx_mcp._attach_turn_boundary_notice({"choices": offered})
             assert ("turn_boundary_notice" in frame) == (ready_count == 1)
         assert not calls, "boundary annotation must not issue a native action"
+        # A local restriction must not imply that relocation cannot enable work.
+        raw_rule = {"kind": "rule_status", "available": False,
+                    "reason": "current_tile_has_base", "minimum_base_range": 3}
+        advisory = smacx_mcp._decision_advisories([raw_rule])[0]
+        assert advisory["reason"] == raw_rule["reason"] and advisory["available"] is False
+        assert advisory["minimum_base_range"] == 3 and "current base tile" in advisory["meaning"]
+        assert "current guarded choices" in advisory["meaning"]
+        other = {"kind": "rule_status", "available": False,
+                 "reason": "unknown_native_restriction", "meaning": "Cause unknown."}
+        assert smacx_mcp._decision_advisories([other]) == [other]
+        assert "meaning" not in raw_rule and not calls
         decision_id, choices = smacx_mcp._cache_decision_choices(
             {"match_id": "match-test", "session_id": "session-test", "revision": "r1"},
             [{
