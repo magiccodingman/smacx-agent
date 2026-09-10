@@ -53,7 +53,10 @@ def exercise(mode, fail_identity=False, staged_slot=False, fail_save=False):
         events.append(('memory_restore',))
         return {'restored':True}
     manager._prepare_memory_restore = memory
-    manager._refresh_match_worker_images = lambda _: []
+    def refresh_runtime(_match_id):
+        events.append(('runtime_refresh',))
+        return [{'instance_id': ids[0], 'changed': True}]
+    manager._refresh_match_worker_images = refresh_runtime
     def start(instance, **kwargs):
         assert kwargs.get('_defer_ready') is True
         assert not imported
@@ -87,7 +90,7 @@ def exercise(mode, fail_identity=False, staged_slot=False, fail_save=False):
         return {'instance_id': instance, 'ok': True}
     manager.start_mcp_sidecar = collector
     try:
-        result = manager._recover_match_locked('match', refresh_runtime=True)
+        result = manager._recover_match_locked('match', refresh_runtime=False)
     except WorkerManagerError:
         assert fail_identity or fail_save
         assert not any(e[0] == 'collector' for e in events)
@@ -99,6 +102,9 @@ def exercise(mode, fail_identity=False, staged_slot=False, fail_save=False):
         assert not fail_identity and not fail_save and result['match']['status'] == 'running'
         assert len(result['restored_mcp_endpoints']) == len(ids)
         assert result['recovered_incidents'][0]['status'] == 'recovered'
+        assert result['runtime_refresh'][0]['changed'] is True
+        assert events.index(('runtime_refresh',)) < next(
+            i for i, event in enumerate(events) if event[0] == 'start_without_collector')
     return {'mode': mode, 'identity_failure': fail_identity, 'staged_slot':staged_slot,
             'save_digest_failure':fail_save, 'passed': True}
 

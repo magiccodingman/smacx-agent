@@ -69,3 +69,16 @@ actually leaves the modal stack, the UI-thread bridge redraws `WorldWin` before
 the perspective can remain idle. `popup_transition_redraw_contract_test.py`
 guards the postcondition ordering and redraw boundary, and the full bridge
 cross-build passes. Live verification is intentionally pending.
+
+## Parked runtime rebase follow-up
+
+The first owner resume after deployment failed closed because both parked seat
+specifications still referenced the prepared image based on worker
+`0f36a318cf6a`, while the reviewed deployed worker was `287e04469e47`.
+Both verified checkpoints remain intact. Every verified restore now reconciles
+managed seat image references against the configured immutable worker before
+native startup. An unchanged worker uses the existing content-addressed image;
+a changed worker prepares and binds the new one. The controlled recovery-order
+suite exercises ordinary `refresh_runtime=false` recovery and proves this
+reconciliation precedes worker start and collector publication. Owner resume
+remains the live effect-verification gate.
