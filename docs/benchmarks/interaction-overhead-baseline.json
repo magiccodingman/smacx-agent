@@ -1,0 +1,74 @@
+{
+  "schema": "smacx.turn-latency-window.v1",
+  "start_unix": 1789021135.0,
+  "end_unix": 1789021699.0,
+  "wall_seconds": 564.0,
+  "complete_faction_turn_verified": false,
+  "completed_responses": 23,
+  "partial_responses": 0,
+  "provider": {
+    "samples": 23,
+    "sum_seconds": 535.639,
+    "median_seconds": 15.555
+  },
+  "time_to_first_content": {
+    "samples": 23,
+    "sum_seconds": 307.438,
+    "median_seconds": 11.157
+  },
+  "content_to_finish": {
+    "samples": 23,
+    "sum_seconds": 228.201,
+    "median_seconds": 2.257
+  },
+  "tools": {
+    "smac_attention_ack": {
+      "samples": 7,
+      "sum_seconds": 0.654,
+      "median_seconds": 0.036
+    },
+    "smac_choices": {
+      "samples": 3,
+      "sum_seconds": 0.397,
+      "median_seconds": 0.113
+    },
+    "smac_decision": {
+      "samples": 3,
+      "sum_seconds": 0.639,
+      "median_seconds": 0.198
+    },
+    "smac_execute_choice": {
+      "samples": 11,
+      "sum_seconds": 12.442,
+      "median_seconds": 0.229
+    },
+    "smac_memory_update": {
+      "samples": 1,
+      "sum_seconds": 0.453,
+      "median_seconds": 0.453
+    }
+  },
+  "outcomes": {
+    "successful:smac_attention_ack": 5,
+    "successful:smac_decision": 3,
+    "successful:smac_choices": 3,
+    "rejected:decision_conflict": 1,
+    "execution:accepted": 2,
+    "rejected:consumed_decision": 5,
+    "rejected:attention_not_cognitively_responded": 2,
+    "execution:completed": 2,
+    "successful:smac_memory_update": 1,
+    "execution:pending": 1
+  },
+  "usage_samples": 23,
+  "prompt_tokens": 1629626,
+  "cache_usage_samples": 0,
+  "cached_tokens": null,
+  "limits": [
+    "Single-perspective input required; verify turn boundaries independently.",
+    "Cumulative request/tool durations may overlap; do not sum as wall time.",
+    "TTFT combines server queue, prefill and transport; no server attribution.",
+    "Accepted execution is not effect verification. Missing usage is unavailable.",
+    "Context assembly is outside this activity stream; not measured here."
+  ]
+}

@@ -48,3 +48,20 @@ already implemented; the native tile-target query now receives an explicit
 managed `own_unit_ref` / `target_location_ref` query hint. No automatic movement
 or strategic choice was added. Empty attention invitations are also removed when
 budgeting excludes every item; placement still requeues undelivered evidence.
+
+## Checkpoint 3: repeatable latency reporting
+
+`scripts/turn_latency_report.py` reads a single perspective's activity JSON array
+or JSONL for explicit start/end timestamps. It deduplicates stable event IDs,
+separates incomplete windows, counts errors/execution status, and reports
+provider, first-content and per-tool durations plus available token usage.
+It intentionally does not infer a full turn or verified effect from acceptance;
+operators must establish boundaries from the native journal. Context assembly
+is not in the activity stream and remains outside this report. Missing cache
+usage is unavailable, not zero. No additional log storage or Graphiti work.
+
+`turn_latency_report_test.py` validates duplicates, role-only chunks, partial
+requests and unavailable usage. The retained sanitized
+[baseline](interaction-overhead-baseline.json) reproduces the manually reviewed
+AI - 8 turn-9 sample (23 complete responses, 535.639 cumulative provider seconds).
+No improvement percentage or quality equivalence is claimed before live checks.
