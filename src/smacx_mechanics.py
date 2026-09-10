@@ -1437,6 +1437,7 @@ def location_affordances(
         colony_arrivals.sort(key=lambda r: (r["arrival_turns"] is None, r["arrival_turns"] or 0, r["unit_ref"]))
         rows.append({
             "settlement_coverage": coverage,
+
             "owned_colony_arrivals": colony_arrivals[:8],
             "colony_arrivals_omitted": max(0, len(colony_arrivals)-8),
             "future_yield_review": "Current yields are not improved future yields. Use counterfactual site_economy or a guarded terraform preview for conditional alternatives; research and construction are not assumed.",
@@ -1462,6 +1463,7 @@ def location_affordances(
             },
             "overlapping_known_base_radii": receipt.get("overlapping_known_bases", []),
             "known_resource_features": resource_features,
+            "resource_features_scope": "candidate center only; surrounding resources are in known_base_radius",
             "known_landmarks": landmarks[:8],
             "physical_mass_ref": physical_mass_by_location.get(location_ref),
             "mobility_region_refs": sorted(set(mobility_region_by_location.get(location_ref, ()))),

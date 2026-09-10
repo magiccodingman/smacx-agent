@@ -1438,3 +1438,15 @@ Details: [sovereign lease repair acceptance](benchmarks/sovereign-lease-renewal.
 | Reviewed notification / overhead checkpoint | Bounded managed drain uses existing native-reviewed classification and guarded one-use execution, captures durable attention before dismissal, and never cognitively acknowledges the notice. Generic dialogs and strategic choices stay sovereign-controlled. Orchestration fixture passes. Live INTRO/SIMULYOU dismissal returned a turn frame; captured notice IDs and payloads reached subsequent provider requests. Strategic quality over full turns remains pending. Persistent destination queries gain a semantic-selector hint only when advertised by the native catalog. [Evidence](benchmarks/interaction-overhead.md). |
 | Interaction latency acceptance report | Single-perspective activity-window report reproduces the reviewed 23-response baseline; deduplication, first-content timing, partial-window and unavailable-usage fixtures pass. Full faction-turn boundaries and strategic quality remain operator-reviewed evidence, not inferred by counters. [Evidence](benchmarks/interaction-overhead.md). |
 | Recovery introduction / overhead follow-up | Initial live accepted acknowledgement returned a fresh decision directly. Include the bridge's separately reviewed non-diplomatic INTRO classification in automatic capture/dismissal; generic one-button and diplomatic choices remain excluded. Controlled INTRO drain passes; deployment/live verification recorded in [acceptance evidence](benchmarks/interaction-overhead.md). |
+
+### Settlement assistance checkpoint (2026-09-10)
+
+| Capability | Acceptance | Remaining evidence |
+|---|---|---|
+| Intent/area-led settlement discovery | Actual MCP adapter fixture: four candidates, 1,384 conservative tokens, two bounded native calls; arbitrary nominated compare retained | Installed-image and bounded native validation pending |
+| Feasible growth/production explanations and shared capacity | Exhaustive allocation regression and reserved/shared worker fixtures pass; heuristic labels explicitly conditional | No live economic or border-change exactness claimed |
+| Fog terrain/resource entitlement | Settlement-only physical descriptors; hidden improvements and dynamic faction state excluded | Native isolation regression pending |
+| Persistent base resource access alerts and revisiting | Implemented through frozen observation/attention plus base field | Recovery/provider-query acceptance pending |
+
+Evidence: [settlement assistance](benchmarks/settlement-assistance.md). No capability is marked
+fully accepted merely because its calculator or fixture exists.

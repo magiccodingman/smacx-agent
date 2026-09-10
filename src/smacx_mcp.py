@@ -2475,8 +2475,11 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
 
 @mcp.tool(
     description=(
-        "Inspect the fair-play world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
+        "Inspect the semantic world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
         "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
+        "For settlement discovery use mode=settlement with origin_ref=base, colony, location or region and radius (default3). "
+        "Optional scenario_json has purpose:expansion|growth|production|coastal_access|strategic_outpost, domain:land|sea|both, "
+        "max_travel_turns (requires colony origin). Candidates are advisory; you can choose any location. "
         "Before consequential settlement, mode=compare with nominated location subject_refs returns current native founding legality, known radius overlap, yields, distance and logistics evidence; compare alternatives when available because legal does not mean strategically good. "
         "Compare frontier subject_refs for exploration access; area on a mass gives shape evidence. Compare with a unit origin gives connectors; deep adds bounded two-tile passages. Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
         "site_economy with populations:[1,2,3] and up to four subject locations; "
@@ -2489,7 +2492,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
 def smac_world(
     mode: Literal[
         "overview", "area", "relation", "route", "reachability", "compare",
-        "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual",
+        "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual", "settlement",
     ],
     subject_refs: list[str] | None = None,
     origin_ref: str = "",
@@ -2501,7 +2504,12 @@ def smac_world(
     continuation: str = "",
     scenario_json: str = "",
 ) -> dict:
-    """Provider-facing facade; internal calculators remain independently bounded."""
+    """Query semantic world. settlement discovers sites near origin_ref (base/unit/location)
+    or in a region; radius bounds nearby search. Optional scenario_json:
+    {"purpose":"expansion|growth|production|coastal_access|strategic_outpost",
+     "domain":"land|sea|both","max_travel_turns":3}. Travel limit requires a colony
+    origin. Candidates are advisory; compare still evaluates exact nominated sites.
+    """
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
     if not match_id or not session_id:
         return {"ok": False, "error": "managed_world_identity_unavailable"}
@@ -2612,7 +2620,7 @@ def smac_world(
                             AIRDROP_RECEIPT_CACHE[cache_key] = candidate
                             while len(AIRDROP_RECEIPT_CACHE) > 64:
                                 AIRDROP_RECEIPT_CACHE.pop(next(iter(AIRDROP_RECEIPT_CACHE)))
-        site_economy = bool(scenario and scenario["kind"] == "site_economy")
+        site_economy = bool(scenario and scenario["kind"] == "site_economy") or bool(mode == "compare" and not origin_ref and not target_ref and 0 < len(subject_refs or []) <= 4)
         if (mode == "compare" and not origin_ref and not target_ref or site_economy) and subject_refs:
             identity, projection = world._projection()
             action_revision = str(projection.get("action_revision") or "")
@@ -2637,7 +2645,7 @@ def smac_world(
                     received = _call(
                         "semantic_base_site_receipts",
                         target_tile_ids=sorted(set(target_ids)),
-                        include_economy=site_economy,
+                        include_economy=site_economy, terrain_potential=True,
                     )
                     if received.get("ok") is True \
                             and str(received.get("action_revision") or "") == action_revision:
@@ -2656,6 +2664,72 @@ def smac_world(
                         for ref in [context["reverse_locations"].get(item.get("tile_id"))]
                         if isinstance(item, Mapping) and ref
                     }
+        if mode == "settlement":
+            from smacx_settlement import candidate_locations, parse_search, shortlist, economic_assessment
+            from smacx_spatial_scope import semantic_spatial_registry
+            definition = parse_search(scenario_json)
+            identity, projection = world._projection()
+            objects = world._objects(projection)
+            topology = world._topology(projection)
+            area = origin_ref or (subject_refs or [""])[0]
+            refs, search = candidate_locations(topology, objects,
+                semantic_spatial_registry(world.store, world.scope, projection), area,
+                min(max(radius, 0), 32), definition)
+            revision = str(projection.get("action_revision") or "")
+            context = _semantic_selector_context(revision)
+            ids = [context["by_ref"][ref] for ref in refs if ref in context["by_ref"]]
+            receipt = _call("semantic_base_site_receipts", target_tile_ids=ids, terrain_potential=True)
+            if receipt.get("ok") is not True or receipt.get("action_revision") != revision:
+                return {"ok": False, "error": "settlement_observation_changed_retry"}
+            rows = [r for r in receipt.get("items", []) if
+                (definition['domain'] != 'sea' and r.get('legal_for_land_colony') is True) or
+                (definition['domain'] != 'land' and r.get('legal_for_sea_colony') is True)]
+            from smacx_mechanics import mobility_profile, object_location
+            actor = objects.get(area, {})
+            if 'max_travel_turns' in definition and actor.get('kind') != 'own_unit':
+                raise ValueError('settlement_travel_limit_requires_owned_colony_origin')
+            travel = {}
+            if actor.get('kind') == 'own_unit':
+                from smacx_mechanics import field_value
+                if not (field_value(actor, 'roles', {}) or {}).get('colony'):
+                    raise ValueError('settlement_unit_origin_requires_colony')
+                profile = mobility_profile(objects, 'settlement-colony', subject_ref=area, topology=topology)
+                for row in rows:
+                    route = topology.route(object_location(actor), row['location_ref'], profile)
+                    travel[row['location_ref']] = {'arrival_turns': route.turns,
+                        'reachable': route.reachable, 'eta_kind': route.eta_kind,
+                        'uncertainty': list(route.uncertainty)}
+                if 'max_travel_turns' in definition:
+                    rows = [r for r in rows if travel[r['location_ref']]['reachable'] and
+                        travel[r['location_ref']]['arrival_turns'] is not None and
+                        travel[r['location_ref']]['arrival_turns'] <= definition['max_travel_turns']]
+            selected = shortlist(rows, definition['purpose'])
+            if selected:
+                detailed = _call('semantic_base_site_receipts',
+                    target_tile_ids=[r['tile_id'] for r in selected], include_economy=True, terrain_potential=True)
+                if detailed.get('ok') is not True or detailed.get('action_revision') != revision:
+                    return {'ok': False, 'error': 'settlement_observation_changed_retry'}
+                selected = detailed.get('items', [])
+            items = []
+            for row in selected:
+                items.append({'location_ref': row['location_ref'], 'terrain': row.get('terrain_kind'),
+                    'economic_assessment': economic_assessment(row),
+                    'foreign_and_owned_radius_overlap': row.get('overlapping_known_bases', []),
+                    'colony_travel': travel.get(row['location_ref']),
+                    'terrain_potential': {'unobserved_radius_tiles': sum(t.get('availability') == 'unknown' for t in row.get('known_radius', [])),
+                        'resource_bonus_tiles': sum(bool(t.get('resource_bonus', 0)) for t in row.get('known_radius', [])),
+                        'meaning': 'Terrain potential does not prove ownership or worker availability.'},
+                    'legality': 'current native receipt; revalidate at founding'})
+            if detail != 'deep':
+                from smacx_settlement import compact_assessment
+                for item in items:
+                    item['economic_assessment'] = compact_assessment(item['economic_assessment'])
+            result = {'ok': True, 'mode': 'settlement', 'schema': 'smacx.settlement-search.v1',
+                'items': items, 'search': {**search, 'eligible_evaluated': len(rows)},
+                'valid_while': {'action_revision': revision},
+                'strategy_boundary': 'Advisory alternatives, not global rankings. Change area or purpose, or nominate any exact site with compare.',
+                'next': 'Select a location_ref for existing colony movement/founding; deep counterfactual site_economy exposes allocations and improvements.'}
+            return world._trim(result, world._budget(detail, int(os.environ.get('SMACX_CONTEXT_LENGTH', '65536'))))
         context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
         result = world.query(
             mode=mode, subject_refs=subject_refs or (), origin_ref=origin_ref,
