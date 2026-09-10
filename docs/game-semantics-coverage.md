@@ -1467,3 +1467,12 @@ Settlement deployment: public-stack control health and configured worker/MCP/har
 verified, with installed module/manifest hashes matching source. Both prior campaigns remain
 completed. Native tested center effects and recovery/query contracts are accepted at the
 explicit scope recorded above; strategic quality across new games is not yet measured.
+
+| Bookkeeping continuation checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Duplicate typed memory | Recorded repeated live writes → canonical normalized comparison → explicit provider completion receipt → same seven managed write families → real journal head unchanged on repeats, changed evidence retained → reopen and citation-scope checks pass. In-process sustained repetition enters existing incident path; long-run behavior pending. |
+| Notification readiness | Recorded historical/current readiness conflict → historical information separated from current native protocol → provider runtime projection → sovereign still acknowledges explicitly → original capture preserved. No automatic cognitive acknowledgement. |
+| Combined attention/action | Explicit reviewed lease in choice call → normal acknowledgement authority → guarded native dispatch → independent acknowledgement and failed-action receipts verified with controlled execution. Existing real attention durability/redelivery tests pass; live combined-action behavior pending. |
+| Completion continuity | Actual preceding receipts were visible in the failing run → compact explicit saved/unchanged wire receipt → recent-history and cleanup retention contracts → strategic rationale/errors preserved. No general context-length or speed claim. |
+
+See [bookkeeping continuation acceptance](benchmarks/bookkeeping-continuation.md).

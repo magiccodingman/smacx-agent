@@ -636,3 +636,17 @@ acknowledgement and restart. Older events remain available through world changes
 Missing/stale radius data is not a proved loss; discovering a nearby foreign base
 is not evidence of new construction or causation. Native relationship state and
 workability are kept distinct from inferred hostile intent.
+
+### Bookkeeping continuation
+
+Typed memory writes are idempotent against normalized current canonical input.
+`memory_receipt` distinguishes `saved` from `already_persisted` and carries the
+existing journal identity. Repeated unchanged writes are not progress; sustained
+same-record/same-native-revision repetition opens a bounded incident circuit.
+Save changed intent and interpretation, not a mandatory per-turn snapshot.
+
+`smac_execute_choice` optionally accepts `attention_lease_id` after sovereign
+review. Acknowledgement is committed independently before dispatch; invalid
+acknowledgement prevents dispatch, and failed execution does not undo awareness.
+Historical notifications no longer project obsolete action-readiness fields.
+Use current native protocol and valid execution/recovery frames for continuation.

@@ -67,3 +67,15 @@ out, metrics = preserve_continuation(query_history, 0, {'q': 'smac_world'}, deco
 assert out[-1]['content'] == normalized and out[1] == frozen[1]
 assert query_history == frozen and metrics['transport_results_compacted'] == 1
 print('transport normalization preserves untrusted wrapper, all evidence, metadata, prose and unseen results')
+
+from smacx_strict_prompt import _memory_completion_content
+memory = {'ok': True, 'record': {'content': 'Long duplicate mechanical snapshot'},
+          'memory_receipt': {'status': 'saved', 'record_kind': 'summary', 'key': 'situation', 'journal_event_id': 'journal-1'},
+          'persistence': {'journal_committed': True}}
+wrapped = '<untrusted_tool_result>\n' + json.dumps({'result': json.dumps(memory)}) + '\n</untrusted_tool_result>'
+compact = json.loads(_memory_completion_content(wrapped))
+assert compact['memory_receipt'] == memory['memory_receipt'] and 'record' not in compact
+assert compact['persistence']['journal_committed']
+failed = json.dumps({**memory, 'ok': False, 'error': 'uncertain_commit'})
+assert _memory_completion_content(failed) == failed
+print('provider memory receipt flattened with identity/status retained; ambiguous failures unchanged')

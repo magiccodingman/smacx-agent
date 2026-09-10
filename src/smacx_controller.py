@@ -14,6 +14,7 @@ import time
 from typing import Any, Mapping, Sequence
 import re
 import uuid
+from functools import wraps
 
 from smacx_game_settings import game_settings_environment, normalize_game_settings
 from smacx_journal import CampaignJournal, JournalError
@@ -830,6 +831,20 @@ def _resolve_memory_faction_refs(store, scope, record, observed_revision):
     return record, resolved
 
 
+_MEMORY_WRITE_LOCK = threading.RLock()
+
+
+def _serialize_memory_write(function):
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        # A managed perspective has one sovereign writer. Serialize concurrent
+        # MCP dispatches through compare, projection and canonical append.
+        with _MEMORY_WRITE_LOCK:
+            return function(*args, **kwargs)
+    return guarded
+
+
+@_serialize_memory_write
 def write_platform_memory(
     action: str,
     match_id: str,
@@ -943,6 +958,22 @@ def write_platform_memory(
             value for value in references if isinstance(value, str) and value.startswith("journal-"))]
         for event in canonical:
             store.project_journal_evidence(scope, event)
+        # Compare only against the active canonical timeline, after all observation,
+        # schema and journal-reference guards. Never trust a stale SQLite projection.
+        from smacx_memory_contract import KEYS, COLLECTIONS, editable_record
+        collection = COLLECTIONS[action]
+        record_key = record.get(KEYS[action])
+        prior = _journal().replay(scope, sections=(collection,)).get(collection, {}).get(record_key)
+        if prior and editable_record(action, dict(record)) == editable_record(action, prior.get("input") or prior["record"]):
+            return {
+                "ok": True, "identity": _platform_scope_identity(scope, session_id),
+                "action": action, "record": prior["record"], "changed": False,
+                "actor_references": actor_references, "cognition_hygiene": hygiene,
+                "observed_revision": observed_revision, "observed_turn": turn,
+                "observed_year": year, "journal_event_id": prior.get("journal_event_id"),
+                "persistence": {"stage": "already_persisted", "authority": "campaign_journal",
+                    "journal_committed": True, "new_event_committed": False},
+            }
         source_event_id = str(record.get("source_event_id") or "") or None
         if action == "claim":
             status = str(record.get("status") or "unverified")
@@ -1100,6 +1131,7 @@ def write_platform_memory(
             "ok": True,
             "identity": _platform_scope_identity(scope, session_id),
             "action": action,
+            "changed": True,
             "record": stored,
             "observed_revision": observed_revision,
             "observed_turn": turn,

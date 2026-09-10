@@ -52,6 +52,10 @@ with tempfile.TemporaryDirectory() as tmp:
             saved = write(kind, seed)
             assert saved["ok"], saved
             key = saved["record"][KEYS[kind]]
+            if KEYS[kind] in seed:
+                duplicate = write(kind, seed)
+                assert duplicate["ok"] and duplicate["changed"] is False, duplicate
+                assert duplicate["journal_event_id"] == saved["journal_event_id"]
             fetched = read(kind, key)
             assert fetched["ok"] and fetched["authority"] == "campaign_journal", fetched
             editable = json.loads(fetched["record_json"])

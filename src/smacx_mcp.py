@@ -3977,10 +3977,12 @@ def _attach_post_action_decision(response: dict, key: tuple[str, str]) -> dict:
         "an opening base-name choice uses its native suggested default when text is omitted. "
         "Never invent command names or reuse a consumed decision. An invalid handle may return "
         "recovery.frame: fresh evidence, not an executed retry. Select anew from that frame. "
-        "Settled success may include post_action_decision.frame; use its fresh choices directly."
+        "Settled success may include post_action_decision.frame; use its fresh choices directly. "
+        "Optionally pass attention_lease_id only after reviewing its delivered items; acknowledgement "
+        "commits independently even if the subsequent action fails. Invalid acknowledgement prevents dispatch."
     )
 )
-def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dict:
+def smac_execute_choice(decision_id: str, choice_id: str, text: str = "", attention_lease_id: str = "") -> dict:
     """Expose decision lifecycle and bound consecutive failed submissions."""
     authority = _sovereign_gameplay_gate("Choice execution")
     if authority:
@@ -4012,9 +4014,18 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         if boundary is not None:
             return {**boundary, "native_action_executed": False, "execution_status": "not_dispatched"}
 
+    acknowledgement = None
+    if attention_lease_id:
+        acknowledgement = smac_attention_ack(attention_lease_id)
+        if not acknowledgement.get("ok"):
+            return {**acknowledgement, "native_action_executed": False,
+                    "execution_status": "not_dispatched"}
+
     # Execution has already recorded its journal outcome. The provider uses
     # the selected opaque choice; native entity slots are not public identity.
     response = _public_execution_receipt(_execute_choice_once(decision_id, choice_id, text))
+    if acknowledgement is not None:
+        response["attention_acknowledgement"] = acknowledgement
     error = response.get("error")
     code = error.get("code") if isinstance(error, dict) else error
     boundary_errors = {"unknown_decision", "expired_decision", "consumed_decision",
@@ -4560,6 +4571,8 @@ def smac_memory(
     )
 
 
+MEMORY_REPETITION = {}
+
 @mcp.tool(
     description=(
         "Retrieve one small mechanics answer directly, or commission/inspect one disposable "
@@ -4705,6 +4718,11 @@ def smac_memory_update(
                 "reason": "Nothing was saved. Copy the complete match_id and session_id from the fresh identity, and its revision as observed_revision. Do not reconstruct opaque IDs from memory. Managed agent_id and perspective_id may be omitted; supplied values must match this seat.",
             },
         }
+    with ACTION_PROGRESS_LOCK:
+        circuit = RUNTIME_CIRCUITS.get((match_id, session_id))
+    if circuit:
+        return {"ok": False, "error": "repetition_circuit_open", "incident": circuit,
+                "required_next": {"stop_after": True, "reason": "Operator recovery is required."}}
     denied = _sovereign_memory_gate()
     if denied:
         return {**denied, "persistence": {"stage": "not_started", "journal_committed": False}}
@@ -4744,6 +4762,37 @@ def smac_memory_update(
         elif result.get("error") == "evidence_event_scope_mismatch":
             result["repair_context"] = {"schema": "smacx.memory-repair.v1", "automatic_retry": False,
                 "instruction": "Use only a supporting event actually read in your current perspective and timeline. World observation_cursor and attention through_cursor are not event IDs. For a summary, through_event_id is optional: omit it when no event boundary is asserted. Do not remove a required citation or substitute unrelated evidence to bypass validation."}
+    if result.get("ok"):
+        result = dict(result)
+        from smacx_memory_contract import KEYS
+        stored = result.get("record") or {}
+        receipt = {"record_kind": action, "key": stored.get(KEYS[action]),
+                   "record_id": stored.get(action + "_id"),
+                   "record_revision": stored.get(action + "_revision"),
+                   "journal_event_id": result.get("journal_event_id"),
+                   "changed": result.get("changed", True),
+                   "status": "saved" if result.get("changed", True) else "already_persisted",
+                   "meaning": "This memory is durably saved. Do not repeat unchanged content; continue using a valid frame or select another concern."}
+        result["memory_receipt"] = receipt
+        # Scope and native revision separate legitimate later reconsideration.
+        repeat_key = (match_id, session_id, agent_id, perspective_id)
+        fingerprint = (observed_revision, action, receipt["key"], receipt["journal_event_id"])
+        with ACTION_PROGRESS_LOCK:
+            previous = MEMORY_REPETITION.get(repeat_key, {})
+            count = previous.get("count", 0) + 1 if previous.get("fingerprint") == fingerprint else 1
+            MEMORY_REPETITION[repeat_key] = {"fingerprint": fingerprint, "count": count}
+        if not receipt["changed"]:
+            result["repetition_notice"] = {"count": count,
+                "meaning": "Identical memory is already persisted; this call made no progress."}
+        if not receipt["changed"] and count >= 4:
+            incident = {"code": "repeated_unchanged_memory", "message": "Repeated identical memory writes without changed evidence or native revision.", "attempt_count": count}
+            with ACTION_PROGRESS_LOCK:
+                RUNTIME_CIRCUITS[(match_id, session_id)] = incident
+            gap = smac_report_capability_gap(screen_or_state="unchanged sovereign bookkeeping",
+                intended_decision="continue after saving memory", required_observation="the existing durable memory receipt",
+                required_action="resolve repeated bookkeeping before autonomous continuation", why_blocked=incident["message"])
+            result.update(ok=False, incident=incident, error=incident["code"],
+                required_next={"stop_after": True, "reason": "Operator recovery is required."})
     return result
 
 

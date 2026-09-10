@@ -434,6 +434,15 @@ def _replace_managed_tool_arguments(call: object, arguments: dict) -> None:
     ) if outer_was_text else outer
 
 
+def _memory_completion_content(content):
+    """Compact an explicit successful durable receipt; failures stay untouched."""
+    receipt = _managed_tool_result(content)
+    if isinstance(receipt, dict) and receipt.get("ok") is True and isinstance(receipt.get("memory_receipt"), dict):
+        return json.dumps({key: value for key, value in receipt.items() if key != "record"},
+                          ensure_ascii=False, separators=(",", ":"))
+    return content
+
+
 def _managed_tool_result(content: object) -> dict | None:
     """Decode direct or Hermes-wrapped MCP JSON for wire-only compaction."""
     if not isinstance(content, str):
@@ -598,6 +607,12 @@ def _install() -> None:
             if not isinstance(sanitized, list):
                 return sanitized
             sanitized = canonical_system(sanitized)
+        # Normalize only explicit successful memory receipts. Preserve failures,
+        # tool pairing and durable history; do not interpret arbitrary tool prose.
+        for row in sanitized:
+            if not isinstance(row, dict) or row.get("role") != "tool":
+                continue
+            row["content"] = _memory_completion_content(row.get("content"))
             assistant_rows = [
                 index for index, message in enumerate(sanitized)
                 if isinstance(message, dict) and message.get("role") == "assistant"
@@ -864,6 +879,7 @@ def _install() -> None:
                     "semantic_gc": "durable_cognition_receipt",
                     "tool": tool_name,
                     "journal_event_id": result.get("journal_event_id"),
+                    "memory_receipt": result.get("memory_receipt"),
                     "retention": "Durably committed; use runtime cognition or targeted recall.",
                 }, separators=(",", ":"))
                 if call and isinstance(arguments, dict):

@@ -474,6 +474,16 @@ def _operation_context(operations: list[dict[str, Any]], *, token_budget: int) -
 
 def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+    if item.get("attention_kind") == "game_notification":
+        # Original capture remains in the journal. Readiness belongs exclusively
+        # to current native_protocol, not to the historical popup snapshot.
+        historical = {key: value for key, value in (payload.get("state") or {}).items() if key != "protocol"}
+        if isinstance(historical.get("faction"), Mapping):
+            historical["faction"] = {key: value for key, value in historical["faction"].items() if key != "ready_units"}
+        return {"historical_state": historical, "popup_label": payload.get("popup_label"), "turn": payload.get("turn"),
+                "information": payload.get("information", []),
+                "native_dismissal": "already_dismissed",
+                "meaning": "Historical notification, pending cognitive review only. Use current native_protocol for readiness; this is not an active interaction."}
     removal_note = {}
     if item.get("attention_kind") in {"world_change", "world_changes"}:
         changes = [payload.get("delta", {})] if "delta" in payload else payload.get("deltas", ())
