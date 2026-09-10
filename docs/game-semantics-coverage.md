@@ -1363,3 +1363,7 @@ history. Earlier private alternatives are intentionally omitted; strategic
 equivalence and live performance remain open. Earlier 111-cut tokenizer results
 exclude reasoning and are not total generation input measurements. See
 [acceptance and measurement limits](benchmarks/reasoning-continuation.md).
+
+Reasoning deployment checkpoint: rebuilt control/harness images pass installed
+checks; live source hashes match and control is healthy. AI - 6 is completed;
+no live improvement claim is made before the AI - 7 observation window.

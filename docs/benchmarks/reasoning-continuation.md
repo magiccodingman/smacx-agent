@@ -60,3 +60,11 @@ attention communication/redelivery contracts, installed opaque-choice contracts,
 installed Hermes context policy, and real Hermes controlled provider capture
 including startup/resume, low reasoning passthrough, scoped tool errors and durable
 history preservation. Native mechanics and doctrine are unchanged.
+
+Deployment checkpoint (2026-09-10 UTC): installed source matches runtime commit
+`8c3ce86`. Control image `4859f16187d428be504dfdf3cae38525509f63bd8d7f0e5f24c3401967dad5a3`;
+harness image `45e2f20f53a083ab3c75a1eb8e449f087e83941836831d629d75ed85a019cff6`.
+Control is healthy; installed MCP, runtime assembler and Hermes sanitizer hashes
+match source. Only control-api and specialist-supervisor containers were replaced;
+other main and readiness service containers and provider/Graphiti configuration
+remain unchanged. AI - 6 is completed and its workers are retired.
