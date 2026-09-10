@@ -55,4 +55,17 @@ deployed browser remains the UI acceptance gate.
 | --- | --- | --- |
 | Development rejection | observed incident → exact choice/state represented → stage-specific receipt calculated → provider-queryable fresh frame → sovereign can select remaining choice → rejected command not dispatched → repetition circuit retained | Restored native campaign must identify the exact failing stage and demonstrate subsequent progress; a successful native terrain effect is not claimed by the rejection fixture. |
 | Spectator lifecycle | browser exception observed → owned refresh resources represented → idempotent teardown compiled → authenticated route remains provider/query accessible | Deployed desktop/mobile route transitions must show no Blazor error or console exception. |
+| Popup presentation handoff | Live Spartan spectate retained an `INTRO` image after the semantic snapshot had entered foreign-turn wait → guarded acknowledgement now distinguishes command acceptance from observed dismissal → the exact popup object/generation remains authoritative during transition → a fresh native map frame is presented only after that object leaves the modal stack | Bridge cross-build and source contract pass. Per owner direction, the campaigns are parked and live visual verification is delegated to the next run; this does not claim the deployed stream has yet been observed clean. |
 
+## Popup presentation follow-up
+
+The instruct and low-thinking campaigns were parked at verified checkpoints
+before this repair. The observed defect was a stale rendered dialog on an
+inactive multiplayer perspective, while the authoritative semantic state had
+already advanced to `waiting_for_turn`. `acknowledge_popup` now returns
+`dismissal_verified` and `transition`; acceptance alone no longer states that
+the native modal has disappeared. When the tracked popup object or generation
+actually leaves the modal stack, the UI-thread bridge redraws `WorldWin` before
+the perspective can remain idle. `popup_transition_redraw_contract_test.py`
+guards the postcondition ordering and redraw boundary, and the full bridge
+cross-build passes. Live verification is intentionally pending.

@@ -603,6 +603,17 @@ void begin_popup_transition(BasePop* popup) {
     pending_popup_object = popup;
 }
 
+void redraw_after_popup_transition() {
+    // Popup completion removes a separate native window from the modal stack,
+    // but an inactive multiplayer perspective may not receive another map
+    // paint before it yields for a foreign turn.  Present one authoritative
+    // map frame after the popup is actually gone so read-only spectators do
+    // not keep seeing the dismissed dialog.  This runs through the same
+    // UI-thread bridge dispatch as the guarded popup callback.
+    if (!WorldWin) return;
+    GraphicWin_redraw(WorldWin);
+}
+
 bool popup_transition_is_pending() {
     if (!pending_popup_transition) return false;
     if (!agent_popup_object_is_active(pending_popup_object)
@@ -612,6 +623,7 @@ bool popup_transition_is_pending() {
         pending_popup_generation = 0;
         pending_popup_label.clear();
         pending_popup_object = NULL;
+        redraw_after_popup_transition();
         return false;
     }
     return true;
@@ -16330,8 +16342,13 @@ std::string semantic_command_response(const std::string& request) {
         // adapter, not a generic popup completion routine, and intentionally
         // refuses the button-only mode used by PLANETFALL.
         BasePop_on_button_clicked(active, 0);
+        bool transition_pending = popup_transition_is_pending();
         return std::string("{\"ok\":true,\"command\":\"acknowledge_popup\",\"popup_label\":")
-            + json_string(label.c_str()) + '}';
+            + json_string(label.c_str())
+            + ",\"dismissal_verified\":" + (transition_pending ? "false" : "true")
+            + ",\"transition\":"
+            + json_string(transition_pending ? "waiting_for_engine" : "completed")
+            + ",\"follow_up\":\"Observe the native interaction. Do not infer dismissal from command acceptance alone.\"}";
     }
     if (command == "respond_to_contact") {
         std::string label = agent_popup_label();
