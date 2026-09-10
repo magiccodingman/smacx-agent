@@ -7,6 +7,7 @@ the counterfactual behavior of a model playing without bundled decisions.
 """
 import argparse
 import copy
+from collections import Counter
 import gzip
 import hashlib
 import importlib
@@ -89,6 +90,12 @@ with tempfile.TemporaryDirectory() as temporary:
         original = copy.deepcopy(rows)
         wire = AIAgent._sanitize_api_messages(rows)
         assert original == rows, 'Replay mutated retained history'
+        tool_names = {c['id']: c.get('function', {}).get('name', 'unknown')
+                      for m in rows for c in (m.get('tool_calls') or [])}
+        history_sizes = Counter()
+        for m in wire:
+            category = 'tool:' + tool_names.get(m.get('tool_call_id'), 'unknown') if m['role'] == 'tool' else m['role']
+            history_sizes[category] += len(json.dumps(m, ensure_ascii=False).encode())
         envelopes = [m['content'].split(strict._RUNTIME_OPEN, 1)[1]
                      for m in body['messages'] if strict._RUNTIME_OPEN in str(m.get('content', ''))]
         assert len(envelopes) == 1
@@ -109,6 +116,8 @@ with tempfile.TemporaryDirectory() as temporary:
         output.append({'request_id': event['correlation']['request_id'],
                        'tokens': count, 'message_bytes': len(json.dumps(wire, ensure_ascii=False).encode()),
                        'captured_tokens': captured_count,
+                       'history_bytes_by_category': dict(history_sizes),
+                       'fixed_runtime_bytes': len(envelopes[0].encode()),
                        'assistant_prose_chars': sum(len(m.get('content') or '') for m in wire if m['role'] == 'assistant'),
                        'history_rows': len(rows), 'wire_rows': len(wire)})
     result = {'label': a.label, 'requests': output,

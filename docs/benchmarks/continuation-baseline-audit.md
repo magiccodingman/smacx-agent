@@ -80,8 +80,34 @@ separate measurement until the server/template/accounting difference is explaine
   guarded legality, not a forced strategy or promised action.
 - Retention/transport contracts, real Hermes complementary-result and pressure
   tests, and opaque-choice/advisory adapter tests pass. No native mechanic changed.
-- These follow-up changes are not deployed by this audit. The current campaign
-  is untouched. No checkpoint restore or improved model behavior is asserted.
+- Follow-up deployment is now verified in the shared stack; see the
+  [deployment receipt](bounded-cleanup-deployment.json). AI - 5 remains parked at
+  turn 3 with zero active sovereigns/incidents. No checkpoint restore or improved
+  model behavior is asserted.
+
+## Bounded cleanup disposition
+
+The [category audit](continuation-category-audit.json) separates serialized history
+rows from the fixed runtime envelope. In the 111 replay cuts, fixed system rows
+sum to 5,348,178 bytes and runtime envelopes to 7,992,135 bytes. These are repeated
+input bytes, not unique information, cache misses, or measured latency. Execution
+tool rows sum to 2,368,209 bytes; bookkeeping result rows sum to 262,889 bytes.
+Assistant rows include tool arguments as well as prose, and are reported separately.
+
+Five bookkeeping writes have input fields repeated exactly in their committed
+records. We did not add another pruning rule for this small sample: subsequent
+pressure cleanup may compact the result, so deleting arguments needs a joint
+retention contract rather than an isolated deletion. There are no `smac_world`
+or `smac_choices` query returns in these particular AI4 captures to establish
+additional supersession savings. Existing identical-query supersession and
+consumed/expired decision cleanup remain; complementary scopes are protected.
+
+The final bounded pass therefore ships the verified lossless transport formatting
+and local-base-tile clarification, rather than speculative broader cuts. Repeated
+replay reproduces 2,125,718 / 3,177,325 tokenizer counts with unchanged strategic
+prose. Installed-image complementary-result, context-pressure, opaque-choice and
+controlled real-provider startup/resume tests pass. The separate readiness stack,
+portal, Graphiti, native images, provider settings and stored game data are unchanged.
 
 See [sanitized numeric evidence](continuation-baseline-audit.json). To reproduce,
 export the chosen revision's `harness/smacx_strict_prompt.py` (and

@@ -1342,3 +1342,12 @@ Provider-reported usage differs from current tokenizer counts and remains separa
 reported. The base-tile restriction is explicitly location-local in provider-facing
 advisories; adapter tests pass, live behavioral improvement and deployment are pending.
 See [baseline audit and limits](benchmarks/continuation-baseline-audit.md).
+
+Bounded cleanup deployment checkpoint: category-level replay confirms the same
+111-cut totals. Additional bookkeeping/query pruning is deferred where benefit
+or joint evidence retention is not established. Lossless formatting and the
+local-base-tile advisory pass installed-image tests, including controlled Hermes
+provider startup/resume. Shared control is healthy and installed hashes match;
+AI - 5 remains parked at turn 3. Other main/readiness services and configuration
+are unchanged. [Deployment evidence](benchmarks/bounded-cleanup-deployment.json).
+Live turn-time improvement remains unverified.
