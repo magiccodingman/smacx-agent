@@ -35,3 +35,14 @@ Recovery/publication tests and installed-image verification pending.
 AI - 7 and AI - 8 - Instruct are completed, not resumable. Normal parking failed at its
 safe boundary; operator pause verified containment before the supported end lifecycle.
 Historical logs and incident records retained. No timers or new campaigns started.
+
+Checkpoint 2 results:
+- `settlement_attention_test.py` passes real collector -> frozen publication -> semantic
+  journal -> attention capture -> provider-queryable base -> collector restart without duplicate.
+  Latest access event remains on the base after subsequent observation. Cause is unestablished.
+- `settlement_native_access_test.py` compiles and executes the actual C++ public-access helper
+  with controlled state: Treaty/Pact occupation distinction, convoy restriction, hidden-unit
+  exclusion, foreign territory, own-base worker reservation and fog exclusion. This is adapter
+  evidence, not independent validation of the running game's territorial algorithm.
+- Access changes do not infer construction from newly discovering a foreign base. Ordinary
+  worked/unworked reassignment alone is not an access-loss alert.

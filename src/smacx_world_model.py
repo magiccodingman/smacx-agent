@@ -382,6 +382,18 @@ class PerspectiveProjector:
             fields["owner_ref"] = _evidence(owner, current=True, owned=owned, turn=turn,
                                              world_revision=revision_hint,
                                              provenance_ref=provenance)
+            # Keep the last material access event in the base projection; attention
+            # acknowledgement does not erase queryable history. Replay uses the same prior.
+            if owned:
+                from smacx_settlement import access_changes
+                provisional = WorldObject(ref, "base", fields, at).as_dict(provider_safe=False)
+                previous = self._prior_objects.get(ref, {})
+                changes = access_changes([previous] if previous else [], [provisional], turn)
+                remembered = previous.get("fields", {}).get("last_resource_access_change", {}).get("value")
+                if changes or remembered:
+                    fields["last_resource_access_change"] = _evidence(
+                        changes[0] if changes else remembered, current=True, owned=True, turn=turn,
+                        world_revision=revision_hint, provenance_ref=provenance)
             objects.append(WorldObject(ref, "base", fields, at,
                                        metadata={"native_id": base.get("id")} if owned else {}))
         # Native vehicle rows compact after destruction.  The feed marks that

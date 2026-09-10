@@ -2665,7 +2665,7 @@ def smac_world(
                         if isinstance(item, Mapping) and ref
                     }
         if mode == "settlement":
-            from smacx_settlement import candidate_locations, parse_search, shortlist, economic_assessment
+            from smacx_settlement import candidate_locations, parse_search, shortlist, economic_assessment, terrain_summary
             from smacx_spatial_scope import semantic_spatial_registry
             definition = parse_search(scenario_json)
             identity, projection = world._projection()
@@ -2716,9 +2716,7 @@ def smac_world(
                     'economic_assessment': economic_assessment(row),
                     'foreign_and_owned_radius_overlap': row.get('overlapping_known_bases', []),
                     'colony_travel': travel.get(row['location_ref']),
-                    'terrain_potential': {'unobserved_radius_tiles': sum(t.get('availability') == 'unknown' for t in row.get('known_radius', [])),
-                        'resource_bonus_tiles': sum(bool(t.get('resource_bonus', 0)) for t in row.get('known_radius', [])),
-                        'meaning': 'Terrain potential does not prove ownership or worker availability.'},
+                    'terrain_potential': terrain_summary(row),
                     'legality': 'current native receipt; revalidate at founding'})
             if detail != 'deep':
                 from smacx_settlement import compact_assessment

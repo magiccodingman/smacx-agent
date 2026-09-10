@@ -183,3 +183,17 @@ def compact_assessment(assessment):
             'complete': level.get('frontier_search_complete') and not level.get('alternatives_truncated')}
             for level in assessment['population_alternatives']],
         'assumptions': 'Conditional current access; zero support benchmark is not completion ETA. Borders, psych, population eligibility and future changes not simulated.'}
+
+
+def terrain_summary(receipt):
+    rows = receipt.get('known_radius', [])
+    bonuses = {'nutrient': 0, 'mineral': 0, 'energy': 0}
+    for row in rows:
+        for number, name in ((1,'nutrient'),(2,'mineral'),(3,'energy')):
+            if row.get('resource_bonus') == number or name+'_resource' in row.get('features', []):
+                bonuses[name] += 1
+    return {'radius_resource_bonuses': bonuses,
+        'river_tiles': sum(t.get('river') is True or 'river' in t.get('features', []) for t in rows),
+        'unobserved_tiles': sum(t.get('availability') == 'unknown' for t in rows),
+        'coastal_access': receipt.get('coastal_access'),
+        'meaning': 'Resource potential, not additional collectible income; allocations exclude unverified access.'}

@@ -4661,6 +4661,8 @@ bool semantic_interaction_command(const std::string& command) {
     return false;
 }
 
+std::string settlement_public_access(int faction, int x, int y, int own_base);
+
 uint32_t semantic_base_state_flags(const BASE& base) {
     // Several native/Thinker bookkeeping bits change while the event loop is
     // settling even though no fair-play choice has changed. Only retain flags
@@ -7873,6 +7875,7 @@ std::string bases_response() {
             const bool worked = (base.worked_tiles & (1 << tile_index)) != 0;
             out << "{\"location_ref\":\"location-" << semantic_tile_id(tile_x, tile_y)
                 << "\",\"worked\":" << (worked ? "true" : "false")
+                << ",\"access\":" << settlement_public_access(faction_id, tile_x, tile_y, i)
                 << ",\"yields\":{\"nutrients\":"
                 << mod_crop_yield(faction_id, i, tile_x, tile_y, 0)
                 << ",\"minerals\":" << mod_mine_yield(faction_id, i, tile_x, tile_y, 0)
@@ -9568,6 +9571,34 @@ struct SiteEconomyReadGuard {
     }
 };
 
+// Read-only public access facts. No hidden worker assignments or enemy identities.
+std::string settlement_public_access(int faction, int x, int y, int own_base) {
+    MAP* sq = mapsq(x, y);
+    if (!sq || !sq->is_visible(faction)) return "null";
+    bool blocked = false, reserved = false;
+    for (int id = 0; id < *BaseCount; ++id) {
+        BASE& other = Bases[id];
+        if (id == own_base || other.faction_id != faction || map_range(x,y,other.x,other.y) > 2) continue;
+        for (int offset = 1; offset < 21; ++offset) {
+            int tx=0, ty=0;
+            if ((other.worked_tiles & (1 << offset)) && next_tile(other.x,other.y,offset,&tx,&ty)
+                && tx==x && ty==y && (sq->owner < 0 || sq->owner == faction)) reserved = true;
+        }
+    }
+    for (int id = 0; id < *VehCount; ++id) {
+        VEH& veh = Vehs[id];
+        if (veh.x == x && veh.y == y && (veh.faction_id == faction || veh.is_visible(faction))
+            && (veh.order == ORDER_CONVOY || (veh.faction_id != faction
+                && !has_treaty(faction, veh.faction_id, DIPLO_TREATY|DIPLO_PACT)))) blocked = true;
+    }
+    std::ostringstream out;
+    out << "{\"foreign_territory\":" << (sq->owner >= 0 && whose_territory(faction,x,y,0,0) != faction ? "true" : "false")
+        << ",\"visible_occupation_constraint\":" << (blocked ? "true" : "false")
+        << ",\"reserved_by_other_owned_base\":" << (reserved ? "true" : "false")
+        << '}';
+    return out.str();
+}
+
 std::string site_economy_receipt(int faction_id, int x, int y) {
     MAP* center = mapsq(x, y);
     if (*BaseCount >= MaxBaseNum || !center || center->is_base()
@@ -9613,6 +9644,8 @@ std::string site_economy_receipt(int faction_id, int x, int y) {
     };
     std::ostringstream out;
     out << "{\"coverage\":\"fixed_current_territory_and_owned_worker_assignments\""
+        << ",\"benchmark_colony_mineral_cost\":" << mineral_cost(guard.base_id, BSC_COLONY_POD)
+        << ",\"nutrients_per_citizen\":" << Rules->nutrient_intake_req_citizen
         << ",\"evidence_kind\":\"native_helper_hypothesis\",\"epistemic_status\":\"conditional\""
         << ",\"center\":{\"location_ref\":\"location-" << semantic_tile_id(x, y)
         << "\",\"epistemic_status\":\"conditional\",\"yields\":" << yields(x, y) << '}'
@@ -9630,7 +9663,8 @@ std::string site_economy_receipt(int faction_id, int x, int y) {
         for (int id = 0; id < *VehCount; ++id) {
             VEH& veh = Vehs[id];
             if (veh.x == tx && veh.y == ty && (veh.faction_id == faction_id
-                || veh.is_visible(faction_id)) && (veh.faction_id != faction_id
+                || veh.is_visible(faction_id)) && ((veh.faction_id != faction_id
+                && !has_treaty(faction_id, veh.faction_id, DIPLO_TREATY|DIPLO_PACT))
                 || veh.order == ORDER_CONVOY)) occupied = true;
         }
         bool workable = !sq->is_base() && (sq->owner < 0 || sq->owner == faction_id)
@@ -9838,7 +9872,11 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
         if (comma) out << ',';
         comma = true;
         const bool ocean = is_ocean(sq);
-        out << "{\"location_ref\":\"location-" << tile_id << "\",\"tile_id\":" << tile_id
+        bool coastal = false;
+        for (auto& adjacent : iterate_tiles(x, y, 1, 9))
+            coastal |= is_ocean(adjacent.sq) != ocean;
+        out << "{\"coastal_access\":" << (coastal ? "true" : "false")
+            << ",\"location_ref\":\"location-" << tile_id << "\",\"tile_id\":" << tile_id
             << ",\"epistemic_status\":\"current\",\"source\":\"native_guarded_receipt\""
             << ",\"legal_for_land_colony\":"
             << (can_build_base(x, y, faction_id, TRIAD_LAND) ? "true" : "false")
@@ -9855,7 +9893,22 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
         for (int offset = 0; offset < 21; ++offset) {
             int rx = 0, ry = 0;
             MAP* radius_sq = next_tile(x, y, offset, &rx, &ry);
-            if (!radius_sq || !radius_sq->is_visible(faction_id)) continue;
+            if (!radius_sq) continue;
+            if (!radius_sq->is_visible(faction_id)) {
+                if (!field_bool(request, "terrain_potential", false)) continue;
+                if (radius_comma) out << ',';
+                radius_comma = true;
+                // Explicit settlement-only terrain entitlement. Do not call yield helpers
+                // against hidden improvements, ownership, units or foreign projects.
+                out << "{\"location_ref\":\"location-" << semantic_tile_id(rx, ry)
+                    << "\",\"source\":\"settlement_terrain_entitlement\",\"availability\":\"unknown\""
+                    << ",\"terrain\":" << json_string(is_ocean(radius_sq) ? "ocean" : "land")
+                    << ",\"rainfall\":" << (radius_sq->is_rainy() ? 2 : radius_sq->is_moist() ? 1 : 0)
+                    << ",\"rockiness\":" << (radius_sq->is_rocky() ? 2 : radius_sq->is_rolling() ? 1 : 0)
+                    << ",\"resource_bonus\":" << bonus_at(rx, ry)
+                    << ",\"river\":" << ((radius_sq->items & BIT_RIVER) ? "true" : "false") << '}';
+                continue;
+            }
             if (radius_comma) out << ',';
             radius_comma = true;
             ++known_radius_count;
@@ -10591,6 +10644,7 @@ std::string perspective_world_page_response(const std::string& request) {
                         << semantic_tile_id(tile_x, tile_y)
                         << "\",\"worked\":"
                         << ((base.worked_tiles & (1 << tile_index)) ? "true" : "false")
+                        << ",\"access\":" << settlement_public_access(faction_id, tile_x, tile_y, index)
                         << ",\"yields\":{\"nutrients\":"
                         << mod_crop_yield(faction_id, index, tile_x, tile_y, 0)
                         << ",\"minerals\":"

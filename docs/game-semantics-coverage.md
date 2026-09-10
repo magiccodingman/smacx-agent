@@ -1450,3 +1450,8 @@ Details: [sovereign lease repair acceptance](benchmarks/sovereign-lease-renewal.
 
 Evidence: [settlement assistance](benchmarks/settlement-assistance.md). No capability is marked
 fully accepted merely because its calculator or fixture exists.
+
+Settlement checkpoint 2: collector/journal/attention/base-query/restart integration passes;
+actual compiled public-access helper passes controlled Treaty/occupation/reservation/fog cases.
+Native mechanics still conditional; no exact post-founding border prediction. Deployment and
+installed-image checks remain pending. See the settlement acceptance evidence above.
