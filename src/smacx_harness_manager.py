@@ -1095,7 +1095,7 @@ print(json.dumps(result,separators=(',',':')))
                         "intended_decision": "Continue autonomous gameplay",
                         "required_observation": "Verified gameplay effects from the stalled decision sequence",
                         "required_action": "Diagnose and repair the stalled action path before resuming",
-                        "why_blocked": "Provider activity exceeded the bounded no-progress window.",
+                        "why_blocked": (drain or {}).get("stop_reason", "Completed decision activity exceeded the bounded no-gameplay-progress window."),
                         "stall_seconds": now - progress_since,
                         "generated_tokens_without_progress": generated,
                         "api_calls_without_progress": calls, "progress": progress,

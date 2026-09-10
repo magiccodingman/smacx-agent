@@ -23,15 +23,23 @@ def provider_drain_window(*, run_id, now, progress_since, stall_seconds, request
     if not isinstance(identifier, str) or not identifier or len(identifier) > 128:
         return False, prior
     if prior is None:
-        if phase not in {'submitted', 'headers'} or now < deadline:
+        if phase not in {'submitted', 'headers', 'streaming'} or now < deadline:
             return False, None
         prior = {'request_id': identifier, 'base_deadline': deadline,
                  'hard_deadline': deadline + 180, 'started_unix': started}
     if identifier != prior['request_id'] or started != prior['started_unix']:
         return False, prior
+    # Content liveness can extend this one request, never reset gameplay progress.
+    # 20 minutes from submission is absolute; keepalives cannot buy time.
+    content = request.get('last_content_unix')
+    if type(content) in (int, float) and isfinite(content) and started <= content <= observed:
+        prior = {**prior, 'hard_deadline': max(deadline + 180, started + 1200),
+                 'last_content_unix': content}
+        if phase == 'streaming' and now - content >= 120:
+            return False, {**prior, 'stop_reason': 'provider_stream_silent'}
     if now >= prior['hard_deadline']:
-        return False, prior
-    if phase in {'submitted', 'headers'}:
+        return False, {**prior, 'stop_reason': 'provider_generation_budget_exceeded' if 'last_content_unix' in prior else 'provider_transport_budget_exceeded'}
+    if phase in {'submitted', 'headers', 'streaming'}:
         return True, prior
     # Give the completed response a bounded dispatch interval, never another
     # reasoning request. Failure/early close do not earn dispatch grace.

@@ -693,3 +693,7 @@ and `PYTHONPATH=src`. It exercises host and remote development, invalid/duplicat
 submissions, exact peer agreement and native save/reload. It starts no sovereign
 and does not operate on a production campaign. Test-only fixtures require both
 native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).
+
+Provider liveness: `PYTHONPATH=src:scripts python3 scripts/provider_drain_window_test.py`
+and `PYTHONPATH=src python3 scripts/provider_content_liveness_test.py` cover the
+bounded content watermark, silence, replacement, completion and hard deadline.
