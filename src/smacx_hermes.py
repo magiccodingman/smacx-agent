@@ -191,9 +191,9 @@ def configure_profile(*, hermes_root: Path, agent_id: str, agent_name: str,
             "provider": "custom",
             "base_url": provider_base_url.rstrip("/"),
             # Hermes otherwise strips reasoning_content for generic custom
-            # providers.  Qwen's preserve_thinking=false only provides the
-            # desired current-episode semantics when the latest assistant
-            # reasoning is actually echoed across interleaved tool calls.
+            # providers. The managed wire sanitizer retains only the latest
+            # current-episode reasoning segment across interleaved tool calls;
+            # the original transcript remains available for diagnostics.
             "reasoning_echo": generation.get("reasoning_continuity") == "current_episode",
         },
         "custom_providers": [custom_provider],

@@ -1,5 +1,12 @@
 # Continuation baseline audit
 
+Measurement correction: the original counts below exclude assistant reasoning.
+The tested Qwen tokenizer ignores `reasoning_content`; retained message exports
+also omit it. These are valid non-reasoning policy comparisons, not full provider
+input totals. See [reasoning-aware audit](reasoning-continuation.md). The audit
+script now supports an explicit measurement-only Qwen alias and discloses whether
+its history source includes reasoning. Generation usage remains authoritative.
+
 The PR's net speed and context-reduction targets are **not accepted**. The earlier
 6–9% byte reduction compared cleanup with the first PR deployment, not with the
 original baseline. It must not be presented as net improvement from pre-PR code.

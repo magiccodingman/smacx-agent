@@ -22,6 +22,8 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('capture', type=Path, help='Directory with hermes-history.jsonl and sovereign*.gz')
 p.add_argument('--tokenizer', required=True)
 p.add_argument('--label', required=True)
+p.add_argument('--qwen-reasoning-tokenizer', action='store_true',
+               help='Explicit adapter for Qwen /tokenize accepting reasoning rather than reasoning_content; measurement only')
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--verify-captured', action='store_true', help='Also count captured requests to validate replay of their deployed policy')
 a = p.parse_args()
@@ -80,7 +82,7 @@ with tempfile.TemporaryDirectory() as temporary:
         for retained in history:
             if retained['timestamp'] > event['recorded_unix']:
                 continue
-            row = {k: retained[k] for k in ('role', 'content', 'tool_call_id', 'tool_calls')
+            row = {k: retained[k] for k in ('role', 'content', 'tool_call_id', 'tool_calls', 'reasoning', 'reasoning_content', 'reasoning_details')
                    if retained.get(k) is not None}
             if isinstance(row.get('tool_calls'), str):
                 row['tool_calls'] = json.loads(row['tool_calls'])
@@ -103,12 +105,22 @@ with tempfile.TemporaryDirectory() as temporary:
         tail['content'] = (tail.get('content') or '') + '\n\n' + strict._RUNTIME_OPEN + envelopes[0]
         token_body = {k: body[k] for k in ('model', 'tools', 'chat_template_kwargs') if k in body}
         token_body.update(messages=wire, add_generation_prompt=True)
+        def measurement_messages(messages):
+            measured = copy.deepcopy(messages)
+            if a.qwen_reasoning_tokenizer:
+                for row in measured:
+                    if row.get('reasoning_content'):
+                        if row.get('reasoning') and row['reasoning'] != row['reasoning_content']:
+                            raise ValueError('Conflicting reasoning fields')
+                        row['reasoning'] = row.pop('reasoning_content')
+            return measured
+        token_body['messages'] = measurement_messages(wire)
         with urlopen(Request(a.tokenizer, data=json.dumps(token_body).encode(),
                              headers={'Content-Type': 'application/json'}), timeout=60) as response:
             count = json.load(response)['count']
         captured_count = None
         if a.verify_captured:
-            token_body['messages'] = body['messages']
+            token_body['messages'] = measurement_messages(body['messages'])
             with urlopen(Request(a.tokenizer, data=json.dumps(token_body).encode(),
                                  headers={'Content-Type': 'application/json'}), timeout=60) as response:
                 captured_count = json.load(response)['count']
@@ -121,6 +133,8 @@ with tempfile.TemporaryDirectory() as temporary:
                        'assistant_prose_chars': sum(len(m.get('content') or '') for m in wire if m['role'] == 'assistant'),
                        'history_rows': len(rows), 'wire_rows': len(wire)})
     result = {'label': a.label, 'requests': output,
+              'reasoning_measurement': 'qwen explicit reasoning alias; verify against provider usage' if a.qwen_reasoning_tokenizer else 'unverified tokenizer reasoning handling; not full generation input cost',
+              'history_reasoning_complete': history_source == 'original_response_and_tool_traces',
               'history_source': history_source,
               'policy_file': strict.__file__,
               'policy_sha256': hashlib.sha256(Path(strict.__file__).read_bytes()).hexdigest(),

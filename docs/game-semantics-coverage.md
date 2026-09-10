@@ -1351,3 +1351,15 @@ provider startup/resume. Shared control is healthy and installed hashes match;
 AI - 5 remains parked at turn 3. Other main/readiness services and configuration
 are unchanged. [Deployment evidence](benchmarks/bounded-cleanup-deployment.json).
 Live turn-time improvement remains unverified.
+
+Reasoning-continuation correctness checkpoint: lease acknowledgement arguments
+survive bounded request assembly; full acknowledgement remains limited to the
+final placed batch, with omitted items requeued. Fresh bundled decision guards
+are documented without changing validation or write authority.
+
+Reasoning retention checkpoint: real Hermes provider-copy cleanup preserves the
+latest meaningful segment, visible uncertainty prose, tool receipts and durable
+history. Earlier private alternatives are intentionally omitted; strategic
+equivalence and live performance remain open. Earlier 111-cut tokenizer results
+exclude reasoning and are not total generation input measurements. See
+[acceptance and measurement limits](benchmarks/reasoning-continuation.md).

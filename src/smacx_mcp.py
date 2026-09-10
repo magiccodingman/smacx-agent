@@ -4272,7 +4272,7 @@ def smac_saves(
 @mcp.tool(
     description=(
         "Read the authoritative, durable memory for exactly one match/agent/perspective. "
-        "To write, use smac_memory_update with the guard from smac_decision.identity; memory has no separate write revision. "
+        "To write, use smac_memory_update with the freshest decision identity (including a bundled post-action frame); memory has no separate write revision. "
         "working_set returns bounded current facts, relationships, goals, plans, commitments, summaries, "
         "recent events, and chat. search uses a rebuildable scoped SQLite FTS5/BM25 projection. recall accepts a JSON array "
         "of up to 12 objects such as [{\"query\":\"western pact\",\"document_kinds\":[\"chat\",\"belief\"]}] "
@@ -4449,7 +4449,8 @@ def smac_investigate(
 @mcp.tool(
     description=(
         "Create or revise one structured, perspective-scoped memory record using a fresh snapshot guard. "
-        "Copy match_id and session_id from the latest smac_decision.identity, and set observed_revision to its revision. "
+        "Copy match_id and session_id from the freshest decision identity, and set observed_revision to its revision. "
+        "A bundled post_action_decision.frame or recovery decision is valid too; do not reuse a guard after intervening state changes. "
         "This is the native snapshot guard, not a memory/database revision or journal hash. After state changes, obtain a fresh decision. "
         "record_json schemas: claim={topic,content,asserted_by_actor_id?,about_actor_id?,confidence?,status?,source_event_id?}; "
         "belief={topic,content,confidence,evidence?:[{event_id,stance,weight}]}; "

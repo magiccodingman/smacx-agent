@@ -583,6 +583,14 @@ def _install() -> None:
             default=-1,
         )
         compacted_reasoning = compacted_think_blocks = 0
+        # Keep one reasoning segment across tool calls. Older private reasoning
+        # remains in the durable transcript; visible prose and tool evidence
+        # are governed independently below. Never mutate transcript objects.
+        latest_reasoning = max((i for i, row in enumerate(sanitized)
+            if isinstance(row, dict) and row.get("role") == "assistant"
+            and i >= last_user and (any(str(row.get(k) or "").strip() for k in
+                ("reasoning", "reasoning_content", "reasoning_details"))
+                or "<think>" in str(row.get("content") or ""))), default=-1)
         compacted_frames = compacted_boundaries = 0
         compacted_queries = evicted_queries = 0
         pruned_tool_calls = pruned_tool_results = 0
@@ -607,7 +615,7 @@ def _install() -> None:
                         call["id"] for call in message.get("tool_calls") or []
                         if isinstance(call, dict) and isinstance(call.get("id"), str)
                     }
-                if index < last_user:
+                if index < last_user or index != latest_reasoning:
                     for field in ("reasoning", "reasoning_content", "reasoning_details"):
                         if field in message:
                             message.pop(field, None)

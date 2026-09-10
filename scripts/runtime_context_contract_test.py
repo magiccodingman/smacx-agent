@@ -9,7 +9,7 @@ import tempfile
 
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
-from smacx_runtime_context import RuntimeContextAssembler, _attention_payload, _force_summary
+from smacx_runtime_context import RuntimeContextAssembler, _attention_payload, _force_summary, _bounded_attention
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world import WorldService
 from smacx_world_model import PerspectiveProjector, estimate_tokens
@@ -18,6 +18,11 @@ from smacx_world_types import WorldIdentity, content_hash
 
 
 def main() -> int:
+    ack = {"tool_arguments": {"attention_lease_id": "lease-test"}}
+    bounded_lease = _bounded_attention({"attention_lease_id": "lease-test", "status": "responded",
+        "acknowledgement": ack, "items": []}, token_budget=200)
+    assert bounded_lease["acknowledgement"] == ack
+    assert "does not acknowledge" in bounded_lease["status_meaning"]
     force = _force_summary({"world_revision": 4, "objects": [
         {"kind": "own_unit", "status": "active", "fields": {
             "roles": {"value": {"combat": True, "scout": True}, "epistemic_status": "current"},
@@ -194,7 +199,8 @@ def main() -> int:
         lease_id = compact["attention"]["attention_lease_id"]
         attention.placed(lease_id)
         attention.responded(lease_id)
-        attention.acknowledge(lease_id, through_cursor=compact["attention"]["through_cursor"])
+        assert compact["attention"]["acknowledgement"]["tool_arguments"] == {"attention_lease_id": lease_id}
+        attention.acknowledge(compact["attention"]["acknowledgement"]["tool_arguments"]["attention_lease_id"])
         post_ack = assembler.build(episode_id="episode-runtime-after-ack",
                                    episode_mode="gameplay", context_length=65536)
         assert post_ack["attention"]["items"] == []
@@ -245,7 +251,15 @@ def main() -> int:
         assert 0 < len(visible_attention_ids) < 32
         assert burst["attention"]["remaining_count"] == 32 - len(visible_attention_ids)
         assert len(visible_attention_ids) == len(burst["attention"]["items"])
-        attention.abandon(burst["attention"]["attention_lease_id"])
+        attention.placed(burst["attention"]["attention_lease_id"])
+        attention.responded(burst["attention"]["attention_lease_id"])
+        attention.acknowledge(burst["attention"]["acknowledgement"]["tool_arguments"]["attention_lease_id"])
+        after_burst = assembler.build(episode_id="episode-runtime-after-burst",
+                                     episode_mode="gameplay", context_length=65536)
+        assert not visible_attention_ids.intersection(
+            item["attention_id"] for item in after_burst["attention"]["items"])
+        assert after_burst["attention"]["items"], "Omitted attention must remain unacknowledged"
+        attention.abandon(after_burst["attention"]["attention_lease_id"])
 
         communication = assembler.build(episode_id="episode-runtime-communication",
                                         episode_mode="communication", context_length=65536)

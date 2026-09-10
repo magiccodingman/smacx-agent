@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 import importlib
 import json
 import os
@@ -71,12 +72,14 @@ def main() -> int:
              "content": "<think>serialized old final thought</think>\nPrior final answer.",
              "reasoning_content": "old final thought"},
             {"role": "user", "content": "[SMACX_EPISODE_BOUNDARY kind=resume] continue"},
+            {"role": "assistant", "content": "<think>earlier private alternatives</think>\nEnemy location remains uncertain; scout before committing.",
+             "reasoning_content": "earlier repeated debate"},
             {"role": "assistant",
              "content": "<think>serialized current thought</think>",
              "reasoning_content": "current thought",
              "tool_calls": [dispatched_call("new", "smac_decision")]},
             {"role": "tool", "tool_call_id": "new", "content": "{\"current_state\":true}"},
-            {"role": "assistant", "content": "", "tool_calls": [
+            {"role": "assistant", "content": "", "reasoning_content": "\n", "tool_calls": [
                 dispatched_call("execute", "smac_execute_choice"),
             ]},
             {"role": "tool", "tool_call_id": "execute", "content": "{\"executed\":true}"},
@@ -85,7 +88,11 @@ def main() -> int:
             ]},
             {"role": "tool", "tool_call_id": "latest", "content": "{\"latest_state\":true}"},
         ]
+        original_messages = copy.deepcopy(messages)
         wire = AIAgent._sanitize_api_messages(messages)
+        assert messages == original_messages, "Reasoning cleanup mutated durable history"
+        earlier = next(m for m in wire if "Enemy location remains uncertain" in str(m.get("content")))
+        assert "reasoning_content" not in earlier and "earlier private alternatives" not in earlier["content"]
         by_tool_call_id = {
             str(item.get("tool_call_id")): item for item in wire
             if isinstance(item, dict) and item.get("role") == "tool"
