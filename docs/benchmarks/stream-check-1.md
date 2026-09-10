@@ -30,3 +30,14 @@ requires a dedicated native worker/token. No live mutation-contract claim is mad
 Installed-image and paired recovery acceptance follow below. Both incident states
 and diagnostic bundles were preserved before deployment. Disk has about 14 GiB free;
 no other agent's services or data were modified.
+
+## Completed recovery
+
+Installed-image decision tests pass. Rebuilt `generation-handles` control/MCP and
+Hermes images were deployed with unchanged networking, providers and Graphiti.
+Both paired checkpoints and memory projections restored; AI - 7 at turn 12 and
+AI - 8 at turn 8 are observed active, two active sovereign runs each, no incidents
+or run verification errors. No specialist missions are active. One sovereign can
+legitimately sleep during the other faction's turn. Live proof that the model
+uses a handle after five minutes or stops inventing IDs remains for later checks.
+[Health receipt](stream-check-1-health.json). Check 1 of 4 completed; schedule unchanged.
