@@ -3,6 +3,14 @@
 import pathlib,subprocess,tempfile
 s=(pathlib.Path(__file__).resolve().parents[1]/'bridge/src/agent_bridge.cpp').read_text()
 helper=s[s.index('bool multiplayer_development_eligible('):s.index('std::string multiplayer_unit_choices_response(')]
+dispatch=s[s.index('if (deferred_development_unit_id >= 0) {'):s.index('if (deferred_disband_unit_id >= 0) {')]
+for receipt in ('turn_not_actionable_before_execution','development_unit_missing_before_execution',
+                'development_unit_owner_changed_before_execution','development_unit_location_changed_before_execution',
+                'development_unit_identity_changed_before_execution','development_choice_no_longer_legal_before_execution',
+                'network_unit_lock_rejected','network_unit_lock_remapped',
+                'development_unit_identity_changed_after_lock','development_choice_changed_after_lock'):
+    assert receipt in dispatch,receipt
+assert dispatch.rindex('deferred_action.native_call_attempted = 1;') > dispatch.index('if (lock_result) {')
 code=r'''
 #include <cassert>
 const int TRIAD_LAND=0,FORMER_FARM=0,FORMER_MINE=2,FORMER_SOLAR=3,FORMER_FOREST=4,FORMER_ROAD=5,FORMER_SENSOR=9,FORMER_REMOVE_FUNGUS=10;

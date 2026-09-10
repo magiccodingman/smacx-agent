@@ -19194,7 +19194,8 @@ std::string semantic_command_response(const std::string& request) {
             deferred_action.status = "rejected";
             return error_response("development_queue_failed", "Native development action could not be queued.");
         }
-        return std::string("{\"ok\":true,\"queued\":true,\"action_id\":")
+        return std::string("{\"ok\":true,\"command\":") + json_string(command.c_str())
+            + ",\"queued\":true,\"action_id\":"
             + std::to_string(deferred_action.id) + '}';
     }
     if (command == "found_base") {
@@ -21103,14 +21104,28 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             });
             const int id = deferred_development_unit_id, former = deferred_development_former_id;
             const int faction = game_active() ? *CurrentPlayerFaction : -1;
-            if (faction < 1 || !*MultiplayerActive || !human_turn_actionable(faction)
-            || !multiplayer_development_eligible(faction, id, former)
-            || Vehs[id].x != deferred_development_x || Vehs[id].y != deferred_development_y
-            || semantic_vehicle_handle(id) != deferred_development_handle) {
+            const char* precondition_failure = NULL;
+            if (faction < 1 || !*MultiplayerActive) {
+                precondition_failure = "native_context_unavailable_before_execution";
+            } else if (!human_turn_actionable(faction)) {
+                precondition_failure = "turn_not_actionable_before_execution";
+            } else if (id < 0 || id >= *VehCount) {
+                precondition_failure = "development_unit_missing_before_execution";
+            } else if (Vehs[id].faction_id != faction) {
+                precondition_failure = "development_unit_owner_changed_before_execution";
+            } else if (Vehs[id].x != deferred_development_x
+            || Vehs[id].y != deferred_development_y) {
+                precondition_failure = "development_unit_location_changed_before_execution";
+            } else if (semantic_vehicle_handle(id) != deferred_development_handle) {
+                precondition_failure = "development_unit_identity_changed_before_execution";
+            } else if (!multiplayer_development_eligible(faction, id, former)) {
+                precondition_failure = "development_choice_no_longer_legal_before_execution";
+            }
+            if (precondition_failure) {
                 deferred_development_unit_id = -1;
                 deferred_action.native_call_attempted = 0;
                 deferred_action.status = "rejected";
-                deferred_action.resolution = "state_changed_before_execution";
+                deferred_action.resolution = precondition_failure;
                 return true;
             }
             deferred_development_faction = faction;
@@ -21119,23 +21134,41 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             deferred_development_units_before = *VehCount;
             deferred_development_sent_at = GetTickCount();
             deferred_development_sent = true;
-            deferred_action.native_call_attempted = 1;
             if (former < 0) {
+                deferred_action.native_call_attempted = 1;
                 net_action_build(id, NULL);
             } else {
                 // Same order/synchronization/action sequence as Console_terraform,
                 // without its UI selection side effects on unrelated vehicles.
                 net_int_t locked_id = id;
-                if (NetDaemon_lock_veh(NetState, &locked_id, 0, -1, -1, 0)
-                || locked_id != id || !multiplayer_development_eligible(faction, id, former)
-                || semantic_vehicle_handle(id) != deferred_development_handle) {
+                int lock_result = NetDaemon_lock_veh(
+                    NetState, &locked_id, 0, -1, -1, 0);
+                if (lock_result) {
+                    deferred_development_unit_id = -1;
+                    deferred_development_sent = false;
+                    deferred_action.native_call_attempted = 0;
+                    deferred_action.status = "rejected";
+                    deferred_action.resolution = "network_unit_lock_rejected";
+                    return true;
+                }
+                const char* locked_failure = NULL;
+                if (locked_id != id) {
+                    locked_failure = "network_unit_lock_remapped";
+                } else if (semantic_vehicle_handle(id) != deferred_development_handle) {
+                    locked_failure = "development_unit_identity_changed_after_lock";
+                } else if (!multiplayer_development_eligible(faction, id, former)) {
+                    locked_failure = "development_choice_changed_after_lock";
+                }
+                if (locked_failure) {
                     NetDaemon_unlock_veh(NetState);
                     deferred_development_unit_id = -1;
                     deferred_development_sent = false;
+                    deferred_action.native_call_attempted = 0;
                     deferred_action.status = "rejected";
-                    deferred_action.resolution = "state_changed_before_execution";
+                    deferred_action.resolution = locked_failure;
                     return true;
                 }
+                deferred_action.native_call_attempted = 1;
                 Vehs[id].order = former + VehOrderFormerFirst;
                 synch_veh(id);
                 NetDaemon_await_synch(NetState);

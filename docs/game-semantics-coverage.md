@@ -1476,3 +1476,10 @@ explicit scope recorded above; strategic quality across new games is not yet mea
 | Completion continuity | Actual preceding receipts were visible in the failing run → compact explicit saved/unchanged wire receipt → recent-history and cleanup retention contracts → strategic rationale/errors preserved. No general context-length or speed claim. |
 
 See [bookkeeping continuation acceptance](benchmarks/bookkeeping-continuation.md).
+
+| Development rejection / spectator lifecycle checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Guarded multiplayer development recovery | AI - 9's repeated exact Farm choice and safe circuit stop are preserved. Deferred development now exposes the exact pre-dispatch guard, reports native dispatch only after lock acquisition, and carries the command through the receipt. Managed frames withhold that exact rejected choice for the unchanged semantic state while retaining alternatives; changed state re-enables enumeration. Controlled managed/source contracts pass. Restored two-client native progress remains the effect-verification gate. |
+| Blazor live-page teardown | The spectate `CancellationTokenSource_Disposed` exception was reproduced in-browser. Spectate, lobby-directory and play polling resources now have local ownership, idempotent cancellation and single JS disposal. Portal build and 88 tests pass. Deployed repeated navigation and responsive browser checks remain pending. |
+
+See [development and spectator acceptance](benchmarks/development-rejection-and-spectate-lifecycle.md).

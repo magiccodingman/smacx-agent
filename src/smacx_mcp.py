@@ -1661,6 +1661,17 @@ def smac_match_briefing(
     }
 
 
+def _pre_dispatch_development_rejection(resolution: object) -> bool:
+    value = str(resolution or "")
+    return value == "state_changed_before_execution" \
+        or value.endswith("_before_execution") \
+        or value in {
+            "network_unit_lock_rejected", "network_unit_lock_remapped",
+            "development_unit_identity_changed_after_lock",
+            "development_choice_changed_after_lock",
+        }
+
+
 def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
     """Turn a queued native action into a definitive MCP result when possible."""
     action_id = result.get("action_id")
@@ -1683,12 +1694,23 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "next": "Wait, observe last_deferred_action, and do not queue another command meanwhile.",
         }
     if action.get("status") == "rejected":
+        resolution = str(action.get("resolution") or "")
+        command = str(result.get("command") or action.get("command") or "action")
+        pre_dispatch = _pre_dispatch_development_rejection(resolution)
         message = (
             "The native end-turn command returned without accepting a turn transition. "
             "The turn has not advanced and movement has not been renewed. "
             "Obtain a fresh decision; do not keep waiting on this rejected receipt."
-            if action.get("resolution") == "native_turn_transition_not_accepted"
-            else "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt."
+            if resolution == "native_turn_transition_not_accepted"
+            else (
+                f"The guarded {command} choice was rejected before native dispatch "
+                f"({resolution}). Obtain a fresh decision and select another returned choice; "
+                "do not retry the same choice until meaningful native state changes."
+                if pre_dispatch else
+                f"The queued {command} action did not complete. Read its execution receipt; "
+                "the rejection does not prove a broader rule or capability failure. Obtain "
+                "a fresh decision before another attempt."
+            )
         )
         return {
             "ok": False,
@@ -2377,6 +2399,42 @@ def _cache_decision_choices(identity: dict, choices: object, *,
              "target_base_ref", "target_unit_ref")
             if isinstance(semantic_bound.get(key), str)
         }
+    state_fingerprint = hashlib.sha256(json.dumps({
+        "turn": turn, "year": year, "phase": phase,
+        "focus": focus or {}, "choices": compact,
+        "information": (_decision_information(raw_items, semantic_context)
+                        if catalog_information is None else catalog_information),
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    choice_recovery = None
+    progress_key = (str(identity.get("match_id") or ""),
+                    str(identity.get("session_id") or ""))
+    with ACTION_PROGRESS_LOCK:
+        previous = dict(ACTION_PROGRESS.get(progress_key, {}))
+    if previous.get("same_state_retry_blocked") \
+            and previous.get("state_fingerprint") == state_fingerprint:
+        rejected_key = previous.get("semantic_key")
+        withheld = [choice_id for choice_id, bound in private.items()
+                    if _choice_semantic_key(bound) == rejected_key]
+        if withheld:
+            withheld_set = set(withheld)
+            public = [item for item in public
+                      if item.get("choice_id") not in withheld_set]
+            for choice_id in withheld:
+                private.pop(choice_id, None)
+                labels.pop(choice_id, None)
+                receipt_subjects.pop(choice_id, None)
+            choice_recovery = {
+                "status": "same_state_native_rejection_withheld",
+                "withheld_choice_count": len(withheld),
+                "rejected_action": previous.get("selected_action"),
+                "execution_resolution": previous.get("execution_resolution"),
+                "retry_same_choice": False,
+                "meaning": (
+                    "The exact native choice was rejected before execution and is withheld "
+                    "while the meaningful unit state remains unchanged. Select another returned "
+                    "choice; the action may reappear after real native-state progress."
+                ),
+            }
     with DECISION_LOCK:
         expired = [key for key, value in DECISION_CACHE.items()
                    if now - float(value.get("created_monotonic", 0)) > DECISION_TTL_SECONDS]
@@ -2396,18 +2454,14 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             "turn": turn,
             "year": year,
             "phase": phase,
-            "state_fingerprint": hashlib.sha256(json.dumps({
-                "turn": turn, "year": year, "phase": phase,
-                "focus": focus or {}, "choices": compact,
-                "information": (_decision_information(raw_items, semantic_context)
-                                if catalog_information is None else catalog_information),
-            }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            "state_fingerprint": state_fingerprint,
             "choices": private,
             "choice_labels": labels,
             "receipt_subjects": receipt_subjects,
             "advisories": advisories,
             "information": (_decision_information(raw_items, semantic_context)
                             if catalog_information is None else catalog_information),
+            "choice_recovery": choice_recovery,
             "consumed": False,
         }
     return decision_id, public
@@ -3252,6 +3306,10 @@ def _decision_frame_once(
             "choices": public_choices,
             "information": _decision_information(choices_result.get("choices", []), semantic_context),
         }
+        with DECISION_LOCK:
+            choice_recovery = (DECISION_CACHE.get(decision_id) or {}).get("choice_recovery")
+        if choice_recovery:
+            frame["choice_recovery"] = choice_recovery
         if phase == "turn":
             frame["choice_scope"] = {
                 "family": choice_kind,
@@ -3459,6 +3517,10 @@ def _smac_choices_once(
             "execute_at_most": 1,
         },
     }
+    with DECISION_LOCK:
+        choice_recovery = (DECISION_CACHE.get(decision_id) or {}).get("choice_recovery")
+    if choice_recovery:
+        frame["choice_recovery"] = choice_recovery
     if kind == "production":
         frame["production_context"] = _production_catalog_context(result)
     if kind == "base_citizens":
@@ -4056,9 +4118,23 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "", attent
         if execution["native_call_attempted"] is False and not response.get("ok"):
             response["execution_status"] = "not_dispatched"
             response["native_action_executed"] = False
+    execution_resolution = execution.get("resolution") if isinstance(execution, dict) else None
+    with ACTION_PROGRESS_LOCK:
+        progress = ACTION_PROGRESS.get(key)
+        if progress is not None:
+            progress["last_result"] = "success" if response.get("ok") else "rejected"
+            progress["execution_resolution"] = execution_resolution
+            progress["same_state_retry_blocked"] = bool(
+                code == "native_action_rejected"
+                and _pre_dispatch_development_rejection(execution_resolution)
+            )
     if consumed and not response.get("required_next"):
-        response["required_next"] = {"tool": "smac_decision",
-            "reason": "This decision is consumed, including after rejection. Obtain a fresh frame."}
+        response["required_next"] = {"tool": "smac_decision", "reason": (
+            "This decision is consumed. Obtain a fresh frame; the exact rejected choice "
+            "will be withheld until meaningful native state changes."
+            if _pre_dispatch_development_rejection(execution_resolution) else
+            "This decision is consumed, including after rejection. Obtain a fresh frame."
+        )}
 
     response = _attach_post_action_decision(response, key)
 
