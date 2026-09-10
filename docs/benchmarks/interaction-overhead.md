@@ -65,3 +65,8 @@ requests and unavailable usage. The retained sanitized
 [baseline](interaction-overhead-baseline.json) reproduces the manually reviewed
 AI - 8 turn-9 sample (23 complete responses, 535.639 cumulative provider seconds).
 No improvement percentage or quality equivalence is claimed before live checks.
+
+Installed-image checks additionally pass attention redelivery, restart, batch
+acknowledgement, unseen-item requeue, and one-use opaque-choice execution.
+The runtime-context fixture's former empty-batch invitation expectation is
+updated to the new contract; its cognitive-placement checks remain intact.

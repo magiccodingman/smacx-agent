@@ -757,6 +757,9 @@ def _install() -> None:
                     # Keep the error, effect receipt and recovery provenance.
                     # Only its obsolete executable menu is retired.
                     original_result[container]["frame"] = retired
+                    if (original_result.get("required_next") or {}).get("decision_id") == decision_id:
+                        original_result["required_next"] = {"superseded_runtime_state": True,
+                            "reason": "The referenced decision was consumed; use the newest frame."}
                     sanitized[index]["content"] = json.dumps(original_result, separators=(",", ":"))
                 else:
                     sanitized[index]["content"] = json.dumps({"ok": True, **retired}, separators=(",", ":"))

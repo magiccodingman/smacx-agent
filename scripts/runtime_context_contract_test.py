@@ -21,7 +21,7 @@ def main() -> int:
     ack = {"tool_arguments": {"attention_lease_id": "lease-test"}}
     bounded_lease = _bounded_attention({"attention_lease_id": "lease-test", "status": "responded",
         "acknowledgement": ack, "items": []}, token_budget=200)
-    assert bounded_lease["acknowledgement"] == ack
+    assert "acknowledgement" not in bounded_lease
     assert "does not acknowledge" in bounded_lease["status_meaning"]
     force = _force_summary({"world_revision": 4, "objects": [
         {"kind": "own_unit", "status": "active", "fields": {
