@@ -78,3 +78,28 @@ classification; it is now included without admitting generic one-button dialogs.
 An unchanged post-dismissal observation explicitly offers a wait, with no
 executable popup menu; it does not invite a second acknowledgement while native
 presentation is settling. The unchanged-observation fixture verifies this.
+
+## Deployed live acceptance
+
+Final control/MCP image: `smacx-agent-control:interaction-overhead-intro`.
+Final Hermes image: `smacx-agent-harness:interaction-overhead`.
+All unrelated Compose settings compare equal, including provider, Graphiti,
+ports and volumes. Both original campaigns resumed paired checkpoints (AI - 7
+turn 17; AI - 8 turn 11). The [health sample](interaction-overhead-live.json)
+shows active campaigns, two admitted sovereign runs each, and no incidents or
+run-verification errors. A sleeping sovereign can legitimately have no live
+process.
+
+AI - 8's first recovery read automatically captured and dismissed INTRO and
+SIMULYOU, then returned a turn-phase unit decision. Both receipts carry stable
+attention IDs, report cognitive acknowledgement false, and have later changed
+native observations. Those same IDs and notice payloads appear in three actual
+subsequent provider requests. Thus evidence survived native dismissal and reached
+the sovereign; the check does not certify unrelated pending mechanical effects.
+
+The model did submit one old handle after restoration. It was rejected with a
+fresh recovery frame and continued with world/reference queries; stale-handle
+errors are not claimed eliminated. Strategic quality and complete-turn speedup
+remain pending the three already-authorized scheduled checks. No new timer was
+added and Graphiti was not changed. The early validation does not increment the
+four-check ledger.
