@@ -67,6 +67,50 @@ _RUNTIME_STATE = threading.local()
 _RUNTIME_CONTEXT_TIMEOUT_SECONDS = 120
 
 
+class _AuthorityHeartbeat:
+    """Private episode liveness, independent of provider latency and progress."""
+    def __init__(self, receipt):
+        self.receipt = dict(receipt)
+        self.stopped = threading.Event()
+        self.lost = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="smacx-authority-heartbeat", daemon=True)
+
+    def beat(self):
+        endpoint = os.environ["SMACX_RUNTIME_CONTEXT_URL"].rsplit("/runtime-context", 1)[0] + "/runtime-context/heartbeat"
+        body = {**self.receipt, "run_id": os.environ.get("SMACX_HARNESS_RUN_ID", ""),
+                "session_id": os.environ.get("SMACX_AGENT_SESSION_ID", "")}
+        request = Request(endpoint, data=json.dumps(body).encode(), method="POST", headers={
+            "Authorization": "Bearer " + _runtime_token(), "Content-Type": "application/json"})
+        with urlopen(request, timeout=5) as response:
+            if not json.loads(response.read(4096)).get("ok"):
+                raise RuntimeError("sovereign_episode_authority_lost")
+
+    def _run(self):
+        misses = 0
+        while not self.stopped.wait(30):
+            try:
+                self.beat()
+                misses = 0
+            except HTTPError:
+                self.lost.set()
+                return
+            except (URLError, TimeoutError, OSError, ValueError, RuntimeError):
+                misses += 1
+                if misses >= 3:
+                    self.lost.set()
+                    return
+
+
+def _authority_handoff():
+    from smacx_diagnostics import record
+    record("sovereign_authority_handoff", {"reason": "episode_authority_lost",
+           "automatic_action_retry": False}, actor="sovereign")
+    _end_runtime_episode(committed=False)
+    # Clean CLI termination invokes the supervisor's existing fresh-state
+    # admission and bounded no-progress-yield policy, not a model-written retry.
+    raise SystemExit(0)
+
+
 def _runtime_token() -> str:
     path = Path(os.environ.get(
         "SMACX_RUNTIME_CONTEXT_TOKEN_FILE", "/run/secrets/runtime-context-token",
@@ -98,6 +142,9 @@ def _episode_id(messages) -> str:  # noqa: ANN001
 
 
 def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
+    heartbeat = getattr(_RUNTIME_STATE, "heartbeat", None)
+    if heartbeat and heartbeat.lost.is_set():
+        _authority_handoff()
     url = os.environ.get("SMACX_RUNTIME_CONTEXT_URL", "")
     if not url:
         raise RuntimeError("smacx_runtime_context_url_missing")
@@ -106,6 +153,8 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
     query = urlencode({
         "episode_id": episode_id,
         "episode_mode": os.environ.get("SMACX_EPISODE_MODE", "gameplay"),
+        "run_id": os.environ.get("SMACX_HARNESS_RUN_ID", ""),
+        "session_id": os.environ.get("SMACX_AGENT_SESSION_ID", ""),
         "context_length": os.environ.get("SMACX_CONTEXT_LENGTH", "65536"),
         "request_tokens_before_gc": int(gc_metrics.get("before", 0)),
         "request_tokens_after_gc": int(gc_metrics.get("after", 0)),
@@ -119,6 +168,13 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
         with urlopen(request, timeout=_RUNTIME_CONTEXT_TIMEOUT_SECONDS) as response:
             value = json.loads(response.read(4_000_001))
     except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        if isinstance(exc, HTTPError) and exc.code == 409:
+            try:
+                error = str(json.loads(exc.read(4096)).get("error", ""))
+            except (ValueError, OSError):
+                error = ""
+            if error.startswith("sovereign_episode_"):
+                _authority_handoff()
         # This failure happens before provider submission, so the HTTPX
         # provider hook cannot observe it. Never include the private endpoint,
         # authorization header or an exception message that might echo them.
@@ -152,6 +208,16 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
     if payload.get("schema") != "smacx.runtime-context.v1" \
             or payload.get("episode", {}).get("episode_id") != episode_id:
         raise RuntimeError("smacx_runtime_context_contract_mismatch")
+    receipt = value.get("authority_heartbeat")
+    if os.environ.get("SMACX_HARNESS_RUN_ID"):
+        if not isinstance(receipt, dict) or receipt.get("episode_id") != episode_id or not receipt.get("token"):
+            raise RuntimeError("smacx_authority_heartbeat_receipt_missing")
+        if not heartbeat or heartbeat.receipt != receipt:
+            if heartbeat:
+                heartbeat.stopped.set()
+            heartbeat = _AuthorityHeartbeat(receipt)
+            _RUNTIME_STATE.heartbeat = heartbeat
+            heartbeat.thread.start()
     return payload, episode_id
 
 
@@ -205,6 +271,10 @@ def _mark_runtime_responded() -> None:
 
 
 def _end_runtime_episode(*, committed: bool) -> None:
+    heartbeat = getattr(_RUNTIME_STATE, "heartbeat", None)
+    if heartbeat:
+        heartbeat.stopped.set()
+        _RUNTIME_STATE.heartbeat = None
     episode_id = getattr(_RUNTIME_STATE, "episode_id", "")
     url = os.environ.get("SMACX_RUNTIME_CONTEXT_URL", "")
     if not episode_id or not url:
@@ -570,6 +640,16 @@ def _install() -> None:
     logger = logging.getLogger("smacx.context")
 
     def compact_managed_context(messages, *, include_runtime=True):  # noqa: ANN001
+        # Inspect only this invocation's results. Historical authority loss is
+        # evidence, not an instruction to terminate a newly admitted episode.
+        last_user_index = max((i for i, row in enumerate(messages)
+            if isinstance(row, dict) and row.get("role") == "user"), default=-1)
+        if include_runtime:
+            for row in messages[last_user_index + 1:]:
+                if isinstance(row, dict) and row.get("role") == "tool":
+                    result = _managed_tool_result(row.get("content"))
+                    if isinstance(result, dict) and result.get("episode_restart_required") is True:
+                        _authority_handoff()
         # Hermes's sanitizer may return a shallow list whose message mappings
         # are still the durable transcript objects. All semantic GC and trusted
         # runtime augmentation are provider-wire transformations only.
@@ -895,6 +975,9 @@ def _install() -> None:
         record("sovereign_response", {"message": message, "finish_reason": finish_reason},
                actor="sovereign", correlation={"episode_id": getattr(_RUNTIME_STATE, "episode_id", ""),
                  "attention_lease_id": getattr(_RUNTIME_STATE, "attention_lease_id", "")})
+        heartbeat = getattr(_RUNTIME_STATE, "heartbeat", None)
+        if heartbeat and heartbeat.lost.is_set():
+            _authority_handoff()
         if isinstance(message, dict) and isinstance(message.get("content"), str):
             message["content"] = _compact_turn_handoff(message["content"])
         _mark_runtime_responded()

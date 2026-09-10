@@ -1420,3 +1420,10 @@ Final operational acceptance: AI - 7 resumed at turn 8, `observed_active`, two
 verified live sovereign processes, healthy worker/MCP pairs, no incidents or run
 verification errors. See [deployment receipt](benchmarks/memory-contract-deployment.json).
 No timer created. Live model correction and speed remain unclaimed.
+
+| Sovereign lease lifecycle checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Long-lived episode ownership | Observed AI - 8's exact 900-second expiry and subsequent blocked gameplay. Represented by existing durable lease identity. Calculated renewal requires an unexpired matching token/run/session/timeline and leaves the turn fence unchanged. Controlled-clock real-SQL/HTTP tests pass across the old deadline; private Hermes heartbeat transport is tested. Installed-image tests and real Hermes slow-provider capture verify renewal during inference without leaking the receipt into provider requests. Live renewal remains pending. |
+| Authority-loss recovery | Managed gameplay and memory writes reject dead authority; client loss triggers deterministic clean exit before the next request/returned tool batch. Existing supervisor process-stop cleanup, fresh-state admission and no-progress policy remain. Rejected-action replay is not introduced. Forced authority loss exits the actual Hermes CLI with status 0 and no further inference. Paired recovery still pending. |
+
+Details: [sovereign lease repair acceptance](benchmarks/sovereign-lease-renewal.md).

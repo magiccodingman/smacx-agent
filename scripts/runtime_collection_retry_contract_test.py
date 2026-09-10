@@ -25,6 +25,10 @@ def main():
         assembler, attention = MagicMock(), MagicMock()
         assembler.snapshot.return_value = {"turn": 122}
         attention.sovereign_state.return_value = None
+        def acquire(*args, **kwargs):
+            attention.sovereign_state.return_value = {"episode_id": "episode-test", "status": "active"}
+            return "test-owner-token"
+        attention.acquire_sovereign.side_effect = acquire
         assembler.build.return_value = {"identity": {}, "attention": {
             "attention_lease_id": "attention-test", "status": "leased"}}
         server = ThreadingHTTPServer(("127.0.0.1", 0), mcp._RuntimeContextHandler)

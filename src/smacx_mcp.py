@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import threading
 import time
 import traceback
@@ -233,6 +234,7 @@ def _sovereign_gameplay_gate(operation: str) -> dict | None:
     if not active:
         return {"ok": False, "error": {"code": "sovereign_episode_not_active",
                 "message": f"{operation} requires the active serialized gameplay episode."},
+                "episode_restart_required": True,
                 "gameplay_mutations_blocked": True}
     if active.get("episode_mode") != "gameplay":
         return {"ok": False, "error": {"code": "communication_episode_read_only",
@@ -244,6 +246,28 @@ def _sovereign_gameplay_gate(operation: str) -> dict | None:
         return {**fence, "gameplay_mutations_blocked": True,
                 "native_action_executed": False, "execution_status": "not_dispatched"}
     return None
+
+
+def _sovereign_memory_gate() -> dict | None:
+    """Communication may maintain memory, but a dead episode may not."""
+    rejected = _sovereign_gameplay_gate("Memory mutation")
+    if rejected and (rejected.get("error") or {}).get("code") in {
+            "sovereign_episode_not_active", "sovereign_authority_unavailable"}:
+        return rejected
+    return None
+
+
+def _renew_runtime_authority(episode_id: str, token: str, run_id: str, session_id: str) -> None:
+    with RUNTIME_EPISODE_LOCK:
+        state = RUNTIME_EPISODE_TURNS.get(episode_id, {})
+        if not token or not secrets.compare_digest(RUNTIME_EPISODE_TOKENS.get(episode_id, ""), token):
+            raise AttentionError("sovereign_episode_authority_lost")
+        if state.get("run_id") != run_id or state.get("session_id") != session_id:
+            raise AttentionError("sovereign_episode_owner_changed")
+        _, attention = _runtime_services()
+        if state.get("timeline_id") != attention.timeline_id:
+            raise AttentionError("sovereign_episode_timeline_changed")
+        attention.renew_sovereign(token, episode_id, run_id=run_id, session_id=session_id)
 
 
 def _remember_episode_boundary(boundary: dict, active: dict | None) -> None:
@@ -373,6 +397,8 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
         query = parse_qs(parts.query)
         episode_id = query.get("episode_id", [""])[0]
         episode_mode = query.get("episode_mode", ["gameplay"])[0]
+        run_id = query.get("run_id", [""])[0]
+        owner_session_id = query.get("session_id", [""])[0]
         try:
             context_length = int(query.get("context_length", ["65536"])[0])
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{7,159}", episode_id):
@@ -399,10 +425,19 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                     initial_turn = _turn_number(initial.get("turn"))
                     if episode_mode == "gameplay" and initial_turn is None:
                         raise RuntimeError("sovereign_episode_turn_unavailable")
-                    RUNTIME_EPISODE_TURNS[episode_id] = {"initial_turn": initial_turn}
+                    if owner_session_id and owner_session_id != session_id:
+                        raise RuntimeError("sovereign_episode_owner_changed")
+                    RUNTIME_EPISODE_TURNS[episode_id] = {"initial_turn": initial_turn,
+                        "run_id": run_id, "session_id": owner_session_id,
+                        "timeline_id": attention.timeline_id}
                     RUNTIME_EPISODE_TOKENS[episode_id] = attention.acquire_sovereign(
-                        episode_id, episode_mode,
+                        episode_id, episode_mode, run_id=run_id, session_id=owner_session_id,
                     )
+                token = RUNTIME_EPISODE_TOKENS[episode_id]
+                if run_id:
+                    _renew_runtime_authority(episode_id, token, run_id, owner_session_id)
+                elif not attention.sovereign_state():
+                    raise AttentionError("sovereign_episode_authority_lost")
             payload = assembler.build(
                 episode_id=episode_id, episode_mode=episode_mode,
                 context_length=context_length,
@@ -430,7 +465,10 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                               actor="runtime-context-builder", correlation={"episode_id": episode_id,
                                   "runtime_context_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True,
                                       separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()})
-            self._json(200, {"ok": True, "runtime_context": payload})
+            # Private transport receipt: never included in runtime_context or diagnostics.
+            receipt = {"episode_id": episode_id, "token": token} if run_id else None
+            self._json(200, {"ok": True, "runtime_context": payload,
+                             "authority_heartbeat": receipt})
         except Exception as exc:
             diagnostic_record("runtime_context_failed", {"error": str(exc),
                 "exception_type": type(exc).__name__,
@@ -446,12 +484,17 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
             self._json(401, {"ok": False, "error": "unauthorized"})
             return
         parts = urlsplit(self.path)
-        if parts.path not in {"/runtime-context/responded", "/runtime-context/episode-ended"}:
+        if parts.path not in {"/runtime-context/responded", "/runtime-context/episode-ended", "/runtime-context/heartbeat"}:
             self._json(404, {"ok": False, "error": "not_found"})
             return
         try:
             length = min(max(int(self.headers.get("Content-Length", "0")), 0), 4096)
             body = json.loads(self.rfile.read(length) or b"{}")
+            if parts.path == "/runtime-context/heartbeat":
+                _renew_runtime_authority(str(body.get("episode_id") or ""), str(body.get("token") or ""),
+                    str(body.get("run_id") or ""), str(body.get("session_id") or ""))
+                self._json(200, {"ok": True})
+                return
             if parts.path == "/runtime-context/episode-ended":
                 episode_id = str(body.get("episode_id") or "")
                 with RUNTIME_EPISODE_LOCK:
@@ -2728,6 +2771,10 @@ def smac_cognition(
     compact_outcome: str = "",
     foreground: bool = True,
 ) -> dict:
+    if action not in {"watch_inspect", "scope_inspect", "plan_health"}:
+        denied = _sovereign_memory_gate()
+        if denied:
+            return denied
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
     if action == "plan_health":
         # Recovery can publish the journal before the lazy world collector
@@ -4501,6 +4548,9 @@ def smac_memory_update(
                 "reason": "Nothing was saved. Copy the complete match_id and session_id from the fresh identity, and its revision as observed_revision. Do not reconstruct opaque IDs from memory. Managed agent_id and perspective_id may be omitted; supplied values must match this seat.",
             },
         }
+    denied = _sovereign_memory_gate()
+    if denied:
+        return {**denied, "persistence": {"stage": "not_started", "journal_committed": False}}
     try:
         record = parse_record_json(record_json)
     except (ValueError, TypeError, RecursionError):
@@ -4573,6 +4623,10 @@ def smac_notebook(
         )
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
+    if action in {"put", "delete"}:
+        denied = _sovereign_memory_gate()
+        if denied:
+            return {**denied, "persistence": {"stage": "not_started", "journal_committed": False}}
     ephemeral_reference = SESSION_LOCAL_KNOWLEDGE_REFERENCE.search(content)
     if ephemeral_reference:
         return {

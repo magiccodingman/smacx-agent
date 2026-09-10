@@ -56,6 +56,11 @@ def main() -> int:
 
         def do_GET(self) -> None:  # noqa: N802
             if self.path.startswith("/runtime-context"):
+                if getattr(self.server, 'force_authority_loss', False):
+                    data=b'{"ok":false,"error":"sovereign_episode_authority_lost"}'
+                    self.send_response(409);self.send_header('Content-Length',str(len(data)))
+                    self.end_headers();self.wfile.write(data)
+                    return
                 query = parse_qs(urlsplit(self.path).query)
                 episode_id = query.get("episode_id", [""])[0]
                 active = getattr(self.server, "active_episode", "")
@@ -65,6 +70,7 @@ def main() -> int:
                 self.server.active_episode = episode_id
                 payload = {
                     "ok": True,
+                    "authority_heartbeat": {"episode_id": episode_id, "token": "private-heartbeat-contract-token"},
                     "runtime_context": {
                         "schema": "smacx.runtime-context.v1",
                         "identity": {
@@ -114,6 +120,17 @@ def main() -> int:
             length = int(self.headers.get("Content-Length", "0"))
             request = json.loads(self.rfile.read(length))
             captured.append({"path": self.path, "request": request})
+            if self.path.endswith("/heartbeat"):
+                assert request['episode_id'] == self.server.active_episode
+                assert request['token'] == 'private-heartbeat-contract-token'
+                assert request['run_id'] == 'run-provider-capture'
+                data=b'{"ok":true}'
+                self.send_response(200); self.send_header('Content-Length',str(len(data)))
+                self.end_headers(); self.wfile.write(data)
+                return
+            if self.path.endswith('/chat/completions') and not getattr(self.server,'heartbeat_delay_tested',False):
+                self.server.heartbeat_delay_tested=True
+                time.sleep(33)  # Real heartbeat must arrive while inference is in flight.
             if self.path.endswith("/episode-ended"):
                 assert request["episode_id"] == self.server.active_episode
                 self.server.active_episode = ""
@@ -284,6 +301,8 @@ def main() -> int:
                     "-e", "SMACX_RUNTIME_CONTEXT_TOKEN_FILE=/opt/data/runtime-context-token",
                     "-e", f"SMACX_AGENT_MATCH_ID={match_id}",
                     "-e", f"SMACX_AGENT_ID={agent_id}",
+                    "-e", "SMACX_HARNESS_RUN_ID=run-provider-capture",
+                    "-e", "SMACX_AGENT_SESSION_ID=session-provider-capture",
                     "-e", f"SMACX_PERSPECTIVE_ID=perspective-provider-capture-{suffix}",
                     "-e", f"SMACX_EPISODE_MODE={episode_mode}",
                     "-e", "SMACX_CONTEXT_LENGTH=65536",
@@ -459,16 +478,28 @@ def main() -> int:
                     raise AssertionError(
                         f"{reasoning_effort} reasoning did not reach provider: {request}"
                     )
+            # A real CLI must exit cleanly without another inference request after
+            # the runtime reports lost authority. The supervisor owns readmission.
+            server.force_authority_loss=True
+            before_loss=len([item for item in captured if item['path'].endswith('/chat/completions')])
+            lost=subprocess.run(command,text=True,capture_output=True,timeout=90,check=False)
+            assert lost.returncode==0, (lost.returncode,lost.stderr[-1200:])
+            assert before_loss==len([item for item in captured if item['path'].endswith('/chat/completions')])
     finally:
         subprocess.run(["docker", "rm", "-f", mcp_container],
                        text=True, capture_output=True, check=False)
         server.shutdown()
         server.server_close()
         thread.join(2)
+    assert any(item['path'].endswith('/heartbeat') for item in captured), 'no heartbeat during in-flight provider request'
+    assert all('private-heartbeat-contract-token' not in json.dumps(item['request'])
+               for item in captured if item['path'].endswith('/chat/completions'))
     print(json.dumps({
         "event": "pass",
         "payload": {
             "real_derived_image": True,
+            "private_heartbeat_during_real_hermes_provider_wait": True,
+            "authority_loss_exits_real_cli_before_provider": True,
             "provider_request_captured": True,
             "production_diagnostic_matches_received_request": True,
             "production_response_capture_correlated": True,
